@@ -1,437 +1,218 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Two-Sided Hat Profile Calculator</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #2c3e50, #3498db);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            font-weight: 300;
-        }
-
-        .header p {
-            opacity: 0.9;
-            font-size: 1.1em;
-        }
-
-        .main-content {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-            padding: 30px;
-        }
-
-        .input-section, .results-section {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-        }
-
-        .section-title {
-            color: #2c3e50;
-            font-size: 1.4em;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 3px solid #3498db;
-        }
-
-        .input-group {
-            margin-bottom: 20px;
-        }
-
-        .input-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-
-        .input-field {
-            display: flex;
-            flex-direction: column;
-        }
-
-        label {
-            font-weight: 600;
-            color: #34495e;
-            margin-bottom: 5px;
-            font-size: 0.9em;
-        }
-
-        input[type="number"] {
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 1em;
-            transition: all 0.3s ease;
-        }
-
-        input[type="number"]:focus {
-            outline: none;
-            border-color: #3498db;
-            box-shadow: 0 0 10px rgba(52, 152, 219, 0.2);
-        }
-
-        .calculate-btn {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 1.1em;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 20px;
-        }
-
-        .calculate-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
-        }
-
-        .result-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            margin-bottom: 10px;
-            background: #f8f9fa;
-            border-left: 4px solid #3498db;
-            border-radius: 5px;
-        }
-
-        .result-label {
-            font-weight: 600;
-            color: #2c3e50;
-        }
-
-        .result-value {
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            color: #27ae60;
-        }
-
-        .classification {
-            background: #e8f5e8;
-            border-left-color: #27ae60;
-        }
-
-        .classification .result-value {
-            color: #2e7d32;
-        }
-
-        .diagram-container {
-            grid-column: 1 / -1;
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            margin-top: 20px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-        }
-
-        .calculations-container {
-            grid-column: 1 / -1;
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            margin-top: 20px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-        }
-
-        .calculation-step {
-            background: #fefefe;
-            border: 1px solid #e8e8e8;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 15px;
-            font-family: 'Courier New', monospace;
-            position: relative;
-        }
-
-        .calculation-step::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 4px;
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            border-radius: 4px 0 0 4px;
-        }
-
-        .step-title {
-            color: #2c3e50;
-            font-weight: bold;
-            font-size: 1.1em;
-            margin-bottom: 15px;
-            font-family: 'Segoe UI', sans-serif;
-            border-bottom: 1px solid #ecf0f1;
-            padding-bottom: 8px;
-        }
-
-        .math-line {
-            display: flex;
-            align-items: center;
-            margin: 8px 0;
-            min-height: 24px;
-        }
-
-        .math-expression {
-            flex: 1;
-            font-size: 14px;
-            color: #2c3e50;
-            line-height: 1.4;
-        }
-
-        .math-result {
-            color: #27ae60;
-            font-weight: bold;
-            margin-left: 20px;
-            min-width: 120px;
-            text-align: right;
-        }
-
-        .math-variable {
-            color: #8e44ad;
-            font-weight: bold;
-        }
-
-        .math-operator {
-            color: #e74c3c;
-            margin: 0 3px;
-        }
-
-        .math-number {
-            color: #2980b9;
-        }
-
-        .math-unit {
-            color: #7f8c8d;
-            font-style: italic;
-        }
-
-        .subsection {
-            background: #f8f9fa;
-            border-left: 3px solid #3498db;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 0 5px 5px 0;
-        }
-
-        .subsection-title {
-            font-weight: bold;
-            color: #2c3e50;
-            margin-bottom: 10px;
-            font-family: 'Segoe UI', sans-serif;
-        }
-
-        .diagram {
-            width: 100%;
-            height: 300px;
-            border: 1px solid #e0e0e0;
-            border-radius: 10px;
-            background: #fafafa;
-        }
-
-        @media (max-width: 768px) {
-            .main-content {
-                grid-template-columns: 1fr;
-            }
-            
-            .input-row {
-                grid-template-columns: 1fr;
-            }
-            
-            .header h1 {
-                font-size: 2em;
-            }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free two-sided hat profile calculator. Calculate structural capacities and cross-sectional classifications according to Eurocode 3.">
+  <meta name="keywords" content="hat profile, steel structure, eurocode 3, cross-section classification, structural engineering">
+  <title>Two-Sided Hat Profile Calculator - Structural Engineering Tool</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Two-Sided Hat Profile Calculator - Structural Engineering Tool">
+  <meta property="og:description" content="Calculate structural capacities and cross-sectional classifications for two-sided hat profiles according to Eurocode 3">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/THP">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .hero-bg {
+      background: linear-gradient(135deg, #1f2937 0%, #111827 50%, #0f172a 100%);
+      background-image: 
+        radial-gradient(circle at 25% 25%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 75% 75%, rgba(147, 51, 234, 0.1) 0%, transparent 50%);
+    }
+    
+    .pulse-glow {
+      animation: pulse-glow 3s ease-in-out infinite;
+    }
+    
+    @keyframes pulse-glow {
+      0%, 100% {
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+      }
+      50% {
+        box-shadow: 0 0 30px rgba(139, 92, 246, 0.5);
+      }
+    }
+  </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Two-Sided Hat Profile Calculator</h1>
-            <p>Calculate structural capacities and cross-sectional classifications according to Eurocode 3</p>
-        </div>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen hero-bg">
 
-        <div class="main-content">
-            <div class="input-section">
-                <h2 class="section-title">Geometry Input</h2>
-                
-                <div class="input-group">
-                    <h3 style="color: #34495e; margin-bottom: 15px;">Upper Flange</h3>
-                    <div class="input-row">
-                        <div class="input-field">
-                            <label for="b_o">Width b₀ (mm)</label>
-                            <input type="number" id="b_o" value="188" step="0.1">
-                        </div>
-                        <div class="input-field">
-                            <label for="t_o">Thickness t₀ (mm)</label>
-                            <input type="number" id="t_o" value="25" step="0.1">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <h3 style="color: #34495e; margin-bottom: 15px;">Web</h3>
-                    <div class="input-row">
-                        <div class="input-field">
-                            <label for="H">Height H (mm)</label>
-                            <input type="number" id="H" value="200" step="0.1">
-                        </div>
-                        <div class="input-field">
-                            <label for="t_w">Thickness tₘ (mm)</label>
-                            <input type="number" id="t_w" value="6" step="0.1">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <h3 style="color: #34495e; margin-bottom: 15px;">Lower Flange</h3>
-                    <div class="input-row">
-                        <div class="input-field">
-                            <label for="b_u">Width bᵤ (mm)</label>
-                            <input type="number" id="b_u" value="450" step="0.1">
-                        </div>
-                        <div class="input-field">
-                            <label for="t_u">Thickness tᵤ (mm)</label>
-                            <input type="number" id="t_u" value="15" step="0.1">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <h3 style="color: #34495e; margin-bottom: 15px;">Material Properties</h3>
-                    <div class="input-row">
-                        <div class="input-field">
-                            <label for="f_yk">Yield Strength fᵧₖ (MPa)</label>
-                            <input type="number" id="f_yk" value="355" step="1">
-                        </div>
-                        <div class="input-field">
-                            <label for="gamma_M0">Safety Factor γₘ₀</label>
-                            <input type="number" id="gamma_M0" value="1.05" step="0.01">
-                        </div>
-                    </div>
-                </div>
-
-                <button class="calculate-btn" onclick="calculate()">Calculate Properties</button>
-            </div>
-
-            <div class="results-section">
-                <h2 class="section-title">Results</h2>
-                
-                <div id="geometric-results">
-                    <h3 style="color: #34495e; margin-bottom: 15px;">Geometric Properties</h3>
-                    <div class="result-item">
-                        <span class="result-label">Total Height (mm)</span>
-                        <span class="result-value" id="H_tot">-</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Total Area (mm²)</span>
-                        <span class="result-value" id="A_total">-</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Neutral Axis z_NA (mm)</span>
-                        <span class="result-value" id="z_NA">-</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Moment of Inertia Iᵧ (mm⁴)</span>
-                        <span class="result-value" id="I_y">-</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Section Modulus Wₑₗ (mm³)</span>
-                        <span class="result-value" id="W_el">-</span>
-                    </div>
-                </div>
-
-                <div id="material-results" style="margin-top: 20px;">
-                    <h3 style="color: #34495e; margin-bottom: 15px;">Material Properties</h3>
-                    <div class="result-item">
-                        <span class="result-label">Design Strength fᵧd (MPa)</span>
-                        <span class="result-value" id="f_yd">-</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Epsilon ε</span>
-                        <span class="result-value" id="epsilon">-</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Moment Resistance MRd (kNm)</span>
-                        <span class="result-value" id="M_Rd">-</span>
-                    </div>
-                </div>
-
-                <div id="classification-results" style="margin-top: 20px;">
-                    <h3 style="color: #34495e; margin-bottom: 15px;">Cross-Section Classification</h3>
-                    <div class="result-item classification">
-                        <span class="result-label">Upper Flange Class</span>
-                        <span class="result-value" id="upper_flange_class">-</span>
-                    </div>
-                    <div class="result-item classification">
-                        <span class="result-label">Lower Flange Class (Inner)</span>
-                        <span class="result-value" id="lower_flange_inner_class">-</span>
-                    </div>
-                    <div class="result-item classification">
-                        <span class="result-label">Lower Flange Class (Outer)</span>
-                        <span class="result-value" id="lower_flange_outer_class">-</span>
-                    </div>
-                    <div class="result-item classification">
-                        <span class="result-label">Web Class</span>
-                        <span class="result-value" id="web_class">-</span>
-                    </div>
-                    <div class="result-item classification" style="border-left-color: #e74c3c;">
-                        <span class="result-label"><strong>Overall Section Class</strong></span>
-                        <span class="result-value" id="overall_class" style="color: #c0392b; font-size: 1.2em;">-</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="diagram-container">
-            <h2 class="section-title">Cross-Section Diagram</h2>
-            <svg class="diagram" id="diagram"></svg>
-        </div>
-
-        <div class="calculations-container">
-            <h2 class="section-title">Step-by-Step Calculations</h2>
-            <div id="step-calculations"></div>
-        </div>
+  <main class="w-full max-w-6xl mx-auto p-6">
+    <div class="text-center mb-8">
+      <h1 class="text-4xl font-bold bg-gradient-to-r from-purple-400 via-violet-400 to-indigo-400 bg-clip-text text-transparent mb-4">
+        Two-Sided Hat Profile Calculator
+      </h1>
+      <p class="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
+        Calculate structural capacities and cross-sectional classifications according to Eurocode 3
+      </p>
     </div>
 
-    <script src="script.js"></script>
+    <div class="grid md:grid-cols-2 gap-8">
+      <div class="bg-gray-800 rounded-xl p-6 pulse-glow">
+        <h2 class="text-2xl font-semibold text-purple-400 mb-6">Geometry Input</h2>
+        
+        <div class="form-section mb-6">
+          <h3 class="text-lg font-semibold text-purple-300 mb-4">Upper Flange</h3>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="input-group">
+              <label for="b_o" class="input-label">Width b₀ (mm):</label>
+              <input type="number" id="b_o" value="188" step="0.1" class="input-field">
+            </div>
+            <div class="input-group">
+              <label for="t_o" class="input-label">Thickness t₀ (mm):</label>
+              <input type="number" id="t_o" value="25" step="0.1" class="input-field">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section mb-6">
+          <h3 class="text-lg font-semibold text-purple-300 mb-4">Web</h3>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="input-group">
+              <label for="H" class="input-label">Height H (mm):</label>
+              <input type="number" id="H" value="200" step="0.1" class="input-field">
+            </div>
+            <div class="input-group">
+              <label for="t_w" class="input-label">Thickness tₘ (mm):</label>
+              <input type="number" id="t_w" value="6" step="0.1" class="input-field">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section mb-6">
+          <h3 class="text-lg font-semibold text-purple-300 mb-4">Lower Flange</h3>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="input-group">
+              <label for="b_u" class="input-label">Width bᵤ (mm):</label>
+              <input type="number" id="b_u" value="450" step="0.1" class="input-field">
+            </div>
+            <div class="input-group">
+              <label for="t_u" class="input-label">Thickness tᵤ (mm):</label>
+              <input type="number" id="t_u" value="15" step="0.1" class="input-field">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section mb-6">
+          <h3 class="text-lg font-semibold text-purple-300 mb-4">Material Properties</h3>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="input-group">
+              <label for="f_yk" class="input-label">Yield Strength fᵧₖ (MPa):</label>
+              <input type="number" id="f_yk" value="355" step="1" class="input-field">
+            </div>
+            <div class="input-group">
+              <label for="gamma_M0" class="input-label">Safety Factor γₘ₀:</label>
+              <input type="number" id="gamma_M0" value="1.05" step="0.01" class="input-field">
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-full-width" onclick="calculate()">Calculate Properties</button>
+      </div>
+
+      <div class="bg-gray-800 rounded-xl p-6">
+        <h2 class="text-2xl font-semibold text-purple-400 mb-6">Results</h2>
+        
+        <div id="geometric-results" class="mb-6">
+          <h3 class="text-lg font-semibold text-purple-300 mb-4">Geometric Properties</h3>
+          <div class="space-y-3">
+            <div class="summary-item">
+              <span class="summary-label">Total Height (mm)</span>
+              <span class="summary-value" id="H_tot">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Total Area (mm²)</span>
+              <span class="summary-value" id="A_total">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Neutral Axis z_NA (mm)</span>
+              <span class="summary-value" id="z_NA">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Moment of Inertia Iᵧ (mm⁴)</span>
+              <span class="summary-value" id="I_y">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Section Modulus Wₑₗ (mm³)</span>
+              <span class="summary-value" id="W_el">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="material-results" class="mb-6">
+          <h3 class="text-lg font-semibold text-purple-300 mb-4">Material Properties</h3>
+          <div class="space-y-3">
+            <div class="summary-item">
+              <span class="summary-label">Design Strength fᵧd (MPa)</span>
+              <span class="summary-value" id="f_yd">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Epsilon ε</span>
+              <span class="summary-value" id="epsilon">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Moment Resistance MRd (kNm)</span>
+              <span class="summary-value" id="M_Rd">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="classification-results">
+          <h3 class="text-lg font-semibold text-purple-300 mb-4">Cross-Section Classification</h3>
+          <div class="space-y-3">
+            <div class="summary-item">
+              <span class="summary-label">Upper Flange Class</span>
+              <span class="summary-value status-ok" id="upper_flange_class">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Lower Flange Class (Inner)</span>
+              <span class="summary-value status-ok" id="lower_flange_inner_class">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Lower Flange Class (Outer)</span>
+              <span class="summary-value status-ok" id="lower_flange_outer_class">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Web Class</span>
+              <span class="summary-value status-ok" id="web_class">-</span>
+            </div>
+            <div class="summary-item border-l-4 border-purple-500 pl-3">
+              <span class="summary-label text-white font-bold">Overall Section Class</span>
+              <span class="summary-value text-purple-300 text-lg font-bold" id="overall_class">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-gray-800 rounded-xl p-6 mt-8">
+      <h2 class="text-2xl font-semibold text-purple-400 mb-6">Cross-Section Diagram</h2>
+      <div class="bg-gray-700 rounded-lg p-4">
+        <svg class="w-full h-80 bg-gray-600 rounded-md" id="diagram"></svg>
+      </div>
+    </div>
+
+    <div class="bg-gray-800 rounded-xl p-6 mt-8">
+      <h2 class="text-2xl font-semibold text-purple-400 mb-6">Step-by-Step Calculations</h2>
+      <div id="step-calculations" class="calculation-steps"></div>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+  
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+  
 </body>
 </html>
