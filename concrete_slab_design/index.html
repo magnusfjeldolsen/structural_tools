@@ -20,6 +20,13 @@
   <meta name="twitter:description" content="Calculate ULS moment resistance for concrete slabs with detailed mathematical steps">
   <meta name="twitter:image" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_slab_design/calculations.png">
   
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  
+  <!-- Tailwind CSS -->
   <script>
     tailwind.config = { darkMode: 'class' };
   </script>
@@ -27,36 +34,6 @@
   <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
   <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
-  <style>
-    @media print {
-      body {
-        background: #111 !important;
-        color: white !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-      input,
-      button,
-      .print\:hidden {
-        display: none !important;
-      }
-      .print\:inline {
-        display: inline !important;
-      }
-      .print\:flex {
-        display: flex !important;
-      }
-      .print\:mt-6 {
-        margin-top: 1.5rem !important;
-      }
-      .print\:border {
-        border: 1px solid #333 !important;
-      }
-      .print\:p-4 {
-        padding: 1rem !important;
-      }
-    }
-  </style>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
 
@@ -252,5 +229,8 @@
     }
   </script>
 
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+  
 </body>
 </html>
