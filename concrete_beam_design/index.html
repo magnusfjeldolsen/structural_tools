@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free concrete beam ULS design calculator. Calculate moment and shear capacity with detailed step-by-step derivations.">
+  <meta name="keywords" content="concrete beam design, ULS, moment capacity, shear capacity, structural engineering">
+  <title>Concrete Beam Calculator - ULS Design Tool</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Concrete Beam Calculator - ULS Design Tool">
+  <meta property="og:description" content="Calculate moment and shear capacity of concrete beams with detailed mathematical derivations">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_beam_design">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+
+  <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <div class="text-center mb-6">
+      <h1 class="text-3xl font-bold text-white mb-2">Concrete Beam ULS Design Calculator</h1>
+      <p class="text-gray-300">Calculate moment and shear capacity with detailed step-by-step derivations</p>
+    </div>
+
+    <!-- Input Form -->
+    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="grid md:grid-cols-2 gap-6">
+      
+      <!-- Geometry Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Geometry</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="b" class="text-sm font-medium min-w-[100px] text-right">b (mm):</label>
+            <input type="number" id="b" value="250" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="h" class="text-sm font-medium min-w-[100px] text-right">h (mm):</label>
+            <input type="number" id="h" value="500" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="c" class="text-sm font-medium min-w-[100px] text-right">c (mm):</label>
+            <input type="number" id="c" value="25" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+      <!-- Loads Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-red-400 mb-4">Applied Loads</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="MEd" class="text-sm font-medium min-w-[100px] text-right">M<sub>Ed</sub> (kNm):</label>
+            <input type="number" id="MEd" value="39" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="VEd" class="text-sm font-medium min-w-[100px] text-right">V<sub>Ed</sub> (kN):</label>
+            <input type="number" id="VEd" value="260" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+      <!-- Longitudinal Reinforcement Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-green-400 mb-4">Longitudinal Reinforcement</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="phi_l" class="text-sm font-medium min-w-[100px] text-right">φ<sub>l</sub> (mm):</label>
+            <input type="number" id="phi_l" value="20" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="n_l" class="text-sm font-medium min-w-[100px] text-right">n<sub>l</sub>:</label>
+            <input type="number" id="n_l" value="2" step="1" min="1" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+      <!-- Shear Reinforcement Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-purple-400 mb-4">Shear Reinforcement</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="phi_b" class="text-sm font-medium min-w-[100px] text-right">φ<sub>b</sub> (mm):</label>
+            <input type="number" id="phi_b" value="12" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="cc_b" class="text-sm font-medium min-w-[100px] text-right">cc<sub>b</sub> (mm):</label>
+            <input type="number" id="cc_b" value="185" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="n_snitt" class="text-sm font-medium min-w-[100px] text-right">n<sub>snitt</sub>:</label>
+            <input type="number" id="n_snitt" value="2" step="1" min="1" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+      <!-- Material Properties Section -->
+      <div class="bg-gray-700 rounded-lg p-6 md:col-span-2">
+        <h3 class="text-xl font-semibold text-yellow-400 mb-4">Material Properties</h3>
+        
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="flex items-center gap-4">
+            <label for="fck" class="text-sm font-medium min-w-[100px] text-right">f<sub>ck</sub> (MPa):</label>
+            <input type="number" id="fck" value="35" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="fyk" class="text-sm font-medium min-w-[100px] text-right">f<sub>yk</sub> (MPa):</label>
+            <input type="number" id="fyk" value="500" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="gamma_c" class="text-sm font-medium min-w-[100px] text-right">γ<sub>c</sub>:</label>
+            <input type="number" id="gamma_c" value="1.86" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="gamma_s" class="text-sm font-medium min-w-[100px] text-right">γ<sub>s</sub>:</label>
+            <input type="number" id="gamma_s" value="1.25" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+    </form>
+
+    <!-- Buttons -->
+    <div class="space-y-2 print:hidden">
+      <button onclick="calculateAndShow()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+        Calculate ULS Capacities
+      </button>
+      <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
+        Print to PDF
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50 hidden">
+      <div id="calc-steps" class="text-white"></div>
+    </div>
+
+  </main>
+
+  <script>
+
+    function toFixedIfNeeded(num, digits=2) {
+      return num.toFixed(digits);
+    }
+
+    function calculateAndShow() {
+      // Get inputs
+      const b = parseFloat(document.getElementById('b').value);
+      const h = parseFloat(document.getElementById('h').value);
+      const c = parseFloat(document.getElementById('c').value);
+      const MEd = parseFloat(document.getElementById('MEd').value);
+      const VEd = parseFloat(document.getElementById('VEd').value);
+      const phi_l = parseFloat(document.getElementById('phi_l').value);
+      const n_l = parseFloat(document.getElementById('n_l').value);
+      const phi_b = parseFloat(document.getElementById('phi_b').value);
+      const cc_b = parseFloat(document.getElementById('cc_b').value);
+      const n_snitt = parseFloat(document.getElementById('n_snitt').value);
+      const fck = parseFloat(document.getElementById('fck').value);
+      const fyk = parseFloat(document.getElementById('fyk').value);
+      const gamma_c = parseFloat(document.getElementById('gamma_c').value);
+      const gamma_s = parseFloat(document.getElementById('gamma_s').value);
+
+      // Derived material properties
+      const fcd = 0.85 * fck / gamma_c;
+      const fyd = fyk / gamma_s;
+
+      // Geometric properties
+      const d = h - c - phi_l/2;
+      const Asl = n_l * Math.PI * Math.pow(phi_l, 2) / 4;
+
+      // Moment capacity calculations
+      const MRd_c = 0.275 * b * Math.pow(d, 2) * fcd / 1000000; // Convert to kNm
+      
+      const z_95d = 0.95 * d;
+      const z_bal = d * (1 - 0.17 * (MEd * 1000000) / (0.275 * b * Math.pow(d, 2) * fcd));
+      const z = Math.min(z_95d, z_bal);
+      
+      const MRd_s = Asl * fyd * z / 1000000; // Convert to kNm
+
+      // Shear reinforcement properties
+      const Asw = n_snitt * Math.PI * Math.pow(phi_b, 2) / 4;
+      const z_skjaer = 0.9 * d;
+      
+      // Initial cot(θ) = 2.5
+      const cot_theta_initial = 2.5;
+      const theta_initial = Math.atan(1 / cot_theta_initial) * 180 / Math.PI;
+      
+      // Shear capacity with initial angle
+      const VRd_s_initial = (Asw / cc_b) * z_skjaer * fyd * cot_theta_initial / 1000;
+      
+      // Reduced angle calculation
+      const theta_red_rad = Math.atan(VEd / ((Asw / cc_b) * z_skjaer * fyd / 1000));
+      const theta_red = theta_red_rad * 180 / Math.PI;
+      const cot_theta_red = 1 / Math.tan(theta_red_rad);
+      
+      // Check angle limits and determine final cot(θ)
+      const theta_min = Math.atan(1 / 2.5) * 180 / Math.PI; // ≈ 21.8°
+      const theta_max = 45;
+      
+      let theta_final, cot_theta_final, angle_status;
+      if (theta_red >= theta_min && theta_red <= theta_max) {
+        theta_final = theta_red;
+        cot_theta_final = cot_theta_red;
+        angle_status = "OK";
+      } else if (theta_red < theta_min) {
+        theta_final = theta_min;
+        cot_theta_final = 2.5;
+        angle_status = "Limited to min angle";
+      } else {
+        theta_final = theta_max;
+        cot_theta_final = 1.0;
+        angle_status = "Limited to max angle";
+      }
+      
+      // Final shear capacity
+      const VRd_s_final = (Asw / cc_b) * z_skjaer * fyd * cot_theta_final / 1000;
+      
+      // Additional tensile force due to shear
+      const DeltaF_td = 0.5 * VEd * cot_theta_final;
+      const F_tM = MEd * 1000 / z; // Convert MEd to kN for consistent units
+      const F_Ed = F_tM + DeltaF_td;
+      const F_Rd = Asl * fyd / 1000; // Convert to kN
+
+      // Create LaTeX output
+      const stepsLatex = `
+      <div class="mb-6">
+        <h2 class="text-2xl font-bold text-blue-400 mb-4">ULS Calculation Results</h2>
+      </div>
+      
+      \\[
+      \\begin{aligned}
+      & \\textbf{Material Properties:} \\\\
+      & f_{cd} = \\frac{0.85 \\times f_{ck}}{\\gamma_c} = \\frac{0.85 \\times ${toFixedIfNeeded(fck)}}{${toFixedIfNeeded(gamma_c)}} = ${toFixedIfNeeded(fcd)} \\ \\mathrm{MPa} \\\\
+      & f_{yd} = \\frac{f_{yk}}{\\gamma_s} = \\frac{${toFixedIfNeeded(fyk)}}{${toFixedIfNeeded(gamma_s)}} = ${toFixedIfNeeded(fyd)} \\ \\mathrm{MPa} \\\\[1em]
+      
+      & \\textbf{Geometric Properties:} \\\\
+      & d = h - c - \\frac{\\phi_l}{2} = ${toFixedIfNeeded(h)} - ${toFixedIfNeeded(c)} - \\frac{${toFixedIfNeeded(phi_l)}}{2} = ${toFixedIfNeeded(d)} \\ \\mathrm{mm} \\\\
+      & A_{sl} = n_l \\times \\frac{\\pi \\times \\phi_l^2}{4} = ${n_l} \\times \\frac{\\pi \\times (${toFixedIfNeeded(phi_l)})^2}{4} = ${toFixedIfNeeded(Asl)} \\ \\mathrm{mm}^2 \\\\[1em]
+      
+      & \\textbf{Moment Capacity:} \\\\
+      & M_{Rd,c} = 0.275 \\times b \\times d^2 \\times f_{cd} = 0.275 \\times ${toFixedIfNeeded(b)} \\times (${toFixedIfNeeded(d)})^2 \\times ${toFixedIfNeeded(fcd)} = ${toFixedIfNeeded(MRd_c)} \\ \\mathrm{kNm} \\\\
+      & z = \\min\\left(0.95d, d \\times \\left(1 - 0.17 \\times \\frac{M_{Ed}}{M_{Rd,c}} \\right) \\right) = \\min\\left(${toFixedIfNeeded(z_95d)}, ${toFixedIfNeeded(z_bal)} \\right) = ${toFixedIfNeeded(z)} \\ \\mathrm{mm} \\\\
+      & M_{Rd,s} = A_{sl} \\times f_{yd} \\times z = ${toFixedIfNeeded(Asl)} \\times ${toFixedIfNeeded(fyd)} \\times ${toFixedIfNeeded(z)} = ${toFixedIfNeeded(MRd_s)} \\ \\mathrm{kNm} \\\\[1em]
+      
+      & \\textbf{Shear Reinforcement:} \\\\
+      & A_{sw} = n_{snitt} \\times \\frac{\\pi \\times \\phi_b^2}{4} = ${n_snitt} \\times \\frac{\\pi \\times (${toFixedIfNeeded(phi_b)})^2}{4} = ${toFixedIfNeeded(Asw)} \\ \\mathrm{mm}^2 \\\\
+      & z_{skjær} = 0.9 \\times d = 0.9 \\times ${toFixedIfNeeded(d)} = ${toFixedIfNeeded(z_skjaer)} \\ \\mathrm{mm} \\\\[1em]
+      
+      & \\textbf{Shear Capacity (initial \\cot \\theta = 2.5):} \\\\
+      & \\theta_{initial} = \\arctan\\left(\\frac{1}{2.5}\\right) = ${toFixedIfNeeded(theta_initial)}° \\\\
+      & V_{Rd,s} = \\frac{A_{sw}}{cc_b} \\times z_{skjær} \\times f_{yd} \\times \\cot \\theta = \\frac{${toFixedIfNeeded(Asw)}}{${toFixedIfNeeded(cc_b)}} \\times ${toFixedIfNeeded(z_skjaer)} \\times ${toFixedIfNeeded(fyd)} \\times 2.5 = ${toFixedIfNeeded(VRd_s_initial)} \\ \\mathrm{kN} \\\\[1em]
+      
+      & \\textbf{Reduced Angle Check:} \\\\
+      & \\theta_{red} = \\arctan\\left(\\frac{V_{Ed}}{\\frac{A_{sw}}{cc_b} \\times z_{skjær} \\times f_{yd}}\\right) = \\arctan\\left(\\frac{${toFixedIfNeeded(VEd)}}{\\frac{${toFixedIfNeeded(Asw)}}{${toFixedIfNeeded(cc_b)}} \\times ${toFixedIfNeeded(z_skjaer)} \\times ${toFixedIfNeeded(fyd)}}\\right) = ${toFixedIfNeeded(theta_red)}° \\\\
+      & \\text{Angle limits: } ${toFixedIfNeeded(theta_min)}° \\leq \\theta \\leq 45° \\\\
+      & \\text{Status: } \\textbf{${angle_status}} \\\\
+      & \\theta_{final} = ${toFixedIfNeeded(theta_final)}°, \\quad \\cot \\theta_{final} = ${toFixedIfNeeded(cot_theta_final)} \\\\[1em]
+      
+      & \\textbf{Final Shear Capacity:} \\\\
+      & V_{Rd,s} = \\frac{A_{sw}}{cc_b} \\times z_{skjær} \\times f_{yd} \\times \\cot \\theta_{final} = \\frac{${toFixedIfNeeded(Asw)}}{${toFixedIfNeeded(cc_b)}} \\times ${toFixedIfNeeded(z_skjaer)} \\times ${toFixedIfNeeded(fyd)} \\times ${toFixedIfNeeded(cot_theta_final)} = ${toFixedIfNeeded(VRd_s_final)} \\ \\mathrm{kN} \\\\[1em]
+      
+      & \\textbf{Additional Tensile Force from Shear:} \\\\
+      & \\Delta F_{td} = 0.5 \\times V_{Ed} \\times \\cot \\theta_{final} = 0.5 \\times ${toFixedIfNeeded(VEd)} \\times ${toFixedIfNeeded(cot_theta_final)} = ${toFixedIfNeeded(DeltaF_td)} \\ \\mathrm{kN} \\\\
+      & F_{tM} = \\frac{M_{Ed}}{z} = \\frac{${toFixedIfNeeded(MEd)} \\times 1000}{${toFixedIfNeeded(z)}} = ${toFixedIfNeeded(F_tM)} \\ \\mathrm{kN} \\\\
+      & F_{Ed} = F_{tM} + \\Delta F_{td} = ${toFixedIfNeeded(F_tM)} + ${toFixedIfNeeded(DeltaF_td)} = ${toFixedIfNeeded(F_Ed)} \\ \\mathrm{kN} \\\\
+      & F_{Rd} = A_{sl} \\times f_{yd} = ${toFixedIfNeeded(Asl)} \\times ${toFixedIfNeeded(fyd)} = ${toFixedIfNeeded(F_Rd)} \\ \\mathrm{kN}
+      \\end{aligned}
+      \\]
+      
+      <div class="mt-8 p-6 bg-gray-800 rounded-lg border-l-4 border-blue-500">
+        <h3 class="text-xl font-bold text-white mb-4">Summary of Results</h3>
+        <div class="grid md:grid-cols-2 gap-6 text-sm">
+          <div>
+            <h4 class="font-semibold text-blue-400 mb-2">Moment Capacity</h4>
+            <p><span class="text-gray-300">M<sub>Rd,c</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_c)} kNm</span></p>
+            <p><span class="text-gray-300">M<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_s)} kNm</span></p>
+            <p><span class="text-gray-300">M<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MEd)} kNm</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${MEd/Math.min(MRd_c, MRd_s) > 1 ? 'text-red-400' : 'text-green-400'}">${toFixedIfNeeded(MEd/Math.min(MRd_c, MRd_s)*100, 1)}%</span></p>
+          </div>
+          <div>
+            <h4 class="font-semibold text-purple-400 mb-2">Shear Capacity</h4>
+            <p><span class="text-gray-300">V<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(VRd_s_final)} kN</span></p>
+            <p><span class="text-gray-300">V<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(VEd)} kN</span></p>
+            <p><span class="text-gray-300">θ<sub>final</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(theta_final)}°</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${VEd/VRd_s_final > 1 ? 'text-red-400' : 'text-green-400'}">${toFixedIfNeeded(VEd/VRd_s_final*100, 1)}%</span></p>
+          </div>
+          <div>
+            <h4 class="font-semibold text-green-400 mb-2">Tensile Force Check</h4>
+            <p><span class="text-gray-300">F<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(F_Ed)} kN</span></p>
+            <p><span class="text-gray-300">F<sub>Rd</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(F_Rd)} kN</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${F_Ed/F_Rd > 1 ? 'text-red-400' : 'text-green-400'}">${toFixedIfNeeded(F_Ed/F_Rd*100, 1)}%</span></p>
+          </div>
+        </div>
+      </div>
+      `;
+
+      const container = document.getElementById('calc-steps');
+      container.innerHTML = stepsLatex;
+      document.getElementById('results').style.display = 'block';
+
+      // Typeset math with MathJax
+      MathJax.typesetPromise();
+    }
+  </script>
+
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+
+</body>
+</html>

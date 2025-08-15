@@ -19,57 +19,19 @@
   <meta name="twitter:title" content="Steel Fire Temperature Calculator - Free Engineering Tool">
   <meta name="twitter:description" content="Calculate fire resistance of unprotected steel structures with interactive temperature simulation">
   <meta name="twitter:image" content="https://magnusfjeldolsen.github.io/unprotected_stee_firetemp/preview.png">
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  
+  <!-- Tailwind CSS -->
   <script>
     tailwind.config = { darkMode: 'class' };
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-  <style>
-    @media print {
-      body {
-        background: #111 !important;
-        color: white !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-      input,
-      button,
-      .print\\:hidden {
-        display: none !important;
-      }
-      .print\\:inline {
-        display: inline !important;
-      }
-      .print\\:flex {
-        display: flex !important;
-      }
-      .print\\:mt-6 {
-        margin-top: 1.5rem !important;
-      }
-      .print\\:border {
-        border: 1px solid #999 !important;
-      }
-      .print\\:rounded {
-        border-radius: 0.5rem !important;
-      }
-      .print\\:p-4 {
-        padding: 1rem !important;
-      }
-      .print\\:justify-between {
-        justify-content: space-between !important;
-      }
-      .print\\:items-center {
-        align-items: center !important;
-      }
-      .print\\:font-bold {
-        font-weight: bold !important;
-      }
-      canvas {
-        background-color: #111 !important;
-      }
-    }
-  </style>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
 
@@ -282,5 +244,8 @@
 <footer class="text-xs text-gray-400 fixed bottom-2 right-2 print:relative print:bottom-0 print:right-0 print:mb-2 print:mr-2">
   Free to use. Created by Magnus Fjeld Olsen.
 </footer>
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+  
 </body>
 </html>

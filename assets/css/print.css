@@ -1,0 +1,270 @@
+/* 
+ * Print CSS for Structural Engineering Tools
+ * Optimized for dark-themed PDF output
+ */
+
+@media print {
+  /* Force dark background and text for all elements */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Body styling for print */
+  body {
+    background: #111827 !important;
+    color: #f9fafb !important;
+    font-size: 12pt;
+    line-height: 1.4;
+    margin: 0;
+    padding: 1rem;
+  }
+
+  /* Hide interactive elements */
+  button,
+  input,
+  select,
+  textarea,
+  .btn,
+  .print\\:hidden,
+  [class*="print:hidden"] {
+    display: none !important;
+  }
+
+  /* Show print-specific elements */
+  .print\\:block,
+  [class*="print:block"] {
+    display: block !important;
+  }
+
+  .print\\:inline,
+  [class*="print:inline"] {
+    display: inline !important;
+  }
+
+  .print\\:flex,
+  [class*="print:flex"] {
+    display: flex !important;
+  }
+
+  .print\\:grid,
+  [class*="print:grid"] {
+    display: grid !important;
+  }
+
+  /* Print-specific spacing */
+  .print\\:mt-4,
+  [class*="print:mt-4"] {
+    margin-top: 1rem !important;
+  }
+
+  .print\\:mt-6,
+  [class*="print:mt-6"] {
+    margin-top: 1.5rem !important;
+  }
+
+  .print\\:mb-4,
+  [class*="print:mb-4"] {
+    margin-bottom: 1rem !important;
+  }
+
+  .print\\:mb-6,
+  [class*="print:mb-6"] {
+    margin-bottom: 1.5rem !important;
+  }
+
+  .print\\:p-4,
+  [class*="print:p-4"] {
+    padding: 1rem !important;
+  }
+
+  /* Print-specific borders */
+  .print\\:border,
+  [class*="print:border"] {
+    border: 1px solid #6b7280 !important;
+  }
+
+  .print\\:border-t,
+  [class*="print:border-t"] {
+    border-top: 1px solid #6b7280 !important;
+  }
+
+  .print\\:rounded,
+  [class*="print:rounded"] {
+    border-radius: 0.375rem !important;
+  }
+
+  /* Main container adjustments */
+  .main-container {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 1rem !important;
+    box-shadow: none !important;
+    background: #1f2937 !important;
+    border: 1px solid #374151 !important;
+  }
+
+  /* Section cards */
+  .section-card,
+  .form-section {
+    background: #374151 !important;
+    border: 1px solid #4b5563 !important;
+    margin-bottom: 1rem !important;
+    page-break-inside: avoid;
+  }
+
+  /* Typography adjustments */
+  .heading-1,
+  h1 {
+    font-size: 18pt !important;
+    color: #f9fafb !important;
+    margin-bottom: 0.5rem !important;
+    page-break-after: avoid;
+  }
+
+  .heading-2,
+  h2 {
+    font-size: 16pt !important;
+    color: #f9fafb !important;
+    margin-bottom: 0.75rem !important;
+    page-break-after: avoid;
+  }
+
+  .heading-3,
+  h3 {
+    font-size: 14pt !important;
+    color: #f9fafb !important;
+    margin-bottom: 0.5rem !important;
+    page-break-after: avoid;
+  }
+
+  /* Results and calculation sections */
+  #results,
+  .results-section {
+    background: #1f2937 !important;
+    border: 1px solid #374151 !important;
+    padding: 1rem !important;
+    margin-top: 1rem !important;
+    page-break-inside: avoid;
+  }
+
+  /* Mathematical content */
+  .MathJax,
+  .MathJax_Display {
+    color: #f9fafb !important;
+    background: transparent !important;
+  }
+
+  /* Charts and images */
+  canvas,
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+  }
+
+  /* Tables */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 1rem !important;
+    background: #374151 !important;
+  }
+
+  th,
+  td {
+    padding: 0.5rem !important;
+    border: 1px solid #4b5563 !important;
+    color: #f9fafb !important;
+    text-align: left !important;
+  }
+
+  th {
+    background: #4b5563 !important;
+    font-weight: 600 !important;
+  }
+
+  /* Grid layouts for print */
+  .grid-2,
+  .form-grid {
+    display: block !important;
+  }
+
+  .grid-2 > *,
+  .form-grid > * {
+    margin-bottom: 1rem !important;
+  }
+
+  /* Input groups in print - show values */
+  .input-group {
+    display: flex !important;
+    align-items: center !important;
+    margin-bottom: 0.5rem !important;
+    padding: 0.25rem 0 !important;
+  }
+
+  .input-label {
+    color: #d1d5db !important;
+    margin-right: 1rem !important;
+    min-width: 120px !important;
+  }
+
+  /* Print-specific value display */
+  .print-value {
+    color: #f9fafb !important;
+    font-weight: 600 !important;
+    font-family: 'Courier New', monospace !important;
+  }
+
+  /* Page breaks */
+  .page-break-before {
+    page-break-before: always !important;
+  }
+
+  .page-break-after {
+    page-break-after: always !important;
+  }
+
+  .page-break-inside-avoid {
+    page-break-inside: avoid !important;
+  }
+
+  /* Header and footer areas */
+  @page {
+    margin: 1.5cm;
+    size: A4;
+    
+    @top-center {
+      content: "Structural Engineering Calculator";
+      color: #9ca3af;
+      font-size: 10pt;
+    }
+    
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      color: #9ca3af;
+      font-size: 10pt;
+    }
+  }
+
+  /* Ensure consistent spacing */
+  * {
+    box-sizing: border-box !important;
+  }
+
+  /* Fix any remaining light backgrounds */
+  .bg-white,
+  [class*="bg-white"] {
+    background: #374151 !important;
+    color: #f9fafb !important;
+  }
+
+  .bg-gray-50,
+  .bg-gray-100,
+  [class*="bg-gray-50"],
+  [class*="bg-gray-100"] {
+    background: #4b5563 !important;
+    color: #f9fafb !important;
+  }
+}
