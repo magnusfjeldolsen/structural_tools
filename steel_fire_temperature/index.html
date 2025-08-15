@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free steel fire temperature calculator for unprotected steel structures. Calculate Am/V ratios and simulate fire resistance with interactive charts.">
+  <meta name="keywords" content="steel fire temperature, fire resistance calculator, Am/V ratio, structural fire engineering, unprotected steel">
+  <title>Steel Fire Temperature Calculator - Free Engineering Tool</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Steel Fire Temperature Calculator - Free Engineering Tool">
+  <meta property="og:description" content="Calculate fire resistance of unprotected steel structures with interactive temperature simulation">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/unprotected_stee_firetemp">
+  <meta property="og:image" content="https://magnusfjeldolsen.github.io/unprotected_stee_firetemp/preview.png">
+  
+  <!-- Twitter Card tags -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Steel Fire Temperature Calculator - Free Engineering Tool">
+  <meta name="twitter:description" content="Calculate fire resistance of unprotected steel structures with interactive temperature simulation">
+  <meta name="twitter:image" content="https://magnusfjeldolsen.github.io/unprotected_stee_firetemp/preview.png">
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    @media print {
+      body {
+        background: #111 !important;
+        color: white !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      input,
+      button,
+      .print\\:hidden {
+        display: none !important;
+      }
+      .print\\:inline {
+        display: inline !important;
+      }
+      .print\\:flex {
+        display: flex !important;
+      }
+      .print\\:mt-6 {
+        margin-top: 1.5rem !important;
+      }
+      .print\\:border {
+        border: 1px solid #999 !important;
+      }
+      .print\\:rounded {
+        border-radius: 0.5rem !important;
+      }
+      .print\\:p-4 {
+        padding: 1rem !important;
+      }
+      .print\\:justify-between {
+        justify-content: space-between !important;
+      }
+      .print\\:items-center {
+        align-items: center !important;
+      }
+      .print\\:font-bold {
+        font-weight: bold !important;
+      }
+      canvas {
+        background-color: #111 !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+
+  <main class="w-full max-w-4xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <h2 class="text-2xl font-semibold text-center text-white">Steel Fire Temperature Simulation (Unprotected)</h2>
+
+    <!-- Main input + result container -->
+    <div class="space-y-6">
+      <!-- Am/V Row -->
+      <div class="flex items-center gap-4">
+        <label for="amv" class="text-sm font-medium min-w-[120px] text-right">Am/V [m⁻¹] =</label>
+        <input id="amv" value="" placeholder="Math input is possible, i.e. 1/0.008" class="flex-1 px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-md focus:outline-none focus:ring focus:ring-blue-400" />
+        <span class="text-green-400 min-w-[100px] text-right font-mono" id="amv-eval">-</span>
+      </div>
+
+      <!-- Fire Duration Row -->
+      <div class="flex items-center gap-4">
+        <label for="duration" class="text-sm font-medium min-w-[120px] text-right">Fire Duration =</label>
+        <div class="flex-1 flex items-center gap-2">
+          <input type="number" id="duration" value="15" class="w-24 px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-md focus:outline-none focus:ring focus:ring-blue-400" />
+          <span class="text-gray-300">minutes</span>
+        </div>
+        <div class="min-w-[100px]"></div>
+      </div>
+
+      <!-- k_sh Row -->
+      <div class="flex items-center gap-4">
+        <label for="ksh" class="text-sm font-medium min-w-[120px] text-right">k<sub>sh</sub> =</label>
+        <div class="flex-1 flex items-center gap-2">
+          <input type="number" id="ksh" value="1" step="0.01" min="0" max="1" class="w-24 px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-md focus:outline-none focus:ring focus:ring-blue-400" />
+          <span class="text-gray-300">[shadow effect]</span>
+        </div>
+        <div class="min-w-[100px]"></div>
+      </div>
+    </div>
+
+    <!-- Buttons -->
+    <div class="space-y-2 print:hidden">
+      <button onclick="runSimulation()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition">
+        Run Simulation
+      </button>
+      <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
+        Print to PDF
+      </button>
+    </div>
+
+    <!-- Chart -->
+    <div class="w-full aspect-[5/4] print:border print:rounded print:p-4 print:mt-6 bg-gray-900">
+      <canvas id="resultChart" class="print:!bg-gray-900"></canvas>
+    </div>
+  </main>
+
+  <script>
+
+    // Copy input values to print placeholders before printing
+    function updatePrintFields() {
+      document.getElementById('amv-print').textContent = document.getElementById('amv').value;
+      document.getElementById('duration-print').textContent = document.getElementById('duration').value + ' minutes';
+      document.getElementById('ksh-print').textContent = document.getElementById('ksh').value + ' [shadow effect]';
+    }
+
+    window.addEventListener('beforeprint', updatePrintFields);
+
+    // Fire simulation functions
+    function caCalculate(theta) {
+      if (theta >= 20 && theta < 600)
+        return 425 + 0.773 * theta - 0.00169 * theta ** 2 + 2.22e-6 * theta ** 3;
+      else if (theta >= 600 && theta < 735)
+        return 666 + 13002 / (738 - theta);
+      else if (theta >= 735 && theta < 900)
+        return 545 + 17820 / (theta - 731);
+      else if (theta >= 900 && theta <= 1200)
+        return 650;
+      else
+        return null;
+    }
+
+    function hNetCalc(theta_g, theta_a, alpha_c = 25, phi = 1.0, e_m = 0.7, e_f = 1.0, sigma = 5.67e-8) {
+      const h_net_c = alpha_c * (theta_g - theta_a);
+      const h_net_r = phi * e_m * e_f * sigma * ((theta_g + 273.15) ** 4 - (theta_a + 273.15) ** 4);
+      return h_net_c + h_net_r;
+    }
+
+    function deltaThetaStep(theta_a, theta_g, AmV, delta_t, ksh = 1.0, rho_a = 7850) {
+      const c_a = caCalculate(theta_a);
+      if (!c_a) return 0;
+      const h_net = hNetCalc(theta_g, theta_a);
+      return ksh * AmV / (c_a * rho_a) * h_net * delta_t;
+    }
+
+    function thetaGas(t_seconds) {
+      return 20 + 345 * Math.log10(8 * t_seconds / 60 + 1);
+    }
+
+    function evaluateExpression(input) {
+      try {
+        return Function('"use strict"; return (' + input + ')')();
+      } catch (e) {
+        alert("Invalid Am/V expression.");
+        throw e;
+      }
+    }
+
+    function runSimulation() {
+      const amvInput = document.getElementById('amv').value.trim();
+      if (!amvInput) {
+        alert("Please enter a valid Am/V expression.");
+        return;
+      }
+
+      let AmV;
+      try {
+        AmV = evaluateExpression(amvInput);
+        document.getElementById('amv-eval').textContent = `= ${AmV.toFixed(2)}`;
+        document.getElementById('amv-eval').classList.remove('hidden');
+      } catch {
+        document.getElementById('amv-eval').classList.add('hidden');
+        return;
+      }
+
+      const duration_min = parseFloat(document.getElementById('duration').value);
+      const ksh = parseFloat(document.getElementById('ksh').value);
+      const delta_t = 1;
+      const duration_sec = duration_min * 60;
+      const steps = Math.floor(duration_sec / delta_t);
+
+      let theta_a = 20;
+      const theta_a_array = [theta_a];
+      const time_array = [0];
+      const gas_temp_array = [thetaGas(0)];
+
+      for (let i = 1; i <= steps; i++) {
+        const t = i * delta_t;
+        const theta_g = thetaGas(t);
+        const delta_theta = deltaThetaStep(theta_a, theta_g, AmV, delta_t, ksh);
+        theta_a += delta_theta;
+
+        time_array.push(t / 60);
+        theta_a_array.push(theta_a);
+        gas_temp_array.push(theta_g);
+      }
+
+      plotResult(time_array, theta_a_array, gas_temp_array);
+    }
+
+    function plotResult(time, temperature, gas_temp) {
+      const ctx = document.getElementById('resultChart').getContext('2d');
+      if (window.chartInstance) window.chartInstance.destroy();
+
+      const finalGasTemp = gas_temp[gas_temp.length - 1].toFixed(1);
+      const finalSteelTemp = temperature[temperature.length - 1].toFixed(1);
+
+      window.chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: time,
+          datasets: [
+            {
+              label: 'Steel Temperature (°C)',
+              data: temperature,
+              borderColor: 'rgb(239, 68, 68)',
+              backgroundColor: 'rgba(239, 68, 68, 0.2)',
+              tension: 0.1
+            },
+            {
+              label: 'Gas Temperature (°C)',
+              data: gas_temp,
+              borderColor: 'rgb(251, 191, 36)',
+              backgroundColor: 'rgba(251, 191, 36, 0.2)',
+              borderDash: [5, 5],
+              tension: 0.1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: {
+              display: true,
+              text: `Steel Temp: ${finalSteelTemp}°C | Gas Temp: ${finalGasTemp}°C at ${time[time.length - 1].toFixed(1)} min`,
+              color: '#fff',
+              font: { size: 16 }
+            },
+            legend: {
+              labels: {
+                color: '#ddd'
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Time (minutes)', color: '#ccc' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' }
+            },
+            y: {
+              title: { display: true, text: 'Temperature (°C)', color: '#ccc' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' },
+              min: 0
+            }
+          }
+        }
+      });
+    }
+  </script>
+
+<footer class="text-xs text-gray-400 fixed bottom-2 right-2 print:relative print:bottom-0 print:right-0 print:mb-2 print:mr-2">
+  Free to use. Created by Magnus Fjeld Olsen.
+</footer>
+</body>
+</html>

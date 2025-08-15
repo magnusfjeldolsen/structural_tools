@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free concrete slab ULS design calculator. Calculate moment resistance MRd for reinforced concrete slabs with step-by-step mathematical derivations.">
+  <meta name="keywords" content="concrete slab design, ULS, moment resistance, MRd, structural engineering, reinforcement calculation">
+  <title>Concrete Slab Design Calculator - Free Engineering Tool</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Concrete Slab Design Calculator - Free Engineering Tool">
+  <meta property="og:description" content="Calculate ULS moment resistance for concrete slabs with detailed mathematical steps">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_slab_design">
+  <meta property="og:image" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_slab_design/calculations.png">
+  
+  <!-- Twitter Card tags -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Concrete Slab Design Calculator - Free Engineering Tool">
+  <meta name="twitter:description" content="Calculate ULS moment resistance for concrete slabs with detailed mathematical steps">
+  <meta name="twitter:image" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_slab_design/calculations.png">
+  
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+  <style>
+    @media print {
+      body {
+        background: #111 !important;
+        color: white !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      input,
+      button,
+      .print\:hidden {
+        display: none !important;
+      }
+      .print\:inline {
+        display: inline !important;
+      }
+      .print\:flex {
+        display: flex !important;
+      }
+      .print\:mt-6 {
+        margin-top: 1.5rem !important;
+      }
+      .print\:border {
+        border: 1px solid #333 !important;
+      }
+      .print\:p-4 {
+        padding: 1rem !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <h2 class="text-2xl font-semibold text-center text-white">Concrete Slab ULS Design Calculator</h2>
+    <p class="text-center text-gray-300 text-sm">Calculate Ultimate Limit State moment resistance (M<sub>Rd</sub>) for reinforced concrete slabs</p>
+
+    <!-- Input Form -->
+    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="bg-gray-700 rounded-lg p-6 space-y-4">
+      <div class="grid md:grid-cols-2 gap-6">
+        
+        <!-- Left Column -->
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="MEd" class="text-sm font-medium min-w-[120px] text-right text-gray-300">M<sub>Ed</sub> (kNm):</label>
+            <input type="number" id="MEd" value="20" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label for="t" class="text-sm font-medium min-w-[120px] text-right text-gray-300">t (mm):</label>
+            <input type="number" id="t" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label for="fcd" class="text-sm font-medium min-w-[120px] text-right text-gray-300">f<sub>cd</sub> (MPa):</label>
+            <input type="number" id="fcd" value="19.8" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label for="c" class="text-sm font-medium min-w-[120px] text-right text-gray-300">c (cover, mm):</label>
+            <input type="number" id="c" value="35" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+          </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="phi_l" class="text-sm font-medium min-w-[120px] text-right text-gray-300">φ<sub>l</sub> (mm):</label>
+            <input type="number" id="phi_l" value="12" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label for="cc_l" class="text-sm font-medium min-w-[120px] text-right text-gray-300">cc<sub>l</sub> (spacing, mm):</label>
+            <input type="number" id="cc_l" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label for="fyd" class="text-sm font-medium min-w-[120px] text-right text-gray-300">f<sub>yd</sub> (MPa):</label>
+            <input type="number" id="fyd" value="435" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-center pt-4">
+        <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition duration-200 shadow-lg">
+          Calculate M<sub>Rd</sub>
+        </button>
+      </div>
+    </form>
+
+    <!-- Results Section -->
+    <div id="results" style="display:none;" class="bg-gray-700 rounded-lg p-6 space-y-6 print:!bg-gray-800 print:!text-white">
+      <h3 class="text-xl font-semibold text-white mb-4">Calculation Results</h3>
+      
+      <div class="grid lg:grid-cols-3 gap-6">
+        <!-- Calculation Steps -->
+        <div id="calc-steps" class="lg:col-span-2 bg-gray-600 rounded-lg p-4 overflow-x-auto">
+          <!-- MathJax content will be inserted here -->
+        </div>
+        
+        <!-- Reference Image -->
+        <div id="calc-image" class="flex flex-col">
+          <h4 class="text-lg font-medium text-white mb-3">Reference Diagram</h4>
+          <div class="bg-white p-3 rounded-lg">
+            <img src="calculations.png" alt="Calculation symbols and figure" class="w-full h-auto rounded" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Print Values (hidden on screen, shown in print) -->
+      <div class="hidden print:block print:mt-6 print:border print:p-4">
+        <h3 class="text-lg font-semibold mb-4">Input Parameters</h3>
+        <div class="grid grid-cols-2 gap-4 text-sm">
+          <div>M<sub>Ed</sub> = <span id="MEd-print">-</span> kNm</div>
+          <div>t = <span id="t-print">-</span> mm</div>
+          <div>f<sub>cd</sub> = <span id="fcd-print">-</span> MPa</div>
+          <div>c = <span id="c-print">-</span> mm</div>
+          <div>φ<sub>l</sub> = <span id="phi_l-print">-</span> mm</div>
+          <div>cc<sub>l</sub> = <span id="cc_l-print">-</span> mm</div>
+          <div>f<sub>yd</sub> = <span id="fyd-print">-</span> MPa</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Print Button -->
+    <div class="flex justify-center">
+      <button id="print-btn" style="display:none;" onclick="window.print()" class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition duration-200 print:hidden">
+        Print Results
+      </button>
+    </div>
+
+    <!-- Footer Info -->
+    <div class="text-center text-sm text-gray-400 pt-6 border-t border-gray-600">
+      <p>Free structural engineering calculator by <span class="text-blue-400 font-semibold">Magnus Fjeld Olsen</span></p>
+      <p class="mt-1">Based on Eurocode 2 (EC2) standards</p>
+    </div>
+  </main>
+
+  <script>
+    function toFixedIfNeeded(num, digits=2) {
+      return num.toFixed(digits);
+    }
+
+    // Copy input values to print placeholders before printing
+    function updatePrintFields() {
+      document.getElementById('MEd-print').textContent = document.getElementById('MEd').value;
+      document.getElementById('t-print').textContent = document.getElementById('t').value;
+      document.getElementById('fcd-print').textContent = document.getElementById('fcd').value;
+      document.getElementById('c-print').textContent = document.getElementById('c').value;
+      document.getElementById('phi_l-print').textContent = document.getElementById('phi_l').value;
+      document.getElementById('cc_l-print').textContent = document.getElementById('cc_l').value;
+      document.getElementById('fyd-print').textContent = document.getElementById('fyd').value;
+    }
+
+    window.addEventListener('beforeprint', updatePrintFields);
+
+    function calculateAndShow() {
+      // Get inputs
+      const MEd = parseFloat(document.getElementById('MEd').value);
+      const t = parseFloat(document.getElementById('t').value);
+      const fcd = parseFloat(document.getElementById('fcd').value);
+      const c = parseFloat(document.getElementById('c').value);
+      const phi_l = parseFloat(document.getElementById('phi_l').value);
+      const cc_l = parseFloat(document.getElementById('cc_l').value);
+      const fyd = parseFloat(document.getElementById('fyd').value);
+
+      // Step 1: d = t - c - phi_l/2
+      const d = t - c - phi_l / 2;
+
+      // Step 2: As = π * phi_l^2 / 4 * 1000 / cc_l
+      const As = (Math.PI * Math.pow(phi_l, 2) / 4) * 1000 / cc_l;
+
+      // Step 3: MRd,c = 0.275 * 1000 * d^2 * fcd  (Nm)
+      const MRd_c_Nm = 0.275 * 1000 * d * d * fcd;
+
+      // Step 4: z = min(0.95 * d, d * (1 - 0.17 * MEd / MRd_c))
+      const z1 = 0.95 * d;
+      const z2 = d * (1 - 0.17 * MEd * 1000 / MRd_c_Nm); // convert MEd to Nm for consistent units
+      const z = Math.min(z1, z2);
+
+      // Step 5: MRd,s = As * fyd * z (Nm)
+      const MRd_s_Nm = As * fyd * z;
+
+      // Step 6: MRd = min(MRd,c , MRd,s) (Nm)
+      const MRd_Nm = Math.min(MRd_c_Nm, MRd_s_Nm);
+
+      // Format moments in kNm (divide Nm by 1000000)
+      const MRd_c = MRd_c_Nm / 1000000;
+      const MRd_s = MRd_s_Nm / 1000000;
+      const MRd = MRd_Nm / 1000000;
+
+      // Compose LaTeX output with substituted values
+      const stepsLatex = `
+      \\[
+      \\begin{aligned}
+      & \\text{\\textbf{Step-by-step calculation:}} \\\\[0.5em]
+      & d = t - c - \\frac{\\phi_l}{2} = ${toFixedIfNeeded(t)} - ${toFixedIfNeeded(c)} - \\frac{${toFixedIfNeeded(phi_l)}}{2} = \\textbf{${toFixedIfNeeded(d)} \\text{ mm}} \\\\[0.3em]
+      & A_s = \\frac{\\pi \\times \\phi_l^2}{4} \\times \\frac{1000}{cc_l} = \\frac{\\pi \\times (${toFixedIfNeeded(phi_l)})^2}{4} \\times \\frac{1000}{${toFixedIfNeeded(cc_l)}} = \\textbf{${toFixedIfNeeded(As)} \\text{ mm}^2} \\\\[0.3em]
+      & M_{Rd,c} = 0.275 \\times 1000 \\times d^2 \\times f_{cd} \\\\
+      & \\quad = 0.275 \\times 1000 \\times (${toFixedIfNeeded(d)})^2 \\times ${toFixedIfNeeded(fcd)} = \\textbf{${toFixedIfNeeded(MRd_c)} \\text{ kNm}} \\\\[0.3em]
+      & z = \\min\\left(0.95d, d \\times \\left(1 - 0.17 \\times \\frac{M_{Ed}}{M_{Rd,c}} \\right) \\right) \\\\
+      & \\quad = \\min\\left(${toFixedIfNeeded(z1)}, ${toFixedIfNeeded(z2)} \\right) = \\textbf{${toFixedIfNeeded(z)} \\text{ mm}} \\\\[0.3em]
+      & M_{Rd,s} = A_s \\times f_{yd} \\times z \\\\
+      & \\quad = ${toFixedIfNeeded(As)} \\times ${toFixedIfNeeded(fyd)} \\times ${toFixedIfNeeded(z)} = \\textbf{${toFixedIfNeeded(MRd_s)} \\text{ kNm}} \\\\[0.5em]
+      & \\boxed{M_{Rd} = \\min\\left(M_{Rd,c}, M_{Rd,s} \\right) = \\min\\left(${toFixedIfNeeded(MRd_c)}, ${toFixedIfNeeded(MRd_s)} \\right) = \\textbf{${toFixedIfNeeded(MRd)} \\text{ kNm}}}
+      \\end{aligned}
+      \\]
+      `;
+
+      const container = document.getElementById('calc-steps');
+      container.innerHTML = stepsLatex;
+      document.getElementById('results').style.display = 'block';
+      document.getElementById('print-btn').style.display = 'inline-block';
+
+      // Typeset math with MathJax
+      MathJax.typesetPromise();
+
+      // Scroll to results
+      document.getElementById('results').scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+    }
+  </script>
+
+</body>
+</html>
