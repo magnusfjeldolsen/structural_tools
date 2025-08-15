@@ -163,6 +163,102 @@
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
         }
 
+        .calculations-container {
+            grid-column: 1 / -1;
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .calculation-step {
+            background: #fefefe;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            font-family: 'Courier New', monospace;
+            position: relative;
+        }
+
+        .calculation-step::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            border-radius: 4px 0 0 4px;
+        }
+
+        .step-title {
+            color: #2c3e50;
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 15px;
+            font-family: 'Segoe UI', sans-serif;
+            border-bottom: 1px solid #ecf0f1;
+            padding-bottom: 8px;
+        }
+
+        .math-line {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            min-height: 24px;
+        }
+
+        .math-expression {
+            flex: 1;
+            font-size: 14px;
+            color: #2c3e50;
+            line-height: 1.4;
+        }
+
+        .math-result {
+            color: #27ae60;
+            font-weight: bold;
+            margin-left: 20px;
+            min-width: 120px;
+            text-align: right;
+        }
+
+        .math-variable {
+            color: #8e44ad;
+            font-weight: bold;
+        }
+
+        .math-operator {
+            color: #e74c3c;
+            margin: 0 3px;
+        }
+
+        .math-number {
+            color: #2980b9;
+        }
+
+        .math-unit {
+            color: #7f8c8d;
+            font-style: italic;
+        }
+
+        .subsection {
+            background: #f8f9fa;
+            border-left: 3px solid #3498db;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 0 5px 5px 0;
+        }
+
+        .subsection-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
         .diagram {
             width: 100%;
             height: 300px;
@@ -328,6 +424,11 @@
         <div class="diagram-container">
             <h2 class="section-title">Cross-Section Diagram</h2>
             <svg class="diagram" id="diagram"></svg>
+        </div>
+
+        <div class="calculations-container">
+            <h2 class="section-title">Step-by-Step Calculations</h2>
+            <div id="step-calculations"></div>
         </div>
     </div>
 

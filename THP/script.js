@@ -69,6 +69,14 @@ function calculate() {
         ...classification
     });
 
+    // Generate step-by-step calculations
+    generateStepCalculations({
+        b_o, t_o, H, t_w, b_u, t_u, f_yk, gamma_M0,
+        h_w, H_tot, c_u, A_o, A_w, A_u, A_total,
+        z_NA, I_y_u, I_y_o, I_y_w, I_y, z_max, W_el,
+        f_yd, epsilon, M_Rd, classification
+    });
+
     // Draw diagram
     drawCrossSection(b_o, t_o, H, t_w, b_u, t_u, z_NA);
 }
@@ -159,6 +167,186 @@ function updateResults(results) {
     document.getElementById('lower_flange_outer_class').textContent = results.lower_flange_outer_class;
     document.getElementById('web_class').textContent = results.web_class;
     document.getElementById('overall_class').textContent = results.overall_class;
+}
+
+function generateStepCalculations(params) {
+    const {
+        b_o, t_o, H, t_w, b_u, t_u, f_yk, gamma_M0,
+        h_w, H_tot, c_u, A_o, A_w, A_u, A_total,
+        z_NA, I_y_u, I_y_o, I_y_w, I_y, z_max, W_el,
+        f_yd, epsilon, M_Rd, classification
+    } = params;
+
+    const container = document.getElementById('step-calculations');
+    container.innerHTML = '';
+
+    // Helper function to create math expressions
+    function createMathLine(expression, result, unit = '') {
+        return `
+            <div class="math-line">
+                <div class="math-expression">${expression}</div>
+                <div class="math-result">${result} ${unit}</div>
+            </div>
+        `;
+    }
+
+    function formatVar(name) {
+        return `<span class="math-variable">${name}</span>`;
+    }
+
+    function formatOp(op) {
+        return `<span class="math-operator">${op}</span>`;
+    }
+
+    function formatNum(num) {
+        return `<span class="math-number">${num}</span>`;
+    }
+
+    function formatUnit(unit) {
+        return `<span class="math-unit">${unit}</span>`;
+    }
+
+    const steps = `
+        <div class="calculation-step">
+            <div class="step-title">1. Input Parameters</div>
+            ${createMathLine(`${formatVar('b₀')} ${formatOp('=')} ${formatNum(b_o)}`, '', formatUnit('mm'))}
+            ${createMathLine(`${formatVar('t₀')} ${formatOp('=')} ${formatNum(t_o)}`, '', formatUnit('mm'))}
+            ${createMathLine(`${formatVar('H')} ${formatOp('=')} ${formatNum(H)}`, '', formatUnit('mm'))}
+            ${createMathLine(`${formatVar('tₘ')} ${formatOp('=')} ${formatNum(t_w)}`, '', formatUnit('mm'))}
+            ${createMathLine(`${formatVar('bᵤ')} ${formatOp('=')} ${formatNum(b_u)}`, '', formatUnit('mm'))}
+            ${createMathLine(`${formatVar('tᵤ')} ${formatOp('=')} ${formatNum(t_u)}`, '', formatUnit('mm'))}
+            ${createMathLine(`${formatVar('fᵧₖ')} ${formatOp('=')} ${formatNum(f_yk)}`, '', formatUnit('MPa'))}
+            ${createMathLine(`${formatVar('γₘ₀')} ${formatOp('=')} ${formatNum(gamma_M0)}`, '', '')}
+        </div>
+
+        <div class="calculation-step">
+            <div class="step-title">2. Derived Dimensions</div>
+            ${createMathLine(`${formatVar('hₘ')} ${formatOp('=')} ${formatVar('H')} ${formatOp('-')} ${formatVar('tₘ')} ${formatOp('=')} ${formatNum(H)} ${formatOp('-')} ${formatNum(t_w)}`, h_w.toFixed(1), formatUnit('mm'))}
+            ${createMathLine(`${formatVar('H_tot')} ${formatOp('=')} ${formatVar('H')} ${formatOp('+')} ${formatVar('tᵤ')} ${formatOp('=')} ${formatNum(H)} ${formatOp('+')} ${formatNum(t_u)}`, H_tot.toFixed(1), formatUnit('mm'))}
+            ${createMathLine(`${formatVar('cᵤ')} ${formatOp('=')} (${formatVar('bᵤ')} ${formatOp('-')} 2${formatVar('tₘ')} ${formatOp('-')} ${formatVar('b₀')}) / 2 ${formatOp('=')} (${formatNum(b_u)} ${formatOp('-')} 2×${formatNum(t_w)} ${formatOp('-')} ${formatNum(b_o)}) / 2`, c_u.toFixed(1), formatUnit('mm'))}
+        </div>
+
+        <div class="calculation-step">
+            <div class="step-title">3. Cross-Sectional Areas</div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Upper Flange Area:</div>
+                ${createMathLine(`${formatVar('A₀')} ${formatOp('=')} ${formatVar('b₀')} ${formatOp('×')} ${formatVar('t₀')} ${formatOp('=')} ${formatNum(b_o)} ${formatOp('×')} ${formatNum(t_o)}`, A_o.toFixed(0), formatUnit('mm²'))}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Web Area (both webs):</div>
+                ${createMathLine(`${formatVar('Aₘ')} ${formatOp('=')} ${formatVar('hₘ')} ${formatOp('×')} ${formatVar('tₘ')} ${formatOp('×')} 2 ${formatOp('=')} ${formatNum(h_w.toFixed(1))} ${formatOp('×')} ${formatNum(t_w)} ${formatOp('×')} 2`, A_w.toFixed(0), formatUnit('mm²'))}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Lower Flange Area:</div>
+                ${createMathLine(`${formatVar('Aᵤ')} ${formatOp('=')} ${formatVar('tᵤ')} ${formatOp('×')} ${formatVar('bᵤ')} ${formatOp('=')} ${formatNum(t_u)} ${formatOp('×')} ${formatNum(b_u)}`, A_u.toFixed(0), formatUnit('mm²'))}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Total Area:</div>
+                ${createMathLine(`${formatVar('A_total')} ${formatOp('=')} ${formatVar('A₀')} ${formatOp('+')} ${formatVar('Aₘ')} ${formatOp('+')} ${formatVar('Aᵤ')} ${formatOp('=')} ${formatNum(A_o.toFixed(0))} ${formatOp('+')} ${formatNum(A_w.toFixed(0))} ${formatOp('+')} ${formatNum(A_u.toFixed(0))}`, A_total.toFixed(0), formatUnit('mm²'))}
+            </div>
+        </div>
+
+        <div class="calculation-step">
+            <div class="step-title">4. Neutral Axis Position</div>
+            <div class="subsection">
+                <div class="subsection-title">Distance from bottom of lower flange:</div>
+                ${createMathLine(`${formatVar('z_NA')} ${formatOp('=')} \\frac{${formatVar('Aᵤ')} × \\frac{${formatVar('tᵤ')}}{2} + ${formatVar('Aₘ')} × (${formatVar('tᵤ')} + \\frac{${formatVar('hₘ')}}{2}) + ${formatVar('A₀')} × (${formatVar('H_tot')} - \\frac{${formatVar('t₀')}}{2})}{${formatVar('A_total')}}`, '', '')}
+                ${createMathLine(`${formatVar('z_NA')} ${formatOp('=')} \\frac{${formatNum(A_u.toFixed(0))} × ${formatNum((t_u/2).toFixed(1))} + ${formatNum(A_w.toFixed(0))} × ${formatNum((t_u + h_w/2).toFixed(1))} + ${formatNum(A_o.toFixed(0))} × ${formatNum((H_tot - t_o/2).toFixed(1))}}{${formatNum(A_total.toFixed(0))}}`, z_NA.toFixed(1), formatUnit('mm'))}
+            </div>
+        </div>
+
+        <div class="calculation-step">
+            <div class="step-title">5. Second Moment of Area</div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Lower Flange Contribution:</div>
+                ${createMathLine(`${formatVar('I_y,u')} ${formatOp('=')} \\frac{${formatVar('bᵤ')} × ${formatVar('tᵤ')}³}{12} + ${formatVar('Aᵤ')} × (${formatVar('z_NA')} - \\frac{${formatVar('tᵤ')}}{2})²`, '', '')}
+                ${createMathLine(`${formatVar('I_y,u')} ${formatOp('=')} \\frac{${formatNum(b_u)} × ${formatNum(t_u)}³}{12} + ${formatNum(A_u.toFixed(0))} × (${formatNum(z_NA.toFixed(1))} - ${formatNum((t_u/2).toFixed(1))})²`, (I_y_u/1e7).toFixed(2), formatUnit('×10⁷ mm⁴'))}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Upper Flange Contribution:</div>
+                ${createMathLine(`${formatVar('I_y,o')} ${formatOp('=')} \\frac{${formatVar('b₀')} × ${formatVar('t₀')}³}{12} + ${formatVar('A₀')} × (${formatVar('H_tot')} - \\frac{${formatVar('t₀')}}{2} - ${formatVar('z_NA')})²`, '', '')}
+                ${createMathLine(`${formatVar('I_y,o')} ${formatOp('=')} \\frac{${formatNum(b_o)} × ${formatNum(t_o)}³}{12} + ${formatNum(A_o.toFixed(0))} × (${formatNum(H_tot.toFixed(1))} - ${formatNum((t_o/2).toFixed(1))} - ${formatNum(z_NA.toFixed(1))})²`, (I_y_o/1e7).toFixed(2), formatUnit('×10⁷ mm⁴'))}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Web Contribution:</div>
+                ${createMathLine(`${formatVar('I_y,w')} ${formatOp('=')} 2 × [\\frac{${formatVar('tₘ')}³ × ${formatVar('hₘ')}}{12} + \\frac{${formatVar('Aₘ')}}{2} × (${formatVar('z_NA')} - (${formatVar('tᵤ')} + \\frac{${formatVar('hₘ')}}{2}))²]`, '', '')}
+                ${createMathLine(`${formatVar('I_y,w')} ${formatOp('=')} 2 × [\\frac{${formatNum(t_w)}³ × ${formatNum(h_w.toFixed(1))}}{12} + ${formatNum((A_w/2).toFixed(0))} × (${formatNum(z_NA.toFixed(1))} - ${formatNum((t_u + h_w/2).toFixed(1))})²]`, (I_y_w/1e7).toFixed(2), formatUnit('×10⁷ mm⁴'))}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Total Second Moment of Area:</div>
+                ${createMathLine(`${formatVar('I_y')} ${formatOp('=')} ${formatVar('I_y,u')} + ${formatVar('I_y,o')} + ${formatVar('I_y,w')}`, (I_y/1e8).toFixed(4), formatUnit('×10⁸ mm⁴'))}
+            </div>
+        </div>
+
+        <div class="calculation-step">
+            <div class="step-title">6. Section Modulus</div>
+            ${createMathLine(`${formatVar('z_max')} ${formatOp('=')} max(${formatVar('z_NA')}, ${formatVar('H_tot')} - ${formatVar('z_NA')}) ${formatOp('=')} max(${formatNum(z_NA.toFixed(1))}, ${formatNum((H_tot - z_NA).toFixed(1))})`, z_max.toFixed(1), formatUnit('mm'))}
+            ${createMathLine(`${formatVar('W_el')} ${formatOp('=')} \\frac{${formatVar('I_y')}}{${formatVar('z_max')}} ${formatOp('=')} \\frac{${formatNum((I_y/1e8).toFixed(4))} × 10⁸}{${formatNum(z_max.toFixed(1))}}`, (W_el/1000).toFixed(1), formatUnit('×10³ mm³'))}
+        </div>
+
+        <div class="calculation-step">
+            <div class="step-title">7. Material Properties</div>
+            ${createMathLine(`${formatVar('f_yd')} ${formatOp('=')} \\frac{${formatVar('f_yk')}}{${formatVar('γₘ₀')}} ${formatOp('=')} \\frac{${formatNum(f_yk)}}{${formatNum(gamma_M0)}}`, f_yd.toFixed(1), formatUnit('MPa'))}
+            ${createMathLine(`${formatVar('ε')} ${formatOp('=')} \\sqrt{\\frac{235}{${formatVar('f_yk')}}} ${formatOp('=')} \\sqrt{\\frac{235}{${formatNum(f_yk)}}}`, epsilon.toFixed(3), '')}
+        </div>
+
+        <div class="calculation-step">
+            <div class="step-title">8. Moment Resistance</div>
+            ${createMathLine(`${formatVar('M_Rd')} ${formatOp('=')} ${formatVar('W_el')} × ${formatVar('f_yd')} ${formatOp('=')} ${formatNum((W_el/1000).toFixed(1))} × 10³ × ${formatNum(f_yd.toFixed(1))} × 10⁻⁶`, M_Rd.toFixed(1), formatUnit('kNm'))}
+        </div>
+
+        <div class="calculation-step">
+            <div class="step-title">9. Cross-Section Classification</div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Classification Criteria:</div>
+                ${createMathLine(`Internal compression element: c/t ≤ 42ε → Class 3, else Class 4`, '', '')}
+                ${createMathLine(`External compression element: c/t ≤ 14ε → Class 3, else Class 4`, '', '')}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Upper Flange (Internal Compression):</div>
+                ${createMathLine(`c/t ${formatOp('=')} ${formatVar('b₀')}/${formatVar('t₀')} ${formatOp('=')} ${formatNum(b_o)}/${formatNum(t_o)} ${formatOp('=')} ${formatNum((b_o/t_o).toFixed(1))}`, '', '')}
+                ${createMathLine(`42ε ${formatOp('=')} 42 × ${formatNum(epsilon.toFixed(3))} ${formatOp('=')} ${formatNum((42*epsilon).toFixed(1))}`, '', '')}
+                ${createMathLine(`${formatNum((b_o/t_o).toFixed(1))} ${(b_o/t_o) <= (42*epsilon) ? '≤' : '>'} ${formatNum((42*epsilon).toFixed(1))} → ${classification.upper_flange_class}`, '', '')}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Lower Flange Inner (Internal Compression):</div>
+                ${createMathLine(`c/t ${formatOp('=')} ${formatVar('bᵤ')}/${formatVar('tᵤ')} ${formatOp('=')} ${formatNum(b_u)}/${formatNum(t_u)} ${formatOp('=')} ${formatNum((b_u/t_u).toFixed(1))}`, '', '')}
+                ${createMathLine(`${formatNum((b_u/t_u).toFixed(1))} ${(b_u/t_u) <= (42*epsilon) ? '≤' : '>'} ${formatNum((42*epsilon).toFixed(1))} → ${classification.lower_flange_inner_class}`, '', '')}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Lower Flange Outer (External Compression):</div>
+                ${createMathLine(`c/t ${formatOp('=')} ${formatVar('cᵤ')}/${formatVar('tᵤ')} ${formatOp('=')} ${formatNum(c_u.toFixed(1))}/${formatNum(t_u)} ${formatOp('=')} ${formatNum((c_u/t_u).toFixed(1))}`, '', '')}
+                ${createMathLine(`14ε ${formatOp('=')} 14 × ${formatNum(epsilon.toFixed(3))} ${formatOp('=')} ${formatNum((14*epsilon).toFixed(1))}`, '', '')}
+                ${createMathLine(`${formatNum((c_u/t_u).toFixed(1))} ${(c_u/t_u) <= (14*epsilon) ? '≤' : '>'} ${formatNum((14*epsilon).toFixed(1))} → ${classification.lower_flange_outer_class}`, '', '')}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Web Classification (Bending):</div>
+                ${createMathLine(`ψ ${formatOp('=')} stress ratio calculation based on neutral axis position`, '', '')}
+                ${createMathLine(`c/t ${formatOp('=')} ${formatVar('hₘ')}/${formatVar('tₘ')} ${formatOp('=')} ${formatNum(h_w.toFixed(1))}/${formatNum(t_w)} ${formatOp('=')} ${formatNum((h_w/t_w).toFixed(1))}`, '', '')}
+                ${createMathLine(`Based on bending analysis → ${classification.web_class}`, '', '')}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">Overall Classification:</div>
+                ${createMathLine(`Overall section class = max(flange classes, web class) = ${classification.overall_class}`, '', '')}
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = steps;
 }
 
 function drawCrossSection(b_o, t_o, H, t_w, b_u, t_u, z_NA) {
