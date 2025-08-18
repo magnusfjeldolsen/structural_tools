@@ -158,8 +158,7 @@ def analyze_slab_section(position: float, MEd: float, cc_l: float, api: Concrete
         }
     }
     
-    result = 
-    api.calculate(inputs)
+    result = api.calculate(inputs)
     
     if result.get("success"):
         # Add position information
