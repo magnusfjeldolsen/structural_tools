@@ -26,6 +26,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
   <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <script src="concrete_beam_api.js"></script>
 
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
@@ -179,119 +180,87 @@
       return num.toFixed(digits);
     }
 
-    // Safe mathematical expression evaluator
-    function evaluateExpression(expr) {
-      try {
-        // Remove any characters that aren't numbers, operators, parentheses, or decimals
-        const sanitized = expr.replace(/[^0-9+\-*/().\s^]/g, '');
-        
-        // Replace ^ with ** for JavaScript exponentiation
-        const jsExpression = sanitized.replace(/\^/g, '**');
-        
-        // Use Function constructor for safer evaluation than eval()
-        const result = new Function('return ' + jsExpression)();
-        
-        // Check if result is a valid number
-        if (isNaN(result) || !isFinite(result)) {
-          throw new Error('Invalid calculation result');
-        }
-        
-        return result;
-      } catch (error) {
-        console.error('Expression evaluation error:', error);
-        return NaN;
-      }
-    }
-
     function calculateAndShow() {
-      // Get inputs
-      const b = parseFloat(document.getElementById('b').value);
-      const h = parseFloat(document.getElementById('h').value);
-      const c = parseFloat(document.getElementById('c').value);
+      // Collect inputs in API format
+      const inputs = {
+        geometry: {
+          b: parseFloat(document.getElementById('b').value),
+          h: parseFloat(document.getElementById('h').value),
+          c: parseFloat(document.getElementById('c').value)
+        },
+        loads: {
+          MEd: document.getElementById('MEd').value.trim(),
+          VEd: document.getElementById('VEd').value.trim()
+        },
+        longitudinal_reinforcement: {
+          phi_l: parseFloat(document.getElementById('phi_l').value),
+          n_l: parseFloat(document.getElementById('n_l').value)
+        },
+        shear_reinforcement: {
+          phi_b: parseFloat(document.getElementById('phi_b').value),
+          cc_b: parseFloat(document.getElementById('cc_b').value),
+          n_snitt: parseFloat(document.getElementById('n_snitt').value)
+        },
+        material: {
+          fck: parseFloat(document.getElementById('fck').value),
+          fyk: parseFloat(document.getElementById('fyk').value),
+          alpha_cc: parseFloat(document.getElementById('alpha_cc').value),
+          gamma_c: parseFloat(document.getElementById('gamma_c').value),
+          gamma_s: parseFloat(document.getElementById('gamma_s').value)
+        }
+      };
+
+      // Use the API function
+      const result = window.ConcreteBeamAPI.calculateConcreteBeam(inputs);
       
-      // Evaluate mathematical expressions for loads
-      const MEdInput = document.getElementById('MEd').value.trim();
-      const VEdInput = document.getElementById('VEd').value.trim();
-      
-      const MEd = isNaN(parseFloat(MEdInput)) ? evaluateExpression(MEdInput) : parseFloat(MEdInput);
-      const VEd = isNaN(parseFloat(VEdInput)) ? evaluateExpression(VEdInput) : parseFloat(VEdInput);
-      
-      // Check if evaluation was successful
-      if (isNaN(MEd) || isNaN(VEd)) {
-        alert('Invalid mathematical expression in MEd or VEd. Please check your input.');
+      if (!result.success) {
+        alert('Calculation failed: ' + (result.errors ? result.errors.join('\n') : result.message));
         return;
       }
-      const phi_l = parseFloat(document.getElementById('phi_l').value);
-      const n_l = parseFloat(document.getElementById('n_l').value);
-      const phi_b = parseFloat(document.getElementById('phi_b').value);
-      const cc_b = parseFloat(document.getElementById('cc_b').value);
-      const n_snitt = parseFloat(document.getElementById('n_snitt').value);
-      const fck = parseFloat(document.getElementById('fck').value);
-      const fyk = parseFloat(document.getElementById('fyk').value);
-      const alpha_cc = parseFloat(document.getElementById('alpha_cc').value);
-      const gamma_c = parseFloat(document.getElementById('gamma_c').value);
-      const gamma_s = parseFloat(document.getElementById('gamma_s').value);
 
-      // Derived material properties
-      const fcd = alpha_cc * fck / gamma_c;
-      const fyd = fyk / gamma_s;
+      // Extract values from API result
+      const b = result.inputs.geometry.b;
+      const h = result.inputs.geometry.h;
+      const c = result.inputs.geometry.c;
+      const MEd = result.inputs.loads.MEd;
+      const VEd = result.inputs.loads.VEd;
+      const phi_l = result.inputs.longitudinal_reinforcement.phi_l;
+      const n_l = result.inputs.longitudinal_reinforcement.n_l;
+      const phi_b = result.inputs.shear_reinforcement.phi_b;
+      const cc_b = result.inputs.shear_reinforcement.cc_b;
+      const n_snitt = result.inputs.shear_reinforcement.n_snitt;
+      const fck = result.inputs.material.fck;
+      const fyk = result.inputs.material.fyk;
+      const alpha_cc = result.inputs.material.alpha_cc;
+      const gamma_c = result.inputs.material.gamma_c;
+      const gamma_s = result.inputs.material.gamma_s;
 
-      // Geometric properties
-      const d = h - c - phi_l/2;
-      const Asl = n_l * Math.PI * Math.pow(phi_l, 2) / 4;
+      const fcd = result.intermediate_calculations.material.fcd;
+      const fyd = result.intermediate_calculations.material.fyd;
+      const d = result.intermediate_calculations.geometry.d;
+      const Asl = result.intermediate_calculations.geometry.Asl;
+      const z = result.intermediate_calculations.geometry.z;
+      const z_95d = result.intermediate_calculations.geometry.z_95d;
+      const z_bal = result.intermediate_calculations.geometry.z_bal;
 
-      // Moment capacity calculations
-      const MRd_c = 0.275 * b * Math.pow(d, 2) * fcd / 1000000; // Convert to kNm
-      
-      const z_95d = 0.95 * d;
-      const z_bal = d * (1 - 0.17 * (MEd * 1000000) / (0.275 * b * Math.pow(d, 2) * fcd));
-      const z = Math.min(z_95d, z_bal);
-      
-      const MRd_s = Asl * fyd * z / 1000000; // Convert to kNm
+      const Asw = result.intermediate_calculations.shear.Asw;
+      const z_skjaer = result.intermediate_calculations.shear.z_v;
+      const cot_theta_initial = result.intermediate_calculations.shear.cot_theta_initial;
+      const theta_initial = result.intermediate_calculations.shear.theta_initial;
+      const cot_theta_red = result.intermediate_calculations.shear.cot_theta_red;
+      const theta_red = result.intermediate_calculations.shear.theta_red;
+      const cot_theta_final = result.intermediate_calculations.shear.cot_theta_final;
+      const theta_final = result.intermediate_calculations.shear.theta_final;
+      const angle_status = result.intermediate_calculations.shear.angle_status;
 
-      // Shear reinforcement properties
-      const Asw = n_snitt * Math.PI * Math.pow(phi_b, 2) / 4;
-      const z_skjaer = 0.9 * d;
-      
-      // Initial cot(θ) = 1.0
-      const cot_theta_initial = 1.0;
-      const theta_initial = Math.atan(1 / cot_theta_initial) * 180 / Math.PI;
-      
-      // Shear capacity with initial angle
-      const VRd_s_initial = (Asw / cc_b) * z_skjaer * fyd * cot_theta_initial / 1000;
-      
-      // Reduced angle calculation following PDF logic
-      const cot_theta_red = VEd / ((Asw / cc_b) * z_skjaer * fyd / 1000);
-      const theta_red_rad = Math.atan(1 / cot_theta_red);
-      const theta_red = theta_red_rad * 180 / Math.PI;
-      
-      // Check cot(θ) limits and determine final values
-      let theta_final, cot_theta_final, angle_status;
-      if (cot_theta_red >= 1.0 && cot_theta_red <= 2.5) {
-        // Use reduced angle if within acceptable range
-        theta_final = theta_red;
-        cot_theta_final = cot_theta_red;
-        angle_status = "OK";
-      } else if (cot_theta_red > 2.5) {
-        // Cap at maximum cot(θ) = 2.5, will show over-utilization
-        theta_final = Math.atan(1 / 2.5) * 180 / Math.PI;
-        cot_theta_final = 2.5;
-        angle_status = "Limited to max cot θ = 2.5";
-      } else {
-        // Use minimum cot(θ) = 1.0
-        theta_final = Math.atan(1 / 1.0) * 180 / Math.PI;
-        cot_theta_final = 1.0;
-        angle_status = "Limited to min cot θ = 1.0";
-      }
-      
-      // Final shear capacity
-      const VRd_s_final = (Asw / cc_b) * z_skjaer * fyd * cot_theta_final / 1000;
-      
-      // Additional tensile force due to shear
-      const DeltaF_td = 0.5 * VEd * cot_theta_final;
-      const F_tM = MEd * 1000 / z; // Convert MEd to kN for consistent units
-      const F_Ed = F_tM + DeltaF_td;
-      const F_Rd = Asl * fyd / 1000; // Convert to kN
+      const MRd_c = result.results.moment_capacity.MRd_c;
+      const MRd_s = result.results.moment_capacity.MRd_s;
+      const VRd_s_initial = result.results.shear_capacity.VRd_s_initial;
+      const VRd_s_final = result.results.shear_capacity.VRd_s;
+      const DeltaF_td = result.results.tensile_force.DeltaF_td;
+      const F_tM = result.results.tensile_force.F_tM;
+      const F_Ed = result.results.tensile_force.F_Ed;
+      const F_Rd = result.results.tensile_force.F_Rd;
 
       // Create organized calculation boxes
       const stepsLatex = `
@@ -560,20 +529,20 @@
             <p><span class="text-gray-300">M<sub>Rd,c</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_c)} kNm</span></p>
             <p><span class="text-gray-300">M<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_s)} kNm</span></p>
             <p><span class="text-gray-300">M<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MEd)} kNm</span></p>
-            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${MEd/Math.min(MRd_c, MRd_s) > 1 ? 'text-red-400' : 'text-green-400'}">${toFixedIfNeeded(MEd/Math.min(MRd_c, MRd_s)*100, 1)}%</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.moment > 100 ? 'text-red-400' : result.status.utilizations.moment > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.moment}%</span></p>
           </div>
           <div>
             <h4 class="font-semibold text-purple-400 mb-2">Shear Capacity</h4>
             <p><span class="text-gray-300">V<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(VRd_s_final)} kN</span></p>
             <p><span class="text-gray-300">V<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(VEd)} kN</span></p>
             <p><span class="text-gray-300">θ<sub>final</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(theta_final)}°</span></p>
-            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${VEd/VRd_s_final > 1 ? 'text-red-400' : 'text-green-400'}">${toFixedIfNeeded(VEd/VRd_s_final*100, 1)}%</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.shear > 100 ? 'text-red-400' : result.status.utilizations.shear > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.shear}%</span></p>
           </div>
           <div>
             <h4 class="font-semibold text-green-400 mb-2">Tensile Force Check</h4>
             <p><span class="text-gray-300">F<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(F_Ed)} kN</span></p>
             <p><span class="text-gray-300">F<sub>Rd</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(F_Rd)} kN</span></p>
-            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${F_Ed/F_Rd > 1 ? 'text-red-400' : 'text-green-400'}">${toFixedIfNeeded(F_Ed/F_Rd*100, 1)}%</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.tensile > 100 ? 'text-red-400' : result.status.utilizations.tensile > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.tensile}%</span></p>
           </div>
         </div>
       </div>

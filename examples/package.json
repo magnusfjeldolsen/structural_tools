@@ -1,0 +1,22 @@
+{
+  "name": "structural-tools-examples",
+  "version": "1.0.0",
+  "description": "Python examples for Structural Tools API integration",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "structural-engineering",
+    "concrete",
+    "api",
+    "examples"
+  ],
+  "author": "Magnus Fjeld Olsen",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
