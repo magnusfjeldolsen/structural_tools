@@ -24,16 +24,6 @@
     tailwind.config = { darkMode: 'class' };
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-  <script>
-    window.MathJax = {
-      tex: {
-        inlineMath: [['$', '$'], ['\\(', '\\)']],
-        displayMath: [['$$', '$$'], ['\\[', '\\]']]
-      }
-    };
-  </script>
   <style>
     .hero-bg {
       background: linear-gradient(135deg, #1f2937 0%, #111827 50%, #0f172a 100%);
@@ -216,6 +206,13 @@
     <div class="bg-gray-800 rounded-xl p-6 mt-8">
       <h2 class="text-2xl font-semibold text-purple-400 mb-6">Step-by-Step Calculations</h2>
       <div id="step-calculations" class="calculation-steps"></div>
+      
+      <!-- Print Button at Bottom -->
+      <div class="mt-8 print:hidden">
+        <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
+          Print to PDF
+        </button>
+      </div>
     </div>
   </main>
 

@@ -177,191 +177,327 @@ function generateStepCalculations(params) {
         f_yd, epsilon, M_Rd, classification
     } = params;
 
-    const container = document.getElementById('step-calculations');
-    container.innerHTML = '';
-
-    // Helper function to create math expressions
-    function createMathLine(expression, result = '', unit = '') {
-        const resultText = result ? `${result} ${unit}`.trim() : '';
-        return `
-            <div class="math-line">
-                <div class="math-expression">${expression}</div>
-                ${resultText ? `<div class="math-result">${resultText}</div>` : ''}
-            </div>
-        `;
+    function toFixedIfNeeded(num, digits=2) {
+        return num.toFixed(digits);
     }
+
+    const stepsLatex = `
+    <div class="mb-6">
+      <h2 class="text-2xl font-bold text-purple-400 mb-4">Two-Sided Hat Profile Calculation Results</h2>
+    </div>
     
-    // Helper function to create simple value assignments with units
-    function createValueLine(variable, value, unit = '') {
-        return `
-            <div class="math-line">
-                <div class="math-expression">${formatVar(variable)} ${formatOp('=')} ${formatNum(value)} ${unit ? formatUnit(unit) : ''}</div>
-            </div>
-        `;
-    }
-
-    function formatVar(name) {
-        return `<span class="math-variable">${name}</span>`;
-    }
-
-    function formatOp(op) {
-        return `<span class="math-operator">${op}</span>`;
-    }
-
-    function formatNum(num) {
-        return `<span class="math-number">${num}</span>`;
-    }
-
-    function formatUnit(unit) {
-        return `<span class="math-unit">${unit}</span>`;
-    }
-
-    const steps = `
-        <div class="calculation-step">
-            <div class="step-title">1. Input Parameters</div>
-            ${createValueLine('b₀', b_o, 'mm')}
-            ${createValueLine('t₀', t_o, 'mm')}
-            ${createValueLine('H', H, 'mm')}
-            ${createValueLine('tₘ', t_w, 'mm')}
-            ${createValueLine('bᵤ', b_u, 'mm')}
-            ${createValueLine('tᵤ', t_u, 'mm')}
-            ${createValueLine('fᵧₖ', f_yk, 'MPa')}
-            ${createValueLine('γₘ₀', gamma_M0)}
+    <!-- Input Parameters Box -->
+    <div class="calc-box mb-6">
+      <div class="calc-header">
+        <h3 class="text-lg font-semibold text-blue-300">Input Parameters</h3>
+      </div>
+      <div class="calc-content">
+        <div class="calc-row">
+          <span class="calc-label">b<sub>0</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(b_o)} mm</span>
+          <span class="calc-label ml-6">t<sub>0</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(t_o)} mm</span>
         </div>
-
-        <div class="calculation-step">
-            <div class="step-title">2. Derived Dimensions</div>
-            ${createMathLine(`${formatVar('hₘ')} ${formatOp('=')} ${formatVar('H')} ${formatOp('-')} ${formatVar('tₘ')} ${formatOp('=')} ${formatNum(H)} ${formatOp('-')} ${formatNum(t_w)}`, h_w.toFixed(1), 'mm')}
-            ${createMathLine(`${formatVar('H_tot')} ${formatOp('=')} ${formatVar('H')} ${formatOp('+')} ${formatVar('tᵤ')} ${formatOp('=')} ${formatNum(H)} ${formatOp('+')} ${formatNum(t_u)}`, H_tot.toFixed(1), 'mm')}
-            ${createMathLine(`${formatVar('cᵤ')} ${formatOp('=')} \\frac{${formatVar('bᵤ')} - 2${formatVar('tₘ')} - ${formatVar('b₀')}}{2} ${formatOp('=')} \\frac{${formatNum(b_u)} - 2 \\times ${formatNum(t_w)} - ${formatNum(b_o)}}{2}`, c_u.toFixed(1), 'mm')}
+        <div class="calc-row">
+          <span class="calc-label">H</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(H)} mm</span>
+          <span class="calc-label ml-6">t<sub>w</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(t_w)} mm</span>
         </div>
-
-        <div class="calculation-step">
-            <div class="step-title">3. Cross-Sectional Areas</div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Upper Flange Area:</div>
-                ${createMathLine(`${formatVar('A₀')} ${formatOp('=')} ${formatVar('b₀')} ${formatOp('×')} ${formatVar('t₀')} ${formatOp('=')} ${formatNum(b_o)} ${formatOp('×')} ${formatNum(t_o)}`, A_o.toFixed(0), 'mm²')}
-            </div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Web Area (both webs):</div>
-                ${createMathLine(`${formatVar('Aₘ')} ${formatOp('=')} ${formatVar('hₘ')} ${formatOp('×')} ${formatVar('tₘ')} ${formatOp('×')} 2 ${formatOp('=')} ${formatNum(h_w.toFixed(1))} ${formatOp('×')} ${formatNum(t_w)} ${formatOp('×')} 2`, A_w.toFixed(0), 'mm²')}
-            </div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Lower Flange Area:</div>
-                ${createMathLine(`${formatVar('Aᵤ')} ${formatOp('=')} ${formatVar('tᵤ')} ${formatOp('×')} ${formatVar('bᵤ')} ${formatOp('=')} ${formatNum(t_u)} ${formatOp('×')} ${formatNum(b_u)}`, A_u.toFixed(0), 'mm²')}
-            </div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Total Area:</div>
-                ${createMathLine(`${formatVar('A_total')} ${formatOp('=')} ${formatVar('A₀')} ${formatOp('+')} ${formatVar('Aₘ')} ${formatOp('+')} ${formatVar('Aᵤ')} ${formatOp('=')} ${formatNum(A_o.toFixed(0))} ${formatOp('+')} ${formatNum(A_w.toFixed(0))} ${formatOp('+')} ${formatNum(A_u.toFixed(0))}`, A_total.toFixed(0), 'mm²')}
-            </div>
+        <div class="calc-row">
+          <span class="calc-label">b<sub>u</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(b_u)} mm</span>
+          <span class="calc-label ml-6">t<sub>u</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(t_u)} mm</span>
         </div>
-
-        <div class="calculation-step">
-            <div class="step-title">4. Neutral Axis Position</div>
-            <div class="subsection">
-                <div class="subsection-title">Distance from bottom of lower flange:</div>
-                ${createMathLine(`$$${formatVar('z_{NA}')} = \\frac{${formatVar('A_u')} \\times \\frac{${formatVar('t_u')}}{2} + ${formatVar('A_w')} \\times \\left(${formatVar('t_u')} + \\frac{${formatVar('h_w')}}{2}\\right) + ${formatVar('A_0')} \\times \\left(${formatVar('H_{tot}')} - \\frac{${formatVar('t_0')}}{2}\\right)}{${formatVar('A_{total}')}$$`)}
-                ${createMathLine(`$$${formatVar('z_{NA}')} = \\frac{${formatNum(A_u.toFixed(0))} \\times ${formatNum((t_u/2).toFixed(1))} + ${formatNum(A_w.toFixed(0))} \\times ${formatNum((t_u + h_w/2).toFixed(1))} + ${formatNum(A_o.toFixed(0))} \\times ${formatNum((H_tot - t_o/2).toFixed(1))}}{${formatNum(A_total.toFixed(0))}}$$`, z_NA.toFixed(1), 'mm')}
-            </div>
+        <div class="calc-row">
+          <span class="calc-label">f<sub>yk</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(f_yk)} MPa</span>
+          <span class="calc-label ml-6">γ<sub>M0</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(gamma_M0)}</span>
         </div>
+      </div>
+    </div>
 
-        <div class="calculation-step">
-            <div class="step-title">5. Second Moment of Area</div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Lower Flange Contribution:</div>
-                ${createMathLine(`$$${formatVar('I_{y,u}')} = \\frac{${formatVar('b_u')} \\times ${formatVar('t_u')}^3}{12} + ${formatVar('A_u')} \\times \\left(${formatVar('z_{NA}')} - \\frac{${formatVar('t_u')}}{2}\\right)^2$$`)}
-                ${createMathLine(`$$${formatVar('I_{y,u}')} = \\frac{${formatNum(b_u)} \\times ${formatNum(t_u)}^3}{12} + ${formatNum(A_u.toFixed(0))} \\times \\left(${formatNum(z_NA.toFixed(1))} - ${formatNum((t_u/2).toFixed(1))}\\right)^2$$`, (I_y_u/1e7).toFixed(2), '×10⁷ mm⁴')}
-            </div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Upper Flange Contribution:</div>
-                ${createMathLine(`$$${formatVar('I_{y,o}')} = \\frac{${formatVar('b_0')} \\times ${formatVar('t_0')}^3}{12} + ${formatVar('A_0')} \\times \\left(${formatVar('H_{tot}')} - \\frac{${formatVar('t_0')}}{2} - ${formatVar('z_{NA}')}\\right)^2$$`)}
-                ${createMathLine(`$$${formatVar('I_{y,o}')} = \\frac{${formatNum(b_o)} \\times ${formatNum(t_o)}^3}{12} + ${formatNum(A_o.toFixed(0))} \\times \\left(${formatNum(H_tot.toFixed(1))} - ${formatNum((t_o/2).toFixed(1))} - ${formatNum(z_NA.toFixed(1))}\\right)^2$$`, (I_y_o/1e7).toFixed(2), '×10⁷ mm⁴')}
-            </div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Web Contribution:</div>
-                ${createMathLine(`$$${formatVar('I_{y,w}')} = 2 \\times \\left[\\frac{${formatVar('t_w')}^3 \\times ${formatVar('h_w')}}{12} + \\frac{${formatVar('A_w')}}{2} \\times \\left(${formatVar('z_{NA}')} - \\left(${formatVar('t_u')} + \\frac{${formatVar('h_w')}}{2}\\right)\\right)^2\\right]$$`)}
-                ${createMathLine(`$$${formatVar('I_{y,w}')} = 2 \\times \\left[\\frac{${formatNum(t_w)}^3 \\times ${formatNum(h_w.toFixed(1))}}{12} + ${formatNum((A_w/2).toFixed(0))} \\times \\left(${formatNum(z_NA.toFixed(1))} - ${formatNum((t_u + h_w/2).toFixed(1))}\\right)^2\\right]$$`, (I_y_w/1e7).toFixed(2), '×10⁷ mm⁴')}
-            </div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Total Second Moment of Area:</div>
-                ${createMathLine(`${formatVar('I_y')} ${formatOp('=')} ${formatVar('I_{y,u}')} + ${formatVar('I_{y,o}')} + ${formatVar('I_{y,w}')}`, (I_y/1e8).toFixed(4), '×10⁸ mm⁴')}
-            </div>
+    <!-- Derived Dimensions Box -->
+    <div class="calc-box mb-6">
+      <div class="calc-header">
+        <h3 class="text-lg font-semibold text-yellow-300">Derived Dimensions</h3>
+      </div>
+      <div class="calc-content">
+        <div class="calc-row">
+          <span class="calc-label">h<sub>w</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">H - t<sub>w</sub> = ${toFixedIfNeeded(H)} - ${toFixedIfNeeded(t_w)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(h_w)} mm</span>
         </div>
+        <div class="calc-row">
+          <span class="calc-label">H<sub>tot</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">H + t<sub>u</sub> = ${toFixedIfNeeded(H)} + ${toFixedIfNeeded(t_u)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(H_tot)} mm</span>
+        </div>
+        <div class="calc-row">
+          <span class="calc-label">c<sub>u</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">(b<sub>u</sub> - 2×t<sub>w</sub> - b<sub>0</sub>)/2 = (${toFixedIfNeeded(b_u)} - 2×${toFixedIfNeeded(t_w)} - ${toFixedIfNeeded(b_o)})/2</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(c_u)} mm</span>
+        </div>
+      </div>
+    </div>
 
-        <div class="calculation-step">
-            <div class="step-title">6. Section Modulus</div>
-            ${createMathLine(`${formatVar('z_{max}')} ${formatOp('=')} \\max(${formatVar('z_{NA}')}, ${formatVar('H_{tot}')} - ${formatVar('z_{NA}')}) ${formatOp('=')} \\max(${formatNum(z_NA.toFixed(1))}, ${formatNum((H_tot - z_NA).toFixed(1))})`, z_max.toFixed(1), 'mm')}
-            ${createMathLine(`$$${formatVar('W_{el}')} = \\frac{${formatVar('I_y')}}{${formatVar('z_{max}')} = \\frac{${formatNum((I_y/1e8).toFixed(4))} \\times 10^8}{${formatNum(z_max.toFixed(1))}}$$`, (W_el/1000).toFixed(1), '×10³ mm³')}
+    <!-- Cross-Sectional Areas Box -->
+    <div class="calc-box mb-6">
+      <div class="calc-header">
+        <h3 class="text-lg font-semibold text-green-300">Cross-Sectional Areas</h3>
+      </div>
+      <div class="calc-content">
+        <h4 class="text-md font-medium text-green-200 mb-3 border-b border-gray-600 pb-1">Upper Flange Area</h4>
+        <div class="calc-row">
+          <span class="calc-label">A<sub>0</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">b<sub>0</sub> × t<sub>0</sub> = ${toFixedIfNeeded(b_o)} × ${toFixedIfNeeded(t_o)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(A_o)} mm²</span>
         </div>
+        
+        <h4 class="text-md font-medium text-green-200 mb-3 mt-6 border-b border-gray-600 pb-1">Web Area (Both Webs)</h4>
+        <div class="calc-row">
+          <span class="calc-label">A<sub>w</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">h<sub>w</sub> × t<sub>w</sub> × 2 = ${toFixedIfNeeded(h_w)} × ${toFixedIfNeeded(t_w)} × 2</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(A_w)} mm²</span>
+        </div>
+        
+        <h4 class="text-md font-medium text-green-200 mb-3 mt-6 border-b border-gray-600 pb-1">Lower Flange Area</h4>
+        <div class="calc-row">
+          <span class="calc-label">A<sub>u</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">t<sub>u</sub> × b<sub>u</sub> = ${toFixedIfNeeded(t_u)} × ${toFixedIfNeeded(b_u)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(A_u)} mm²</span>
+        </div>
+        
+        <div class="calc-separator mt-4"></div>
+        <div class="calc-row">
+          <span class="calc-label">A<sub>total</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">A<sub>0</sub> + A<sub>w</sub> + A<sub>u</sub> = ${toFixedIfNeeded(A_o)} + ${toFixedIfNeeded(A_w)} + ${toFixedIfNeeded(A_u)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(A_total)} mm²</span>
+        </div>
+      </div>
+    </div>
 
-        <div class="calculation-step">
-            <div class="step-title">7. Material Properties</div>
-            ${createMathLine(`$$${formatVar('f_{yd}')} = \\frac{${formatVar('f_{yk}')}}{${formatVar('\\gamma_{M0}')} = \\frac{${formatNum(f_yk)}}{${formatNum(gamma_M0)}}$$`, f_yd.toFixed(1), 'MPa')}
-            ${createMathLine(`$$${formatVar('\\varepsilon')} = \\sqrt{\\frac{235}{${formatVar('f_{yk}')}} = \\sqrt{\\frac{235}{${formatNum(f_yk)}}}$$`, epsilon.toFixed(3))}
+    <!-- Neutral Axis Position Box -->
+    <div class="calc-box mb-6">
+      <div class="calc-header">
+        <h3 class="text-lg font-semibold text-orange-300">Neutral Axis Position</h3>
+      </div>
+      <div class="calc-content">
+        <div class="calc-row">
+          <span class="calc-label">z<sub>NA</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">(A<sub>u</sub>×t<sub>u</sub>/2 + A<sub>w</sub>×(t<sub>u</sub>+h<sub>w</sub>/2) + A<sub>0</sub>×(H<sub>tot</sub>-t<sub>0</sub>/2))/A<sub>total</sub></span>
         </div>
+        <div class="calc-row">
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">(${toFixedIfNeeded(A_u)}×${toFixedIfNeeded(t_u/2)} + ${toFixedIfNeeded(A_w)}×${toFixedIfNeeded(t_u + h_w/2)} + ${toFixedIfNeeded(A_o)}×${toFixedIfNeeded(H_tot - t_o/2)})/${toFixedIfNeeded(A_total)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(z_NA)} mm</span>
+        </div>
+        <div class="calc-note text-sm text-gray-400">Distance from bottom of lower flange</div>
+      </div>
+    </div>
 
-        <div class="calculation-step">
-            <div class="step-title">8. Moment Resistance</div>
-            ${createMathLine(`$$${formatVar('M_{Rd}')} = ${formatVar('W_{el}')} \\times ${formatVar('f_{yd}')} = ${formatNum((W_el/1000).toFixed(1))} \\times 10^3 \\times ${formatNum(f_yd.toFixed(1))} \\times 10^{-6}$$`, M_Rd.toFixed(1), 'kNm')}
+    <!-- Second Moment of Area Box -->
+    <div class="calc-box mb-6">
+      <div class="calc-header">
+        <h3 class="text-lg font-semibold text-cyan-300">Second Moment of Area</h3>
+      </div>
+      <div class="calc-content">
+        <h4 class="text-md font-medium text-cyan-200 mb-3 border-b border-gray-600 pb-1">Lower Flange Contribution</h4>
+        <div class="calc-row">
+          <span class="calc-label">I<sub>y,u</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">(b<sub>u</sub>×t<sub>u</sub>³)/12 + A<sub>u</sub>×(z<sub>NA</sub>-t<sub>u</sub>/2)²</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(I_y_u/1e6, 1)} ×10⁶ mm⁴</span>
         </div>
+        
+        <h4 class="text-md font-medium text-cyan-200 mb-3 mt-6 border-b border-gray-600 pb-1">Upper Flange Contribution</h4>
+        <div class="calc-row">
+          <span class="calc-label">I<sub>y,0</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">(b<sub>0</sub>×t<sub>0</sub>³)/12 + A<sub>0</sub>×(H<sub>tot</sub>-t<sub>0</sub>/2-z<sub>NA</sub>)²</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(I_y_o/1e6, 1)} ×10⁶ mm⁴</span>
+        </div>
+        
+        <h4 class="text-md font-medium text-cyan-200 mb-3 mt-6 border-b border-gray-600 pb-1">Web Contribution</h4>
+        <div class="calc-row">
+          <span class="calc-label">I<sub>y,w</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">2×[(t<sub>w</sub>³×h<sub>w</sub>)/12 + (A<sub>w</sub>/2)×(z<sub>NA</sub>-(t<sub>u</sub>+h<sub>w</sub>/2))²]</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(I_y_w/1e6, 1)} ×10⁶ mm⁴</span>
+        </div>
+        
+        <div class="calc-separator mt-4"></div>
+        <div class="calc-row">
+          <span class="calc-label">I<sub>y</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">I<sub>y,u</sub> + I<sub>y,0</sub> + I<sub>y,w</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(I_y/1e8, 4)} ×10⁸ mm⁴</span>
+        </div>
+      </div>
+    </div>
 
-        <div class="calculation-step">
-            <div class="step-title">9. Cross-Section Classification</div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Classification Criteria:</div>
-                ${createMathLine(`Internal compression element: $$\\frac{c}{t} \\leq 42\\varepsilon \\rightarrow \\text{Class 3, else Class 4}$$`)}
-                ${createMathLine(`External compression element: $$\\frac{c}{t} \\leq 14\\varepsilon \\rightarrow \\text{Class 3, else Class 4}$$`)}
-            </div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Upper Flange (Internal Compression):</div>
-                ${createMathLine(`$$\\frac{c}{t} = \\frac{${formatVar('b_0')}}{${formatVar('t_0')}} = \\frac{${formatNum(b_o)}}{${formatNum(t_o)}} = ${formatNum((b_o/t_o).toFixed(1))}$$`)}
-                ${createMathLine(`$$42\\varepsilon = 42 \\times ${formatNum(epsilon.toFixed(3))} = ${formatNum((42*epsilon).toFixed(1))}$$`)}
-                ${createMathLine(`${formatNum((b_o/t_o).toFixed(1))} ${(b_o/t_o) <= (42*epsilon) ? '≤' : '>'} ${formatNum((42*epsilon).toFixed(1))} → ${classification.upper_flange_class}`)}
-            </div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Lower Flange Inner (Internal Compression):</div>
-                ${createMathLine(`$$\\frac{c}{t} = \\frac{${formatVar('b_u')}}{${formatVar('t_u')}} = \\frac{${formatNum(b_u)}}{${formatNum(t_u)}} = ${formatNum((b_u/t_u).toFixed(1))}$$`)}
-                ${createMathLine(`${formatNum((b_u/t_u).toFixed(1))} ${(b_u/t_u) <= (42*epsilon) ? '≤' : '>'} ${formatNum((42*epsilon).toFixed(1))} → ${classification.lower_flange_inner_class}`)}
-            </div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Lower Flange Outer (External Compression):</div>
-                ${createMathLine(`$$\\frac{c}{t} = \\frac{${formatVar('c_u')}}{${formatVar('t_u')}} = \\frac{${formatNum(c_u.toFixed(1))}}{${formatNum(t_u)}} = ${formatNum((c_u/t_u).toFixed(1))}$$`)}
-                ${createMathLine(`$$14\\varepsilon = 14 \\times ${formatNum(epsilon.toFixed(3))} = ${formatNum((14*epsilon).toFixed(1))}$$`)}
-                ${createMathLine(`${formatNum((c_u/t_u).toFixed(1))} ${(c_u/t_u) <= (14*epsilon) ? '≤' : '>'} ${formatNum((14*epsilon).toFixed(1))} → ${classification.lower_flange_outer_class}`)}
-            </div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Web Classification (Bending):</div>
-                ${createMathLine(`$$\\psi = \\text{stress ratio calculation based on neutral axis position}$$`)}
-                ${createMathLine(`$$\\frac{c}{t} = \\frac{${formatVar('h_w')}}{${formatVar('t_w')}} = \\frac{${formatNum(h_w.toFixed(1))}}{${formatNum(t_w)}} = ${formatNum((h_w/t_w).toFixed(1))}$$`)}
-                ${createMathLine(`Based on bending analysis → ${classification.web_class}`)}
-            </div>
-            
-            <div class="subsection">
-                <div class="subsection-title">Overall Classification:</div>
-                ${createMathLine(`Overall section class = \\max(\\text{flange classes, web class}) = ${classification.overall_class}`)}
-            </div>
+    <!-- Section Properties Box -->
+    <div class="calc-box mb-6">
+      <div class="calc-header">
+        <h3 class="text-lg font-semibold text-indigo-300">Section Properties</h3>
+      </div>
+      <div class="calc-content">
+        <div class="calc-row">
+          <span class="calc-label">z<sub>max</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">max(z<sub>NA</sub>, H<sub>tot</sub>-z<sub>NA</sub>) = max(${toFixedIfNeeded(z_NA)}, ${toFixedIfNeeded(H_tot-z_NA)})</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(z_max)} mm</span>
         </div>
+        <div class="calc-row">
+          <span class="calc-label">W<sub>el</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">I<sub>y</sub>/z<sub>max</sub> = ${toFixedIfNeeded(I_y/1e8, 4)}×10⁸/${toFixedIfNeeded(z_max)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(W_el/1000, 1)} ×10³ mm³</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Material Properties Box -->
+    <div class="calc-box mb-6">
+      <div class="calc-header">
+        <h3 class="text-lg font-semibold text-pink-300">Material Properties</h3>
+      </div>
+      <div class="calc-content">
+        <div class="calc-row">
+          <span class="calc-label">f<sub>yd</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">f<sub>yk</sub>/γ<sub>M0</sub> = ${toFixedIfNeeded(f_yk)}/${toFixedIfNeeded(gamma_M0)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(f_yd)} MPa</span>
+        </div>
+        <div class="calc-row">
+          <span class="calc-label">ε</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">√(235/f<sub>yk</sub>) = √(235/${toFixedIfNeeded(f_yk)})</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(epsilon, 3)}</span>
+        </div>
+        <div class="calc-separator"></div>
+        <div class="calc-row">
+          <span class="calc-label">M<sub>Rd</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">W<sub>el</sub> × f<sub>yd</sub> = ${toFixedIfNeeded(W_el/1000, 1)}×10³ × ${toFixedIfNeeded(f_yd)} × 10⁻⁶</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(M_Rd)} kNm</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cross-Section Classification Box -->
+    <div class="calc-box mb-6">
+      <div class="calc-header">
+        <h3 class="text-lg font-semibold text-purple-300">Cross-Section Classification (Eurocode 3)</h3>
+      </div>
+      <div class="calc-content">
+        <h4 class="text-md font-medium text-purple-200 mb-3 border-b border-gray-600 pb-1">Classification Limits</h4>
+        <div class="calc-row">
+          <span class="calc-note text-sm">Internal compression elements: c/t ≤ 42ε → Class 3, else Class 4</span>
+        </div>
+        <div class="calc-row">
+          <span class="calc-note text-sm">External compression elements: c/t ≤ 14ε → Class 3, else Class 4</span>
+        </div>
+        
+        <h4 class="text-md font-medium text-purple-200 mb-3 mt-6 border-b border-gray-600 pb-1">Upper Flange (Internal Compression)</h4>
+        <div class="calc-row">
+          <span class="calc-label">c/t</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">b<sub>0</sub>/t<sub>0</sub> = ${toFixedIfNeeded(b_o)}/${toFixedIfNeeded(t_o)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(b_o/t_o, 1)}</span>
+        </div>
+        <div class="calc-row">
+          <span class="calc-label">42ε</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(42*epsilon, 1)}</span>
+          <span class="calc-note ml-4 text-sm">Result: ${classification.upper_flange_class}</span>
+        </div>
+        
+        <h4 class="text-md font-medium text-purple-200 mb-3 mt-6 border-b border-gray-600 pb-1">Lower Flange Inner (Internal Compression)</h4>
+        <div class="calc-row">
+          <span class="calc-label">c/t</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">b<sub>u</sub>/t<sub>u</sub> = ${toFixedIfNeeded(b_u)}/${toFixedIfNeeded(t_u)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(b_u/t_u, 1)}</span>
+          <span class="calc-note ml-4 text-sm">Result: ${classification.lower_flange_inner_class}</span>
+        </div>
+        
+        <h4 class="text-md font-medium text-purple-200 mb-3 mt-6 border-b border-gray-600 pb-1">Lower Flange Outer (External Compression)</h4>
+        <div class="calc-row">
+          <span class="calc-label">c/t</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">c<sub>u</sub>/t<sub>u</sub> = ${toFixedIfNeeded(c_u)}/${toFixedIfNeeded(t_u)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(c_u/t_u, 1)}</span>
+        </div>
+        <div class="calc-row">
+          <span class="calc-label">14ε</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(14*epsilon, 1)}</span>
+          <span class="calc-note ml-4 text-sm">Result: ${classification.lower_flange_outer_class}</span>
+        </div>
+        
+        <h4 class="text-md font-medium text-purple-200 mb-3 mt-6 border-b border-gray-600 pb-1">Web Classification</h4>
+        <div class="calc-row">
+          <span class="calc-label">c/t</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">h<sub>w</sub>/t<sub>w</sub> = ${toFixedIfNeeded(h_w)}/${toFixedIfNeeded(t_w)}</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(h_w/t_w, 1)}</span>
+          <span class="calc-note ml-4 text-sm">Result: ${classification.web_class}</span>
+        </div>
+        
+        <div class="calc-separator mt-4"></div>
+        <div class="calc-row">
+          <span class="calc-label">Overall Classification</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">max(all element classes)</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value font-bold text-purple-300">${classification.overall_class}</span>
+        </div>
+      </div>
+    </div>
     `;
 
-    container.innerHTML = steps;
-    
-    // Trigger MathJax to render the new content
-    if (window.MathJax) {
-        MathJax.typesetPromise([container]).catch((err) => console.log('MathJax error: ', err));
-    }
+    const container = document.getElementById('step-calculations');
+    container.innerHTML = stepsLatex;
 }
 
 function drawCrossSection(b_o, t_o, H, t_w, b_u, t_u, z_NA) {
