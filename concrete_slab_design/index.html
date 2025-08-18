@@ -42,97 +42,85 @@
     <p class="text-center text-gray-300 text-sm">Calculate Ultimate Limit State moment resistance (M<sub>Rd</sub>) for reinforced concrete slabs</p>
 
     <!-- Input Form -->
-    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="bg-gray-700 rounded-lg p-6 space-y-4">
-      <div class="grid md:grid-cols-2 gap-6">
+    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="grid md:grid-cols-2 gap-6">
+      
+      <!-- Geometry Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Geometry</h3>
         
-        <!-- Left Column -->
         <div class="space-y-4">
           <div class="flex items-center gap-4">
-            <label for="MEd" class="text-sm font-medium min-w-[120px] text-right text-gray-300">M<sub>Ed</sub> (kNm):</label>
-            <input type="number" id="MEd" value="20" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+            <label for="MEd" class="text-sm font-medium min-w-[100px] text-right">M<sub>Ed</sub> (kNm):</label>
+            <input type="text" id="MEd" value="20" placeholder="Example: 20*5^2/8" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
-
+          
           <div class="flex items-center gap-4">
-            <label for="t" class="text-sm font-medium min-w-[120px] text-right text-gray-300">t (mm):</label>
-            <input type="number" id="t" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+            <label for="t" class="text-sm font-medium min-w-[100px] text-right">t (mm):</label>
+            <input type="number" id="t" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
-
+          
           <div class="flex items-center gap-4">
-            <label for="fcd" class="text-sm font-medium min-w-[120px] text-right text-gray-300">f<sub>cd</sub> (MPa):</label>
-            <input type="number" id="fcd" value="19.8" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
-          </div>
-
-          <div class="flex items-center gap-4">
-            <label for="c" class="text-sm font-medium min-w-[120px] text-right text-gray-300">c (cover, mm):</label>
-            <input type="number" id="c" value="35" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
-          </div>
-        </div>
-
-        <!-- Right Column -->
-        <div class="space-y-4">
-          <div class="flex items-center gap-4">
-            <label for="phi_l" class="text-sm font-medium min-w-[120px] text-right text-gray-300">φ<sub>l</sub> (mm):</label>
-            <input type="number" id="phi_l" value="12" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
-          </div>
-
-          <div class="flex items-center gap-4">
-            <label for="cc_l" class="text-sm font-medium min-w-[120px] text-right text-gray-300">cc<sub>l</sub> (spacing, mm):</label>
-            <input type="number" id="cc_l" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
-          </div>
-
-          <div class="flex items-center gap-4">
-            <label for="fyd" class="text-sm font-medium min-w-[120px] text-right text-gray-300">f<sub>yd</sub> (MPa):</label>
-            <input type="number" id="fyd" value="435" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+            <label for="c" class="text-sm font-medium min-w-[100px] text-right">c (mm):</label>
+            <input type="number" id="c" value="35" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
         </div>
       </div>
 
-      <div class="flex justify-center pt-4">
-        <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition duration-200 shadow-lg">
-          Calculate M<sub>Rd</sub>
-        </button>
+      <!-- Material Properties Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-yellow-400 mb-4">Material Properties</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="fcd" class="text-sm font-medium min-w-[100px] text-right">f<sub>cd</sub> (MPa):</label>
+            <input type="number" id="fcd" value="19.8" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="fyd" class="text-sm font-medium min-w-[100px] text-right">f<sub>yd</sub> (MPa):</label>
+            <input type="number" id="fyd" value="435" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
       </div>
+
+      <!-- Reinforcement Section -->
+      <div class="bg-gray-700 rounded-lg p-6 md:col-span-2">
+        <h3 class="text-xl font-semibold text-green-400 mb-4">Reinforcement</h3>
+        
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="flex items-center gap-4">
+            <label for="phi_l" class="text-sm font-medium min-w-[100px] text-right">φ<sub>l</sub> (mm):</label>
+            <input type="number" id="phi_l" value="12" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="cc_l" class="text-sm font-medium min-w-[100px] text-right">cc<sub>l</sub> (mm):</label>
+            <input type="number" id="cc_l" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
     </form>
 
-    <!-- Results Section -->
-    <div id="results" style="display:none;" class="bg-gray-700 rounded-lg p-6 space-y-6 print:!bg-gray-800 print:!text-white">
-      <h3 class="text-xl font-semibold text-white mb-4">Calculation Results</h3>
-      
-      <div class="grid lg:grid-cols-3 gap-6">
-        <!-- Calculation Steps -->
-        <div id="calc-steps" class="lg:col-span-2 bg-gray-600 rounded-lg p-4 overflow-x-auto">
-          <!-- MathJax content will be inserted here -->
-        </div>
-        
-        <!-- Reference Image -->
-        <div id="calc-image" class="flex flex-col">
-          <h4 class="text-lg font-medium text-white mb-3">Reference Diagram</h4>
-          <div class="bg-white p-3 rounded-lg">
-            <img src="calculations.png" alt="Calculation symbols and figure" class="w-full h-auto rounded" />
-          </div>
-        </div>
-      </div>
-
-      <!-- Print Values (hidden on screen, shown in print) -->
-      <div class="hidden print:block print:mt-6 print:border print:p-4">
-        <h3 class="text-lg font-semibold mb-4">Input Parameters</h3>
-        <div class="grid grid-cols-2 gap-4 text-sm">
-          <div>M<sub>Ed</sub> = <span id="MEd-print">-</span> kNm</div>
-          <div>t = <span id="t-print">-</span> mm</div>
-          <div>f<sub>cd</sub> = <span id="fcd-print">-</span> MPa</div>
-          <div>c = <span id="c-print">-</span> mm</div>
-          <div>φ<sub>l</sub> = <span id="phi_l-print">-</span> mm</div>
-          <div>cc<sub>l</sub> = <span id="cc_l-print">-</span> mm</div>
-          <div>f<sub>yd</sub> = <span id="fyd-print">-</span> MPa</div>
-        </div>
-      </div>
+    <!-- Calculate Button -->
+    <div class="space-y-2 print:hidden">
+      <button onclick="calculateAndShow()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+        Calculate M<sub>Rd</sub>
+      </button>
     </div>
 
-    <!-- Print Button -->
-    <div class="flex justify-center">
-      <button id="print-btn" style="display:none;" onclick="window.print()" class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition duration-200 print:hidden">
-        Print Results
-      </button>
+    <!-- Results Section -->
+    <div id="results" style="display:none;" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50">
+      <div id="calc-steps" class="text-white">
+        <!-- Calculation boxes will be inserted here -->
+      </div>
+
+      <!-- Print Button at Bottom -->
+      <div class="mt-8 print:hidden">
+        <button id="print-btn" style="display:none;" onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
+          Print to PDF
+        </button>
+      </div>
     </div>
 
     <!-- Footer Info -->
@@ -147,22 +135,42 @@
       return num.toFixed(digits);
     }
 
-    // Copy input values to print placeholders before printing
-    function updatePrintFields() {
-      document.getElementById('MEd-print').textContent = document.getElementById('MEd').value;
-      document.getElementById('t-print').textContent = document.getElementById('t').value;
-      document.getElementById('fcd-print').textContent = document.getElementById('fcd').value;
-      document.getElementById('c-print').textContent = document.getElementById('c').value;
-      document.getElementById('phi_l-print').textContent = document.getElementById('phi_l').value;
-      document.getElementById('cc_l-print').textContent = document.getElementById('cc_l').value;
-      document.getElementById('fyd-print').textContent = document.getElementById('fyd').value;
+
+    // Safe mathematical expression evaluator
+    function evaluateExpression(expr) {
+      try {
+        // Remove any characters that aren't numbers, operators, parentheses, or decimals
+        const sanitized = expr.replace(/[^0-9+\-*/().\s^]/g, '');
+        
+        // Replace ^ with ** for JavaScript exponentiation
+        const jsExpression = sanitized.replace(/\^/g, '**');
+        
+        // Use Function constructor for safer evaluation than eval()
+        const result = new Function('return ' + jsExpression)();
+        
+        // Check if result is a valid number
+        if (isNaN(result) || !isFinite(result)) {
+          throw new Error('Invalid calculation result');
+        }
+        
+        return result;
+      } catch (error) {
+        console.error('Expression evaluation error:', error);
+        return NaN;
+      }
     }
 
-    window.addEventListener('beforeprint', updatePrintFields);
-
     function calculateAndShow() {
-      // Get inputs
-      const MEd = parseFloat(document.getElementById('MEd').value);
+      // Get inputs with mathematical expression support for MEd
+      const MEdInput = document.getElementById('MEd').value.trim();
+      const MEd = isNaN(parseFloat(MEdInput)) ? evaluateExpression(MEdInput) : parseFloat(MEdInput);
+      
+      // Check if MEd evaluation was successful
+      if (isNaN(MEd)) {
+        alert('Invalid mathematical expression in MEd. Please check your input.');
+        return;
+      }
+      
       const t = parseFloat(document.getElementById('t').value);
       const fcd = parseFloat(document.getElementById('fcd').value);
       const c = parseFloat(document.getElementById('c').value);
@@ -195,31 +203,167 @@
       const MRd_s = MRd_s_Nm / 1000000;
       const MRd = MRd_Nm / 1000000;
 
-      // Compose LaTeX output with substituted values
+      // Create organized calculation boxes
       const stepsLatex = `
-      \\[
-      \\begin{aligned}
-      & \\text{\\textbf{Step-by-step calculation:}} \\\\[0.5em]
-      & d = t - c - \\frac{\\phi_l}{2} = ${toFixedIfNeeded(t)} - ${toFixedIfNeeded(c)} - \\frac{${toFixedIfNeeded(phi_l)}}{2} = \\textbf{${toFixedIfNeeded(d)} \\text{ mm}} \\\\[0.3em]
-      & A_s = \\frac{\\pi \\times \\phi_l^2}{4} \\times \\frac{1000}{cc_l} = \\frac{\\pi \\times (${toFixedIfNeeded(phi_l)})^2}{4} \\times \\frac{1000}{${toFixedIfNeeded(cc_l)}} = \\textbf{${toFixedIfNeeded(As)} \\text{ mm}^2} \\\\[0.3em]
-      & M_{Rd,c} = 0.275 \\times 1000 \\times d^2 \\times f_{cd} \\\\
-      & \\quad = 0.275 \\times 1000 \\times (${toFixedIfNeeded(d)})^2 \\times ${toFixedIfNeeded(fcd)} = \\textbf{${toFixedIfNeeded(MRd_c)} \\text{ kNm}} \\\\[0.3em]
-      & z = \\min\\left(0.95d, d \\times \\left(1 - 0.17 \\times \\frac{M_{Ed}}{M_{Rd,c}} \\right) \\right) \\\\
-      & \\quad = \\min\\left(${toFixedIfNeeded(z1)}, ${toFixedIfNeeded(z2)} \\right) = \\textbf{${toFixedIfNeeded(z)} \\text{ mm}} \\\\[0.3em]
-      & M_{Rd,s} = A_s \\times f_{yd} \\times z \\\\
-      & \\quad = ${toFixedIfNeeded(As)} \\times ${toFixedIfNeeded(fyd)} \\times ${toFixedIfNeeded(z)} = \\textbf{${toFixedIfNeeded(MRd_s)} \\text{ kNm}} \\\\[0.5em]
-      & \\boxed{M_{Rd} = \\min\\left(M_{Rd,c}, M_{Rd,s} \\right) = \\min\\left(${toFixedIfNeeded(MRd_c)}, ${toFixedIfNeeded(MRd_s)} \\right) = \\textbf{${toFixedIfNeeded(MRd)} \\text{ kNm}}}
-      \\end{aligned}
-      \\]
+      <div class="mb-6">
+        <h2 class="text-2xl font-bold text-blue-400 mb-4">ULS Calculation Results</h2>
+      </div>
+      
+      <!-- Geometry Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-blue-300">Geometry</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">M<sub>Ed</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(MEd)} kNm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">t</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(t)} mm</span>
+            <span class="calc-label ml-6">c</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(c)} mm</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">d</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">t - c - φ<sub>l</sub>/2 = ${toFixedIfNeeded(t)} - ${toFixedIfNeeded(c)} - ${toFixedIfNeeded(phi_l)}/2</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(d)} mm</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reference Diagram -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-gray-300">Reference Diagram</h3>
+        </div>
+        <div class="calc-content">
+          <div class="flex justify-start">
+            <div class="bg-white p-4 rounded-lg">
+              <img src="calculations.png" alt="Calculation symbols and figure" class="w-full h-auto rounded max-w-md" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Material Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-yellow-300">Material</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">f<sub>cd</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(fcd)} MPa</span>
+            <span class="calc-label ml-6">f<sub>yd</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(fyd)} MPa</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reinforcement Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-green-300">Reinforcement</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">φ<sub>l</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(phi_l)} mm</span>
+            <span class="calc-label ml-6">cc<sub>l</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(cc_l)} mm</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">A<sub>s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">(π × φ<sub>l</sub>² / 4) × (1000 / cc<sub>l</sub>) = (π × ${toFixedIfNeeded(phi_l)}² / 4) × (1000 / ${toFixedIfNeeded(cc_l)})</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(As)} mm²</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ULS Capacities Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-red-300">ULS - Capacities</h3>
+        </div>
+        <div class="calc-content">
+          <h4 class="text-md font-medium text-blue-200 mb-3 border-b border-gray-600 pb-1">Moment Capacity from Concrete</h4>
+          <div class="calc-row">
+            <span class="calc-label">M<sub>Rd,c</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">0.275 × 1000 × d² × f<sub>cd</sub> = 0.275 × 1000 × (${toFixedIfNeeded(d)})² × ${toFixedIfNeeded(fcd)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(MRd_c)} kNm</span>
+          </div>
+          
+          <h4 class="text-md font-medium text-purple-200 mb-3 mt-6 border-b border-gray-600 pb-1">Lever Arm</h4>
+          <div class="calc-row">
+            <span class="calc-label">z</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">min(0.95d, z<sub>bal</sub>) = min(${toFixedIfNeeded(z1)}, ${toFixedIfNeeded(z2)})</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(z)} mm</span>
+          </div>
+          
+          <h4 class="text-md font-medium text-green-200 mb-3 mt-6 border-b border-gray-600 pb-1">Moment Capacity from Steel</h4>
+          <div class="calc-row">
+            <span class="calc-label">M<sub>Rd,s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">A<sub>s</sub> × f<sub>yd</sub> × z = ${toFixedIfNeeded(As)} × ${toFixedIfNeeded(fyd)} × ${toFixedIfNeeded(z)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(MRd_s)} kNm</span>
+          </div>
+          
+          <div class="calc-separator mt-6"></div>
+          <div class="calc-row">
+            <span class="calc-label text-xl font-bold">M<sub>Rd</sub></span>
+            <span class="calc-equals text-xl">=</span>
+            <span class="calc-expression">min(M<sub>Rd,c</sub>, M<sub>Rd,s</sub>) = min(${toFixedIfNeeded(MRd_c)}, ${toFixedIfNeeded(MRd_s)})</span>
+            <span class="calc-equals text-xl">=</span>
+            <span class="calc-value text-xl font-bold text-green-400">${toFixedIfNeeded(MRd)} kNm</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="mt-8 p-6 bg-gray-800 rounded-lg border-l-4 border-blue-500">
+        <h3 class="text-xl font-bold text-white mb-4">Summary of Results</h3>
+        <div class="grid md:grid-cols-2 gap-6 text-sm">
+          <div>
+            <h4 class="font-semibold text-blue-400 mb-2">Capacity Check</h4>
+            <p><span class="text-gray-300">M<sub>Rd,c</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_c)} kNm</span></p>
+            <p><span class="text-gray-300">M<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_s)} kNm</span></p>
+            <p><span class="text-gray-300">M<sub>Rd</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd)} kNm</span></p>
+          </div>
+          <div>
+            <h4 class="font-semibold text-green-400 mb-2">Utilization</h4>
+            <p><span class="text-gray-300">M<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MEd)} kNm</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${MEd/MRd > 1 ? 'text-red-400' : MEd/MRd > 0.85 ? 'text-yellow-400' : 'text-green-400'}">${toFixedIfNeeded(MEd/MRd*100, 1)}%</span></p>
+            <p class="text-sm mt-1 ${MEd/MRd > 1 ? 'text-red-400' : MEd/MRd > 0.85 ? 'text-yellow-400' : 'text-green-400'}">
+              ${MEd/MRd > 1 ? 'FAILED - Increase reinforcement' : MEd/MRd > 0.85 ? 'High utilization' : 'OK'}
+            </p>
+          </div>
+        </div>
+      </div>
       `;
 
       const container = document.getElementById('calc-steps');
       container.innerHTML = stepsLatex;
       document.getElementById('results').style.display = 'block';
-      document.getElementById('print-btn').style.display = 'inline-block';
-
-      // Typeset math with MathJax
-      MathJax.typesetPromise();
+      document.getElementById('print-btn').style.display = 'block';
 
       // Scroll to results
       document.getElementById('results').scrollIntoView({

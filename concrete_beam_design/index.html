@@ -69,12 +69,12 @@
         <div class="space-y-4">
           <div class="flex items-center gap-4">
             <label for="MEd" class="text-sm font-medium min-w-[100px] text-right">M<sub>Ed</sub> (kNm):</label>
-            <input type="number" id="MEd" value="39" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <input type="text" id="MEd" value="39" placeholder="Example input: 20*5^2/8" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
           
           <div class="flex items-center gap-4">
             <label for="VEd" class="text-sm font-medium min-w-[100px] text-right">V<sub>Ed</sub> (kN):</label>
-            <input type="number" id="VEd" value="260" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <input type="text" id="VEd" value="260" placeholder="Example input: 20*5/2" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
         </div>
       </div>
@@ -134,32 +134,41 @@
           </div>
           
           <div class="flex items-center gap-4">
-            <label for="gamma_c" class="text-sm font-medium min-w-[100px] text-right">γ<sub>c</sub>:</label>
-            <input type="number" id="gamma_c" value="1.86" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <label for="alpha_cc" class="text-sm font-medium min-w-[100px] text-right">α<sub>cc</sub>:</label>
+            <input type="number" id="alpha_cc" value="0.85" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
           
           <div class="flex items-center gap-4">
             <label for="gamma_s" class="text-sm font-medium min-w-[100px] text-right">γ<sub>s</sub>:</label>
             <input type="number" id="gamma_s" value="1.25" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="gamma_c" class="text-sm font-medium min-w-[100px] text-right">γ<sub>c</sub>:</label>
+            <input type="number" id="gamma_c" value="1.5" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
         </div>
       </div>
 
     </form>
 
-    <!-- Buttons -->
+    <!-- Calculate Button -->
     <div class="space-y-2 print:hidden">
       <button onclick="calculateAndShow()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
         Calculate ULS Capacities
-      </button>
-      <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
-        Print to PDF
       </button>
     </div>
 
     <!-- Results -->
     <div id="results" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50 hidden">
       <div id="calc-steps" class="text-white"></div>
+      
+      <!-- Print Button at Bottom -->
+      <div class="mt-8 print:hidden">
+        <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
+          Print to PDF
+        </button>
+      </div>
     </div>
 
   </main>
@@ -170,13 +179,48 @@
       return num.toFixed(digits);
     }
 
+    // Safe mathematical expression evaluator
+    function evaluateExpression(expr) {
+      try {
+        // Remove any characters that aren't numbers, operators, parentheses, or decimals
+        const sanitized = expr.replace(/[^0-9+\-*/().\s^]/g, '');
+        
+        // Replace ^ with ** for JavaScript exponentiation
+        const jsExpression = sanitized.replace(/\^/g, '**');
+        
+        // Use Function constructor for safer evaluation than eval()
+        const result = new Function('return ' + jsExpression)();
+        
+        // Check if result is a valid number
+        if (isNaN(result) || !isFinite(result)) {
+          throw new Error('Invalid calculation result');
+        }
+        
+        return result;
+      } catch (error) {
+        console.error('Expression evaluation error:', error);
+        return NaN;
+      }
+    }
+
     function calculateAndShow() {
       // Get inputs
       const b = parseFloat(document.getElementById('b').value);
       const h = parseFloat(document.getElementById('h').value);
       const c = parseFloat(document.getElementById('c').value);
-      const MEd = parseFloat(document.getElementById('MEd').value);
-      const VEd = parseFloat(document.getElementById('VEd').value);
+      
+      // Evaluate mathematical expressions for loads
+      const MEdInput = document.getElementById('MEd').value.trim();
+      const VEdInput = document.getElementById('VEd').value.trim();
+      
+      const MEd = isNaN(parseFloat(MEdInput)) ? evaluateExpression(MEdInput) : parseFloat(MEdInput);
+      const VEd = isNaN(parseFloat(VEdInput)) ? evaluateExpression(VEdInput) : parseFloat(VEdInput);
+      
+      // Check if evaluation was successful
+      if (isNaN(MEd) || isNaN(VEd)) {
+        alert('Invalid mathematical expression in MEd or VEd. Please check your input.');
+        return;
+      }
       const phi_l = parseFloat(document.getElementById('phi_l').value);
       const n_l = parseFloat(document.getElementById('n_l').value);
       const phi_b = parseFloat(document.getElementById('phi_b').value);
@@ -184,11 +228,12 @@
       const n_snitt = parseFloat(document.getElementById('n_snitt').value);
       const fck = parseFloat(document.getElementById('fck').value);
       const fyk = parseFloat(document.getElementById('fyk').value);
+      const alpha_cc = parseFloat(document.getElementById('alpha_cc').value);
       const gamma_c = parseFloat(document.getElementById('gamma_c').value);
       const gamma_s = parseFloat(document.getElementById('gamma_s').value);
 
       // Derived material properties
-      const fcd = 0.85 * fck / gamma_c;
+      const fcd = alpha_cc * fck / gamma_c;
       const fyd = fyk / gamma_s;
 
       // Geometric properties
@@ -208,35 +253,35 @@
       const Asw = n_snitt * Math.PI * Math.pow(phi_b, 2) / 4;
       const z_skjaer = 0.9 * d;
       
-      // Initial cot(θ) = 2.5
-      const cot_theta_initial = 2.5;
+      // Initial cot(θ) = 1.0
+      const cot_theta_initial = 1.0;
       const theta_initial = Math.atan(1 / cot_theta_initial) * 180 / Math.PI;
       
       // Shear capacity with initial angle
       const VRd_s_initial = (Asw / cc_b) * z_skjaer * fyd * cot_theta_initial / 1000;
       
-      // Reduced angle calculation
-      const theta_red_rad = Math.atan(VEd / ((Asw / cc_b) * z_skjaer * fyd / 1000));
+      // Reduced angle calculation following PDF logic
+      const cot_theta_red = VEd / ((Asw / cc_b) * z_skjaer * fyd / 1000);
+      const theta_red_rad = Math.atan(1 / cot_theta_red);
       const theta_red = theta_red_rad * 180 / Math.PI;
-      const cot_theta_red = 1 / Math.tan(theta_red_rad);
       
-      // Check angle limits and determine final cot(θ)
-      const theta_min = Math.atan(1 / 2.5) * 180 / Math.PI; // ≈ 21.8°
-      const theta_max = 45;
-      
+      // Check cot(θ) limits and determine final values
       let theta_final, cot_theta_final, angle_status;
-      if (theta_red >= theta_min && theta_red <= theta_max) {
+      if (cot_theta_red >= 1.0 && cot_theta_red <= 2.5) {
+        // Use reduced angle if within acceptable range
         theta_final = theta_red;
         cot_theta_final = cot_theta_red;
         angle_status = "OK";
-      } else if (theta_red < theta_min) {
-        theta_final = theta_min;
+      } else if (cot_theta_red > 2.5) {
+        // Cap at maximum cot(θ) = 2.5, will show over-utilization
+        theta_final = Math.atan(1 / 2.5) * 180 / Math.PI;
         cot_theta_final = 2.5;
-        angle_status = "Limited to min angle";
+        angle_status = "Limited to max cot θ = 2.5";
       } else {
-        theta_final = theta_max;
+        // Use minimum cot(θ) = 1.0
+        theta_final = Math.atan(1 / 1.0) * 180 / Math.PI;
         cot_theta_final = 1.0;
-        angle_status = "Limited to max angle";
+        angle_status = "Limited to min cot θ = 1.0";
       }
       
       // Final shear capacity
@@ -248,51 +293,264 @@
       const F_Ed = F_tM + DeltaF_td;
       const F_Rd = Asl * fyd / 1000; // Convert to kN
 
-      // Create LaTeX output
+      // Create organized calculation boxes
       const stepsLatex = `
       <div class="mb-6">
         <h2 class="text-2xl font-bold text-blue-400 mb-4">ULS Calculation Results</h2>
       </div>
       
-      \\[
-      \\begin{aligned}
-      & \\textbf{Material Properties:} \\\\
-      & f_{cd} = \\frac{0.85 \\times f_{ck}}{\\gamma_c} = \\frac{0.85 \\times ${toFixedIfNeeded(fck)}}{${toFixedIfNeeded(gamma_c)}} = ${toFixedIfNeeded(fcd)} \\ \\mathrm{MPa} \\\\
-      & f_{yd} = \\frac{f_{yk}}{\\gamma_s} = \\frac{${toFixedIfNeeded(fyk)}}{${toFixedIfNeeded(gamma_s)}} = ${toFixedIfNeeded(fyd)} \\ \\mathrm{MPa} \\\\[1em]
-      
-      & \\textbf{Geometric Properties:} \\\\
-      & d = h - c - \\frac{\\phi_l}{2} = ${toFixedIfNeeded(h)} - ${toFixedIfNeeded(c)} - \\frac{${toFixedIfNeeded(phi_l)}}{2} = ${toFixedIfNeeded(d)} \\ \\mathrm{mm} \\\\
-      & A_{sl} = n_l \\times \\frac{\\pi \\times \\phi_l^2}{4} = ${n_l} \\times \\frac{\\pi \\times (${toFixedIfNeeded(phi_l)})^2}{4} = ${toFixedIfNeeded(Asl)} \\ \\mathrm{mm}^2 \\\\[1em]
-      
-      & \\textbf{Moment Capacity:} \\\\
-      & M_{Rd,c} = 0.275 \\times b \\times d^2 \\times f_{cd} = 0.275 \\times ${toFixedIfNeeded(b)} \\times (${toFixedIfNeeded(d)})^2 \\times ${toFixedIfNeeded(fcd)} = ${toFixedIfNeeded(MRd_c)} \\ \\mathrm{kNm} \\\\
-      & z = \\min\\left(0.95d, d \\times \\left(1 - 0.17 \\times \\frac{M_{Ed}}{M_{Rd,c}} \\right) \\right) = \\min\\left(${toFixedIfNeeded(z_95d)}, ${toFixedIfNeeded(z_bal)} \\right) = ${toFixedIfNeeded(z)} \\ \\mathrm{mm} \\\\
-      & M_{Rd,s} = A_{sl} \\times f_{yd} \\times z = ${toFixedIfNeeded(Asl)} \\times ${toFixedIfNeeded(fyd)} \\times ${toFixedIfNeeded(z)} = ${toFixedIfNeeded(MRd_s)} \\ \\mathrm{kNm} \\\\[1em]
-      
-      & \\textbf{Shear Reinforcement:} \\\\
-      & A_{sw} = n_{snitt} \\times \\frac{\\pi \\times \\phi_b^2}{4} = ${n_snitt} \\times \\frac{\\pi \\times (${toFixedIfNeeded(phi_b)})^2}{4} = ${toFixedIfNeeded(Asw)} \\ \\mathrm{mm}^2 \\\\
-      & z_{skjær} = 0.9 \\times d = 0.9 \\times ${toFixedIfNeeded(d)} = ${toFixedIfNeeded(z_skjaer)} \\ \\mathrm{mm} \\\\[1em]
-      
-      & \\textbf{Shear Capacity (initial \\cot \\theta = 2.5):} \\\\
-      & \\theta_{initial} = \\arctan\\left(\\frac{1}{2.5}\\right) = ${toFixedIfNeeded(theta_initial)}° \\\\
-      & V_{Rd,s} = \\frac{A_{sw}}{cc_b} \\times z_{skjær} \\times f_{yd} \\times \\cot \\theta = \\frac{${toFixedIfNeeded(Asw)}}{${toFixedIfNeeded(cc_b)}} \\times ${toFixedIfNeeded(z_skjaer)} \\times ${toFixedIfNeeded(fyd)} \\times 2.5 = ${toFixedIfNeeded(VRd_s_initial)} \\ \\mathrm{kN} \\\\[1em]
-      
-      & \\textbf{Reduced Angle Check:} \\\\
-      & \\theta_{red} = \\arctan\\left(\\frac{V_{Ed}}{\\frac{A_{sw}}{cc_b} \\times z_{skjær} \\times f_{yd}}\\right) = \\arctan\\left(\\frac{${toFixedIfNeeded(VEd)}}{\\frac{${toFixedIfNeeded(Asw)}}{${toFixedIfNeeded(cc_b)}} \\times ${toFixedIfNeeded(z_skjaer)} \\times ${toFixedIfNeeded(fyd)}}\\right) = ${toFixedIfNeeded(theta_red)}° \\\\
-      & \\text{Angle limits: } ${toFixedIfNeeded(theta_min)}° \\leq \\theta \\leq 45° \\\\
-      & \\text{Status: } \\textbf{${angle_status}} \\\\
-      & \\theta_{final} = ${toFixedIfNeeded(theta_final)}°, \\quad \\cot \\theta_{final} = ${toFixedIfNeeded(cot_theta_final)} \\\\[1em]
-      
-      & \\textbf{Final Shear Capacity:} \\\\
-      & V_{Rd,s} = \\frac{A_{sw}}{cc_b} \\times z_{skjær} \\times f_{yd} \\times \\cot \\theta_{final} = \\frac{${toFixedIfNeeded(Asw)}}{${toFixedIfNeeded(cc_b)}} \\times ${toFixedIfNeeded(z_skjaer)} \\times ${toFixedIfNeeded(fyd)} \\times ${toFixedIfNeeded(cot_theta_final)} = ${toFixedIfNeeded(VRd_s_final)} \\ \\mathrm{kN} \\\\[1em]
-      
-      & \\textbf{Additional Tensile Force from Shear:} \\\\
-      & \\Delta F_{td} = 0.5 \\times V_{Ed} \\times \\cot \\theta_{final} = 0.5 \\times ${toFixedIfNeeded(VEd)} \\times ${toFixedIfNeeded(cot_theta_final)} = ${toFixedIfNeeded(DeltaF_td)} \\ \\mathrm{kN} \\\\
-      & F_{tM} = \\frac{M_{Ed}}{z} = \\frac{${toFixedIfNeeded(MEd)} \\times 1000}{${toFixedIfNeeded(z)}} = ${toFixedIfNeeded(F_tM)} \\ \\mathrm{kN} \\\\
-      & F_{Ed} = F_{tM} + \\Delta F_{td} = ${toFixedIfNeeded(F_tM)} + ${toFixedIfNeeded(DeltaF_td)} = ${toFixedIfNeeded(F_Ed)} \\ \\mathrm{kN} \\\\
-      & F_{Rd} = A_{sl} \\times f_{yd} = ${toFixedIfNeeded(Asl)} \\times ${toFixedIfNeeded(fyd)} = ${toFixedIfNeeded(F_Rd)} \\ \\mathrm{kN}
-      \\end{aligned}
-      \\]
+      <!-- Geometry Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-blue-300">Geometry</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">b</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(b)} mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">h</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(h)} mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">c</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(c)} mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">d</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">h - c - φ<sub>l</sub>/2 = ${toFixedIfNeeded(h)} - ${toFixedIfNeeded(c)} - ${toFixedIfNeeded(phi_l)}/2</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(d)} mm</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Material Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-yellow-300">Material</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">f<sub>ck</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(fck)} MPa</span>
+            <span class="calc-label ml-6">α<sub>cc</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(alpha_cc)}</span>
+            <span class="calc-label ml-6">γ<sub>c</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(gamma_c)}</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">f<sub>yk</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(fyk)} MPa</span>
+            <span class="calc-label ml-6">γ<sub>s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(gamma_s)}</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">f<sub>cd</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">α<sub>cc</sub> × f<sub>ck</sub> / γ<sub>c</sub> = ${toFixedIfNeeded(alpha_cc)} × ${toFixedIfNeeded(fck)} / ${toFixedIfNeeded(gamma_c)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(fcd)} MPa</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">f<sub>yd</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">f<sub>yk</sub> / γ<sub>s</sub> = ${toFixedIfNeeded(fyk)} / ${toFixedIfNeeded(gamma_s)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(fyd)} MPa</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Longitudinal Reinforcement Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-green-300">Longitudinal Reinforcement</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">φ<sub>l</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(phi_l)} mm</span>
+            <span class="calc-label ml-6">n<sub>l</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${n_l}</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">A<sub>sl</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">n<sub>l</sub> × π × φ<sub>l</sub>² / 4 = ${n_l} × π × (${toFixedIfNeeded(phi_l)})² / 4</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(Asl)} mm²</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stirrups Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-purple-300">Stirrups</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">φ<sub>b</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(phi_b)} mm</span>
+            <span class="calc-label ml-6">cc<sub>b</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(cc_b)} mm</span>
+            <span class="calc-label ml-6">n<sub>snitt</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${n_snitt}</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">A<sub>sw</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">n<sub>snitt</sub> × π × φ<sub>b</sub>² / 4 = ${n_snitt} × π × (${toFixedIfNeeded(phi_b)})² / 4</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(Asw)} mm²</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">z<sub>v</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">0.9 × d = 0.9 × ${toFixedIfNeeded(d)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(z_skjaer)} mm</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ULS Capacities Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-red-300">ULS - Capacities</h3>
+        </div>
+        <div class="calc-content">
+          <h4 class="text-md font-medium text-blue-200 mb-3 border-b border-gray-600 pb-1">Moment Capacity</h4>
+          <div class="calc-row">
+            <span class="calc-label">M<sub>Rd,c</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">0.275 × b × d² × f<sub>cd</sub> = 0.275 × ${toFixedIfNeeded(b)} × (${toFixedIfNeeded(d)})² × ${toFixedIfNeeded(fcd)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(MRd_c)} kNm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">z</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">min(0.95d, z<sub>bal</sub>) = min(${toFixedIfNeeded(z_95d)}, ${toFixedIfNeeded(z_bal)})</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(z)} mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">M<sub>Rd,s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">A<sub>sl</sub> × f<sub>yd</sub> × z = ${toFixedIfNeeded(Asl)} × ${toFixedIfNeeded(fyd)} × ${toFixedIfNeeded(z)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(MRd_s)} kNm</span>
+          </div>
+          
+          <h4 class="text-md font-medium text-purple-200 mb-3 mt-6 border-b border-gray-600 pb-1">Shear Capacity</h4>
+          <div class="calc-row">
+            <span class="calc-label">V<sub>Ed</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(VEd)} kN</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">cot θ</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(cot_theta_initial)}</span>
+            <span class="calc-label ml-6">θ</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(theta_initial)}°</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">V<sub>Rd,s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">(A<sub>sw</sub> / cc<sub>b</sub>) × z<sub>v</sub> × f<sub>yd</sub> × cot θ = (${toFixedIfNeeded(Asw)} / ${toFixedIfNeeded(cc_b)}) × ${toFixedIfNeeded(z_skjaer)} × ${toFixedIfNeeded(fyd)} × ${toFixedIfNeeded(cot_theta_initial)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(VRd_s_initial)} kN</span>
+          </div>
+          
+          <div class="calc-separator mt-4"></div>
+          <div class="calc-row">
+            <span class="calc-label">cot θ<sub>red</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">V<sub>Ed</sub> / (A<sub>sw</sub>/cc<sub>b</sub> × z<sub>v</sub> × f<sub>yd</sub>) = ${toFixedIfNeeded(VEd)} / (${toFixedIfNeeded(Asw/cc_b)} × ${toFixedIfNeeded(z_skjaer)} × ${toFixedIfNeeded(fyd)})</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(cot_theta_red)}</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">θ<sub>red</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(theta_red)}°</span>
+            <span class="calc-note ml-4 text-sm text-gray-400">reduced angle</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-note text-sm">Limits: 1.0 ≤ cot θ ≤ 2.5</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-note text-sm">Status: <strong class="${angle_status === 'OK' ? 'text-green-400' : 'text-orange-400'}">${angle_status}</strong></span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">θ<sub>final</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(theta_final)}°</span>
+            <span class="calc-label ml-6">cot θ<sub>final</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(cot_theta_final)}</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">V<sub>Rd,s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">(A<sub>sw</sub> / cc<sub>b</sub>) × z<sub>v</sub> × f<sub>yd</sub> × cot θ<sub>final</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(VRd_s_final)} kN</span>
+          </div>
+          
+          <h4 class="text-md font-medium text-orange-200 mb-3 mt-6 border-b border-gray-600 pb-1">Additional Tensile Force</h4>
+          <div class="calc-row">
+            <span class="calc-label">ΔF<sub>td</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">0.5 × V<sub>Ed</sub> × cot θ<sub>final</sub> = 0.5 × ${toFixedIfNeeded(VEd)} × ${toFixedIfNeeded(cot_theta_final)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(DeltaF_td)} kN</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">F<sub>tM</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">M<sub>Ed</sub> / z = ${toFixedIfNeeded(MEd)} × 1000 / ${toFixedIfNeeded(z)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(F_tM)} kN</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">F<sub>Ed</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">F<sub>tM</sub> + ΔF<sub>td</sub> = ${toFixedIfNeeded(F_tM)} + ${toFixedIfNeeded(DeltaF_td)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(F_Ed)} kN</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">F<sub>Rd</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">A<sub>sl</sub> × f<sub>yd</sub> = ${toFixedIfNeeded(Asl)} × ${toFixedIfNeeded(fyd)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(F_Rd)} kN</span>
+          </div>
+        </div>
+      </div>
       
       <div class="mt-8 p-6 bg-gray-800 rounded-lg border-l-4 border-blue-500">
         <h3 class="text-xl font-bold text-white mb-4">Summary of Results</h3>
