@@ -11,9 +11,10 @@ function calculate() {
     const t_u = parseFloat(document.getElementById('t_u').value);
     const f_yk = parseFloat(document.getElementById('f_yk').value);
     const gamma_M0 = parseFloat(document.getElementById('gamma_M0').value);
+    const rho_steel = parseFloat(document.getElementById('rho_steel').value);
 
     // Validate inputs
-    if (isNaN(b_o) || isNaN(t_o) || isNaN(H) || isNaN(t_w) || isNaN(b_u) || isNaN(t_u) || isNaN(f_yk) || isNaN(gamma_M0)) {
+    if (isNaN(b_o) || isNaN(t_o) || isNaN(H) || isNaN(t_w) || isNaN(b_u) || isNaN(t_u) || isNaN(f_yk) || isNaN(gamma_M0) || isNaN(rho_steel)) {
         alert('Please enter valid numeric values for all fields.');
         return;
     }
@@ -53,6 +54,9 @@ function calculate() {
     // Moment resistance
     const M_Rd = W_el * f_yd / 1000000; // Convert to kNm
 
+    // Unit weight calculation: A_total (mm²) * rho_steel (kg/m³) * 1e-6 (m²/mm² conversion)
+    const unit_weight = A_total * rho_steel * 1e-6; // kg/m
+
     // Cross-section classification
     const classification = classifySection(b_o, t_o, b_u, t_u, c_u, h_w, t_w, z_NA, H_tot, epsilon);
 
@@ -60,6 +64,7 @@ function calculate() {
     updateResults({
         H_tot: H_tot.toFixed(1),
         A_total: A_total.toFixed(0),
+        unit_weight: unit_weight.toFixed(2),
         z_NA: z_NA.toFixed(1),
         I_y: (I_y / 1e8).toFixed(4), // Convert to cm⁴
         W_el: (W_el / 1000).toFixed(1), // Convert to cm³
@@ -71,8 +76,8 @@ function calculate() {
 
     // Generate step-by-step calculations
     generateStepCalculations({
-        b_o, t_o, H, t_w, b_u, t_u, f_yk, gamma_M0,
-        h_w, H_tot, c_u, A_o, A_w, A_u, A_total,
+        b_o, t_o, H, t_w, b_u, t_u, f_yk, gamma_M0, rho_steel,
+        h_w, H_tot, c_u, A_o, A_w, A_u, A_total, unit_weight,
         z_NA, I_y_u, I_y_o, I_y_w, I_y, z_max, W_el,
         f_yd, epsilon, M_Rd, classification
     });
@@ -152,6 +157,7 @@ function updateResults(results) {
     // Update geometric results
     document.getElementById('H_tot').textContent = results.H_tot + ' mm';
     document.getElementById('A_total').textContent = results.A_total + ' mm²';
+    document.getElementById('unit_weight').textContent = results.unit_weight + ' kg/m';
     document.getElementById('z_NA').textContent = results.z_NA + ' mm';
     document.getElementById('I_y').textContent = results.I_y + ' × 10⁸ mm⁴';
     document.getElementById('W_el').textContent = results.W_el + ' × 10³ mm³';
@@ -171,8 +177,8 @@ function updateResults(results) {
 
 function generateStepCalculations(params) {
     const {
-        b_o, t_o, H, t_w, b_u, t_u, f_yk, gamma_M0,
-        h_w, H_tot, c_u, A_o, A_w, A_u, A_total,
+        b_o, t_o, H, t_w, b_u, t_u, f_yk, gamma_M0, rho_steel,
+        h_w, H_tot, c_u, A_o, A_w, A_u, A_total, unit_weight,
         z_NA, I_y_u, I_y_o, I_y_w, I_y, z_max, W_el,
         f_yd, epsilon, M_Rd, classification
     } = params;
@@ -223,6 +229,11 @@ function generateStepCalculations(params) {
           <span class="calc-label ml-6">γ<sub>M0</sub></span>
           <span class="calc-equals">=</span>
           <span class="calc-value">${toFixedIfNeeded(gamma_M0)}</span>
+        </div>
+        <div class="calc-row">
+          <span class="calc-label">ρ<sub>steel</sub></span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(rho_steel)} kg/m³</span>
         </div>
       </div>
     </div>
@@ -298,6 +309,23 @@ function generateStepCalculations(params) {
           <span class="calc-equals">=</span>
           <span class="calc-value">${toFixedIfNeeded(A_total)} mm²</span>
         </div>
+      </div>
+    </div>
+
+    <!-- Unit Weight Box -->
+    <div class="calc-box mb-6">
+      <div class="calc-header">
+        <h3 class="text-lg font-semibold text-teal-300">Unit Weight</h3>
+      </div>
+      <div class="calc-content">
+        <div class="calc-row">
+          <span class="calc-label">Unit Weight</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-expression">A<sub>total</sub> × ρ<sub>steel</sub> × 10⁻⁶ = ${toFixedIfNeeded(A_total)} × ${toFixedIfNeeded(rho_steel)} × 10⁻⁶</span>
+          <span class="calc-equals">=</span>
+          <span class="calc-value">${toFixedIfNeeded(unit_weight, 2)} kg/m</span>
+        </div>
+        <div class="calc-note text-sm text-gray-400">Conversion factor 10⁻⁶ accounts for mm² to m² conversion</div>
       </div>
     </div>
 

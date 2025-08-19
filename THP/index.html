@@ -58,8 +58,7 @@
       </p>
     </div>
 
-    <div class="grid md:grid-cols-2 gap-8">
-      <div class="bg-gray-800 rounded-xl p-6 pulse-glow">
+    <div class="bg-gray-800 rounded-xl p-6 pulse-glow mb-8">
         <h2 class="text-2xl font-semibold text-purple-400 mb-6">Geometry Input</h2>
         
         <div class="form-section mb-6">
@@ -115,86 +114,15 @@
               <label for="gamma_M0" class="input-label">Safety Factor γₘ₀:</label>
               <input type="number" id="gamma_M0" value="1.05" step="0.01" class="input-field">
             </div>
+            <div class="input-group">
+              <label for="rho_steel" class="input-label">Steel Density ρₛ (kg/m³):</label>
+              <input type="number" id="rho_steel" value="7850" step="1" class="input-field">
+            </div>
           </div>
         </div>
 
         <button class="btn btn-primary btn-full-width" onclick="calculate()">Calculate Properties</button>
       </div>
-
-      <div class="bg-gray-800 rounded-xl p-6">
-        <h2 class="text-2xl font-semibold text-purple-400 mb-6">Results</h2>
-        
-        <div id="geometric-results" class="mb-6">
-          <h3 class="text-lg font-semibold text-purple-300 mb-4">Geometric Properties</h3>
-          <div class="space-y-3">
-            <div class="summary-item">
-              <span class="summary-label">Total Height (mm)</span>
-              <span class="summary-value" id="H_tot">-</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Total Area (mm²)</span>
-              <span class="summary-value" id="A_total">-</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Neutral Axis z_NA (mm)</span>
-              <span class="summary-value" id="z_NA">-</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Moment of Inertia Iᵧ (mm⁴)</span>
-              <span class="summary-value" id="I_y">-</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Section Modulus Wₑₗ (mm³)</span>
-              <span class="summary-value" id="W_el">-</span>
-            </div>
-          </div>
-        </div>
-
-        <div id="material-results" class="mb-6">
-          <h3 class="text-lg font-semibold text-purple-300 mb-4">Material Properties</h3>
-          <div class="space-y-3">
-            <div class="summary-item">
-              <span class="summary-label">Design Strength fᵧd (MPa)</span>
-              <span class="summary-value" id="f_yd">-</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Epsilon ε</span>
-              <span class="summary-value" id="epsilon">-</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Moment Resistance MRd (kNm)</span>
-              <span class="summary-value" id="M_Rd">-</span>
-            </div>
-          </div>
-        </div>
-
-        <div id="classification-results">
-          <h3 class="text-lg font-semibold text-purple-300 mb-4">Cross-Section Classification</h3>
-          <div class="space-y-3">
-            <div class="summary-item">
-              <span class="summary-label">Upper Flange Class</span>
-              <span class="summary-value status-ok" id="upper_flange_class">-</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Lower Flange Class (Inner)</span>
-              <span class="summary-value status-ok" id="lower_flange_inner_class">-</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Lower Flange Class (Outer)</span>
-              <span class="summary-value status-ok" id="lower_flange_outer_class">-</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Web Class</span>
-              <span class="summary-value status-ok" id="web_class">-</span>
-            </div>
-            <div class="summary-item border-l-4 border-purple-500 pl-3">
-              <span class="summary-label text-white font-bold">Overall Section Class</span>
-              <span class="summary-value text-purple-300 text-lg font-bold" id="overall_class">-</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <div class="bg-gray-800 rounded-xl p-6 mt-8">
       <h2 class="text-2xl font-semibold text-purple-400 mb-6">Cross-Section Diagram</h2>
@@ -206,6 +134,84 @@
     <div class="bg-gray-800 rounded-xl p-6 mt-8">
       <h2 class="text-2xl font-semibold text-purple-400 mb-6">Step-by-Step Calculations</h2>
       <div id="step-calculations" class="calculation-steps"></div>
+    </div>
+
+    <div class="bg-gray-800 rounded-xl p-6 mt-8">
+      <h2 class="text-2xl font-semibold text-purple-400 mb-6">Results</h2>
+      
+      <div id="geometric-results" class="mb-6">
+        <h3 class="text-lg font-semibold text-purple-300 mb-4">Geometric Properties</h3>
+        <div class="space-y-3">
+          <div class="summary-item">
+            <span class="summary-label">Total Height (mm)</span>
+            <span class="summary-value" id="H_tot">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Total Area (mm²)</span>
+            <span class="summary-value" id="A_total">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Unit Weight (kg/m)</span>
+            <span class="summary-value" id="unit_weight">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Neutral Axis z_NA (mm)</span>
+            <span class="summary-value" id="z_NA">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Moment of Inertia Iᵧ (mm⁴)</span>
+            <span class="summary-value" id="I_y">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Section Modulus Wₑₗ (mm³)</span>
+            <span class="summary-value" id="W_el">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="material-results" class="mb-6">
+        <h3 class="text-lg font-semibold text-purple-300 mb-4">Material Properties</h3>
+        <div class="space-y-3">
+          <div class="summary-item">
+            <span class="summary-label">Design Strength fᵧd (MPa)</span>
+            <span class="summary-value" id="f_yd">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Epsilon ε</span>
+            <span class="summary-value" id="epsilon">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Moment Resistance MRd (kNm)</span>
+            <span class="summary-value" id="M_Rd">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="classification-results">
+        <h3 class="text-lg font-semibold text-purple-300 mb-4">Cross-Section Classification</h3>
+        <div class="space-y-3">
+          <div class="summary-item">
+            <span class="summary-label">Upper Flange Class</span>
+            <span class="summary-value status-ok" id="upper_flange_class">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Lower Flange Class (Inner)</span>
+            <span class="summary-value status-ok" id="lower_flange_inner_class">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Lower Flange Class (Outer)</span>
+            <span class="summary-value status-ok" id="lower_flange_outer_class">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Web Class</span>
+            <span class="summary-value status-ok" id="web_class">-</span>
+          </div>
+          <div class="summary-item border-l-4 border-purple-500 pl-3">
+            <span class="summary-label text-white font-bold">Overall Section Class</span>
+            <span class="summary-value text-purple-300 text-lg font-bold" id="overall_class">-</span>
+          </div>
+        </div>
+      </div>
       
       <!-- Print Button at Bottom -->
       <div class="mt-8 print:hidden">
