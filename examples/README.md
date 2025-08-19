@@ -6,7 +6,8 @@ This directory contains Python examples demonstrating how to integrate the Struc
 
 ### Required Software
 - **Python 3.7+** - For running the analysis scripts
-- **Node.js 14+** - Required for JavaScript API execution
+- **Node.js 14+** - Required for legacy JavaScript API execution
+- **Chrome Browser** - Required for modern Selenium WebDriver integration
 - **Git** - For cloning the repository
 
 ### Python Dependencies
@@ -16,12 +17,91 @@ pip install -r requirements.txt
 ```
 
 ### Verify Installation
-Check that Node.js is available:
+Check that Node.js is available (for legacy examples):
 ```bash
 node --version
 ```
 
+Check that Chrome/ChromeDriver is available (for modern examples):
+```bash
+python -c "from selenium import webdriver; webdriver.Chrome().quit(); print('✅ ChromeDriver ready')"
+```
+
 ## 🚀 Available Examples
+
+## Modern Selenium WebDriver Examples (Recommended)
+
+### Quick Start Templates
+Perfect for getting started quickly with simple calculations:
+
+**🔧 THP Calculator:** `quickstart_thp.py`
+```bash
+python quickstart_thp.py
+```
+Simple THP steel profile calculation with basic parameters.
+
+**🏗️ Concrete Beam:** `quickstart_concrete_beam.py`
+```bash
+python quickstart_concrete_beam.py
+```
+Basic concrete beam ULS design calculation.
+
+**🧱 Concrete Slab:** `quickstart_concrete_slab.py`
+```bash
+python quickstart_concrete_slab.py
+```
+Simple concrete slab moment resistance calculation.
+
+### Comprehensive Analysis Examples
+
+**📊 THP Parametric Study:** `thp_parametric_selenium.py`
+```bash
+python thp_parametric_selenium.py
+```
+**Features:**
+- Lower flange width optimization (350-550mm)
+- Steel density impact analysis (7700-8000 kg/m³)
+- Web height parametric study (150-300mm)
+- Combined optimization matrix
+- Comprehensive visualizations and engineering report
+
+**Outputs:**
+- `thp_parametric_analysis.png` - Multi-plot visualization
+- `thp_optimization_report.txt` - Engineering analysis
+- `thp_parametric_data.csv` - Raw data export
+- `thp_design_matrix.csv` - Optimization matrix
+
+**🏗️ Concrete Beam Analysis:** `concrete_beam_selenium.py`
+```bash
+python concrete_beam_selenium.py
+```
+**Features:**
+- Load envelope analysis with standard beam formulas
+- Cross-section optimization studies
+- Reinforcement parametric analysis
+- Load combination assessments
+
+**🧱 Concrete Slab Analysis:** `concrete_slab_selenium.py`
+```bash
+python concrete_slab_selenium.py
+```
+**Features:**
+- Thickness optimization analysis
+- Multi-zone reinforcement studies
+- Load variation impact assessment
+- Moment resistance calculations
+
+**🏢 Multi-Calculator Comparison:** `structural_comparison.py`
+```bash
+python structural_comparison.py
+```
+**Features:**
+- Coordinated use of all three calculators
+- Building floor system analysis
+- THP steel vs concrete beam comparison
+- Complete structural system evaluation
+
+## Legacy Node.js Examples
 
 ### 1. Concrete Slab Parametric Analysis
 **File:** `concrete_slab_parametric.py`
@@ -87,14 +167,44 @@ python concrete_beam_analysis.py
 
 ## 🔧 API Integration Architecture
 
-The examples demonstrate a hybrid Python-JavaScript architecture:
+The examples demonstrate two different integration approaches:
 
+### Modern Selenium WebDriver Approach (Recommended)
+```
+Python Script → Selenium WebDriver → Chrome Browser → JavaScript API → JSON Results → Python Analysis
+```
+
+**Advantages:**
+- Direct browser automation with full API access
+- No subprocess overhead or Node.js dependencies
+- More reliable error handling and debugging
+- Supports all calculator features including UI interactions
+
+### Legacy Node.js Subprocess Approach
 ```
 Python Script → Node.js subprocess → JavaScript API → JSON Results → Python Analysis
 ```
 
+**Use Cases:**
+- Server environments where browser automation isn't suitable
+- Lightweight calculations without visualization needs
+
 ### Key Components
 
+**Modern Selenium Architecture:**
+1. **Python Calculator Classes**
+   - `THPCalculator` - Context manager for THP calculations
+   - `ConcreteBeamCalculator` - Beam analysis interface
+   - `ConcreteSlabCalculator` - Slab design interface
+   - `StructuralSystemCalculator` - Multi-calculator coordination
+
+2. **WebDriver Management**
+   - Automated Chrome browser instances
+   - Context managers for resource cleanup
+   - Progress tracking and batch processing
+   - Error handling and retry logic
+
+**Legacy Node.js Architecture:**
 1. **Python Interface Classes**
    - `ConcreteBeamAPI` - Interface to beam calculation engine
    - `ConcreteSlabAPI` - Interface to slab calculation engine
@@ -105,10 +215,10 @@ Python Script → Node.js subprocess → JavaScript API → JSON Results → Pyt
    - `concrete_slab_api.js` - Slab analysis functions
    - No DOM dependencies - server-ready
 
-3. **Data Flow**
-   - JSON input schema with comprehensive validation
-   - Structured output with intermediate calculations
-   - Batch processing support for parametric studies
+### Data Flow (Both Approaches)
+- JSON input schema with comprehensive validation
+- Structured output with intermediate calculations
+- Batch processing support for parametric studies
 
 ## 📋 Input/Output Schema
 
@@ -129,6 +239,21 @@ Python Script → Node.js subprocess → JavaScript API → JSON Results → Pyt
   "geometry": {"MEd": 62.5, "t": 200, "c": 35},
   "material": {"fcd": 19.8, "fyd": 435},
   "reinforcement": {"phi_l": 12, "cc_l": 150}
+}
+```
+
+### THP Steel Profile Inputs
+```json
+{
+  "b_o": 188,
+  "t_o": 25,
+  "H": 200,
+  "t_w": 6,
+  "b_u": 450,
+  "t_u": 15,
+  "f_yk": 355,
+  "gamma_M0": 1.05,
+  "rho_steel": 7850
 }
 ```
 
@@ -193,6 +318,26 @@ def create_custom_plot(results, custom_params):
 
 ### Common Issues
 
+**Modern Selenium Examples:**
+
+**"ChromeDriver not found" errors**
+- Install ChromeDriver: Download from https://chromedriver.chromium.org/
+- Alternative: `pip install webdriver-manager` for automatic driver management
+- Ensure Chrome browser is installed and up-to-date
+
+**"WebDriverException" or timeout errors**
+- Check that calculator HTML files exist in parent directories
+- Verify Chrome browser is accessible
+- Try running with `headless=False` for debugging
+- Increase timeout values if calculations are slow
+
+**"API not loaded" errors**
+- Ensure calculator pages load completely before API calls
+- Check browser console for JavaScript errors
+- Verify API functions are properly exposed (window.thpCalculate, etc.)
+
+**Legacy Node.js Examples:**
+
 **"Node.js not found"**
 - Install Node.js from https://nodejs.org/
 - Ensure `node` command is in your PATH
@@ -200,6 +345,8 @@ def create_custom_plot(results, custom_params):
 **"Module not found" errors**
 - Check that the API files exist in parent directories
 - Verify file paths in the Python scripts
+
+**General Issues:**
 
 **"Calculation failed" messages**
 - Check input values are within engineering limits

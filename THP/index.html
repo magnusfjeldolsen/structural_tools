@@ -132,6 +132,258 @@
     </div>
 
     <div class="bg-gray-800 rounded-xl p-6 mt-8">
+      <h2 class="text-2xl font-semibold text-purple-400 mb-6">API Integration</h2>
+      <p class="text-gray-300 mb-6">
+        Use this calculator programmatically from Python scripts. The page exposes a JavaScript API that can process single calculations or batches of calculations.
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="bg-gray-700 rounded-lg p-4">
+          <h3 class="text-lg font-semibold text-green-400 mb-4">📋 Input JSON Format</h3>
+          <div class="bg-gray-900 rounded p-4 text-sm font-mono text-green-300 overflow-x-auto">
+            <pre id="input-json-example">{
+  "b_o": 188,
+  "t_o": 25,
+  "H": 200,
+  "t_w": 6,
+  "b_u": 450,
+  "t_u": 15,
+  "f_yk": 355,
+  "gamma_M0": 1.05,
+  "rho_steel": 7850
+}</pre>
+          </div>
+          <button class="mt-2 px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded" onclick="copyToClipboard('input-json-example')">
+            Copy JSON
+          </button>
+        </div>
+
+        <div class="bg-gray-700 rounded-lg p-4">
+          <h3 class="text-lg font-semibold text-blue-400 mb-4">📊 Output JSON Structure</h3>
+          <div class="bg-gray-900 rounded p-4 text-sm font-mono text-blue-300 overflow-x-auto">
+            <pre>{
+  "success": true,
+  "input": {...},
+  "results": {
+    "H_tot": "215.0",
+    "A_total": "11022",
+    "unit_weight": "86.52",
+    "z_NA": "24.4",
+    "I_y": "2.8649",
+    "W_el": "150.3",
+    "f_yd": "338.1",
+    "epsilon": "0.813",
+    "M_Rd": "50.8",
+    ...
+  },
+  "classification": {...},
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-gray-700 rounded-lg p-4 mt-6">
+        <h3 class="text-lg font-semibold text-yellow-400 mb-4">🐍 Python Integration Example</h3>
+        <div class="bg-gray-900 rounded p-4 text-sm font-mono text-yellow-300 overflow-x-auto">
+          <pre id="python-example">import json
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+# Setup Chrome driver
+driver = webdriver.Chrome()
+
+try:
+    # Navigate to the THP calculator
+    driver.get("https://yoursite.com/structural_tools/THP/")
+    
+    # Wait for page to load
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.ID, "diagram"))
+    )
+    
+    # Example input data
+    input_data = {
+        "b_o": 188, "t_o": 25, "H": 200,
+        "t_w": 6, "b_u": 450, "t_u": 15,
+        "f_yk": 355, "gamma_M0": 1.05, "rho_steel": 7850
+    }
+    
+    # Execute calculation using the API
+    result = driver.execute_script(
+        "return window.thpCalculate(arguments[0]);", 
+        input_data
+    )
+    
+    print("Calculation result:", json.dumps(result, indent=2))
+    
+    # For batch processing:
+    batch_data = [input_data.copy() for _ in range(5)]
+    for i, data in enumerate(batch_data):
+        data["b_u"] = 400 + i * 25  # Vary b_u parameter
+    
+    batch_result = driver.execute_script(
+        "return window.thpCalculate(arguments[0]);", 
+        batch_data
+    )
+    
+    print(f"Batch processed {batch_result['successful']} calculations")
+    
+finally:
+    driver.quit()</pre>
+        </div>
+        <button class="mt-2 px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-xs rounded" onclick="copyToClipboard('python-example')">
+          Copy Python Code
+        </button>
+      </div>
+
+      <div class="bg-gray-700 rounded-lg p-4 mt-6">
+        <h3 class="text-lg font-semibold text-orange-400 mb-4">📝 Complete Python Template</h3>
+        <div class="bg-gray-900 rounded p-4 text-sm font-mono text-orange-300 overflow-x-auto">
+          <pre id="complete-python-template">#!/usr/bin/env python3
+"""
+THP Calculator API Integration Template
+Automates structural calculations using the THP web calculator
+"""
+
+import json
+import pandas as pd
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+class THPCalculator:
+    def __init__(self, headless=True):
+        """Initialize the THP Calculator with Selenium WebDriver"""
+        self.options = Options()
+        if headless:
+            self.options.add_argument('--headless')
+        self.options.add_argument('--no-sandbox')
+        self.options.add_argument('--disable-dev-shm-usage')
+        self.driver = None
+        
+    def __enter__(self):
+        """Context manager entry"""
+        self.driver = webdriver.Chrome(options=self.options)
+        self.driver.get("https://yoursite.com/structural_tools/THP/")
+        
+        # Wait for page to load
+        WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.ID, "diagram"))
+        )
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        if self.driver:
+            self.driver.quit()
+    
+    def calculate_single(self, params):
+        """Calculate single THP profile"""
+        result = self.driver.execute_script(
+            "return window.thpCalculate(arguments[0]);", 
+            params
+        )
+        return result
+    
+    def calculate_batch(self, params_list):
+        """Calculate batch of THP profiles"""
+        result = self.driver.execute_script(
+            "return window.thpCalculate(arguments[0]);", 
+            params_list
+        )
+        return result
+    
+    def parametric_study(self, base_params, variable_param, values):
+        """Perform parametric study varying one parameter"""
+        scenarios = []
+        for value in values:
+            scenario = base_params.copy()
+            scenario[variable_param] = value
+            scenarios.append(scenario)
+        
+        return self.calculate_batch(scenarios)
+
+# Example usage
+if __name__ == "__main__":
+    # Base parameters
+    base_params = {
+        "b_o": 188, "t_o": 25, "H": 200,
+        "t_w": 6, "b_u": 450, "t_u": 15,
+        "f_yk": 355, "gamma_M0": 1.05, "rho_steel": 7850
+    }
+    
+    with THPCalculator(headless=True) as calc:
+        # Single calculation
+        result = calc.calculate_single(base_params)
+        if result['success']:
+            print(f"Unit Weight: {result['results']['unit_weight']} kg/m")
+            print(f"Moment Resistance: {result['results']['M_Rd']} kNm")
+        
+        # Parametric study - vary b_u from 400 to 500 mm
+        study_result = calc.parametric_study(
+            base_params, 'b_u', range(400, 501, 25)
+        )
+        
+        # Extract results to DataFrame
+        data = []
+        for item in study_result['results']:
+            if item['success']:
+                data.append({
+                    'b_u': item['input']['b_u'],
+                    'unit_weight': float(item['results']['unit_weight']),
+                    'M_Rd': float(item['results']['M_Rd']),
+                    'classification': item['results']['classification']['overall_class']
+                })
+        
+        df = pd.DataFrame(data)
+        print("\\nParametric Study Results:")
+        print(df)
+        
+        # Save results
+        df.to_csv('thp_parametric_study.csv', index=False)
+        
+        with open('thp_results.json', 'w') as f:
+            json.dump(study_result, f, indent=2)
+</pre>
+        </div>
+        <button class="mt-2 px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white text-xs rounded" onclick="copyToClipboard('complete-python-template')">
+          Copy Complete Template
+        </button>
+      </div>
+
+      <div class="bg-gray-700 rounded-lg p-4 mt-6">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-4">🧪 Test API Live</h3>
+        <p class="text-gray-300 text-sm mb-4">
+          Click the button below to test the API functionality in your browser console (F12 → Console).
+        </p>
+        <button onclick="testAPI()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded transition">
+          🧪 Run API Tests
+        </button>
+        <div class="mt-2 text-xs text-gray-400">
+          Open browser console (F12) to see test results
+        </div>
+      </div>
+
+      <div class="bg-gray-700 rounded-lg p-4 mt-6">
+        <h3 class="text-lg font-semibold text-cyan-400 mb-4">🚀 Advanced Usage Tips</h3>
+        <ul class="text-gray-300 space-y-2 text-sm">
+          <li><strong>Batch Processing:</strong> Send an array of parameter objects to process multiple scenarios at once</li>
+          <li><strong>Error Handling:</strong> Each result includes a <code>success</code> flag and <code>error</code> message if applicable</li>
+          <li><strong>Raw Values:</strong> Access <code>results.raw_values</code> for unformatted numerical results</li>
+          <li><strong>Classification:</strong> Get detailed cross-section classification in <code>results.classification</code></li>
+          <li><strong>Validation:</strong> Input parameters are validated, missing or invalid values will return errors</li>
+          <li><strong>Performance:</strong> Use headless mode for faster automation, visible mode for debugging</li>
+          <li><strong>Data Export:</strong> Results can be easily exported to CSV, JSON, or processed with pandas</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="bg-gray-800 rounded-xl p-6 mt-8">
       <h2 class="text-2xl font-semibold text-purple-400 mb-6">Step-by-Step Calculations</h2>
       <div id="step-calculations" class="calculation-steps"></div>
     </div>

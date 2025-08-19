@@ -47,7 +47,7 @@ def test_api_files():
 def test_beam_api():
     """Test basic beam API functionality."""
     try:
-        from concrete_beam_analysis import ConcreteBeamAPI
+        from examples.concrete_beam_analysis import ConcreteBeamAPI
         
         api = ConcreteBeamAPI()
         

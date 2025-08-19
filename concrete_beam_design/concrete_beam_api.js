@@ -281,18 +281,152 @@ function calculateConcreteBeam(inputs) {
   }
 }
 
+// API Handler for external requests
+function handleApiRequest(data) {
+  try {
+    // Handle single calculation or batch
+    if (Array.isArray(data)) {
+      return processBatch(data);
+    } else {
+      return processSingle(data);
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+}
+
+// Process single calculation
+function processSingle(params) {
+  try {
+    const results = calculateConcreteBeam(params);
+    return {
+      success: results.success,
+      input: params,
+      results: results,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    return {
+      success: false,
+      input: params,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+}
+
+// Process batch of calculations
+function processBatch(paramsArray) {
+  const results = [];
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (let i = 0; i < paramsArray.length; i++) {
+    try {
+      const calcResult = calculateConcreteBeam(paramsArray[i]);
+      results.push({
+        index: i,
+        success: calcResult.success,
+        input: paramsArray[i],
+        results: calcResult
+      });
+      if (calcResult.success) {
+        successCount++;
+      } else {
+        errorCount++;
+      }
+    } catch (error) {
+      results.push({
+        index: i,
+        success: false,
+        input: paramsArray[i],
+        error: error.message
+      });
+      errorCount++;
+    }
+  }
+
+  return {
+    success: errorCount === 0,
+    batch_size: paramsArray.length,
+    successful: successCount,
+    failed: errorCount,
+    results: results,
+    timestamp: new Date().toISOString()
+  };
+}
+
+// Test API functionality
+function testAPI() {
+  console.log('Testing Concrete Beam Calculator API...');
+  
+  // Test single calculation
+  const testParams = {
+    geometry: { b: 250, h: 500, c: 25 },
+    loads: { MEd: "39", VEd: "260" },
+    longitudinal_reinforcement: { phi_l: 20, n_l: 2 },
+    shear_reinforcement: { phi_b: 12, cc_b: 185, n_snitt: 2 },
+    material: { fck: 35, fyk: 500, alpha_cc: 0.85, gamma_c: 1.5, gamma_s: 1.25 }
+  };
+  
+  console.log('Single calculation test:');
+  const singleResult = handleApiRequest(testParams);
+  console.log(singleResult);
+  
+  // Test batch calculation
+  const batchParams = [
+    testParams,
+    { ...testParams, geometry: { ...testParams.geometry, b: 300 } },
+    { ...testParams, geometry: { ...testParams.geometry, h: 600 } }
+  ];
+  
+  console.log('Batch calculation test:');
+  const batchResult = handleApiRequest(batchParams);
+  console.log(batchResult);
+  
+  // Test error handling
+  console.log('Error handling test:');
+  const errorResult = handleApiRequest({ geometry: { b: 'invalid' } });
+  console.log(errorResult);
+  
+  console.log('Concrete Beam API tests completed. Check results above.');
+  return { singleResult, batchResult, errorResult };
+}
+
 // Export for use in Node.js or browser
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     calculateConcreteBeam,
     evaluateExpression,
-    validateConcreteBeamInputs
+    validateConcreteBeamInputs,
+    handleApiRequest,
+    processSingle,
+    processBatch,
+    testAPI
   };
 } else {
   // Browser environment
   window.ConcreteBeamAPI = {
     calculateConcreteBeam,
     evaluateExpression,
-    validateConcreteBeamInputs
+    validateConcreteBeamInputs,
+    handleApiRequest,
+    processSingle,
+    processBatch,
+    testAPI
   };
+  
+  // Expose main API function globally
+  window.concreteBeamCalculate = handleApiRequest;
+  
+  // Set up API handling on page load
+  if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('Concrete Beam Calculator API ready. Use window.concreteBeamCalculate(data) for programmatic access.');
+    });
+  }
 }

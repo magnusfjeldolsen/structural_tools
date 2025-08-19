@@ -228,13 +228,131 @@ function calculateConcreteSlabBatch(inputsArray) {
   };
 }
 
+// API Handler for external requests
+function handleApiRequest(data) {
+  try {
+    // Handle single calculation or batch
+    if (Array.isArray(data)) {
+      return processBatch(data);
+    } else {
+      return processSingle(data);
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+}
+
+// Process single calculation
+function processSingle(params) {
+  try {
+    const results = calculateConcreteSlab(params);
+    return {
+      success: results.success,
+      input: params,
+      results: results,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    return {
+      success: false,
+      input: params,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+}
+
+// Process batch of calculations
+function processBatch(paramsArray) {
+  const results = [];
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (let i = 0; i < paramsArray.length; i++) {
+    try {
+      const calcResult = calculateConcreteSlab(paramsArray[i]);
+      results.push({
+        index: i,
+        success: calcResult.success,
+        input: paramsArray[i],
+        results: calcResult
+      });
+      if (calcResult.success) {
+        successCount++;
+      } else {
+        errorCount++;
+      }
+    } catch (error) {
+      results.push({
+        index: i,
+        success: false,
+        input: paramsArray[i],
+        error: error.message
+      });
+      errorCount++;
+    }
+  }
+
+  return {
+    success: errorCount === 0,
+    batch_size: paramsArray.length,
+    successful: successCount,
+    failed: errorCount,
+    results: results,
+    timestamp: new Date().toISOString()
+  };
+}
+
+// Test API functionality
+function testAPI() {
+  console.log('Testing Concrete Slab Calculator API...');
+  
+  // Test single calculation
+  const testParams = {
+    geometry: { MEd: "20", t: 200, c: 35 },
+    material: { fcd: 19.8, fyd: 435 },
+    reinforcement: { phi_l: 12, cc_l: 200 }
+  };
+  
+  console.log('Single calculation test:');
+  const singleResult = handleApiRequest(testParams);
+  console.log(singleResult);
+  
+  // Test batch calculation
+  const batchParams = [
+    testParams,
+    { ...testParams, geometry: { ...testParams.geometry, t: 250 } },
+    { ...testParams, reinforcement: { ...testParams.reinforcement, phi_l: 16 } }
+  ];
+  
+  console.log('Batch calculation test:');
+  const batchResult = handleApiRequest(batchParams);
+  console.log(batchResult);
+  
+  // Test error handling
+  console.log('Error handling test:');
+  const errorResult = handleApiRequest({ geometry: { MEd: 'invalid' } });
+  console.log(errorResult);
+  
+  console.log('Concrete Slab API tests completed. Check results above.');
+  return { singleResult, batchResult, errorResult };
+}
+
 // Export for use in Node.js or browser
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     calculateConcreteSlab,
     calculateConcreteSlabBatch,
     evaluateExpression,
-    validateConcreteSlabInputs
+    validateConcreteSlabInputs,
+    handleApiRequest,
+    processSingle,
+    processBatch,
+    testAPI
   };
 } else {
   // Browser environment
@@ -242,6 +360,20 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateConcreteSlab,
     calculateConcreteSlabBatch,
     evaluateExpression,
-    validateConcreteSlabInputs
+    validateConcreteSlabInputs,
+    handleApiRequest,
+    processSingle,
+    processBatch,
+    testAPI
   };
+  
+  // Expose main API function globally
+  window.concreteSlabCalculate = handleApiRequest;
+  
+  // Set up API handling on page load
+  if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('Concrete Slab Calculator API ready. Use window.concreteSlabCalculate(data) for programmatic access.');
+    });
+  }
 }
