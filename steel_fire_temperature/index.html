@@ -136,6 +136,62 @@
       }
     }
 
+    // Steel property data at elevated temperatures
+    const ky_theta_data = {
+      theta_a: [20, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200],
+      ky_theta: [1.0, 1.0, 1.0, 1.0, 1.0, 0.78, 0.47, 0.23, 0.11, 0.06, 0.04, 0.02, 0.0]
+    };
+
+    const kp_theta_data = {
+      theta_a: [20, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200],
+      kp_theta: [1.0, 1.0, 0.807, 0.613, 0.42, 0.36, 0.18, 0.075, 0.05, 0.0375, 0.025, 0.0125, 0.0]
+    };
+
+    const kE_theta_data = {
+      theta_a: [20, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200],
+      kE_theta: [1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.31, 0.13, 0.09, 0.0675, 0.045, 0.0225, 0.0]
+    };
+
+    // Interpolation function for steel properties
+    function interpolatePiecewise(dataDict, xInput) {
+      const xKey = Object.keys(dataDict)[0];
+      const yKey = Object.keys(dataDict)[1];
+      const x = dataDict[xKey];
+      const y = dataDict[yKey];
+
+      // Create sorted array of [x, y] pairs
+      const xyPairs = x.map((xVal, i) => [xVal, y[i]]).sort((a, b) => a[0] - b[0]);
+      const xSorted = xyPairs.map(pair => pair[0]);
+      const ySorted = xyPairs.map(pair => pair[1]);
+
+      // Handle out-of-bounds
+      if (xInput <= xSorted[0]) return ySorted[0];
+      if (xInput >= xSorted[xSorted.length - 1]) return ySorted[ySorted.length - 1];
+
+      // Find interval for interpolation
+      for (let i = 0; i < xSorted.length - 1; i++) {
+        if (xSorted[i] <= xInput && xInput <= xSorted[i + 1]) {
+          const x0 = xSorted[i], y0 = ySorted[i];
+          const x1 = xSorted[i + 1], y1 = ySorted[i + 1];
+          return y0 + (y1 - y0) * (xInput - x0) / (x1 - x0);
+        }
+      }
+      return null;
+    }
+
+    // Steel property calculation functions
+    function kyThetaCalc(thetaA) {
+      return interpolatePiecewise(ky_theta_data, thetaA);
+    }
+
+    function kpThetaCalc(thetaA) {
+      return interpolatePiecewise(kp_theta_data, thetaA);
+    }
+
+    function kEThetaCalc(thetaA) {
+      return interpolatePiecewise(kE_theta_data, thetaA);
+    }
+
     function runSimulation() {
       const amvInput = document.getElementById('amv').value.trim();
       if (!amvInput) {
@@ -209,6 +265,10 @@
         },
         options: {
           responsive: true,
+          interaction: {
+            intersect: false,
+            mode: 'index'
+          },
           plugins: {
             title: {
               display: true,
@@ -219,6 +279,40 @@
             legend: {
               labels: {
                 color: '#ddd'
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(31, 41, 55, 0.95)',
+              titleColor: '#fff',
+              bodyColor: '#ddd',
+              borderColor: '#6b7280',
+              borderWidth: 1,
+              callbacks: {
+                title: function(context) {
+                  return `Time: ${context[0].label} min`;
+                },
+                label: function(context) {
+                  return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}°C`;
+                },
+                afterBody: function(context) {
+                  // Get steel temperature from the first dataset (steel temperature)
+                  const steelTempPoint = context.find(c => c.datasetIndex === 0);
+                  if (steelTempPoint) {
+                    const steelTemp = steelTempPoint.parsed.y;
+                    const ky = kyThetaCalc(steelTemp);
+                    const kp = kpThetaCalc(steelTemp);
+                    const kE = kEThetaCalc(steelTemp);
+                    
+                    return [
+                      '',
+                      'Material Reduction Factors:',
+                      `ky,θ (yield strength): ${ky.toFixed(3)}`,
+                      `kp,θ (prop. limit): ${kp.toFixed(3)}`,
+                      `kE,θ (elastic modulus): ${kE.toFixed(3)}`
+                    ];
+                  }
+                  return [];
+                }
               }
             }
           },
