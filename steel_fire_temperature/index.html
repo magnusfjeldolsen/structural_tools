@@ -83,6 +83,28 @@
     <div class="w-full aspect-[5/4] print:border print:rounded print:p-4 print:mt-6 bg-gray-900">
       <canvas id="resultChart" class="print:!bg-gray-900"></canvas>
     </div>
+
+    <!-- Material Reduction Factors at Final Temperature -->
+    <div id="materialFactors" class="hidden bg-gray-700 rounded-lg p-4 mt-4">
+      <h3 class="text-lg font-semibold text-white mb-3">Material Reduction Factors at Final Temperature</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-gray-800 rounded p-3">
+          <div class="text-xs text-gray-400">ky,θ</div>
+          <div class="text-xl font-mono text-red-400" id="kyValue">-</div>
+          <div class="text-sm text-gray-300">Yield Strength Factor</div>
+        </div>
+        <div class="bg-gray-800 rounded p-3">
+          <div class="text-xs text-gray-400">kp,θ</div>
+          <div class="text-xl font-mono text-yellow-400" id="kpValue">-</div>
+          <div class="text-sm text-gray-300">Proportional Limit Factor</div>
+        </div>
+        <div class="bg-gray-800 rounded p-3">
+          <div class="text-xs text-gray-400">kE,θ</div>
+          <div class="text-xl font-mono text-blue-400" id="kEValue">-</div>
+          <div class="text-sm text-gray-300">Elastic Modulus Factor</div>
+        </div>
+      </div>
+    </div>
   </main>
 
   <script>
@@ -240,6 +262,12 @@
 
       const finalGasTemp = gas_temp[gas_temp.length - 1].toFixed(1);
       const finalSteelTemp = temperature[temperature.length - 1].toFixed(1);
+      
+      // Calculate material reduction factors at final temperature
+      const finalSteelTempNum = temperature[temperature.length - 1];
+      const finalKy = kyThetaCalc(finalSteelTempNum);
+      const finalKp = kpThetaCalc(finalSteelTempNum);
+      const finalKE = kEThetaCalc(finalSteelTempNum);
 
       window.chartInstance = new Chart(ctx, {
         type: 'line',
@@ -332,6 +360,12 @@
           }
         }
       });
+
+      // Update material reduction factors display
+      document.getElementById('kyValue').textContent = finalKy.toFixed(3);
+      document.getElementById('kpValue').textContent = finalKp.toFixed(3);
+      document.getElementById('kEValue').textContent = finalKE.toFixed(3);
+      document.getElementById('materialFactors').classList.remove('hidden');
     }
   </script>
 
