@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Steel DIN threaded rod torque and force calculator. Calculate required torque from force or force from torque for DIN threaded rods.">
+  <meta name="keywords" content="DIN threaded rod, torque calculator, force calculator, steel fasteners, structural engineering">
+  <title>DIN Threaded Rod Torque/Force Calculator - Free Engineering Tool</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="DIN Threaded Rod Torque/Force Calculator - Free Engineering Tool">
+  <meta property="og:description" content="Calculate required torque from force or force from torque for DIN threaded rods">
+  <meta property="og:type" content="website">
+  
+  <!-- Twitter Card tags -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="DIN Threaded Rod Torque/Force Calculator - Free Engineering Tool">
+  <meta name="twitter:description" content="Calculate required torque from force or force from torque for DIN threaded rods">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <main class="main-container">
+    <h1 class="heading-1 text-center mb-6">DIN Threaded Rod Torque/Force Calculator</h1>
+    <p class="text-description text-center mb-8">Calculate required torque from force or force from torque for DIN threaded rods</p>
+
+    <!-- Rod Selection Section -->
+    <div class="section-card">
+      <h2 class="heading-3">Rod Selection</h2>
+      
+      <div class="input-group">
+        <label for="rodType" class="input-label">Select Type:</label>
+        <select id="rodType" class="select-field" onchange="updateRodProperties()">
+          <option value="">Select a DIN threaded rod type...</option>
+        </select>
+      </div>
+
+      <!-- Rod Properties Display -->
+      <div id="rodProperties" class="hidden mt-6">
+        <h3 class="heading-3">Rod Properties</h3>
+        <div class="grid-3">
+          <div class="input-group">
+            <label class="input-label">P (Pitch):</label>
+            <input id="propP" class="input-field" readonly />
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="input-group">
+            <label class="input-label">D_min:</label>
+            <input id="propDMin" class="input-field" readonly />
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="input-group">
+            <label class="input-label">D_max:</label>
+            <input id="propDMax" class="input-field" readonly />
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="input-group">
+            <label class="input-label">D1_min:</label>
+            <input id="propD1Min" class="input-field" readonly />
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="input-group">
+            <label class="input-label">D1_max:</label>
+            <input id="propD1Max" class="input-field" readonly />
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="input-group">
+            <label class="input-label">D2:</label>
+            <input id="propD2" class="input-field" readonly />
+            <span class="text-gray-400">mm</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Calculation Section -->
+    <div class="section-card">
+      <h2 class="heading-3">Torque/Force Calculation</h2>
+      
+      <div class="grid-2">
+        <!-- Force to Torque -->
+        <div class="bg-gray-700 rounded-lg p-4">
+          <h3 class="text-lg font-semibold text-white mb-4">Calculate Torque from Force</h3>
+          
+          <div class="input-group">
+            <label for="inputForce" class="input-label">Force F:</label>
+            <input type="number" id="inputForce" class="input-field" placeholder="Enter force" oninput="calculateTorqueFromForce()" />
+            <span class="text-gray-400">kN</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="frictionThread" class="input-label">Thread Friction μ:</label>
+            <input type="number" id="frictionThread" class="input-field" value="0.14" step="0.01" oninput="calculateTorqueFromForce()" />
+            <span class="text-gray-400">-</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="frictionHead" class="input-label">Head Friction μ':</label>
+            <input type="number" id="frictionHead" class="input-field" value="0.14" step="0.01" oninput="calculateTorqueFromForce()" />
+            <span class="text-gray-400">-</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="keyWidth" class="input-label">Key Width N:</label>
+            <input type="number" id="keyWidth" class="input-field" value="65" oninput="calculateTorqueFromForce()" />
+            <span class="text-gray-400">mm</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="headHeight" class="input-label">Head Height h:</label>
+            <input type="number" id="headHeight" class="input-field" value="3" oninput="calculateTorqueFromForce()" />
+            <span class="text-gray-400">mm</span>
+          </div>
+        </div>
+
+        <!-- Torque to Force -->
+        <div class="bg-gray-700 rounded-lg p-4">
+          <h3 class="text-lg font-semibold text-white mb-4">Calculate Force from Torque</h3>
+          
+          <div class="input-group">
+            <label for="inputTorque" class="input-label">Total Torque M:</label>
+            <input type="number" id="inputTorque" class="input-field" placeholder="Enter torque" oninput="calculateForceFromTorque()" />
+            <span class="text-gray-400">Nm</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="frictionThread2" class="input-label">Thread Friction μ:</label>
+            <input type="number" id="frictionThread2" class="input-field" value="0.14" step="0.01" oninput="calculateForceFromTorque()" />
+            <span class="text-gray-400">-</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="frictionHead2" class="input-label">Head Friction μ':</label>
+            <input type="number" id="frictionHead2" class="input-field" value="0.14" step="0.01" oninput="calculateForceFromTorque()" />
+            <span class="text-gray-400">-</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="keyWidth2" class="input-label">Key Width N:</label>
+            <input type="number" id="keyWidth2" class="input-field" value="65" oninput="calculateForceFromTorque()" />
+            <span class="text-gray-400">mm</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="headHeight2" class="input-label">Head Height h:</label>
+            <input type="number" id="headHeight2" class="input-field" value="3" oninput="calculateForceFromTorque()" />
+            <span class="text-gray-400">mm</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Summary Section - Above detailed calculations -->
+    <div id="resultsSummary" class="summary-card hidden">
+      <div class="summary-header">Calculation Results</div>
+      <div class="summary-grid">
+        <div class="summary-section">
+          <div class="summary-section-title">Force to Torque</div>
+          <div class="summary-item">
+            <span class="summary-label">Thread Torque M<sub>γ</sub></span>
+            <span class="summary-value" id="summaryMgamma">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Head Torque M<sub>s</sub></span>
+            <span class="summary-value" id="summaryMs">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Total Torque M</span>
+            <span class="summary-value" id="summaryMTotal">-</span>
+          </div>
+        </div>
+        <div class="summary-section">
+          <div class="summary-section-title">Torque to Force</div>
+          <div class="summary-item">
+            <span class="summary-label">Applied Force F</span>
+            <span class="summary-value" id="summaryForce">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Thread Angle φ</span>
+            <span class="summary-value" id="summaryPhi">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Friction Angle ε₁</span>
+            <span class="summary-value" id="summaryEpsilon">-</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detailed Calculations Section -->
+    <div id="detailedCalculations" class="results-container hidden">
+      <div class="results-header">
+        <h2 class="heading-2">Detailed Calculations</h2>
+      </div>
+      
+      <!-- Force to Torque Calculations -->
+      <div id="forceToTorqueCalcs" class="calc-box">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-white">Force to Torque Calculation Steps</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">r<sub>m</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">D₂ / 2</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="calcRm">-</span>
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">φ</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">atan(P / (π × Ø))</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="calcPhi">-</span>
+            <span class="text-gray-400">deg</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">ε₁</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">atan(μ / cos(α))</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="calcEpsilon1">-</span>
+            <span class="text-gray-400">deg</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">M<sub>γ</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">F × tan(φ + ε₁) × r<sub>m</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="calcMgamma">-</span>
+            <span class="text-gray-400">Nm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">r'<sub>m</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">(N + d<sub>h</sub>) / 4</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="calcRmPrime">-</span>
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">M<sub>s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">μ' × F × r'<sub>m</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="calcMs">-</span>
+            <span class="text-gray-400">Nm</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">M</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">M<sub>γ</sub> + M<sub>s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="calcMTotal">-</span>
+            <span class="text-gray-400">Nm</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Torque to Force Calculations -->
+      <div id="torqueToForceCalcs" class="calc-box mt-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-white">Torque to Force Calculation Steps</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">Given</span>
+            <span class="calc-equals">:</span>
+            <span class="calc-expression">M = M<sub>γ</sub> + M<sub>s</sub></span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">M<sub>γ</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">M - M<sub>s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="calcMgammaReverse">-</span>
+            <span class="text-gray-400">Nm</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">F</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">M<sub>γ</sub> / (tan(φ + ε₁) × r<sub>m</sub>)</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="calcForceResult">-</span>
+            <span class="text-gray-400">kN</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Variable Definitions -->
+      <div class="calc-box mt-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-white">Variable Definitions</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">F</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Axial force [kN]</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">Ø</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Thread outer diameter [mm]</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">D₂</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Thread pitch diameter [mm]</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">P</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Thread pitch [mm]</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">α</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Thread half-angle = 30° for metric threads</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">φ</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Thread lead angle [deg]</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">μ</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Thread friction coefficient</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">ε₁</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Thread friction angle [deg]</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">μ'</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Friction factor between screw head/nut and underlay</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">N</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Key width [mm]</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">d<sub>h</sub></sub>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Head height [mm]</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let rodData = [];
+    let selectedRod = null;
+
+    // Load CSV data and populate dropdown
+    async function loadRodData() {
+      try {
+        const response = await fetch('DIN_threaded_rods.csv');
+        const csvText = await response.text();
+        
+        // Parse CSV data
+        const lines = csvText.split('\n');
+        const headers = lines[0].split(';');
+        
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (line) {
+            const values = line.split(';');
+            if (values.length >= 7) {
+              rodData.push({
+                Type: values[0],
+                P: parseFloat(values[1]),
+                D_min: parseFloat(values[2]),
+                D_max: parseFloat(values[3]),
+                D1_min: parseFloat(values[4]),
+                D1_max: parseFloat(values[5]),
+                D2: parseFloat(values[6])
+              });
+            }
+          }
+        }
+        
+        // Populate dropdown
+        const dropdown = document.getElementById('rodType');
+        rodData.forEach(rod => {
+          const option = document.createElement('option');
+          option.value = rod.Type;
+          option.textContent = rod.Type;
+          dropdown.appendChild(option);
+        });
+        
+      } catch (error) {
+        console.error('Error loading rod data:', error);
+        alert('Error loading rod data. Please check the CSV file.');
+      }
+    }
+
+    // Update rod properties display when type is selected
+    function updateRodProperties() {
+      const selectedType = document.getElementById('rodType').value;
+      const propertiesDiv = document.getElementById('rodProperties');
+      
+      if (selectedType) {
+        selectedRod = rodData.find(rod => rod.Type === selectedType);
+        
+        if (selectedRod) {
+          document.getElementById('propP').value = selectedRod.P;
+          document.getElementById('propDMin').value = selectedRod.D_min;
+          document.getElementById('propDMax').value = selectedRod.D_max;
+          document.getElementById('propD1Min').value = selectedRod.D1_min;
+          document.getElementById('propD1Max').value = selectedRod.D1_max;
+          document.getElementById('propD2').value = selectedRod.D2;
+          
+          propertiesDiv.classList.remove('hidden');
+          
+          // Recalculate if inputs exist
+          calculateTorqueFromForce();
+          calculateForceFromTorque();
+        }
+      } else {
+        propertiesDiv.classList.add('hidden');
+        hideResults();
+        selectedRod = null;
+      }
+    }
+
+    // Calculate torque from force using detailed methodology
+    function calculateTorqueFromForce() {
+      if (!selectedRod) return;
+      
+      const force = parseFloat(document.getElementById('inputForce').value);
+      const muThread = parseFloat(document.getElementById('frictionThread').value);
+      const muHead = parseFloat(document.getElementById('frictionHead').value);
+      const keyWidth = parseFloat(document.getElementById('keyWidth').value);
+      const headHeight = parseFloat(document.getElementById('headHeight').value);
+      
+      if (isNaN(force) || isNaN(muThread) || isNaN(muHead) || isNaN(keyWidth) || isNaN(headHeight)) {
+        hideResults();
+        return;
+      }
+      
+      // Convert force from kN to N
+      const forceN = force * 1000;
+      
+      // Constants
+      const alpha = 30 * Math.PI / 180; // Thread half-angle (30 degrees)
+      const outerDiameter = (selectedRod.D_min + selectedRod.D_max) / 2; // Average outer diameter
+      const pitchDiameter = selectedRod.D2; // D2 is the pitch diameter
+      const pitch = selectedRod.P; // Thread pitch in mm
+      
+      // Calculate intermediate values
+      const rm = pitchDiameter / 2; // Mean radius in mm
+      const phi = Math.atan(pitch / (Math.PI * outerDiameter)) * 180 / Math.PI; // Lead angle in degrees
+      const epsilon1 = Math.atan(muThread / Math.cos(alpha)) * 180 / Math.PI; // Friction angle in degrees
+      
+      // Calculate thread torque Mγ
+      const phiRad = phi * Math.PI / 180;
+      const epsilon1Rad = epsilon1 * Math.PI / 180;
+      const Mgamma = forceN * Math.tan(phiRad + epsilon1Rad) * (rm / 1000); // Convert mm to m
+      
+      // Calculate head torque Ms
+      const dh = outerDiameter + headHeight; // Assumed head diameter
+      const rmPrime = (keyWidth + dh) / 4; // Mean radius for head friction
+      const Ms = muHead * forceN * (rmPrime / 1000); // Convert mm to m
+      
+      // Total torque
+      const totalTorque = Mgamma + Ms;
+      
+      // Update calculation displays
+      updateForceToTorqueCalculations({
+        rm: rm.toFixed(2),
+        phi: phi.toFixed(4),
+        epsilon1: epsilon1.toFixed(4),
+        Mgamma: Mgamma.toFixed(2),
+        rmPrime: rmPrime.toFixed(2),
+        Ms: Ms.toFixed(2),
+        totalTorque: totalTorque.toFixed(2)
+      });
+      
+      showResults();
+    }
+
+    // Calculate force from torque using detailed methodology
+    function calculateForceFromTorque() {
+      if (!selectedRod) return;
+      
+      const totalTorque = parseFloat(document.getElementById('inputTorque').value);
+      const muThread = parseFloat(document.getElementById('frictionThread2').value);
+      const muHead = parseFloat(document.getElementById('frictionHead2').value);
+      const keyWidth = parseFloat(document.getElementById('keyWidth2').value);
+      const headHeight = parseFloat(document.getElementById('headHeight2').value);
+      
+      if (isNaN(totalTorque) || isNaN(muThread) || isNaN(muHead) || isNaN(keyWidth) || isNaN(headHeight)) {
+        hideResults();
+        return;
+      }
+      
+      // Constants
+      const alpha = 30 * Math.PI / 180; // Thread half-angle (30 degrees)
+      const outerDiameter = (selectedRod.D_min + selectedRod.D_max) / 2; // Average outer diameter
+      const pitchDiameter = selectedRod.D2; // D2 is the pitch diameter
+      const pitch = selectedRod.P; // Thread pitch in mm
+      
+      // Calculate intermediate values
+      const rm = pitchDiameter / 2; // Mean radius in mm
+      const phi = Math.atan(pitch / (Math.PI * outerDiameter)) * 180 / Math.PI; // Lead angle in degrees
+      const epsilon1 = Math.atan(muThread / Math.cos(alpha)) * 180 / Math.PI; // Friction angle in degrees
+      
+      // Calculate head torque parameters
+      const dh = outerDiameter + headHeight; // Assumed head diameter
+      const rmPrime = (keyWidth + dh) / 4; // Mean radius for head friction
+      
+      // Iterative solution to find force
+      // M = Mγ + Ms = F * tan(φ + ε₁) * rm + μ' * F * r'm
+      // M = F * (tan(φ + ε₁) * rm + μ' * r'm)
+      
+      const phiRad = phi * Math.PI / 180;
+      const epsilon1Rad = epsilon1 * Math.PI / 180;
+      
+      const denominator = Math.tan(phiRad + epsilon1Rad) * (rm / 1000) + muHead * (rmPrime / 1000);
+      const forceN = totalTorque / denominator;
+      const forceKN = forceN / 1000;
+      
+      // Calculate component torques for display
+      const Mgamma = forceN * Math.tan(phiRad + epsilon1Rad) * (rm / 1000);
+      const Ms = muHead * forceN * (rmPrime / 1000);
+      
+      // Update calculation displays
+      updateTorqueToForceCalculations({
+        rm: rm.toFixed(2),
+        phi: phi.toFixed(4),
+        epsilon1: epsilon1.toFixed(4),
+        MgammaReverse: Mgamma.toFixed(2),
+        rmPrime: rmPrime.toFixed(2),
+        forceResult: forceKN.toFixed(2)
+      });
+      
+      // Update summary for torque to force
+      document.getElementById('summaryForce').textContent = forceKN.toFixed(2) + ' kN';
+      document.getElementById('summaryPhi').textContent = phi.toFixed(4) + '°';
+      document.getElementById('summaryEpsilon').textContent = epsilon1.toFixed(4) + '°';
+      
+      showResults();
+    }
+    
+    // Update force to torque calculation displays
+    function updateForceToTorqueCalculations(calcs) {
+      document.getElementById('calcRm').textContent = calcs.rm;
+      document.getElementById('calcPhi').textContent = calcs.phi;
+      document.getElementById('calcEpsilon1').textContent = calcs.epsilon1;
+      document.getElementById('calcMgamma').textContent = calcs.Mgamma;
+      document.getElementById('calcRmPrime').textContent = calcs.rmPrime;
+      document.getElementById('calcMs').textContent = calcs.Ms;
+      document.getElementById('calcMTotal').textContent = calcs.totalTorque;
+      
+      // Update summary
+      document.getElementById('summaryMgamma').textContent = calcs.Mgamma + ' Nm';
+      document.getElementById('summaryMs').textContent = calcs.Ms + ' Nm';
+      document.getElementById('summaryMTotal').textContent = calcs.totalTorque + ' Nm';
+    }
+    
+    // Update torque to force calculation displays
+    function updateTorqueToForceCalculations(calcs) {
+      document.getElementById('calcMgammaReverse').textContent = calcs.MgammaReverse;
+      document.getElementById('calcForceResult').textContent = calcs.forceResult;
+    }
+    
+    // Show results sections
+    function showResults() {
+      document.getElementById('resultsSummary').classList.remove('hidden');
+      document.getElementById('detailedCalculations').classList.remove('hidden');
+    }
+    
+    // Hide results sections
+    function hideResults() {
+      document.getElementById('resultsSummary').classList.add('hidden');
+      document.getElementById('detailedCalculations').classList.add('hidden');
+    }
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', loadRodData);
+  </script>
+
+  <footer class="text-xs text-gray-400 text-center mt-8">
+    Free to use. Created by Magnus Fjeld Olsen.
+  </footer>
+  
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+  
+</body>
+</html>
