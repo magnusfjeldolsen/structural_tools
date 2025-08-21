@@ -33,47 +33,73 @@
     <div class="section-card">
       <h2 class="heading-3">Rod Selection</h2>
       
-      <div class="input-group">
-        <label for="rodType" class="input-label">Select DIN Rod Type:</label>
-        <select id="rodType" class="select-field" onchange="updateRodProperties()">
-          <option value="">Select a DIN threaded rod type...</option>
-        </select>
+      <div class="grid-2-dropdown">
+        <div class="input-group">
+          <label for="rodType" class="input-label">Select DIN Rod Type:</label>
+          <select id="rodType" class="select-field" onchange="updateRodProperties()">
+            <option value="">Select a DIN threaded rod type...</option>
+          </select>
+        </div>
+        <div></div> <!-- Empty second column -->
       </div>
 
       <!-- Rod Properties Display -->
-      <div id="rodProperties" class="hidden mt-6">
+      <div id="rodProperties" class="hidden" style="margin-top: 1rem;">
         <h3 class="heading-3">Rod Properties (from DIN Standard)</h3>
-        <div class="grid-3">
-          <div class="input-group">
-            <label class="input-label">P (Pitch):</label>
-            <input id="propP" class="input-field" readonly />
-            <span class="text-gray-400">mm</span>
+        <div class="grid-4x3">
+          <!-- First row: P - D_min - blank - blank -->
+          <div class="input-group-compact">
+            <label class="input-label-compact">P (Pitch)</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propP" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
           </div>
-          <div class="input-group">
-            <label class="input-label">D_min:</label>
-            <input id="propDMin" class="input-field" readonly />
-            <span class="text-gray-400">mm</span>
+          <div class="input-group-compact">
+            <label class="input-label-compact">D_min</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propDMin" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
           </div>
-          <div class="input-group">
-            <label class="input-label">D1 (avg):</label>
-            <input id="propD1Avg" class="input-field" readonly />
-            <span class="text-gray-400">mm</span>
+          <div></div> <!-- Empty third column -->
+          <div></div> <!-- Empty fourth column -->
+          
+          <!-- Second row: D1 - D2 - blank - blank -->
+          <div class="input-group-compact">
+            <label class="input-label-compact">D1 (avg)</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propD1Avg" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
           </div>
-          <div class="input-group">
-            <label class="input-label">D2:</label>
-            <input id="propD2" class="input-field" readonly />
-            <span class="text-gray-400">mm</span>
+          <div class="input-group-compact">
+            <label class="input-label-compact">D2</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propD2" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
           </div>
-          <div class="input-group">
-            <label class="input-label">Key Width:</label>
-            <input id="propKeyWidth" class="input-field" readonly />
-            <span class="text-gray-400">mm</span>
+          <div></div> <!-- Empty third column -->
+          <div></div> <!-- Empty fourth column -->
+          
+          <!-- Third row: Key Width - Normal Fit Hole - blank - blank -->
+          <div class="input-group-compact">
+            <label class="input-label-compact">Key Width</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propKeyWidth" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
           </div>
-          <div class="input-group">
-            <label class="input-label">Normal Fit Hole:</label>
-            <input id="propNormalFitHole" class="input-field" readonly />
-            <span class="text-gray-400">mm</span>
+          <div class="input-group-compact">
+            <label class="input-label-compact">Normal Fit Hole</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propNormalFitHole" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
           </div>
+          <div></div> <!-- Empty third column -->
+          <div></div> <!-- Empty fourth column -->
         </div>
       </div>
     </div>
@@ -137,18 +163,27 @@
           
           <div id="quickResults" class="hidden mt-4 p-4 bg-gray-700 rounded-lg">
             <h4 class="text-lg font-semibold text-white mb-3">Quick Results</h4>
-            <div class="space-y-2">
-              <div class="flex justify-between">
-                <span class="text-gray-300">Thread Torque Mγ:</span>
-                <span class="text-blue-400 font-mono" id="resultMgamma">-</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-gray-300">Head Torque Ms:</span>
-                <span class="text-green-400 font-mono" id="resultMs">-</span>
-              </div>
-              <div class="flex justify-between border-t border-gray-600 pt-2">
-                <span class="text-white font-semibold">Total Torque M:</span>
+            <div class="space-y-3">
+              <div class="flex justify-between border-b border-gray-600 pb-2">
+                <span class="text-white font-bold text-lg">Total Torque M:</span>
                 <span class="text-yellow-400 font-mono text-lg font-bold" id="resultMTotal">-</span>
+              </div>
+              <div class="text-gray-400 text-sm italic mb-2">where:</div>
+              <div class="space-y-2 ml-4">
+                <div class="flex justify-between">
+                  <span class="text-gray-300">Thread Torque Mγ:</span>
+                  <span class="text-blue-400 font-mono" id="resultMgamma">-</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-300">Head Torque Ms:</span>
+                  <span class="text-green-400 font-mono" id="resultMs">-</span>
+                </div>
+              </div>
+              <div class="border-t border-gray-600 pt-2 mt-3">
+                <div class="flex justify-between">
+                  <span class="text-white font-semibold">Rod Tensile Stress σ_rod:</span>
+                  <span class="text-orange-400 font-mono font-bold" id="resultTensileStress">-</span>
+                </div>
               </div>
             </div>
           </div>
@@ -200,18 +235,27 @@
           
           <div id="quickResults2" class="hidden mt-4 p-4 bg-gray-700 rounded-lg">
             <h4 class="text-lg font-semibold text-white mb-3">Quick Results</h4>
-            <div class="space-y-2">
-              <div class="flex justify-between">
-                <span class="text-gray-300">Calculated Force F:</span>
+            <div class="space-y-3">
+              <div class="flex justify-between border-b border-gray-600 pb-2">
+                <span class="text-white font-bold text-lg">Calculated Force F:</span>
                 <span class="text-yellow-400 font-mono text-lg font-bold" id="resultForce">-</span>
               </div>
-              <div class="flex justify-between">
-                <span class="text-gray-300">Verification Mγ:</span>
-                <span class="text-blue-400 font-mono" id="resultMgammaVerify">-</span>
+              <div class="text-gray-400 text-sm italic mb-2">verification:</div>
+              <div class="space-y-2 ml-4">
+                <div class="flex justify-between">
+                  <span class="text-gray-300">Verification Mγ:</span>
+                  <span class="text-blue-400 font-mono" id="resultMgammaVerify">-</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-300">Verification Ms:</span>
+                  <span class="text-green-400 font-mono" id="resultMsVerify">-</span>
+                </div>
               </div>
-              <div class="flex justify-between">
-                <span class="text-gray-300">Verification Ms:</span>
-                <span class="text-green-400 font-mono" id="resultMsVerify">-</span>
+              <div class="border-t border-gray-600 pt-2 mt-3">
+                <div class="flex justify-between">
+                  <span class="text-white font-semibold">Rod Tensile Stress σ_rod:</span>
+                  <span class="text-orange-400 font-mono font-bold" id="resultTensileStress2">-</span>
+                </div>
               </div>
             </div>
           </div>
@@ -347,6 +391,15 @@
           <h3 class="text-lg font-semibold text-white">Final Results</h3>
         </div>
         <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">σ_rod</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">F / (π × D2² / 4)</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispTensileStressFinal">-</span>
+            <span class="text-gray-400">MPa</span>
+          </div>
+          <div class="calc-separator"></div>
           <div class="calc-row">
             <span class="calc-label">Mγ</span>
             <span class="calc-equals">=</span>
@@ -515,6 +568,11 @@
       const Ms = muHead * forceN * (rmPrime / 1000); // Convert mm to m
       const totalTorque = Mgamma + Ms;
       
+      // Calculate rod tensile stress: σ_rod = F/(π*D2^2/4) in MPa
+      const D2 = selectedRod.D2; // mm
+      const crossSectionalArea = Math.PI * Math.pow(D2 / 1000, 2) / 4; // m²
+      const tensileStress = (forceN / crossSectionalArea) / 1000000; // Convert Pa to MPa
+      
       // Display results
       displayResults({
         force: force,
@@ -533,7 +591,9 @@
         rmPrime: rmPrime,
         Mgamma: Mgamma,
         Ms: Ms,
-        totalTorque: totalTorque
+        totalTorque: totalTorque,
+        tensileStress: tensileStress,
+        D2: D2
       });
       
       showResults();
@@ -567,6 +627,7 @@
       document.getElementById('resultMgamma').textContent = data.Mgamma.toFixed(1) + ' Nm';
       document.getElementById('resultMs').textContent = data.Ms.toFixed(1) + ' Nm';
       document.getElementById('resultMTotal').textContent = data.totalTorque.toFixed(1) + ' Nm';
+      document.getElementById('resultTensileStress').textContent = data.tensileStress.toFixed(1) + ' MPa';
       
       // Detailed display - Input parameters
       document.getElementById('dispForce').textContent = data.force.toFixed(1);
@@ -589,6 +650,7 @@
       document.getElementById('dispRmPrime').textContent = data.rmPrime.toFixed(2);
       
       // Detailed display - Final results
+      document.getElementById('dispTensileStressFinal').textContent = data.tensileStress.toFixed(1);
       document.getElementById('dispMgammaFinal').textContent = data.Mgamma.toFixed(3);
       document.getElementById('dispMsFinal').textContent = data.Ms.toFixed(3);
       document.getElementById('dispMTotalFinal').textContent = data.totalTorque.toFixed(3);
@@ -656,6 +718,11 @@
       const MsVerify = muHead * forceN * (rmPrime / 1000);
       const totalTorqueVerify = MgammaVerify + MsVerify;
       
+      // Calculate rod tensile stress: σ_rod = F/(π*D2^2/4) in MPa
+      const D2 = selectedRod.D2; // mm
+      const crossSectionalArea = Math.PI * Math.pow(D2 / 1000, 2) / 4; // m²
+      const tensileStress = (forceN / crossSectionalArea) / 1000000; // Convert Pa to MPa
+      
       // Display results
       displayTorqueToForceResults({
         torque: torque,
@@ -675,7 +742,9 @@
         forceKN: forceKN,
         MgammaVerify: MgammaVerify,
         MsVerify: MsVerify,
-        totalTorqueVerify: totalTorqueVerify
+        totalTorqueVerify: totalTorqueVerify,
+        tensileStress: tensileStress,
+        D2: D2
       });
       
       showTorqueToForceResults();
@@ -713,6 +782,7 @@
       document.getElementById('resultForce').textContent = data.forceKN.toFixed(4) + ' kN';
       document.getElementById('resultMgammaVerify').textContent = data.MgammaVerify.toFixed(4) + ' Nm';
       document.getElementById('resultMsVerify').textContent = data.MsVerify.toFixed(4) + ' Nm';
+      document.getElementById('resultTensileStress2').textContent = data.tensileStress.toFixed(1) + ' MPa';
       
       // Update detailed display for torque to force mode
       document.getElementById('dispForce').textContent = data.forceKN.toFixed(4);
@@ -735,6 +805,7 @@
       document.getElementById('dispRmPrime').textContent = data.rmPrime.toFixed(2);
       
       // Final results - show verification torques
+      document.getElementById('dispTensileStressFinal').textContent = data.tensileStress.toFixed(1);
       document.getElementById('dispMgammaFinal').textContent = data.MgammaVerify.toFixed(4);
       document.getElementById('dispMsFinal').textContent = data.MsVerify.toFixed(4);
       document.getElementById('dispMTotalFinal').textContent = data.totalTorqueVerify.toFixed(4);

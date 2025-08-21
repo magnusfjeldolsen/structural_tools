@@ -61,8 +61,8 @@
 .results-container {
   background-color: var(--bg-tertiary);
   border-radius: var(--border-radius-sm);
-  padding: 1.5rem;
-  margin-top: 2rem;
+  padding: 1.25rem;
+  margin-top: 1.5rem;
   border: 1px solid var(--border-light);
 }
 
