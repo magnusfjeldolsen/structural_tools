@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Carbon fiber reinforcement calculator for concrete plates - CFRP strengthening analysis">
+  <meta name="keywords" content="CFRP, carbon fiber, concrete strengthening, structural engineering, reinforcement">
+  <title>CFRP Concrete Plate Reinforcement Calculator</title>
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <style>
+    .hero-bg {
+      background: linear-gradient(135deg, #1f2937 0%, #111827 50%, #0f172a 100%);
+    }
+    
+    .result-card {
+      background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+      border: 1px solid #4b5563;
+    }
+    
+    .input-group {
+      background: rgba(31, 41, 55, 0.5);
+      border: 1px solid #4b5563;
+    }
+    
+    .highlight {
+      background: #fef3c7;
+      color: #92400e;
+      font-weight: bold;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    
+    .calculation-step {
+      background: rgba(59, 130, 246, 0.1);
+      border-left: 4px solid #3b82f6;
+      padding: 1rem;
+      margin: 0.5rem 0;
+    }
+    
+    .result-summary {
+      background: linear-gradient(135deg, #065f46 0%, #047857 100%);
+      border: 2px solid #10b981;
+    }
+    
+    .warning {
+      background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+      border: 2px solid #ef4444;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen hero-bg">
+
+  <!-- Header -->
+  <header class="w-full max-w-7xl mx-auto p-6">
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-red-400 bg-clip-text text-transparent mb-2">
+          CFRP Concrete Plate Reinforcement
+        </h1>
+        <p class="text-xl text-gray-300">Carbon Fiber Reinforced Polymer strengthening analysis</p>
+      </div>
+      <a href="../index.html" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
+        ← Back to Tools
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="w-full max-w-7xl mx-auto p-6">
+    
+    <!-- Input Section -->
+    <div class="space-y-8 mb-8">
+      
+      <!-- Basic Parameters -->
+      <div class="input-group rounded-xl p-6">
+        <h2 class="text-2xl font-bold text-white mb-6">Basic Parameters</h2>
+        
+        <div class="space-y-3">
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">M₀</div>
+            <div class="col-span-3">
+              <input type="number" id="M0" value="18.8" step="0.1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Moment at installation (kNm)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">MEd</div>
+            <div class="col-span-3">
+              <input type="number" id="MEd" value="90" step="0.1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Design moment ULS (kNm)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">b</div>
+            <div class="col-span-3">
+              <input type="number" id="b" value="1000" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Width (mm)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">h</div>
+            <div class="col-span-3">
+              <input type="number" id="h" value="200" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Height (mm)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">fck</div>
+            <div class="col-span-3">
+              <select id="concrete_grade" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+                <option value="20">B20</option>
+                <option value="25">B25</option>
+                <option value="30">B30</option>
+                <option value="35" selected>B35</option>
+                <option value="40">B40</option>
+                <option value="45">B45</option>
+                <option value="50">B50</option>
+              </select>
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Concrete grade (MPa)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">γc</div>
+            <div class="col-span-3">
+              <input type="number" id="gamma_c" value="1.5" step="0.1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Safety factor</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">αcc</div>
+            <div class="col-span-3">
+              <input type="number" id="alpha_cc" value="0.85" step="0.01" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Factor</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">φ</div>
+            <div class="col-span-3">
+              <input type="number" id="phi" value="2.07" step="0.01" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">
+              Creep coefficient
+              <a href="https://eurocodeapplied.com/design/en1992/creep-shrinkage" target="_blank" class="text-blue-400 hover:text-blue-300 underline ml-1">
+                (calc online)
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Steel Reinforcement -->
+      <div class="input-group rounded-xl p-6">
+        <h2 class="text-2xl font-bold text-white mb-6">Steel Reinforcement</h2>
+        
+        <div class="space-y-3">
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">φ</div>
+            <div class="col-span-3">
+              <input type="number" id="phi_steel" value="12" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Bar diameter (mm)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">c</div>
+            <div class="col-span-3">
+              <input type="number" id="c" value="15" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Cover (mm)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">ccl</div>
+            <div class="col-span-3">
+              <input type="number" id="ccl" value="140" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Spacing (mm)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">fyk</div>
+            <div class="col-span-3">
+              <input type="number" id="fyk" value="500" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Yield strength (MPa)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">Es</div>
+            <div class="col-span-3">
+              <input type="number" id="Es" value="200" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Steel modulus (GPa)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">γs</div>
+            <div class="col-span-3">
+              <input type="number" id="gamma_s" value="1.25" step="0.01" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Safety factor</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- CFRP Properties -->
+      <div class="input-group rounded-xl p-6">
+        <h2 class="text-2xl font-bold text-white mb-6">CFRP Properties</h2>
+        
+        <div class="space-y-3">
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">n</div>
+            <div class="col-span-3">
+              <input type="number" id="n_layers" value="1" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Number of layers</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">nperlag</div>
+            <div class="col-span-3">
+              <input type="number" id="n_per_layer" value="3" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Strips per layer</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">tf</div>
+            <div class="col-span-3">
+              <input type="number" id="tf" value="1.4" step="0.1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Thickness (mm)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">bfrp</div>
+            <div class="col-span-3">
+              <input type="number" id="bfrp" value="150" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Strip width (mm)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">εfk</div>
+            <div class="col-span-3">
+              <input type="number" id="epsilon_fk" value="0.016" step="0.001" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Ultimate strain</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">Efk</div>
+            <div class="col-span-3">
+              <input type="number" id="Efk" value="163" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Elastic modulus (GPa)</div>
+          </div>
+          
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-2 text-sm font-medium text-gray-300">γfrp</div>
+            <div class="col-span-3">
+              <input type="number" id="gamma_frp" value="1.2" step="0.1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+            </div>
+            <div class="col-span-7 text-xs text-gray-400">Safety factor</div>
+          </div>
+        </div>
+        
+        <div class="mt-6">
+          <button onclick="calculate()" class="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition">
+            Calculate CFRP Reinforcement
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Results Section -->
+    <div id="results" class="hidden">
+      <!-- Summary Card -->
+      <div id="summary-card" class="result-summary rounded-xl p-6 mb-8">
+        <h2 class="text-2xl font-bold text-white mb-4">Results Summary</h2>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div class="text-center">
+            <div class="text-3xl font-bold text-green-400" id="utilization-ratio">-</div>
+            <div class="text-sm text-gray-300">MEd/MRd,sf</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-yellow-400" id="omega-utilization">-</div>
+            <div class="text-sm text-gray-300">ω/ωbal</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-blue-400" id="capacity-increase">-</div>
+            <div class="text-sm text-gray-300">Capacity Increase</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-purple-400" id="section-classification">-</div>
+            <div class="text-sm text-gray-300">Section Type</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold" id="status-indicator">-</div>
+            <div class="text-sm text-gray-300">Status</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Detailed Calculations -->
+      <div class="result-card rounded-xl p-6 mb-8">
+        <h2 class="text-2xl font-bold text-white mb-6">Detailed Calculations</h2>
+        <div id="calculations" class="space-y-4"></div>
+      </div>
+    </div>
+    
+  </main>
+
+  <script>
+    // Concrete properties mapping
+    const concreteProperties = {
+      20: { fck: 20, fcm: 28 },
+      25: { fck: 25, fcm: 33 },
+      30: { fck: 30, fcm: 38 },
+      35: { fck: 35, fcm: 43 },
+      40: { fck: 40, fcm: 48 },
+      45: { fck: 45, fcm: 53 },
+      50: { fck: 50, fcm: 58 }
+    };
+
+    function calculate() {
+      // Get input values
+      const inputs = {
+        M0: parseFloat(document.getElementById('M0').value),
+        MEd: parseFloat(document.getElementById('MEd').value),
+        b: parseFloat(document.getElementById('b').value),
+        h: parseFloat(document.getElementById('h').value),
+        concrete_grade: parseInt(document.getElementById('concrete_grade').value),
+        gamma_c: parseFloat(document.getElementById('gamma_c').value),
+        alpha_cc: parseFloat(document.getElementById('alpha_cc').value),
+        phi: parseFloat(document.getElementById('phi').value),
+        phi_steel: parseFloat(document.getElementById('phi_steel').value),
+        c: parseFloat(document.getElementById('c').value),
+        ccl: parseFloat(document.getElementById('ccl').value),
+        fyk: parseFloat(document.getElementById('fyk').value),
+        Es: parseFloat(document.getElementById('Es').value),
+        gamma_s: parseFloat(document.getElementById('gamma_s').value),
+        n_layers: parseInt(document.getElementById('n_layers').value),
+        n_per_layer: parseInt(document.getElementById('n_per_layer').value),
+        tf: parseFloat(document.getElementById('tf').value),
+        bfrp: parseFloat(document.getElementById('bfrp').value),
+        epsilon_fk: parseFloat(document.getElementById('epsilon_fk').value),
+        Efk: parseFloat(document.getElementById('Efk').value),
+        gamma_frp: parseFloat(document.getElementById('gamma_frp').value)
+      };
+
+      const M1 = inputs.MEd - inputs.M0;
+      
+      // Concrete parameters
+      const concrete = concreteProperties[inputs.concrete_grade];
+      const fck = concrete.fck;
+      const fcm = concrete.fcm;
+      
+      let fctm;
+      if (fck <= 50) {
+        fctm = 0.3 * Math.pow(fck, 2/3);
+      } else {
+        fctm = 2.12 * Math.ln(1 + fcm/10);
+      }
+      
+      const Ecm = 22000 * Math.pow(fcm/10, 0.3);
+      
+      // Lambda factor for compression zone
+      let lambda;
+      if (fck <= 50) {
+        lambda = 0.8;
+      } else if (fck <= 90) {
+        lambda = 0.8 - (fck - 50)/400;
+      } else {
+        lambda = 0;
+      }
+      
+      const fctm_fl = Math.max(fctm * (1.6 - inputs.h/1000), fctm);
+      const fcd = inputs.alpha_cc * fck / inputs.gamma_c;
+      const Ec_eff = Ecm / (1 + inputs.phi);
+      const alpha_s = inputs.Es * 1000 / Ec_eff;
+      
+      // Steel reinforcement  
+      const n_asl = inputs.b / inputs.ccl;
+      const fyd = inputs.fyk / inputs.gamma_s;
+      const Asl = n_asl * Math.PI * Math.pow(inputs.phi_steel, 2) / 4;
+      const d = inputs.h - inputs.c - inputs.phi_steel/2;
+      
+      // CFRP parameters
+      const Af = inputs.n_layers * inputs.n_per_layer * inputs.tf * inputs.bfrp;
+      const epsilon_fd = inputs.epsilon_fk / inputs.gamma_frp;
+      const Efd = inputs.Efk * 1000 / inputs.gamma_frp;
+      
+      // Strain limitation for intermediate crack formation
+      // Formula: epsilon_fd_ic = 0.41 * sqrt(fcd / (n * tf * Efd))
+      // Where fcd is in MPa, tf in mm, Efd in MPa
+      const epsilon_fd_ic = 0.41 * Math.sqrt(fcd / (inputs.n_layers * inputs.tf * Efd));
+      const epsilon_f_max = Math.min(epsilon_fd, epsilon_fd_ic);
+      
+      // Moment capacity before fiber installation
+      const xs = (Asl * fyd) / (lambda * fcd * inputs.b);
+      const MRd_s = (Asl * fyd * (d - lambda * xs / 2)) / 1000000; // Convert Nmm to kNm
+      
+      // Moment capacity after fiber installation
+      const xsf = (Asl * fyd + Af * Efd * epsilon_f_max) / (lambda * fcd * inputs.b);
+      const MRd_sf = (Asl * fyd * (d - lambda * xsf / 2) + epsilon_f_max * Efd * Af * (inputs.h - lambda * xsf / 2)) / 1000000; // Convert Nmm to kNm
+      
+      // Check if section is still under-reinforced
+      const epsilon_c2 = 0.0035; // for fck <= 50 MPa
+      const epsilon_cu0 = 0.000238; // strain in concrete at fiber installation (simplified approximation)
+      const omega_bal = lambda / (1 + (epsilon_f_max + epsilon_cu0) / epsilon_c2);
+      const omega = (Asl * fyd + Af * epsilon_f_max * Efd) / (inputs.b * inputs.h * fcd);
+      
+      const isUnderReinforced = omega <= omega_bal;
+      const utilizationRatio = inputs.MEd / MRd_sf;
+      const capacityIncrease = ((MRd_sf - MRd_s) / MRd_s * 100);
+      
+      const omegaUtilization = omega / omega_bal;
+      
+      // Display results
+      displayResults({
+        inputs,
+        M1,
+        fck, fcm, fctm, Ecm, lambda, fctm_fl, fcd, Ec_eff, alpha_s,
+        n_asl, fyd, Asl, d,
+        Af, epsilon_fd, Efd, epsilon_fd_ic, epsilon_f_max,
+        xs, MRd_s, xsf, MRd_sf,
+        epsilon_c2, epsilon_cu0, omega_bal, omega, isUnderReinforced,
+        utilizationRatio, capacityIncrease, omegaUtilization
+      });
+    }
+
+    function displayResults(calc) {
+      document.getElementById('results').classList.remove('hidden');
+      
+      // Update summary
+      document.getElementById('utilization-ratio').textContent = calc.utilizationRatio.toFixed(3);
+      document.getElementById('omega-utilization').textContent = calc.omegaUtilization.toFixed(3);
+      document.getElementById('capacity-increase').textContent = `+${calc.capacityIncrease.toFixed(1)}%`;
+      document.getElementById('section-classification').textContent = calc.isUnderReinforced ? 'Under-reinforced' : 'Over-reinforced';
+      
+      const statusElement = document.getElementById('status-indicator');
+      if (calc.utilizationRatio <= 1.0 && calc.isUnderReinforced) {
+        statusElement.textContent = 'OK';
+        statusElement.className = 'text-3xl font-bold text-green-400';
+        document.getElementById('summary-card').className = 'result-summary rounded-xl p-6 mb-8';
+      } else {
+        statusElement.textContent = 'FAIL';
+        statusElement.className = 'text-3xl font-bold text-red-400';
+        document.getElementById('summary-card').className = 'warning rounded-xl p-6 mb-8';
+      }
+      
+      // Generate detailed calculations
+      const calculations = document.getElementById('calculations');
+      calculations.innerHTML = generateCalculationSteps(calc);
+    }
+
+    function generateCalculationSteps(calc) {
+      return `
+        <div class="mb-6">
+          <h2 class="text-2xl font-bold text-blue-400 mb-4">CFRP Calculation Results</h2>
+        </div>
+        
+        <!-- Basic Parameters Box -->
+        <div class="calc-box mb-6">
+          <div class="calc-header">
+            <h3 class="text-lg font-semibold text-blue-300">Basic Parameters</h3>
+          </div>
+          <div class="calc-content">
+            <div class="calc-row">
+              <span class="calc-label">M₁</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">M<sub>Ed</sub> - M₀ = ${calc.inputs.MEd} - ${calc.inputs.M0}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.M1.toFixed(1)} kNm</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Concrete Material Box -->
+        <div class="calc-box mb-6">
+          <div class="calc-header">
+            <h3 class="text-lg font-semibold text-yellow-300">Concrete Material</h3>
+          </div>
+          <div class="calc-content">
+            <div class="calc-row">
+              <span class="calc-label">f<sub>ck</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.fck} MPa</span>
+              <span class="calc-label ml-6">f<sub>cm</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">f<sub>ck</sub> + 8 = ${calc.fck} + 8</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.fcm} MPa</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">f<sub>ctm</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">0.3 × f<sub>ck</sub><sup>2/3</sup> = 0.3 × ${calc.fck}<sup>2/3</sup></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.fctm.toFixed(2)} MPa</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">E<sub>cm</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">22000 × (f<sub>cm</sub>/10)<sup>0.3</sup> = 22000 × (${calc.fcm}/10)<sup>0.3</sup></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.Ecm.toFixed(0)} MPa</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">λ</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.lambda}</span>
+              <span class="calc-note">(for f<sub>ck</sub> ≤ 50 MPa)</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">f<sub>cd</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">α<sub>cc</sub> × f<sub>ck</sub> / γ<sub>c</sub> = ${calc.inputs.alpha_cc} × ${calc.fck} / ${calc.inputs.gamma_c}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.fcd.toFixed(2)} MPa</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">E<sub>c,eff</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">E<sub>cm</sub> / (1 + φ) = ${calc.Ecm.toFixed(0)} / (1 + ${calc.inputs.phi})</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.Ec_eff.toFixed(0)} MPa</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">α<sub>s</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">E<sub>s</sub> / E<sub>c,eff</sub> = ${calc.inputs.Es * 1000} / ${calc.Ec_eff.toFixed(0)}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.alpha_s.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Steel Reinforcement Box -->
+        <div class="calc-box mb-6">
+          <div class="calc-header">
+            <h3 class="text-lg font-semibold text-green-300">Steel Reinforcement</h3>
+          </div>
+          <div class="calc-content">
+            <div class="calc-row">
+              <span class="calc-label">n<sub>Asl</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">b / cc<sub>l</sub> = ${calc.inputs.b} / ${calc.inputs.ccl}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.n_asl.toFixed(2)} bars</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">f<sub>yd</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">f<sub>yk</sub> / γ<sub>s</sub> = ${calc.inputs.fyk} / ${calc.inputs.gamma_s}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.fyd} MPa</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">A<sub>sl</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">n<sub>Asl</sub> × π × φ²/4 = ${calc.n_asl.toFixed(2)} × π × ${calc.inputs.phi_steel}²/4</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.Asl.toFixed(1)} mm²</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">d</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">h - c - φ/2 = ${calc.inputs.h} - ${calc.inputs.c} - ${calc.inputs.phi_steel}/2</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.d} mm</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- CFRP Material Box -->
+        <div class="calc-box mb-6">
+          <div class="calc-header">
+            <h3 class="text-lg font-semibold text-purple-300">CFRP Material</h3>
+          </div>
+          <div class="calc-content">
+            <div class="calc-row">
+              <span class="calc-label">A<sub>f</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">n × n<sub>perlag</sub> × t<sub>f</sub> × b<sub>frp</sub> = ${calc.inputs.n_layers} × ${calc.inputs.n_per_layer} × ${calc.inputs.tf} × ${calc.inputs.bfrp}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.Af} mm²</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">ε<sub>fd</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">ε<sub>fk</sub> / γ<sub>frp</sub> = ${calc.inputs.epsilon_fk} / ${calc.inputs.gamma_frp}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.epsilon_fd.toFixed(4)}</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">E<sub>fd</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">E<sub>fk</sub> / γ<sub>frp</sub> = ${calc.inputs.Efk * 1000} / ${calc.inputs.gamma_frp}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.Efd.toFixed(0)} MPa</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">ε<sub>fd,ic</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">0.41 × √(f<sub>cd</sub> / (n × t<sub>f</sub> × E<sub>fd</sub>)) = 0.41 × √(${calc.fcd.toFixed(2)} / (${calc.inputs.n_layers} × ${calc.inputs.tf} × ${calc.Efd.toFixed(0)}))</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.epsilon_fd_ic.toFixed(6)}</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">ε<sub>f,max</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">min(ε<sub>fd</sub>, ε<sub>fd,ic</sub>) = min(${calc.epsilon_fd.toFixed(4)}, ${calc.epsilon_fd_ic.toFixed(6)})</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.epsilon_f_max.toFixed(6)}</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Moment Capacities Box -->
+        <div class="calc-box mb-6">
+          <div class="calc-header">
+            <h3 class="text-lg font-semibold text-red-300">Moment Capacities</h3>
+          </div>
+          <div class="calc-content">
+            <h4 class="text-md font-medium text-blue-200 mb-3 border-b border-gray-600 pb-1">Before CFRP Installation</h4>
+            <div class="calc-row">
+              <span class="calc-label">x<sub>s</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">A<sub>sl</sub> × f<sub>yd</sub> / (λ × f<sub>cd</sub> × b) = ${calc.Asl.toFixed(1)} × ${calc.fyd} / (${calc.lambda} × ${calc.fcd.toFixed(2)} × ${calc.inputs.b})</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.xs.toFixed(2)} mm</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">M<sub>Rd,s</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">A<sub>sl</sub> × f<sub>yd</sub> × (d - λ × x<sub>s</sub>/2) = ${calc.Asl.toFixed(1)} × ${calc.fyd} × (${calc.d} - ${calc.lambda} × ${calc.xs.toFixed(2)}/2)</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.MRd_s.toFixed(1)} kNm</span>
+            </div>
+            
+            <div class="calc-separator"></div>
+            <h4 class="text-md font-medium text-purple-200 mb-3 border-b border-gray-600 pb-1">After CFRP Installation</h4>
+            <div class="calc-row">
+              <span class="calc-label">x<sub>sf</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">(A<sub>sl</sub> × f<sub>yd</sub> + A<sub>f</sub> × E<sub>fd</sub> × ε<sub>f,max</sub>) / (λ × f<sub>cd</sub> × b)</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.xsf.toFixed(2)} mm</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">M<sub>Rd,sf</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">A<sub>sl</sub> × f<sub>yd</sub> × (d - λ × x<sub>sf</sub>/2) + ε<sub>f,max</sub> × E<sub>fd</sub> × A<sub>f</sub> × (h - λ × x<sub>sf</sub>/2)</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.MRd_sf.toFixed(1)} kNm</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Section Classification Box -->
+        <div class="calc-box mb-6">
+          <div class="calc-header">
+            <h3 class="text-lg font-semibold text-cyan-300">Section Classification</h3>
+          </div>
+          <div class="calc-content">
+            <div class="calc-row">
+              <span class="calc-label">ε<sub>cu0</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.epsilon_cu0.toFixed(6)}</span>
+              <span class="calc-note">(strain in concrete at fiber installation)</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">ω<sub>bal</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">λ / (1 + (ε<sub>f,max</sub> + ε<sub>cu0</sub>) / ε<sub>c2</sub>) = ${calc.lambda} / (1 + (${calc.epsilon_f_max.toFixed(6)} + ${calc.epsilon_cu0.toFixed(6)}) / ${calc.epsilon_c2})</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.omega_bal.toFixed(4)}</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">ω</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">(A<sub>sl</sub> × f<sub>yd</sub> + A<sub>f</sub> × ε<sub>f,max</sub> × E<sub>fd</sub>) / (b × h × f<sub>cd</sub>)</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.omega.toFixed(4)}</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">Classification</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value ${calc.isUnderReinforced ? 'text-green-400' : 'text-red-400'}">${calc.isUnderReinforced ? 'UNDER-REINFORCED' : 'OVER-REINFORCED'}</span>
+              <span class="calc-note">(ω ${calc.isUnderReinforced ? '≤' : '>'} ω<sub>bal</sub>)</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Final Results Box -->
+        <div class="calc-box mb-6">
+          <div class="calc-header">
+            <h3 class="text-lg font-semibold text-orange-300">Final Results</h3>
+          </div>
+          <div class="calc-content">
+            <div class="calc-row">
+              <span class="calc-label">Utilization</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">M<sub>Ed</sub> / M<sub>Rd,sf</sub> = ${calc.inputs.MEd} / ${calc.MRd_sf.toFixed(1)}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.utilizationRatio.toFixed(3)}</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">Capacity Increase</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">(M<sub>Rd,sf</sub> - M<sub>Rd,s</sub>) / M<sub>Rd,s</sub> × 100% = (${calc.MRd_sf.toFixed(1)} - ${calc.MRd_s.toFixed(1)}) / ${calc.MRd_s.toFixed(1)} × 100%</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">+${calc.capacityIncrease.toFixed(1)}%</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">Design Status</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value ${calc.utilizationRatio <= 1.0 && calc.isUnderReinforced ? 'text-green-400' : 'text-red-400'}">${calc.utilizationRatio <= 1.0 && calc.isUnderReinforced ? 'OK - ADEQUATE' : 'FAIL - NOT ADEQUATE'}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Auto-calculate on input change
+    document.addEventListener('DOMContentLoaded', function() {
+      const inputs = document.querySelectorAll('input, select');
+      inputs.forEach(input => {
+        input.addEventListener('change', () => {
+          if (document.getElementById('results').classList.contains('hidden') === false) {
+            calculate();
+          }
+        });
+      });
+    });
+  </script>
+
+</body>
+</html>
