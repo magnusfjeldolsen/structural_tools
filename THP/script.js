@@ -1,6 +1,12 @@
 // Two-Sided Hat Profile Calculator
 // Based on Eurocode 3 standards
 
+// Function to toggle detailed results visibility
+function toggleDetailedResults() {
+    const detailedResults = document.getElementById('detailed-results');
+    detailedResults.classList.toggle('hidden');
+}
+
 // Pure calculation function that accepts parameters and returns results
 function calculateFromParams(params) {
     const { b_o, t_o, H, t_w, b_u, t_u, f_yk, gamma_M0, rho_steel } = params;
