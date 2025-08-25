@@ -223,6 +223,129 @@
   font-style: italic;
 }
 
+/* Math input results */
+.math-result {
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  font-family: 'Courier New', monospace;
+  font-weight: 500;
+}
+
+/* Quick results styling */
+.quick-results {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.results-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.result-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1rem;
+  background-color: rgba(55, 65, 81, 0.5);
+  border-radius: var(--border-radius-sm);
+}
+
+.result-label {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.result-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+}
+
+.result-unit {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.result-item.utilization .result-value {
+  font-size: 2rem;
+}
+
+/* Detailed calculations styling */
+.detailed-calculations {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+}
+
+.calculation-section {
+  margin-bottom: 2rem;
+}
+
+.calculation-section:last-child {
+  margin-bottom: 0;
+}
+
+.calculation-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.calculation-content {
+  background-color: var(--bg-tertiary);
+  padding: 1rem;
+  border-radius: var(--border-radius-sm);
+}
+
+.calc-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  gap: 1rem;
+}
+
+.calc-row:last-child {
+  margin-bottom: 0;
+}
+
+.calc-label {
+  min-width: 80px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.calc-equals {
+  color: var(--text-muted);
+}
+
+.calc-value {
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+  flex-grow: 1;
+}
+
+.calc-row.highlight {
+  background-color: rgba(59, 130, 246, 0.1);
+  padding: 0.5rem;
+  border-radius: var(--border-radius-sm);
+  border-left: 3px solid var(--accent-blue);
+}
+
+.calc-row.warning {
+  background-color: rgba(239, 68, 68, 0.1);
+  padding: 0.5rem;
+  border-radius: var(--border-radius-sm);
+  border-left: 3px solid var(--accent-red);
+}
+
 /* Tooltips */
 .tooltip {
   position: relative;

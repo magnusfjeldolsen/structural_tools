@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Weld capacity calculator for steel welded connections. Calculate weld capacity and utilization based on Norwegian standards.">
+  <meta name="keywords" content="weld capacity, steel welding, structural engineering, von Mises stress">
+  <title>Weld Capacity Calculator - Free Engineering Tool</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Weld Capacity Calculator - Free Engineering Tool">
+  <meta property="og:description" content="Calculate weld capacity and utilization for steel welded connections">
+  <meta property="og:type" content="website">
+  
+  <!-- Twitter Card tags -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Weld Capacity Calculator - Free Engineering Tool">
+  <meta name="twitter:description" content="Calculate weld capacity and utilization for steel welded connections">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  
+  <style>
+    .pulse-glow {
+      animation: pulse-glow 3s ease-in-out infinite;
+    }
+    
+    @keyframes pulse-glow {
+      0%, 100% {
+        box-shadow: 0 0 20px rgba(249, 115, 22, 0.3);
+      }
+      50% {
+        box-shadow: 0 0 30px rgba(249, 115, 22, 0.5);
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <main class="main-container">
+    <h1 class="heading-1 text-center mb-6">Weld Capacity Calculator</h1>
+    <p class="text-description text-center mb-4">Professional weld capacity analysis for steel welded connections</p>
+    
+    <!-- Methodology Note -->
+    <div class="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mb-8">
+      <p class="text-blue-200 text-sm text-center">
+        <strong>Note:</strong> The methodology used in this calculator is adapted from 
+        <em>"Ståkonstruksjoner - Profiler og formler - 3. utgave - Tapir akademisk forlag"</em>
+      </p>
+    </div>
+
+    <!-- Steel Grade Selection -->
+    <div class="section-card">
+      <h2 class="heading-3">Material Properties</h2>
+      
+      <div class="grid-2-dropdown">
+        <div class="input-group">
+          <label for="steelGrade" class="input-label">Select Steel Grade:</label>
+          <select id="steelGrade" class="select-field" onchange="updateSteelProperties()">
+            <option value="">Select a steel grade...</option>
+            <option value="S235">S235</option>
+            <option value="S275">S275</option>
+            <option value="S355">S355</option>
+            <option value="S420">S420</option>
+            <option value="S460">S460</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="gammaM2" class="input-label">Safety Factor γ<sub>M2</sub>:</label>
+          <div class="input-with-unit">
+            <input type="number" id="gammaM2" class="input-field" step="0.01" min="0" value="1.25">
+            <span class="unit-label">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Steel Properties Display -->
+      <div id="steelProperties" class="hidden" style="margin-top: 1rem;">
+        <h3 class="heading-3">Steel Properties</h3>
+        <div class="grid-1">
+          <div class="input-group">
+            <label class="input-label">f<sub>y</sub> (Yield Strength):</label>
+            <div class="input-with-unit">
+              <input id="propFy" class="input-field" readonly />
+              <span class="unit-label">MPa</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <label class="input-label">f<sub>u</sub> (Ultimate Strength):</label>
+            <div class="input-with-unit">
+              <input id="propFu" class="input-field" readonly />
+              <span class="unit-label">MPa</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <label class="input-label">β<sub>w</sub> (Correlation Factor):</label>
+            <div class="input-with-unit">
+              <input id="propBetaW" class="input-field" readonly />
+              <span class="unit-label">-</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <label class="input-label">σ<sub>cr</sub> (Design Capacity):</label>
+            <div class="input-with-unit">
+              <input id="propSigmaCr" class="input-field" readonly />
+              <span class="unit-label">MPa</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Weld Geometry -->
+    <div class="section-card">
+      <h2 class="heading-3">Weld Geometry</h2>
+      
+      <div class="grid-1">
+        <div class="input-group">
+          <label for="throatThickness" class="input-label">Throat Thickness (a):</label>
+          <div class="input-with-unit">
+            <input type="number" id="throatThickness" class="input-field" step="0.1" min="0" placeholder="5">
+            <span class="unit-label">mm</span>
+          </div>
+        </div>
+        
+        <div class="input-group">
+          <label for="weldLength" class="input-label">Weld Length (l<sub>weld</sub>):</label>
+          <div class="input-with-unit">
+            <input type="number" id="weldLength" class="input-field" step="1" min="0" placeholder="100">
+            <span class="unit-label">mm</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Applied Forces -->
+    <div class="section-card">
+      <h2 class="heading-3">Applied Forces and Moment</h2>
+      
+      <div class="grid-1">
+        <div class="input-group">
+          <label for="normalForce" class="input-label">Normal Force (N) - tensile force orthogonal to weld:</label>
+          <div class="input-with-unit">
+            <input type="text" id="normalForce" class="input-field math-input" placeholder="100" data-variable="N">
+            <span class="unit-label">kN</span>
+          </div>
+          <div class="math-result" id="normalForceResult"></div>
+        </div>
+        
+        <div class="input-group">
+          <label for="shearForce" class="input-label">Shear Force (V) - shear force parallel to weld:</label>
+          <div class="input-with-unit">
+            <input type="text" id="shearForce" class="input-field math-input" placeholder="100" data-variable="V">
+            <span class="unit-label">kN</span>
+          </div>
+          <div class="math-result" id="shearForceResult"></div>
+        </div>
+        
+        <div class="input-group">
+          <label for="moment" class="input-label">Moment (M) - moment about middle of weld:</label>
+          <div class="input-with-unit">
+            <input type="text" id="moment" class="input-field math-input" placeholder="100" data-variable="M">
+            <span class="unit-label">kNm</span>
+          </div>
+          <div class="math-result" id="momentResult"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Calculate Button -->
+    <div class="space-y-2 print:hidden">
+      <button onclick="calculateWeldCapacity()" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg transition">
+        Calculate Weld Capacity
+      </button>
+    </div>
+
+    <!-- Quick Results -->
+    <div id="quickResults" class="section-card quick-results hidden">
+      <h2 class="heading-3">Quick Results</h2>
+      <div class="results-grid">
+        <div class="result-item">
+          <span class="result-label">Applied von Mises Stress:</span>
+          <span class="result-value" id="appliedStress">-</span>
+          <span class="result-unit">MPa</span>
+        </div>
+        <div class="result-item">
+          <span class="result-label">Weld Capacity:</span>
+          <span class="result-value" id="weldCapacity">-</span>
+          <span class="result-unit">MPa</span>
+        </div>
+        <div class="result-item utilization">
+          <span class="result-label">Utilization Ratio:</span>
+          <span class="result-value" id="utilizationRatio">-</span>
+          <span class="result-unit">-</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detailed Calculations -->
+    <div id="detailedCalculations" class="section-card detailed-calculations hidden">
+      <h2 class="heading-3">Detailed Calculations</h2>
+      
+      <div class="calculation-section">
+        <h3 class="calculation-title">Material Properties</h3>
+        <div class="calculation-content" id="materialCalcs"></div>
+      </div>
+
+      <div class="calculation-section">
+        <h3 class="calculation-title">Weld Geometry</h3>
+        <div class="calculation-content" id="geometryCalcs"></div>
+      </div>
+
+      <div class="calculation-section">
+        <h3 class="calculation-title">Stress Components from Normal Force (N)</h3>
+        <div class="calculation-content" id="normalStressCalcs"></div>
+      </div>
+
+      <div class="calculation-section">
+        <h3 class="calculation-title">Stress Components from Shear Force (V)</h3>
+        <div class="calculation-content" id="shearStressCalcs"></div>
+      </div>
+
+      <div class="calculation-section">
+        <h3 class="calculation-title">Stress Components from Moment (M)</h3>
+        <div class="calculation-content" id="momentStressCalcs"></div>
+      </div>
+
+      <div class="calculation-section">
+        <h3 class="calculation-title">Combined Stresses</h3>
+        <div class="calculation-content" id="combinedStressCalcs"></div>
+      </div>
+
+      <div class="calculation-section">
+        <h3 class="calculation-title">von Mises Stress and Utilization</h3>
+        <div class="calculation-content" id="vonMisesCalcs"></div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="weld_calculator.js"></script>
+</body>
+</html>
