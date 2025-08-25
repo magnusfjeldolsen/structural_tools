@@ -77,6 +77,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const mathInputs = document.querySelectorAll('.math-input');
     mathInputs.forEach(input => {
         input.addEventListener('input', updateMathInputs);
+
+    // ✅ Preselect S355 on load
+    const steelSelect = document.getElementById('steelGrade');
+    if (steelSelect) {
+        steelSelect.value = "S355";       // set dropdown to S355
+        updateSteelProperties();          // trigger the property update immediately
+    }
     });
 });
 
