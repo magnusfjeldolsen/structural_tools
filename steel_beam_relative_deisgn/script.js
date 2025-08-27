@@ -253,43 +253,37 @@ function updateCalculations() {
     document.getElementById('welRequired').value = WelRequired_display.toFixed(1);
     document.getElementById('iyRequired').value = IyRequired_display.toFixed(1);
 
-    // Calculate for all profile types
+    
+// Calculate for all profile types
     currentResults = {};
     
     Object.keys(profileData).forEach(type => {
         const profiles = profileData[type];
-        const suitableProfiles = [];
-        
-        profiles.forEach(profile => {
-            // Profile data: wy in 10³mm³, iy in 10⁶mm⁴ 
-            const profileWy = profile.wy * 1000; // Convert to mm³
-            const profileIy = profile.iy * 1000000; // Convert to mm⁴
-            
-            const MRd = (profileWy * yieldLimit) / (1000000 * gammaM0); // Moment resistance in kNm
-            
-            // Check suitability ONLY based on DERIVED requirements
-            const momentOK = profileWy >= WelRequired;
-            const stiffnessOK = profileIy >= IyRequired;
-            const suitable = momentOK && stiffnessOK;
-            
-            suitableProfiles.push({
+
+        // Determine first adequate profile in catalog order
+        const lightestSuitable = profiles.find(profile => {
+            const profileWy = profile.wy * 1000; // mm³
+            const profileIy = profile.iy * 1000000; // mm⁴
+            return profileWy > WelRequired && profileIy > IyRequired; // strict '>' per requirement
+        });
+
+        // Build detailed list for display (keep catalog order; do not sort by weight)
+        const suitableProfiles = profiles.map(profile => {
+            const profileWy = profile.wy * 1000;
+            const profileIy = profile.iy * 1000000;
+            const MRd = (profileWy * yieldLimit) / (1000000 * gammaM0);
+            const momentOK = profileWy > WelRequired;
+            const stiffnessOK = profileIy > IyRequired;
+            return {
                 ...profile,
                 MRd: MRd,
                 momentOK,
                 stiffnessOK,
-                suitable,
-                utilizationMoment: WelRequired / profileWy, // Utilization based on requirements
+                suitable: momentOK && stiffnessOK,
+                utilizationMoment: WelRequired / profileWy,
                 utilizationStiffness: IyRequired / profileIy
-            });
+            };
         });
-        
-        // Sort by weight to find lightest profile first
-        suitableProfiles.sort((a, b) => a.weight - b.weight);
-        
-        // Find the first (lightest) profile that meets BOTH requirements
-        const lightestSuitable = suitableProfiles.find(p => 
-            p.wy * 1000 >= WelRequired && p.iy * 1000000 >= IyRequired
-        );
         
         currentResults[type] = {
             profiles: suitableProfiles,
