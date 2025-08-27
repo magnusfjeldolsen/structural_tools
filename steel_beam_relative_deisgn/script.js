@@ -294,6 +294,25 @@ function updateCalculations() {
     // Update display
     updateResultsDisplay(profileType);
     updateComparisonDisplay(profileType);
+
+    // Update lightest suitable summary below inputs
+    const summaryDiv = document.getElementById('lightestSuitableSummary');
+    const summaryText = document.getElementById('lightestProfileText');
+    const selectedResult = currentResults[profileType];
+
+    if (summaryDiv && summaryText) {
+    if (selectedResult && selectedResult.lightestSuitable) {
+        const profile = selectedResult.lightestSuitable;
+        summaryText.innerHTML = `
+        <strong>${profile.name}</strong> (${profile.weight} kg/m) meets both moment and stiffness requirements.<br>
+        Wy: ${profile.wy} × 10³ mm³, Iy: ${profile.iy} × 10⁶ mm⁴, MRd: ${profile.MRd.toFixed(1)} kNm
+        `;
+        summaryDiv.style.display = 'block';
+    } else {
+        summaryText.textContent = 'No suitable profile found for the given requirements.';
+        summaryDiv.style.display = 'block';
+    }
+    }
 }
 
 function updateResultsDisplay(selectedProfileType) {
