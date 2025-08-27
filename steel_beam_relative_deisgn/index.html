@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Steel profile comparison calculator. Compare IPE, HEA, and HEB steel profiles for optimal weight and structural performance.">
+    <meta name="keywords" content="steel profiles, IPE, HEA, HEB, structural engineering, beam design">
+    <title>Steel Profile Calculator - Free Engineering Tool</title>
+    
+    <!-- Open Graph tags -->
+    <meta property="og:title" content="Steel Profile Calculator - Free Engineering Tool">
+    <meta property="og:description" content="Compare IPE, HEA, and HEB steel profiles for optimal weight and structural performance">
+    <meta property="og:type" content="website">
+    
+    <!-- Twitter Card tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Steel Profile Calculator - Free Engineering Tool">
+    <meta name="twitter:description" content="Compare IPE, HEA, and HEB steel profiles for optimal weight and structural performance">
+    
+    <!-- Centralized CSS -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+    <link rel="stylesheet" href="../assets/css/forms.css">
+    <link rel="stylesheet" href="../assets/css/components.css">
+    <link rel="stylesheet" href="../assets/css/print.css">
+
+    <!-- Tailwind CSS -->
+    <script>
+      tailwind.config = { darkMode: 'class' };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .pulse-glow {
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-glow {
+            0%, 100% {
+                box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+            }
+            50% {
+                box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+            }
+        }
+        
+        .status-icon {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 4px;
+        }
+        .status-ok {
+            background-color: #10b981;
+        }
+        .status-fail {
+            background-color: #ef4444;
+        }
+        .selected-profile {
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        .profile-item {
+            transition: all 0.2s ease;
+        }
+        .profile-item:hover {
+            transform: scale(1.02);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+    <main class="main-container">
+        <!-- Header -->
+        <div class="flex justify-end mb-4">
+            <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+                ← Back to Tools
+            </a>
+        </div>
+        
+        <h1 class="heading-1 text-center mb-6">Steel Profile Calculator</h1>
+        <p class="text-description text-center mb-4">Compare IPE, HEA, and HEB profiles for optimal structural performance</p>
+        
+        <!-- Methodology Note -->
+        <div class="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mb-8">
+            <p class="text-blue-200 text-sm text-center">
+                <strong>Note:</strong> This calculator compares steel profiles based on moment capacity and deflection requirements.
+                For preliminary design only - consult a structural engineer for final design.
+            </p>
+        </div>
+
+        <!-- Input Section -->
+        <div class="section-card">
+            <h2 class="heading-3">Design Parameters</h2>
+            
+            <div class="grid-2-dropdown">
+                <div class="input-group">
+                    <label for="profileType" class="input-label">Profile Type:</label>
+                    <select id="profileType" class="select-field">
+                        <option value="IPE">IPE</option>
+                        <option value="HEA">HEA</option>
+                        <option value="HEB">HEB</option>
+                    </select>
+                </div>
+                
+                <div class="input-group">
+                    <label for="selectedProfile" class="input-label">Selected Profile:</label>
+                    <select id="selectedProfile" class="select-field">
+                        <option value="">Select a profile...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid-2-dropdown">
+                <div class="input-group">
+                    <label for="yieldLimit" class="input-label">Yield Strength f<sub>y</sub>:</label>
+                    <div class="input-with-unit">
+                        <input type="number" id="yieldLimit" class="input-field" value="355" min="200" max="500">
+                        <span class="unit-label">MPa</span>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="calculationMode" class="input-label">Calculation Mode:</label>
+                    <select id="calculationMode" class="select-field">
+                        <option value="loading">Loading Model</option>
+                        <option value="utilization" selected>Utilization Ratios</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid-2-dropdown">
+                <div class="input-group">
+                    <label for="actingMoment" class="input-label">Design Moment M<sub>Ed</sub>:</label>
+                    <div class="input-with-unit">
+                        <input type="number" id="actingMoment" class="input-field" value="112" min="0" step="0.1">
+                        <span class="unit-label">kNm</span>
+                    </div>
+                </div>
+                
+                <div class="input-group" id="utilizationRatioGroup" style="display: none;">
+                    <label for="stiffnessUtilization" class="input-label">Stiffness Utilization:</label>
+                    <div class="input-with-unit">
+                        <input type="number" id="stiffnessUtilization" class="input-field" value="0.8" min="0.1" max="1.0" step="0.01">
+                        <span class="unit-label">-</span>
+                    </div>
+                </div>
+                
+                <div class="input-group" id="beamLengthGroup">
+                    <label for="beamLength" class="input-label">Beam Length L:</label>
+                    <div class="input-with-unit">
+                        <input type="number" id="beamLength" class="input-field" value="6.0" min="1" max="20" step="0.1">
+                        <span class="unit-label">m</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid-2-dropdown" id="loadingModelGroup">
+                <div class="input-group">
+                    <label for="deflectionLimit" class="input-label">Deflection Limit δ<sub>max</sub>:</label>
+                    <div class="input-with-unit">
+                        <input type="number" id="deflectionLimit" class="input-field" value="300" min="150" max="500" step="50">
+                        <span class="unit-label">L/δ</span>
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label for="loadType" class="input-label">Load Type:</label>
+                    <select id="loadType" class="select-field">
+                        <option value="udl">Uniformly Distributed Load</option>
+                        <option value="point">Point Load at Center</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Selected Profile Analysis -->
+            <div style="margin-top: 2rem;" id="selectedProfileAnalysis">
+                <h3 class="heading-3">Selected Profile Analysis</h3>
+                <div class="grid-2-dropdown">
+                    <div class="input-group">
+                        <label class="input-label">ULS Utilization (M<sub>Ed</sub>/M<sub>Rd</sub>):</label>
+                        <div class="input-with-unit">
+                            <input id="ulsUtilization" class="input-field" readonly value="0.0" />
+                            <span class="unit-label">-</span>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label class="input-label">SLS Utilization (Stiffness):</label>
+                        <div class="input-with-unit">
+                            <input id="slsUtilization" class="input-field" readonly value="0.0" />
+                            <span class="unit-label">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Requirements Display -->
+            <div style="margin-top: 2rem;">
+                <h3 class="heading-3">Derived Requirements</h3>
+                <div class="grid-2-dropdown">
+                    <div class="input-group">
+                        <label class="input-label">Required W<sub>el,y</sub>:</label>
+                        <div class="input-with-unit">
+                            <input id="welRequired" class="input-field" readonly value="0.0" />
+                            <span class="unit-label">10³ mm³</span>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label class="input-label">Required I<sub>y</sub>:</label>
+                        <div class="input-with-unit">
+                            <input id="iyRequired" class="input-field" readonly value="0.0" />
+                            <span class="unit-label">10⁶ mm⁴</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="grid lg:grid-cols-3 gap-6" id="resultsSection">
+            <!-- Profile cards will be generated here -->
+        </div>
+
+        <!-- Weight Comparison Section -->
+        <div class="section-card" id="comparisonSection" style="display: none;">
+            <h2 class="heading-3">Weight Comparison</h2>
+            <div class="mb-4" id="comparisonDescription">
+                <!-- Comparison description will be inserted here -->
+            </div>
+            
+            <div class="grid md:grid-cols-2 gap-4" id="comparisonGrid">
+                <!-- Comparison cards will be generated here -->
+            </div>
+            
+            <div class="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mt-6">
+                <h4 class="font-semibold text-blue-200 mb-2">💡 Design Insights</h4>
+                <ul class="text-sm text-blue-200 space-y-1">
+                    <li>• HEB profiles generally provide higher stiffness but are heavier</li>
+                    <li>• IPE profiles are typically the most weight-efficient for flexural applications</li>
+                    <li>• HEA profiles offer a balance between weight and stiffness</li>
+                    <li>• Consider construction constraints and connection details when selecting</li>
+                </ul>
+            </div>
+        </div>
+        
+    </main>
+
+    <!-- Centralized JavaScript -->
+    <script src="../assets/js/common.js"></script>
+
+    <script src="script.js"></script>
+</body>
+</html>
