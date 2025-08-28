@@ -100,6 +100,29 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Add event listener for suggest sections button
     document.getElementById('suggestSectionsBtn').addEventListener('click', suggestSections);
+    
+    // Add real-time validation event listeners
+    document.getElementById('actingMoment').addEventListener('input', function() {
+        validateInputWithColor('actingMoment');
+    });
+    document.getElementById('stiffnessUtilization').addEventListener('input', function() {
+        validateInputWithColor('stiffnessUtilization');
+    });
+    document.getElementById('yieldLimit').addEventListener('input', function() {
+        validateInputWithColor('yieldLimit');
+    });
+    document.getElementById('beamLength').addEventListener('input', function() {
+        validateInputWithColor('beamLength');
+    });
+    document.getElementById('deflectionLimit').addEventListener('input', function() {
+        validateInputWithColor('deflectionLimit');
+    });
+    document.getElementById('gammaM0').addEventListener('input', function() {
+        validateInputWithColor('gammaM0');
+    });
+    document.getElementById('characteristicMoment').addEventListener('input', function() {
+        validateInputWithColor('characteristicMoment');
+    });
 
     // Initial setup
     setDefaultValues();
@@ -144,17 +167,26 @@ function toggleCalculationMode() {
     const utilizationRatioGroup = document.getElementById('utilizationRatioGroup');
     const beamLengthGroup = document.getElementById('beamLengthGroup');
     const loadingModelGroup = document.getElementById('loadingModelGroup');
+    const slsUtilizationGroup = document.querySelector('#slsUtilization').closest('.input-group');
     
     if (calculationMode === 'utilization') {
         // Show utilization ratio input, hide loading model inputs
         utilizationRatioGroup.style.display = 'block';
         beamLengthGroup.style.display = 'none';
         loadingModelGroup.style.display = 'none';
+        // Hide SLS utilization display in utilization mode
+        if (slsUtilizationGroup) {
+            slsUtilizationGroup.style.display = 'none';
+        }
     } else {
         // Show loading model inputs, hide utilization ratio input
         utilizationRatioGroup.style.display = 'none';
         beamLengthGroup.style.display = 'block';
         loadingModelGroup.style.display = 'block';
+        // Show SLS utilization display in loading model mode
+        if (slsUtilizationGroup) {
+            slsUtilizationGroup.style.display = 'block';
+        }
     }
 }
 
@@ -493,27 +525,76 @@ function updateComparisonDisplay(selectedProfileType) {
     });
 }
 
-// Input validation functions
-function validateInput(elementId, min, max, defaultValue) {
+// Input validation functions with color coding
+function validateInputWithColor(elementId, value = null) {
     const element = document.getElementById(elementId);
-    if (!element) return defaultValue; // Element doesn't exist
+    if (!element) return { value: 0, isValid: false };
     
-    let value = parseFloat(element.value);
-    
-    if (isNaN(value)) {
-        value = defaultValue;
-        element.value = defaultValue;
-    } else if (value < min) {
-        value = min;
-        element.value = min;
-        showWarning(`${elementId} value adjusted to minimum: ${min}`);
-    } else if (value > max) {
-        value = max;
-        element.value = max;
-        showWarning(`${elementId} value adjusted to maximum: ${max}`);
+    if (value === null) {
+        value = element.value.trim();
     }
     
-    return value;
+    // Try to evaluate mathematical expressions
+    let numericValue;
+    try {
+        // Simple evaluation - replace common functions and operators
+        let expression = value.replace(/\^/g, '**'); // Replace ^ with **
+        expression = expression.replace(/\bsqrt\(/g, 'Math.sqrt('); // Add Math.sqrt support
+        expression = expression.replace(/\bsin\(/g, 'Math.sin('); // Add Math.sin support
+        expression = expression.replace(/\bcos\(/g, 'Math.cos('); // Add Math.cos support
+        expression = expression.replace(/\btan\(/g, 'Math.tan('); // Add Math.tan support
+        expression = expression.replace(/\bpi\b/g, 'Math.PI'); // Add pi support
+        expression = expression.replace(/\be\b/g, 'Math.E'); // Add e support
+        
+        numericValue = Function('"use strict"; return (' + expression + ')')();
+    } catch (e) {
+        numericValue = parseFloat(value);
+    }
+    
+    let isValid = true;
+    
+    // Specific validation rules per field
+    if (elementId === 'actingMoment') {
+        // For MEd, allow 0 and positive values, mark negative as invalid
+        isValid = !isNaN(numericValue) && numericValue >= 0;
+    } else if (elementId === 'stiffnessUtilization') {
+        // For stiffness utilization, mark negative as invalid, but allow > 1
+        isValid = !isNaN(numericValue) && numericValue >= 0;
+    } else if (elementId === 'yieldLimit') {
+        // Yield limit should be reasonable (200-1000 MPa)
+        isValid = !isNaN(numericValue) && numericValue >= 200 && numericValue <= 1000;
+    } else if (elementId === 'beamLength') {
+        // Beam length should be positive
+        isValid = !isNaN(numericValue) && numericValue > 0;
+    } else if (elementId === 'deflectionLimit') {
+        // Deflection limit should be positive
+        isValid = !isNaN(numericValue) && numericValue > 0;
+    } else if (elementId === 'gammaM0') {
+        // Material factor should be >= 1.0 and reasonable (max 2.0)
+        isValid = !isNaN(numericValue) && numericValue >= 1.0 && numericValue <= 2.0;
+    } else if (elementId === 'characteristicMoment') {
+        // Characteristic moment can be 0 or positive
+        isValid = !isNaN(numericValue) && numericValue >= 0;
+    } else {
+        // Default validation - just check if it's a number
+        isValid = !isNaN(numericValue);
+    }
+    
+    // Apply color coding
+    element.classList.remove('input-valid', 'input-invalid');
+    if (isValid) {
+        element.classList.add('input-valid');
+    } else {
+        element.classList.add('input-invalid');
+    }
+    
+    return { value: isNaN(numericValue) ? 0 : numericValue, isValid };
+}
+
+// Simplified validation function for backward compatibility
+function validateInput(elementId, min = null, max = null, defaultValue = 0) {
+    const result = validateInputWithColor(elementId);
+    return result.isValid ? result.value : defaultValue;
 }
 
 function showError(message) {
@@ -717,28 +798,27 @@ function updateSuggestedSectionDisplay(suggestedProfile, WelRequired, IyRequired
 // New function to handle the suggest sections button click
 function suggestSections() {
     
-    // Get input values with validation
-    const actingMoment = validateInput('actingMoment', 0, 10000, 0);
-    const yieldLimit = validateInput('yieldLimit', 200, 500, 355);
+    // Get input values with validation and color coding
+    const actingMomentResult = validateInputWithColor('actingMoment');
+    const yieldLimitResult = validateInputWithColor('yieldLimit');
+    const gammaM0Result = validateInputWithColor('gammaM0');
     const calculationMode = document.getElementById('calculationMode').value;
     
-    // Check for basic required inputs
-    if (actingMoment <= 0) {
-        showError('Please enter a valid acting moment greater than 0 kNm');
-        return;
-    }
+    const actingMoment = actingMomentResult.value;
+    const yieldLimit = yieldLimitResult.value;
+    const gammaM0 = gammaM0Result.value;
     
-    // Clear any existing errors
+    // Clear any existing errors but continue with calculation even if inputs are invalid
     clearErrors();
 
     // Steel properties
-    const gammaM0 = 1.0;
     const fyd = yieldLimit / gammaM0;
     
     let WelRequired, IyRequired;
     
     if (calculationMode === 'utilization') {
-        const stiffnessUtilization = validateInput('stiffnessUtilization', 0.1, 1.0, 0.8);
+        const stiffnessUtilizationResult = validateInputWithColor('stiffnessUtilization');
+        const stiffnessUtilization = stiffnessUtilizationResult.value;
         const selectedProfileName = document.getElementById('selectedProfile').value;
         const profileType = document.getElementById('profileType').value;
         
@@ -758,24 +838,26 @@ function suggestSections() {
         }
     } else {
         // Loading model mode
-        const beamLength = validateInput('beamLength', 1, 20, 6.0);
-        const deflectionLimit = validateInput('deflectionLimit', 150, 500, 300);
+        const beamLengthResult = validateInputWithColor('beamLength');
+        const deflectionLimitResult = validateInputWithColor('deflectionLimit');
+        const characteristicMomentResult = validateInputWithColor('characteristicMoment');
+        const beamLength = beamLengthResult.value;
+        const deflectionLimit = deflectionLimitResult.value;
+        const characteristicMoment = characteristicMomentResult.value;
         const loadType = document.getElementById('loadType').value;
         const E = 210000;
         
-        if (beamLength <= 0) {
-            showError('Please enter a valid beam length greater than 0 m');
-            return;
-        }
-        
+        // Use ULS moment for strength check
         WelRequired = (actingMoment * 1000000) / fyd;
+        
+        // Use characteristic moment for deflection check
         const deltaMax = (beamLength * 1000) / deflectionLimit;
         
         if (loadType === 'udl') {
-            const q = (8 * actingMoment) / (beamLength * beamLength);
+            const q = (8 * characteristicMoment) / (beamLength * beamLength);
             IyRequired = (5 * q * Math.pow(beamLength * 1000, 4)) / (384 * E * deltaMax);
         } else {
-            const P = (4 * actingMoment) / beamLength;
+            const P = (4 * characteristicMoment) / beamLength;
             IyRequired = (P * 1000 * Math.pow(beamLength * 1000, 3)) / (48 * E * deltaMax);
         }
     }
