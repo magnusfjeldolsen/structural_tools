@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CSV Clustering Tool</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <script src="script.js" defer></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    table { border-collapse: collapse; margin-top: 10px; width: auto; }
+    th, td { border: 1px solid #ccc; padding: 5px; text-align: left; }
+    th { background: #f4f4f4; }
+    #output { margin-top: 20px; }
+    #downloadBtn { display: none; margin-top: 10px; }
+    #csvPreview { width: 100%; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h2>CSV Clustering Tool</h2>
+
+  <label for="fileInput">Upload CSV:</label>
+  <input type="file" id="fileInput" accept=".csv"><br><br>
+
+  <label for="delimiterSelect">Choose delimiter:</label>
+  <select id="delimiterSelect">
+    <option value="">Auto-detect</option>
+    <option value=",">Comma (,)</option>
+    <option value=";">Semicolon (;)</option>
+    <option value="\t">Tab (↹)</option>
+    <option value="|">Pipe (|)</option>
+  </select><br><br>
+
+  <button id="previewBtn">Preview</button>
+  <div id="preview"></div><br>
+
+  <label for="columnSelect">Select column for clustering:</label>
+  <select id="columnSelect"></select><br><br>
+
+  <label for="clusterCount">Number of clusters:</label>
+  <input type="number" id="clusterCount" min="1" value="2"><br><br>
+
+  <button id="runClustering">Run Clustering</button>
+
+  <div id="output"></div>
+
+  <h3>Clustered CSV Preview</h3>
+  <textarea id="csvPreview" rows="10" readonly></textarea><br>
+  <button id="downloadBtn">Download CSV</button>
+</body>
+</html>
