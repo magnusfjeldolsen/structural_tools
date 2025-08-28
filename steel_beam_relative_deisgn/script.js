@@ -878,6 +878,33 @@ function suggestSections() {
         }
     });
     
+    // MANUALLY ADDED 
+  // Calculate utilization for selected profile (if any)
+  const selectedProfileName = document.getElementById('selectedProfile').value;
+  const profileType = document.getElementById('profileType').value;
+
+  if (selectedProfileName && profileType) {
+      const selectedProfile = profileData[profileType].find(p => p.name ===
+  selectedProfileName);
+      if (selectedProfile) {
+          const profileWy = selectedProfile.wy * 1000; // mm³
+          const profileIy = selectedProfile.iy * 1000000; // mm⁴
+          const MRd = (profileWy * yieldLimit) / (1000000 * gammaM0);
+
+          const ulsUtilization = actingMoment / MRd;
+          const slsUtilization = IyRequired / profileIy;
+
+          // Update the display fields
+          document.getElementById('ulsUtilization').value =
+  ulsUtilization.toFixed(3);
+          document.getElementById('slsUtilization').value =
+  slsUtilization.toFixed(3);
+      }
+  }
+
+
+
+
     // Display results
     displaySuggestedSections(lightestSections, overallLightest, WelRequired, IyRequired);
 }
