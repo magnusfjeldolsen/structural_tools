@@ -97,12 +97,15 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('beamLength').addEventListener('input', updateCalculations);
     document.getElementById('deflectionLimit').addEventListener('input', updateCalculations);
     document.getElementById('loadType').addEventListener('change', updateCalculations);
+    
+    // Add event listener for suggest sections button
+    document.getElementById('suggestSectionsBtn').addEventListener('click', suggestSections);
 
     // Initial setup
     setDefaultValues();
     populateProfileDropdown();
     toggleCalculationMode();
-    updateCalculations();
+    // Don't run updateCalculations() on load anymore - let user click button
 });
 
 function setDefaultValues() {
@@ -169,46 +172,52 @@ function updateCalculations() {
         return;
     }
     
-    if (!selectedProfileName) {
-        showError('Please select a profile');
-        return;
-    }
-    
     // Clear any existing errors
     clearErrors();
-
-    // Get selected profile data
-    const selectedProfile = profileData[profileType].find(p => p.name === selectedProfileName);
-    if (!selectedProfile) {
-        showError('Selected profile not found');
-        return;
-    }
 
     // Steel properties
     const E = 210000; // MPa - Young's modulus for steel
     const gammaM0 = 1.0; // Partial factor for material
+    const fyd = yieldLimit / gammaM0; // Design yield strength
     
-    // Calculate selected profile properties
-    const profileWy = selectedProfile.wy * 1000; // Convert to mm³
-    const profileIy = selectedProfile.iy * 1000000; // Convert to mm⁴
-    const profileMRd = (profileWy * yieldLimit) / (1000000 * gammaM0); // kNm (divide by 1000000 to convert from Nmm to kNm)
-    
-    // Calculate ULS utilization
-    const ulsUtilization = actingMoment / profileMRd;
-    
-    let WelRequired, IyRequired, slsUtilization;
+    let WelRequired, IyRequired, slsUtilization, ulsUtilization;
     
     if (calculationMode === 'utilization') {
-        // Utilization ratio mode
+        // Utilization ratio mode - this is the main functionality requested
         const stiffnessUtilization = validateInput('stiffnessUtilization', 0.1, 1.0, 0.8);
         
-        // Use ONLY the utilization ratios to find requirements
-        // Required Wy = MEd / (fy/γM0 * ULS_utilization)
-        WelRequired = (actingMoment * 1000000) / (yieldLimit / gammaM0 * ulsUtilization); // mm³
+        // Calculate requirements based on user inputs:
+        // Wel.required = MEd / fyd 
+        WelRequired = (actingMoment * 1000000) / fyd; // mm³
         
-        // Required Iy based on stiffness utilization input
-        IyRequired = (actingMoment * 1000000) / (yieldLimit / gammaM0 * stiffnessUtilization); // mm⁴ - simplified approach
-        slsUtilization = stiffnessUtilization;
+        // For the SLS utilization, we need to use the selected profile's Iy as reference
+        // The approach: Iy.required = SLS_utilization_ratio * Iy_of_selected_section
+        
+        // If a profile is selected, use it as reference
+        if (selectedProfileName) {
+            const selectedProfile = profileData[profileType].find(p => p.name === selectedProfileName);
+            if (selectedProfile) {
+                const profileIy = selectedProfile.iy * 1000000; // Convert to mm⁴
+                IyRequired = stiffnessUtilization * profileIy;
+                slsUtilization = stiffnessUtilization;
+                
+                // Calculate ULS utilization for selected profile
+                const profileWy = selectedProfile.wy * 1000; // Convert to mm³
+                const profileMRd = (profileWy * yieldLimit) / (1000000 * gammaM0);
+                ulsUtilization = actingMoment / profileMRd;
+            } else {
+                // Default calculation if no profile selected
+                IyRequired = WelRequired * 10; // Rough estimation
+                slsUtilization = stiffnessUtilization;
+                ulsUtilization = 1.0; // Assume full utilization
+            }
+        } else {
+            // If no profile selected, use a default approach
+            // For the first calculation, assume typical ratios
+            IyRequired = WelRequired * 10; // Rough estimation for Iy requirement
+            slsUtilization = stiffnessUtilization;
+            ulsUtilization = 1.0; // Assume full utilization
+        }
         
     } else {
         // Loading model mode
@@ -237,8 +246,20 @@ function updateCalculations() {
             IyRequired = (P * 1000 * Math.pow(beamLength * 1000, 3)) / (48 * E * deltaMax); // mm⁴
         }
         
-        // Calculate actual SLS utilization based on loading
-        slsUtilization = IyRequired / profileIy;
+        // Calculate utilizations if profile is selected
+        if (selectedProfileName) {
+            const selectedProfile = profileData[profileType].find(p => p.name === selectedProfileName);
+            if (selectedProfile) {
+                const profileIy = selectedProfile.iy * 1000000;
+                const profileWy = selectedProfile.wy * 1000;
+                const profileMRd = (profileWy * yieldLimit) / (1000000 * gammaM0);
+                ulsUtilization = actingMoment / profileMRd;
+                slsUtilization = IyRequired / profileIy;
+            }
+        } else {
+            ulsUtilization = 1.0;
+            slsUtilization = 1.0;
+        }
     }
 
     // Convert to standard units for display
@@ -254,7 +275,10 @@ function updateCalculations() {
     document.getElementById('iyRequired').value = IyRequired_display.toFixed(1);
 
     
-// Calculate for all profile types
+    // Find the lightest suitable section across ALL profile types
+    const allLightestSuitable = findLightestSuitableAcrossAllTypes(WelRequired, IyRequired, yieldLimit, gammaM0);
+    
+    // Calculate for all profile types
     currentResults = {};
     
     Object.keys(profileData).forEach(type => {
@@ -294,25 +318,7 @@ function updateCalculations() {
     // Update display
     updateResultsDisplay(profileType);
     updateComparisonDisplay(profileType);
-
-    // Update lightest suitable summary below inputs
-    const summaryDiv = document.getElementById('lightestSuitableSummary');
-    const summaryText = document.getElementById('lightestProfileText');
-    const selectedResult = currentResults[profileType];
-
-    if (summaryDiv && summaryText) {
-    if (selectedResult && selectedResult.lightestSuitable) {
-        const profile = selectedResult.lightestSuitable;
-        summaryText.innerHTML = `
-        <strong>${profile.name}</strong> (${profile.weight} kg/m) meets both moment and stiffness requirements.<br>
-        Wy: ${profile.wy} × 10³ mm³, Iy: ${profile.iy} × 10⁶ mm⁴, MRd: ${profile.MRd.toFixed(1)} kNm
-        `;
-        summaryDiv.style.display = 'block';
-    } else {
-        summaryText.textContent = 'No suitable profile found for the given requirements.';
-        summaryDiv.style.display = 'block';
-    }
-    }
+    updateSuggestedSectionDisplay(allLightestSuitable, WelRequired, IyRequired, yieldLimit, gammaM0);
 }
 
 function updateResultsDisplay(selectedProfileType) {
@@ -561,4 +567,373 @@ function clearMessages() {
             warning.parentNode.removeChild(warning);
         }
     });
+}
+
+// New function to find the lightest suitable section across all profile types
+function findLightestSuitableAcrossAllTypes(WelRequired, IyRequired, yieldLimit, gammaM0) {
+    let lightestProfile = null;
+    let lightestWeight = Infinity;
+    let lightestType = null;
+    
+    Object.keys(profileData).forEach(type => {
+        const profiles = profileData[type];
+        
+        // Find first suitable profile in this type (profiles are sorted by ascending properties)
+        const suitableProfile = profiles.find(profile => {
+            const profileWy = profile.wy * 1000; // mm³
+            const profileIy = profile.iy * 1000000; // mm⁴
+            return profileWy > WelRequired && profileIy > IyRequired;
+        });
+        
+        // Check if this is the lightest so far
+        if (suitableProfile && suitableProfile.weight < lightestWeight) {
+            lightestProfile = suitableProfile;
+            lightestWeight = suitableProfile.weight;
+            lightestType = type;
+        }
+    });
+    
+    if (lightestProfile) {
+        // Add calculated properties
+        const profileWy = lightestProfile.wy * 1000;
+        const profileIy = lightestProfile.iy * 1000000;
+        const MRd = (profileWy * yieldLimit) / (1000000 * gammaM0);
+        
+        return {
+            ...lightestProfile,
+            type: lightestType,
+            MRd: MRd,
+            utilizationMoment: WelRequired / profileWy,
+            utilizationStiffness: IyRequired / profileIy
+        };
+    }
+    
+    return null;
+}
+
+// New function to update the suggested section display
+function updateSuggestedSectionDisplay(suggestedProfile, WelRequired, IyRequired, yieldLimit, gammaM0) {
+    let suggestedSectionDiv = document.getElementById('suggestedSection');
+    
+    if (!suggestedSectionDiv) {
+        // Create the suggested section div if it doesn't exist
+        const suggestedSectionHTML = `
+            <div class="section-card" id="suggestedSection" style="margin-top: 1.5rem;">
+                <h3 class="heading-3">🏆 Suggested Section (Lightest Across All Types)</h3>
+                <div id="suggestedSectionContent"></div>
+            </div>
+        `;
+        
+        // Insert after the input section - be more specific
+        const inputSection = document.querySelector('.section-card');
+        if (inputSection) {
+            inputSection.insertAdjacentHTML('afterend', suggestedSectionHTML);
+            suggestedSectionDiv = document.getElementById('suggestedSection'); // Get reference after creation
+        } else {
+            return;
+        }
+    }
+    
+    const contentDiv = document.getElementById('suggestedSectionContent');
+    
+    if (!contentDiv) {
+        return;
+    }
+    
+    if (suggestedProfile) {
+        contentDiv.innerHTML = `
+            <div class="bg-green-900/30 border border-green-500/50 rounded-lg p-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="status-icon status-ok"></span>
+                    <span class="font-bold text-green-300 text-xl">${suggestedProfile.name} (${suggestedProfile.type})</span>
+                </div>
+                
+                <div class="grid md:grid-cols-2 gap-4 mb-4">
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Weight:</span>
+                            <span class="font-semibold text-gray-200">${suggestedProfile.weight} kg/m</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">M<sub>Rd</sub>:</span>
+                            <span class="font-semibold text-gray-200">${suggestedProfile.MRd.toFixed(1)} kNm</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">W<sub>y</sub>:</span>
+                            <span class="font-semibold text-gray-200">${suggestedProfile.wy} × 10³ mm³</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">I<sub>y</sub>:</span>
+                            <span class="font-semibold text-gray-200">${suggestedProfile.iy} × 10⁶ mm⁴</span>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-2">
+                        <div class="bg-blue-900/30 border border-blue-500/50 rounded p-3">
+                            <h4 class="font-semibold text-blue-200 mb-2">Utilization Ratios:</h4>
+                            <div class="flex justify-between mb-1">
+                                <span class="text-blue-300">Moment (ULS):</span>
+                                <span class="font-semibold text-blue-200">${(suggestedProfile.utilizationMoment * 100).toFixed(1)}%</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-blue-300">Stiffness (SLS):</span>
+                                <span class="font-semibold text-blue-200">${(suggestedProfile.utilizationStiffness * 100).toFixed(1)}%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-800/50 border border-gray-600/50 rounded p-3">
+                    <div class="text-sm text-gray-300">
+                        <p><strong>Why this section?</strong> This is the lightest profile across all types (IPE, HEA, HEB) that satisfies both:</p>
+                        <ul class="list-disc list-inside mt-2 space-y-1">
+                            <li>Moment capacity: W<sub>y</sub> = ${suggestedProfile.wy} > ${(WelRequired/1000).toFixed(1)} × 10³ mm³ (required)</li>
+                            <li>Stiffness: I<sub>y</sub> = ${suggestedProfile.iy} > ${(IyRequired/1000000).toFixed(1)} × 10⁶ mm⁴ (required)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else {
+        contentDiv.innerHTML = `
+            <div class="bg-red-900/30 border border-red-500/50 rounded-lg p-4">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="status-icon status-fail"></span>
+                    <span class="font-semibold text-red-300">No suitable section found</span>
+                </div>
+                <p class="text-sm text-red-400">
+                    No profile in the database (IPE, HEA, HEB) can satisfy both the moment capacity 
+                    (W<sub>y</sub> ≥ ${(WelRequired/1000).toFixed(1)} × 10³ mm³) and stiffness requirements 
+                    (I<sub>y</sub> ≥ ${(IyRequired/1000000).toFixed(1)} × 10⁶ mm⁴).
+                </p>
+                <p class="text-sm text-red-400 mt-2">
+                    Consider: reducing the design moment, increasing the allowable deflection, or using custom sections.
+                </p>
+            </div>
+        `;
+    }
+}
+
+// New function to handle the suggest sections button click
+function suggestSections() {
+    
+    // Get input values with validation
+    const actingMoment = validateInput('actingMoment', 0, 10000, 0);
+    const yieldLimit = validateInput('yieldLimit', 200, 500, 355);
+    const calculationMode = document.getElementById('calculationMode').value;
+    
+    // Check for basic required inputs
+    if (actingMoment <= 0) {
+        showError('Please enter a valid acting moment greater than 0 kNm');
+        return;
+    }
+    
+    // Clear any existing errors
+    clearErrors();
+
+    // Steel properties
+    const gammaM0 = 1.0;
+    const fyd = yieldLimit / gammaM0;
+    
+    let WelRequired, IyRequired;
+    
+    if (calculationMode === 'utilization') {
+        const stiffnessUtilization = validateInput('stiffnessUtilization', 0.1, 1.0, 0.8);
+        const selectedProfileName = document.getElementById('selectedProfile').value;
+        const profileType = document.getElementById('profileType').value;
+        
+        // Calculate requirements
+        WelRequired = (actingMoment * 1000000) / fyd;
+        
+        if (selectedProfileName) {
+            const selectedProfile = profileData[profileType].find(p => p.name === selectedProfileName);
+            if (selectedProfile) {
+                const profileIy = selectedProfile.iy * 1000000;
+                IyRequired = stiffnessUtilization * profileIy;
+            } else {
+                IyRequired = WelRequired * 10;
+            }
+        } else {
+            IyRequired = WelRequired * 10;
+        }
+    } else {
+        // Loading model mode
+        const beamLength = validateInput('beamLength', 1, 20, 6.0);
+        const deflectionLimit = validateInput('deflectionLimit', 150, 500, 300);
+        const loadType = document.getElementById('loadType').value;
+        const E = 210000;
+        
+        if (beamLength <= 0) {
+            showError('Please enter a valid beam length greater than 0 m');
+            return;
+        }
+        
+        WelRequired = (actingMoment * 1000000) / fyd;
+        const deltaMax = (beamLength * 1000) / deflectionLimit;
+        
+        if (loadType === 'udl') {
+            const q = (8 * actingMoment) / (beamLength * beamLength);
+            IyRequired = (5 * q * Math.pow(beamLength * 1000, 4)) / (384 * E * deltaMax);
+        } else {
+            const P = (4 * actingMoment) / beamLength;
+            IyRequired = (P * 1000 * Math.pow(beamLength * 1000, 3)) / (48 * E * deltaMax);
+        }
+    }
+    
+    // Update requirements display
+    document.getElementById('welRequired').value = (WelRequired / 1000).toFixed(1);
+    document.getElementById('iyRequired').value = (IyRequired / 1000000).toFixed(1);
+    
+    // Find lightest suitable sections for each type
+    const lightestSections = {};
+    Object.keys(profileData).forEach(type => {
+        const profiles = profileData[type];
+        const suitableProfile = profiles.find(profile => {
+            const profileWy = profile.wy * 1000;
+            const profileIy = profile.iy * 1000000;
+            return profileWy > WelRequired && profileIy > IyRequired;
+        });
+        
+        if (suitableProfile) {
+            const profileWy = suitableProfile.wy * 1000;
+            const profileIy = suitableProfile.iy * 1000000;
+            const MRd = (profileWy * yieldLimit) / (1000000 * gammaM0);
+            
+            lightestSections[type] = {
+                ...suitableProfile,
+                type: type,
+                MRd: MRd,
+                utilizationMoment: WelRequired / profileWy,
+                utilizationStiffness: IyRequired / profileIy
+            };
+        }
+    });
+    
+    // Find the overall lightest
+    let overallLightest = null;
+    let minWeight = Infinity;
+    Object.values(lightestSections).forEach(section => {
+        if (section.weight < minWeight) {
+            minWeight = section.weight;
+            overallLightest = section;
+        }
+    });
+    
+    // Display results
+    displaySuggestedSections(lightestSections, overallLightest, WelRequired, IyRequired);
+}
+
+// Function to display suggested sections side by side
+function displaySuggestedSections(lightestSections, overallLightest, WelRequired, IyRequired) {
+    // Remove any existing suggestions
+    const existingSuggestions = document.getElementById('suggestedSectionsContainer');
+    if (existingSuggestions) {
+        existingSuggestions.remove();
+    }
+    
+    // Create container for suggested sections
+    const containerHTML = `
+        <div id="suggestedSectionsContainer" class="mt-6">
+            <!-- Overall Winner -->
+            <div class="section-card mb-6">
+                <h2 class="heading-3">🏆 Overall Winner (Lightest Across All Types)</h2>
+                <div id="overallWinnerContent"></div>
+            </div>
+            
+            <!-- Side by side comparison -->
+            <div class="section-card">
+                <h2 class="heading-3">💡 Lightest Options by Type</h2>
+                <div class="grid md:grid-cols-3 gap-4" id="lightestByTypeGrid"></div>
+            </div>
+        </div>
+    `;
+    
+    // Insert after the suggest button
+    const buttonContainer = document.querySelector('#suggestSectionsBtn').parentElement;
+    buttonContainer.insertAdjacentHTML('afterend', containerHTML);
+    
+    // Fill overall winner
+    const overallWinnerDiv = document.getElementById('overallWinnerContent');
+    if (overallLightest) {
+        overallWinnerDiv.innerHTML = createSectionCard(overallLightest, WelRequired, IyRequired, true);
+    } else {
+        overallWinnerDiv.innerHTML = `
+            <div class="bg-red-900/30 border border-red-500/50 rounded-lg p-4">
+                <p class="text-red-400">No suitable sections found for the given requirements.</p>
+            </div>
+        `;
+    }
+    
+    // Fill side by side comparison
+    const gridDiv = document.getElementById('lightestByTypeGrid');
+    ['IPE', 'HEA', 'HEB'].forEach(type => {
+        const section = lightestSections[type];
+        if (section) {
+            const cardHTML = createSectionCard(section, WelRequired, IyRequired, false);
+            gridDiv.innerHTML += `<div class="space-y-2">${cardHTML}</div>`;
+        } else {
+            gridDiv.innerHTML += `
+                <div class="bg-red-900/30 border border-red-500/50 rounded-lg p-4">
+                    <h3 class="font-bold text-red-300 mb-2">${type}</h3>
+                    <p class="text-red-400 text-sm">No suitable section found</p>
+                </div>
+            `;
+        }
+    });
+}
+
+// Helper function to create a section card HTML
+function createSectionCard(section, WelRequired, IyRequired, isWinner) {
+    const bgColor = isWinner ? 'bg-yellow-900/30 border-yellow-500/50' : 'bg-green-900/30 border-green-500/50';
+    const textColor = isWinner ? 'text-yellow-300' : 'text-green-300';
+    const icon = isWinner ? '👑' : '✅';
+    
+    return `
+        <div class="${bgColor} border rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-3">
+                <span>${icon}</span>
+                <span class="font-bold ${textColor} text-lg">${section.name} (${section.type})</span>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <div class="space-y-1">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-400">Weight:</span>
+                        <span class="font-semibold text-gray-200">${section.weight} kg/m</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-400">M<sub>Rd</sub>:</span>
+                        <span class="font-semibold text-gray-200">${section.MRd.toFixed(1)} kNm</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-400">W<sub>y</sub>:</span>
+                        <span class="font-semibold text-gray-200">${section.wy} × 10³ mm³</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-400">I<sub>y</sub>:</span>
+                        <span class="font-semibold text-gray-200">${section.iy} × 10⁶ mm⁴</span>
+                    </div>
+                </div>
+                
+                <div class="bg-blue-900/30 border border-blue-500/50 rounded p-2">
+                    <h4 class="font-semibold text-blue-200 text-sm mb-1">Utilization:</h4>
+                    <div class="text-xs space-y-1">
+                        <div class="flex justify-between">
+                            <span class="text-blue-300">Moment:</span>
+                            <span class="font-semibold text-blue-200">${(section.utilizationMoment * 100).toFixed(1)}%</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-blue-300">Stiffness:</span>
+                            <span class="font-semibold text-blue-200">${(section.utilizationStiffness * 100).toFixed(1)}%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="text-xs text-gray-400">
+                Satisfies: W<sub>y</sub> = ${section.wy} > ${(WelRequired/1000).toFixed(1)} × 10³ mm³, 
+                I<sub>y</sub> = ${section.iy} > ${(IyRequired/1000000).toFixed(1)} × 10⁶ mm⁴
+            </div>
+        </div>
+    `;
 }

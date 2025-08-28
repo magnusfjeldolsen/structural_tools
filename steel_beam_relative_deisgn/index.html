@@ -137,7 +137,7 @@
                     </div>
                 </div>
                 
-                <div class="input-group" id="utilizationRatioGroup" style="display: none;">
+                <div class="input-group" id="utilizationRatioGroup" style="display: block;">
                     <label for="stiffnessUtilization" class="input-label">Stiffness Utilization:</label>
                     <div class="input-with-unit">
                         <input type="number" id="stiffnessUtilization" class="input-field" value="0.8" min="0.1" max="1.0" step="0.01">
@@ -145,7 +145,7 @@
                     </div>
                 </div>
                 
-                <div class="input-group" id="beamLengthGroup">
+                <div class="input-group" id="beamLengthGroup" style="display: none;">
                     <label for="beamLength" class="input-label">Beam Length L:</label>
                     <div class="input-with-unit">
                         <input type="number" id="beamLength" class="input-field" value="6.0" min="1" max="20" step="0.1">
@@ -154,7 +154,7 @@
                 </div>
             </div>
 
-            <div class="grid-2-dropdown" id="loadingModelGroup">
+            <div class="grid-2-dropdown" id="loadingModelGroup" style="display: none;">
                 <div class="input-group">
                     <label for="deflectionLimit" class="input-label">Deflection Limit δ<sub>max</sub>:</label>
                     <div class="input-with-unit">
@@ -212,6 +212,13 @@
                         </div>
                     </div>
                 </div>
+            </div>
+            
+            <!-- Suggest Sections Button -->
+            <div style="margin-top: 2rem; text-align: center;">
+                <button id="suggestSectionsBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors duration-200">
+                    🔍 Suggest Sections
+                </button>
             </div>
         </div>
 
