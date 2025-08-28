@@ -81,22 +81,16 @@ let currentResults = {};
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
-    // Add event listeners to input fields
+    // Simple setup - just add event listeners and set calculation mode
+    toggleCalculationMode();
+    
+    // Add event listeners
     document.getElementById('profileType').addEventListener('change', function() {
         populateProfileDropdown();
-        updateCalculations();
     });
-    document.getElementById('selectedProfile').addEventListener('change', updateCalculations);
     document.getElementById('calculationMode').addEventListener('change', function() {
         toggleCalculationMode();
-        updateCalculations();
     });
-    document.getElementById('yieldLimit').addEventListener('input', updateCalculations);
-    document.getElementById('actingMoment').addEventListener('input', updateCalculations);
-    document.getElementById('stiffnessUtilization').addEventListener('input', updateCalculations);
-    document.getElementById('beamLength').addEventListener('input', updateCalculations);
-    document.getElementById('deflectionLimit').addEventListener('input', updateCalculations);
-    document.getElementById('loadType').addEventListener('change', updateCalculations);
     
     // Add event listener for suggest sections button
     document.getElementById('suggestSectionsBtn').addEventListener('click', suggestSections);
@@ -123,21 +117,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('characteristicMoment').addEventListener('input', function() {
         validateInputWithColor('characteristicMoment');
     });
-
-    // Initial setup
-    setDefaultValues();
-    populateProfileDropdown();
-    toggleCalculationMode();
-    // Don't run updateCalculations() on load anymore - let user click button
 });
 
-function setDefaultValues() {
-    // Set calculation mode to utilization ratios
-    document.getElementById('calculationMode').value = 'utilization';
-    
-    // Set profile type to IPE
-    document.getElementById('profileType').value = 'IPE';
-}
 
 function populateProfileDropdown() {
     const profileType = document.getElementById('profileType').value;
@@ -147,46 +128,43 @@ function populateProfileDropdown() {
     selectedProfileDropdown.innerHTML = '<option value="">Select a profile...</option>';
     
     // Populate with profiles of the selected type
-    if (profileData[profileType]) {
+    if (profileType && profileData[profileType]) {
         profileData[profileType].forEach(profile => {
             const option = document.createElement('option');
             option.value = profile.name;
             option.textContent = profile.name;
             selectedProfileDropdown.appendChild(option);
         });
-        
-        // Set default profile to IPE300 if IPE type is selected
-        if (profileType === 'IPE') {
-            selectedProfileDropdown.value = 'IPE300';
-        }
     }
 }
 
 function toggleCalculationMode() {
-    const calculationMode = document.getElementById('calculationMode').value;
+    const calculationModeSelect = document.getElementById('calculationMode');
+    const calculationMode = calculationModeSelect.value;
     const utilizationRatioGroup = document.getElementById('utilizationRatioGroup');
-    const beamLengthGroup = document.getElementById('beamLengthGroup');
     const loadingModelGroup = document.getElementById('loadingModelGroup');
     const slsUtilizationGroup = document.querySelector('#slsUtilization').closest('.input-group');
     
     if (calculationMode === 'utilization') {
         // Show utilization ratio input, hide loading model inputs
         utilizationRatioGroup.style.display = 'block';
-        beamLengthGroup.style.display = 'none';
         loadingModelGroup.style.display = 'none';
         // Hide SLS utilization display in utilization mode
         if (slsUtilizationGroup) {
             slsUtilizationGroup.style.display = 'none';
         }
+        // Remove orange styling
+        calculationModeSelect.classList.remove('calculation-mode-coming-soon');
     } else {
-        // Show loading model inputs, hide utilization ratio input
+        // Show loading model "coming soon" message, hide utilization ratio input
         utilizationRatioGroup.style.display = 'none';
-        beamLengthGroup.style.display = 'block';
         loadingModelGroup.style.display = 'block';
         // Show SLS utilization display in loading model mode
         if (slsUtilizationGroup) {
             slsUtilizationGroup.style.display = 'block';
         }
+        // Add orange styling for "coming soon" mode
+        calculationModeSelect.classList.add('calculation-mode-coming-soon');
     }
 }
 
@@ -797,7 +775,6 @@ function updateSuggestedSectionDisplay(suggestedProfile, WelRequired, IyRequired
 
 // New function to handle the suggest sections button click
 function suggestSections() {
-    
     // Get input values with validation and color coding
     const actingMomentResult = validateInputWithColor('actingMoment');
     const yieldLimitResult = validateInputWithColor('yieldLimit');
@@ -915,9 +892,9 @@ function displaySuggestedSections(lightestSections, overallLightest, WelRequired
     
     // Create container for suggested sections
     const containerHTML = `
-        <div id="suggestedSectionsContainer" class="mt-6">
+        <div id="suggestedSectionsContainer" style="margin-top: 2rem;">
             <!-- Overall Winner -->
-            <div class="section-card mb-6">
+            <div class="section-card" style="margin-bottom: 1.5rem;">
                 <h2 class="heading-3">🏆 Overall Winner (Lightest Across All Types)</h2>
                 <div id="overallWinnerContent"></div>
             </div>
@@ -930,38 +907,40 @@ function displaySuggestedSections(lightestSections, overallLightest, WelRequired
         </div>
     `;
     
-    // Insert after the suggest button
-    const buttonContainer = document.querySelector('#suggestSectionsBtn').parentElement;
-    buttonContainer.insertAdjacentHTML('afterend', containerHTML);
-    
-    // Fill overall winner
-    const overallWinnerDiv = document.getElementById('overallWinnerContent');
-    if (overallLightest) {
-        overallWinnerDiv.innerHTML = createSectionCard(overallLightest, WelRequired, IyRequired, true);
-    } else {
-        overallWinnerDiv.innerHTML = `
-            <div class="bg-red-900/30 border border-red-500/50 rounded-lg p-4">
-                <p class="text-red-400">No suitable sections found for the given requirements.</p>
-            </div>
-        `;
-    }
-    
-    // Fill side by side comparison
-    const gridDiv = document.getElementById('lightestByTypeGrid');
-    ['IPE', 'HEA', 'HEB'].forEach(type => {
-        const section = lightestSections[type];
-        if (section) {
-            const cardHTML = createSectionCard(section, WelRequired, IyRequired, false);
-            gridDiv.innerHTML += `<div class="space-y-2">${cardHTML}</div>`;
+    // Insert at end of main container for simplicity
+    const mainContainer = document.querySelector('.main-container');
+    if (mainContainer) {
+        mainContainer.insertAdjacentHTML('beforeend', containerHTML);
+        
+        // Fill content immediately
+        const overallWinnerDiv = document.getElementById('overallWinnerContent');
+        if (overallLightest) {
+            overallWinnerDiv.innerHTML = createSectionCard(overallLightest, WelRequired, IyRequired, true);
         } else {
-            gridDiv.innerHTML += `
+            overallWinnerDiv.innerHTML = `
                 <div class="bg-red-900/30 border border-red-500/50 rounded-lg p-4">
-                    <h3 class="font-bold text-red-300 mb-2">${type}</h3>
-                    <p class="text-red-400 text-sm">No suitable section found</p>
+                    <p class="text-red-400">No suitable sections found for the given requirements.</p>
                 </div>
             `;
         }
-    });
+        
+        // Fill side by side comparison
+        const gridDiv = document.getElementById('lightestByTypeGrid');
+        ['IPE', 'HEA', 'HEB'].forEach(type => {
+            const section = lightestSections[type];
+            if (section) {
+                const cardHTML = createSectionCard(section, WelRequired, IyRequired, false);
+                gridDiv.innerHTML += `<div class="space-y-2">${cardHTML}</div>`;
+            } else {
+                gridDiv.innerHTML += `
+                    <div class="bg-red-900/30 border border-red-500/50 rounded-lg p-4">
+                        <h3 class="font-bold text-red-300 mb-2">${type}</h3>
+                        <p class="text-red-400 text-sm">No suitable section found</p>
+                    </div>
+                `;
+            }
+        });
+    }
 }
 
 // Helper function to create a section card HTML
