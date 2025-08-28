@@ -65,6 +65,19 @@
         .profile-item:hover {
             transform: scale(1.02);
         }
+        .input-invalid {
+            border-color: #ef4444 !important;
+            background-color: rgba(239, 68, 68, 0.1) !important;
+        }
+        .input-valid {
+            border-color: #10b981 !important;
+        }
+        .grid-1-full {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
@@ -92,6 +105,7 @@
         <div class="section-card">
             <h2 class="heading-3">Design Parameters</h2>
             
+            <!-- Row 1: Profile Type and Selected Profile -->
             <div class="grid-2-dropdown">
                 <div class="input-group">
                     <label for="profileType" class="input-label">Profile Type:</label>
@@ -110,15 +124,8 @@
                 </div>
             </div>
 
-            <div class="grid-2-dropdown">
-                <div class="input-group">
-                    <label for="yieldLimit" class="input-label">Yield Strength f<sub>y</sub>:</label>
-                    <div class="input-with-unit">
-                        <input type="number" id="yieldLimit" class="input-field" value="355" min="200" max="500">
-                        <span class="unit-label">MPa</span>
-                    </div>
-                </div>
-
+            <!-- Row 2: Calculation Mode -->
+            <div class="grid-1-full">
                 <div class="input-group">
                     <label for="calculationMode" class="input-label">Calculation Mode:</label>
                     <select id="calculationMode" class="select-field">
@@ -128,47 +135,88 @@
                 </div>
             </div>
 
+            <!-- Row 3: Yield Stress and Material Factor -->
             <div class="grid-2-dropdown">
                 <div class="input-group">
-                    <label for="actingMoment" class="input-label">Design Moment M<sub>Ed</sub>:</label>
+                    <label for="yieldLimit" class="input-label">Yield Stress f<sub>y</sub>:</label>
                     <div class="input-with-unit">
-                        <input type="number" id="actingMoment" class="input-field" value="112" min="0" step="0.1">
-                        <span class="unit-label">kNm</span>
+                        <input type="number" id="yieldLimit" class="input-field" value="355" min="200" max="1000">
+                        <span class="unit-label">MPa</span>
                     </div>
                 </div>
-                
-                <div class="input-group" id="utilizationRatioGroup" style="display: block;">
-                    <label for="stiffnessUtilization" class="input-label">Stiffness Utilization:</label>
+
+                <div class="input-group">
+                    <label for="gammaM0" class="input-label">Material Factor γ<sub>M0</sub>:</label>
                     <div class="input-with-unit">
-                        <input type="number" id="stiffnessUtilization" class="input-field" value="0.8" min="0.1" max="1.0" step="0.01">
+                        <input type="number" id="gammaM0" class="input-field" value="1.05" min="1.0" max="2.0" step="0.01">
                         <span class="unit-label">-</span>
-                    </div>
-                </div>
-                
-                <div class="input-group" id="beamLengthGroup" style="display: none;">
-                    <label for="beamLength" class="input-label">Beam Length L:</label>
-                    <div class="input-with-unit">
-                        <input type="number" id="beamLength" class="input-field" value="6.0" min="1" max="20" step="0.1">
-                        <span class="unit-label">m</span>
                     </div>
                 </div>
             </div>
 
-            <div class="grid-2-dropdown" id="loadingModelGroup" style="display: none;">
+            <!-- Row 4: Design Moment (ULS) - Wide field -->
+            <div class="grid-1-full">
                 <div class="input-group">
-                    <label for="deflectionLimit" class="input-label">Deflection Limit δ<sub>max</sub>:</label>
+                    <label for="actingMoment" class="input-label">Design Moment (ULS) M<sub>Ed</sub>:</label>
                     <div class="input-with-unit">
-                        <input type="number" id="deflectionLimit" class="input-field" value="300" min="150" max="500" step="50">
-                        <span class="unit-label">L/δ</span>
+                        <input type="text" id="actingMoment" class="input-field" value="112" placeholder="e.g. 3*(1.2*5+1.5*3)*5^2/8" style="width: 100%;">
+                        <span class="unit-label">kNm</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 5: Stiffness Utilization Ratio -->
+            <div class="grid-1-full" id="utilizationRatioGroup" style="display: block;">
+                <div class="input-group">
+                    <label for="stiffnessUtilization" class="input-label">Stiffness Utilization Ratio:</label>
+                    <div class="input-with-unit">
+                        <input type="number" id="stiffnessUtilization" class="input-field" value="0.8" min="0" step="0.01">
+                        <span class="unit-label">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading Model Group (shown when Loading Model is selected) -->
+            <div id="loadingModelGroup" style="display: none;">
+                <!-- Row 6: Characteristic Moment - Wide field -->
+                <div class="grid-1-full">
+                    <div class="input-group">
+                        <label for="characteristicMoment" class="input-label">Characteristic Moment M<sub>c</sub>:</label>
+                        <div class="input-with-unit">
+                            <input type="text" id="characteristicMoment" class="input-field" value="95" placeholder="e.g. (5*2.5 + 3*1.8)*6^2/8" style="width: 100%;">
+                            <span class="unit-label">kNm</span>
+                        </div>
                     </div>
                 </div>
                 
-                <div class="input-group">
-                    <label for="loadType" class="input-label">Load Type:</label>
-                    <select id="loadType" class="select-field">
-                        <option value="udl">Uniformly Distributed Load</option>
-                        <option value="point">Point Load at Center</option>
-                    </select>
+                <!-- Row 7: Beam Length and Deflection Limit -->
+                <div class="grid-2-dropdown">
+                    <div class="input-group">
+                        <label for="beamLength" class="input-label">Beam Length L:</label>
+                        <div class="input-with-unit">
+                            <input type="number" id="beamLength" class="input-field" value="6.0" min="1" max="20" step="0.1">
+                            <span class="unit-label">m</span>
+                        </div>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="deflectionLimit" class="input-label">Deflection Limit δ<sub>max</sub>:</label>
+                        <div class="input-with-unit">
+                            <input type="number" id="deflectionLimit" class="input-field" value="300" min="150" max="500" step="50">
+                            <span class="unit-label">L/δ</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Row 8: Load Type -->
+                <div class="grid-1-full">
+                    <div class="input-group">
+                        <label for="loadType" class="input-label">Load Type:</label>
+                        <select id="loadType" class="select-field">
+                            <option value="udl">Uniformly Distributed Load</option>
+                            <option value="point">Point Load at Center</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
