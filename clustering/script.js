@@ -42,21 +42,38 @@ function handlePreview() {
 
 function renderPreview(columns, data) {
     const container = document.getElementById('preview');
-    container.innerHTML = "<h3>Preview (first 5 rows)</h3>";
+    container.innerHTML = `<p class="text-secondary mb-4">Preview (first 10 rows of ${data.length} total rows)</p>`;
+    
     const table = document.createElement('table');
+    table.className = 'clustering-table';
 
     const thead = document.createElement('thead');
     const trHead = document.createElement('tr');
-    columns.forEach(col => { const th = document.createElement('th'); th.textContent = col; trHead.appendChild(th); });
-    thead.appendChild(trHead); table.appendChild(thead);
+    columns.forEach(col => { 
+        const th = document.createElement('th'); 
+        th.textContent = col; 
+        trHead.appendChild(th); 
+    });
+    thead.appendChild(trHead); 
+    table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    data.slice(0,5).forEach(row => {
+    data.slice(0, 10).forEach(row => {
         const tr = document.createElement('tr');
-        columns.forEach(col => { const td = document.createElement('td'); td.textContent = row[col]; tr.appendChild(td); });
+        columns.forEach(col => { 
+            const td = document.createElement('td'); 
+            // Handle ClusterID = 0 display issue in preview too
+            td.textContent = (row[col] !== undefined && row[col] !== null) ? row[col] : ''; 
+            tr.appendChild(td); 
+        });
         tbody.appendChild(tr);
     });
-    table.appendChild(tbody); container.appendChild(table);
+    table.appendChild(tbody); 
+    container.appendChild(table);
+    
+    // Show the preview section and clustering section
+    document.getElementById('previewSection').style.display = 'block';
+    document.getElementById('clusteringSection').style.display = 'block';
 }
 
 function populateColumnSelect(columns) {
@@ -113,13 +130,13 @@ function runClustering() {
     validIndices.forEach((rowIndex,j)=> { dataset[rowIndex].ClusterID = result.clusters[j]; });
     dataset.forEach(row=>{ if (row.ClusterID===undefined) row.ClusterID="N/A"; });
 
-    renderTable(dataset, [...headers, "ClusterID"]);
-
     const csv = Papa.unparse(dataset, { columns: [...headers, "ClusterID"] });
     document.getElementById('csvPreview').value = csv;
 
+    // Show download section first
+    document.getElementById('downloadSection').style.display = 'block';
+    
     const downloadBtn = document.getElementById('downloadBtn');
-    downloadBtn.style.display = "inline-block";
     downloadBtn.onclick = function() {
         const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
@@ -127,24 +144,48 @@ function runClustering() {
         a.href = url; a.download = "clustered_data.csv";
         document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
     };
+    
+    // Then show the detailed results table
+    renderTable(dataset, [...headers, "ClusterID"]);
 }
 
 // ---------- Render Table ----------
 function renderTable(data, columns) {
     const container = document.getElementById('output');
-    container.innerHTML = "";
+    container.innerHTML = `<p class="text-secondary mb-4">Clustered data (${data.length} rows)</p>`;
+    
     const table = document.createElement('table');
+    table.className = 'clustering-table';
+    
     const thead = document.createElement('thead');
-    const tbody = document.createElement('tbody');
-
     const trHead = document.createElement('tr');
-    columns.forEach(col => { const th = document.createElement('th'); th.textContent = col; trHead.appendChild(th); });
-    thead.appendChild(trHead); table.appendChild(thead);
+    columns.forEach(col => { 
+        const th = document.createElement('th'); 
+        th.textContent = col; 
+        trHead.appendChild(th); 
+    });
+    thead.appendChild(trHead); 
+    table.appendChild(thead);
 
+    const tbody = document.createElement('tbody');
     data.forEach(row => {
         const tr = document.createElement('tr');
-        columns.forEach(col => { const td = document.createElement('td'); td.textContent = row[col]; tr.appendChild(td); });
+        columns.forEach(col => { 
+            const td = document.createElement('td'); 
+            // Handle ClusterID = 0 display issue
+            td.textContent = (row[col] !== undefined && row[col] !== null) ? row[col] : ''; 
+            // Highlight cluster ID column
+            if (col === 'ClusterID') {
+                td.style.fontWeight = '600';
+                td.style.color = '#3b82f6'; // blue color for cluster IDs
+            }
+            tr.appendChild(td); 
+        });
         tbody.appendChild(tr);
     });
-    table.appendChild(tbody); container.appendChild(table);
+    table.appendChild(tbody); 
+    container.appendChild(table);
+    
+    // Show the results section
+    document.getElementById('resultsSection').style.display = 'block';
 }
