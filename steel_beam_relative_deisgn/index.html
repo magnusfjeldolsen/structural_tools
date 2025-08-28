@@ -78,6 +78,11 @@
             gap: 1rem;
             margin-bottom: 1rem;
         }
+        .calculation-mode-coming-soon {
+            background-color: rgba(251, 146, 60, 0.1) !important;
+            border-color: #f97316 !important;
+            color: #fed7aa !important;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
@@ -110,6 +115,7 @@
                 <div class="input-group">
                     <label for="profileType" class="input-label">Profile Type:</label>
                     <select id="profileType" class="select-field">
+                        <option value="">Select profile type...</option>
                         <option value="IPE">IPE</option>
                         <option value="HEA">HEA</option>
                         <option value="HEB">HEB</option>
@@ -159,7 +165,7 @@
                 <div class="input-group">
                     <label for="actingMoment" class="input-label">Design Moment (ULS) M<sub>Ed</sub>:</label>
                     <div class="input-with-unit">
-                        <input type="text" id="actingMoment" class="input-field" value="112" placeholder="e.g. 3*(1.2*5+1.5*3)*5^2/8" style="width: 100%;">
+                        <input type="text" id="actingMoment" class="input-field" value="" placeholder="e.g. 3*(1.2*5+1.5*3)*5^2/8" style="width: 100%;">
                         <span class="unit-label">kNm</span>
                     </div>
                 </div>
@@ -178,44 +184,9 @@
 
             <!-- Loading Model Group (shown when Loading Model is selected) -->
             <div id="loadingModelGroup" style="display: none;">
-                <!-- Row 6: Characteristic Moment - Wide field -->
                 <div class="grid-1-full">
-                    <div class="input-group">
-                        <label for="characteristicMoment" class="input-label">Characteristic Moment M<sub>c</sub>:</label>
-                        <div class="input-with-unit">
-                            <input type="text" id="characteristicMoment" class="input-field" value="95" placeholder="e.g. (5*2.5 + 3*1.8)*6^2/8" style="width: 100%;">
-                            <span class="unit-label">kNm</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Row 7: Beam Length and Deflection Limit -->
-                <div class="grid-2-dropdown">
-                    <div class="input-group">
-                        <label for="beamLength" class="input-label">Beam Length L:</label>
-                        <div class="input-with-unit">
-                            <input type="number" id="beamLength" class="input-field" value="6.0" min="1" max="20" step="0.1">
-                            <span class="unit-label">m</span>
-                        </div>
-                    </div>
-                    
-                    <div class="input-group">
-                        <label for="deflectionLimit" class="input-label">Deflection Limit δ<sub>max</sub>:</label>
-                        <div class="input-with-unit">
-                            <input type="number" id="deflectionLimit" class="input-field" value="300" min="150" max="500" step="50">
-                            <span class="unit-label">L/δ</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Row 8: Load Type -->
-                <div class="grid-1-full">
-                    <div class="input-group">
-                        <label for="loadType" class="input-label">Load Type:</label>
-                        <select id="loadType" class="select-field">
-                            <option value="udl">Uniformly Distributed Load</option>
-                            <option value="point">Point Load at Center</option>
-                        </select>
+                    <div class="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 text-center">
+                        <p class="text-blue-200 text-lg">Coming soon</p>
                     </div>
                 </div>
             </div>
