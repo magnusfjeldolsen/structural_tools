@@ -110,83 +110,91 @@
         <div class="section-card">
             <h2 class="heading-3">Design Parameters</h2>
             
-            <!-- Row 1: Profile Type and Selected Profile -->
-            <div class="grid-2-dropdown">
-                <div class="input-group">
-                    <label for="profileType" class="input-label">Profile Type:</label>
-                    <select id="profileType" class="select-field">
-                        <option value="">Select profile type...</option>
-                        <option value="IPE">IPE</option>
-                        <option value="HEA">HEA</option>
-                        <option value="HEB">HEB</option>
-                    </select>
-                </div>
+            <!-- ULS Design Category -->
+            <div class="mb-8">
+                <h3 class="text-lg font-semibold text-blue-300 mb-4 border-b border-blue-700 pb-2">ULS Design</h3>
                 
-                <div class="input-group">
-                    <label for="selectedProfile" class="input-label">Selected Profile:</label>
-                    <select id="selectedProfile" class="select-field">
-                        <option value="">Select a profile...</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Row 2: Calculation Mode -->
-            <div class="grid-1-full">
-                <div class="input-group">
-                    <label for="calculationMode" class="input-label">Calculation Mode:</label>
-                    <select id="calculationMode" class="select-field">
-                        <option value="loading">Loading Model</option>
-                        <option value="utilization" selected>Utilization Ratios</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Row 3: Yield Stress and Material Factor -->
-            <div class="grid-2-dropdown">
-                <div class="input-group">
-                    <label for="yieldLimit" class="input-label">Yield Stress f<sub>y</sub>:</label>
-                    <div class="input-with-unit">
-                        <input type="number" id="yieldLimit" class="input-field" value="355" min="200" max="1000">
-                        <span class="unit-label">MPa</span>
+                <!-- Design Moment (ULS) and Yield Stress -->
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="input-group">
+                        <label for="actingMoment" class="input-label text-left">Design Moment (ULS) M<sub>Ed</sub>:</label>
+                        <div class="input-with-unit" style="max-width: 350px;">
+                            <input type="text" id="actingMoment" class="input-field" value="" placeholder="e.g. 3*(1.2*5+1.5*3)*5^2/8">
+                            <span class="unit-label">kNm</span>
+                        </div>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="yieldLimit" class="input-label text-left">Yield Stress f<sub>y</sub>:</label>
+                        <div class="input-with-unit" style="max-width: 250px;">
+                            <input type="number" id="yieldLimit" class="input-field" value="355" min="200" max="1000">
+                            <span class="unit-label">MPa</span>
+                        </div>
                     </div>
                 </div>
 
-                <div class="input-group">
-                    <label for="gammaM0" class="input-label">Material Factor γ<sub>M0</sub>:</label>
-                    <div class="input-with-unit">
-                        <input type="number" id="gammaM0" class="input-field" value="1.05" min="1.0" max="2.0" step="0.01">
-                        <span class="unit-label">-</span>
+                <!-- Material Factor -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div></div> <!-- Empty div for alignment -->
+                    <div class="input-group">
+                        <label for="gammaM0" class="input-label">Material Factor γ<sub>M0</sub>:</label>
+                        <div class="input-with-unit" style="max-width: 250px;">
+                            <input type="number" id="gammaM0" class="input-field" value="1.05" min="1.0" max="2.0" step="0.01">
+                            <span class="unit-label">-</span>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Row 4: Design Moment (ULS) - Wide field -->
-            <div class="grid-1-full">
-                <div class="input-group">
-                    <label for="actingMoment" class="input-label">Design Moment (ULS) M<sub>Ed</sub>:</label>
-                    <div class="input-with-unit">
-                        <input type="text" id="actingMoment" class="input-field" value="" placeholder="e.g. 3*(1.2*5+1.5*3)*5^2/8" style="width: 100%;">
-                        <span class="unit-label">kNm</span>
+            <!-- SLS Design Category -->
+            <div class="mb-8">
+                <h3 class="text-lg font-semibold text-green-300 mb-4 border-b border-green-700 pb-2">SLS Design</h3>
+                
+                <!-- Profile Type and Calculation Mode -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="input-group">
+                        <label for="profileType" class="input-label text-left">Profile Type:</label>
+                        <select id="profileType" class="select-field" style="max-width: 350px;">
+                            <option value="">Select profile type...</option>
+                            <option value="IPE">IPE</option>
+                            <option value="HEA">HEA</option>
+                            <option value="HEB">HEB</option>
+                        </select>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="calculationMode" class="input-label text-left">Calculation Mode:</label>
+                        <select id="calculationMode" class="select-field" style="max-width: 250px;">
+                            <option value="loading">Loading Model</option>
+                            <option value="utilization" selected>Utilization Ratios</option>
+                        </select>
                     </div>
                 </div>
-            </div>
 
-            <!-- Row 5: Stiffness Utilization Ratio -->
-            <div class="grid-1-full" id="utilizationRatioGroup" style="display: block;">
-                <div class="input-group">
-                    <label for="stiffnessUtilization" class="input-label">Stiffness Utilization Ratio:</label>
-                    <div class="input-with-unit">
-                        <input type="number" id="stiffnessUtilization" class="input-field" value="0.0" min="0" step="0.01">
-                        <span class="unit-label">-</span>
+                <!-- Selected Profile and Stiffness Utilization Ratio -->
+                <div class="grid grid-cols-2 gap-4" id="utilizationRatioGroup" style="display: block;">
+                    <div class="input-group">
+                        <label for="selectedProfile" class="input-label text-left">Selected Profile:</label>
+                        <select id="selectedProfile" class="select-field" style="max-width: 350px;">
+                            <option value="">Select a profile...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="stiffnessUtilization" class="input-label text-left">Stiffness Utilization Ratio:</label>
+                        <div class="input-with-unit" style="max-width: 250px;">
+                            <input type="number" id="stiffnessUtilization" class="input-field" value="0.0" min="0" step="0.01">
+                            <span class="unit-label">-</span>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Loading Model Group (shown when Loading Model is selected) -->
-            <div id="loadingModelGroup" style="display: none;">
-                <div class="grid-1-full">
-                    <div class="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 text-center">
-                        <p class="text-blue-200 text-lg">Coming soon</p>
+                <!-- Loading Model Group (shown when Loading Model is selected) -->
+                <div id="loadingModelGroup" style="display: none;">
+                    <div class="grid-1-full">
+                        <div class="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 text-center">
+                            <p class="text-blue-200 text-lg">Coming soon</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -196,14 +204,14 @@
                 <h3 class="heading-3">Selected Profile Analysis</h3>
                 <div class="grid-2-dropdown">
                     <div class="input-group">
-                        <label class="input-label">ULS Utilization (M<sub>Ed</sub>/M<sub>Rd</sub>):</label>
+                        <label class="input-label text-left">ULS Utilization (M<sub>Ed</sub>/M<sub>Rd</sub>):</label>
                         <div class="input-with-unit">
                             <input id="ulsUtilization" class="input-field" readonly value="0.0" />
                             <span class="unit-label">-</span>
                         </div>
                     </div>
                     <div class="input-group">
-                        <label class="input-label">SLS Utilization (Stiffness):</label>
+                        <label class="input-label text-left">SLS Utilization (Stiffness):</label>
                         <div class="input-with-unit">
                             <input id="slsUtilization" class="input-field" readonly value="0.0" />
                             <span class="unit-label">-</span>
@@ -217,14 +225,14 @@
                 <h3 class="heading-3">Derived Requirements</h3>
                 <div class="grid-2-dropdown">
                     <div class="input-group">
-                        <label class="input-label">Required W<sub>el,y</sub>:</label>
+                        <label class="input-label text-left">Required W<sub>el,y</sub>:</label>
                         <div class="input-with-unit">
                             <input id="welRequired" class="input-field" readonly value="0.0" />
                             <span class="unit-label">10³ mm³</span>
                         </div>
                     </div>
                     <div class="input-group">
-                        <label class="input-label">Required I<sub>y</sub>:</label>
+                        <label class="input-label text-left">Required I<sub>y</sub>:</label>
                         <div class="input-with-unit">
                             <input id="iyRequired" class="input-field" readonly value="0.0" />
                             <span class="unit-label">10⁶ mm⁴</span>
