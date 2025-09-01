@@ -91,6 +91,16 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('calculationMode').addEventListener('change', function() {
         toggleCalculationMode();
     });
+    document.getElementById('staticModel').addEventListener('change', function() {
+        updateLoadModelOptions();
+    });
+    document.getElementById('selectedProfile').addEventListener('change', function() {
+        // Trigger calculations when a profile is selected
+        const actingMoment = validateInput('actingMoment', 0, 10000, 0);
+        if (actingMoment > 0) {
+            updateCalculations();
+        }
+    });
     
     // Add event listener for suggest sections button
     document.getElementById('suggestSectionsBtn').addEventListener('click', suggestSections);
@@ -98,6 +108,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add real-time validation event listeners
     document.getElementById('actingMoment').addEventListener('input', function() {
         validateInputWithColor('actingMoment');
+        // Auto-update calculations if we have enough info
+        setTimeout(() => {
+            const profileType = document.getElementById('profileType').value;
+            const selectedProfile = document.getElementById('selectedProfile').value;
+            if (profileType && selectedProfile && this.value.trim()) {
+                updateCalculations();
+            }
+        }, 500);
     });
     document.getElementById('stiffnessUtilization').addEventListener('input', function() {
         validateInputWithColor('stiffnessUtilization');
@@ -116,6 +134,9 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     document.getElementById('characteristicMoment').addEventListener('input', function() {
         validateInputWithColor('characteristicMoment');
+    });
+    document.getElementById('youngModulus').addEventListener('input', function() {
+        validateInputWithColor('youngModulus');
     });
 });
 
@@ -138,33 +159,40 @@ function populateProfileDropdown() {
     }
 }
 
+function updateLoadModelOptions() {
+    const staticModel = document.getElementById('staticModel').value;
+    const loadModelSelect = document.getElementById('loadModel');
+    
+    // Clear existing options
+    loadModelSelect.innerHTML = '<option value="">Select load model...</option>';
+    
+    if (staticModel === 'simply_supported') {
+        loadModelSelect.innerHTML += '<option value="udl">Evenly Distributed Load</option>';
+        loadModelSelect.innerHTML += '<option value="point_mid">Point Load at Mid-span</option>';
+    } else if (staticModel === 'cantilever') {
+        loadModelSelect.innerHTML += '<option value="udl">Evenly Distributed Load</option>';
+        loadModelSelect.innerHTML += '<option value="point_tip">Point Load at Tip</option>';
+    }
+}
+
 function toggleCalculationMode() {
     const calculationModeSelect = document.getElementById('calculationMode');
     const calculationMode = calculationModeSelect.value;
-    const utilizationRatioGroup = document.getElementById('utilizationRatioGroup');
+    const stiffnessUtilizationGroup = document.getElementById('stiffnessUtilizationGroup');
     const loadingModelGroup = document.getElementById('loadingModelGroup');
-    const slsUtilizationGroup = document.querySelector('#slsUtilization').closest('.input-group');
     
     if (calculationMode === 'utilization') {
-        // Show utilization ratio input, hide loading model inputs
-        utilizationRatioGroup.style.display = 'block';
+        // Show stiffness utilization ratio input, hide loading model inputs
+        stiffnessUtilizationGroup.style.display = 'block';
         loadingModelGroup.style.display = 'none';
-        // Hide SLS utilization display in utilization mode
-        if (slsUtilizationGroup) {
-            slsUtilizationGroup.style.display = 'none';
-        }
         // Remove orange styling
         calculationModeSelect.classList.remove('calculation-mode-coming-soon');
     } else {
-        // Show loading model "coming soon" message, hide utilization ratio input
-        utilizationRatioGroup.style.display = 'none';
+        // Show loading model inputs, hide stiffness utilization ratio input
+        stiffnessUtilizationGroup.style.display = 'none';
         loadingModelGroup.style.display = 'block';
-        // Show SLS utilization display in loading model mode
-        if (slsUtilizationGroup) {
-            slsUtilizationGroup.style.display = 'block';
-        }
-        // Add orange styling for "coming soon" mode
-        calculationModeSelect.classList.add('calculation-mode-coming-soon');
+        // Remove orange styling since loading model is now functional
+        calculationModeSelect.classList.remove('calculation-mode-coming-soon');
     }
 }
 
@@ -230,31 +258,61 @@ function updateCalculations() {
         }
         
     } else {
-        // Loading model mode
-        const beamLength = validateInput('beamLength', 1, 20, 6.0);
-        const deflectionLimit = validateInput('deflectionLimit', 150, 500, 300);
-        const loadType = document.getElementById('loadType').value;
+        // Loading model mode - deflection calculations
+        const beamLength = validateInput('beamLength', 0.1, 50, 6.0);
+        const deflectionLimit = validateInput('deflectionLimit', 150, 1000, 300);
+        const characteristicMoment = validateInput('characteristicMoment', 0, 10000, 0);
+        const youngModulus = validateInput('youngModulus', 100000, 300000, 210000);
+        const staticModel = document.getElementById('staticModel').value;
+        const loadModel = document.getElementById('loadModel').value;
         
         if (beamLength <= 0) {
             showError('Please enter a valid beam length greater than 0 m');
             return;
         }
         
-        // Calculate required section modulus for moment capacity
+        if (!staticModel || !loadModel) {
+            showError('Please select both static model and load model');
+            return;
+        }
+        
+        if (characteristicMoment <= 0) {
+            showError('Please enter a valid characteristic moment Mch greater than 0 kNm');
+            return;
+        }
+        
+        // Calculate required section modulus for ULS moment capacity
         WelRequired = (actingMoment * 1000000) / (yieldLimit / gammaM0); // mm³
 
-        // Calculate required second moment of area for deflection
-        const deltaMax = (beamLength * 1000) / deflectionLimit; // mm
+        // Calculate required second moment of area for deflection based on formulas
+        const L = beamLength * 1000; // Convert to mm
+        const Mch = characteristicMoment * 1000000; // Convert to N⋅mm
+        const E = youngModulus; // MPa = N/mm²
+        const deltaMax = L / deflectionLimit; // Maximum allowed deflection in mm
         
-        if (loadType === 'udl') {
-            // For UDL: q = 8M/L² (kN/m)
-            const q = (8 * actingMoment) / (beamLength * beamLength); // kN/m
-            IyRequired = (5 * q * Math.pow(beamLength * 1000, 4)) / (384 * E * deltaMax); // mm⁴
-        } else {
-            // For point load: P = 4M/L (kN) 
-            const P = (4 * actingMoment) / beamLength; // kN
-            IyRequired = (P * 1000 * Math.pow(beamLength * 1000, 3)) / (48 * E * deltaMax); // mm⁴
+        // Calculate Iy required using the provided formulas: u_max = coefficient * Mch * L² / (E * Iy)
+        // Rearranging: Iy = coefficient * Mch * L² / (E * u_max)
+        let deflectionCoefficient;
+        
+        if (staticModel === 'simply_supported') {
+            if (loadModel === 'point_mid') {
+                // Simply supported, point load: u_max = Mch*L²/(12*E*Iy)
+                deflectionCoefficient = 1/12;
+            } else if (loadModel === 'udl') {
+                // Simply supported, UDL: u_max = 5*Mch*L²/(48*E*Iy)
+                deflectionCoefficient = 5/48;
+            }
+        } else if (staticModel === 'cantilever') {
+            if (loadModel === 'point_tip') {
+                // Cantilever, point load: u_max = Mch*L²/(3*E*Iy)
+                deflectionCoefficient = 1/3;
+            } else if (loadModel === 'udl') {
+                // Cantilever, UDL: u_max = Mch*L²/(4*E*Iy)
+                deflectionCoefficient = 1/4;
+            }
         }
+        
+        IyRequired = (deflectionCoefficient * Mch * Math.pow(L, 2)) / (E * deltaMax); // mm⁴
         
         // Calculate utilizations if profile is selected
         if (selectedProfileName) {
@@ -553,6 +611,9 @@ function validateInputWithColor(elementId, value = null) {
     } else if (elementId === 'characteristicMoment') {
         // Characteristic moment can be 0 or positive
         isValid = !isNaN(numericValue) && numericValue >= 0;
+    } else if (elementId === 'youngModulus') {
+        // Young's modulus should be reasonable (100000-300000 MPa)
+        isValid = !isNaN(numericValue) && numericValue >= 100000 && numericValue <= 300000;
     } else {
         // Default validation - just check if it's a number
         isValid = !isNaN(numericValue);
@@ -818,25 +879,41 @@ function suggestSections() {
         const beamLengthResult = validateInputWithColor('beamLength');
         const deflectionLimitResult = validateInputWithColor('deflectionLimit');
         const characteristicMomentResult = validateInputWithColor('characteristicMoment');
+        const youngModulusResult = validateInputWithColor('youngModulus');
         const beamLength = beamLengthResult.value;
         const deflectionLimit = deflectionLimitResult.value;
         const characteristicMoment = characteristicMomentResult.value;
-        const loadType = document.getElementById('loadType').value;
-        const E = 210000;
+        const youngModulus = youngModulusResult.value;
+        const staticModel = document.getElementById('staticModel').value;
+        const loadModel = document.getElementById('loadModel').value;
         
         // Use ULS moment for strength check
         WelRequired = (actingMoment * 1000000) / fyd;
         
-        // Use characteristic moment for deflection check
-        const deltaMax = (beamLength * 1000) / deflectionLimit;
+        // Use characteristic moment for deflection check - same logic as updateCalculations
+        const L = beamLength * 1000; // Convert to mm
+        const Mch = characteristicMoment * 1000000; // Convert to N⋅mm
+        const E = youngModulus; // MPa = N/mm²
+        const deltaMax = L / deflectionLimit; // Maximum allowed deflection in mm
         
-        if (loadType === 'udl') {
-            const q = (8 * characteristicMoment) / (beamLength * beamLength);
-            IyRequired = (5 * q * Math.pow(beamLength * 1000, 4)) / (384 * E * deltaMax);
-        } else {
-            const P = (4 * characteristicMoment) / beamLength;
-            IyRequired = (P * 1000 * Math.pow(beamLength * 1000, 3)) / (48 * E * deltaMax);
+        // Calculate deflection coefficient based on static and load model
+        let deflectionCoefficient;
+        
+        if (staticModel === 'simply_supported') {
+            if (loadModel === 'point_mid') {
+                deflectionCoefficient = 1/12;
+            } else if (loadModel === 'udl') {
+                deflectionCoefficient = 5/48;
+            }
+        } else if (staticModel === 'cantilever') {
+            if (loadModel === 'point_tip') {
+                deflectionCoefficient = 1/3;
+            } else if (loadModel === 'udl') {
+                deflectionCoefficient = 1/4;
+            }
         }
+        
+        IyRequired = (deflectionCoefficient * Mch * Math.pow(L, 2)) / (E * deltaMax);
     }
     
     // Update requirements display
