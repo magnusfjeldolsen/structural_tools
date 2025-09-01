@@ -141,6 +141,38 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
+function isFormula(value) {
+    // Check if input contains mathematical operators or functions (not just digits, decimal point, minus sign)
+    const formulaRegex = /[+\-*/^()√]|sqrt|sin|cos|tan|pi|e\b/;
+    return formulaRegex.test(value.toString());
+}
+
+function updateFormulaResult(elementId, numericValue, isValid) {
+    const inputElement = document.getElementById(elementId);
+    const inputValue = inputElement.value.trim();
+    
+    // Get result display elements (now using result rows)
+    let resultRow, valueSpan;
+    if (elementId === 'actingMoment') {
+        resultRow = document.getElementById('actingMomentResultRow');
+        valueSpan = document.getElementById('actingMomentValue');
+    } else if (elementId === 'characteristicMoment') {
+        resultRow = document.getElementById('characteristicMomentResultRow');
+        valueSpan = document.getElementById('characteristicMomentValue');
+    }
+    
+    if (resultRow && valueSpan) {
+        if (isFormula(inputValue) && isValid && numericValue > 0) {
+            // Show calculated result for formulas
+            valueSpan.textContent = numericValue.toFixed(2);
+            resultRow.style.display = 'grid'; // Use 'grid' to maintain grid layout
+        } else {
+            // Hide result for simple numbers or invalid inputs
+            resultRow.style.display = 'none';
+        }
+    }
+}
+
 function populateProfileDropdown() {
     const profileType = document.getElementById('profileType').value;
     const selectedProfileDropdown = document.getElementById('selectedProfile');
@@ -625,6 +657,11 @@ function validateInputWithColor(elementId, value = null) {
         element.classList.add('input-valid');
     } else {
         element.classList.add('input-invalid');
+    }
+    
+    // Update formula result display for moment inputs
+    if (elementId === 'actingMoment' || elementId === 'characteristicMoment') {
+        updateFormulaResult(elementId, numericValue, isValid);
     }
     
     return { value: isNaN(numericValue) ? 0 : numericValue, isValid };

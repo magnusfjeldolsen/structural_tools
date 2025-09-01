@@ -133,6 +133,14 @@
                     </div>
                 </div>
 
+                <!-- Formula result row for MEd (hidden by default) -->
+                <div class="grid grid-cols-2 gap-4 mb-4" id="actingMomentResultRow" style="display: none;">
+                    <div class="text-sm text-blue-300 pl-4">
+                        M<sub>Ed</sub> = <span id="actingMomentValue">0</span> kNm
+                    </div>
+                    <div></div> <!-- Empty column -->
+                </div>
+
                 <!-- Material Factor -->
                 <div class="grid grid-cols-2 gap-4">
                     <div></div> <!-- Empty div for alignment -->
@@ -244,6 +252,14 @@
                                 <span class="unit-label">MPa</span>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Formula result row for Mch (hidden by default) -->
+                    <div class="grid grid-cols-2 gap-4 mb-4" id="characteristicMomentResultRow" style="display: none;">
+                        <div class="text-sm text-blue-300 pl-4">
+                            M<sub>ch</sub> = <span id="characteristicMomentValue">0</span> kNm
+                        </div>
+                        <div></div> <!-- Empty column -->
                     </div>
                 </div>
             </div>
