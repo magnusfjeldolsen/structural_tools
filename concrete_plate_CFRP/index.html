@@ -87,9 +87,8 @@
     <div class="space-y-8 mb-8">
       
       <!-- Basic Parameters -->
+      <h2 class="text-2xl font-bold text-white mb-4">Basic Parameters</h2>
       <div class="input-group rounded-xl p-6">
-        <h2 class="text-2xl font-bold text-white mb-6">Basic Parameters</h2>
-        
         <div class="space-y-3">
           <div class="grid grid-cols-12 gap-2 items-center">
             <div class="col-span-2 text-sm font-medium text-gray-300">M₀</div>
@@ -100,7 +99,7 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">MEd</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">M<sub>Ed</sub></div>
             <div class="col-span-3">
               <input type="number" id="MEd" value="90" step="0.1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
@@ -124,7 +123,7 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">fck</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">f<sub>ck</sub></div>
             <div class="col-span-3">
               <select id="concrete_grade" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
                 <option value="20">B20</option>
@@ -140,7 +139,7 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">γc</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">γ<sub>c</sub></div>
             <div class="col-span-3">
               <input type="number" id="gamma_c" value="1.5" step="0.1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
@@ -148,7 +147,7 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">αcc</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">α<sub>cc</sub></div>
             <div class="col-span-3">
               <input type="number" id="alpha_cc" value="0.85" step="0.01" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
@@ -171,9 +170,8 @@
       </div>
       
       <!-- Steel Reinforcement -->
+      <h2 class="text-2xl font-bold text-white mb-4">Steel Reinforcement</h2>
       <div class="input-group rounded-xl p-6">
-        <h2 class="text-2xl font-bold text-white mb-6">Steel Reinforcement</h2>
-        
         <div class="space-y-3">
           <div class="grid grid-cols-12 gap-2 items-center">
             <div class="col-span-2 text-sm font-medium text-gray-300">φ</div>
@@ -192,15 +190,15 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">ccl</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">c<sub>cl</sub></div>
             <div class="col-span-3">
-              <input type="number" id="ccl" value="140" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+              <input type="number" id="ccl" value="200" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
             <div class="col-span-7 text-xs text-gray-400">Spacing (mm)</div>
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">fyk</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">f<sub>yk</sub></div>
             <div class="col-span-3">
               <input type="number" id="fyk" value="500" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
@@ -208,7 +206,7 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">Es</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">E<sub>s</sub></div>
             <div class="col-span-3">
               <input type="number" id="Es" value="200" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
@@ -216,9 +214,9 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">γs</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">γ<sub>s</sub></div>
             <div class="col-span-3">
-              <input type="number" id="gamma_s" value="1.25" step="0.01" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
+              <input type="number" id="gamma_s" value="1.15" step="0.01" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
             <div class="col-span-7 text-xs text-gray-400">Safety factor</div>
           </div>
@@ -226,9 +224,8 @@
       </div>
       
       <!-- CFRP Properties -->
+      <h2 class="text-2xl font-bold text-white mb-4">CFRP Properties</h2>
       <div class="input-group rounded-xl p-6">
-        <h2 class="text-2xl font-bold text-white mb-6">CFRP Properties</h2>
-        
         <div class="space-y-3">
           <div class="grid grid-cols-12 gap-2 items-center">
             <div class="col-span-2 text-sm font-medium text-gray-300">n</div>
@@ -239,7 +236,7 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">nperlag</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">n<sub>perlayer</sub></div>
             <div class="col-span-3">
               <input type="number" id="n_per_layer" value="3" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
@@ -247,7 +244,7 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">tf</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">t<sub>f</sub></div>
             <div class="col-span-3">
               <input type="number" id="tf" value="1.4" step="0.1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
@@ -255,7 +252,7 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">bfrp</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">b<sub>f</sub></div>
             <div class="col-span-3">
               <input type="number" id="bfrp" value="150" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
@@ -263,7 +260,7 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">εfk</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">ε<sub>fk</sub></div>
             <div class="col-span-3">
               <input type="number" id="epsilon_fk" value="0.016" step="0.001" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
@@ -271,7 +268,7 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">Efk</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">E<sub>fk</sub></div>
             <div class="col-span-3">
               <input type="number" id="Efk" value="163" step="1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
@@ -279,19 +276,19 @@
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-2 text-sm font-medium text-gray-300">γfrp</div>
+            <div class="col-span-2 text-sm font-medium text-gray-300">γ<sub>frp</sub></div>
             <div class="col-span-3">
               <input type="number" id="gamma_frp" value="1.2" step="0.1" class="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm">
             </div>
             <div class="col-span-7 text-xs text-gray-400">Safety factor</div>
           </div>
         </div>
-        
-        <div class="mt-6">
-          <button onclick="calculate()" class="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition">
-            Calculate CFRP Reinforcement
-          </button>
-        </div>
+      </div>
+      
+      <div class="mt-6">
+        <button onclick="calculate()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition">
+          Calculate CFRP Reinforcement
+        </button>
       </div>
     </div>
     
