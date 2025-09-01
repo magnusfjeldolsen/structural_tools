@@ -135,7 +135,13 @@
                 <option value="50">B50</option>
               </select>
             </div>
-            <div class="col-span-7 text-xs text-gray-400">Concrete grade (MPa)</div>
+            <div class="col-span-2 flex items-center">
+              <label class="flex items-center cursor-pointer" title="EC2-1-1 §3.1.8: f_ctm,fl = max(1.6 - h/1000, 1.0) × f_ctm. Increases tensile strength for shallow sections (h < 600mm)">
+                <input type="checkbox" id="apply_depth_effect" checked class="mr-2 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500">
+                <span class="text-xs text-gray-300">Depth effect</span>
+              </label>
+            </div>
+            <div class="col-span-5 text-xs text-gray-400">Concrete grade (MPa)</div>
           </div>
           
           <div class="grid grid-cols-12 gap-2 items-center">
@@ -350,6 +356,7 @@
         b: parseFloat(document.getElementById('b').value),
         h: parseFloat(document.getElementById('h').value),
         concrete_grade: parseInt(document.getElementById('concrete_grade').value),
+        apply_depth_effect: document.getElementById('apply_depth_effect').checked,
         gamma_c: parseFloat(document.getElementById('gamma_c').value),
         alpha_cc: parseFloat(document.getElementById('alpha_cc').value),
         phi: parseFloat(document.getElementById('phi').value),
@@ -394,7 +401,10 @@
         lambda = 0;
       }
       
-      const fctm_fl = Math.max(fctm * (1.6 - inputs.h/1000), fctm);
+      // EC2-1-1 §3.1.8 (3.23): Flexural tensile strength with depth effect
+      const depth_factor = Math.max(1.6 - inputs.h/1000, 1.0);
+      const fctm_fl = depth_factor * fctm;
+      const fctm_effective = inputs.apply_depth_effect ? fctm_fl : fctm;
       const fcd = inputs.alpha_cc * fck / inputs.gamma_c;
       const Ec_eff = Ecm / (1 + inputs.phi);
       const alpha_s = inputs.Es * 1000 / Ec_eff;
@@ -424,9 +434,40 @@
       const xsf = (Asl * fyd + Af * Efd * epsilon_f_max) / (lambda * fcd * inputs.b);
       const MRd_sf = (Asl * fyd * (d - lambda * xsf / 2) + epsilon_f_max * Efd * Af * (inputs.h - lambda * xsf / 2)) / 1000000; // Convert Nmm to kNm
       
-      // Check if section is still under-reinforced
+      // Stadium I/II Analysis - Section state at installation
       const epsilon_c2 = 0.0035; // for fck <= 50 MPa
-      const epsilon_cu0 = 0.000238; // strain in concrete at fiber installation (simplified approximation)
+      
+      // Reinforcement ratio
+      const rho = Asl / (inputs.b * d);
+      
+      // Stadium I calculations (transformed section)
+      const A_c = inputs.b * inputs.h; // Concrete area
+      const alpha_d_I = (A_c * 0.5 * inputs.h + alpha_s * Asl * d) / (A_c + alpha_s * Asl);
+      const I_I = (inputs.b * Math.pow(inputs.h, 3)) / 12 + inputs.b * inputs.h * Math.pow(alpha_d_I - inputs.h/2, 2);
+      const M_crack = (fctm_effective * I_I) / (0.5 * inputs.h) / 1000000; // Convert Nmm to kNm
+      
+      // Determine stadium
+      const stadium = (inputs.M0 >= M_crack) ? 2 : 1;
+      const sectionState = (stadium === 1) ? "Stadium I (Uncracked)" : "Stadium II (Cracked)";
+      
+      let I_section, alpha_d_or_factor, epsilon_cu0;
+      
+      if (stadium === 1) {
+        // Stadium I - Use transformed section
+        I_section = I_I;
+        alpha_d_or_factor = alpha_d_I;
+        const y_bottom = inputs.h - alpha_d_I; // Distance from NA to bottom fiber
+        const sigma_c_bottom = (inputs.M0 * 1000000 * y_bottom) / I_I; // Convert kNm to Nmm
+        epsilon_cu0 = sigma_c_bottom / Ec_eff;
+      } else {
+        // Stadium II - Cracked section
+        const alpha_II = Math.sqrt(Math.pow(alpha_s * rho, 2) + 2 * alpha_s * rho) - alpha_s * rho;
+        alpha_d_or_factor = alpha_II; // This is a factor, not absolute depth
+        I_section = 0.5 * Math.pow(alpha_II, 2) * (1 - alpha_II/3) * inputs.b * Math.pow(d, 3);
+        const y_bottom = inputs.h - alpha_II * d; // Distance from NA to bottom fiber
+        const sigma_c_bottom = (inputs.M0 * 1000000 * y_bottom) / I_section; // Convert kNm to Nmm
+        epsilon_cu0 = sigma_c_bottom / Ec_eff;
+      }
       const omega_bal = lambda / (1 + (epsilon_f_max + epsilon_cu0) / epsilon_c2);
       const omega = (Asl * fyd + Af * epsilon_f_max * Efd) / (inputs.b * inputs.h * fcd);
       
@@ -440,12 +481,14 @@
       displayResults({
         inputs,
         M1,
-        fck, fcm, fctm, Ecm, lambda, fctm_fl, fcd, Ec_eff, alpha_s,
+        fck, fcm, fctm, Ecm, lambda, depth_factor, fctm_fl, fctm_effective, fcd, Ec_eff, alpha_s,
         n_asl, fyd, Asl, d,
         Af, epsilon_fd, Efd, epsilon_fd_ic, epsilon_f_max,
         xs, MRd_s, xsf, MRd_sf,
         epsilon_c2, epsilon_cu0, omega_bal, omega, isUnderReinforced,
-        utilizationRatio, capacityIncrease, omegaUtilization
+        utilizationRatio, capacityIncrease, omegaUtilization,
+        rho, A_c, alpha_d_I, I_I, M_crack, stadium, sectionState, 
+        I_section, alpha_d_or_factor
       });
     }
 
@@ -518,6 +561,28 @@
               <span class="calc-expression">0.3 × f<sub>ck</sub><sup>2/3</sup> = 0.3 × ${calc.fck}<sup>2/3</sup></span>
               <span class="calc-equals">=</span>
               <span class="calc-value">${calc.fctm.toFixed(2)} MPa</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">Depth factor</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">max(1.6 - h/1000, 1.0) = max(1.6 - ${calc.inputs.h}/1000, 1.0)</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.depth_factor.toFixed(3)}</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">f<sub>ctm,fl</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">depth factor × f<sub>ctm</sub> = ${calc.depth_factor.toFixed(3)} × ${calc.fctm.toFixed(2)}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.fctm_fl.toFixed(2)} MPa</span>
+              <span class="calc-note">(EC2-1-1 §3.1.8)</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">f<sub>ctm,used</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">${calc.inputs.apply_depth_effect ? 'f<sub>ctm,fl</sub>' : 'f<sub>ctm</sub>'} (${calc.inputs.apply_depth_effect ? 'depth effect applied' : 'depth effect disabled'})</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value ${calc.inputs.apply_depth_effect ? 'text-yellow-400' : 'text-blue-400'}">${calc.fctm_effective.toFixed(2)} MPa</span>
             </div>
             <div class="calc-row">
               <span class="calc-label">E<sub>cm</sub></span>
@@ -634,6 +699,138 @@
               <span class="calc-equals">=</span>
               <span class="calc-value">${calc.epsilon_f_max.toFixed(6)}</span>
             </div>
+          </div>
+        </div>
+        
+        <!-- Stadium I/II Analysis Box -->
+        <div class="calc-box mb-6">
+          <div class="calc-header">
+            <h3 class="text-lg font-semibold text-orange-300">Stadium I/II Analysis - Section State at Installation</h3>
+          </div>
+          <div class="calc-content">
+            <!-- Common Parameters -->
+            <div class="calc-row">
+              <span class="calc-label">ρ</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">A<sub>sl</sub> / (b × d) = ${calc.Asl.toFixed(1)} / (${calc.inputs.b} × ${calc.d})</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.rho.toFixed(6)}</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">α<sub>s</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">E<sub>s</sub> / E<sub>c,eff</sub> = ${calc.inputs.Es * 1000} / ${calc.Ec_eff.toFixed(0)}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.alpha_s.toFixed(2)}</span>
+            </div>
+            
+            <!-- Stadium I Calculations -->
+            <div class="calc-separator"></div>
+            <h4 class="text-md font-medium text-blue-200 mb-3 border-b border-gray-600 pb-1">Stadium I Parameters (Transformed Section)</h4>
+            <div class="calc-row">
+              <span class="calc-label">A<sub>c</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">b × h = ${calc.inputs.b} × ${calc.inputs.h}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.A_c.toFixed(0)} mm²</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">α<sub>d,I</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">(A<sub>c</sub> × 0.5 × h + α<sub>s</sub> × A<sub>sl</sub> × d) / (A<sub>c</sub> + α<sub>s</sub> × A<sub>sl</sub>)</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.alpha_d_I.toFixed(2)} mm</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">I<sub>I</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">b×h³/12 + b×h×(α<sub>d,I</sub> - h/2)² = ${calc.inputs.b}×${calc.inputs.h}³/12 + ${calc.inputs.b}×${calc.inputs.h}×(${calc.alpha_d_I.toFixed(2)} - ${calc.inputs.h}/2)²</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.I_I.toFixed(0)} mm⁴</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">M<sub>crack</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">f<sub>ctm,used</sub> × I<sub>I</sub> / (0.5 × h) = ${calc.fctm_effective.toFixed(2)} × ${calc.I_I.toFixed(0)} / (0.5 × ${calc.inputs.h})</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.M_crack.toFixed(2)} kNm</span>
+            </div>
+            
+            <!-- Stadium Determination -->
+            <div class="calc-separator"></div>
+            <div class="calc-row">
+              <span class="calc-label">Stadium</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">if(M₀ ≥ M<sub>crack</sub>, 2, 1) = if(${calc.inputs.M0} ≥ ${calc.M_crack.toFixed(2)}, 2, 1)</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value ${calc.stadium === 1 ? 'text-green-400' : 'text-yellow-400'}">${calc.stadium} (${calc.sectionState})</span>
+            </div>
+            
+            ${calc.stadium === 1 ? `
+            <!-- Stadium I Analysis -->
+            <div class="calc-separator"></div>
+            <h4 class="text-md font-medium text-green-200 mb-3 border-b border-gray-600 pb-1">Stadium I - Elastic Stress Calculation</h4>
+            <div class="calc-row">
+              <span class="calc-label">y<sub>bottom</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">h - α<sub>d,I</sub> = ${calc.inputs.h} - ${calc.alpha_d_I.toFixed(2)}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${(calc.inputs.h - calc.alpha_d_I).toFixed(2)} mm</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">σ<sub>c</sub>(M₀,I<sub>I</sub>,y)</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">M₀ × y<sub>bottom</sub> / I<sub>I</sub> = ${calc.inputs.M0} × ${(calc.inputs.h - calc.alpha_d_I).toFixed(2)} / ${calc.I_I.toFixed(0)}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${((calc.inputs.M0 * 1000000 * (calc.inputs.h - calc.alpha_d_I)) / calc.I_I).toFixed(2)} MPa</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">ε<sub>cu0</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">σ<sub>c</sub> / E<sub>c,eff</sub> = ${((calc.inputs.M0 * 1000000 * (calc.inputs.h - calc.alpha_d_I)) / calc.I_I).toFixed(2)} / ${calc.Ec_eff.toFixed(0)}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.epsilon_cu0.toFixed(6)}</span>
+            </div>
+            ` : `
+            <!-- Stadium II Analysis -->
+            <div class="calc-separator"></div>
+            <h4 class="text-md font-medium text-yellow-200 mb-3 border-b border-gray-600 pb-1">Stadium II - Cracked Section Analysis</h4>
+            <div class="calc-row">
+              <span class="calc-label">α<sub>II</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">√((α<sub>s</sub>×ρ)² + 2×α<sub>s</sub>×ρ) - α<sub>s</sub>×ρ = √((${calc.alpha_s.toFixed(2)}×${calc.rho.toFixed(6)})² + 2×${calc.alpha_s.toFixed(2)}×${calc.rho.toFixed(6)}) - ${calc.alpha_s.toFixed(2)}×${calc.rho.toFixed(6)}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.alpha_d_or_factor.toFixed(4)}</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">I<sub>II</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">0.5 × α<sub>II</sub>² × (1 - α<sub>II</sub>/3) × b × d³ = 0.5 × ${calc.alpha_d_or_factor.toFixed(4)}² × (1 - ${calc.alpha_d_or_factor.toFixed(4)}/3) × ${calc.inputs.b} × ${calc.d}³</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.I_section.toFixed(0)} mm⁴</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">y<sub>bottom</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">h - α<sub>II</sub> × d = ${calc.inputs.h} - ${calc.alpha_d_or_factor.toFixed(4)} × ${calc.d}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${(calc.inputs.h - calc.alpha_d_or_factor * calc.d).toFixed(2)} mm</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">σ<sub>c</sub>(M₀,I<sub>II</sub>,y)</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">M₀ × y<sub>bottom</sub> / I<sub>II</sub> = ${calc.inputs.M0} × ${(calc.inputs.h - calc.alpha_d_or_factor * calc.d).toFixed(2)} / ${calc.I_section.toFixed(0)}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${((calc.inputs.M0 * 1000000 * (calc.inputs.h - calc.alpha_d_or_factor * calc.d)) / calc.I_section).toFixed(2)} MPa</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-label">ε<sub>cu0</sub></span>
+              <span class="calc-equals">=</span>
+              <span class="calc-expression">σ<sub>c</sub> / E<sub>c,eff</sub> = ${((calc.inputs.M0 * 1000000 * (calc.inputs.h - calc.alpha_d_or_factor * calc.d)) / calc.I_section).toFixed(2)} / ${calc.Ec_eff.toFixed(0)}</span>
+              <span class="calc-equals">=</span>
+              <span class="calc-value">${calc.epsilon_cu0.toFixed(6)}</span>
+            </div>
+            `}
           </div>
         </div>
         
