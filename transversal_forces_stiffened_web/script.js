@@ -217,7 +217,8 @@ function validateStiffenerWidth() {
   const tw = currentProfile.tw; // web thickness
   const maxStiffenerWidth = (bf - tw) / 2;
   
-  if (bst > maxStiffenerWidth) {
+  // Add small tolerance to avoid red coloring on the optimal automatic value
+  if (bst > maxStiffenerWidth + 0.1) {
     // Make input red and add warning
     bstInput.classList.remove('border-gray-500', 'bg-gray-600');
     bstInput.classList.add('border-red-500', 'bg-red-900/20');
@@ -346,38 +347,36 @@ function calculateAndShow() {
       </div>
       <div class="calc-content">
         ${currentProfile ? `
-        <div class="mb-4 p-3 bg-gray-600 rounded">
-          <h4 class="text-sm font-medium text-blue-200 mb-2">Selected Profile: ${currentProfile.profile}</h4>
-          <div class="grid md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <div class="calc-row">
-                <span class="calc-label">h</span>
-                <span class="calc-equals">=</span>
-                <span class="calc-value">${toFixedIfNeeded(currentProfile.h)} mm</span>
-              </div>
-              <div class="calc-row">
-                <span class="calc-label">t<sub>f</sub></span>
-                <span class="calc-equals">=</span>
-                <span class="calc-value">${toFixedIfNeeded(currentProfile.tf)} mm</span>
-              </div>
-              <div class="calc-row">
-                <span class="calc-label">r</span>
-                <span class="calc-equals">=</span>
-                <span class="calc-value">${toFixedIfNeeded(currentProfile.r || 0)} mm</span>
-              </div>
-            </div>
-            <div>
-              <div class="calc-row">
-                <span class="calc-label">h<sub>w</sub></span>
-                <span class="calc-equals">=</span>
-                <span class="calc-expression">${document.getElementById('includeRadius').checked ? 
-                  `h - 2×(t<sub>f</sub> + r) = ${toFixedIfNeeded(currentProfile.h)} - 2×(${toFixedIfNeeded(currentProfile.tf)} + ${toFixedIfNeeded(currentProfile.r || 0)})` :
-                  `h - 2×t<sub>f</sub> = ${toFixedIfNeeded(currentProfile.h)} - 2×${toFixedIfNeeded(currentProfile.tf)}`
-                }</span>
-                <span class="calc-equals">=</span>
-                <span class="calc-value">${toFixedIfNeeded(hw)} mm</span>
-              </div>
-            </div>
+        <div class="mb-4">
+          <h4 class="text-md font-semibold text-blue-200 mb-3 border-b border-gray-600 pb-1">Selected Profile: ${currentProfile.profile}</h4>
+          <div class="calc-row">
+            <span class="calc-label">h</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(currentProfile.h)} mm</span>
+            <span class="text-gray-400 text-sm ml-4">(total height)</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">t<sub>f</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(currentProfile.tf)} mm</span>
+            <span class="text-gray-400 text-sm ml-4">(flange thickness)</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">r</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(currentProfile.r || 0)} mm</span>
+            <span class="text-gray-400 text-sm ml-4">(root radius)</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">h<sub>w</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">${document.getElementById('includeRadius').checked ? 
+              `h - 2×(t<sub>f</sub> + r) = ${toFixedIfNeeded(currentProfile.h)} - 2×(${toFixedIfNeeded(currentProfile.tf)} + ${toFixedIfNeeded(currentProfile.r || 0)})` :
+              `h - 2×t<sub>f</sub> = ${toFixedIfNeeded(currentProfile.h)} - 2×${toFixedIfNeeded(currentProfile.tf)}`
+            }</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(hw)} mm</span>
           </div>
         </div>
         ` : ''}

@@ -486,4 +486,138 @@
     margin-top: 1rem !important;
     page-break-inside: avoid !important;
   }
+
+  /* Status color preservation - Override calc-value blue */
+  .calc-value.text-green-400,
+  span.calc-value.text-green-400,
+  .text-green-400,
+  [class*="text-green-400"],
+  span.text-green-400,
+  div.text-green-400,
+  .calc-content .text-green-400 {
+    color: #22c55e !important;
+    background: rgba(34, 197, 94, 0.1) !important;
+    border-color: rgba(34, 197, 94, 0.3) !important;
+  }
+
+  .calc-value.text-red-400,
+  span.calc-value.text-red-400,
+  .text-red-400,
+  [class*="text-red-400"],
+  span.text-red-400,
+  div.text-red-400,
+  .calc-content .text-red-400 {
+    color: #dc2626 !important;
+    background: rgba(220, 38, 38, 0.1) !important;
+    border-color: rgba(220, 38, 38, 0.3) !important;
+  }
+
+  .calc-value.text-yellow-400,
+  span.calc-value.text-yellow-400,
+  .text-yellow-400,
+  [class*="text-yellow-400"],
+  span.text-yellow-400,
+  div.text-yellow-400,
+  .calc-content .text-yellow-400 {
+    color: #ca8a04 !important;
+    background: rgba(202, 138, 4, 0.1) !important;
+    border-color: rgba(202, 138, 4, 0.3) !important;
+  }
+
+  /* Override the default calc-value blue color when it has other color classes */
+  .calc-value:not(.text-green-400):not(.text-red-400):not(.text-yellow-400) {
+    color: #3b82f6 !important;
+    background: rgba(59, 130, 246, 0.1) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+  }
+
+  .text-blue-400,
+  [class*="text-blue-400"],
+  span.text-blue-400,
+  div.text-blue-400,
+  .calc-content .text-blue-400 {
+    color: #2563eb !important;
+  }
+
+  .text-purple-400,
+  [class*="text-purple-400"],
+  span.text-purple-400,
+  div.text-purple-400,
+  .calc-content .text-purple-400 {
+    color: #9333ea !important;
+  }
+
+  /* Border color variants */
+  .border-green-500,
+  [class*="border-green-500"] {
+    border-color: #22c55e !important;
+  }
+
+  .border-red-500,
+  [class*="border-red-500"] {
+    border-color: #ef4444 !important;
+  }
+
+  .border-yellow-500,
+  [class*="border-yellow-500"] {
+    border-color: #eab308 !important;
+  }
+
+  /* Background color variants for status */
+  .bg-green-900\/20,
+  [class*="bg-green-900"] {
+    background: rgba(20, 83, 45, 0.3) !important;
+  }
+
+  .bg-red-900\/20,
+  [class*="bg-red-900"] {
+    background: rgba(127, 29, 29, 0.3) !important;
+  }
+
+  .bg-yellow-900\/20,
+  [class*="bg-yellow-900"] {
+    background: rgba(120, 113, 23, 0.3) !important;
+  }
+
+  /* Force high contrast text colors for better print readability */
+  .text-gray-300,
+  [class*="text-gray-300"] {
+    color: #d1d5db !important;
+  }
+
+  .text-gray-400,
+  [class*="text-gray-400"] {
+    color: #9ca3af !important;
+  }
+
+  .text-white,
+  [class*="text-white"] {
+    color: #ffffff !important;
+  }
+
+  /* Ensure heading colors are preserved */
+  .text-blue-300,
+  [class*="text-blue-300"] {
+    color: #93c5fd !important;
+  }
+
+  .text-purple-300,
+  [class*="text-purple-300"] {
+    color: #d8b4fe !important;
+  }
+
+  .text-green-300,
+  [class*="text-green-300"] {
+    color: #86efac !important;
+  }
+
+  .text-yellow-300,
+  [class*="text-yellow-300"] {
+    color: #fde047 !important;
+  }
+
+  .text-red-300,
+  [class*="text-red-300"] {
+    color: #fca5a5 !important;
+  }
 }
