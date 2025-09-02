@@ -147,6 +147,12 @@ function loadProfileData() {
     // Update calculated values
     document.getElementById('tw-calculated').textContent = currentProfile.tw.toFixed(1);
     
+    // Calculate and populate optimal stiffener width
+    const bf = currentProfile.b; // flange width
+    const tw = currentProfile.tw; // web thickness
+    const optimalBst = (bf - tw) / 2;
+    document.getElementById('bst').value = optimalBst.toFixed(1);
+    
     // Calculate and update hw
     calculateWebHeight();
   }
@@ -189,6 +195,39 @@ function calculateWebHeight() {
   }
   
   document.getElementById('hw-calculated').textContent = hw.toFixed(1);
+  
+  // Check stiffener width validation when profile changes
+  validateStiffenerWidth();
+}
+
+// Validate stiffener width against flange width
+function validateStiffenerWidth() {
+  const bstInput = document.getElementById('bst');
+  const bst = parseFloat(bstInput.value);
+  
+  if (!currentProfile || isNaN(bst)) {
+    // Reset validation if no profile or invalid input
+    bstInput.classList.remove('border-red-500', 'bg-red-900/20');
+    bstInput.classList.add('border-gray-500', 'bg-gray-600');
+    bstInput.removeAttribute('title');
+    return;
+  }
+  
+  const bf = currentProfile.b; // flange width
+  const tw = currentProfile.tw; // web thickness
+  const maxStiffenerWidth = (bf - tw) / 2;
+  
+  if (bst > maxStiffenerWidth) {
+    // Make input red and add warning
+    bstInput.classList.remove('border-gray-500', 'bg-gray-600');
+    bstInput.classList.add('border-red-500', 'bg-red-900/20');
+    bstInput.title = `Warning: Stiffener is wider than the flange and will stick outside of the profile. Maximum recommended width: ${maxStiffenerWidth.toFixed(1)} mm`;
+  } else {
+    // Reset to normal appearance
+    bstInput.classList.remove('border-red-500', 'bg-red-900/20');
+    bstInput.classList.add('border-gray-500', 'bg-gray-600');
+    bstInput.removeAttribute('title');
+  }
 }
 
 function calculateAndShow() {

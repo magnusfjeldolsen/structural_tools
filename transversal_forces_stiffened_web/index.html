@@ -97,7 +97,7 @@
           
           <div class="flex items-center gap-4">
             <label for="bst" class="text-sm font-medium min-w-[120px] text-right">b<sub>st</sub> (mm):</label>
-            <input type="number" id="bst" value="100" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <input type="number" id="bst" value="100" step="any" required onchange="validateStiffenerWidth()" oninput="validateStiffenerWidth()" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
           
           <div class="flex items-center gap-4">
