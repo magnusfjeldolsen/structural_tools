@@ -249,9 +249,9 @@ function calculateAndShow() {
   // Slenderness check
   let slenderness_check;
   if (eta_slender >= 1) {
-    slenderness_check = "Stiffened web not prone to buckling before reaching yield limit";
+    slenderness_check = "Stiffened web NOT prone to buckling before reaching yield limit, OK";
   } else {
-    slenderness_check = "Stiffeners are slender - capacity calculation not valid";
+    slenderness_check = "NB! STIFFENED SECTION IS SLENDER - CALCULATION NOT VALID!";
   }
 
   // Create results display
