@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free transversal forces unstiffened web calculator. Calculate capacity according to EC3-1-5 with detailed derivations.">
+  <meta name="keywords" content="transversal forces, unstiffened web, steel design, structural engineering, EC3">
+  <title>Transversal Forces - Unstiffened Web Calculator</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Transversal Forces - Unstiffened Web Calculator">
+  <meta property="og:description" content="Calculate capacity of unstiffened webs for transversal forces according to EC3-1-5">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/transversal_forces_unstiffened_web">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+  <!-- Print color override -->
+  <style>
+    @media print {
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
+      
+      /* Force status colors in print - highest specificity */
+      .calc-value.text-green-400,
+      span.calc-value.text-green-400,
+      .text-green-400 {
+        color: #22c55e !important;
+        background: rgba(34, 197, 94, 0.1) !important;
+        border-color: rgba(34, 197, 94, 0.3) !important;
+      }
+      
+      .calc-value.text-red-400,
+      span.calc-value.text-red-400,
+      .text-red-400 {
+        color: #dc2626 !important;
+        background: rgba(220, 38, 38, 0.1) !important;
+        border-color: rgba(220, 38, 38, 0.3) !important;
+      }
+      
+      .calc-value.text-yellow-400,
+      span.calc-value.text-yellow-400,
+      .text-yellow-400 {
+        color: #ca8a04 !important;
+        background: rgba(202, 138, 4, 0.1) !important;
+        border-color: rgba(202, 138, 4, 0.3) !important;
+      }
+    }
+  </style>
+
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <div class="text-center mb-6">
+      <h1 class="text-3xl font-bold text-white mb-2">Transversal Forces - Unstiffened Web Calculator</h1>
+      <p class="text-gray-300">Calculate capacity of unstiffened webs according to EC3-1-5 with detailed step-by-step derivations</p>
+    </div>
+
+    <!-- Input Form -->
+    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="grid md:grid-cols-2 gap-6">
+      
+      <!-- Profile Selection Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Profile Selection</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="profileType" class="text-sm font-medium min-w-[120px] text-right">Profile Type:</label>
+            <select id="profileType" onchange="loadProfiles()" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="">Select Type</option>
+              <!-- Options will be populated automatically from available JSON files -->
+            </select>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="profileSection" class="text-sm font-medium min-w-[120px] text-right">Profile:</label>
+            <select id="profileSection" onchange="loadProfileData()" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="">Select Profile</option>
+            </select>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <input type="checkbox" id="includeRadius" onchange="calculateWebHeight()" class="w-4 h-4 text-blue-600 bg-gray-600 border-gray-500 rounded focus:ring-blue-500">
+            <label for="includeRadius" class="text-sm font-medium text-white">Include radius in web height calculation</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Web Geometry Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Web Geometry</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="hw" class="text-sm font-medium min-w-[120px] text-right">h<sub>w</sub> (mm):</label>
+            <input type="number" id="hw" value="400" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span id="hw-calculated" class="flex-1 px-3 py-2 bg-gray-500 text-gray-300 border border-gray-500 rounded-md hidden"></span>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="tw" class="text-sm font-medium min-w-[120px] text-right">t<sub>w</sub> (mm):</label>
+            <input type="number" id="tw" value="11.5" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span id="tw-calculated" class="flex-1 px-3 py-2 bg-gray-500 text-gray-300 border border-gray-500 rounded-md hidden"></span>
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label for="tf" class="text-sm font-medium min-w-[120px] text-right">t<sub>f</sub> (mm):</label>
+            <input type="number" id="tf" value="14.6" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span id="tf-calculated" class="flex-1 px-3 py-2 bg-gray-500 text-gray-300 border border-gray-500 rounded-md hidden"></span>
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label for="bf" class="text-sm font-medium min-w-[120px] text-right">b<sub>f</sub> (mm):</label>
+            <input type="number" id="bf" value="190" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span id="bf-calculated" class="flex-1 px-3 py-2 bg-gray-500 text-gray-300 border border-gray-500 rounded-md hidden"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Load Application Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-red-400 mb-4">Load Application</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="type" class="text-sm font-medium min-w-[120px] text-right">Type:</label>
+            <select id="type" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="a">Type a - Load at flange tip</option>
+              <option value="b">Type b - Load at flange center</option>
+              <option value="c" selected>Type c - Load at web/flange junction</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label for="FS" class="text-sm font-medium min-w-[120px] text-right">F<sub>S</sub> (kN):</label>
+            <input type="number" id="FS" value="890" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="a" class="text-sm font-medium min-w-[120px] text-right">a (mm):</label>
+            <input type="number" id="a" value="250" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label for="ss" class="text-sm font-medium min-w-[120px] text-right">s<sub>s</sub> (mm):</label>
+            <input type="number" id="ss" value="250" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label for="c" class="text-sm font-medium min-w-[120px] text-right">c (mm):</label>
+            <input type="number" id="c" value="0" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+      <!-- Material Properties Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-yellow-400 mb-4">Material Properties</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="fyw" class="text-sm font-medium min-w-[120px] text-right">f<sub>yw</sub> (MPa):</label>
+            <input type="number" id="fyw" value="355" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label for="fyf" class="text-sm font-medium min-w-[120px] text-right">f<sub>yf</sub> (MPa):</label>
+            <input type="number" id="fyf" value="355" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="E" class="text-sm font-medium min-w-[120px] text-right">E (GPa):</label>
+            <input type="number" id="E" value="210" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="gammaM1" class="text-sm font-medium min-w-[120px] text-right">γ<sub>M1</sub>:</label>
+            <input type="number" id="gammaM1" value="1.05" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+    </form>
+
+    <!-- Buckling Factor Models -->
+    <div class="bg-gray-700 rounded-lg p-6">
+      <h3 class="text-xl font-semibold text-purple-400 mb-4">Buckling Factor Models</h3>
+      <div class="flex justify-center mb-4">
+        <iframe src="buckling_factors_models.pdf" width="100%" height="600" 
+                style="border: 1px solid #6b7280; border-radius: 0.5rem; background: white;">
+          <p>Your browser does not support PDFs. <a href="buckling_factors_models.pdf" target="_blank">Download the PDF</a> to view the buckling factor models.</p>
+        </iframe>
+      </div>
+      <p class="text-gray-300 text-sm text-center">
+        Buckling factors according to EC3-1-5 Figure 6.1
+      </p>
+    </div>
+
+    <!-- Calculate Button -->
+    <div class="space-y-2 print:hidden">
+      <button onclick="calculateAndShow()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+        Calculate Capacity
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50 hidden">
+      <div id="calc-steps" class="text-white"></div>
+      
+      <!-- Print Button at Bottom -->
+      <div class="mt-8 print:hidden">
+        <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
+          Print to PDF
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="script.js"></script>
+  
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+
+</body>
+</html>
