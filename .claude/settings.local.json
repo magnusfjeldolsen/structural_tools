@@ -4,7 +4,11 @@
       "Bash(mkdir:*)",
       "Bash(python:*)",
       "Bash(start index.html)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Read(/C:\\Python\\structural_tools\\structural_tools\\2dframeanalysis/**)",
+      "Read(/C:\\Python\\structural_tools\\structural_tools\\2dframeanalysis/**)",
+      "Read(/C:\\Python\\structural_tools\\structural_tools\\2dframeanalysis/**)",
+      "Read(/C:\\Python\\structural_tools\\structural_tools\\2dframeanalysis/**)"
     ],
     "deny": [],
     "ask": [],

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Free 2D structural frame analysis calculator. Matrix stiffness method, finite element analysis with detailed results.">
+    <meta name="keywords" content="frame analysis, structural engineering, finite element, stiffness matrix, 2D analysis">
+    <title>2D Structural Frame Analysis Calculator</title>
+    
+    <!-- Open Graph tags -->
+    <meta property="og:title" content="2D Structural Frame Analysis Calculator">
+    <meta property="og:description" content="Calculate frame structures using matrix stiffness method with detailed step-by-step results">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/2dframeanalysis">
+    
+    <!-- Centralized CSS -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+    <link rel="stylesheet" href="../assets/css/forms.css">
+    <link rel="stylesheet" href="../assets/css/components.css">
+    <link rel="stylesheet" href="../assets/css/print.css">
+    
+    <!-- Tailwind CSS -->
+    <script>
+        tailwind.config = { darkMode: 'class' };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Print color override -->
+    <style>
+        @media print {
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+            
+            /* Force status colors in print - highest specificity */
+            .calc-value.text-green-400,
+            span.calc-value.text-green-400,
+            .text-green-400 {
+                color: #22c55e !important;
+                background: rgba(34, 197, 94, 0.1) !important;
+                border-color: rgba(34, 197, 94, 0.3) !important;
+            }
+            
+            .calc-value.text-red-400,
+            span.calc-value.text-red-400,
+            .text-red-400 {
+                color: #dc2626 !important;
+                background: rgba(220, 38, 38, 0.1) !important;
+                border-color: rgba(220, 38, 38, 0.3) !important;
+            }
+            
+            .calc-value.text-yellow-400,
+            span.calc-value.text-yellow-400,
+            .text-yellow-400 {
+                color: #ca8a04 !important;
+                background: rgba(202, 138, 4, 0.1) !important;
+                border-color: rgba(202, 138, 4, 0.3) !important;
+            }
+        }
+
+        /* Custom styling for frame analysis specific elements */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            background: rgb(55, 65, 81);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .data-table th {
+            background: rgb(37, 99, 235);
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .data-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgb(75, 85, 99);
+            color: rgb(229, 231, 235);
+        }
+
+        .data-table tbody tr:hover {
+            background-color: rgb(75, 85, 99);
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+
+        .canvas-container {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        canvas {
+            border: 2px solid rgb(75, 85, 99);
+            border-radius: 10px;
+            background: white;
+            max-width: 100%;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: rgb(59, 130, 246);
+            font-weight: 600;
+        }
+
+        .loading i {
+            font-size: 2em;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            background-color: rgba(220, 38, 38, 0.2);
+            color: rgb(248, 113, 113);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            display: none;
+            border: 1px solid rgba(220, 38, 38, 0.3);
+        }
+
+        .success {
+            background-color: rgba(34, 197, 94, 0.2);
+            color: rgb(74, 222, 128);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            display: none;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .action-btn {
+            background: none;
+            border: 1px solid transparent;
+            color: rgb(156, 163, 175);
+            padding: 4px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0 2px;
+            transition: all 0.2s ease;
+            font-size: 12px;
+        }
+        
+        .edit-btn:hover {
+            color: rgb(59, 130, 246);
+            border-color: rgb(59, 130, 246);
+            background: rgba(59, 130, 246, 0.1);
+        }
+        
+        .delete-btn:hover {
+            color: rgb(239, 68, 68);
+            border-color: rgb(239, 68, 68);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        @media (max-width: 768px) {
+            .input-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+    <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-white mb-2"><i class="fas fa-building"></i> 2D Structural Frame Analysis</h1>
+            <p class="text-gray-300">Advanced finite element analysis using matrix stiffness method with detailed step-by-step results</p>
+        </div>
+
+        <!-- Input Section -->
+        <div class="bg-gray-700 rounded-lg p-6 space-y-6">
+                <h2 class="text-xl font-semibold text-blue-400 mb-4">Input Data</h2>
+                
+                <!-- Nodes Input -->
+                <div class="bg-gray-600 rounded-lg p-6">
+                    <h3 class="text-xl font-semibold text-blue-400 mb-4"><i class="fas fa-dot-circle"></i> Nodes</h3>
+                    <div class="input-row">
+                        <input type="number" id="nodeNum" placeholder="Node #" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <input type="number" id="nodeX" placeholder="X (m)" step="0.1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <input type="number" id="nodeY" placeholder="Y (m)" step="0.1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <button onclick="addNode()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition"><i class="fas fa-plus"></i> Add Node</button>
+                    </div>
+                    <div class="space-y-4">
+                        <textarea id="nodesBulk" placeholder="Paste from Excel: Node# X Y (one per line)" class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400 h-24 font-mono resize-vertical"></textarea>
+                        <button onclick="addNodesBulk()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition"><i class="fas fa-table"></i> Add from Excel</button>
+                    </div>
+                    <table class="data-table" id="nodesTable" style="display:none;">
+                        <thead>
+                            <tr><th>Node</th><th>X (m)</th><th>Y (m)</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <!-- Elements Input -->
+                <div class="bg-gray-600 rounded-lg p-6">
+                    <h3 class="text-xl font-semibold text-green-400 mb-4"><i class="fas fa-minus"></i> Elements</h3>
+                    <div class="input-row">
+                        <input type="number" id="elemNode1" placeholder="Node 1" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <input type="number" id="elemNode2" placeholder="Node 2" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <input type="number" id="elemId" placeholder="Element ID" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <button onclick="addElement()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition"><i class="fas fa-plus"></i> Add Element</button>
+                    </div>
+                    <div class="space-y-4">
+                        <textarea id="elementsBulk" placeholder="Paste from Excel: Node1 Node2 ElementID (one per line)" class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400 h-24 font-mono resize-vertical"></textarea>
+                        <button onclick="addElementsBulk()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition"><i class="fas fa-table"></i> Add from Excel</button>
+                    </div>
+                    <table class="data-table" id="elementsTable" style="display:none;">
+                        <thead>
+                            <tr><th>Element ID</th><th>Node 1</th><th>Node 2</th><th>Length (m)</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <!-- Loads Input -->
+                <div class="bg-gray-600 rounded-lg p-6">
+                    <h3 class="text-xl font-semibold text-red-400 mb-4"><i class="fas fa-arrow-down"></i> Loads</h3>
+                    <div class="space-y-4">
+                        <select id="loadType" class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                            <option value="point">Point Load at Node</option>
+                            <option value="distributed">Distributed Load on Element</option>
+                        </select>
+                    </div>
+                    <div class="space-y-4" id="pointLoadInputs">
+                        <div class="input-row">
+                            <input type="number" id="loadNode" placeholder="Node #" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                            <input type="number" id="loadMz" placeholder="Moment (kNm)" step="0.1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-sm font-medium text-white block mb-2">X Direction Force:</label>
+                                <input type="number" id="loadFx" placeholder="Force (kN)" step="0.1" class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-white block mb-2">Y Direction Force:</label>
+                                <input type="number" id="loadFy" placeholder="Force (kN)" step="0.1" class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                            </div>
+                        </div>
+                        <button onclick="addLoad()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition"><i class="fas fa-plus"></i> Add Point Load</button>
+                    </div>
+                    <div class="space-y-4" id="distributedLoadInputs" style="display:none;">
+                        <div class="input-row">
+                            <input type="number" id="loadElement" placeholder="Element #" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                            <input type="number" id="loadValue" placeholder="Load (kN/m)" step="0.1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-white block mb-2">Load Direction:</label>
+                            <select id="loadDirection" class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                                <option value="y">Y Direction (Vertical)</option>
+                                <option value="x">X Direction (Horizontal)</option>
+                            </select>
+                        </div>
+                        <button onclick="addLoad()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition"><i class="fas fa-plus"></i> Add Distributed Load</button>
+                    </div>
+                    <table class="data-table" id="loadsTable" style="display:none;">
+                        <thead>
+                            <tr><th>Type</th><th>Location</th><th>Load Details</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <!-- Supports Input -->
+                <div class="bg-gray-600 rounded-lg p-6">
+                    <h3 class="text-xl font-semibold text-yellow-400 mb-4"><i class="fas fa-anchor"></i> Supports</h3>
+                    <div class="input-row">
+                        <input type="number" id="supportNode" placeholder="Node #" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <select id="supportType" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                            <option value="fixed">Fixed</option>
+                            <option value="pinned">Pinned</option>
+                            <option value="roller">Roller</option>
+                        </select>
+                        <button onclick="addSupport()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition"><i class="fas fa-plus"></i> Add Support</button>
+                    </div>
+                    <table class="data-table" id="supportsTable" style="display:none;">
+                        <thead>
+                            <tr><th>Node</th><th>Support Type</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <button onclick="runAnalysis()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+                    <i class="fas fa-calculator"></i> Run Analysis
+                </button>
+                
+                <div class="loading" id="loading">
+                    <i class="fas fa-spinner fa-spin"></i><br>
+                    Calculating structural response...
+                </div>
+                
+                <div class="error" id="error"></div>
+                <div class="success" id="success"></div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="bg-gray-700 rounded-lg p-6">
+            <h2 class="text-xl font-semibold text-blue-400 mb-4">Results</h2>
+                
+                <div id="results">
+                    <div style="background: linear-gradient(135deg, #667eea20, #764ba220); padding: 20px; border-radius: 15px; text-align: center; color: #4a5568;">
+                        <i class="fas fa-rocket" style="font-size: 2em; color: #667eea; margin-bottom: 15px;"></i>
+                        <h3 style="margin: 10px 0; color: #667eea;">Enhanced Finite Element Analysis Ready</h3>
+                        <p style="margin: 10px 0; line-height: 1.6;">
+                            This tool uses advanced structural analysis including:
+                        </p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; text-align: left;">
+                            <div><i class="fas fa-check-circle" style="color: #48bb78;"></i> Matrix stiffness method</div>
+                            <div><i class="fas fa-check-circle" style="color: #48bb78;"></i> 6-DOF frame elements</div>
+                            <div><i class="fas fa-check-circle" style="color: #48bb78;"></i> Local/global coordinates</div>
+                            <div><i class="fas fa-check-circle" style="color: #48bb78;"></i> Proper boundary conditions</div>
+                        </div>
+                        <p style="font-style: italic; color: #718096; margin-top: 15px;">
+                            Add your structure data above and run analysis to see detailed results.
+                        </p>
+                    </div>
+                </div>
+                
+            <div class="canvas-container" id="diagramsContainer" style="display:none;">
+                <h3 class="text-lg font-semibold text-purple-400 mb-4">Interactive Frame Visualization</h3>
+                <div class="bg-gray-800 rounded-lg p-4 mb-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-gray-300 text-sm">
+                            <i class="fas fa-info-circle text-blue-400"></i> 
+                            Hover over any point along the frame elements to see detailed results
+                        </p>
+                        <button onclick="autoscaleVisualization()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded transition">
+                            <i class="fas fa-expand-arrows-alt"></i> Auto Scale
+                        </button>
+                    </div>
+                    <div id="d3-visualization" class="bg-gray-900 rounded border border-gray-600" style="min-height: 500px;"></div>
+                </div>
+                
+                <!-- Tooltip for hover information -->
+                <div id="hover-tooltip" class="absolute bg-gray-800 text-white text-xs rounded-lg p-3 border border-gray-600 shadow-lg pointer-events-none opacity-0 transition-opacity duration-200 z-50">
+                    <div class="space-y-1">
+                        <div class="font-semibold text-blue-400">Position</div>
+                        <div id="tooltip-coords" class="text-gray-300"></div>
+                        <div class="font-semibold text-green-400 mt-2">Internal Forces</div>
+                        <div id="tooltip-forces" class="text-gray-300 space-y-1"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Print Button -->
+        <div class="mt-8 print:hidden text-center">
+            <button onclick="window.print()" class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-6 rounded-lg transition">
+                Print to PDF
+            </button>
+        </div>
+
+    </main>
+
+    <script src="script.js"></script>
+    
+    <!-- Centralized JavaScript -->
+    <script src="../assets/js/common.js"></script>
+
+</body>
+</html>
