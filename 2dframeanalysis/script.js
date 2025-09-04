@@ -51,9 +51,10 @@ class EnhancedFrame {
     addSupport(nodeId, supportType) {
         // Define support constraints: [ux, uy, rotz] where 1 = constrained, 0 = free
         const constraints = {
-            fixed: [1, 1, 1],
-            pinned: [1, 1, 0],
-            roller: [0, 1, 0] // Assumes vertical roller
+            fixed: [1, 1, 1],     // Fixed: constrains translation in both directions and rotation
+            pinned: [1, 1, 0],    // Pinned: constrains translation in both directions, allows rotation
+            roller_x: [0, 1, 0],  // Horizontal roller: constrains vertical displacement only
+            roller_y: [1, 0, 0]   // Vertical roller: constrains horizontal displacement only
         };
         this.supports[parseInt(nodeId)] = constraints[supportType] || [1, 1, 1];
     }
