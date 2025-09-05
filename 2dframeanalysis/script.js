@@ -900,6 +900,7 @@ function addNode() {
     document.getElementById('nodeY').value = '';
     
     showSuccess('Node added successfully');
+    updateLiveStructureDiagram();
 }
 
 function addNodesBulk() {
@@ -932,6 +933,7 @@ function addNodesBulk() {
     updateNodesTable();
     document.getElementById('nodesBulk').value = '';
     showSuccess(`${addedCount} nodes added successfully`);
+    updateLiveStructureDiagram();
 }
 
 function updateNodesTable() {
@@ -994,6 +996,7 @@ function addElement() {
     document.getElementById('elemId').value = '';
     
     showSuccess('Element added successfully');
+    updateLiveStructureDiagram();
 }
 
 function addElementsBulk() {
@@ -1028,6 +1031,7 @@ function addElementsBulk() {
     updateElementsTable();
     document.getElementById('elementsBulk').value = '';
     showSuccess(`${addedCount} elements added successfully`);
+    updateLiveStructureDiagram();
 }
 
 function updateElementsTable() {
@@ -1123,6 +1127,7 @@ function addLoad() {
     
     updateLoadsTable();
     showSuccess('Load added successfully');
+    updateLiveStructureDiagram();
 }
 
 function updateLoadsTable() {
@@ -1186,6 +1191,7 @@ function addSupport() {
     document.getElementById('supportNode').value = '';
     
     showSuccess('Support added successfully');
+    updateLiveStructureDiagram();
 }
 
 function updateSupportsTable() {
@@ -1254,6 +1260,7 @@ function deleteNode(nodeId) {
     document.getElementById('diagramsContainer').style.display = 'none';
     
     showSuccess(`Node ${nodeId} and all connected elements deleted successfully`);
+    updateLiveStructureDiagram();
 }
 
 function deleteElement(elemId) {
@@ -1284,6 +1291,7 @@ function deleteElementInternal(elemId, showMessage = true) {
     if (showMessage) {
         showSuccess(`Element ${elemId} deleted successfully`);
     }
+    updateLiveStructureDiagram();
 }
 
 function deleteLoad(loadIndex) {
@@ -1305,6 +1313,7 @@ function deleteLoad(loadIndex) {
     document.getElementById('diagramsContainer').style.display = 'none';
     
     showSuccess('Load deleted successfully');
+    updateLiveStructureDiagram();
 }
 
 function deleteSupport(nodeId) {
@@ -1326,6 +1335,7 @@ function deleteSupport(nodeId) {
     document.getElementById('diagramsContainer').style.display = 'none';
     
     showSuccess(`Support at node ${nodeId} deleted successfully`);
+    updateLiveStructureDiagram();
 }
 
 // CRUD Operations - Edit Functions (Placeholder for now)
@@ -1739,19 +1749,55 @@ function autoscaleVisualization() {
         return;
     }
     
-    // Calculate maximum deflection from actual PyNite calculations
-    let maxDeflection = 0;
+    let maxValue = 0;
+    let valueType = 'deflection';
     
-    // Check all elements and all points along them
-    for (const element of elements) {
-        const numTestPoints = 21;
-        for (let i = 0; i < numTestPoints; i++) {
-            const t = i / (numTestPoints - 1);
-            try {
-                const deflection = Math.abs(frame.getElementDeflection(element.id, t));
-                maxDeflection = Math.max(maxDeflection, deflection);
-            } catch (error) {
-                // Skip if deflection calculation fails
+    // Different autoscaling based on current plot type
+    if (currentPlotType === 'displacement') {
+        // Calculate maximum deflection from actual PyNite calculations
+        for (const element of elements) {
+            const numTestPoints = 21;
+            for (let i = 0; i < numTestPoints; i++) {
+                const t = i / (numTestPoints - 1);
+                try {
+                    const deflection = Math.abs(frame.getElementDeflection(element.id, t));
+                    maxValue = Math.max(maxValue, deflection);
+                } catch (error) {
+                    // Skip if deflection calculation fails
+                }
+            }
+        }
+        valueType = 'deflection';
+    } else if (currentPlotType === 'reactions') {
+        // For reactions, don't autoscale - just recreate
+        createInteractiveVisualization();
+        showSuccess('Reactions view refreshed');
+        return;
+    } else {
+        // For force diagrams (moment, shear, axial), find maximum force values
+        for (const element of elements) {
+            const forceProfile = window.elementForceProfiles?.[element.id];
+            if (forceProfile) {
+                for (let i = 0; i < forceProfile.length; i++) {
+                    const data = forceProfile[i];
+                    let forceValue = 0;
+                    
+                    switch (currentPlotType) {
+                        case 'moment':
+                            forceValue = Math.abs(data.moment);
+                            valueType = 'moment';
+                            break;
+                        case 'shear':
+                            forceValue = Math.abs(data.shear);
+                            valueType = 'shear force';
+                            break;
+                        case 'axial':
+                            forceValue = Math.abs(data.axial);
+                            valueType = 'axial force';
+                            break;
+                    }
+                    maxValue = Math.max(maxValue, forceValue);
+                }
             }
         }
     }
@@ -1767,17 +1813,32 @@ function autoscaleVisualization() {
         }
     });
     
-    // Calculate proper scale factor: max deflection should be 1/20 of longest element
-    const targetDeflection = maxElementLength / 20;
-    const newScaleFactor = maxDeflection > 0 ? targetDeflection / maxDeflection : 1;
+    // Calculate proper scale factor: max value should be 1/20 of longest element
+    const targetValue = maxElementLength / 20;
+    const newScaleFactor = maxValue > 0 ? targetValue / maxValue : 1;
     
-    console.log(`Autoscale: Max deflection = ${maxDeflection.toFixed(6)} m, Target = ${targetDeflection.toFixed(3)} m, Scale factor = ${newScaleFactor.toFixed(0)}x`);
+    console.log(`Autoscale: Max ${valueType} = ${maxValue.toFixed(6)}, Target = ${targetValue.toFixed(3)}, Scale factor = ${newScaleFactor.toFixed(0)}x`);
     
     // Store the scale factor and recreate visualization
     currentVisualizationScale = newScaleFactor;
     createInteractiveVisualization();
     
-    showSuccess(`Visualization autoscaled (${newScaleFactor.toFixed(0)}x magnification)`);
+    showSuccess(`${valueType.charAt(0).toUpperCase() + valueType.slice(1)} diagram autoscaled (${newScaleFactor.toFixed(0)}x magnification)`);
+}
+
+// Plot type management
+let currentPlotType = 'displacement';
+
+function setupPlotTypeListeners() {
+    const radioButtons = document.querySelectorAll('input[name="plotType"]');
+    radioButtons.forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.checked) {
+                currentPlotType = this.value;
+                createInteractiveVisualization();
+            }
+        });
+    });
 }
 
 // D3.js Interactive Visualization
@@ -1790,12 +1851,687 @@ function createInteractiveVisualization() {
     const container = document.getElementById('d3-visualization');
     container.innerHTML = ''; // Clear previous visualization
 
-    const margin = {top: 40, right: 40, bottom: 40, left: 40};
+    const margin = {top: 20, right: 20, bottom: 20, left: 20}; // Reduced margins since legend is below
     const containerWidth = container.clientWidth || 800;
     const containerHeight = 500;
     const width = containerWidth - margin.left - margin.right;
     const height = containerHeight - margin.top - margin.bottom;
 
+    // Branch to different plot types
+    switch (currentPlotType) {
+        case 'displacement':
+            createDisplacementPlot(container, width, height, margin, containerWidth, containerHeight);
+            break;
+        case 'reactions':
+            createReactionsPlot(container, width, height, margin, containerWidth, containerHeight);
+            break;
+        case 'moment':
+            createMomentPlot(container, width, height, margin, containerWidth, containerHeight);
+            break;
+        case 'shear':
+            createShearPlot(container, width, height, margin, containerWidth, containerHeight);
+            break;
+        case 'axial':
+            createAxialPlot(container, width, height, margin, containerWidth, containerHeight);
+            break;
+        default:
+            createDisplacementPlot(container, width, height, margin, containerWidth, containerHeight);
+    }
+}
+
+// Reactions Plot Implementation  
+function createReactionsPlot(container, width, height, margin, containerWidth, containerHeight) {
+    // Create SVG
+    const svg = d3.select(container)
+        .append('svg')
+        .attr('width', containerWidth)
+        .attr('height', containerHeight);
+
+    const g = svg.append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Calculate bounds for scaling
+    const nodeCoords = nodes.map(n => [n.x, n.y]);
+    const xExtent = d3.extent(nodeCoords, d => d[0]);
+    const yExtent = d3.extent(nodeCoords, d => d[1]);
+    
+    const xPadding = Math.max(1, (xExtent[1] - xExtent[0]) * 0.1);
+    const yPadding = Math.max(1, (yExtent[1] - yExtent[0]) * 0.1);
+    
+    const xScale = d3.scaleLinear()
+        .domain([xExtent[0] - xPadding, xExtent[1] + xPadding])
+        .range([0, width]);
+    
+    const yScale = d3.scaleLinear()
+        .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+        .range([height, 0]); // Flip Y axis for screen coordinates
+
+    // Draw elements (undeformed)
+    elements.forEach(element => {
+        const node1 = nodes.find(n => n.id === element.node1);
+        const node2 = nodes.find(n => n.id === element.node2);
+        if (node1 && node2) {
+            g.append('line')
+                .attr('x1', xScale(node1.x))
+                .attr('y1', yScale(node1.y))
+                .attr('x2', xScale(node2.x))
+                .attr('y2', yScale(node2.y))
+                .attr('stroke', '#60a5fa')
+                .attr('stroke-width', 2);
+        }
+    });
+
+    // Draw supports with reaction forces
+    supports.forEach(support => {
+        const node = nodes.find(n => n.id === support.node);
+        if (node && analysisResults.reactions) {
+            const x = xScale(node.x);
+            const y = yScale(node.y);
+            
+            // Get reaction forces (convert from N to kN, Nm to kNm)
+            const rx = analysisResults.reactions[`node_${support.node}_dof_0`] || 0; // kN
+            const ry = analysisResults.reactions[`node_${support.node}_dof_1`] || 0; // kN  
+            const mz = analysisResults.reactions[`node_${support.node}_dof_2`] || 0; // kNm
+
+            // Draw support symbol
+            if (support.type === 'fixed') {
+                g.append('polygon')
+                    .attr('points', `${x-8},${y+8} ${x+8},${y+8} ${x},${y}`)
+                    .attr('fill', '#10b981')
+                    .attr('stroke', '#065f46')
+                    .attr('stroke-width', 2);
+            } else if (support.type === 'pinned') {
+                g.append('polygon')
+                    .attr('points', `${x-8},${y+8} ${x+8},${y+8} ${x},${y}`)
+                    .attr('fill', '#3b82f6')
+                    .attr('stroke', '#1e40af')
+                    .attr('stroke-width', 2);
+            } else if (support.type === 'roller_x') {
+                g.append('polygon')
+                    .attr('points', `${x-8},${y+8} ${x+8},${y+8} ${x},${y}`)
+                    .attr('fill', '#f59e0b')
+                    .attr('stroke', '#d97706')
+                    .attr('stroke-width', 2);
+                g.append('circle')
+                    .attr('cx', x)
+                    .attr('cy', y + 12)
+                    .attr('r', 3)
+                    .attr('fill', '#f59e0b');
+            }
+
+            // Add hover area for reactions
+            g.append('circle')
+                .attr('cx', x)
+                .attr('cy', y)
+                .attr('r', 15)
+                .attr('fill', 'transparent')
+                .attr('stroke', 'none')
+                .style('cursor', 'pointer')
+                .on('mouseenter', function() {
+                    // Show reaction tooltip
+                    const tooltip = d3.select('#hover-tooltip');
+                    tooltip.style('opacity', 1)
+                        .html(`
+                            <div><strong>Node ${support.node} Reactions:</strong></div>
+                            <div>Rx: ${rx.toFixed(2)} kN</div>
+                            <div>Ry: ${ry.toFixed(2)} kN</div>
+                            <div>Mz: ${mz.toFixed(2)} kNm</div>
+                        `);
+                })
+                .on('mousemove', function(event) {
+                    const tooltip = d3.select('#hover-tooltip');
+                    tooltip.style('left', (event.pageX + 15) + 'px')
+                        .style('top', (event.pageY - 10) + 'px');
+                })
+                .on('mouseleave', function() {
+                    d3.select('#hover-tooltip').style('opacity', 0);
+                });
+        }
+    });
+
+    // Draw nodes
+    nodes.forEach(node => {
+        g.append('circle')
+            .attr('cx', xScale(node.x))
+            .attr('cy', yScale(node.y))
+            .attr('r', 4)
+            .attr('fill', '#1f2937')
+            .attr('stroke', '#60a5fa')
+            .attr('stroke-width', 2);
+    });
+
+    // Update legend
+    updatePlotLegend('Hover over supports to see reaction forces');
+}
+
+// Update the legend below the plot
+function updatePlotLegend(message) {
+    const legend = document.getElementById('plot-legend');
+    legend.innerHTML = `
+        <div class="text-center">
+            <p><i class="fas fa-info-circle text-blue-400"></i> ${message}</p>
+        </div>
+    `;
+}
+
+// Moment Diagram Implementation
+function createMomentPlot(container, width, height, margin, containerWidth, containerHeight) {
+    // Create SVG
+    const svg = d3.select(container)
+        .append('svg')
+        .attr('width', containerWidth)
+        .attr('height', containerHeight);
+
+    const g = svg.append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Calculate bounds for scaling
+    const nodeCoords = nodes.map(n => [n.x, n.y]);
+    const xExtent = d3.extent(nodeCoords, d => d[0]);
+    const yExtent = d3.extent(nodeCoords, d => d[1]);
+    
+    const xPadding = Math.max(1, (xExtent[1] - xExtent[0]) * 0.1);
+    const yPadding = Math.max(1, (yExtent[1] - yExtent[0]) * 0.1);
+    
+    const xScale = d3.scaleLinear()
+        .domain([xExtent[0] - xPadding, xExtent[1] + xPadding])
+        .range([0, width]);
+    
+    const yScale = d3.scaleLinear()
+        .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+        .range([height, 0]);
+
+    // Draw elements (undeformed structure)
+    elements.forEach(element => {
+        const node1 = nodes.find(n => n.id === element.node1);
+        const node2 = nodes.find(n => n.id === element.node2);
+        if (node1 && node2) {
+            // Draw element line
+            g.append('line')
+                .attr('x1', xScale(node1.x))
+                .attr('y1', yScale(node1.y))
+                .attr('x2', xScale(node2.x))
+                .attr('y2', yScale(node2.y))
+                .attr('stroke', '#60a5fa')
+                .attr('stroke-width', 2);
+
+            // Get element force profile
+            const forceProfile = window.elementForceProfiles?.[element.id];
+            if (forceProfile) {
+                // Draw moment diagram
+                const momentPoints = [];
+                const numPoints = 21;
+                
+                for (let i = 0; i < numPoints; i++) {
+                    const t = i / (numPoints - 1);
+                    const momentData = forceProfile[i];
+                    
+                    // Calculate position along element
+                    const x = node1.x + t * (node2.x - node1.x);
+                    const y = node1.y + t * (node2.y - node1.y);
+                    
+                    // Calculate perpendicular offset for moment diagram
+                    const elementLength = Math.sqrt((node2.x - node1.x)**2 + (node2.y - node1.y)**2);
+                    const momentScale = 0.1; // Scale factor for moment diagram display
+                    
+                    // Get perpendicular direction
+                    const dx = node2.x - node1.x;
+                    const dy = node2.y - node1.y;
+                    const perpX = -dy / elementLength;
+                    const perpY = dx / elementLength;
+                    
+                    // Offset point by moment magnitude
+                    const momentOffset = momentData.moment * momentScale;
+                    const offsetX = x + perpX * momentOffset;
+                    const offsetY = y + perpY * momentOffset;
+                    
+                    momentPoints.push({
+                        originalX: x,
+                        originalY: y,
+                        offsetX: offsetX,
+                        offsetY: offsetY,
+                        moment: momentData.moment,
+                        shear: momentData.shear,
+                        axial: momentData.axial,
+                        position: t
+                    });
+                }
+                
+                // Draw moment diagram curve
+                const lineGenerator = d3.line()
+                    .x(d => xScale(d.offsetX))
+                    .y(d => yScale(d.offsetY))
+                    .curve(d3.curveCardinal);
+                
+                g.append('path')
+                    .datum(momentPoints)
+                    .attr('fill', 'none')
+                    .attr('stroke', '#ef4444')
+                    .attr('stroke-width', 2)
+                    .attr('d', lineGenerator);
+                
+                // Draw connecting lines from element to diagram
+                momentPoints.forEach((point, i) => {
+                    if (i % 4 === 0) { // Draw every 4th line to avoid clutter
+                        g.append('line')
+                            .attr('x1', xScale(point.originalX))
+                            .attr('y1', yScale(point.originalY))
+                            .attr('x2', xScale(point.offsetX))
+                            .attr('y2', yScale(point.offsetY))
+                            .attr('stroke', '#ef4444')
+                            .attr('stroke-width', 0.5)
+                            .attr('opacity', 0.5);
+                    }
+                });
+                
+                // Add hover points for moment values
+                g.selectAll(`.moment-hover-${element.id}`)
+                    .data(momentPoints)
+                    .enter()
+                    .append('circle')
+                    .attr('class', `moment-hover-${element.id}`)
+                    .attr('cx', d => xScale(d.offsetX))
+                    .attr('cy', d => yScale(d.offsetY))
+                    .attr('r', 3)
+                    .attr('fill', '#ef4444')
+                    .attr('opacity', 0)
+                    .style('cursor', 'pointer')
+                    .on('mouseenter', function(event, d) {
+                        d3.select(this).attr('opacity', 1);
+                        const tooltip = d3.select('#hover-tooltip');
+                        
+                        // Update tooltip content with position and displacement  
+                        d3.select('#tooltip-coords')
+                            .html(`
+                                <div><strong>Position:</strong> X: ${d.originalX.toFixed(3)} m, Y: ${d.originalY.toFixed(3)} m</div>
+                                <div><strong>Element Position:</strong> x = ${(d.position * elementLength).toFixed(3)} m (t = ${d.position.toFixed(3)})</div>
+                                <div style="color: #ef4444;"><strong>Moment Diagram Offset:</strong> ${(((d.offsetX - d.originalX)**2 + (d.offsetY - d.originalY)**2)**0.5 * Math.sign(d.moment) * (currentVisualizationScale || 1)).toFixed(6)} m</div>
+                            `);
+                        
+                        d3.select('#tooltip-forces')
+                            .html(`
+                                <div><strong>Internal Forces:</strong></div>
+                                <div style="color: #ef4444;">Moment (M): ${d.moment.toFixed(2)} kNm</div>
+                                <div>Shear Force (V): ${d.shear.toFixed(2)} kN</div>
+                                <div>Axial Force (N): ${d.axial.toFixed(2)} kN</div>
+                            `);
+                        
+                        tooltip.style('opacity', 1);
+                    })
+                    .on('mousemove', function(event) {
+                        const tooltip = d3.select('#hover-tooltip');
+                        tooltip.style('left', (event.pageX + 15) + 'px')
+                            .style('top', (event.pageY - 10) + 'px');
+                    })
+                    .on('mouseleave', function() {
+                        d3.select(this).attr('opacity', 0);
+                        d3.select('#hover-tooltip').style('opacity', 0);
+                    });
+            }
+        }
+    });
+
+    // Draw nodes
+    nodes.forEach(node => {
+        g.append('circle')
+            .attr('cx', xScale(node.x))
+            .attr('cy', yScale(node.y))
+            .attr('r', 4)
+            .attr('fill', '#1f2937')
+            .attr('stroke', '#60a5fa')
+            .attr('stroke-width', 2);
+    });
+
+    // Update legend
+    updatePlotLegend('Hover over moment diagram points to see values. Red line shows moment magnitude perpendicular to element.');
+}
+
+// Shear Diagram Implementation
+function createShearPlot(container, width, height, margin, containerWidth, containerHeight) {
+    // Create SVG
+    const svg = d3.select(container)
+        .append('svg')
+        .attr('width', containerWidth)
+        .attr('height', containerHeight);
+
+    const g = svg.append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Calculate bounds for scaling
+    const nodeCoords = nodes.map(n => [n.x, n.y]);
+    const xExtent = d3.extent(nodeCoords, d => d[0]);
+    const yExtent = d3.extent(nodeCoords, d => d[1]);
+    
+    const xPadding = Math.max(1, (xExtent[1] - xExtent[0]) * 0.1);
+    const yPadding = Math.max(1, (yExtent[1] - yExtent[0]) * 0.1);
+    
+    const xScale = d3.scaleLinear()
+        .domain([xExtent[0] - xPadding, xExtent[1] + xPadding])
+        .range([0, width]);
+    
+    const yScale = d3.scaleLinear()
+        .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+        .range([height, 0]);
+
+    // Draw elements (undeformed structure)
+    elements.forEach(element => {
+        const node1 = nodes.find(n => n.id === element.node1);
+        const node2 = nodes.find(n => n.id === element.node2);
+        if (node1 && node2) {
+            // Draw element line
+            g.append('line')
+                .attr('x1', xScale(node1.x))
+                .attr('y1', yScale(node1.y))
+                .attr('x2', xScale(node2.x))
+                .attr('y2', yScale(node2.y))
+                .attr('stroke', '#60a5fa')
+                .attr('stroke-width', 2);
+
+            // Get element force profile
+            const forceProfile = window.elementForceProfiles?.[element.id];
+            if (forceProfile) {
+                // Draw shear diagram
+                const shearPoints = [];
+                const numPoints = 21;
+                
+                for (let i = 0; i < numPoints; i++) {
+                    const t = i / (numPoints - 1);
+                    const shearData = forceProfile[i];
+                    
+                    // Calculate position along element
+                    const x = node1.x + t * (node2.x - node1.x);
+                    const y = node1.y + t * (node2.y - node1.y);
+                    
+                    // Calculate perpendicular offset for shear diagram
+                    const elementLength = Math.sqrt((node2.x - node1.x)**2 + (node2.y - node1.y)**2);
+                    const shearScale = 0.05; // Scale factor for shear diagram display
+                    
+                    // Get perpendicular direction
+                    const dx = node2.x - node1.x;
+                    const dy = node2.y - node1.y;
+                    const perpX = -dy / elementLength;
+                    const perpY = dx / elementLength;
+                    
+                    // Offset point by shear magnitude
+                    const shearOffset = shearData.shear * shearScale;
+                    const offsetX = x + perpX * shearOffset;
+                    const offsetY = y + perpY * shearOffset;
+                    
+                    shearPoints.push({
+                        originalX: x,
+                        originalY: y,
+                        offsetX: offsetX,
+                        offsetY: offsetY,
+                        moment: shearData.moment,
+                        shear: shearData.shear,
+                        axial: shearData.axial,
+                        position: t
+                    });
+                }
+                
+                // Draw shear diagram curve
+                const lineGenerator = d3.line()
+                    .x(d => xScale(d.offsetX))
+                    .y(d => yScale(d.offsetY))
+                    .curve(d3.curveLinear); // Linear for shear diagrams
+                
+                g.append('path')
+                    .datum(shearPoints)
+                    .attr('fill', 'none')
+                    .attr('stroke', '#10b981')
+                    .attr('stroke-width', 2)
+                    .attr('d', lineGenerator);
+                
+                // Draw connecting lines from element to diagram
+                shearPoints.forEach((point, i) => {
+                    if (i % 4 === 0) {
+                        g.append('line')
+                            .attr('x1', xScale(point.originalX))
+                            .attr('y1', yScale(point.originalY))
+                            .attr('x2', xScale(point.offsetX))
+                            .attr('y2', yScale(point.offsetY))
+                            .attr('stroke', '#10b981')
+                            .attr('stroke-width', 0.5)
+                            .attr('opacity', 0.5);
+                    }
+                });
+                
+                // Add hover points for shear values
+                g.selectAll(`.shear-hover-${element.id}`)
+                    .data(shearPoints)
+                    .enter()
+                    .append('circle')
+                    .attr('class', `shear-hover-${element.id}`)
+                    .attr('cx', d => xScale(d.offsetX))
+                    .attr('cy', d => yScale(d.offsetY))
+                    .attr('r', 3)
+                    .attr('fill', '#10b981')
+                    .attr('opacity', 0)
+                    .style('cursor', 'pointer')
+                    .on('mouseenter', function(event, d) {
+                        d3.select(this).attr('opacity', 1);
+                        const tooltip = d3.select('#hover-tooltip');
+                        
+                        // Update tooltip content with position and displacement  
+                        d3.select('#tooltip-coords')
+                            .html(`
+                                <div><strong>Position:</strong> X: ${d.originalX.toFixed(3)} m, Y: ${d.originalY.toFixed(3)} m</div>
+                                <div><strong>Element Position:</strong> x = ${(d.position * elementLength).toFixed(3)} m (t = ${d.position.toFixed(3)})</div>
+                                <div style="color: #10b981;"><strong>Shear Diagram Offset:</strong> ${(((d.offsetX - d.originalX)**2 + (d.offsetY - d.originalY)**2)**0.5 * Math.sign(d.shear) * (currentVisualizationScale || 1)).toFixed(6)} m</div>
+                            `);
+                        
+                        d3.select('#tooltip-forces')
+                            .html(`
+                                <div><strong>Internal Forces:</strong></div>
+                                <div>Moment (M): ${d.moment.toFixed(2)} kNm</div>
+                                <div style="color: #10b981;">Shear Force (V): ${d.shear.toFixed(2)} kN</div>
+                                <div>Axial Force (N): ${d.axial.toFixed(2)} kN</div>
+                            `);
+                        
+                        tooltip.style('opacity', 1);
+                    })
+                    .on('mousemove', function(event) {
+                        const tooltip = d3.select('#hover-tooltip');
+                        tooltip.style('left', (event.pageX + 15) + 'px')
+                            .style('top', (event.pageY - 10) + 'px');
+                    })
+                    .on('mouseleave', function() {
+                        d3.select(this).attr('opacity', 0);
+                        d3.select('#hover-tooltip').style('opacity', 0);
+                    });
+            }
+        }
+    });
+
+    // Draw nodes
+    nodes.forEach(node => {
+        g.append('circle')
+            .attr('cx', xScale(node.x))
+            .attr('cy', yScale(node.y))
+            .attr('r', 4)
+            .attr('fill', '#1f2937')
+            .attr('stroke', '#60a5fa')
+            .attr('stroke-width', 2);
+    });
+
+    // Update legend
+    updatePlotLegend('Hover over shear diagram points to see values. Green line shows shear force perpendicular to element.');
+}
+
+// Axial Diagram Implementation
+function createAxialPlot(container, width, height, margin, containerWidth, containerHeight) {
+    // Create SVG
+    const svg = d3.select(container)
+        .append('svg')
+        .attr('width', containerWidth)
+        .attr('height', containerHeight);
+
+    const g = svg.append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Calculate bounds for scaling
+    const nodeCoords = nodes.map(n => [n.x, n.y]);
+    const xExtent = d3.extent(nodeCoords, d => d[0]);
+    const yExtent = d3.extent(nodeCoords, d => d[1]);
+    
+    const xPadding = Math.max(1, (xExtent[1] - xExtent[0]) * 0.1);
+    const yPadding = Math.max(1, (yExtent[1] - yExtent[0]) * 0.1);
+    
+    const xScale = d3.scaleLinear()
+        .domain([xExtent[0] - xPadding, xExtent[1] + xPadding])
+        .range([0, width]);
+    
+    const yScale = d3.scaleLinear()
+        .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+        .range([height, 0]);
+
+    // Draw elements (undeformed structure)
+    elements.forEach(element => {
+        const node1 = nodes.find(n => n.id === element.node1);
+        const node2 = nodes.find(n => n.id === element.node2);
+        if (node1 && node2) {
+            // Draw element line
+            g.append('line')
+                .attr('x1', xScale(node1.x))
+                .attr('y1', yScale(node1.y))
+                .attr('x2', xScale(node2.x))
+                .attr('y2', yScale(node2.y))
+                .attr('stroke', '#60a5fa')
+                .attr('stroke-width', 2);
+
+            // Get element force profile
+            const forceProfile = window.elementForceProfiles?.[element.id];
+            if (forceProfile) {
+                // Draw axial diagram
+                const axialPoints = [];
+                const numPoints = 21;
+                
+                for (let i = 0; i < numPoints; i++) {
+                    const t = i / (numPoints - 1);
+                    const axialData = forceProfile[i];
+                    
+                    // Calculate position along element
+                    const x = node1.x + t * (node2.x - node1.x);
+                    const y = node1.y + t * (node2.y - node1.y);
+                    
+                    // Calculate perpendicular offset for axial diagram
+                    const elementLength = Math.sqrt((node2.x - node1.x)**2 + (node2.y - node1.y)**2);
+                    const axialScale = 0.03; // Scale factor for axial diagram display
+                    
+                    // Get perpendicular direction
+                    const dx = node2.x - node1.x;
+                    const dy = node2.y - node1.y;
+                    const perpX = -dy / elementLength;
+                    const perpY = dx / elementLength;
+                    
+                    // Offset point by axial magnitude
+                    const axialOffset = axialData.axial * axialScale;
+                    const offsetX = x + perpX * axialOffset;
+                    const offsetY = y + perpY * axialOffset;
+                    
+                    axialPoints.push({
+                        originalX: x,
+                        originalY: y,
+                        offsetX: offsetX,
+                        offsetY: offsetY,
+                        moment: axialData.moment,
+                        shear: axialData.shear,
+                        axial: axialData.axial,
+                        position: t
+                    });
+                }
+                
+                // Draw axial diagram curve
+                const lineGenerator = d3.line()
+                    .x(d => xScale(d.offsetX))
+                    .y(d => yScale(d.offsetY))
+                    .curve(d3.curveLinear); // Linear for axial diagrams
+                
+                g.append('path')
+                    .datum(axialPoints)
+                    .attr('fill', 'none')
+                    .attr('stroke', '#f59e0b')
+                    .attr('stroke-width', 2)
+                    .attr('d', lineGenerator);
+                
+                // Draw connecting lines from element to diagram
+                axialPoints.forEach((point, i) => {
+                    if (i % 4 === 0) {
+                        g.append('line')
+                            .attr('x1', xScale(point.originalX))
+                            .attr('y1', yScale(point.originalY))
+                            .attr('x2', xScale(point.offsetX))
+                            .attr('y2', yScale(point.offsetY))
+                            .attr('stroke', '#f59e0b')
+                            .attr('stroke-width', 0.5)
+                            .attr('opacity', 0.5);
+                    }
+                });
+                
+                // Add hover points for axial values
+                g.selectAll(`.axial-hover-${element.id}`)
+                    .data(axialPoints)
+                    .enter()
+                    .append('circle')
+                    .attr('class', `axial-hover-${element.id}`)
+                    .attr('cx', d => xScale(d.offsetX))
+                    .attr('cy', d => yScale(d.offsetY))
+                    .attr('r', 3)
+                    .attr('fill', '#f59e0b')
+                    .attr('opacity', 0)
+                    .style('cursor', 'pointer')
+                    .on('mouseenter', function(event, d) {
+                        d3.select(this).attr('opacity', 1);
+                        const tooltip = d3.select('#hover-tooltip');
+                        
+                        // Update tooltip content with position and displacement  
+                        d3.select('#tooltip-coords')
+                            .html(`
+                                <div><strong>Position:</strong> X: ${d.originalX.toFixed(3)} m, Y: ${d.originalY.toFixed(3)} m</div>
+                                <div><strong>Element Position:</strong> x = ${(d.position * elementLength).toFixed(3)} m (t = ${d.position.toFixed(3)})</div>
+                                <div style="color: #f59e0b;"><strong>Axial Diagram Offset:</strong> ${(((d.offsetX - d.originalX)**2 + (d.offsetY - d.originalY)**2)**0.5 * Math.sign(d.axial) * (currentVisualizationScale || 1)).toFixed(6)} m</div>
+                            `);
+                        
+                        d3.select('#tooltip-forces')
+                            .html(`
+                                <div><strong>Internal Forces:</strong></div>
+                                <div>Moment (M): ${d.moment.toFixed(2)} kNm</div>
+                                <div>Shear Force (V): ${d.shear.toFixed(2)} kN</div>
+                                <div style="color: #f59e0b;">Axial Force (N): ${d.axial.toFixed(2)} kN</div>
+                            `);
+                        
+                        tooltip.style('opacity', 1);
+                    })
+                    .on('mousemove', function(event) {
+                        const tooltip = d3.select('#hover-tooltip');
+                        tooltip.style('left', (event.pageX + 15) + 'px')
+                            .style('top', (event.pageY - 10) + 'px');
+                    })
+                    .on('mouseleave', function() {
+                        d3.select(this).attr('opacity', 0);
+                        d3.select('#hover-tooltip').style('opacity', 0);
+                    });
+            }
+        }
+    });
+
+    // Draw nodes
+    nodes.forEach(node => {
+        g.append('circle')
+            .attr('cx', xScale(node.x))
+            .attr('cy', yScale(node.y))
+            .attr('r', 4)
+            .attr('fill', '#1f2937')
+            .attr('stroke', '#60a5fa')
+            .attr('stroke-width', 2);
+    });
+
+    // Update legend
+    updatePlotLegend('Hover over axial diagram points to see values. Orange line shows axial force perpendicular to element.');
+}
+
+function createDisplacementPlot(container, width, height, margin, containerWidth, containerHeight) {
+    // For now, keep the original displacement plot implementation
     // Create SVG
     const svg = d3.select('#d3-visualization')
         .append('svg')
@@ -2250,6 +2986,284 @@ function initializeTestCase() {
     console.log('Test case initialized: 10m simply supported beam with -10kN/m distributed load (nodes 1-2)');
 }
 
+// Live Structural Diagram Functions
+function updateLiveStructureDiagram() {
+    const container = document.getElementById('live-structure-diagram');
+    container.innerHTML = ''; // Clear previous diagram
+    
+    if (nodes.length === 0) {
+        container.innerHTML = '<p class="text-gray-400 text-center mt-20">Add nodes and elements to see your structure</p>';
+        return;
+    }
+    
+    // Create SVG for the diagram
+    const containerWidth = container.clientWidth || 400;
+    const containerHeight = 400;
+    const margin = {top: 30, right: 30, bottom: 30, left: 30};
+    const width = containerWidth - margin.left - margin.right;
+    const height = containerHeight - margin.top - margin.bottom;
+    
+    const svg = d3.select('#live-structure-diagram')
+        .append('svg')
+        .attr('width', containerWidth)
+        .attr('height', containerHeight);
+    
+    const g = svg.append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+    
+    // Calculate bounds for scaling
+    const nodeCoords = nodes.map(n => [n.x, n.y]);
+    const xExtent = d3.extent(nodeCoords, d => d[0]);
+    const yExtent = d3.extent(nodeCoords, d => d[1]);
+    
+    // Add padding to bounds
+    const xPadding = Math.max(1, (xExtent[1] - xExtent[0]) * 0.1);
+    const yPadding = Math.max(1, (yExtent[1] - yExtent[0]) * 0.1);
+    
+    const xScale = d3.scaleLinear()
+        .domain([xExtent[0] - xPadding, xExtent[1] + xPadding])
+        .range([0, width]);
+    
+    const yScale = d3.scaleLinear()
+        .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+        .range([height, 0]); // Flip Y axis for screen coordinates
+    
+    // Draw grid
+    const xTicks = xScale.ticks(5);
+    const yTicks = yScale.ticks(5);
+    
+    // Grid lines
+    g.selectAll('.grid-x')
+        .data(xTicks)
+        .enter().append('line')
+        .attr('class', 'grid-x')
+        .attr('x1', d => xScale(d))
+        .attr('x2', d => xScale(d))
+        .attr('y1', 0)
+        .attr('y2', height)
+        .attr('stroke', '#374151')
+        .attr('stroke-width', 0.5)
+        .attr('opacity', 0.3);
+    
+    g.selectAll('.grid-y')
+        .data(yTicks)
+        .enter().append('line')
+        .attr('class', 'grid-y')
+        .attr('x1', 0)
+        .attr('x2', width)
+        .attr('y1', d => yScale(d))
+        .attr('y2', d => yScale(d))
+        .attr('stroke', '#374151')
+        .attr('stroke-width', 0.5)
+        .attr('opacity', 0.3);
+    
+    // Draw elements (before nodes so nodes appear on top)
+    elements.forEach(element => {
+        const node1 = nodes.find(n => n.id === element.node1);
+        const node2 = nodes.find(n => n.id === element.node2);
+        if (node1 && node2) {
+            // Element line
+            g.append('line')
+                .attr('x1', xScale(node1.x))
+                .attr('y1', yScale(node1.y))
+                .attr('x2', xScale(node2.x))
+                .attr('y2', yScale(node2.y))
+                .attr('stroke', '#60a5fa')
+                .attr('stroke-width', 3);
+            
+            // Element number at midpoint
+            const midX = (node1.x + node2.x) / 2;
+            const midY = (node1.y + node2.y) / 2;
+            
+            g.append('text')
+                .attr('x', xScale(midX))
+                .attr('y', yScale(midY))
+                .attr('text-anchor', 'middle')
+                .attr('dy', -5)
+                .attr('fill', '#fbbf24')
+                .attr('font-size', '12px')
+                .attr('font-weight', 'bold')
+                .text(`E${element.id}`);
+        }
+    });
+    
+    // Draw loads
+    loads.forEach(load => {
+        if (load.type === 'distributed') {
+            const element = elements.find(e => e.id === load.element);
+            if (element) {
+                const node1 = nodes.find(n => n.id === element.node1);
+                const node2 = nodes.find(n => n.id === element.node2);
+                if (node1 && node2) {
+                    // Draw distributed load arrows
+                    const numArrows = 5;
+                    for (let i = 0; i <= numArrows; i++) {
+                        const t = i / numArrows;
+                        const x = node1.x + t * (node2.x - node1.x);
+                        const y = node1.y + t * (node2.y - node1.y);
+                        
+                        // Arrow pointing downward for negative load
+                        const arrowLength = 15;
+                        g.append('line')
+                            .attr('x1', xScale(x))
+                            .attr('y1', yScale(y) - 10)
+                            .attr('x2', xScale(x))
+                            .attr('y2', yScale(y) - 10 + arrowLength)
+                            .attr('stroke', '#ef4444')
+                            .attr('stroke-width', 2)
+                            .attr('marker-end', 'url(#arrow)');
+                    }
+                    
+                    // Load label
+                    const midX = (node1.x + node2.x) / 2;
+                    const midY = (node1.y + node2.y) / 2;
+                    g.append('text')
+                        .attr('x', xScale(midX))
+                        .attr('y', yScale(midY) - 25)
+                        .attr('text-anchor', 'middle')
+                        .attr('fill', '#ef4444')
+                        .attr('font-size', '10px')
+                        .text(`${load.value} kN/m`);
+                }
+            }
+        } else if (load.type === 'point') {
+            const node = nodes.find(n => n.id === load.node);
+            if (node) {
+                // Point load arrow
+                const arrowLength = 20;
+                g.append('line')
+                    .attr('x1', xScale(node.x))
+                    .attr('y1', yScale(node.y) - 15)
+                    .attr('x2', xScale(node.x))
+                    .attr('y2', yScale(node.y) - 15 + arrowLength)
+                    .attr('stroke', '#ef4444')
+                    .attr('stroke-width', 3)
+                    .attr('marker-end', 'url(#arrow)');
+                
+                // Load label
+                g.append('text')
+                    .attr('x', xScale(node.x))
+                    .attr('y', yScale(node.y) - 30)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#ef4444')
+                    .attr('font-size', '10px')
+                    .text(`${load.fx} kN`);
+            }
+        }
+    });
+    
+    // Define arrow marker
+    const defs = svg.append('defs');
+    defs.append('marker')
+        .attr('id', 'arrow')
+        .attr('viewBox', '0 -5 10 10')
+        .attr('refX', 8)
+        .attr('refY', 0)
+        .attr('markerWidth', 6)
+        .attr('markerHeight', 6)
+        .attr('orient', 'auto')
+        .append('path')
+        .attr('d', 'M0,-5L10,0L0,5')
+        .attr('fill', '#ef4444');
+    
+    // Draw supports
+    supports.forEach(support => {
+        const node = nodes.find(n => n.id === support.node);
+        if (node) {
+            const x = xScale(node.x);
+            const y = yScale(node.y);
+            
+            if (support.type === 'fixed') {
+                // Fixed support - triangle with hatching
+                g.append('polygon')
+                    .attr('points', `${x-8},${y+8} ${x+8},${y+8} ${x},${y}`)
+                    .attr('fill', '#10b981')
+                    .attr('stroke', '#065f46')
+                    .attr('stroke-width', 2);
+                
+                // Hatching lines
+                for (let i = 0; i < 3; i++) {
+                    g.append('line')
+                        .attr('x1', x - 8 + i * 5)
+                        .attr('y1', y + 8)
+                        .attr('x2', x - 8 + i * 5 + 3)
+                        .attr('y2', y + 12)
+                        .attr('stroke', '#065f46')
+                        .attr('stroke-width', 2);
+                }
+            } else if (support.type === 'pinned') {
+                // Pinned support - triangle
+                g.append('polygon')
+                    .attr('points', `${x-8},${y+8} ${x+8},${y+8} ${x},${y}`)
+                    .attr('fill', '#3b82f6')
+                    .attr('stroke', '#1e40af')
+                    .attr('stroke-width', 2);
+            } else if (support.type === 'roller_x') {
+                // Horizontal roller - triangle with circle
+                g.append('polygon')
+                    .attr('points', `${x-8},${y+8} ${x+8},${y+8} ${x},${y}`)
+                    .attr('fill', '#f59e0b')
+                    .attr('stroke', '#d97706')
+                    .attr('stroke-width', 2);
+                
+                g.append('circle')
+                    .attr('cx', x)
+                    .attr('cy', y + 12)
+                    .attr('r', 3)
+                    .attr('fill', '#f59e0b')
+                    .attr('stroke', '#d97706')
+                    .attr('stroke-width', 1);
+            } else if (support.type === 'roller_y') {
+                // Vertical roller - different symbol
+                g.append('polygon')
+                    .attr('points', `${x-8},${y+8} ${x+8},${y+8} ${x},${y}`)
+                    .attr('fill', '#8b5cf6')
+                    .attr('stroke', '#7c3aed')
+                    .attr('stroke-width', 2);
+                
+                g.append('circle')
+                    .attr('cx', x - 10)
+                    .attr('cy', y + 6)
+                    .attr('r', 3)
+                    .attr('fill', '#8b5cf6')
+                    .attr('stroke', '#7c3aed')
+                    .attr('stroke-width', 1);
+            }
+        }
+    });
+    
+    // Draw nodes (on top of everything)
+    nodes.forEach(node => {
+        // Node circle
+        g.append('circle')
+            .attr('cx', xScale(node.x))
+            .attr('cy', yScale(node.y))
+            .attr('r', 6)
+            .attr('fill', '#1f2937')
+            .attr('stroke', '#60a5fa')
+            .attr('stroke-width', 2);
+        
+        // Node number
+        g.append('text')
+            .attr('x', xScale(node.x))
+            .attr('y', yScale(node.y) - 12)
+            .attr('text-anchor', 'middle')
+            .attr('fill', '#60a5fa')
+            .attr('font-size', '12px')
+            .attr('font-weight', 'bold')
+            .text(node.id);
+        
+        // Coordinates
+        g.append('text')
+            .attr('x', xScale(node.x))
+            .attr('y', yScale(node.y) + 18)
+            .attr('text-anchor', 'middle')
+            .attr('fill', '#9ca3af')
+            .attr('font-size', '9px')
+            .text(`(${node.x}, ${node.y})`);
+    });
+}
+
 // Initialize when page loads
 window.addEventListener('load', () => {
     console.log('Pure JavaScript frame analysis ready!');
@@ -2257,5 +3271,7 @@ window.addEventListener('load', () => {
     // Auto-initialize the test case
     setTimeout(() => {
         initializeTestCase();
+        updateLiveStructureDiagram(); // Show initial diagram
+        setupPlotTypeListeners(); // Setup radio button listeners
     }, 500); // Small delay to ensure DOM is ready
 });

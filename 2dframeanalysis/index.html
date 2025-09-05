@@ -95,9 +95,42 @@
 
         .input-row {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             margin-bottom: 15px;
             align-items: center;
+        }
+
+        /* Narrow input fields for compact layout */
+        .narrow-input {
+            width: 60px !important;
+            padding: 6px 8px !important;
+            font-size: 14px !important;
+        }
+        
+        .medium-input {
+            width: 80px !important;
+            padding: 6px 8px !important;
+            font-size: 14px !important;
+        }
+        
+        .select-narrow {
+            width: 140px !important;
+            padding: 6px 8px !important;
+            font-size: 14px !important;
+        }
+        
+        .btn-narrow {
+            padding: 6px 12px !important;
+            font-size: 14px !important;
+            white-space: nowrap;
+        }
+        
+        /* Sticky diagram behavior */
+        .sticky-diagram {
+            position: sticky;
+            top: 20px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
         }
 
         .canvas-container {
@@ -186,24 +219,29 @@
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
 
-    <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <main class="w-full max-w-7xl bg-gray-800 shadow-lg rounded-xl p-6 mt-8">
         <div class="text-center mb-6">
             <h1 class="text-3xl font-bold text-white mb-2"><i class="fas fa-building"></i> 2D Structural Frame Analysis</h1>
             <p class="text-gray-300">Advanced finite element analysis using matrix stiffness method with detailed step-by-step results</p>
         </div>
 
-        <!-- Input Section -->
-        <div class="bg-gray-700 rounded-lg p-6 space-y-6">
+        <!-- Two-Column Layout: Controls Left, Live Diagram Right -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <!-- Left Column: Input Controls -->
+            <div class="space-y-6">
+                <!-- Input Section -->
+                <div class="bg-gray-700 rounded-lg p-6 space-y-6">
                 <h2 class="text-xl font-semibold text-blue-400 mb-4">Input Data</h2>
                 
                 <!-- Nodes Input -->
                 <div class="bg-gray-600 rounded-lg p-6">
                     <h3 class="text-xl font-semibold text-blue-400 mb-4"><i class="fas fa-dot-circle"></i> Nodes</h3>
                     <div class="input-row">
-                        <input type="number" id="nodeNum" placeholder="Node #" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                        <input type="number" id="nodeX" placeholder="X (m)" step="0.1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                        <input type="number" id="nodeY" placeholder="Y (m)" step="0.1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                        <button onclick="addNode()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition"><i class="fas fa-plus"></i> Add Node</button>
+                        <input type="number" id="nodeNum" placeholder="Node #" step="1" class="narrow-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <input type="number" id="nodeX" placeholder="X (m)" step="0.1" class="medium-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <input type="number" id="nodeY" placeholder="Y (m)" step="0.1" class="medium-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <button onclick="addNode()" class="btn-narrow bg-blue-600 hover:bg-blue-700 text-white rounded-md transition"><i class="fas fa-plus"></i> Add Node</button>
                     </div>
                     <div class="space-y-4">
                         <textarea id="nodesBulk" placeholder="Paste from Excel: Node# X Y (one per line)" class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400 h-24 font-mono resize-vertical"></textarea>
@@ -221,10 +259,10 @@
                 <div class="bg-gray-600 rounded-lg p-6">
                     <h3 class="text-xl font-semibold text-green-400 mb-4"><i class="fas fa-minus"></i> Elements</h3>
                     <div class="input-row">
-                        <input type="number" id="elemNode1" placeholder="Node 1" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                        <input type="number" id="elemNode2" placeholder="Node 2" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                        <input type="number" id="elemId" placeholder="Element ID" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                        <button onclick="addElement()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition"><i class="fas fa-plus"></i> Add Element</button>
+                        <input type="number" id="elemNode1" placeholder="Node 1" step="1" class="narrow-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <input type="number" id="elemNode2" placeholder="Node 2" step="1" class="narrow-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <input type="number" id="elemId" placeholder="Elem ID" step="1" class="narrow-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <button onclick="addElement()" class="btn-narrow bg-blue-600 hover:bg-blue-700 text-white rounded-md transition"><i class="fas fa-plus"></i> Add Element</button>
                     </div>
                     <div class="space-y-4">
                         <textarea id="elementsBulk" placeholder="Paste from Excel: Node1 Node2 ElementID (one per line)" class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400 h-24 font-mono resize-vertical"></textarea>
@@ -233,6 +271,27 @@
                     <table class="data-table" id="elementsTable" style="display:none;">
                         <thead>
                             <tr><th>Element ID</th><th>Node 1</th><th>Node 2</th><th>Length (m)</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <!-- Supports Input -->
+                <div class="bg-gray-600 rounded-lg p-6">
+                    <h3 class="text-xl font-semibold text-yellow-400 mb-4"><i class="fas fa-anchor"></i> Supports</h3>
+                    <div class="input-row">
+                        <input type="number" id="supportNode" placeholder="Node #" step="1" class="narrow-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                        <select id="supportType" class="select-narrow bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                            <option value="fixed">Fixed</option>
+                            <option value="pinned">Pinned</option>
+                            <option value="roller_x">Horizontal Roller</option>
+                            <option value="roller_y">Vertical Roller</option>
+                        </select>
+                        <button onclick="addSupport()" class="btn-narrow bg-blue-600 hover:bg-blue-700 text-white rounded-md transition"><i class="fas fa-plus"></i> Add Support</button>
+                    </div>
+                    <table class="data-table" id="supportsTable" style="display:none;">
+                        <thead>
+                            <tr><th>Node</th><th>Support Type</th><th>Actions</th></tr>
                         </thead>
                         <tbody></tbody>
                     </table>
@@ -249,25 +308,25 @@
                     </div>
                     <div class="space-y-4" id="pointLoadInputs">
                         <div class="input-row">
-                            <input type="number" id="loadNode" placeholder="Node #" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                            <input type="number" id="loadMz" placeholder="Moment (kNm)" step="0.1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                            <input type="number" id="loadNode" placeholder="Node #" step="1" class="narrow-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                            <input type="number" id="loadMz" placeholder="Moment (kNm)" step="0.1" class="medium-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
                         </div>
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="text-sm font-medium text-white block mb-2">X Direction Force:</label>
-                                <input type="number" id="loadFx" placeholder="Force (kN)" step="0.1" class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                                <input type="number" id="loadFx" placeholder="Force (kN)" step="0.1" class="medium-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
                             </div>
                             <div>
                                 <label class="text-sm font-medium text-white block mb-2">Y Direction Force:</label>
-                                <input type="number" id="loadFy" placeholder="Force (kN)" step="0.1" class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                                <input type="number" id="loadFy" placeholder="Force (kN)" step="0.1" class="medium-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
                             </div>
                         </div>
                         <button onclick="addLoad()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition"><i class="fas fa-plus"></i> Add Point Load</button>
                     </div>
                     <div class="space-y-4" id="distributedLoadInputs" style="display:none;">
                         <div class="input-row">
-                            <input type="number" id="loadElement" placeholder="Element #" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                            <input type="number" id="loadValue" placeholder="Load (kN/m)" step="0.1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                            <input type="number" id="loadElement" placeholder="Element #" step="1" class="narrow-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                            <input type="number" id="loadValue" placeholder="Load (kN/m)" step="0.1" class="medium-input bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
                         </div>
                         <div>
                             <label class="text-sm font-medium text-white block mb-2">Load Direction:</label>
@@ -286,27 +345,6 @@
                     </table>
                 </div>
 
-                <!-- Supports Input -->
-                <div class="bg-gray-600 rounded-lg p-6">
-                    <h3 class="text-xl font-semibold text-yellow-400 mb-4"><i class="fas fa-anchor"></i> Supports</h3>
-                    <div class="input-row">
-                        <input type="number" id="supportNode" placeholder="Node #" step="1" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                        <select id="supportType" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                            <option value="fixed">Fixed</option>
-                            <option value="pinned">Pinned</option>
-                            <option value="roller_x">Horizontal Roller</option>
-                            <option value="roller_y">Vertical Roller</option>
-                        </select>
-                        <button onclick="addSupport()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition"><i class="fas fa-plus"></i> Add Support</button>
-                    </div>
-                    <table class="data-table" id="supportsTable" style="display:none;">
-                        <thead>
-                            <tr><th>Node</th><th>Support Type</th><th>Actions</th></tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-
                 <button onclick="runAnalysis()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
                     <i class="fas fa-calculator"></i> Run Analysis
                 </button>
@@ -318,10 +356,25 @@
                 
                 <div class="error" id="error"></div>
                 <div class="success" id="success"></div>
+                </div>
+            </div>
+            
+            <!-- Right Column: Live Structural Diagram -->
+            <div class="space-y-6">
+                <!-- Live Structure Diagram -->
+                <div class="sticky-diagram bg-gray-700 rounded-lg p-6">
+                    <h2 class="text-xl font-semibold text-green-400 mb-4">
+                        <i class="fas fa-project-diagram"></i> Structure Diagram
+                    </h2>
+                    <div id="live-structure-diagram" class="bg-gray-800 rounded-lg p-4 min-h-96">
+                        <p class="text-gray-400 text-center mt-20">Add nodes and elements to see your structure</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Results Section -->
-        <div class="bg-gray-700 rounded-lg p-6">
+        <div class="bg-gray-700 rounded-lg p-6 mt-6">
             <h2 class="text-xl font-semibold text-blue-400 mb-4">Results</h2>
                 
                 <div id="results">
@@ -346,16 +399,44 @@
             <div class="canvas-container" id="diagramsContainer" style="display:none;">
                 <h3 class="text-lg font-semibold text-purple-400 mb-4">Interactive Frame Visualization</h3>
                 <div class="bg-gray-800 rounded-lg p-4 mb-4">
-                    <div class="flex justify-between items-center mb-2">
-                        <p class="text-gray-300 text-sm">
-                            <i class="fas fa-info-circle text-blue-400"></i> 
-                            Hover over any point along the frame elements to see detailed results
-                        </p>
+                    <!-- Plot Type Radio Buttons -->
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="flex space-x-4 text-sm">
+                            <label class="flex items-center text-gray-300">
+                                <input type="radio" name="plotType" value="displacement" checked class="mr-2 text-blue-600">
+                                <span>Displacement</span>
+                            </label>
+                            <label class="flex items-center text-gray-300">
+                                <input type="radio" name="plotType" value="reactions" class="mr-2 text-blue-600">
+                                <span>Reactions</span>
+                            </label>
+                            <label class="flex items-center text-gray-300">
+                                <input type="radio" name="plotType" value="moment" class="mr-2 text-blue-600">
+                                <span>Moment</span>
+                            </label>
+                            <label class="flex items-center text-gray-300">
+                                <input type="radio" name="plotType" value="shear" class="mr-2 text-blue-600">
+                                <span>Shear</span>
+                            </label>
+                            <label class="flex items-center text-gray-300">
+                                <input type="radio" name="plotType" value="axial" class="mr-2 text-blue-600">
+                                <span>Axial</span>
+                            </label>
+                        </div>
                         <button onclick="autoscaleVisualization()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded transition">
                             <i class="fas fa-expand-arrows-alt"></i> Auto Scale
                         </button>
                     </div>
+                    
+                    <!-- Main Visualization Area -->
                     <div id="d3-visualization" class="bg-gray-900 rounded border border-gray-600" style="min-height: 500px;"></div>
+                    
+                    <!-- Legend Below Plot -->
+                    <div id="plot-legend" class="mt-4 p-3 bg-gray-700 rounded text-xs text-gray-300">
+                        <div class="text-center">
+                            <p><i class="fas fa-info-circle text-blue-400"></i> Hover over elements to see detailed results</p>
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- Tooltip for hover information -->
