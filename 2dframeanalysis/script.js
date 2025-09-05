@@ -493,10 +493,16 @@ class EnhancedFrame {
         // Get actual displacements and rotations at element ends from FE solution
         let delta1_global = 0, theta1_global = 0, delta2_global = 0, theta2_global = 0;
         if (this.results && this.results.displacements) {
+            // For 2D frame elements, we need the transverse deflection (typically Y for horizontal beams)
+            // This should match the element's local coordinate system
             delta1_global = this.results.displacements[`node_${node1Id}_dof_1`] || 0; // Y displacement at node 1
-            theta1_global = this.results.displacements[`node_${node1Id}_dof_2`] || 0; // Rotation at node 1
-            delta2_global = this.results.displacements[`node_${node2Id}_dof_1`] || 0; // Y displacement at node 2
-            theta2_global = this.results.displacements[`node_${node2Id}_dof_2`] || 0; // Rotation at node 2
+            theta1_global = this.results.displacements[`node_${node1Id}_dof_2`] || 0; // Rotation at node 1 (about Z-axis)
+            delta2_global = this.results.displacements[`node_${node2Id}_dof_1`] || 0; // Y displacement at node 2  
+            theta2_global = this.results.displacements[`node_${node2Id}_dof_2`] || 0; // Rotation at node 2 (about Z-axis)
+            
+            // Debug: log the actual displacement values being used
+            console.log(`Element ${elemId}: Node ${node1Id}: δ=${delta1_global.toFixed(6)}m, θ=${theta1_global.toFixed(6)}rad`);
+            console.log(`Element ${elemId}: Node ${node2Id}: δ=${delta2_global.toFixed(6)}m, θ=${theta2_global.toFixed(6)}rad`);
         }
 
         // Apply support constraints to ensure boundary conditions are satisfied
@@ -526,15 +532,24 @@ class EnhancedFrame {
             }
         }
 
-        // Use PyNite beam segment deflection formula with proper boundary conditions
-        // δ(x) = δ₁ + θ₁*x + V₁*x³/(6*EI) + w₁*x⁴/(24*EI) + x²*(-M₁)/(2*EI) + x⁵*(-w₁ + w₂)/(120*EI*L)
+        // Use Hermite cubic interpolation based on global FE nodal results
+        // This ensures continuity between adjacent elements at shared nodes
+        // H₁(ξ) = 2ξ³ - 3ξ² + 1       (shape function for δ₁)
+        // H₂(ξ) = -2ξ³ + 3ξ²         (shape function for δ₂)  
+        // H₃(ξ) = ξ³ - 2ξ² + ξ       (shape function for θ₁*L)
+        // H₄(ξ) = ξ³ - ξ²            (shape function for θ₂*L)
         
-        const deflection = delta1 + 
-                          theta1 * x + 
-                          V1_N * Math.pow(x, 3) / (6 * EI) + 
-                          w1 * Math.pow(x, 4) / (24 * EI) + 
-                          Math.pow(x, 2) * (-M1_Nm) / (2 * EI) + 
-                          Math.pow(x, 5) * (-w1 + w2) / (120 * EI * L);
+        const xi = position; // normalized coordinate (0 to 1)
+        
+        // Hermite basis functions
+        const H1 = 2*xi*xi*xi - 3*xi*xi + 1;           // Shape function for delta1
+        const H2 = -2*xi*xi*xi + 3*xi*xi;              // Shape function for delta2  
+        const H3 = xi*xi*xi - 2*xi*xi + xi;            // Shape function for theta1*L
+        const H4 = xi*xi*xi - xi*xi;                   // Shape function for theta2*L
+        
+        // Interpolate deflection using global FE nodal values
+        // This ensures perfect continuity at shared nodes between elements
+        const deflection = H1 * delta1 + H2 * delta2 + H3 * (theta1 * L) + H4 * (theta2 * L);
         
         return deflection; // Returns deflection in meters
     }
@@ -2224,7 +2239,7 @@ function initializeTestCase() {
     
     // Add supports
     supports.push({node: 1, type: 'pinned'});   // Pinned at node 1
-    supports.push({node: 2, type: 'roller'});   // Roller at node 2
+    supports.push({node: 2, type: 'roller_x'});   // Horizontal Roller at node 2
     
     // Update all tables to show the data
     updateNodesTable();
