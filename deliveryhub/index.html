@@ -208,9 +208,14 @@
         <div class="delivery-selector">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-xl font-semibold text-white">Current Delivery</h2>
-                <button onclick="duplicateDelivery()" class="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-sm transition">
-                    📋 Duplicate
-                </button>
+                <div class="flex gap-2">
+                    <button onclick="duplicateDelivery()" class="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-sm transition">
+                        📋 Duplicate
+                    </button>
+                    <button onclick="deleteDelivery()" class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition">
+                        🗑️ Delete Delivery Collection
+                    </button>
+                </div>
             </div>
             <div class="flex gap-4">
                 <input type="text" id="deliveryName" placeholder="Enter delivery name..." 
@@ -679,6 +684,61 @@
                 renderCategories();
                 alert('Delivery duplicated successfully!');
             }
+        }
+
+        function deleteDelivery() {
+            const currentName = document.getElementById('deliveryName').value.trim();
+            
+            if (!currentName) {
+                showNotification('No delivery selected to delete', true);
+                return;
+            }
+            
+            const confirmMessage = `Are you sure you want to delete the delivery "${currentName}"?\n\nThis action cannot be undone and will:\n- Remove it from browser storage\n- Delete all categories, files, and settings\n- Clear the current workspace\n\nType "DELETE" to confirm:`;
+            
+            const userInput = prompt(confirmMessage);
+            
+            if (userInput === 'DELETE') {
+                // Remove from history
+                const index = deliveryHistory.findIndex(d => d.name === currentName);
+                if (index >= 0) {
+                    deliveryHistory.splice(index, 1);
+                    localStorage.setItem('deliveryHub_history', JSON.stringify(deliveryHistory));
+                    updateDeliveryHistoryDropdown();
+                }
+                
+                // Clear current delivery and create new one
+                const now = new Date().toISOString();
+                deliveryData = {
+                    name: '',
+                    version: "1.0.0",
+                    schemaVersion: "1.0.0",
+                    created: now,
+                    lastModified: now,
+                    categories: {},
+                    customButtons: [],
+                    metadata: {
+                        totalFiles: 0,
+                        totalCategories: 0,
+                        totalSubcategories: 0
+                    }
+                };
+                
+                // Update UI
+                document.getElementById('deliveryName').value = '';
+                selectedFiles.clear();
+                renderCategories();
+                renderCustomButtons();
+                
+                // Clear last saved delivery in browser
+                localStorage.removeItem('deliveryHub_last');
+                
+                showNotification(`Delivery "${currentName}" deleted successfully`, false);
+                
+            } else if (userInput !== null) {
+                showNotification('Deletion cancelled - you must type "DELETE" exactly to confirm', true);
+            }
+            // If userInput is null, user pressed Cancel - do nothing
         }
 
         function loadSelectedDelivery() {
