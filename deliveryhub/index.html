@@ -1,0 +1,1789 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delivery Hub - Advanced Document Management</title>
+    
+    <!-- Centralized CSS -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+    <link rel="stylesheet" href="../assets/css/forms.css">
+    <link rel="stylesheet" href="../assets/css/components.css">
+    
+    <!-- Tailwind CSS -->
+    <script>
+        tailwind.config = { darkMode: 'class' };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body {
+            background: linear-gradient(135deg, #1f2937 0%, #111827 50%, #0f172a 100%);
+            background-image: 
+                radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(239, 68, 68, 0.1) 0%, transparent 50%);
+        }
+        
+        .category-section {
+            background: rgba(55, 65, 81, 0.8);
+            border: 1px solid rgba(107, 114, 128, 0.3);
+            border-radius: 0.75rem;
+            backdrop-filter: blur(4px);
+            transition: all 0.2s ease-in-out;
+            margin-bottom: 1rem;
+        }
+        
+        .category-section:hover {
+            background: rgba(55, 65, 81, 0.9);
+            border-color: rgba(107, 114, 128, 0.5);
+        }
+        
+        .subcategory-item {
+            background: rgba(31, 41, 55, 0.8);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            border-radius: 0.5rem;
+            margin: 0.5rem 0;
+            transition: all 0.2s ease-in-out;
+        }
+        
+        .subcategory-item:hover {
+            background: rgba(31, 41, 55, 0.9);
+            border-color: rgba(75, 85, 99, 0.7);
+        }
+        
+        .file-item {
+            background: rgba(17, 24, 39, 0.6);
+            border: 1px solid rgba(55, 65, 81, 0.5);
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            margin: 0.25rem 0;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .file-item:hover {
+            background: rgba(17, 24, 39, 0.8);
+            border-color: rgba(55, 65, 81, 0.8);
+            transform: translateX(2px);
+        }
+        
+        .file-item.selected {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: rgba(59, 130, 246, 0.6);
+        }
+        
+        .custom-button {
+            background: rgba(16, 185, 129, 0.8);
+            border: 1px solid rgba(16, 185, 129, 0.6);
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            margin: 0.25rem;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .custom-button:hover {
+            background: rgba(16, 185, 129, 1);
+            transform: scale(1.02);
+        }
+        
+        .delivery-selector {
+            background: rgba(55, 65, 81, 0.9);
+            border: 1px solid rgba(107, 114, 128, 0.5);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .toolbar {
+            background: rgba(31, 41, 55, 0.9);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+        
+        .modal-content {
+            background: linear-gradient(135deg, #374151, #1f2937);
+            margin: 5% auto;
+            padding: 2rem;
+            border-radius: 1rem;
+            width: 90%;
+            max-width: 500px;
+            border: 1px solid rgba(107, 114, 128, 0.3);
+        }
+        
+        .drag-over {
+            border-color: rgba(59, 130, 246, 0.8) !important;
+            background: rgba(59, 130, 246, 0.1) !important;
+        }
+        
+        .filename-splitter {
+            background: rgba(31, 41, 55, 0.8);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(16, 185, 129, 0.95);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1100;
+            transform: translateX(400px);
+            transition: transform 0.3s ease-in-out;
+            max-width: 300px;
+            word-wrap: break-word;
+        }
+        
+        .notification.show {
+            transform: translateX(0);
+        }
+        
+        .notification.error {
+            background: rgba(239, 68, 68, 0.95);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen">
+    <!-- Header -->
+    <header class="w-full max-w-7xl mx-auto p-6">
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center">
+                <a href="../index.html" class="text-blue-400 hover:text-blue-300 transition-colors mr-4">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                </a>
+                <h1 class="text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-green-400 bg-clip-text text-transparent">
+                    Delivery Hub
+                </h1>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="saveDelivery()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition" title="Save delivery to browser storage">
+                    💾 Save
+                </button>
+                <button onclick="exportDelivery()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition" title="Export delivery to JSON file">
+                    📤 Export
+                </button>
+                <button onclick="loadDelivery()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition" title="Import delivery from JSON file">
+                    📂 Import
+                </button>
+                <button onclick="newDelivery()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition" title="Create new delivery">
+                    ✨ New
+                </button>
+            </div>
+        </div>
+        <p class="text-center text-gray-300 text-lg">
+            Advanced document management and delivery organization tool
+        </p>
+    </header>
+
+    <!-- Main Content -->
+    <main class="w-full max-w-7xl mx-auto p-6">
+        <!-- Delivery Selector -->
+        <div class="delivery-selector">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold text-white">Current Delivery</h2>
+                <button onclick="duplicateDelivery()" class="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-sm transition">
+                    📋 Duplicate
+                </button>
+            </div>
+            <div class="flex gap-4">
+                <input type="text" id="deliveryName" placeholder="Enter delivery name..." 
+                       class="flex-1 p-3 bg-gray-600 border border-gray-500 rounded-lg text-white focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none">
+                <select id="deliveryHistory" onchange="loadSelectedDelivery()" 
+                        class="p-3 bg-gray-600 border border-gray-500 rounded-lg text-white focus:border-blue-400 focus:outline-none">
+                    <option value="">Recent deliveries...</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <div class="flex flex-wrap gap-3 items-center">
+                <button onclick="addCategory()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">
+                    ➕ Add Category
+                </button>
+                <button onclick="addCustomButton()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition">
+                    🔗 Add Button
+                </button>
+                <button onclick="showBulkFilePathModal()" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition">
+                    📋 Bulk Add Files
+                </button>
+                <button onclick="copySelectedPaths()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
+                    📋 Copy Paths
+                </button>
+                <button onclick="openFileSplitter()" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition">
+                    ✂️ Split Filenames
+                </button>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="selectMultiple" class="w-4 h-4" checked>
+                    <label for="selectMultiple" class="text-sm text-gray-300">Multi-select</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Buttons Section -->
+        <div id="customButtonsSection" class="bg-gray-800/50 backdrop-blur-sm border border-gray-700/30 rounded-xl p-6 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-4">Quick Access Buttons</h3>
+            <div id="customButtons" class="flex flex-wrap gap-2">
+                <!-- Custom buttons will be added here -->
+            </div>
+        </div>
+
+        <!-- Categories and Documents -->
+        <div id="categoriesContainer" class="space-y-4">
+            <!-- Categories will be dynamically added here -->
+        </div>
+    </main>
+
+    <!-- Modals -->
+    
+    <!-- Add Category Modal -->
+    <div id="categoryModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-xl font-semibold text-white mb-4">Add New Category</h3>
+            <input type="text" id="newCategoryName" placeholder="Category name..." 
+                   class="w-full p-3 bg-gray-600 border border-gray-500 rounded-lg text-white focus:border-blue-400 focus:outline-none mb-4">
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModal('categoryModal')" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg">
+                    Cancel
+                </button>
+                <button onclick="confirmAddCategory()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                    Add Category
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Subcategory Modal -->
+    <div id="subcategoryModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-xl font-semibold text-white mb-4">Add Subcategory</h3>
+            <input type="text" id="newSubcategoryName" placeholder="Subcategory name..." 
+                   class="w-full p-3 bg-gray-600 border border-gray-500 rounded-lg text-white focus:border-blue-400 focus:outline-none mb-4">
+            <input type="hidden" id="subcategoryParent">
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModal('subcategoryModal')" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg">
+                    Cancel
+                </button>
+                <button onclick="confirmAddSubcategory()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                    Add Subcategory
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Add Files Modal -->
+    <div id="bulkFileModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <h3 class="text-xl font-semibold text-white mb-4">Bulk Add File Paths</h3>
+            
+            <div class="mb-4">
+                <label class="block text-sm text-gray-300 mb-2">Select Category and Subcategory:</label>
+                <div class="flex gap-3">
+                    <select id="bulkCategory" class="flex-1 p-2 bg-gray-600 border border-gray-500 rounded text-white focus:border-blue-400 focus:outline-none">
+                        <!-- Categories will be populated -->
+                    </select>
+                    <select id="bulkSubcategory" class="flex-1 p-2 bg-gray-600 border border-gray-500 rounded text-white focus:border-blue-400 focus:outline-none">
+                        <!-- Subcategories will be populated -->
+                    </select>
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm text-gray-300 mb-2">Paste File Paths (one per line):</label>
+                <textarea id="bulkFilePaths" rows="10" placeholder="C:\Projects\Document1.pdf&#10;C:\Projects\Document2.docx&#10;C:\Projects\Spreadsheet.xlsx"
+                          class="w-full p-3 bg-gray-600 border border-gray-500 rounded text-white focus:border-blue-400 focus:outline-none font-mono text-sm"></textarea>
+            </div>
+            
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModal('bulkFileModal')" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg">
+                    Cancel
+                </button>
+                <button onclick="processBulkFiles()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                    Add Files
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Custom Button Modal -->
+    <div id="buttonModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-xl font-semibold text-white mb-4">Add Custom Button</h3>
+            <input type="text" id="buttonName" placeholder="Button name..." 
+                   class="w-full p-3 bg-gray-600 border border-gray-500 rounded-lg text-white focus:border-blue-400 focus:outline-none mb-4">
+            
+            <div class="mb-4">
+                <label class="block text-sm text-gray-300 mb-2">Folder Path:</label>
+                <input type="text" id="buttonFolderPath" placeholder="C:\Projects\MyFolder" 
+                       class="w-full p-3 bg-gray-600 border border-gray-500 rounded-lg text-white focus:border-blue-400 focus:outline-none">
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm text-gray-300 mb-2">File Name:</label>
+                <div class="flex gap-2">
+                    <input type="text" id="buttonFileName" placeholder="document.pdf" 
+                           class="flex-1 p-3 bg-gray-600 border border-gray-500 rounded-lg text-white focus:border-blue-400 focus:outline-none">
+                    <button onclick="selectButtonFile()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg" title="Browse for file to auto-fill folder path and filename">
+                        📂 Browse
+                    </button>
+                </div>
+            </div>
+            
+            <div class="mb-4 p-2 bg-gray-700 rounded text-sm">
+                <label class="block text-xs text-gray-400 mb-1">Preview Full Path:</label>
+                <div id="buttonPathPreview" class="text-green-400 font-mono break-all">
+                    Will be generated from folder path + filename
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModal('buttonModal')" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg">
+                    Cancel
+                </button>
+                <button onclick="confirmAddButton()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                    Add Button
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Splitter Modal -->
+    <div id="splitterModal" class="modal">
+        <div class="modal-content" style="max-width: 700px; width: 95%;">
+            <h3 class="text-xl font-semibold text-white mb-4">Filename Splitter</h3>
+            
+            <div class="filename-splitter">
+                <div class="mb-4">
+                    <label class="block text-sm text-gray-300 mb-2">Selected Files:</label>
+                    <div id="splitterFileList" class="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-2 text-sm">
+                        <!-- Selected files will appear here -->
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm text-gray-300 mb-2">Split String/Regex:</label>
+                    <input type="text" id="splitString" placeholder="Enter split pattern..." value=" - "
+                           class="w-full p-2 bg-gray-600 border border-gray-500 rounded text-white focus:border-blue-400 focus:outline-none">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" id="excludeExtension" checked class="w-4 h-4">
+                        <span class="text-sm text-gray-300">Exclude file extensions</span>
+                    </label>
+                </div>
+                
+                <div class="mb-4">
+                    <button onclick="processSplitFilenames()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                        Split & Copy
+                    </button>
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-gray-300 mb-2">Preview Output:</label>
+                    <textarea id="splitterOutput" rows="6" readonly
+                              class="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white text-sm font-mono"></textarea>
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-3 mt-4">
+                <button onclick="closeModal('splitterModal')" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="../assets/js/common.js"></script>
+    <script>
+        // Global state
+        let deliveryData = {
+            name: '',
+            version: "1.0.0",
+            schemaVersion: "1.0.0",
+            created: null,
+            lastModified: null,
+            categories: {},
+            customButtons: [],
+            metadata: {
+                totalFiles: 0,
+                totalCategories: 0,
+                totalSubcategories: 0
+            }
+        };
+        let selectedFiles = new Set();
+        let deliveryHistory = [];
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDeliveryHistory();
+            loadLastDelivery();
+            setupDragAndDrop();
+            
+            // Add default categories if empty
+            if (Object.keys(deliveryData.categories).length === 0) {
+                deliveryData.categories = {
+                    'Drawings': { 
+                        subcategories: {
+                            'Latest Drawings': { folderPath: '', files: [] }, 
+                            'Self Checked Copies': { folderPath: '', files: [] }, 
+                            'Copies Checked by Others': { folderPath: '', files: [] }
+                        } 
+                    },
+                    'Calculations': { 
+                        subcategories: {
+                            'Latest Calculations': { folderPath: '', files: [] }, 
+                            'Verified Calculations': { folderPath: '', files: [] }
+                        } 
+                    },
+                    'Documents': { 
+                        subcategories: {
+                            'Reports': { folderPath: '', files: [] }, 
+                            'Specifications': { folderPath: '', files: [] }
+                        } 
+                    }
+                };
+                renderCategories();
+            }
+        });
+
+        // Delivery Management
+        function newDelivery() {
+            if (confirm('Create new delivery? Unsaved changes will be lost.')) {
+                const now = new Date().toISOString();
+                deliveryData = {
+                    name: '',
+                    version: "1.0.0",
+                    schemaVersion: "1.0.0",
+                    created: now,
+                    lastModified: now,
+                    categories: {
+                        'Drawings': { 
+                            subcategories: {
+                                'Latest Drawings': { folderPath: '', files: [] }, 
+                                'Self Checked Copies': { folderPath: '', files: [] }, 
+                                'Copies Checked by Others': { folderPath: '', files: [] }
+                            } 
+                        },
+                        'Calculations': { 
+                            subcategories: {
+                                'Latest Calculations': { folderPath: '', files: [] }, 
+                                'Verified Calculations': { folderPath: '', files: [] }
+                            } 
+                        },
+                        'Documents': { 
+                            subcategories: {
+                                'Reports': { folderPath: '', files: [] }, 
+                                'Specifications': { folderPath: '', files: [] }
+                            } 
+                        }
+                    },
+                    customButtons: [],
+                    metadata: {
+                        totalFiles: 0,
+                        totalCategories: 3,
+                        totalSubcategories: 7
+                    }
+                };
+                document.getElementById('deliveryName').value = '';
+                selectedFiles.clear();
+                renderCategories();
+                renderCustomButtons();
+            }
+        }
+
+        function saveDelivery() {
+            const name = document.getElementById('deliveryName').value.trim();
+            if (!name) {
+                alert('Please enter a delivery name');
+                return;
+            }
+            
+            deliveryData.name = name;
+            deliveryData.lastModified = new Date().toISOString();
+            
+            // Save to localStorage
+            const existingIndex = deliveryHistory.findIndex(d => d.name === name);
+            if (existingIndex >= 0) {
+                deliveryHistory[existingIndex] = { ...deliveryData };
+            } else {
+                deliveryHistory.unshift({ ...deliveryData });
+            }
+            
+            // Keep only last 20 deliveries
+            if (deliveryHistory.length > 20) {
+                deliveryHistory = deliveryHistory.slice(0, 20);
+            }
+            
+            localStorage.setItem('deliveryHub_history', JSON.stringify(deliveryHistory));
+            localStorage.setItem('deliveryHub_last', JSON.stringify(deliveryData));
+            
+            updateDeliveryHistoryDropdown();
+            alert('Delivery saved successfully!');
+        }
+
+        function exportDelivery() {
+            const name = document.getElementById('deliveryName').value.trim();
+            if (!name) {
+                showNotification('Please enter a delivery name before exporting', true);
+                return;
+            }
+            
+            // Update delivery data with current name and timestamp
+            deliveryData.name = name;
+            deliveryData.lastModified = new Date().toISOString();
+            
+            // Add export metadata
+            const exportData = {
+                ...deliveryData,
+                exportInfo: {
+                    exportedAt: new Date().toISOString(),
+                    exportVersion: "1.0.0",
+                    appVersion: "Delivery Hub v1.0"
+                }
+            };
+            
+            // Create and download file
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_delivery.json`;
+            link.style.display = 'none';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            URL.revokeObjectURL(url);
+            showNotification(`Delivery "${name}" exported successfully`);
+        }
+
+        function loadDelivery() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const loaded = JSON.parse(e.target.result);
+                            
+                            // Validate required fields
+                            if (!loaded || typeof loaded !== 'object') {
+                                throw new Error('Invalid file format');
+                            }
+                            
+                            // Handle exported files (remove export metadata)
+                            const importData = { ...loaded };
+                            if (importData.exportInfo) {
+                                delete importData.exportInfo;
+                                console.log('Imported delivery exported at:', loaded.exportInfo.exportedAt);
+                            }
+                            
+                            // Ensure required structure exists and add versioning
+                            if (!importData.categories) {
+                                importData.categories = {};
+                            }
+                            if (!importData.customButtons) {
+                                importData.customButtons = [];
+                            }
+                            if (!importData.version) {
+                                importData.version = "1.0.0";
+                            }
+                            if (!importData.schemaVersion) {
+                                importData.schemaVersion = "1.0.0";
+                            }
+                            if (!importData.created) {
+                                importData.created = new Date().toISOString();
+                            }
+                            if (!importData.metadata) {
+                                importData.metadata = {};
+                            }
+                            
+                            // Migrate and validate data structure
+                            deliveryData = importData;
+                            migrateToFolderStructure();
+                            updateMetadata(); // Recalculate metadata after import
+                            
+                            // Update UI
+                            document.getElementById('deliveryName').value = deliveryData.name || '';
+                            selectedFiles.clear();
+                            renderCategories();
+                            renderCustomButtons();
+                            
+                            const fileName = file.name.replace('.json', '');
+                            showNotification(`Delivery "${fileName}" imported successfully`);
+                            
+                        } catch (error) {
+                            console.error('Import error:', error);
+                            showNotification(`Error importing delivery: ${error.message}`, true);
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+            input.click();
+        }
+
+        function duplicateDelivery() {
+            const name = prompt('Enter name for duplicated delivery:');
+            if (name && name.trim()) {
+                const duplicate = JSON.parse(JSON.stringify(deliveryData));
+                duplicate.name = name.trim();
+                duplicate.lastModified = new Date().toISOString();
+                
+                // Clear file lists but keep structure and folder paths
+                for (const category in duplicate.categories) {
+                    for (const subcategory in duplicate.categories[category].subcategories) {
+                        duplicate.categories[category].subcategories[subcategory].files = [];
+                    }
+                }
+                
+                deliveryData = duplicate;
+                document.getElementById('deliveryName').value = name.trim();
+                selectedFiles.clear();
+                renderCategories();
+                alert('Delivery duplicated successfully!');
+            }
+        }
+
+        function loadSelectedDelivery() {
+            const select = document.getElementById('deliveryHistory');
+            const selectedName = select.value;
+            if (selectedName) {
+                const delivery = deliveryHistory.find(d => d.name === selectedName);
+                if (delivery) {
+                    deliveryData = JSON.parse(JSON.stringify(delivery));
+                    document.getElementById('deliveryName').value = delivery.name;
+                    selectedFiles.clear();
+                    renderCategories();
+                    renderCustomButtons();
+                }
+                select.value = '';
+            }
+        }
+
+        function loadDeliveryHistory() {
+            const saved = localStorage.getItem('deliveryHub_history');
+            if (saved) {
+                try {
+                    deliveryHistory = JSON.parse(saved);
+                    updateDeliveryHistoryDropdown();
+                } catch (error) {
+                    deliveryHistory = [];
+                }
+            }
+        }
+
+        function loadLastDelivery() {
+            const saved = localStorage.getItem('deliveryHub_last');
+            if (saved) {
+                try {
+                    deliveryData = JSON.parse(saved);
+                    
+                    // Migrate old structure to new folder-based structure
+                    migrateToFolderStructure();
+                    
+                    document.getElementById('deliveryName').value = deliveryData.name || '';
+                    renderCategories();
+                    renderCustomButtons();
+                } catch (error) {
+                    // Use default structure
+                }
+            }
+        }
+
+        function migrateToFolderStructure() {
+            // Check if migration is needed
+            for (const categoryName in deliveryData.categories) {
+                const category = deliveryData.categories[categoryName];
+                for (const subcategoryName in category.subcategories) {
+                    const subcategory = category.subcategories[subcategoryName];
+                    
+                    // If subcategory is an array (old structure), convert to new structure
+                    if (Array.isArray(subcategory)) {
+                        console.log(`Migrating ${categoryName} > ${subcategoryName} from old structure`);
+                        deliveryData.categories[categoryName].subcategories[subcategoryName] = {
+                            folderPath: '',
+                            files: subcategory.map(file => ({
+                                name: typeof file === 'string' ? file : file.name,
+                                size: file.size || 0,
+                                lastModified: file.lastModified || Date.now(),
+                                id: file.id || Date.now() + Math.random()
+                            }))
+                        };
+                    }
+                    // If subcategory doesn't have files array, add it
+                    else if (subcategory && !subcategory.files) {
+                        console.log(`Adding files array to ${categoryName} > ${subcategoryName}`);
+                        subcategory.files = [];
+                        if (!subcategory.folderPath) {
+                            subcategory.folderPath = '';
+                        }
+                    }
+                }
+            }
+        }
+
+        function updateDeliveryHistoryDropdown() {
+            const select = document.getElementById('deliveryHistory');
+            select.innerHTML = '<option value="">Recent deliveries...</option>';
+            deliveryHistory.forEach(delivery => {
+                const option = document.createElement('option');
+                option.value = delivery.name;
+                option.textContent = `${delivery.name} (${new Date(delivery.lastModified).toLocaleDateString()})`;
+                select.appendChild(option);
+            });
+        }
+
+        // Category Management
+        function addCategory() {
+            document.getElementById('categoryModal').style.display = 'block';
+            document.getElementById('newCategoryName').focus();
+        }
+
+        function confirmAddCategory() {
+            const name = document.getElementById('newCategoryName').value.trim();
+            if (name && !deliveryData.categories[name]) {
+                deliveryData.categories[name] = { subcategories: {} };
+                renderCategories();
+                closeModal('categoryModal');
+                document.getElementById('newCategoryName').value = '';
+            } else if (deliveryData.categories[name]) {
+                alert('Category already exists!');
+            }
+        }
+
+        function addSubcategory(categoryName) {
+            document.getElementById('subcategoryParent').value = categoryName;
+            document.getElementById('subcategoryModal').style.display = 'block';
+            document.getElementById('newSubcategoryName').focus();
+        }
+
+        function confirmAddSubcategory() {
+            const name = document.getElementById('newSubcategoryName').value.trim();
+            const parent = document.getElementById('subcategoryParent').value;
+            
+            if (name && parent && !deliveryData.categories[parent].subcategories[name]) {
+                deliveryData.categories[parent].subcategories[name] = {
+                    folderPath: '',
+                    files: []
+                };
+                renderCategories();
+                closeModal('subcategoryModal');
+                document.getElementById('newSubcategoryName').value = '';
+            } else if (deliveryData.categories[parent].subcategories[name]) {
+                alert('Subcategory already exists!');
+            }
+        }
+
+        function removeCategory(categoryName) {
+            if (confirm(`Remove category "${categoryName}" and all its contents?`)) {
+                delete deliveryData.categories[categoryName];
+                renderCategories();
+            }
+        }
+
+        function removeSubcategory(categoryName, subcategoryName) {
+            if (confirm(`Remove subcategory "${subcategoryName}" and all its files?`)) {
+                delete deliveryData.categories[categoryName].subcategories[subcategoryName];
+                renderCategories();
+            }
+        }
+
+        function setFolderPath(categoryName, subcategoryName) {
+            const currentPath = deliveryData.categories[categoryName].subcategories[subcategoryName].folderPath;
+            
+            // Create a custom modal for folder path input
+            showFolderPathModal(categoryName, subcategoryName, currentPath);
+        }
+
+        function showFolderPathModal(categoryName, subcategoryName, currentPath) {
+            // Create modal if it doesn't exist
+            let modal = document.getElementById('folderPathModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'folderPathModal';
+                modal.className = 'modal';
+                modal.innerHTML = `
+                    <div class="modal-content">
+                        <h3 class="text-xl font-semibold text-white mb-4">Set Folder Path</h3>
+                        <div class="mb-4">
+                            <label class="block text-sm text-gray-300 mb-2">Category > Subcategory:</label>
+                            <div id="folderPathTarget" class="text-blue-400 font-medium mb-3"></div>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm text-gray-300 mb-2">Folder Path:</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="folderPathInput" placeholder="C:\\Projects\\MyDelivery\\Drawings" 
+                                       class="flex-1 p-3 bg-gray-600 border border-gray-500 rounded-lg text-white focus:border-blue-400 focus:outline-none">
+                                <button onclick="browseFolderPath()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg" title="Browse for folder">
+                                    📂 Browse
+                                </button>
+                            </div>
+                            <div class="text-xs text-gray-400 mt-2">
+                                Tip: You can also copy a path from Windows Explorer and paste it here
+                            </div>
+                        </div>
+                        <div class="flex justify-end gap-3">
+                            <button onclick="closeModal('folderPathModal')" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg">
+                                Cancel
+                            </button>
+                            <button onclick="confirmSetFolderPath()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                                Set Path
+                            </button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
+            
+            // Set current values
+            document.getElementById('folderPathTarget').textContent = `${categoryName} > ${subcategoryName}`;
+            document.getElementById('folderPathInput').value = currentPath || '';
+            
+            // Store current context for later use
+            modal.setAttribute('data-category', categoryName);
+            modal.setAttribute('data-subcategory', subcategoryName);
+            
+            // Show modal
+            modal.style.display = 'block';
+            document.getElementById('folderPathInput').focus();
+        }
+
+        function browseFolderPath() {
+            // Create a file input to browse for files (we'll extract the folder path)
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.webkitdirectory = true; // This allows folder selection in modern browsers
+            input.multiple = true;
+            
+            input.onchange = function(e) {
+                if (e.target.files.length > 0) {
+                    // Get the folder path from the first file
+                    const firstFile = e.target.files[0];
+                    const fullPath = firstFile.webkitRelativePath || firstFile.name;
+                    
+                    if (fullPath.includes('/')) {
+                        // Extract folder path by removing the filename
+                        const pathParts = fullPath.split('/');
+                        pathParts.pop(); // Remove filename
+                        const folderPath = pathParts.join('\\'); // Convert to Windows path format
+                        
+                        document.getElementById('folderPathInput').value = folderPath;
+                        showNotification('Folder path extracted from selected files. Please verify the path is correct.');
+                    } else {
+                        showNotification('Could not extract folder path. Please enter the path manually.', true);
+                    }
+                }
+            };
+            
+            // Fallback: if webkitdirectory isn't supported, use regular file picker
+            if (!('webkitdirectory' in input)) {
+                input.webkitdirectory = false;
+                input.multiple = false;
+                
+                input.onchange = function(e) {
+                    if (e.target.files.length > 0) {
+                        showNotification('Browse completed. Please manually enter the folder path in the field above.', false);
+                        document.getElementById('folderPathInput').focus();
+                    }
+                };
+            }
+            
+            input.click();
+        }
+
+        function confirmSetFolderPath() {
+            const modal = document.getElementById('folderPathModal');
+            const categoryName = modal.getAttribute('data-category');
+            const subcategoryName = modal.getAttribute('data-subcategory');
+            const newPath = document.getElementById('folderPathInput').value.trim();
+            
+            if (categoryName && subcategoryName) {
+                deliveryData.categories[categoryName].subcategories[subcategoryName].folderPath = newPath;
+                renderCategories();
+                
+                if (newPath) {
+                    showNotification(`Folder path set for ${subcategoryName}`);
+                } else {
+                    showNotification(`Folder path cleared for ${subcategoryName}`);
+                }
+            }
+            
+            closeModal('folderPathModal');
+        }
+
+        // Metadata Management
+        function updateMetadata() {
+            let totalFiles = 0;
+            let totalCategories = 0;
+            let totalSubcategories = 0;
+            
+            for (const categoryName in deliveryData.categories) {
+                totalCategories++;
+                const category = deliveryData.categories[categoryName];
+                
+                for (const subcategoryName in category.subcategories) {
+                    totalSubcategories++;
+                    const subcategory = category.subcategories[subcategoryName];
+                    totalFiles += (subcategory.files || []).length;
+                }
+            }
+            
+            if (!deliveryData.metadata) {
+                deliveryData.metadata = {};
+            }
+            
+            deliveryData.metadata.totalFiles = totalFiles;
+            deliveryData.metadata.totalCategories = totalCategories;
+            deliveryData.metadata.totalSubcategories = totalSubcategories;
+            deliveryData.metadata.lastUpdated = new Date().toISOString();
+        }
+
+        // File Management
+        function addFiles(categoryName, subcategoryName) {
+            console.log('=== ADD FILES DEBUG START ===');
+            console.log('Adding files to:', categoryName, subcategoryName);
+            console.log('Current deliveryData structure:', deliveryData);
+            console.log('Category exists:', !!deliveryData.categories[categoryName]);
+            console.log('Subcategory exists:', !!deliveryData.categories[categoryName]?.subcategories[subcategoryName]);
+            console.log('Current subcategory structure:', deliveryData.categories[categoryName]?.subcategories[subcategoryName]);
+            
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            
+            console.log('File input element created, about to set onchange handler');
+            
+            input.onchange = function(e) {
+                console.log('=== FILE SELECTION ONCHANGE TRIGGERED ===');
+                console.log('Event target files:', e.target.files);
+                console.log('Files length:', e.target.files.length);
+                
+                if (e.target.files.length === 0) {
+                    console.log('No files selected, exiting');
+                    return;
+                }
+                
+                const files = Array.from(e.target.files);
+                console.log('Files array:', files);
+                
+                // Ensure the subcategory structure exists
+                if (!deliveryData.categories[categoryName]) {
+                    console.error('Category does not exist:', categoryName);
+                    showNotification('Error: Category does not exist', true);
+                    return;
+                }
+                if (!deliveryData.categories[categoryName].subcategories[subcategoryName]) {
+                    console.error('Subcategory does not exist:', subcategoryName);
+                    showNotification('Error: Subcategory does not exist', true);
+                    return;
+                }
+                if (!deliveryData.categories[categoryName].subcategories[subcategoryName].files) {
+                    console.log('Files array missing, creating...');
+                    deliveryData.categories[categoryName].subcategories[subcategoryName].files = [];
+                }
+                
+                console.log('About to process', files.length, 'files');
+                
+                files.forEach((file, index) => {
+                    console.log(`Processing file ${index + 1}:`, file.name);
+                    
+                    // Try to get the full path from the file object
+                    let fullPath = '';
+                    if (file.webkitRelativePath) {
+                        fullPath = file.webkitRelativePath;
+                    } else if (file.path) {
+                        fullPath = file.path;
+                    } else if (file.mozFullPath) {
+                        fullPath = file.mozFullPath;
+                    }
+                    
+                    console.log('File webkitRelativePath:', file.webkitRelativePath);
+                    console.log('File path property:', file.path);
+                    console.log('File mozFullPath:', file.mozFullPath);
+                    console.log('Determined fullPath:', fullPath);
+                    
+                    const fileData = {
+                        name: file.name,
+                        size: file.size,
+                        lastModified: file.lastModified,
+                        id: Date.now() + Math.random() + index,
+                        fullPath: fullPath || file.name // Store the full path if available, otherwise just the name
+                    };
+                    console.log('Created fileData:', fileData);
+                    
+                    // Check if file already exists
+                    const existing = deliveryData.categories[categoryName].subcategories[subcategoryName].files
+                        .find(f => f.name === file.name);
+                    
+                    if (!existing) {
+                        deliveryData.categories[categoryName].subcategories[subcategoryName].files.push(fileData);
+                        console.log('File added successfully:', file.name);
+                    } else {
+                        console.log('File already exists, skipped:', file.name);
+                    }
+                });
+                
+                console.log('Final files array length:', deliveryData.categories[categoryName].subcategories[subcategoryName].files.length);
+                console.log('Final files array:', deliveryData.categories[categoryName].subcategories[subcategoryName].files);
+                
+                console.log('About to call renderCategories()');
+                updateMetadata(); // Update metadata after adding files
+                renderCategories();
+                console.log('renderCategories() completed');
+                
+                showNotification(`Added ${files.length} file${files.length > 1 ? 's' : ''} to ${subcategoryName}`);
+                console.log('=== ADD FILES DEBUG END ===');
+            };
+            
+            console.log('About to trigger file input click');
+            input.click();
+            console.log('File input click triggered');
+        }
+
+        function showBulkFilePathModal() {
+            // Populate category dropdown
+            const categorySelect = document.getElementById('bulkCategory');
+            const subcategorySelect = document.getElementById('bulkSubcategory');
+            
+            categorySelect.innerHTML = '<option value="">Select category...</option>';
+            Object.keys(deliveryData.categories).forEach(categoryName => {
+                const option = document.createElement('option');
+                option.value = categoryName;
+                option.textContent = categoryName;
+                categorySelect.appendChild(option);
+            });
+            
+            // Update subcategories when category changes
+            categorySelect.onchange = function() {
+                subcategorySelect.innerHTML = '<option value="">Select subcategory...</option>';
+                if (this.value) {
+                    Object.keys(deliveryData.categories[this.value].subcategories).forEach(subcategoryName => {
+                        const option = document.createElement('option');
+                        option.value = subcategoryName;
+                        option.textContent = subcategoryName;
+                        subcategorySelect.appendChild(option);
+                    });
+                }
+            };
+            
+            document.getElementById('bulkFileModal').style.display = 'block';
+            document.getElementById('bulkFilePaths').focus();
+        }
+
+        function processBulkFiles() {
+            const categoryName = document.getElementById('bulkCategory').value;
+            const subcategoryName = document.getElementById('bulkSubcategory').value;
+            const pathsText = document.getElementById('bulkFilePaths').value;
+            
+            if (!categoryName || !subcategoryName) {
+                showNotification('Please select both category and subcategory', true);
+                return;
+            }
+            
+            if (!pathsText.trim()) {
+                showNotification('Please enter file paths', true);
+                return;
+            }
+            
+            const paths = pathsText.split('\n').filter(p => p.trim());
+            let addedCount = 0;
+            
+            paths.forEach(path => {
+                path = path.trim();
+                if (path) {
+                    const fileName = path.split('\\').pop() || path.split('/').pop() || path;
+                    
+                    const fileData = {
+                        name: fileName,
+                        size: 0,
+                        lastModified: Date.now(),
+                        id: Date.now() + Math.random()
+                    };
+                    
+                    // Check if file already exists
+                    const existing = deliveryData.categories[categoryName].subcategories[subcategoryName].files
+                        .find(f => f.name === fileName);
+                    
+                    if (!existing) {
+                        deliveryData.categories[categoryName].subcategories[subcategoryName].files.push(fileData);
+                        addedCount++;
+                    }
+                }
+            });
+            
+            if (addedCount > 0) {
+                renderCategories();
+                showNotification(`Added ${addedCount} file${addedCount > 1 ? 's' : ''} to ${categoryName} > ${subcategoryName}`);
+            } else {
+                showNotification('No new files were added (duplicates skipped)', true);
+            }
+            
+            closeModal('bulkFileModal');
+            document.getElementById('bulkFilePaths').value = '';
+        }
+
+        function promptForFilePaths(categoryName, subcategoryName) {
+            const pathsText = prompt('Enter file paths (one per line):\n\nExample:\nC:\\Projects\\Document1.pdf\nC:\\Projects\\Document2.docx');
+            
+            if (!pathsText) return;
+            
+            const paths = pathsText.split('\n').filter(p => p.trim());
+            let addedCount = 0;
+            
+            paths.forEach(path => {
+                path = path.trim();
+                if (path) {
+                    const fileName = path.split('\\').pop() || path.split('/').pop() || path;
+                    
+                    const fileData = {
+                        name: fileName,
+                        size: 0,
+                        lastModified: Date.now(),
+                        id: Date.now() + Math.random()
+                    };
+                    
+                    // Check if file already exists
+                    const existing = deliveryData.categories[categoryName].subcategories[subcategoryName].files
+                        .find(f => f.name === fileName);
+                    
+                    if (!existing) {
+                        deliveryData.categories[categoryName].subcategories[subcategoryName].files.push(fileData);
+                        addedCount++;
+                    }
+                }
+            });
+            
+            if (addedCount > 0) {
+                renderCategories();
+                showNotification(`Added ${addedCount} file${addedCount > 1 ? 's' : ''} with full paths to ${subcategoryName}`);
+            } else {
+                showNotification('No new files were added', true);
+            }
+        }
+
+        function removeFile(categoryName, subcategoryName, fileId) {
+            const files = deliveryData.categories[categoryName].subcategories[subcategoryName].files;
+            const index = files.findIndex(f => f.id === parseFloat(fileId));
+            if (index >= 0) {
+                files.splice(index, 1);
+                selectedFiles.delete(`${categoryName}/${subcategoryName}/${fileId}`);
+                updateMetadata(); // Update metadata after removing file
+                renderCategories();
+            }
+        }
+
+        function toggleFileSelection(categoryName, subcategoryName, fileId, event) {
+            const fileKey = `${categoryName}/${subcategoryName}/${fileId}`;
+            const multiSelect = document.getElementById('selectMultiple').checked;
+            const ctrlPressed = event && (event.ctrlKey || event.metaKey); // Support both Ctrl (Windows/Linux) and Cmd (Mac)
+            
+            // Multi-select if checkbox is checked OR Ctrl is pressed
+            const shouldMultiSelect = multiSelect || ctrlPressed;
+            
+            if (!shouldMultiSelect) {
+                selectedFiles.clear();
+            }
+            
+            if (selectedFiles.has(fileKey)) {
+                selectedFiles.delete(fileKey);
+            } else {
+                selectedFiles.add(fileKey);
+            }
+            
+            renderCategories();
+        }
+
+        function copySelectedPaths() {
+            console.log('=== COPY PATHS DEBUG START ===');
+            console.log('Selected files:', selectedFiles);
+            console.log('Selected files size:', selectedFiles.size);
+            
+            // If no files are specifically selected, select all files with paths
+            if (selectedFiles.size === 0) {
+                console.log('No files selected, selecting all files with folder paths');
+                const allFiles = [];
+                
+                // Find all files that have folder paths
+                Object.keys(deliveryData.categories).forEach(categoryName => {
+                    Object.keys(deliveryData.categories[categoryName].subcategories).forEach(subcategoryName => {
+                        const subcategory = deliveryData.categories[categoryName].subcategories[subcategoryName];
+                        if (subcategory.folderPath && subcategory.files) {
+                            subcategory.files.forEach(file => {
+                                allFiles.push({
+                                    categoryName,
+                                    subcategoryName,
+                                    file,
+                                    folderPath: subcategory.folderPath
+                                });
+                            });
+                        }
+                    });
+                });
+                
+                console.log('Found all files with paths:', allFiles);
+                
+                if (allFiles.length === 0) {
+                    showNotification('No files with folder paths found. Add files and set folder paths first.', true);
+                    return;
+                }
+                
+                // Copy all files with paths
+                const paths = allFiles.map(item => {
+                    const fullPath = item.folderPath.endsWith('\\') || item.folderPath.endsWith('/') 
+                        ? `${item.folderPath}${item.file.name}`
+                        : `${item.folderPath}\\${item.file.name}`;
+                    return fullPath;
+                });
+                
+                console.log('Copying all paths:', paths);
+                
+                navigator.clipboard.writeText(paths.join('\n')).then(() => {
+                    showNotification(`Copied ${paths.length} file path${paths.length > 1 ? 's' : ''} to clipboard`);
+                    console.log('Copied to clipboard:', paths.join('\n'));
+                }).catch(() => {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = paths.join('\n');
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    showNotification(`Copied ${paths.length} file path${paths.length > 1 ? 's' : ''} to clipboard`);
+                    console.log('Copied to clipboard (fallback):', paths.join('\n'));
+                });
+                console.log('=== COPY PATHS DEBUG END ===');
+                return;
+            }
+            
+            const paths = [];
+            
+            selectedFiles.forEach(fileKey => {
+                console.log('Processing file key:', fileKey);
+                const [categoryName, subcategoryName, fileId] = fileKey.split('/');
+                console.log('Parsed:', { categoryName, subcategoryName, fileId });
+                
+                const subcategory = deliveryData.categories[categoryName].subcategories[subcategoryName];
+                console.log('Subcategory:', subcategory);
+                console.log('Subcategory folderPath:', subcategory.folderPath);
+                
+                const file = subcategory.files.find(f => f.id === parseFloat(fileId));
+                console.log('Found file:', file);
+                
+                if (file) {
+                    // If file has a fullPath property, use that; otherwise combine folderPath with filename
+                    if (file.fullPath && file.fullPath !== file.name) {
+                        console.log('Using file.fullPath:', file.fullPath);
+                        paths.push(file.fullPath);
+                    } else if (subcategory.folderPath) {
+                        const fullPath = subcategory.folderPath.endsWith('\\') || subcategory.folderPath.endsWith('/') 
+                            ? `${subcategory.folderPath}${file.name}`
+                            : `${subcategory.folderPath}\\${file.name}`;
+                        console.log('Constructed fullPath:', fullPath);
+                        paths.push(fullPath);
+                    } else {
+                        console.log('No folderPath, using filename:', file.name);
+                        paths.push(file.name);
+                    }
+                }
+            });
+            
+            console.log('Final paths array:', paths);
+            
+            if (paths.length === 0) {
+                showNotification('No files selected', true);
+                return;
+            }
+            
+            navigator.clipboard.writeText(paths.join('\n')).then(() => {
+                showNotification(`Copied ${paths.length} file path${paths.length > 1 ? 's' : ''} to clipboard`);
+                console.log('Copied to clipboard:', paths.join('\n'));
+            }).catch(() => {
+                // Fallback for older browsers
+                const textarea = document.createElement('textarea');
+                textarea.value = paths.join('\n');
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                showNotification(`Copied ${paths.length} file path${paths.length > 1 ? 's' : ''} to clipboard`);
+                console.log('Copied to clipboard (fallback):', paths.join('\n'));
+            });
+            console.log('=== COPY PATHS DEBUG END ===');
+        }
+
+        // Custom Buttons
+        function addCustomButton() {
+            document.getElementById('buttonModal').style.display = 'block';
+            document.getElementById('buttonName').focus();
+            updateButtonPathPreview();
+            
+            // Add event listeners for real-time preview updates
+            const folderPathInput = document.getElementById('buttonFolderPath');
+            const fileNameInput = document.getElementById('buttonFileName');
+            
+            folderPathInput.oninput = updateButtonPathPreview;
+            fileNameInput.oninput = updateButtonPathPreview;
+        }
+
+        function updateButtonPathPreview() {
+            const folderPath = document.getElementById('buttonFolderPath').value.trim();
+            const fileName = document.getElementById('buttonFileName').value.trim();
+            const previewDiv = document.getElementById('buttonPathPreview');
+            
+            if (folderPath && fileName) {
+                const fullPath = folderPath.endsWith('\\') || folderPath.endsWith('/') 
+                    ? `${folderPath}${fileName}`
+                    : `${folderPath}\\${fileName}`;
+                previewDiv.textContent = fullPath;
+                previewDiv.className = 'text-green-400 font-mono break-all';
+            } else if (folderPath || fileName) {
+                previewDiv.textContent = `${folderPath}\\${fileName}`;
+                previewDiv.className = 'text-yellow-400 font-mono break-all';
+            } else {
+                previewDiv.textContent = 'Will be generated from folder path + filename';
+                previewDiv.className = 'text-gray-400 font-mono break-all';
+            }
+        }
+
+        function selectButtonFile() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    // Try to extract folder path and filename
+                    const fileName = file.name;
+                    
+                    // Since browsers don't give us the full path, we can only set the filename
+                    // The user will need to manually enter the folder path
+                    document.getElementById('buttonFileName').value = fileName;
+                    
+                    // If there's a path property (though usually empty for security), try to use it
+                    const fullPath = file.webkitRelativePath || '';
+                    if (fullPath && fullPath.includes('/')) {
+                        const pathParts = fullPath.split('/');
+                        pathParts.pop(); // Remove filename
+                        document.getElementById('buttonFolderPath').value = pathParts.join('\\');
+                    }
+                    
+                    updateButtonPathPreview();
+                    showNotification('File selected. Please verify/complete the folder path.', false);
+                }
+            };
+            input.click();
+        }
+
+        function confirmAddButton() {
+            const name = document.getElementById('buttonName').value.trim();
+            const folderPath = document.getElementById('buttonFolderPath').value.trim();
+            const fileName = document.getElementById('buttonFileName').value.trim();
+            
+            if (!name) {
+                showNotification('Please enter a button name', true);
+                return;
+            }
+            if (!folderPath) {
+                showNotification('Please enter a folder path', true);
+                return;
+            }
+            if (!fileName) {
+                showNotification('Please enter a filename', true);
+                return;
+            }
+            
+            const fullPath = folderPath.endsWith('\\') || folderPath.endsWith('/') 
+                ? `${folderPath}${fileName}`
+                : `${folderPath}\\${fileName}`;
+            
+            deliveryData.customButtons.push({
+                name: name,
+                folderPath: folderPath,
+                fileName: fileName,
+                fullPath: fullPath,
+                id: Date.now() + Math.random()
+            });
+            
+            renderCustomButtons();
+            closeModal('buttonModal');
+            
+            // Clear form
+            document.getElementById('buttonName').value = '';
+            document.getElementById('buttonFolderPath').value = '';
+            document.getElementById('buttonFileName').value = '';
+            updateButtonPathPreview();
+            
+            showNotification(`Button "${name}" added successfully`);
+        }
+
+        function removeCustomButton(buttonId) {
+            const index = deliveryData.customButtons.findIndex(b => b.id === buttonId);
+            if (index >= 0) {
+                deliveryData.customButtons.splice(index, 1);
+                renderCustomButtons();
+            }
+        }
+
+        function openCustomButton(buttonId) {
+            const button = deliveryData.customButtons.find(b => b.id === buttonId);
+            if (!button) return;
+            
+            // Use the fullPath if available, otherwise construct it from folderPath and fileName
+            const fullPath = button.fullPath || 
+                (button.folderPath && button.fileName ? 
+                    (button.folderPath.endsWith('\\') || button.folderPath.endsWith('/') 
+                        ? `${button.folderPath}${button.fileName}`
+                        : `${button.folderPath}\\${button.fileName}`) 
+                    : button.path); // Fallback to old path property for backwards compatibility
+            
+            // Copy file path to clipboard
+            navigator.clipboard.writeText(fullPath).then(() => {
+                showNotification(`File path copied to clipboard: ${button.name}`);
+            }).catch(() => {
+                // Fallback for older browsers
+                const textarea = document.createElement('textarea');
+                textarea.value = fullPath;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                showNotification(`File path copied to clipboard: ${button.name}`);
+            });
+        }
+
+        // File Splitter
+        function openFileSplitter() {
+            if (selectedFiles.size === 0) {
+                showNotification('Please select files first', true);
+                return;
+            }
+            
+            const fileList = document.getElementById('splitterFileList');
+            fileList.innerHTML = '';
+            
+            // Get all selected files and display them
+            const selectedFilesList = [];
+            selectedFiles.forEach(fileKey => {
+                const [categoryName, subcategoryName, fileId] = fileKey.split('/');
+                const file = deliveryData.categories[categoryName].subcategories[subcategoryName].files
+                    .find(f => f.id === parseFloat(fileId));
+                if (file) {
+                    selectedFilesList.push(file);
+                    const div = document.createElement('div');
+                    div.className = 'py-1 px-2 bg-gray-600 rounded text-sm mb-1';
+                    div.innerHTML = `
+                        <div class="font-medium">${file.name}</div>
+                        <div class="text-xs text-gray-400">${categoryName} > ${subcategoryName}</div>
+                    `;
+                    fileList.appendChild(div);
+                }
+            });
+            
+            // Show count
+            if (selectedFilesList.length > 0) {
+                const countDiv = document.createElement('div');
+                countDiv.className = 'text-sm text-gray-300 mb-2 font-medium';
+                countDiv.textContent = `${selectedFilesList.length} file${selectedFilesList.length > 1 ? 's' : ''} selected`;
+                fileList.insertBefore(countDiv, fileList.firstChild);
+            }
+            
+            document.getElementById('splitterModal').style.display = 'block';
+        }
+
+        function processSplitFilenames() {
+            const splitString = document.getElementById('splitString').value;
+            const excludeExtension = document.getElementById('excludeExtension').checked;
+            let output = '';
+            let processedCount = 0;
+            
+            selectedFiles.forEach(fileKey => {
+                const [categoryName, subcategoryName, fileId] = fileKey.split('/');
+                const file = deliveryData.categories[categoryName].subcategories[subcategoryName].files
+                    .find(f => f.id === parseFloat(fileId));
+                
+                if (file) {
+                    // Use only the filename part, not the full path
+                    let filename = file.name;
+                    
+                    // Remove extension if requested
+                    if (excludeExtension && filename.includes('.')) {
+                        filename = filename.substring(0, filename.lastIndexOf('.'));
+                    }
+                    
+                    // Split filename
+                    if (splitString && filename.includes(splitString)) {
+                        const parts = filename.split(splitString, 2);
+                        output += `${parts[0]}\t${parts[1]}\n`;
+                    } else {
+                        output += `${filename}\n`;
+                    }
+                    processedCount++;
+                }
+            });
+            
+            document.getElementById('splitterOutput').value = output.trim();
+            
+            if (output.trim()) {
+                // Copy to clipboard
+                navigator.clipboard.writeText(output.trim()).then(() => {
+                    showNotification(`${processedCount} filename${processedCount > 1 ? 's' : ''} processed and copied to clipboard`);
+                }).catch(() => {
+                    // Fallback
+                    const textarea = document.getElementById('splitterOutput');
+                    textarea.select();
+                    document.execCommand('copy');
+                    showNotification(`${processedCount} filename${processedCount > 1 ? 's' : ''} processed and copied to clipboard`);
+                });
+            } else {
+                showNotification('No filenames to process', true);
+            }
+        }
+
+        // Drag and Drop
+        function setupDragAndDrop() {
+            document.addEventListener('dragover', function(e) {
+                e.preventDefault();
+            });
+            
+            document.addEventListener('drop', function(e) {
+                e.preventDefault();
+                // Global drop handler - could be enhanced to add to a default category
+            });
+        }
+
+        // Render Functions
+        function renderCategories() {
+            const container = document.getElementById('categoriesContainer');
+            container.innerHTML = '';
+            
+            Object.keys(deliveryData.categories).forEach(categoryName => {
+                const categoryData = deliveryData.categories[categoryName];
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'category-section';
+                
+                categoryDiv.innerHTML = `
+                    <div class="p-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-white">${categoryName}</h3>
+                            <div class="flex gap-2">
+                                <button onclick="addSubcategory('${categoryName}')" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm">
+                                    ➕ Sub
+                                </button>
+                                <button onclick="removeCategory('${categoryName}')" class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm">
+                                    🗑️
+                                </button>
+                            </div>
+                        </div>
+                        <div class="space-y-3">
+                            ${Object.keys(categoryData.subcategories).map(subcategoryName => {
+                                const subcategory = categoryData.subcategories[subcategoryName];
+                                const files = subcategory.files || [];
+                                const folderPath = subcategory.folderPath || '';
+                                return `
+                                    <div class="subcategory-item p-3">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <h4 class="font-medium text-gray-200">${subcategoryName} (${files.length})</h4>
+                                            <div class="flex gap-1">
+                                                <button onclick="setFolderPath('${categoryName}', '${subcategoryName}')" class="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-xs" title="Set folder path">
+                                                    📁
+                                                </button>
+                                                <button onclick="addFiles('${categoryName}', '${subcategoryName}')" class="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs" title="Add files">
+                                                    ➕
+                                                </button>
+                                                <button onclick="removeSubcategory('${categoryName}', '${subcategoryName}')" class="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs" title="Remove subcategory">
+                                                    🗑️
+                                                </button>
+                                            </div>
+                                        </div>
+                                        ${folderPath ? `
+                                            <div class="mb-2 p-2 bg-gray-600/50 rounded text-xs font-mono break-all text-gray-300">
+                                                📂 ${folderPath}
+                                            </div>
+                                        ` : `
+                                            <div class="mb-2 p-2 bg-yellow-600/20 rounded text-xs text-yellow-300 border border-yellow-600/30">
+                                                ⚠️ No folder path set - click 📁 to set path
+                                            </div>
+                                        `}
+                                        <div class="space-y-1">
+                                            ${files.map(file => {
+                                                const fileKey = `${categoryName}/${subcategoryName}/${file.id}`;
+                                                const isSelected = selectedFiles.has(fileKey);
+                                                return `
+                                                    <div class="file-item ${isSelected ? 'selected' : ''}" onclick="toggleFileSelection('${categoryName}', '${subcategoryName}', ${file.id}, event)">
+                                                        <div class="flex-1">
+                                                            <div class="font-medium text-sm text-white">
+                                                                📄 ${file.name}
+                                                            </div>
+                                                            ${folderPath ? `
+                                                                <div class="text-xs text-green-400 mt-1">
+                                                                    ✓ Path: ${folderPath}\\${file.name}
+                                                                </div>
+                                                            ` : `
+                                                                <div class="text-xs text-yellow-400 mt-1">
+                                                                    ⚠️ No folder path - set folder path to copy full paths
+                                                                </div>
+                                                            `}
+                                                        </div>
+                                                        <button onclick="event.stopPropagation(); removeFile('${categoryName}', '${subcategoryName}', ${file.id})" class="text-red-400 hover:text-red-300 ml-2">
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                            ${files.length === 0 ? '<div class="text-gray-500 text-sm italic">No files</div>' : ''}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(categoryDiv);
+            });
+        }
+
+        function renderCustomButtons() {
+            const container = document.getElementById('customButtons');
+            container.innerHTML = '';
+            
+            deliveryData.customButtons.forEach(button => {
+                const buttonDiv = document.createElement('div');
+                buttonDiv.className = 'custom-button';
+                
+                // Show the full path in the button tooltip
+                const fullPath = button.fullPath || 
+                    (button.folderPath && button.fileName ? 
+                        (button.folderPath.endsWith('\\') || button.folderPath.endsWith('/') 
+                            ? `${button.folderPath}${button.fileName}`
+                            : `${button.folderPath}\\${button.fileName}`) 
+                        : button.path);
+                
+                buttonDiv.innerHTML = `
+                    <span>${button.name}</span>
+                    <button onclick="event.stopPropagation(); removeCustomButton(${button.id})" class="text-red-400 hover:text-red-300 ml-2">
+                        ✕
+                    </button>
+                `;
+                buttonDiv.title = fullPath; // Show full path on hover
+                buttonDiv.onclick = () => openCustomButton(button.id);
+                container.appendChild(buttonDiv);
+            });
+            
+            if (deliveryData.customButtons.length === 0) {
+                container.innerHTML = '<div class="text-gray-500 italic">No custom buttons added</div>';
+            }
+        }
+
+        // Utility Functions
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        function showNotification(message, isError = false) {
+            // Remove any existing notification
+            const existing = document.querySelector('.notification');
+            if (existing) {
+                existing.remove();
+            }
+            
+            // Create new notification
+            const notification = document.createElement('div');
+            notification.className = `notification ${isError ? 'error' : ''}`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            // Trigger animation
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 10);
+            
+            // Auto-remove after 3 seconds
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey || e.metaKey) {
+                switch (e.key) {
+                    case 's':
+                        e.preventDefault();
+                        saveDelivery();
+                        break;
+                    case 'n':
+                        e.preventDefault();
+                        newDelivery();
+                        break;
+                    case 'o':
+                        e.preventDefault();
+                        loadDelivery();
+                        break;
+                    case 'c':
+                        if (selectedFiles.size > 0) {
+                            e.preventDefault();
+                            copySelectedPaths();
+                        }
+                        break;
+                }
+            }
+            
+            if (e.key === 'Escape') {
+                // Close any open modal
+                const modals = document.querySelectorAll('.modal');
+                modals.forEach(modal => modal.style.display = 'none');
+            }
+        });
+
+        // Auto-save every 30 seconds
+        setInterval(() => {
+            const name = document.getElementById('deliveryName').value.trim();
+            if (name) {
+                deliveryData.name = name;
+                localStorage.setItem('deliveryHub_last', JSON.stringify(deliveryData));
+            }
+        }, 30000);
+    </script>
+</body>
+</html>
