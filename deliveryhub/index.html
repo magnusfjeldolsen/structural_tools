@@ -529,7 +529,7 @@
         function saveDelivery() {
             const name = document.getElementById('deliveryName').value.trim();
             if (!name) {
-                alert('Please enter a delivery name');
+                showNotification('Please enter a delivery name', true);
                 return;
             }
             
@@ -553,7 +553,7 @@
             localStorage.setItem('deliveryHub_last', JSON.stringify(deliveryData));
             
             updateDeliveryHistoryDropdown();
-            alert('Delivery saved successfully!');
+            showNotification(`Delivery "${name}" saved successfully! 💾`);
         }
 
         function exportDelivery() {
