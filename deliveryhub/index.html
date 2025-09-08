@@ -1771,9 +1771,20 @@
             }
             
             if (e.key === 'Escape') {
-                // Close any open modal
+                // Close any open modal first
                 const modals = document.querySelectorAll('.modal');
-                modals.forEach(modal => modal.style.display = 'none');
+                const hasOpenModal = Array.from(modals).some(modal => modal.style.display === 'block');
+                
+                if (hasOpenModal) {
+                    modals.forEach(modal => modal.style.display = 'none');
+                } else {
+                    // If no modals are open, deselect all files
+                    if (selectedFiles.size > 0) {
+                        selectedFiles.clear();
+                        renderCategories();
+                        showNotification('All files deselected');
+                    }
+                }
             }
         });
 
