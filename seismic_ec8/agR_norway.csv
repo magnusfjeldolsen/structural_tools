@@ -1,0 +1,353 @@
+Fylke,Kommune,Nr,agR
+Viken,Aremark,3012,0.20
+Viken,Asker,3025,0.25
+Viken,Aurskog-Høland,3026,0.20
+Viken,Bærum,3024,0.25
+Viken,Drammen,3005,0.25
+Viken,Eidsvoll,3033,0.20
+Viken,Enebakk,3028,0.25
+Viken,Flesberg,3050,0.20
+Viken,Fredrikstad,3004,0.20
+Viken,Frogn,3022,0.25
+Viken,Gjerdrum,3032,0.20
+Viken,Gol,3041,0.20
+Viken,Halden,3001,0.20
+Viken,Hemsedal,3042,0.20
+Viken,Hol,3044,0.25
+Viken,Hole,3038,0.25
+Viken,Hurdal,3037,0.20
+Viken,Hvaler,3011,0.20
+Viken,Indre Østfold,3014,0.20
+Viken,Jevnaker,3053,0.20
+Viken,Kongsberg,3006,0.20
+Viken,Krødsherad,3046,0.20
+Viken,Lier,3049,0.20
+Viken,Lillestrøm,3030,0.25
+Viken,Lunner,3054,0.20
+Viken,Lørenskog,3029,0.25
+Viken,Marker,3013,0.20
+Viken,Modum,3047,0.20
+Viken,Moss,3002,0.25
+Viken,Nannestad,3036,0.20
+Viken,Nes,3034,0.20
+Viken,Nesbyen,3040,0.20
+Viken,Nesodden,3023,0.25
+Viken,Nittedal,3031,0.25
+Viken,Nordre Follo,3020,0.25
+Viken,Nore og Uvdal,3052,0.25
+Viken,Rakkestad,3016,0.20
+Viken,Ringerike,3007,0.20
+Viken,Rollag,3051,0.20
+Viken,Rælingen,3027,0.25
+Viken,Råde,3017,0.20
+Viken,Sarpsborg,3003,0.20
+Viken,Sigdal,3045,0.20
+Viken,Skiptvet,3015,0.20
+Viken,Ullensaker,3033,0.20
+Viken,Vestby,3019,0.25
+Viken,Våler,3018,0.20
+Viken,Øvre Eiker,3048,0.20
+Viken,Ål,3043,0.20
+Viken,Ås,3021,0.25
+Oslo,Oslo,301,0.25
+Innlandet,Alvdal,3428,0.20
+Innlandet,Dovre,3431,0.20
+Innlandet,Eidskog,3416,0.20
+Innlandet,Elverum,3420,0.20
+Innlandet,Engerdal,3425,0.20
+Innlandet,Etnedal,3450,0.20
+Innlandet,Folldal,3429,0.20
+Innlandet,Gausdal,3441,0.20
+Innlandet,Gjøvik,3407,0.20
+Innlandet,Gran,3446,0.20
+Innlandet,Grue,3417,0.20
+Innlandet,Hamar,3403,0.20
+Innlandet,Kongsvinger,3401,0.20
+Innlandet,Lesja,3432,0.25
+Innlandet,Lillehammer,3405,0.20
+Innlandet,Lom,3434,0.20
+Innlandet,Løten,3412,0.20
+Innlandet,Nord-Aurdal,3451,0.20
+Innlandet,Nord-Fron,3436,0.20
+Innlandet,Nord-Odal,3414,0.20
+Innlandet,Nordre Land,3448,0.20
+Innlandet,Os,3430,0.20
+Innlandet,Rendalen,3424,0.20
+Innlandet,Ringebu,3439,0.20
+Innlandet,Ringsaker,3411,0.20
+Innlandet,Sel,3437,0.20
+Innlandet,Skjåk,3433,0.30
+Innlandet,Stange,3413,0.20
+Innlandet,Stor-Elvdal,3423,0.20
+Innlandet,Søndre Land,3447,0.20
+Innlandet,Sør-Aurdal,3449,0.20
+Innlandet,Sør-Fron,3438,0.20
+Innlandet,Sør-Odal,3415,0.20
+Innlandet,Tolga,3426,0.20
+Innlandet,Trysil,3421,0.20
+Innlandet,Tynset,3427,0.20
+Innlandet,Vang,3454,0.20
+Innlandet,Vestre Slidre,3452,0.20
+Innlandet,Vestre Toten,3443,0.20
+Innlandet,Vågå,3435,0.20
+Innlandet,Våler,3419,0.20
+Innlandet,Østre Toten,3442,0.20
+Innlandet,Øyer,3440,0.20
+Innlandet,Øystre Slidre,3453,0.20
+Innlandet,Åmot,3422,0.20
+Innlandet,Åsnes,3418,0.20
+Vestfold og Telemark,Bamble,3813,0.20
+Vestfold og Telemark,Drangedal,3815,0.20
+Vestfold og Telemark,Fyresdal,3823,0.30
+Vestfold og Telemark,Færder,3811,0.20
+Vestfold og Telemark,Hjartdal,3819,0.25
+Vestfold og Telemark,Holmestrand,3802,0.20
+Vestfold og Telemark,Horten,3801,0.20
+Vestfold og Telemark,Kragerø,3814,0.20
+Vestfold og Telemark,Kviteseid,3821,0.25
+Vestfold og Telemark,Larvik,3805,0.20
+Vestfold og Telemark,Midt-Telemark,3817,0.20
+Vestfold og Telemark,Nissedal,3822,0.25
+Vestfold og Telemark,Nome,3816,0.20
+Vestfold og Telemark,Notodden,3808,0.20
+Vestfold og Telemark,Porsgrunn,3806,0.20
+Vestfold og Telemark,Sandefjord,3804,0.20
+Vestfold og Telemark,Seljord,3820,0.25
+Vestfold og Telemark,Siljan,3812,0.20
+Vestfold og Telemark,Skien,3807,0.20
+Vestfold og Telemark,Tinn,3818,0.25
+Vestfold og Telemark,Tokke,3824,0.30
+Vestfold og Telemark,Tønsberg,3803,0.20
+Vestfold og Telemark,Vinje,3825,0.35
+Agder,Arendal,4203,0.25
+Agder,Birkenes,4216,0.30
+Agder,Bygland,4220,0.35
+Agder,Bykle,4222,0.35
+Agder,Evje og Hornnes,4219,0.30
+Agder,Farsund,4206,0.35
+Agder,Flekkefjord,4207,0.40
+Agder,Froland,4214,0.25
+Agder,Gjerstad,4211,0.20
+Agder,Grimstad,4202,0.30
+Agder,Hægebostad,4226,0.40
+Agder,Iveland,4218,0.30
+Agder,Kristiansand,4204,0.35
+Agder,Kvinesdal,4227,0.40
+Agder,Lillesand,4215,0.35
+Agder,Lindesnes,4205,0.35
+Agder,Lyngdal,4225,0.35
+Agder,Risør,4201,0.20
+Agder,Sirdal,4228,0.40
+Agder,Tvedestrand,4213,0.25
+Agder,Valle,4221,0.35
+Agder,Vegårshei,4212,0.20
+Agder,Vennesla,4223,0.35
+Agder,Åmli,4217,0.25
+Agder,Åseral,4224,0.40
+Rogaland,Bjerkreim,1114,0.40
+Rogaland,Bokn,1145,0.45
+Rogaland,Eigersund,1101,0.40
+Rogaland,Gjesdal,1122,0.40
+Rogaland,Haugesund,1106,0.55
+Rogaland,Hjelmeland,1133,0.40
+Rogaland,Hå,1119,0.40
+Rogaland,Karmøy,1149,0.55
+Rogaland,Klepp,1120,0.40
+Rogaland,Kvitsøy,1144,0.45
+Rogaland,Lund,1112,0.40
+Rogaland,Randaberg,1127,0.45
+Rogaland,Sandnes,1108,0.40
+Rogaland,Sauda,1135,0.40
+Rogaland,Sokndal,1111,0.40
+Rogaland,Sola,1124,0.45
+Rogaland,Stavanger,1103,0.45
+Rogaland,Strand,1130,0.45
+Rogaland,Suldal,1134,0.40
+Rogaland,Time,1121,0.40
+Rogaland,Tysvær,1146,0.45
+Rogaland,Utsira,1151,0.55
+Rogaland,Vindafjord,1160,0.45
+Vestland,Alver,4631,0.60
+Vestland,Askvoll,4645,0.60
+Vestland,Askøy,4627,0.60
+Vestland,Aurland,4641,0.35
+Vestland,Austevoll,4625,0.60
+Vestland,Austrheim,4632,0.60
+Vestland,Bergen,4601,0.55
+Vestland,Bjerkreim,4624,0.50
+Vestland,Bremanger,4648,0.60
+Vestland,Bømlo,4613,0.60
+Vestland,Eidfjord,4619,0.40
+Vestland,Etne,4611,0.45
+Vestland,Fedje,4633,0.60
+Vestland,Fitjar,4615,0.60
+Vestland,Fjaler,4646,0.60
+Vestland,Gloppen,4650,0.55
+Vestland,Gulen,4635,0.60
+Vestland,Hyllestad,4637,0.60
+Vestland,Høyanger,4638,0.55
+Vestland,Kinn,4602,0.60
+Vestland,Kvam,4622,0.45
+Vestland,Kvinnherad,4617,0.45
+Vestland,Luster,4644,0.30
+Vestland,Lærdal,4642,0.25
+Vestland,Masfjorden,4634,0.60
+Vestland,Modalen,4629,0.55
+Vestland,Osterøy,4630,0.55
+Vestland,Samnanger,4623,0.50
+Vestland,Sogndal,4640,0.45
+Vestland,Solund,4636,0.60
+Vestland,Stad,4649,0.60
+Vestland,Stord,4614,0.50
+Vestland,Stryn,4651,0.50
+Vestland,Sunnfjord,4647,0.55
+Vestland,Sveio,4612,0.50
+Vestland,Tysnes,4616,0.50
+Vestland,Ullensvang,4618,0.40
+Vestland,Ulvik,4620,0.40
+Vestland,Vaksdal,4628,0.50
+Vestland,Vik,4639,0.45
+Vestland,Voss,4621,0.40
+Vestland,Øygarden,4626,0.60
+Vestland,Årdal,4643,0.25
+Møre og Romsdal,Aukra,1547,0.40
+Møre og Romsdal,Aure,1576,0.25
+Møre og Romsdal,Averøy,1554,0.30
+Møre og Romsdal,Fjord,1578,0.45
+Møre og Romsdal,Giske,1532,0.50
+Møre og Romsdal,Gjemnes,1557,0.30
+Møre og Romsdal,Hareid,1517,0.55
+Møre og Romsdal,Herøy,1515,0.55
+Møre og Romsdal,Hustadvika,1579,0.40
+Møre og Romsdal,Kristiansund,1505,0.25
+Møre og Romsdal,Molde,1506,0.40
+Møre og Romsdal,Rauma,1539,0.40
+Møre og Romsdal,Sande,1514,0.60
+Møre og Romsdal,Smøla,1573,0.25
+Møre og Romsdal,Stranda,1525,0.50
+Møre og Romsdal,Sula,1531,0.55
+Møre og Romsdal,Sunndal,1563,0.25
+Møre og Romsdal,Surnadal,1566,0.25
+Møre og Romsdal,Sykkylven,1528,0.50
+Møre og Romsdal,Tingvoll,1560,0.30
+Møre og Romsdal,Ulstein,1516,0.55
+Møre og Romsdal,Vanylven,1511,0.60
+Møre og Romsdal,Vestnes,1535,0.45
+Møre og Romsdal,Volda,1577,0.60
+Møre og Romsdal,Ørsta,1520,0.55
+Møre og Romsdal,Ålesund,1507,0.45
+Trøndelag,Flatanger,5049,0.25
+Trøndelag,Frosta,5036,0.25
+Trøndelag,Frøya,5014,0.20
+Trøndelag,Grong,5045,0.20
+Trøndelag,Heim,5055,0.25
+Trøndelag,Hitra,5056,0.25
+Trøndelag,Holtålen,5026,0.20
+Trøndelag,Høylandet,5046,0.25
+Trøndelag,Indørøy,5053,0.25
+Trøndelag,Indre Fosen,5054,0.25
+Trøndelag,Leka,5052,0.25
+Trøndelag,Levanger,5037,0.20
+Trøndelag,Lierne,5042,0.20
+Trøndelag,Malvik,5031,0.20
+Trøndelag,Melhus,5028,0.25
+Trøndelag,Meråker,5034,0.20
+Trøndelag,Midtre Gauldal,5027,0.20
+Trøndelag,Namsos,5048,0.20
+Trøndelag,Nærøysund,5060,0.25
+Trøndelag,Oppdal,5021,0.20
+Trøndelag,Orkland,5059,0.25
+Trøndelag,Osen,5020,0.25
+Trøndelag,Overhalla,5047,0.25
+Trøndelag,Rennebu,5022,0.20
+Trøndelag,Rindal,5061,0.25
+Trøndelag,Røros,5025,0.20
+Trøndelag,Røyrvik,5043,0.20
+Trøndelag,Selbu,5032,0.20
+Trøndelag,Skaun,5029,0.25
+Trøndelag,Snåsa,5041,0.20
+Trøndelag,Steinkjer,5006,0.20
+Trøndelag,Stjørdal,5035,0.20
+Trøndelag,Trondheim,5001,0.25
+Trøndelag,Tydal,5033,0.20
+Trøndelag,Verdal,5038,0.25
+Trøndelag,Ørland,5057,0.25
+Trøndelag,Åfjord,5058,0.25
+Nordland,Alstahaug,1820,0.35
+Nordland,Andøy,1871,0.40
+Nordland,Beiarn,1839,0.40
+Nordland,Bindal,1811,0.25
+Nordland,Bodø,1804,0.40
+Nordland,Brønny,1813,0.25
+Nordland,Bø,1867,0.40
+Nordland,Dønna,1827,0.30
+Nordland,Evenes,1853,0.40
+Nordland,Fauske - Fuossko,1841,0.30
+Nordland,Flakstad,1859,0.45
+Nordland,Gildeskål,1838,0.40
+Nordland,Grane,1825,0.25
+Nordland,Hadsel,1866,0.40
+Nordland,Hamarøy,1875,0.35
+Nordland,Hattfjelldal,1826,0.20
+Nordland,Hemnes,1832,0.30
+Nordland,Herøy,1818,0.25
+Nordland,Leirfjord,1822,0.35
+Nordland,Lurøy,1834,0.35
+Nordland,Lødingen,1851,0.40
+Nordland,Meløy,1837,0.40
+Nordland,Moskenes,1874,0.45
+Nordland,Narvik,1806,0.30
+Nordland,Nesna,1828,0.35
+Nordland,Rana,1833,0.30
+Nordland,Rødøy,1836,0.40
+Nordland,Røst,1856,0.45
+Nordland,Saltdal,1840,0.30
+Nordland,Sortland,1870,0.40
+Nordland,Steigen,1848,0.40
+Nordland,Sømna,1812,0.25
+Nordland,Sørfold,1845,0.30
+Nordland,Træna,1835,0.30
+Nordland,Vefsn,1824,0.30
+Nordland,Vega,1815,0.25
+Nordland,Vestvågøy,1860,0.45
+Nordland,Vevelstad,1816,0.30
+Nordland,Værøy,1857,0.45
+Nordland,Vågan,1865,0.40
+Nordland,Øksnes,1868,0.40
+Troms og Finnmark,Alta,5403,0.20
+Troms og Finnmark,Balsfjord,5422,0.20
+Troms og Finnmark,Bardu,5416,0.20
+Troms og Finnmark,Berlevåg,5440,0.20
+Troms og Finnmark,Båtsfjord,5443,0.20
+Troms og Finnmark,Dyrøy,5420,0.35
+Troms og Finnmark,Gamvik,5439,0.20
+Troms og Finnmark,Gratangen,5414,0.35
+Troms og Finnmark,Hammerfest,5406,0.20
+Troms og Finnmark,Harstad,5402,0.40
+Troms og Finnmark,Hasvik,5433,0.20
+Troms og Finnmark,Ibestad,5413,0.40
+Troms og Finnmark,Karasjok,5437,0.20
+Troms og Finnmark,Karlsøy,5423,0.20
+Troms og Finnmark,Kautokeino,5430,0.20
+Troms og Finnmark,Kvæfjord,5411,0.40
+Troms og Finnmark,Kvænangen,5429,0.20
+Troms og Finnmark,Kåfjord,5426,0.20
+Troms og Finnmark,Lavangen,5415,0.35
+Troms og Finnmark,Lebesby,5438,0.20
+Troms og Finnmark,Loppa,5432,0.20
+Troms og Finnmark,Lyngen,5424,0.20
+Troms og Finnmark,Måsøy,5434,0.20
+Troms og Finnmark,Måsøy,5442,0.20
+Troms og Finnmark,Nordkapp,5435,0.20
+Troms og Finnmark,Nordreisa,5428,0.20
+Troms og Finnmark,Porsanger,5436,0.20
+Troms og Finnmark,Salangen,5417,0.35
+Troms og Finnmark,Senja,5421,0.35
+Troms og Finnmark,Skjervøy,5427,0.20
+Troms og Finnmark,Storfjord,5425,0.20
+Troms og Finnmark,Sør-Varanger,5419,0.35
+Troms og Finnmark,Tana,5441,0.20
+Troms og Finnmark,Tjeldsund,5412,0.40
+Troms og Finnmark,Tromsø,5401,0.25
+Troms og Finnmark,Vadsø,5405,0.20
+Troms og Finnmark,Varda,5404,0.20

@@ -49,8 +49,33 @@
         
         <div class="space-y-4">
           <div class="flex items-center gap-4">
+            <label for="country" class="text-sm font-medium min-w-[150px] text-right">Country:</label>
+            <select id="country" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="custom" selected>Custom agR value</option>
+              <option value="norway">Norway</option>
+            </select>
+          </div>
+          
+          <div id="custom_place_input" class="flex items-center gap-4">
             <label for="place" class="text-sm font-medium min-w-[150px] text-right">Place:</label>
             <input type="text" id="place" value="Oslo" placeholder="City/Location" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <!-- Norway location selection (hidden by default) -->
+          <div id="norway_location" style="display: none;" class="space-y-4">
+            <div class="flex items-center gap-4">
+              <label for="fylke" class="text-sm font-medium min-w-[150px] text-right">Fylke:</label>
+              <select id="fylke" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                <option value="">Select fylke...</option>
+              </select>
+            </div>
+            
+            <div class="flex items-center gap-4">
+              <label for="kommune" class="text-sm font-medium min-w-[150px] text-right">Kommune:</label>
+              <select id="kommune" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                <option value="">Select kommune...</option>
+              </select>
+            </div>
           </div>
           
           <div class="flex items-center gap-4">
@@ -100,9 +125,17 @@
             </select>
           </div>
           
-          <div class="flex items-center gap-4">
+          <!-- Custom agR input (shown by default) -->
+          <div id="custom_agr_input" class="flex items-center gap-4">
             <label for="agr" class="text-sm font-medium min-w-[150px] text-right">a<sub>gR</sub> (m/s²):</label>
             <input type="number" id="agr" value="0.7" step="0.1" min="0" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <!-- Norway agR display (hidden by default) -->
+          <div id="norway_agr_display" style="display: none;" class="flex items-center gap-4 bg-gray-600 rounded p-2">
+            <label for="agr_norway_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">a<sub>gR</sub> (from CSV):</label>
+            <span id="agr_norway_display" class="flex-1 text-green-400 font-semibold">-</span>
+            <span class="text-xs text-gray-400 min-w-[120px]">m/s²</span>
           </div>
           
           <div class="flex items-center gap-4 bg-gray-600 rounded p-2">

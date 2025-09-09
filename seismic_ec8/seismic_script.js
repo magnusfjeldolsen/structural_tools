@@ -8,6 +8,176 @@ function toFixedIfNeeded(num, digits = 2) {
     return parseFloat(num.toFixed(digits));
 }
 
+// Norway seismic data
+let norwaySeismicData = [];
+
+// Load CSV data for Norway
+async function loadNorwaySeismicData() {
+    try {
+        const response = await fetch('agR_norway.csv');
+        const csvText = await response.text();
+        
+        // Parse CSV
+        const lines = csvText.split('\n');
+        const data = [];
+        
+        // Skip header line
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line) {
+                const [fylke, kommune, nr, agR] = line.split(',');
+                data.push({
+                    fylke: fylke,
+                    kommune: kommune,
+                    nr: nr,
+                    agR: parseFloat(agR)
+                });
+            }
+        }
+        
+        norwaySeismicData = data;
+        console.log('Norway seismic data loaded:', data.length, 'entries');
+        populateFylkeOptions();
+    } catch (error) {
+        console.error('Error loading Norway seismic data:', error);
+    }
+}
+
+// Get unique fylke values
+function getUniqueFylker() {
+    const fylker = [...new Set(norwaySeismicData.map(item => item.fylke))];
+    return fylker.sort();
+}
+
+// Get kommuner for a specific fylke
+function getKommunerForFylke(fylke) {
+    const kommuner = norwaySeismicData
+        .filter(item => item.fylke === fylke)
+        .map(item => item.kommune)
+        .sort();
+    return kommuner;
+}
+
+// Get agR value for specific fylke and kommune
+function getAgRForLocation(fylke, kommune) {
+    const entry = norwaySeismicData.find(item => 
+        item.fylke === fylke && item.kommune === kommune
+    );
+    return entry ? entry.agR : null;
+}
+
+// Populate fylke dropdown
+function populateFylkeOptions() {
+    const fylkeSelect = document.getElementById('fylke');
+    if (!fylkeSelect) return;
+    
+    // Clear existing options except the first one
+    fylkeSelect.innerHTML = '<option value="">Select fylke...</option>';
+    
+    const fylker = getUniqueFylker();
+    fylker.forEach(fylke => {
+        const option = document.createElement('option');
+        option.value = fylke;
+        option.textContent = fylke;
+        fylkeSelect.appendChild(option);
+    });
+}
+
+// Populate kommune dropdown based on selected fylke
+function populateKommuneOptions(selectedFylke) {
+    const kommuneSelect = document.getElementById('kommune');
+    if (!kommuneSelect) return;
+    
+    // Clear existing options
+    kommuneSelect.innerHTML = '<option value="">Select kommune...</option>';
+    
+    if (selectedFylke) {
+        const kommuner = getKommunerForFylke(selectedFylke);
+        kommuner.forEach(kommune => {
+            const option = document.createElement('option');
+            option.value = kommune;
+            option.textContent = kommune;
+            kommuneSelect.appendChild(option);
+        });
+    }
+    
+    // Clear agR display when fylke changes
+    updateNorwayAgRDisplay();
+}
+
+// Update agR display for Norway selection
+function updateNorwayAgRDisplay() {
+    const fylke = document.getElementById('fylke')?.value;
+    const kommune = document.getElementById('kommune')?.value;
+    const agrDisplay = document.getElementById('agr_norway_display');
+    const agrInput = document.getElementById('agr');
+    
+    if (fylke && kommune && agrDisplay) {
+        const agRValue = getAgRForLocation(fylke, kommune);
+        if (agRValue !== null) {
+            agrDisplay.textContent = toFixedIfNeeded(agRValue, 1);
+            // Update the main agR input for calculations
+            if (agrInput) {
+                agrInput.value = agRValue;
+                // Trigger calculation update
+                updateCalculatedValues();
+            }
+        } else {
+            agrDisplay.textContent = 'Not found';
+        }
+    } else {
+        if (agrDisplay) {
+            agrDisplay.textContent = '-';
+        }
+    }
+}
+
+// Handle country selection change
+function handleCountryChange() {
+    const country = document.getElementById('country')?.value;
+    const customPlaceInput = document.getElementById('custom_place_input');
+    const customAgrInput = document.getElementById('custom_agr_input');
+    const norwayLocation = document.getElementById('norway_location');
+    const norwayAgrDisplay = document.getElementById('norway_agr_display');
+    
+    if (country === 'norway') {
+        // Show Norway location selection, hide custom place and agR input
+        if (customPlaceInput) customPlaceInput.style.display = 'none';
+        if (customAgrInput) customAgrInput.style.display = 'none';
+        if (norwayLocation) norwayLocation.style.display = 'block';
+        if (norwayAgrDisplay) norwayAgrDisplay.style.display = 'flex';
+        
+        // Load Norway data if not already loaded
+        if (norwaySeismicData.length === 0) {
+            loadNorwaySeismicData();
+        }
+    } else {
+        // Show custom inputs, hide Norway selection
+        if (customPlaceInput) customPlaceInput.style.display = 'flex';
+        if (customAgrInput) customAgrInput.style.display = 'flex';
+        if (norwayLocation) norwayLocation.style.display = 'none';
+        if (norwayAgrDisplay) norwayAgrDisplay.style.display = 'none';
+        
+        // Reset agR to default custom value
+        const agrInput = document.getElementById('agr');
+        if (agrInput && !agrInput.value) {
+            agrInput.value = 0.7;
+        }
+        updateCalculatedValues();
+    }
+}
+
+// Handle fylke selection change
+function handleFylkeChange() {
+    const fylke = document.getElementById('fylke')?.value;
+    populateKommuneOptions(fylke);
+}
+
+// Handle kommune selection change
+function handleKommuneChange() {
+    updateNorwayAgRDisplay();
+}
+
 // Seismic class to gamma_I mapping (Table NA.4 from Norwegian National Annex)
 const GAMMA_I_VALUES = {
     'I': 0.8,
@@ -855,7 +1025,10 @@ document.addEventListener('DOMContentLoaded', function() {
         { id: 'spectrum_type', handler: updateSpectrumParameters, description: 'spectrum type -> S, TB, TC, TD' },
         { id: 'ground_type', handler: updateSpectrumParameters, description: 'ground type -> S, TB, TC, TD' },
         { id: 'ct_method', handler: updateCt, description: 'ct method -> Ct' },
-        { id: 'sd_method', handler: toggleSdMethod, description: 'sd method -> show/hide inputs' }
+        { id: 'sd_method', handler: toggleSdMethod, description: 'sd method -> show/hide inputs' },
+        { id: 'country', handler: handleCountryChange, description: 'country -> show/hide input methods' },
+        { id: 'fylke', handler: handleFylkeChange, description: 'fylke -> populate kommune options' },
+        { id: 'kommune', handler: handleKommuneChange, description: 'kommune -> update agR from CSV' }
     ];
     
     // Add listeners for numeric inputs that affect calculations
