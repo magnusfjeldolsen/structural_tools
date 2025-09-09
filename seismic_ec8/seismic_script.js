@@ -474,10 +474,8 @@ function handleCountryChange() {
         if (norwayLocation) norwayLocation.style.display = 'block';
         if (norwayAgrDisplay) norwayAgrDisplay.style.display = 'flex';
         
-        // Load Norway data if not already loaded
-        if (norwaySeismicData.length === 0) {
-            loadNorwaySeismicData();
-        }
+        // Load Norway data (now always available since embedded)
+        loadNorwaySeismicData();
     } else {
         // Show custom inputs, hide Norway selection
         if (customPlaceInput) customPlaceInput.style.display = 'flex';
@@ -1396,6 +1394,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initial calculation
     updateCalculatedValues();
+    
+    // Initialize Norway data (populate fylke options if needed)
+    loadNorwaySeismicData();
     
     console.log('Seismic calculator initialized successfully');
 });
