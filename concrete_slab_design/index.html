@@ -33,7 +33,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
   <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-  <script src="concrete_slab_api.js"></script>
+  <script src="script.js"></script>
 
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
@@ -43,7 +43,7 @@
     <p class="text-center text-gray-300 text-sm">Calculate Ultimate Limit State moment resistance (M<sub>Rd</sub>) for reinforced concrete slabs</p>
 
     <!-- Input Form -->
-    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="grid md:grid-cols-2 gap-6">
+    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="space-y-6">
       
       <!-- Geometry Section -->
       <div class="bg-gray-700 rounded-lg p-6">
@@ -51,35 +51,91 @@
         
         <div class="space-y-4">
           <div class="flex items-center gap-4">
-            <label for="MEd" class="text-sm font-medium min-w-[100px] text-right">M<sub>Ed</sub> (kNm):</label>
+            <label for="MEd" class="text-sm font-medium min-w-[120px] text-right">M<sub>Ed</sub> (kNm):</label>
             <input type="text" id="MEd" value="20" placeholder="Example: 20*5^2/8" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
           
           <div class="flex items-center gap-4">
-            <label for="t" class="text-sm font-medium min-w-[100px] text-right">t (mm):</label>
+            <label for="NEd" class="text-sm font-medium min-w-[120px] text-right">N<sub>Ed</sub> (kN):</label>
+            <input type="number" id="NEd" value="0" step="any" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span class="text-xs text-gray-400 min-w-[80px]">(+ compression)</span>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="t" class="text-sm font-medium min-w-[120px] text-right">Thickness t (mm):</label>
             <input type="number" id="t" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
           
           <div class="flex items-center gap-4">
-            <label for="c" class="text-sm font-medium min-w-[100px] text-right">c (mm):</label>
+            <label for="c" class="text-sm font-medium min-w-[120px] text-right">Cover c (mm):</label>
             <input type="number" id="c" value="35" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
         </div>
       </div>
 
-      <!-- Material Properties Section -->
+      <!-- Concrete Material Section -->
       <div class="bg-gray-700 rounded-lg p-6">
-        <h3 class="text-xl font-semibold text-yellow-400 mb-4">Material Properties</h3>
+        <h3 class="text-xl font-semibold text-yellow-400 mb-4">Concrete Material</h3>
         
         <div class="space-y-4">
           <div class="flex items-center gap-4">
-            <label for="fcd" class="text-sm font-medium min-w-[100px] text-right">f<sub>cd</sub> (MPa):</label>
-            <input type="number" id="fcd" value="19.8" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <label for="concrete_grade" class="text-sm font-medium min-w-[120px] text-right">Grade:</label>
+            <select id="concrete_grade" onchange="updateConcreteProperties()" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="B25">B25 (fck = 25 MPa)</option>
+              <option value="B30">B30 (fck = 30 MPa)</option>
+              <option value="B35" selected>B35 (fck = 35 MPa)</option>
+              <option value="B40">B40 (fck = 40 MPa)</option>
+              <option value="B45">B45 (fck = 45 MPa)</option>
+              <option value="custom">Custom</option>
+            </select>
           </div>
           
           <div class="flex items-center gap-4">
-            <label for="fyd" class="text-sm font-medium min-w-[100px] text-right">f<sub>yd</sub> (MPa):</label>
-            <input type="number" id="fyd" value="435" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <label for="fck" class="text-sm font-medium min-w-[120px] text-right">f<sub>ck</sub> (MPa):</label>
+            <input type="number" id="fck" value="35" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="alpha_cc" class="text-sm font-medium min-w-[120px] text-right">α<sub>cc</sub>:</label>
+            <input type="number" id="alpha_cc" value="0.85" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="gamma_c" class="text-sm font-medium min-w-[120px] text-right">γ<sub>c</sub>:</label>
+            <input type="number" id="gamma_c" value="1.5" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="k1" class="text-sm font-medium min-w-[120px] text-right">k<sub>1</sub>:</label>
+            <input type="number" id="k1" value="0.15" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span class="text-xs text-gray-400 min-w-[100px]">(aggregate factor)</span>
+          </div>
+          
+          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
+            <label for="fcd_display" class="text-sm font-medium min-w-[120px] text-right text-gray-300">f<sub>cd</sub> (MPa):</label>
+            <span id="fcd_display" class="flex-1 text-green-400 font-semibold">19.83</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Steel Material Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-red-400 mb-4">Steel Material</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="fyk" class="text-sm font-medium min-w-[120px] text-right">f<sub>yk</sub> (MPa):</label>
+            <input type="number" id="fyk" value="500" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="gamma_s" class="text-sm font-medium min-w-[120px] text-right">γ<sub>s</sub>:</label>
+            <input type="number" id="gamma_s" value="1.15" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
+            <label for="fyd_display" class="text-sm font-medium min-w-[120px] text-right text-gray-300">f<sub>yd</sub> (MPa):</label>
+            <span id="fyd_display" class="flex-1 text-green-400 font-semibold">434.78</span>
           </div>
         </div>
       </div>
@@ -132,274 +188,7 @@
     </div>
   </main>
 
-  <script>
-    function toFixedIfNeeded(num, digits=2) {
-      return num.toFixed(digits);
-    }
-
-    // Utility function to copy text to clipboard
-    function copyToClipboard(elementId) {
-      const element = document.getElementById(elementId);
-      const text = element.textContent || element.innerText;
-      
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(function() {
-          // Show temporary feedback
-          const button = event.target;
-          const originalText = button.textContent;
-          button.textContent = 'Copied!';
-          button.style.backgroundColor = '#10b981';
-          
-          setTimeout(function() {
-            button.textContent = originalText;
-            button.style.backgroundColor = '';
-          }, 2000);
-        }).catch(function(err) {
-          console.error('Failed to copy text: ', err);
-          fallbackCopyTextToClipboard(text);
-        });
-      } else {
-        fallbackCopyTextToClipboard(text);
-      }
-    }
-
-    // Fallback copy function for older browsers
-    function fallbackCopyTextToClipboard(text) {
-      const textArea = document.createElement("textarea");
-      textArea.value = text;
-      textArea.style.position = "fixed";
-      textArea.style.top = "-999px";
-      textArea.style.left = "-999px";
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
-      
-      try {
-        const successful = document.execCommand('copy');
-        const msg = successful ? 'successful' : 'unsuccessful';
-        console.log('Fallback: Copying text command was ' + msg);
-      } catch (err) {
-        console.error('Fallback: Oops, unable to copy', err);
-      }
-      
-      document.body.removeChild(textArea);
-    }
-
-
-    function calculateAndShow() {
-      // Collect inputs in API format
-      const inputs = {
-        geometry: {
-          MEd: document.getElementById('MEd').value.trim(),
-          t: parseFloat(document.getElementById('t').value),
-          c: parseFloat(document.getElementById('c').value)
-        },
-        material: {
-          fcd: parseFloat(document.getElementById('fcd').value),
-          fyd: parseFloat(document.getElementById('fyd').value)
-        },
-        reinforcement: {
-          phi_l: parseFloat(document.getElementById('phi_l').value),
-          cc_l: parseFloat(document.getElementById('cc_l').value)
-        }
-      };
-
-      // Use the API function
-      const result = window.ConcreteSlabAPI.calculateConcreteSlab(inputs);
-      
-      if (!result.success) {
-        alert('Calculation failed: ' + (result.errors ? result.errors.join('\n') : result.message));
-        return;
-      }
-
-      // Extract values from API result
-      const MEd = result.inputs.geometry.MEd;
-      const t = result.inputs.geometry.t;
-      const c = result.inputs.geometry.c;
-      const fcd = result.inputs.material.fcd;
-      const fyd = result.inputs.material.fyd;
-      const phi_l = result.inputs.reinforcement.phi_l;
-      const cc_l = result.inputs.reinforcement.cc_l;
-      
-      const d = result.intermediate_calculations.geometry.d;
-      const As = result.intermediate_calculations.reinforcement.As;
-      const z1 = result.intermediate_calculations.lever_arm.z1;
-      const z2 = result.intermediate_calculations.lever_arm.z2;
-      const z = result.intermediate_calculations.lever_arm.z;
-      
-      const MRd_c = result.results.moment_capacity.MRd_c;
-      const MRd_s = result.results.moment_capacity.MRd_s;
-      const MRd = result.results.moment_capacity.MRd;
-
-      // Create organized calculation boxes
-      const stepsLatex = `
-      <div class="mb-6">
-        <h2 class="text-2xl font-bold text-blue-400 mb-4">ULS Calculation Results</h2>
-      </div>
-      
-      <!-- Geometry Box -->
-      <div class="calc-box mb-6">
-        <div class="calc-header">
-          <h3 class="text-lg font-semibold text-blue-300">Geometry</h3>
-        </div>
-        <div class="calc-content">
-          <div class="calc-row">
-            <span class="calc-label">M<sub>Ed</sub></span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(MEd)} kNm</span>
-          </div>
-          <div class="calc-row">
-            <span class="calc-label">t</span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(t)} mm</span>
-            <span class="calc-label ml-6">c</span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(c)} mm</span>
-          </div>
-          <div class="calc-separator"></div>
-          <div class="calc-row">
-            <span class="calc-label">d</span>
-            <span class="calc-equals">=</span>
-            <span class="calc-expression">t - c - φ<sub>l</sub>/2 = ${toFixedIfNeeded(t)} - ${toFixedIfNeeded(c)} - ${toFixedIfNeeded(phi_l)}/2</span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(d)} mm</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Reference Diagram -->
-      <div class="calc-box mb-6">
-        <div class="calc-header">
-          <h3 class="text-lg font-semibold text-gray-300">Reference Diagram</h3>
-        </div>
-        <div class="calc-content">
-          <div class="flex justify-start">
-            <div class="bg-white p-4 rounded-lg">
-              <img src="calculations.png" alt="Calculation symbols and figure" class="w-full h-auto rounded max-w-md" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Material Box -->
-      <div class="calc-box mb-6">
-        <div class="calc-header">
-          <h3 class="text-lg font-semibold text-yellow-300">Material</h3>
-        </div>
-        <div class="calc-content">
-          <div class="calc-row">
-            <span class="calc-label">f<sub>cd</sub></span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(fcd)} MPa</span>
-            <span class="calc-label ml-6">f<sub>yd</sub></span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(fyd)} MPa</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Reinforcement Box -->
-      <div class="calc-box mb-6">
-        <div class="calc-header">
-          <h3 class="text-lg font-semibold text-green-300">Reinforcement</h3>
-        </div>
-        <div class="calc-content">
-          <div class="calc-row">
-            <span class="calc-label">φ<sub>l</sub></span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(phi_l)} mm</span>
-            <span class="calc-label ml-6">cc<sub>l</sub></span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(cc_l)} mm</span>
-          </div>
-          <div class="calc-separator"></div>
-          <div class="calc-row">
-            <span class="calc-label">A<sub>s</sub></span>
-            <span class="calc-equals">=</span>
-            <span class="calc-expression">(π × φ<sub>l</sub>² / 4) × (1000 / cc<sub>l</sub>) = (π × ${toFixedIfNeeded(phi_l)}² / 4) × (1000 / ${toFixedIfNeeded(cc_l)})</span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(As)} mm²</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ULS Capacities Box -->
-      <div class="calc-box mb-6">
-        <div class="calc-header">
-          <h3 class="text-lg font-semibold text-red-300">ULS - Capacities</h3>
-        </div>
-        <div class="calc-content">
-          <h4 class="text-md font-medium text-blue-200 mb-3 border-b border-gray-600 pb-1">Moment Capacity from Concrete</h4>
-          <div class="calc-row">
-            <span class="calc-label">M<sub>Rd,c</sub></span>
-            <span class="calc-equals">=</span>
-            <span class="calc-expression">0.275 × 1000 × d² × f<sub>cd</sub> = 0.275 × 1000 × (${toFixedIfNeeded(d)})² × ${toFixedIfNeeded(fcd)}</span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(MRd_c)} kNm</span>
-          </div>
-          
-          <h4 class="text-md font-medium text-purple-200 mb-3 mt-6 border-b border-gray-600 pb-1">Lever Arm</h4>
-          <div class="calc-row">
-            <span class="calc-label">z</span>
-            <span class="calc-equals">=</span>
-            <span class="calc-expression">min(0.95d, z<sub>bal</sub>) = min(${toFixedIfNeeded(z1)}, ${toFixedIfNeeded(z2)})</span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(z)} mm</span>
-          </div>
-          
-          <h4 class="text-md font-medium text-green-200 mb-3 mt-6 border-b border-gray-600 pb-1">Moment Capacity from Steel</h4>
-          <div class="calc-row">
-            <span class="calc-label">M<sub>Rd,s</sub></span>
-            <span class="calc-equals">=</span>
-            <span class="calc-expression">A<sub>s</sub> × f<sub>yd</sub> × z = ${toFixedIfNeeded(As)} × ${toFixedIfNeeded(fyd)} × ${toFixedIfNeeded(z)}</span>
-            <span class="calc-equals">=</span>
-            <span class="calc-value">${toFixedIfNeeded(MRd_s)} kNm</span>
-          </div>
-          
-          <div class="calc-separator mt-6"></div>
-          <div class="calc-row">
-            <span class="calc-label text-xl font-bold">M<sub>Rd</sub></span>
-            <span class="calc-equals text-xl">=</span>
-            <span class="calc-expression">min(M<sub>Rd,c</sub>, M<sub>Rd,s</sub>) = min(${toFixedIfNeeded(MRd_c)}, ${toFixedIfNeeded(MRd_s)})</span>
-            <span class="calc-equals text-xl">=</span>
-            <span class="calc-value text-xl font-bold text-green-400">${toFixedIfNeeded(MRd)} kNm</span>
-          </div>
-        </div>
-      </div>
-      
-      <div class="mt-8 p-6 bg-gray-800 rounded-lg border-l-4 border-blue-500">
-        <h3 class="text-xl font-bold text-white mb-4">Summary of Results</h3>
-        <div class="grid md:grid-cols-2 gap-6 text-sm">
-          <div>
-            <h4 class="font-semibold text-blue-400 mb-2">Capacity Check</h4>
-            <p><span class="text-gray-300">M<sub>Rd,c</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_c)} kNm</span></p>
-            <p><span class="text-gray-300">M<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_s)} kNm</span></p>
-            <p><span class="text-gray-300">M<sub>Rd</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd)} kNm</span></p>
-          </div>
-          <div>
-            <h4 class="font-semibold text-green-400 mb-2">Utilization</h4>
-            <p><span class="text-gray-300">M<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MEd)} kNm</span></p>
-            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.overall === 'FAILED' ? 'text-red-400' : result.status.overall === 'HIGH_UTILIZATION' ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilization}%</span></p>
-            <p class="text-sm mt-1 ${result.status.overall === 'FAILED' ? 'text-red-400' : result.status.overall === 'HIGH_UTILIZATION' ? 'text-yellow-400' : 'text-green-400'}">
-              ${result.status.overall === 'FAILED' ? 'FAILED - ' + result.status.messages.join(', ') : result.status.overall === 'HIGH_UTILIZATION' ? 'High utilization' : 'OK'}
-            </p>
-          </div>
-        </div>
-      </div>
-      `;
-
-      const container = document.getElementById('calc-steps');
-      container.innerHTML = stepsLatex;
-      document.getElementById('results').style.display = 'block';
-      document.getElementById('print-btn').style.display = 'block';
-
-      // Scroll to results
-      document.getElementById('results').scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
-      });
-    }
-  </script>
+  <!-- All JavaScript moved to script.js -->
 
   <!-- Centralized JavaScript -->
   <script src="../assets/js/common.js"></script>
