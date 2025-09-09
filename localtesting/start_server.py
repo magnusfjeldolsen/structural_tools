@@ -11,11 +11,21 @@ import threading
 import time
 import os
 import sys
+import socket
 
 # Configuration
-PORT = 8000
 HOST = "localhost"
-URL = f"http://{HOST}:{PORT}"
+
+def find_available_port(start_port=8080):
+    """Find an available port starting from start_port"""
+    for port in range(start_port, start_port + 100):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind((HOST, port))
+                return port
+        except OSError:
+            continue
+    raise RuntimeError("No available ports found")
 
 def start_server():
     """Start the HTTP server in the parent directory"""
@@ -24,7 +34,15 @@ def start_server():
     os.chdir(parent_dir)
     
     print(f"Serving files from: {os.getcwd()}")
-    print(f"Server starting on {URL}")
+    
+    # Find available port
+    try:
+        PORT = find_available_port()
+        URL = f"http://{HOST}:{PORT}"
+        print(f"Server starting on {URL}")
+    except RuntimeError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
     
     # Create server
     handler = http.server.SimpleHTTPRequestHandler
@@ -35,22 +53,27 @@ def start_server():
             print(f"Open your browser to: {URL}")
             print("Press Ctrl+C to stop the server")
             
+            # Store URL globally for browser opening
+            global GLOBAL_URL
+            GLOBAL_URL = URL
+            
             # Start server
             httpd.serve_forever()
             
     except OSError as e:
-        if e.errno == 10048:  # Port already in use on Windows
-            print(f"Error: Port {PORT} is already in use.")
-            print("Please close any existing server or change the PORT in this script.")
-        else:
-            print(f"Error starting server: {e}")
+        print(f"Error starting server: {e}")
         sys.exit(1)
 
 def open_browser():
     """Open browser after a short delay"""
-    time.sleep(1.5)  # Wait for server to start
-    print(f"Opening browser: {URL}")
-    webbrowser.open(URL)
+    time.sleep(2)  # Wait for server to start
+    try:
+        url = GLOBAL_URL
+        print(f"Opening browser: {url}")
+        webbrowser.open(url)
+    except NameError:
+        # Fallback if global URL not set
+        print("Server URL not available yet, skipping browser opening")
 
 if __name__ == "__main__":
     print("=" * 50)
