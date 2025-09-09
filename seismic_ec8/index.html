@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="EC8 Seismic Avoidance Criteria Calculator - Determine if seismic design is required">
+  <meta name="keywords" content="EC8, seismic design, avoidance criteria, response spectrum, structural engineering">
+  <title>EC8 Seismic Avoidance Criteria Calculator</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="EC8 Seismic Avoidance Criteria Calculator">
+  <meta property="og:description" content="Determine seismic design requirements according to Eurocode 8">
+  <meta property="og:type" content="website">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- D3.js for plotting -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  
+  <!-- MathJax for mathematical expressions -->
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  
+  <!-- Main script -->
+  <script src="seismic_script.js"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <h2 class="text-2xl font-semibold text-center text-white">EC8 Seismic Avoidance Criteria Calculator</h2>
+    <p class="text-center text-gray-300 text-sm">Determine if seismic design is required according to Eurocode 8</p>
+
+    <!-- Input Form -->
+    <form id="seismic-form" onsubmit="event.preventDefault(); calculateSeismic();" class="space-y-6">
+      
+      <!-- Location and Project Info -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Location & Project Information</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="place" class="text-sm font-medium min-w-[150px] text-right">Place:</label>
+            <input type="text" id="place" value="Oslo" placeholder="City/Location" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="seismic_class" class="text-sm font-medium min-w-[150px] text-right">Seismic Class:</label>
+            <select id="seismic_class" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="I">I - Low importance</option>
+              <option value="II" selected>II - Normal importance</option>
+              <option value="IIIa">IIIa - High importance (schools, assembly halls)</option>
+              <option value="IIIb">IIIb - High importance (hospitals, fire stations)</option>
+              <option value="IV">IV - Vital importance (emergency response)</option>
+            </select>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="structure_life" class="text-sm font-medium min-w-[150px] text-right">Structure Life (years):</label>
+            <input type="number" id="structure_life" value="50" step="1" min="1" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+      <!-- Seismic Parameters -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-yellow-400 mb-4">Seismic Parameters</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="gamma_I" class="text-sm font-medium min-w-[150px] text-right">γ<sub>I</sub> (Importance Factor):</label>
+            <input type="number" id="gamma_I" value="1.0" step="0.1" min="0.8" max="1.4" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="spectrum_type" class="text-sm font-medium min-w-[150px] text-right">Response Spectrum Type:</label>
+            <select id="spectrum_type" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="1">Type 1 - Magnitude Ms > 5.5</option>
+              <option value="2" selected>Type 2 - Magnitude Ms ≤ 5.5 (Recommended for Norway)</option>
+            </select>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="ground_type" class="text-sm font-medium min-w-[150px] text-right">Ground Type:</label>
+            <select id="ground_type" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="A">A - Rock or rock-like geological formation</option>
+              <option value="B" selected>B - Deposits of very dense sand, gravel</option>
+              <option value="C">C - Deep deposits of dense or medium dense sand</option>
+              <option value="D">D - Deposits of loose-to-medium cohesionless soil</option>
+              <option value="E">E - Soil profile with surface alluvium layer</option>
+            </select>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="agr" class="text-sm font-medium min-w-[150px] text-right">a<sub>gR</sub> (m/s²):</label>
+            <input type="number" id="agr" value="0.7" step="0.1" min="0" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
+            <label for="S_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">S (Soil Factor):</label>
+            <span id="S_display" class="flex-1 text-green-400 font-semibold">1.35</span>
+            <span class="text-xs text-gray-400 min-w-[120px]">(from Table 3.3)</span>
+          </div>
+          
+          <!-- Hidden input for calculations -->
+          <input type="hidden" id="S" value="1.35">
+          
+          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
+            <label for="ag_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">a<sub>g</sub> (m/s²):</label>
+            <span id="ag_display" class="flex-1 text-green-400 font-semibold">0.70</span>
+          </div>
+          
+          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
+            <label for="ags_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">a<sub>g</sub>·S (m/s²):</label>
+            <span id="ags_display" class="flex-1 text-green-400 font-semibold">0.84</span>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="q" class="text-sm font-medium min-w-[150px] text-right">q (Behaviour Factor):</label>
+            <input type="number" id="q" value="1.5" step="0.1" min="1.0" max="8.0" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span class="text-xs text-gray-400 min-w-[100px]">(elastic: 1.0-1.5)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Response Spectrum -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-red-400 mb-4">Response Spectrum</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="sd_method" class="text-sm font-medium min-w-[150px] text-right">S<sub>d</sub> Method:</label>
+            <select id="sd_method" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="manual">Manual Input</option>
+              <option value="simplified" selected>Simplified Method (EC8)</option>
+            </select>
+          </div>
+          
+          <!-- Manual Sd Input -->
+          <div id="manual_sd_input" class="flex items-center gap-4" style="display: none;">
+            <label for="sd_manual" class="text-sm font-medium min-w-[150px] text-right">S<sub>d</sub> (m/s²):</label>
+            <input type="number" id="sd_manual" value="2.0" step="0.1" min="0" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <!-- Simplified Method Inputs -->
+          <div id="simplified_inputs" class="space-y-4">
+            <div class="flex items-center gap-4">
+              <label for="h" class="text-sm font-medium min-w-[150px] text-right">Building Height h (m):</label>
+              <input type="number" id="h" value="20" step="1" min="1" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            
+            <div class="flex items-center gap-4">
+              <label for="ct_method" class="text-sm font-medium min-w-[150px] text-right">C<sub>t</sub> Selection:</label>
+              <select id="ct_method" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                <option value="steel">Steel moment-resisting frames (0.085)</option>
+                <option value="concrete" selected>Concrete moment-resisting frames (0.075)</option>
+                <option value="other">All other structures (0.05)</option>
+                <option value="custom">Custom value</option>
+              </select>
+            </div>
+            
+            <div class="flex items-center gap-4">
+              <label for="ct" class="text-sm font-medium min-w-[150px] text-right">C<sub>t</sub>:</label>
+              <input type="number" id="ct" value="0.075" step="0.001" min="0" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            
+            <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
+              <label for="t1_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">T<sub>1</sub> (s):</label>
+              <span id="t1_display" class="flex-1 text-green-400 font-semibold">0.84</span>
+            </div>
+          </div>
+          
+          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
+            <label for="sd_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">S<sub>d</sub> (m/s²):</label>
+            <span id="sd_display" class="flex-1 text-green-400 font-semibold">2.10</span>
+          </div>
+        </div>
+      </div>
+
+    </form>
+
+    <!-- Calculate Button -->
+    <div class="space-y-2 print:hidden">
+      <button onclick="calculateSeismic()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+        Calculate Seismic Requirements
+      </button>
+    </div>
+
+    <!-- Results Section -->
+    <div id="results" style="display:none;" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50">
+      
+      <!-- Summary moved to top -->
+      <div id="summary" class="mb-6 p-6 bg-gray-800 rounded-lg border-l-4 border-blue-500">
+        <h3 class="text-xl font-bold text-white mb-4">Seismic Design Requirements</h3>
+        <div id="requirement-result" class="text-lg font-bold mb-4">
+          <!-- Result will be inserted here -->
+        </div>
+        <div id="summary-details" class="grid md:grid-cols-2 gap-6 text-sm">
+          <!-- Summary details will be inserted here -->
+        </div>
+      </div>
+
+      <!-- Parameter Summary -->
+      <div id="parameter-summary" class="mb-6 p-6 bg-gray-800 rounded-lg border border-blue-500">
+        <h3 class="text-lg font-semibold text-blue-400 mb-4">Current Parameters Summary</h3>
+        <div id="parameter-details" class="grid md:grid-cols-3 gap-4 text-sm">
+          <!-- Parameter details will be inserted here -->
+        </div>
+      </div>
+
+      <!-- Response Spectrum Plot -->
+      <div id="spectrum-plot-container" class="mb-6 p-6 bg-gray-800 rounded-lg">
+        <h3 class="text-lg font-semibold text-green-400 mb-4">Design Response Spectrum</h3>
+        <div id="spectrum-plot"></div>
+      </div>
+
+      <!-- Detailed Calculations -->
+      <div id="calc-steps" class="text-white">
+        <!-- Calculation boxes will be inserted here -->
+      </div>
+
+      <!-- Print Button -->
+      <div class="mt-8 print:hidden">
+        <button id="print-btn" style="display:none;" onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
+          Print to PDF
+        </button>
+      </div>
+    </div>
+
+    <!-- Footer Info -->
+    <div class="text-center text-sm text-gray-400 pt-6 border-t border-gray-600">
+      <p>EC8 Seismic Avoidance Calculator by <span class="text-blue-400 font-semibold">Magnus Fjeld Olsen</span></p>
+      <p class="mt-1">Based on Eurocode 8 (EN 1998-1) standards</p>
+    </div>
+  </main>
+
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+  
+</body>
+</html>
