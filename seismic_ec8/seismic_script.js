@@ -208,7 +208,8 @@ function calculateSdAtPeriod(T, ag, S, spectrumType, groundType) {
     const params = SPECTRUM_PARAMETERS[spectrumType][groundType];
     
     // EC8 parameters from Table H.2.4
-    const q = 1.0;   // Behavior factor (for elastic analysis)
+    //const q = 1.0;   // Behavior factor (for elastic analysis)
+    const q = parseFloat(document.getElementById('q')?.value) || 1.5;   // Behavior factor from user input
     const TB = params.TB;
     const TC = params.TC;
     const TD = params.TD;
@@ -239,7 +240,7 @@ function calculateSd(T, ag, S) {
     const groundType = document.getElementById('ground_type').value;
     const q = parseFloat(document.getElementById('q').value) || 1.5;
     
-    return calculateSdAtPeriod(T, ag, S, spectrumType, groundType) / q;
+    return calculateSdAtPeriod(T, ag, S, spectrumType, groundType);
 }
 
 // Generate response spectrum data for plotting
