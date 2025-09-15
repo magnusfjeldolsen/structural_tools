@@ -78,6 +78,16 @@ function updateFyd() {
     document.getElementById('fyd_display').textContent = toFixedIfNeeded(fyd);
 }
 
+// Update rebar area calculation
+function updateRebarArea() {
+    const phi_l = parseFloat(document.getElementById('phi_l').value) || 12;
+    const cc_l = parseFloat(document.getElementById('cc_l').value) || 200;
+    
+    // Calculate rebar area per meter: π × φ² / 4 × (1000 / cc)
+    const rebarArea = Math.PI * Math.pow(phi_l, 2) / 4 * (1000 / cc_l);
+    document.getElementById('rebar_area_display').textContent = toFixedIfNeeded(rebarArea);
+}
+
 // Shear capacity calculation function (following PDF methodology)
 function calculateShearCapacity(NEd, h, b, d, Asl, fck, gammaC, k1_input) {
     // Axial stress calculation (σc = NEd / Ac, where Ac = b × h)
@@ -579,6 +589,7 @@ function calculateAndShow() {
 document.addEventListener('DOMContentLoaded', function() {
     updateConcreteProperties();
     updateFyd();
+    updateRebarArea();
     
     // Add event listeners for real-time updates
     document.getElementById('fck').addEventListener('input', updateFcd);
@@ -586,6 +597,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('gamma_c').addEventListener('input', updateFcd);
     document.getElementById('fyk').addEventListener('input', updateFyd);
     document.getElementById('gamma_s').addEventListener('input', updateFyd);
+    document.getElementById('phi_l').addEventListener('input', updateRebarArea);
+    document.getElementById('cc_l').addEventListener('input', updateRebarArea);
 });
 
 // Utility functions for clipboard functionality
