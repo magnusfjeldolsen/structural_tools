@@ -55,7 +55,7 @@
                    class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
           </div>
           <div>
-            <label for="f_dybel" class="block text-sm font-medium text-gray-300 mb-2">Dowel Factor f<sub>dybel</sub></label>
+            <label for="f_dybel" class="block text-sm font-medium text-gray-300 mb-2">Dowel Factor f<sub>dowel</sub></label>
             <select id="f_dybel" onchange="calculateAndShow()"
                     class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="1.0">1.0 (Single-sided)</option>
@@ -155,13 +155,25 @@
       <!-- Dowel Configuration Section -->
       <div class="bg-gray-700 rounded-lg p-6">
         <h3 class="text-xl font-semibold text-blue-400 mb-4">Dowel Configuration</h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        <!-- Row 1: Dowel Diameter and Eccentricity -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <label for="dowel_diameter" class="block text-sm font-medium text-gray-300 mb-2">Dowel Diameter φ (mm)</label>
             <input type="number" id="dowel_diameter" value="12" min="6" max="40" step="1"
                    onchange="updateDowelArea(); calculateAndShow()"
                    class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
           </div>
+          <div>
+            <label for="eccentricity" class="block text-sm font-medium text-gray-300 mb-2">Eccentricity e (mm)</label>
+            <input type="number" id="eccentricity" value="0" min="0" step="1"
+                   onchange="calculateAndShow()"
+                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+        </div>
+
+        <!-- Row 2: Parallel Configuration -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <label for="n_v_parallel" class="block text-sm font-medium text-gray-300 mb-2">Dowels Parallel to Force n<sub>V,parallel</sub></label>
             <input type="number" id="n_v_parallel" value="1" min="1" step="1"
@@ -174,37 +186,35 @@
                    onchange="calculateAndShow()"
                    class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
           </div>
+        </div>
+
+        <!-- Row 3: Orthogonal Configuration -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
-            <label for="n_v_ortagonal" class="block text-sm font-medium text-gray-300 mb-2">Dowels Orthogonal to Force n<sub>V,ortagonal</sub></label>
+            <label for="n_v_ortagonal" class="block text-sm font-medium text-gray-300 mb-2">Dowels Orthogonal to Force n<sub>V,orthogonal</sub></label>
             <input type="number" id="n_v_ortagonal" value="5" min="1" step="1"
                    onchange="updateDowelArea(); calculateAndShow()"
                    class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
           </div>
           <div>
-            <label for="cc_ortagonal" class="block text-sm font-medium text-gray-300 mb-2">Spacing Orthogonal cc<sub>ortagonal</sub> (mm)</label>
+            <label for="cc_ortagonal" class="block text-sm font-medium text-gray-300 mb-2">Spacing Orthogonal cc<sub>orthogonal</sub> (mm)</label>
             <input type="number" id="cc_ortagonal" value="200" min="50" step="10"
                    onchange="calculateAndShow()"
                    class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
           </div>
-          <div class="flex flex-col justify-center">
-            <div class="text-sm text-gray-300">
-              <div>Total dowels: <span id="n_v_tot_display" class="text-white font-semibold">5</span></div>
-              <div>Dowel area: <span id="dowel_area_display" class="text-white font-semibold">113.1</span> mm²</div>
-            </div>
-          </div>
+        </div>
+
+        <!-- Summary Display -->
+        <div class="text-sm text-gray-300 text-center">
+          <div>Total dowels: <span id="n_v_tot_display" class="text-white font-semibold">5</span> |
+               Dowel area: <span id="dowel_area_display" class="text-white font-semibold">113.1</span> mm²</div>
         </div>
       </div>
 
-      <!-- Geometry Section -->
+      <!-- Edge Distances Section -->
       <div class="bg-gray-700 rounded-lg p-6">
-        <h3 class="text-xl font-semibold text-blue-400 mb-4">Geometry</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <label for="eccentricity" class="block text-sm font-medium text-gray-300 mb-2">Eccentricity e (mm)</label>
-            <input type="number" id="eccentricity" value="0" min="0" step="1"
-                   onchange="calculateAndShow()"
-                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-          </div>
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Edge Distances</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label for="a1" class="block text-sm font-medium text-gray-300 mb-2">End Distance a<sub>1</sub> (mm)</label>
             <input type="number" id="a1" value="200" min="15" step="1"
