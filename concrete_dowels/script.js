@@ -211,24 +211,23 @@ function performCalculations(inputs) {
     // Set VRdC0 = VRdE
     results.VRdC0 = results.VRdE;
 
-    // Distance factor calculations (ka, ks, k)
-    // ka = min(n*ø/a1, 1) - but according to PDF page 4: ka = min((n*ø)/a1, 1) where n*ø is min edge distance
-    results.ka = Math.min((inputs.nFactor * inputs.dowelDiameter) / inputs.a1, 1);
+    // Distance factor calculations (ka, ks, k) - corrected formulas
+    // ka = (min(n*ø, a1) - ø) / (n*ø - ø)
+    const minNPhiA1 = Math.min(inputs.nFactor * inputs.dowelDiameter, inputs.a1);
+    results.ka = (minNPhiA1 - inputs.dowelDiameter) / (inputs.nFactor * inputs.dowelDiameter - inputs.dowelDiameter);
 
-    // ks calculation from PDF page 4: ks = (a2,v + (nV,ortagonal-1)*cc_ortagonal + a2,h) / (3*min(n*ø/a1))
-    // But looking at the actual formula, it should be divided by 3*min(n*ø/a1)
+    // ks = (a2,v + (nV,ortagonal-1)*cc_ortagonal + a2,h) / (3*min(n*ø, a1))
     const numerator_ks = inputs.a2v + (inputs.nVOrtagonal - 1) * inputs.ccOrtagonal + inputs.a2h;
-    const minTerm = Math.min(inputs.nFactor * inputs.dowelDiameter, inputs.a1); // This should be min(n*ø, a1)
-    const denominator_ks = 3 * minTerm;
-    results.ks = Math.min(numerator_ks / denominator_ks, 5);
+    const denominator_ks = 3 * minNPhiA1;
+    results.ks = numerator_ks / denominator_ks;
 
-    results.k = Math.min(inputs.nVOrtagonal / (results.ka * results.ks), 5);
+    // k = min(nV,ortagonal, ka * ks)
+    results.k = Math.min(inputs.nVOrtagonal, results.ka * results.ks);
 
-    // Factor ψf.V calculation from PDF formula
-    // ψf.V = min((1 + (nV,parallel - 1) * cc_parallel) / (0.75 * min(n*ø/a1, 1) * nV,parallel), 1)
-    const numerator_psiFV = 1 + (inputs.nVParallel - 1) * inputs.ccParallel;
-    const denominator_psiFV = 0.75 * Math.min((inputs.nFactor * inputs.dowelDiameter) / inputs.a1, 1) * inputs.nVParallel;
-    results.psiFV = Math.min(numerator_psiFV / denominator_psiFV, 1);
+    // Factor ψf.V calculation - corrected formula
+    // ψf.V = min(nV,parallel, 1 + (nV,parallel - 1) * cc_parallel / (0.75 * min(n*ø, a1)))
+    const psiFV_fraction = (inputs.nVParallel - 1) * inputs.ccParallel / (0.75 * minNPhiA1);
+    results.psiFV = Math.min(inputs.nVParallel, 1 + psiFV_fraction);
 
     // Final shear capacity for dowel group
     results.VRd = inputs.fdybel * results.k * results.psiFV * results.VRdC0;
@@ -299,10 +298,11 @@ function displayDetailedCalculations(results, inputs) {
             <div class="bg-gray-700 rounded-lg p-4">
                 <h4 class="text-lg font-semibold text-blue-400 mb-3">Distance Factors</h4>
                 <div class="text-sm space-y-2">
-                    <div>Edge distance factor: k<sub>a</sub> = min(n×φ/a<sub>1</sub>, 1) = min(${inputs.nFactor}×${inputs.dowelDiameter}/${inputs.a1}, 1) = ${toFixedIfNeeded(results.ka)}</div>
-                    <div>Spacing factor: k<sub>s</sub> = min((a<sub>2,v</sub> + (n<sub>V,ortagonal</sub>-1)×cc<sub>ortagonal</sub> + a<sub>2,h</sub>) / (3×k<sub>a</sub>), 5) = ${toFixedIfNeeded(results.ks)}</div>
-                    <div>Group factor: k = min(n<sub>V,ortagonal</sub> / (k<sub>a</sub> × k<sub>s</sub>), 5) = ${toFixedIfNeeded(results.k)}</div>
-                    <div>Parallel factor: ψ<sub>f,V</sub> = ${toFixedIfNeeded(results.psiFV)}</div>
+                    <div>min(n×φ, a<sub>1</sub>) = min(${inputs.nFactor}×${inputs.dowelDiameter}, ${inputs.a1}) = ${Math.min(inputs.nFactor * inputs.dowelDiameter, inputs.a1)} mm</div>
+                    <div>Edge distance factor: k<sub>a</sub> = (min(n×φ, a<sub>1</sub>) - φ) / (n×φ - φ) = (${Math.min(inputs.nFactor * inputs.dowelDiameter, inputs.a1)} - ${inputs.dowelDiameter}) / (${inputs.nFactor * inputs.dowelDiameter} - ${inputs.dowelDiameter}) = ${toFixedIfNeeded(results.ka)}</div>
+                    <div>Spacing factor: k<sub>s</sub> = (a<sub>2,v</sub> + (n<sub>V,ort</sub>-1)×cc<sub>ort</sub> + a<sub>2,h</sub>) / (3×min(n×φ, a<sub>1</sub>)) = (${inputs.a2v} + (${inputs.nVOrtagonal}-1)×${inputs.ccOrtagonal} + ${inputs.a2h}) / (3×${Math.min(inputs.nFactor * inputs.dowelDiameter, inputs.a1)}) = ${inputs.a2v + (inputs.nVOrtagonal - 1) * inputs.ccOrtagonal + inputs.a2h} / ${3 * Math.min(inputs.nFactor * inputs.dowelDiameter, inputs.a1)} = ${toFixedIfNeeded(results.ks)}</div>
+                    <div>Group factor: k = min(n<sub>V,ort</sub>, k<sub>a</sub> × k<sub>s</sub>) = min(${inputs.nVOrtagonal}, ${toFixedIfNeeded(results.ka)} × ${toFixedIfNeeded(results.ks)}) = min(${inputs.nVOrtagonal}, ${toFixedIfNeeded(results.ka * results.ks)}) = ${toFixedIfNeeded(results.k)}</div>
+                    <div>Parallel factor: ψ<sub>f,V</sub> = min(n<sub>V,par</sub>, 1 + (n<sub>V,par</sub>-1)×cc<sub>par</sub>/(0.75×min(n×φ, a<sub>1</sub>))) = min(${inputs.nVParallel}, 1 + (${inputs.nVParallel}-1)×${inputs.ccParallel}/(0.75×${Math.min(inputs.nFactor * inputs.dowelDiameter, inputs.a1)})) = min(${inputs.nVParallel}, 1 + ${(inputs.nVParallel - 1) * inputs.ccParallel}/${toFixedIfNeeded(0.75 * Math.min(inputs.nFactor * inputs.dowelDiameter, inputs.a1))}) = min(${inputs.nVParallel}, 1 + ${toFixedIfNeeded((inputs.nVParallel - 1) * inputs.ccParallel / (0.75 * Math.min(inputs.nFactor * inputs.dowelDiameter, inputs.a1)))}) = min(${inputs.nVParallel}, ${toFixedIfNeeded(1 + (inputs.nVParallel - 1) * inputs.ccParallel / (0.75 * Math.min(inputs.nFactor * inputs.dowelDiameter, inputs.a1)))}) = ${toFixedIfNeeded(results.psiFV)}</div>
                 </div>
             </div>
 
