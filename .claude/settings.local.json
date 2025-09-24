@@ -19,7 +19,10 @@
       "Read(/C:\\Python\\structural_tools\\structural_tools\\2dframeanalysis/**)",
       "Read(/C:\\Python\\structural_tools\\structural_tools\\2dframeanalysis/**)",
       "Read(/C:\\Python\\structural_tools\\structural_tools\\2dframeanalysis/**)",
-      "Read(/C:\\Python\\structural_tools\\structural_tools\\2dframeanalysis/**)"
+      "Read(/C:\\Python\\structural_tools\\structural_tools\\2dframeanalysis/**)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:awatif.co)",
+      "Bash(start awatif_frame_analysis/index.html)"
     ],
     "deny": [],
     "ask": [],
