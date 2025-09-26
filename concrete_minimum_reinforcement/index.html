@@ -73,8 +73,8 @@
 
           <div class="space-y-4">
             <div class="flex items-center gap-4">
-              <label for="h" class="text-sm font-medium min-w-[120px] text-right">h (mm):</label>
-              <input type="number" id="h" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <label for="t" class="text-sm font-medium min-w-[120px] text-right">t (mm):</label>
+              <input type="number" id="t" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
               <span class="text-xs text-gray-400 min-w-[120px]">Plate thickness</span>
             </div>
 
@@ -134,7 +134,44 @@
           </div>
         </div>
 
-        <!-- Scenario Selection -->
+        <!-- MRd Calculation Section -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-xl font-semibold text-purple-400 mb-4">Analysis Scenarios</h3>
+
+          <div class="space-y-4">
+            <!-- General plate reinforcement row -->
+            <div class="bg-gray-600 rounded-lg p-4">
+              <h4 class="text-sm font-semibold text-blue-300 mb-3">General Plate Reinforcement</h4>
+              <div class="grid grid-cols-2 gap-4">
+                <label class="flex items-center space-x-3">
+                  <input type="checkbox" id="general-main" value="general-main" onchange="updateScenarioSelection()" class="form-checkbox text-blue-500" checked>
+                  <span class="text-sm">Main rebars</span>
+                </label>
+                <label class="flex items-center space-x-3">
+                  <input type="checkbox" id="general-crack" value="general-crack" onchange="updateScenarioSelection()" class="form-checkbox text-blue-500">
+                  <span class="text-sm">Crack control rebars</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Concentrated loads row -->
+            <div class="bg-gray-600 rounded-lg p-4">
+              <h4 class="text-sm font-semibold text-orange-300 mb-3">Areas with Max Moments & Concentrated Loads</h4>
+              <div class="grid grid-cols-2 gap-4">
+                <label class="flex items-center space-x-3">
+                  <input type="checkbox" id="concentrated-main" value="concentrated-main" onchange="updateScenarioSelection()" class="form-checkbox text-orange-500">
+                  <span class="text-sm">Main rebars</span>
+                </label>
+                <label class="flex items-center space-x-3">
+                  <input type="checkbox" id="concentrated-crack" value="concentrated-crack" onchange="updateScenarioSelection()" class="form-checkbox text-orange-500">
+                  <span class="text-sm">Crack control rebars</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analysis Scenarios -->
         <div class="bg-gray-700 rounded-lg p-6">
           <h3 class="text-xl font-semibold text-purple-400 mb-4">Analysis Scenarios</h3>
 

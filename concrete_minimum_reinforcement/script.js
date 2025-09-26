@@ -8,6 +8,43 @@ function toFixedIfNeeded(num, digits = 2) {
     return parseFloat(num.toFixed(digits));
 }
 
+// Function to open concrete slab design tool with pre-populated values
+function openSlabDesignTool(diameter, spacing) {
+    // Get current input values from global storage and form
+    const inputs = window.currentInputs;
+    if (!inputs) {
+        alert('Please calculate minimum reinforcement first');
+        return;
+    }
+
+    const t = inputs.t;
+    const c = inputs.c;
+    const concreteGrade = document.getElementById('concrete_grade').value;
+    const fyk = inputs.fyk;
+
+    // Convert concrete grade from numeric to string format for concrete_slab_design
+    let concreteGradeFormatted;
+    if (concreteGrade === 'custom') {
+        concreteGradeFormatted = 'custom';
+    } else {
+        concreteGradeFormatted = `B${concreteGrade}`;
+    }
+
+    // Build URL with query parameters for concrete_slab_design
+    const params = new URLSearchParams({
+        t: t,               // slab thickness
+        c: c,               // concrete cover
+        phi_l: diameter,    // bar diameter
+        cc_l: spacing,      // bar spacing
+        concrete_grade: concreteGradeFormatted,
+        fyk: fyk
+    });
+
+    // Open concrete_slab_design in new tab with pre-populated values
+    const url = `../concrete_slab_design/index.html?${params.toString()}`;
+    window.open(url, '_blank');
+}
+
 // Tab switching functionality
 function switchTab(tabName) {
     // Remove active class from all tabs
@@ -165,22 +202,22 @@ function getSelectedScenarios() {
 }
 
 // Calculate Norwegian spacing limits
-function calculateNorwegianSpacingLimits(h, loadArea, rebarType) {
+function calculateNorwegianSpacingLimits(t, loadArea, rebarType) {
     let sMax;
 
     if (loadArea === 'normal') {
         // Normal areas (field/support)
         if (rebarType === 'main') {
-            sMax = Math.min(3 * h, 400);
+            sMax = Math.min(3 * t, 400);
         } else { // crack_control
-            sMax = Math.min(3.5 * h, 450);
+            sMax = Math.min(3.5 * t, 450);
         }
     } else { // concentrated loads
         // Areas with concentrated loads and largest moments
         if (rebarType === 'main') {
-            sMax = Math.min(2 * h, 250);
+            sMax = Math.min(2 * t, 250);
         } else { // crack_control
-            sMax = Math.min(3 * h, 400);
+            sMax = Math.min(3 * t, 400);
         }
     }
 
@@ -191,7 +228,7 @@ function calculateNorwegianSpacingLimits(h, loadArea, rebarType) {
 function calculatePlateReinforcement(shouldScroll = true) {
     try {
         // Get input values
-        const h = parseFloat(document.getElementById('h').value);
+        const t = parseFloat(document.getElementById('t').value);
         const c = parseFloat(document.getElementById('c').value);
         const b = parseFloat(document.getElementById('b').value);
         const nLayers = parseInt(document.getElementById('n_layers').value);
@@ -211,7 +248,7 @@ function calculatePlateReinforcement(shouldScroll = true) {
         const hasScenarios = selectedScenarios.length > 0;
 
         // Validate inputs
-        if (h <= 0 || c <= 0 || b <= 0 || fctm <= 0 || fyk <= 0) {
+        if (t <= 0 || c <= 0 || b <= 0 || fctm <= 0 || fyk <= 0) {
             alert('Please enter valid positive values for all parameters.');
             return;
         }
@@ -221,7 +258,7 @@ function calculatePlateReinforcement(shouldScroll = true) {
 
         selectedDiameters.forEach(dia => {
             // Calculate effective depth d
-            const d = h - c - (dia / 2) - (nLayers - 1) * layerSpacing;
+            const d = t - c - (dia / 2) - (nLayers - 1) * layerSpacing;
 
             if (d <= 0) {
                 return; // Skip if effective depth is invalid
@@ -243,13 +280,14 @@ function calculatePlateReinforcement(shouldScroll = true) {
                 AsMin: toFixedIfNeeded(AsMin, 1),
                 barArea: toFixedIfNeeded(barArea, 1),
                 calculatedSpacing: toFixedIfNeeded(calculatedSpacing, 0),
-                scenarios: {}
+                scenarios: {},
+                governingSpacing: calculatedSpacing // Will be updated based on scenarios
             };
 
             if (hasScenarios) {
                 // Calculate for each selected scenario
                 selectedScenarios.forEach(scenario => {
-                    const norwegianLimit = calculateNorwegianSpacingLimits(h, scenario.loadArea, scenario.rebarType);
+                    const norwegianLimit = calculateNorwegianSpacingLimits(t, scenario.loadArea, scenario.rebarType);
 
                     // The actual allowable spacing is the MINIMUM of calculated spacing and Norwegian limit
                     const allowableSpacing = Math.min(calculatedSpacing, norwegianLimit);
@@ -263,7 +301,11 @@ function calculatePlateReinforcement(shouldScroll = true) {
                         limitingFactor: isLimitedByNorwegian ? 'Norwegian rules' : 'As,min requirement'
                     };
                 });
+
+                // Calculate governing spacing (minimum across all scenarios)
+                result.governingSpacing = Math.min(...Object.values(result.scenarios).map(s => s.allowableSpacing));
             }
+
 
             results.push(result);
         });
@@ -274,7 +316,7 @@ function calculatePlateReinforcement(shouldScroll = true) {
         }
 
         // Display results
-        displayPlateResults(results, { h, c, b, nLayers, layerSpacing, fctm, fyk, selectedScenarios, hasScenarios }, shouldScroll);
+        displayPlateResults(results, { t, c, b, nLayers, layerSpacing, fctm, fyk, selectedScenarios, hasScenarios }, shouldScroll);
 
     } catch (error) {
         console.error('Calculation error:', error);
@@ -287,6 +329,9 @@ function displayPlateResults(results, inputs, shouldScroll = true) {
     // Show results section
     const resultsSection = document.getElementById('plate-results');
     resultsSection.style.display = 'block';
+
+    // Store inputs globally for button access
+    window.currentInputs = inputs;
 
     // Display results table first
     const tableContainer = document.getElementById('plate-results-table');
@@ -304,7 +349,7 @@ function displayPlateResults(results, inputs, shouldScroll = true) {
 
 // Generate calculation steps HTML
 function generateCalculationSteps(inputs) {
-    const { h, c, b, nLayers, layerSpacing, fctm, fyk, selectedScenarios, hasScenarios } = inputs;
+    const { t, c, b, nLayers, layerSpacing, fctm, fyk, selectedScenarios, hasScenarios } = inputs;
 
     let scenarioDescriptions = '';
     if (hasScenarios && selectedScenarios.length > 0) {
@@ -322,7 +367,7 @@ function generateCalculationSteps(inputs) {
             <h4 class="text-lg font-semibold text-blue-400 mb-3">Input Parameters</h4>
             <div class="grid md:grid-cols-2 gap-4 text-sm">
                 <div>
-                    <p><strong>h:</strong> ${h} mm (plate thickness)</p>
+                    <p><strong>t:</strong> ${t} mm (plate thickness)</p>
                     <p><strong>c:</strong> ${c} mm (concrete cover)</p>
                     <p><strong>b:</strong> ${b} mm (plate width)</p>
                     <p><strong>Number of layers:</strong> ${nLayers}</p>
@@ -339,7 +384,7 @@ function generateCalculationSteps(inputs) {
         <div class="bg-gray-600 rounded-lg p-4 mb-4">
             <h4 class="text-lg font-semibold text-yellow-400 mb-3">Calculation Formulas</h4>
             <div class="text-sm space-y-2">
-                <p><strong>Effective depth:</strong> d = h - c - φ/2 - (n<sub>layers</sub>-1) × layer_spacing</p>
+                <p><strong>Effective depth:</strong> d = t - c - φ/2 - (n<sub>layers</sub>-1) × layer_spacing</p>
                 <p><strong>Minimum reinforcement (EC2-1-1 9.2.1.1):</strong> A<sub>s,min</sub> = max(0.26 × b × d × f<sub>ctm</sub> / f<sub>yk</sub>, 0.0013 × b × d)</p>
                 <p><strong>Bar area:</strong> A<sub>bar</sub> = π × (φ/2)²</p>
                 <p><strong>Maximum spacing:</strong> c<sub>c,max</sub> = A<sub>bar</sub> × b / A<sub>s,min</sub></p>
@@ -464,6 +509,12 @@ function generateResultsTable(results, selectedScenarios, inputs) {
                 <td class="px-4 py-3 text-center">${result.AsMin}</td>
                 <td class="px-4 py-3 text-center">${result.barArea}</td>
                 <td class="px-4 py-3 text-center font-bold ${overallOK ? 'text-green-400' : 'text-red-400'}">${governingSpacing}</td>
+                <td class="px-4 py-3 text-center">
+                    <button onclick="openSlabDesignTool(${result.diameter}, ${governingSpacing})"
+                            class="bg-purple-600 hover:bg-purple-700 text-white text-xs px-2 py-1 rounded transition">
+                        Calculate Capacity
+                    </button>
+                </td>
                 ${scenarioCells}
             </tr>
         `;
@@ -480,6 +531,7 @@ function generateResultsTable(results, selectedScenarios, inputs) {
                         <th class="px-4 py-2 bg-gray-500" rowspan="2">A<sub>s,min</sub><br>(mm²/m)</th>
                         <th class="px-4 py-2 bg-gray-500" rowspan="2">A<sub>bar</sub><br>(mm²)</th>
                         <th class="px-4 py-2 bg-green-700" rowspan="2"><strong>Governing<br>Spacing<br>(mm)</strong></th>
+                        <th class="px-4 py-2 bg-purple-700" rowspan="2"><strong>Actions</strong></th>
                         ${groupedHeaders}
                     </tr>
                     <!-- Sub-headers row -->
@@ -500,13 +552,13 @@ function generateResultsTable(results, selectedScenarios, inputs) {
             <div class="grid md:grid-cols-2 gap-4 text-xs">
                 <div class="bg-blue-900 rounded p-2">
                     <p class="text-blue-300 font-semibold">General Plate Reinforcement</p>
-                    <p>• Main: min(3h, 400mm) = min(3×${Math.round(inputs.h/3)}, 400) = ${Math.min(3*inputs.h, 400)}mm</p>
-                    <p>• Crack control: min(3.5h, 450mm) = min(3.5×${Math.round(inputs.h/3.5)}, 450) = ${Math.min(3.5*inputs.h, 450)}mm</p>
+                    <p>• Main: min(3t, 400mm) = min(3×${Math.round(inputs.t/3)}, 400) = ${Math.min(3*inputs.t, 400)}mm</p>
+                    <p>• Crack control: min(3.5t, 450mm) = min(3.5×${Math.round(inputs.t/3.5)}, 450) = ${Math.min(3.5*inputs.t, 450)}mm</p>
                 </div>
                 <div class="bg-orange-900 rounded p-2">
                     <p class="text-orange-300 font-semibold">Max Moments & Concentrated Loads</p>
-                    <p>• Main: min(2h, 250mm) = min(2×${Math.round(inputs.h/2)}, 250) = ${Math.min(2*inputs.h, 250)}mm</p>
-                    <p>• Crack control: min(3h, 400mm) = min(3×${Math.round(inputs.h/3)}, 400) = ${Math.min(3*inputs.h, 400)}mm</p>
+                    <p>• Main: min(2t, 250mm) = min(2×${Math.round(inputs.t/2)}, 250) = ${Math.min(2*inputs.t, 250)}mm</p>
+                    <p>• Crack control: min(3t, 400mm) = min(3×${Math.round(inputs.t/3)}, 400) = ${Math.min(3*inputs.t, 400)}mm</p>
                 </div>
             </div>
         </div>
@@ -525,6 +577,12 @@ function generateSimpleAsMinTable(results, inputs) {
                 <td class="px-4 py-3 text-center">${result.AsMin}</td>
                 <td class="px-4 py-3 text-center">${result.barArea}</td>
                 <td class="px-4 py-3 text-center font-bold text-green-400">${result.calculatedSpacing}</td>
+                <td class="px-4 py-3 text-center">
+                    <button onclick="openSlabDesignTool(${result.diameter}, ${result.calculatedSpacing})"
+                            class="bg-purple-600 hover:bg-purple-700 text-white text-xs px-2 py-1 rounded transition">
+                        Calculate M<sub>Rd</sub>
+                    </button>
+                </td>
             </tr>
         `;
     });
@@ -548,6 +606,9 @@ function generateSimpleAsMinTable(results, inputs) {
                         </th>
                         <th class="px-4 py-3 text-center text-xs font-medium text-gray-200 uppercase tracking-wider bg-green-700">
                             <strong>Max Spacing<br>from A<sub>s,min</sub> (mm)</strong>
+                        </th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-200 uppercase tracking-wider bg-purple-700">
+                            <strong>Actions</strong>
                         </th>
                     </tr>
                 </thead>

@@ -585,11 +585,53 @@ function calculateAndShow() {
     displayResults(result);
 }
 
+// Function to populate fields from URL parameters
+function populateFromURLParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+
+    // Mapping of URL parameters to form field IDs
+    const paramMapping = {
+        't': 't',                    // thickness
+        'c': 'c',                    // cover
+        'phi_l': 'phi_l',           // bar diameter
+        'cc_l': 'cc_l',             // bar spacing
+        'fyk': 'fyk',               // steel yield strength
+        'concrete_grade': 'concrete_grade'  // concrete grade
+    };
+
+    // Populate fields if URL parameters exist
+    Object.entries(paramMapping).forEach(([urlParam, fieldId]) => {
+        const value = urlParams.get(urlParam);
+        if (value !== null) {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                if (field.type === 'select-one') {
+                    // Handle select dropdown
+                    field.value = value;
+                    if (fieldId === 'concrete_grade') {
+                        updateConcreteProperties();
+                    }
+                } else {
+                    // Handle input fields
+                    field.value = value;
+                }
+            }
+        }
+    });
+
+    // Update calculated values after populating
+    updateFyd();
+    updateRebarArea();
+}
+
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', function() {
     updateConcreteProperties();
     updateFyd();
     updateRebarArea();
+
+    // Populate from URL parameters if present
+    populateFromURLParams();
     
     // Add event listeners for real-time updates
     document.getElementById('fck').addEventListener('input', updateFcd);
