@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free concrete minimum reinforcement calculator according to EC2 and other standards. Calculate minimum reinforcement for plates, beams, columns, and slabs on ground.">
+  <meta name="keywords" content="concrete minimum reinforcement, EC2, structural engineering, plates, beams, columns, reinforcement calculation">
+  <title>Concrete Minimum Reinforcement Calculator - Free Engineering Tool</title>
+
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Concrete Minimum Reinforcement Calculator - Free Engineering Tool">
+  <meta property="og:description" content="Calculate minimum reinforcement for concrete structures according to EC2 and other standards">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_minimum_reinforcement">
+
+  <!-- Twitter Card tags -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Concrete Minimum Reinforcement Calculator - Free Engineering Tool">
+  <meta name="twitter:description" content="Calculate minimum reinforcement for concrete structures according to EC2 and other standards">
+
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+
+  <!-- Module-specific print styles -->
+  <link rel="stylesheet" href="print.css" media="print">
+
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <script src="../ec2concrete/ec2ConcreteUtils.js"></script>
+  <script src="script.js"></script>
+
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <h2 class="text-2xl font-semibold text-center text-white">Concrete Minimum Reinforcement Calculator</h2>
+    <p class="text-center text-gray-300 text-sm">Calculate minimum reinforcement according to EC2 and other standards</p>
+
+    <!-- Tab Navigation -->
+    <div class="border-b border-gray-600">
+      <nav class="flex space-x-8">
+        <button id="tab-plates" onclick="switchTab('plates')" class="tab-button active py-2 px-1 border-b-2 font-medium text-sm">
+          Plates
+        </button>
+        <button id="tab-beams" onclick="switchTab('beams')" class="tab-button py-2 px-1 border-b-2 font-medium text-sm opacity-50 cursor-not-allowed" disabled>
+          Beams
+        </button>
+        <button id="tab-columns" onclick="switchTab('columns')" class="tab-button py-2 px-1 border-b-2 font-medium text-sm opacity-50 cursor-not-allowed" disabled>
+          Columns
+        </button>
+        <button id="tab-gulv" onclick="switchTab('gulv')" class="tab-button py-2 px-1 border-b-2 font-medium text-sm opacity-50 cursor-not-allowed" disabled>
+          Gulv på grunn
+        </button>
+      </nav>
+    </div>
+
+    <!-- Tab Content - Plates -->
+    <div id="content-plates" class="tab-content">
+      <!-- Input Form -->
+      <form id="plate-calc-form" onsubmit="event.preventDefault(); calculatePlateReinforcement();" class="space-y-6">
+
+        <!-- Geometry Section -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-xl font-semibold text-blue-400 mb-4">Geometry</h3>
+
+          <div class="space-y-4">
+            <div class="flex items-center gap-4">
+              <label for="h" class="text-sm font-medium min-w-[120px] text-right">h (mm):</label>
+              <input type="number" id="h" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <span class="text-xs text-gray-400 min-w-[120px]">Plate thickness</span>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <label for="c" class="text-sm font-medium min-w-[120px] text-right">c (mm):</label>
+              <input type="number" id="c" value="35" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <span class="text-xs text-gray-400 min-w-[120px]">Concrete cover</span>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <label for="b" class="text-sm font-medium min-w-[120px] text-right">b (mm):</label>
+              <input type="number" id="b" value="1000" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <span class="text-xs text-gray-400 min-w-[120px]">Plate width</span>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <label for="n_layers" class="text-sm font-medium min-w-[120px] text-right">Number of layers:</label>
+              <input type="number" id="n_layers" value="1" min="1" max="3" step="1" required onchange="updateLayerSpacing()" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+
+            <div class="flex items-center gap-4">
+              <label for="layer_spacing" class="text-sm font-medium min-w-[120px] text-right">Layer spacing (mm):</label>
+              <input type="number" id="layer_spacing" value="30" step="any" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <span class="text-xs text-gray-400 min-w-[120px]">Auto: 3×bar diameter</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Material Parameters Section -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-xl font-semibold text-yellow-400 mb-4">Material Parameters</h3>
+
+          <div class="space-y-4">
+            <div class="flex items-center gap-4">
+              <label for="concrete_grade" class="text-sm font-medium min-w-[120px] text-right">Concrete Grade:</label>
+              <select id="concrete_grade" onchange="updateConcreteProperties()" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+                <option value="25">B25 (fck = 25 MPa)</option>
+                <option value="30">B30 (fck = 30 MPa)</option>
+                <option value="35" selected>B35 (fck = 35 MPa)</option>
+                <option value="40">B40 (fck = 40 MPa)</option>
+                <option value="45">B45 (fck = 45 MPa)</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <label for="fctm" class="text-sm font-medium min-w-[120px] text-right">f<sub>ctm</sub> (MPa):</label>
+              <input type="number" id="fctm" value="3.21" step="0.01" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <span id="fctm-override-warning" class="text-xs text-yellow-400 min-w-[120px]" style="display: none;">Manual override</span>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <label for="fyk" class="text-sm font-medium min-w-[120px] text-right">f<sub>yk</sub> (MPa):</label>
+              <input type="number" id="fyk" value="500" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <span class="text-xs text-gray-400 min-w-[120px]">Steel yield strength</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scenario Selection -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-xl font-semibold text-purple-400 mb-4">Analysis Scenarios</h3>
+
+          <div class="space-y-4">
+            <!-- General plate reinforcement row -->
+            <div class="bg-gray-600 rounded-lg p-4">
+              <h4 class="text-sm font-semibold text-blue-300 mb-3">General Plate Reinforcement</h4>
+              <div class="grid grid-cols-2 gap-4">
+                <label class="flex items-center space-x-3">
+                  <input type="checkbox" id="general-main" value="general-main" onchange="updateScenarioSelection()" class="form-checkbox text-blue-500" checked>
+                  <span class="text-sm">Main rebars</span>
+                </label>
+                <label class="flex items-center space-x-3">
+                  <input type="checkbox" id="general-crack" value="general-crack" onchange="updateScenarioSelection()" class="form-checkbox text-blue-500">
+                  <span class="text-sm">Crack control rebars</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Concentrated loads row -->
+            <div class="bg-gray-600 rounded-lg p-4">
+              <h4 class="text-sm font-semibold text-orange-300 mb-3">Areas with Max Moments & Concentrated Loads</h4>
+              <div class="grid grid-cols-2 gap-4">
+                <label class="flex items-center space-x-3">
+                  <input type="checkbox" id="concentrated-main" value="concentrated-main" onchange="updateScenarioSelection()" class="form-checkbox text-orange-500">
+                  <span class="text-sm">Main rebars</span>
+                </label>
+                <label class="flex items-center space-x-3">
+                  <input type="checkbox" id="concentrated-crack" value="concentrated-crack" onchange="updateScenarioSelection()" class="form-checkbox text-orange-500">
+                  <span class="text-sm">Crack control rebars</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bar Diameter Selection -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-xl font-semibold text-green-400 mb-4">Bar Diameter Selection</h3>
+
+          <div class="grid grid-cols-5 md:grid-cols-10 gap-4">
+            <label class="flex items-center space-x-2 text-sm">
+              <input type="checkbox" id="dia-5" value="5" onchange="updateBarSelection()" class="form-checkbox text-green-500">
+              <span>ø5</span>
+            </label>
+            <label class="flex items-center space-x-2 text-sm">
+              <input type="checkbox" id="dia-6" value="6" onchange="updateBarSelection()" class="form-checkbox text-green-500">
+              <span>ø6</span>
+            </label>
+            <label class="flex items-center space-x-2 text-sm">
+              <input type="checkbox" id="dia-7" value="7" onchange="updateBarSelection()" class="form-checkbox text-green-500">
+              <span>ø7</span>
+            </label>
+            <label class="flex items-center space-x-2 text-sm">
+              <input type="checkbox" id="dia-8" value="8" onchange="updateBarSelection()" class="form-checkbox text-green-500">
+              <span>ø8</span>
+            </label>
+            <label class="flex items-center space-x-2 text-sm">
+              <input type="checkbox" id="dia-10" value="10" onchange="updateBarSelection()" class="form-checkbox text-green-500" checked>
+              <span>ø10</span>
+            </label>
+            <label class="flex items-center space-x-2 text-sm">
+              <input type="checkbox" id="dia-12" value="12" onchange="updateBarSelection()" class="form-checkbox text-green-500" checked>
+              <span>ø12</span>
+            </label>
+            <label class="flex items-center space-x-2 text-sm">
+              <input type="checkbox" id="dia-16" value="16" onchange="updateBarSelection()" class="form-checkbox text-green-500" checked>
+              <span>ø16</span>
+            </label>
+            <label class="flex items-center space-x-2 text-sm">
+              <input type="checkbox" id="dia-20" value="20" onchange="updateBarSelection()" class="form-checkbox text-green-500" checked>
+              <span>ø20</span>
+            </label>
+            <label class="flex items-center space-x-2 text-sm">
+              <input type="checkbox" id="dia-25" value="25" onchange="updateBarSelection()" class="form-checkbox text-green-500">
+              <span>ø25</span>
+            </label>
+            <label class="flex items-center space-x-2 text-sm">
+              <input type="checkbox" id="dia-32" value="32" onchange="updateBarSelection()" class="form-checkbox text-green-500">
+              <span>ø32</span>
+            </label>
+          </div>
+        </div>
+
+      </form>
+
+      <!-- Calculate Button -->
+      <div class="space-y-2 print:hidden">
+        <button onclick="calculatePlateReinforcement()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+          Calculate Minimum Reinforcement
+        </button>
+      </div>
+
+      <!-- Results Section -->
+      <div id="plate-results" style="display:none;" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50">
+        <h3 class="text-xl font-semibold text-green-400 mb-4">Calculation Results</h3>
+
+        <!-- Results Table -->
+        <div id="plate-results-table" class="mb-6">
+          <!-- Results table will be inserted here -->
+        </div>
+
+        <!-- Calculation Steps -->
+        <div id="plate-calc-steps" class="text-white space-y-4">
+          <!-- Calculation boxes will be inserted here -->
+        </div>
+
+        <!-- Print Button -->
+        <div class="mt-8 print:hidden">
+          <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
+            Print to PDF
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Placeholder content for other tabs -->
+    <div id="content-beams" class="tab-content" style="display:none;">
+      <div class="text-center text-gray-400 py-12">
+        <p>Beam minimum reinforcement calculation will be available in a future update.</p>
+      </div>
+    </div>
+
+    <div id="content-columns" class="tab-content" style="display:none;">
+      <div class="text-center text-gray-400 py-12">
+        <p>Column minimum reinforcement calculation will be available in a future update.</p>
+      </div>
+    </div>
+
+    <div id="content-gulv" class="tab-content" style="display:none;">
+      <div class="text-center text-gray-400 py-12">
+        <p>Gulv på grunn calculation according to Gulvstøpeboka will be available in a future update.</p>
+      </div>
+    </div>
+
+    <!-- Footer Info -->
+    <div class="text-center text-sm text-gray-400 pt-6 border-t border-gray-600">
+      <p>Free structural engineering calculator by <span class="text-blue-400 font-semibold">Magnus Fjeld Olsen</span></p>
+      <p class="mt-1">Based on Eurocode 2 (EC2) standards</p>
+      <div class="mt-3 bg-gray-700 rounded-lg p-3 text-xs">
+        <p class="text-blue-300 font-semibold">Note on Norwegian Standards:</p>
+        <p class="text-gray-300">The maximum spacing requirements shown in this calculator follow EC2 9.3.1.1(3) from the international guideline. These requirements are identical to those specified in the Norwegian National Annex to Eurocode 2.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+
+</body>
+</html>

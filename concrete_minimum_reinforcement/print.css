@@ -1,0 +1,104 @@
+/* Concrete Minimum Reinforcement Calculator - Print Styles */
+
+@media print {
+  /* Only hide elements that should not print */
+  .print\\:hidden {
+    display: none !important;
+  }
+
+  /* Keep everything else exactly as it appears on screen */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Ensure page margins are reasonable */
+  @page {
+    margin: 0.5in;
+  }
+
+  /* Remove box shadows and border radius for cleaner print */
+  * {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Ensure main container uses full width */
+  main {
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  /* Override the max-w-6xl constraint */
+  .max-w-6xl {
+    max-width: none !important;
+  }
+
+  /* Preserve all grid layouts exactly as they appear on screen */
+  .grid {
+    display: grid !important;
+  }
+
+  .grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .md\\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .grid-cols-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  }
+
+  .md\\:grid-cols-10 {
+    grid-template-columns: repeat(10, minmax(0, 1fr)) !important;
+  }
+
+  /* Ensure sections maintain their full width */
+  .bg-gray-700,
+  .bg-gray-600,
+  .space-y-4,
+  .space-y-4 > div {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Specifically enforce full width for all input sections */
+  form,
+  form > div,
+  .bg-gray-700.rounded-lg,
+  .bg-gray-600.rounded-lg {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Ensure grid containers within sections use full width */
+  .grid.grid-cols-2,
+  .grid.md\\:grid-cols-2,
+  .grid.grid-cols-5,
+  .grid.md\\:grid-cols-10 {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Ensure tables don't break across pages inappropriately */
+  table {
+    page-break-inside: avoid;
+  }
+
+  /* Avoid breaking calculation sections */
+  #plate-calc-steps > div {
+    page-break-inside: avoid;
+  }
+
+  /* Preserve flexbox layouts */
+  .flex {
+    display: flex !important;
+  }
+
+  /* Ensure gaps are preserved */
+  .gap-4 {
+    gap: 1rem !important;
+  }
+}
