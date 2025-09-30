@@ -621,3 +621,46 @@
     color: #fca5a5 !important;
   }
 }
+
+/* Anchorage Length Calculator - Print Specific Styles */
+@media print {
+  /* Show only the detailed report when printing */
+  body > main > form,
+  body > main > #results > div:not(:has(#detailed-report)) {
+    display: none !important;
+  }
+
+  #detailed-report {
+    display: block !important;
+    background: white !important;
+  }
+
+  .report-content {
+    background: white !important;
+    color: black !important;
+    padding: 20px;
+  }
+
+  .report-content * {
+    color: black !important;
+  }
+
+  .report-content .text-gray-600 {
+    color: #4b5563 !important;
+  }
+
+  /* Page breaks */
+  .page-break-before {
+    page-break-before: always;
+  }
+
+  /* Table styling */
+  .report-content table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  .report-content table td {
+    padding: 4px 8px;
+  }
+}

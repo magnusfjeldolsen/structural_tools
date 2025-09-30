@@ -47,6 +47,16 @@
     <!-- Input Form -->
     <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="space-y-6">
 
+      <!-- Calculation Description -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-cyan-400 mb-4">Calculation Description (Optional)</h3>
+        <div class="space-y-2">
+          <label for="calc_description" class="text-sm text-gray-300">Describe this calculation (e.g., project name, location, member ID):</label>
+          <textarea id="calc_description" rows="3" placeholder="Example: Westside Building - Column C3 - Anchorage of bottom reinforcement..." class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-cyan-400 resize-y"></textarea>
+          <span class="text-xs text-gray-400">This description will appear at the top of the detailed report</span>
+        </div>
+      </div>
+
       <!-- Basic Parameters -->
       <div class="bg-gray-700 rounded-lg p-6">
         <h3 class="text-xl font-semibold text-blue-400 mb-4">Basic Parameters</h3>
@@ -286,12 +296,19 @@
         </div>
       </div>
 
-      <!-- Calculation Steps (Collapsible) -->
+      <!-- Detailed Report (Collapsible & Printable) -->
       <div class="bg-gray-700 rounded-lg p-6">
-        <h3 class="text-lg font-semibold text-white mb-3 cursor-pointer" onclick="toggleSteps()">
-          ▼ Detailed Calculation Steps
-        </h3>
-        <div id="calculation-steps" class="hidden mt-4 space-y-4 text-sm" style="font-family: 'Courier New', monospace;"></div>
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-lg font-semibold text-white cursor-pointer" onclick="toggleReport()">
+            ▼ Detailed Calculation Report
+          </h3>
+          <button type="button" onclick="printReport()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-lg transition print:hidden">
+            🖨️ Print Report
+          </button>
+        </div>
+        <div id="detailed-report" class="hidden mt-4">
+          <!-- Report content will be generated here -->
+        </div>
       </div>
     </div>
   </main>
@@ -302,9 +319,13 @@
       advancedParams.classList.toggle('hidden');
     }
 
-    function toggleSteps() {
-      const steps = document.getElementById('calculation-steps');
-      steps.classList.toggle('hidden');
+    function toggleReport() {
+      const report = document.getElementById('detailed-report');
+      report.classList.toggle('hidden');
+    }
+
+    function printReport() {
+      window.print();
     }
 
     // Update sigma_sEd calculated value display

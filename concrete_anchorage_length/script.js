@@ -296,9 +296,8 @@ function calculateAndShow() {
       <div class="flex justify-between font-bold text-yellow-300 text-lg"><span>l<sub>bd</sub>:</span><span>${results.lbd.toFixed(1)} mm</span></div>
     `;
 
-    // Calculation steps
-    const stepsDiv = document.getElementById('calculation-steps');
-    stepsDiv.innerHTML = results.steps.map(step => `<div class="text-gray-300">${step}</div>`).join('');
+    // Generate detailed report
+    generateDetailedReport(results);
 
     // Scroll to results
     document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -307,4 +306,188 @@ function calculateAndShow() {
     alert(`Calculation error: ${error.message}`);
     console.error(error);
   }
+}
+
+function generateDetailedReport(results) {
+  const reportDiv = document.getElementById('detailed-report');
+
+  // Get user description
+  const description = document.getElementById('calc_description').value.trim();
+
+  // Get all input values
+  const inputs = {
+    SEd: document.getElementById('SEd').value,
+    phi_l: document.getElementById('phi_l').value,
+    n_l: document.getElementById('n_l').value,
+    phi_t: document.getElementById('phi_t').value,
+    n_l_orthogonal: document.getElementById('n_l_orthogonal').value,
+    fck: document.getElementById('fck').value,
+    gamma_c: document.getElementById('gamma_c').value,
+    alpha_cc: document.getElementById('alpha_cc').value,
+    fyk: document.getElementById('fyk').value,
+    gamma_s: document.getElementById('gamma_s').value,
+    sigma_sEd: document.getElementById('sigma_sEd').value || 'Auto-calculated',
+    c: document.getElementById('c').value,
+    c1: document.getElementById('c1').value,
+    cc_phi_l: document.getElementById('cc_phi_l').value,
+    bond_condition: document.getElementById('bond_condition').value,
+    tension_compression: document.getElementById('tension_compression').value,
+    bar_type: document.getElementById('bar_type').value,
+    bar_shape: document.getElementById('bar_shape').value,
+    element_type: document.getElementById('element_type').value,
+    K: document.getElementById('K').value,
+    alpha_4: document.getElementById('alpha_4').value,
+    p: document.getElementById('p').value
+  };
+
+  const reportHTML = `
+    <div class="report-content bg-white text-gray-900 p-8 rounded-lg">
+      ${description ? `
+        <div class="mb-6 pb-4 border-b-2 border-gray-300">
+          <h2 class="text-2xl font-bold text-gray-800 mb-2">Calculation Description</h2>
+          <p class="text-gray-700 whitespace-pre-wrap">${description}</p>
+        </div>
+      ` : ''}
+
+      <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Concrete Anchorage Length Calculation</h2>
+        <p class="text-sm text-gray-600">According to Eurocode 2 Section 8.4</p>
+        <p class="text-sm text-gray-600">Calculation Date: ${new Date().toLocaleString()}</p>
+      </div>
+
+      <!-- INPUT PARAMETERS -->
+      <div class="mb-6 page-break-before">
+        <h3 class="text-xl font-bold text-blue-700 mb-3 border-b-2 border-blue-300 pb-1">INPUT PARAMETERS</h3>
+
+        <div class="grid grid-cols-2 gap-6">
+          <!-- Basic Parameters -->
+          <div>
+            <h4 class="text-lg font-semibold text-gray-700 mb-2">Basic Parameters</h4>
+            <table class="w-full text-sm">
+              <tr><td class="py-1 font-medium">S<sub>Ed</sub></td><td class="py-1">${inputs.SEd} kN</td><td class="py-1 text-gray-600">Design tension force</td></tr>
+              <tr><td class="py-1 font-medium">φ<sub>l</sub></td><td class="py-1">${inputs.phi_l} mm</td><td class="py-1 text-gray-600">Rebar diameter</td></tr>
+              <tr><td class="py-1 font-medium">n<sub>l</sub></td><td class="py-1">${inputs.n_l}</td><td class="py-1 text-gray-600">Number of rebars</td></tr>
+              <tr><td class="py-1 font-medium">φ<sub>t</sub></td><td class="py-1">${inputs.phi_t} mm</td><td class="py-1 text-gray-600">Transverse rebar dia.</td></tr>
+              <tr><td class="py-1 font-medium">n<sub>l,orth</sub></td><td class="py-1">${inputs.n_l_orthogonal}</td><td class="py-1 text-gray-600">Orthogonal bars</td></tr>
+            </table>
+          </div>
+
+          <!-- Material Properties -->
+          <div>
+            <h4 class="text-lg font-semibold text-gray-700 mb-2">Material Properties</h4>
+            <table class="w-full text-sm">
+              <tr><td class="py-1 font-medium">f<sub>ck</sub></td><td class="py-1">${inputs.fck} MPa</td><td class="py-1 text-gray-600">Concrete strength</td></tr>
+              <tr><td class="py-1 font-medium">γ<sub>c</sub></td><td class="py-1">${inputs.gamma_c}</td><td class="py-1 text-gray-600">Concrete safety factor</td></tr>
+              <tr><td class="py-1 font-medium">α<sub>cc</sub></td><td class="py-1">${inputs.alpha_cc}</td><td class="py-1 text-gray-600">Concrete coefficient</td></tr>
+              <tr><td class="py-1 font-medium">f<sub>yk</sub></td><td class="py-1">${inputs.fyk} MPa</td><td class="py-1 text-gray-600">Steel strength</td></tr>
+              <tr><td class="py-1 font-medium">γ<sub>s</sub></td><td class="py-1">${inputs.gamma_s}</td><td class="py-1 text-gray-600">Steel safety factor</td></tr>
+              <tr><td class="py-1 font-medium">σ<sub>sEd</sub></td><td class="py-1">${inputs.sigma_sEd}</td><td class="py-1 text-gray-600">Design stress</td></tr>
+            </table>
+          </div>
+
+          <!-- Cover & Spacing -->
+          <div>
+            <h4 class="text-lg font-semibold text-gray-700 mb-2">Cover & Spacing</h4>
+            <table class="w-full text-sm">
+              <tr><td class="py-1 font-medium">c</td><td class="py-1">${inputs.c} mm</td><td class="py-1 text-gray-600">Cover (top/bottom)</td></tr>
+              <tr><td class="py-1 font-medium">c<sub>1</sub></td><td class="py-1">${inputs.c1} mm</td><td class="py-1 text-gray-600">Cover (sides)</td></tr>
+              <tr><td class="py-1 font-medium">c/c φ<sub>l</sub></td><td class="py-1">${inputs.cc_phi_l} mm</td><td class="py-1 text-gray-600">Rebar spacing</td></tr>
+            </table>
+          </div>
+
+          <!-- Configuration -->
+          <div>
+            <h4 class="text-lg font-semibold text-gray-700 mb-2">Configuration</h4>
+            <table class="w-full text-sm">
+              <tr><td class="py-1 font-medium">Bond condition</td><td class="py-1 capitalize" colspan="2">${inputs.bond_condition}</td></tr>
+              <tr><td class="py-1 font-medium">Loading type</td><td class="py-1 capitalize" colspan="2">${inputs.tension_compression}</td></tr>
+              <tr><td class="py-1 font-medium">Bar type</td><td class="py-1" colspan="2">${inputs.bar_type}</td></tr>
+              <tr><td class="py-1 font-medium">Bar shape</td><td class="py-1 capitalize" colspan="2">${inputs.bar_shape}</td></tr>
+              <tr><td class="py-1 font-medium">Element type</td><td class="py-1 capitalize" colspan="2">${inputs.element_type}</td></tr>
+              <tr><td class="py-1 font-medium">K</td><td class="py-1" colspan="2">${inputs.K}</td></tr>
+              <tr><td class="py-1 font-medium">α<sub>4</sub></td><td class="py-1" colspan="2">${inputs.alpha_4}</td></tr>
+              <tr><td class="py-1 font-medium">p</td><td class="py-1" colspan="2">${inputs.p} MPa</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- CALCULATION RESULTS -->
+      <div class="mb-6 page-break-before">
+        <h3 class="text-xl font-bold text-green-700 mb-3 border-b-2 border-green-300 pb-1">CALCULATION RESULTS</h3>
+
+        <div class="bg-blue-50 border-l-4 border-blue-600 p-4 mb-4">
+          <div class="text-3xl font-bold text-blue-900">l<sub>bd</sub> = ${results.lbd.toFixed(1)} mm</div>
+          <div class="text-sm text-blue-700 mt-1">Design Anchorage Length</div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-6">
+          <div>
+            <h4 class="text-lg font-semibold text-gray-700 mb-2">Bond Strength (EC2 8.4.2)</h4>
+            <table class="w-full text-sm">
+              <tr><td class="py-1 font-medium">η<sub>1</sub></td><td class="py-1">${results.eta_1.toFixed(2)}</td><td class="py-1 text-gray-600">Bond condition factor</td></tr>
+              <tr><td class="py-1 font-medium">η<sub>2</sub></td><td class="py-1">${results.eta_2.toFixed(3)}</td><td class="py-1 text-gray-600">Bar diameter factor</td></tr>
+              <tr><td class="py-1 font-medium">f<sub>ctk,0.05</sub></td><td class="py-1">${results.fctk_005.toFixed(2)} MPa</td><td class="py-1 text-gray-600">Concrete tensile str.</td></tr>
+              <tr><td class="py-1 font-medium">f<sub>ctd</sub></td><td class="py-1">${results.fctd.toFixed(3)} MPa</td><td class="py-1 text-gray-600">Design tensile str.</td></tr>
+              <tr class="font-bold bg-blue-100"><td class="py-1">f<sub>bd</sub></td><td class="py-1">${results.fbd.toFixed(3)} MPa</td><td class="py-1 text-gray-600">Design bond strength</td></tr>
+            </table>
+          </div>
+
+          <div>
+            <h4 class="text-lg font-semibold text-gray-700 mb-2">Basic Length (EC2 8.4.3)</h4>
+            <table class="w-full text-sm">
+              <tr><td class="py-1 font-medium">f<sub>yd</sub></td><td class="py-1">${results.fyd.toFixed(2)} MPa</td><td class="py-1 text-gray-600">Design yield strength</td></tr>
+              <tr><td class="py-1 font-medium">σ<sub>sd</sub></td><td class="py-1">${results.sigma_sd.toFixed(2)} MPa</td><td class="py-1 text-gray-600">Design stress</td></tr>
+              <tr><td class="py-1 font-medium">A<sub>s,l</sub></td><td class="py-1">${results.As_l.toFixed(2)} mm²</td><td class="py-1 text-gray-600">Total rebar area</td></tr>
+              <tr class="font-bold bg-green-100"><td class="py-1">l<sub>b,rqd</sub></td><td class="py-1">${results.lb_rqd.toFixed(2)} mm</td><td class="py-1 text-gray-600">Basic anchorage length</td></tr>
+            </table>
+          </div>
+
+          <div>
+            <h4 class="text-lg font-semibold text-gray-700 mb-2">Alpha Factors</h4>
+            <table class="w-full text-sm">
+              <tr><td class="py-1 font-medium">α<sub>1</sub></td><td class="py-1">${results.alpha_1.toFixed(3)}</td><td class="py-1 text-gray-600">Bar shape</td></tr>
+              <tr><td class="py-1 font-medium">α<sub>2</sub></td><td class="py-1">${results.alpha_2.toFixed(3)}</td><td class="py-1 text-gray-600">Concrete cover</td></tr>
+              <tr><td class="py-1 font-medium">α<sub>3</sub></td><td class="py-1">${results.alpha_3.toFixed(3)}</td><td class="py-1 text-gray-600">Transverse reinf.</td></tr>
+              <tr><td class="py-1 font-medium">α<sub>4</sub></td><td class="py-1">${results.alpha_4.toFixed(3)}</td><td class="py-1 text-gray-600">Welded reinf.</td></tr>
+              <tr><td class="py-1 font-medium">α<sub>5</sub></td><td class="py-1">${results.alpha_5.toFixed(3)}</td><td class="py-1 text-gray-600">Transverse pressure</td></tr>
+              <tr class="font-bold bg-purple-100"><td class="py-1">α<sub>total</sub></td><td class="py-1">${results.alpha_total.toFixed(4)}</td><td class="py-1 text-gray-600">Product of all α</td></tr>
+            </table>
+          </div>
+
+          <div>
+            <h4 class="text-lg font-semibold text-gray-700 mb-2">Final Calculation</h4>
+            <table class="w-full text-sm">
+              <tr><td class="py-1 font-medium">c<sub>d</sub></td><td class="py-1">${results.cd.toFixed(2)} mm</td><td class="py-1 text-gray-600">Minimum cover</td></tr>
+              <tr><td class="py-1 font-medium">a</td><td class="py-1">${results.a.toFixed(2)} mm</td><td class="py-1 text-gray-600">Clear spacing</td></tr>
+              <tr><td class="py-1 font-medium">K</td><td class="py-1">${results.K}</td><td class="py-1 text-gray-600">Transverse coeff.</td></tr>
+              <tr><td class="py-1 font-medium">l<sub>b,min</sub></td><td class="py-1">${results.lb_min.toFixed(2)} mm</td><td class="py-1 text-gray-600">Minimum length</td></tr>
+              <tr class="font-bold bg-yellow-100 text-lg"><td class="py-1">l<sub>bd</sub></td><td class="py-1">${results.lbd.toFixed(1)} mm</td><td class="py-1 text-gray-600">Design anch. length</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <div class="mt-4 ${results.product_ok ? 'bg-green-50 border-green-500' : 'bg-red-50 border-red-500'} border-l-4 p-3">
+          <div class="font-semibold ${results.product_ok ? 'text-green-800' : 'text-red-800'}">
+            Constraint Check: α<sub>2</sub> × α<sub>3</sub> × α<sub>5</sub> = ${results.alpha_product.toFixed(3)}
+            ${results.product_ok ? '✓ ≥ 0.7' : '✗ < 0.7 (Adjust factors!)'}
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAILED CALCULATION STEPS -->
+      <div class="mb-6 page-break-before">
+        <h3 class="text-xl font-bold text-purple-700 mb-3 border-b-2 border-purple-300 pb-1">DETAILED CALCULATION STEPS</h3>
+        <div class="space-y-2 text-sm font-mono bg-gray-50 p-4 rounded" style="font-family: 'Courier New', monospace;">
+          ${results.steps.map(step => `<div class="text-gray-800">${step}</div>`).join('')}
+        </div>
+      </div>
+
+      <div class="text-xs text-gray-500 mt-6 pt-4 border-t border-gray-300 text-center">
+        Generated by Concrete Anchorage Length Calculator | Eurocode 2 Section 8.4
+      </div>
+    </div>
+  `;
+
+  reportDiv.innerHTML = reportHTML;
 }
