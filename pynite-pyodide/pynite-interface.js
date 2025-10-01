@@ -24,6 +24,8 @@ async function initializePyodide() {
         console.log("Installing PyNite...");
         await pyodide.runPythonAsync(`
             import micropip
+            await micropip.install("prettytable")
+            await micropip.install("setuptools")
             await micropip.install("PyniteFEA")
         `);
 
