@@ -8,6 +8,7 @@ let frameData = {
 let nodeCounter = 1;
 let elementCounter = 1;
 let loadCounter = 1;
+let lastAnalysisResults = null; // Store last analysis results for diagram display
 
 // Initialize Pyodide and PyNite
 async function initializePyodide() {
@@ -455,7 +456,33 @@ function addLoad() {
 
 // Remove functions
 function removeNode(id) {
-    document.getElementById(id).remove();
+    // Get the node name from the id
+    const nodeDiv = document.getElementById(id);
+    const nodeName = nodeDiv.querySelector('input[readonly]').value;
+
+    // Remove all elements connected to this node
+    const elementsToRemove = [];
+    document.querySelectorAll('#elements-container > div').forEach(elementDiv => {
+        const nodeI = elementDiv.querySelector('.element-i').value;
+        const nodeJ = elementDiv.querySelector('.element-j').value;
+        if (nodeI === nodeName || nodeJ === nodeName) {
+            elementsToRemove.push(elementDiv.id);
+        }
+    });
+    elementsToRemove.forEach(elemId => document.getElementById(elemId).remove());
+
+    // Remove all loads applied to this node
+    const loadsToRemove = [];
+    document.querySelectorAll('#loads-container > div').forEach(loadDiv => {
+        const loadNode = loadDiv.querySelector('.load-node').value;
+        if (loadNode === nodeName) {
+            loadsToRemove.push(loadDiv.id);
+        }
+    });
+    loadsToRemove.forEach(loadId => document.getElementById(loadId).remove());
+
+    // Remove the node itself (support is automatically removed with the node)
+    nodeDiv.remove();
     updateVisualization();
 }
 
@@ -469,42 +496,9 @@ function removeLoad(id) {
     updateVisualization();
 }
 
-// Load example frame (simply supported beam)
+// Load example frame (cantilever - default example)
 function loadExample() {
-    // Clear existing
-    clearAll();
-
-    // Add nodes
-    addNode();
-    document.querySelector('#node-1 .node-x').value = 0;
-    document.querySelector('#node-1 .node-y').value = 0;
-    document.querySelector('#node-1 .node-support').value = 'pinned';
-
-    addNode();
-    document.querySelector('#node-2 .node-x').value = 5;
-    document.querySelector('#node-2 .node-y').value = 0;
-    document.querySelector('#node-2 .node-support').value = 'roller-y';
-
-    addNode();
-    document.querySelector('#node-3 .node-x').value = 2.5;
-    document.querySelector('#node-3 .node-y').value = 0;
-    document.querySelector('#node-3 .node-support').value = 'free';
-
-    // Add elements
-    addElement();
-    document.querySelector('#element-1 .element-i').value = 'N1';
-    document.querySelector('#element-1 .element-j').value = 'N3';
-
-    addElement();
-    document.querySelector('#element-2 .element-i').value = 'N3';
-    document.querySelector('#element-2 .element-j').value = 'N2';
-
-    // Add load
-    addLoad();
-    document.querySelector('#load-1 .load-node').value = 'N3';
-    document.querySelector('#load-1 .load-fy').value = '-10';
-
-    updateVisualization();
+    loadCantileverExample();
 }
 
 // Load cantilever beam example
@@ -661,6 +655,12 @@ function updateVisualization() {
         }
     });
 
+    // Draw diagrams if analysis results are available
+    const diagramType = document.getElementById('diagram-type')?.value;
+    if (diagramType && diagramType !== 'none' && lastAnalysisResults && lastAnalysisResults.diagrams) {
+        drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, lastAnalysisResults, diagramType);
+    }
+
     // Draw nodes
     nodes.forEach(node => {
         const g = svg.append("g")
@@ -671,7 +671,61 @@ function updateVisualization() {
             .attr("r", 6)
             .attr("fill", getSupportColor(node.support))
             .attr("stroke", "#fff")
-            .attr("stroke-width", 2);
+            .attr("stroke-width", 2)
+            .style("cursor", "pointer");
+
+        // Add hover interaction for nodes
+        if (lastAnalysisResults && lastAnalysisResults.nodes && lastAnalysisResults.nodes[node.name]) {
+            const nodeData = lastAnalysisResults.nodes[node.name];
+
+            g.on("mouseenter", function(event) {
+                // Create tooltip
+                const tooltip = svg.append("g")
+                    .attr("class", "node-tooltip")
+                    .attr("transform", `translate(${xScale(parseFloat(node.x)) + 15}, ${yScale(parseFloat(node.y)) - 10})`);
+
+                // Tooltip background
+                const tooltipText = [
+                    `Node: ${node.name}`,
+                    `DX: ${(nodeData.DX * 1000).toFixed(2)} mm`,
+                    `DY: ${(nodeData.DY * 1000).toFixed(2)} mm`,
+                    `RZ: ${(nodeData.RZ * 1000).toFixed(3)} mrad`
+                ];
+
+                if (nodeData.reactions && (Math.abs(nodeData.reactions.FX) > 0.01 ||
+                    Math.abs(nodeData.reactions.FY) > 0.01 ||
+                    Math.abs(nodeData.reactions.MZ) > 0.01)) {
+                    tooltipText.push(`RFX: ${(nodeData.reactions.FX / 1000).toFixed(2)} kN`);
+                    tooltipText.push(`RFY: ${(nodeData.reactions.FY / 1000).toFixed(2)} kN`);
+                    tooltipText.push(`RMZ: ${(nodeData.reactions.MZ / 1000).toFixed(2)} kNm`);
+                }
+
+                const lineHeight = 14;
+                const padding = 8;
+                const boxWidth = 150;
+                const boxHeight = tooltipText.length * lineHeight + padding * 2;
+
+                tooltip.append("rect")
+                    .attr("width", boxWidth)
+                    .attr("height", boxHeight)
+                    .attr("fill", "#1f2937")
+                    .attr("stroke", "#60A5FA")
+                    .attr("stroke-width", 2)
+                    .attr("rx", 4);
+
+                tooltipText.forEach((text, i) => {
+                    tooltip.append("text")
+                        .attr("x", padding)
+                        .attr("y", padding + (i + 1) * lineHeight)
+                        .attr("fill", "#E5E7EB")
+                        .attr("font-size", "11px")
+                        .text(text);
+                });
+            })
+            .on("mouseleave", function() {
+                svg.selectAll(".node-tooltip").remove();
+            });
+        }
 
         // Node label
         g.append("text")
@@ -701,6 +755,11 @@ function updateVisualization() {
             }
         }
     });
+}
+
+// Update visualization with diagram
+function updateVisualizationWithDiagram() {
+    updateVisualization();
 }
 
 // Helper functions for visualization
@@ -852,6 +911,9 @@ result
         const results = JSON.parse(analysisResult);
 
         if (results.success) {
+            // Store results for diagram display
+            lastAnalysisResults = results;
+
             // Format results for display
             let html = '<div class="space-y-4">';
 
@@ -889,6 +951,9 @@ result
             if (results.diagrams) {
                 displayForceDiagrams(results.diagrams);
             }
+
+            // Update visualization with diagrams
+            updateVisualization();
 
         } else {
             document.getElementById('results-container').innerHTML = `<div class="text-red-400">Analysis failed: ${results.message}</div>`;
@@ -1247,4 +1312,349 @@ function createSingleDiagram(elementName, diagramType, xCoords, yValues, color, 
     }
 
     return diagramDiv;
+}
+
+// Draw diagrams directly on elements in the main visualization
+function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, diagramType) {
+    const scale = parseFloat(document.getElementById('diagram-scale')?.value || 1.0);
+
+    elements.forEach(element => {
+        const nodeI = nodes.find(n => n.name === element.nodeI);
+        const nodeJ = nodes.find(n => n.name === element.nodeJ);
+
+        if (!nodeI || !nodeJ) return;
+
+        // Get diagram data for this element
+        const diagramData = results.diagrams[element.name];
+        if (!diagramData) return;
+
+        // Select the appropriate data array
+        let dataArray, color, label;
+        if (diagramType === 'moment') {
+            dataArray = diagramData.moments;
+            color = '#ef4444';
+            label = 'Moment';
+        } else if (diagramType === 'shear') {
+            dataArray = diagramData.shears;
+            color = '#22c55e';
+            label = 'Shear';
+        } else if (diagramType === 'axial') {
+            dataArray = diagramData.axials;
+            color = '#3b82f6';
+            label = 'Axial';
+        } else if (diagramType === 'displacement') {
+            // For displacement, use node displacement data
+            const nodeIData = results.nodes[element.nodeI];
+            const nodeJData = results.nodes[element.nodeJ];
+            if (!nodeIData || !nodeJData) return;
+
+            // Draw displacement diagram (simplified - just endpoints)
+            const x1 = xScale(parseFloat(nodeI.x));
+            const y1 = yScale(parseFloat(nodeI.y));
+            const x2 = xScale(parseFloat(nodeJ.x));
+            const y2 = yScale(parseFloat(nodeJ.y));
+
+            const dx1 = nodeIData.DX * scale * 1000; // Convert to pixels
+            const dy1 = nodeIData.DY * scale * 1000;
+            const dx2 = nodeJData.DX * scale * 1000;
+            const dy2 = nodeJData.DY * scale * 1000;
+
+            // Draw displaced shape
+            svg.append("line")
+                .attr("x1", x1 + dx1)
+                .attr("y1", y1 - dy1) // Negative because SVG y-axis is inverted
+                .attr("x2", x2 + dx2)
+                .attr("y2", y2 - dy2)
+                .attr("stroke", "#fbbf24")
+                .attr("stroke-width", 2)
+                .attr("stroke-dasharray", "5,5")
+                .attr("opacity", 0.7);
+
+            return;
+        }
+
+        if (!dataArray || dataArray.length === 0) return;
+
+        // Calculate element geometry
+        const x1 = xScale(parseFloat(nodeI.x));
+        const y1 = yScale(parseFloat(nodeI.y));
+        const x2 = xScale(parseFloat(nodeJ.x));
+        const y2 = yScale(parseFloat(nodeJ.y));
+
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+
+        // Perpendicular direction (rotate by 90 degrees)
+        const perpAngle = angle + Math.PI / 2;
+        const perpX = Math.cos(perpAngle);
+        const perpY = Math.sin(perpAngle);
+
+        // Create path data for diagram
+        const xCoords = diagramData.x_coordinates;
+        const pathData = [];
+
+        for (let i = 0; i < dataArray.length; i++) {
+            const localX = xCoords[i];
+            const value = dataArray[i];
+
+            // Position along element
+            const t = localX / diagramData.length;
+            const globalX = x1 + dx * t;
+            const globalY = y1 + dy * t;
+
+            // Offset perpendicular to element
+            // For moments: positive values above the element (opposite perpendicular direction)
+            // For shear/axial: use standard perpendicular direction
+            let offset = value * scale * 0.0001; // Scale factor for visualization
+            if (diagramType === 'moment') {
+                offset = -offset; // Invert for moment diagram convention
+            }
+            const offsetX = globalX + perpX * offset;
+            const offsetY = globalY + perpY * offset;
+
+            pathData.push({ x: offsetX, y: offsetY });
+        }
+
+        // Draw the diagram path
+        const line = d3.line()
+            .x(d => d.x)
+            .y(d => d.y)
+            .curve(d3.curveMonotoneX);
+
+        // Draw baseline (element line)
+        svg.append("line")
+            .attr("x1", x1)
+            .attr("y1", y1)
+            .attr("x2", x2)
+            .attr("y2", y2)
+            .attr("stroke", "#9ca3af")
+            .attr("stroke-width", 1)
+            .attr("stroke-dasharray", "2,2")
+            .attr("opacity", 0.5);
+
+        // Draw diagram curve
+        svg.append("path")
+            .datum(pathData)
+            .attr("fill", "none")
+            .attr("stroke", color)
+            .attr("stroke-width", 2)
+            .attr("d", line);
+
+        // Draw filled area between baseline and curve
+        const areaData = [
+            { x: x1, y: y1 },
+            ...pathData,
+            { x: x2, y: y2 }
+        ];
+
+        svg.append("path")
+            .datum(areaData)
+            .attr("fill", color)
+            .attr("fill-opacity", 0.2)
+            .attr("stroke", "none")
+            .attr("d", d3.line()
+                .x(d => d.x)
+                .y(d => d.y));
+
+        // Add invisible hover points along the diagram
+        pathData.forEach((point, i) => {
+            const circle = svg.append("circle")
+                .attr("cx", point.x)
+                .attr("cy", point.y)
+                .attr("r", 8)
+                .attr("fill", "transparent")
+                .attr("stroke", "none")
+                .style("cursor", "pointer");
+
+            // Add hover interaction
+            circle.on("mouseenter", function(event) {
+                // Highlight the point
+                svg.append("circle")
+                    .attr("class", "diagram-hover-point")
+                    .attr("cx", point.x)
+                    .attr("cy", point.y)
+                    .attr("r", 4)
+                    .attr("fill", color)
+                    .attr("stroke", "#fff")
+                    .attr("stroke-width", 2);
+
+                // Create tooltip with ALL diagram values
+                const tooltip = svg.append("g")
+                    .attr("class", "diagram-tooltip");
+
+                const tooltipText = [
+                    `Element: ${element.name}`,
+                    `Position: ${xCoords[i].toFixed(3)} m`,
+                    `---`
+                ];
+
+                // Add all available diagram values
+                if (diagramData.moments && diagramData.moments[i] !== undefined) {
+                    tooltipText.push(`Moment: ${(diagramData.moments[i] / 1000).toFixed(2)} kNm`);
+                }
+                if (diagramData.shears && diagramData.shears[i] !== undefined) {
+                    tooltipText.push(`Shear: ${(diagramData.shears[i] / 1000).toFixed(2)} kN`);
+                }
+                if (diagramData.axials && diagramData.axials[i] !== undefined) {
+                    tooltipText.push(`Axial: ${(diagramData.axials[i] / 1000).toFixed(2)} kN`);
+                }
+
+                // Add node displacements if at element endpoints
+                const nodeIData = results.nodes[element.nodeI];
+                const nodeJData = results.nodes[element.nodeJ];
+                if (i === 0 && nodeIData) {
+                    tooltipText.push(`---`);
+                    tooltipText.push(`Node ${element.nodeI}:`);
+                    tooltipText.push(`  DX: ${(nodeIData.DX * 1000).toFixed(2)} mm`);
+                    tooltipText.push(`  DY: ${(nodeIData.DY * 1000).toFixed(2)} mm`);
+                    tooltipText.push(`  RZ: ${(nodeIData.RZ * 1000).toFixed(3)} mrad`);
+                } else if (i === pathData.length - 1 && nodeJData) {
+                    tooltipText.push(`---`);
+                    tooltipText.push(`Node ${element.nodeJ}:`);
+                    tooltipText.push(`  DX: ${(nodeJData.DX * 1000).toFixed(2)} mm`);
+                    tooltipText.push(`  DY: ${(nodeJData.DY * 1000).toFixed(2)} mm`);
+                    tooltipText.push(`  RZ: ${(nodeJData.RZ * 1000).toFixed(3)} mrad`);
+                }
+
+                const lineHeight = 14;
+                const padding = 8;
+                const boxWidth = 160;
+                const boxHeight = tooltipText.length * lineHeight + padding * 2;
+
+                // Position tooltip to avoid going off screen
+                let tooltipX = point.x + 10;
+                let tooltipY = point.y - boxHeight / 2;
+
+                // Adjust if tooltip would go off the right edge
+                const svgWidth = svg.node().clientWidth;
+                if (tooltipX + boxWidth > svgWidth) {
+                    tooltipX = point.x - boxWidth - 10;
+                }
+
+                // Adjust if tooltip would go off the top or bottom edge
+                const svgHeight = 400; // From the SVG height
+                if (tooltipY < 0) {
+                    tooltipY = 10;
+                } else if (tooltipY + boxHeight > svgHeight) {
+                    tooltipY = svgHeight - boxHeight - 10;
+                }
+
+                tooltip.attr("transform", `translate(${tooltipX}, ${tooltipY})`);
+
+                tooltip.append("rect")
+                    .attr("width", boxWidth)
+                    .attr("height", boxHeight)
+                    .attr("fill", "#1f2937")
+                    .attr("stroke", color)
+                    .attr("stroke-width", 2)
+                    .attr("rx", 4);
+
+                tooltipText.forEach((text, idx) => {
+                    const isHeader = text === '---';
+                    const isIndented = text.startsWith('  ');
+                    const xOffset = isIndented ? padding + 10 : padding;
+
+                    tooltip.append("text")
+                        .attr("x", xOffset)
+                        .attr("y", padding + (idx + 1) * lineHeight)
+                        .attr("fill", isHeader ? "#9ca3af" : "#E5E7EB")
+                        .attr("font-size", "11px")
+                        .attr("font-weight", (idx === 0 || text.includes('Node')) ? "bold" : "normal")
+                        .text(isHeader ? "─────────────" : text);
+                });
+            })
+            .on("mouseleave", function() {
+                svg.selectAll(".diagram-tooltip").remove();
+                svg.selectAll(".diagram-hover-point").remove();
+            });
+        });
+
+        // Add max/min value labels
+        const maxValue = Math.max(...dataArray.map(Math.abs));
+        if (maxValue > 0) {
+            const maxIndex = dataArray.findIndex(v => Math.abs(v) === maxValue);
+            const maxPoint = pathData[maxIndex];
+
+            svg.append("text")
+                .attr("x", maxPoint.x)
+                .attr("y", maxPoint.y - 10)
+                .attr("text-anchor", "middle")
+                .attr("fill", "#fbbf24")
+                .attr("font-size", "10px")
+                .attr("font-weight", "bold")
+                .text(`${(dataArray[maxIndex] / 1000).toFixed(1)}k`);
+        }
+    });
+}
+
+// Autoscale diagram to 1/10 of longest element
+function autoscaleDiagram() {
+    const nodes = getNodesFromInputs();
+    const elements = getElementsFromInputs();
+
+    if (elements.length === 0) {
+        alert("No elements to scale against.");
+        return;
+    }
+
+    // Find longest element
+    let maxLength = 0;
+    elements.forEach(element => {
+        const nodeI = nodes.find(n => n.name === element.nodeI);
+        const nodeJ = nodes.find(n => n.name === element.nodeJ);
+        if (nodeI && nodeJ) {
+            const dx = parseFloat(nodeJ.x) - parseFloat(nodeI.x);
+            const dy = parseFloat(nodeJ.y) - parseFloat(nodeI.y);
+            const length = Math.sqrt(dx * dx + dy * dy);
+            maxLength = Math.max(maxLength, length);
+        }
+    });
+
+    if (!lastAnalysisResults || !lastAnalysisResults.diagrams) {
+        alert("Please run analysis first.");
+        return;
+    }
+
+    // Find maximum diagram amplitude
+    const diagramType = document.getElementById('diagram-type')?.value;
+    if (!diagramType || diagramType === 'none') {
+        alert("Please select a diagram type first.");
+        return;
+    }
+
+    let maxAmplitude = 0;
+    for (const [elementName, diagramData] of Object.entries(lastAnalysisResults.diagrams)) {
+        let dataArray;
+        if (diagramType === 'moment') {
+            dataArray = diagramData.moments;
+        } else if (diagramType === 'shear') {
+            dataArray = diagramData.shears;
+        } else if (diagramType === 'axial') {
+            dataArray = diagramData.axials;
+        } else if (diagramType === 'displacement') {
+            // For displacement, use node displacements
+            continue;
+        }
+
+        if (dataArray) {
+            const localMax = Math.max(...dataArray.map(Math.abs));
+            maxAmplitude = Math.max(maxAmplitude, localMax);
+        }
+    }
+
+    if (maxAmplitude === 0) {
+        alert("No diagram data available.");
+        return;
+    }
+
+    // Calculate scale: we want max amplitude to be 1/10 of longest element
+    // Scale factor = (targetPixelSize / maxAmplitude) where targetPixelSize relates to element length
+    // Since we multiply by 0.0001 in drawing, we adjust here
+    const targetRatio = maxLength / 10;
+    const scaleValue = targetRatio / (maxAmplitude * 0.0001);
+
+    document.getElementById('diagram-scale').value = scaleValue.toFixed(2);
+    updateVisualization();
 }
