@@ -21,11 +21,71 @@ async function initializePyodide() {
         console.log("Loading micropip...");
         await pyodide.loadPackage("micropip");
 
-        console.log("Installing PyNite...");
+        console.log("Installing dependencies...");
         await pyodide.runPythonAsync(`
             import micropip
             await micropip.install("prettytable")
-            await micropip.install("setuptools")
+            await micropip.install("scipy")
+            await micropip.install("matplotlib")
+        `);
+
+        console.log("Patching environment for PyNite compatibility...");
+        // Create comprehensive mock pip module with pkg_resources
+        await pyodide.runPythonAsync(`
+import sys
+from types import ModuleType
+
+# Create a mock Distribution class
+class MockDistribution:
+    def __init__(self, name, version='1.4.0'):
+        self.project_name = name
+        self.version = version
+        self.key = name.lower()
+
+# Create a mock working_set (list of installed packages)
+class MockWorkingSet:
+    def __init__(self):
+        self.packages = [
+            MockDistribution('PyNiteFEA', '1.4.0'),
+            MockDistribution('numpy', '1.24.0'),
+            MockDistribution('scipy', '1.11.0'),
+            MockDistribution('matplotlib', '3.7.0'),
+            MockDistribution('prettytable', '3.0.0'),
+        ]
+
+    def __iter__(self):
+        return iter(self.packages)
+
+    def by_key(self):
+        return {p.key: p for p in self.packages}
+
+# Create mock pkg_resources module with full API
+pkg_resources = ModuleType('pkg_resources')
+pkg_resources.get_distribution = lambda name: MockDistribution(name)
+pkg_resources.working_set = MockWorkingSet()
+pkg_resources.DistributionNotFound = Exception
+pkg_resources.VersionConflict = Exception
+pkg_resources.RequirementParseError = Exception
+pkg_resources.parse_version = lambda v: v
+pkg_resources.Requirement = type('Requirement', (), {'parse': lambda s: s})
+
+# Create mock pip structure
+pip = ModuleType('pip')
+pip._vendor = ModuleType('pip._vendor')
+pip._vendor.pkg_resources = pkg_resources
+
+# Register all modules
+sys.modules['pip'] = pip
+sys.modules['pip._vendor'] = pip._vendor
+sys.modules['pip._vendor.pkg_resources'] = pkg_resources
+sys.modules['pkg_resources'] = pkg_resources  # Also make available as standalone
+
+print("Pip mocking complete - working_set ready")
+        `);
+
+        console.log("Installing PyNite...");
+        await pyodide.runPythonAsync(`
+            import micropip
             await micropip.install("PyniteFEA")
         `);
 
@@ -325,6 +385,13 @@ function addNode() {
     `;
 
     container.appendChild(nodeDiv);
+
+    // Add event listeners to all inputs for real-time updates
+    nodeDiv.querySelectorAll('input, select').forEach(input => {
+        input.addEventListener('input', updateVisualization);
+        input.addEventListener('change', updateVisualization);
+    });
+
     nodeCounter++;
     updateVisualization();
 }
@@ -347,6 +414,13 @@ function addElement() {
     `;
 
     container.appendChild(elementDiv);
+
+    // Add event listeners to all inputs for real-time updates
+    elementDiv.querySelectorAll('input, select').forEach(input => {
+        input.addEventListener('input', updateVisualization);
+        input.addEventListener('change', updateVisualization);
+    });
+
     elementCounter++;
     updateVisualization();
 }
@@ -368,6 +442,13 @@ function addLoad() {
     `;
 
     container.appendChild(loadDiv);
+
+    // Add event listeners to all inputs for real-time updates
+    loadDiv.querySelectorAll('input, select').forEach(input => {
+        input.addEventListener('input', updateVisualization);
+        input.addEventListener('change', updateVisualization);
+    });
+
     loadCounter++;
     updateVisualization();
 }

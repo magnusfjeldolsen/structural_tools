@@ -22,7 +22,8 @@
       "Read(/C:\\Python\\structural_tools\\structural_tools\\2dframeanalysis/**)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:awatif.co)",
-      "Bash(start awatif_frame_analysis/index.html)"
+      "Bash(start awatif_frame_analysis/index.html)",
+      "Read(//c/Users/magnus/AppData/Local/Programs/Python/Python39/lib/site-packages/Pynite/**)"
     ],
     "deny": [],
     "ask": [],
