@@ -70,16 +70,60 @@
 
         .element-grid {
             display: grid;
-            grid-template-columns: 60px 60px 60px 80px 120px 140px 100px 100px 100px 80px;
+            grid-template-columns: 50px 50px 50px 70px 110px 120px 90px 80px 80px 24px 24px;
             gap: 8px;
             align-items: center;
         }
 
         .element-grid-header {
             display: grid;
-            grid-template-columns: 60px 60px 60px 80px 120px 140px 100px 100px 100px 80px;
+            grid-template-columns: 50px 50px 50px 70px 110px 120px 90px 80px 80px 24px 24px;
             gap: 8px;
             align-items: center;
+        }
+
+        .copy-btn {
+            width: 24px;
+            height: 24px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            transition: background 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: #2563eb;
+        }
+
+        .copy-btn.active {
+            background: #10b981;
+        }
+
+        .delete-btn {
+            width: 24px;
+            height: 24px;
+            background: #dc2626;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            transition: background 0.2s;
+        }
+
+        .delete-btn:hover {
+            background: #b91c1c;
         }
 
         .frame-canvas {
@@ -150,12 +194,13 @@
                                 <label class="text-gray-300 text-xs">Node i</label>
                                 <label class="text-gray-300 text-xs">Node j</label>
                                 <label class="text-gray-300 text-xs">E (GPa)</label>
-                                <label class="text-gray-300 text-xs">Section Type</label>
+                                <label class="text-gray-300 text-xs">Section</label>
                                 <label class="text-gray-300 text-xs">Profile</label>
-                                <label class="text-gray-300 text-xs">Bending Axis</label>
+                                <label class="text-gray-300 text-xs">Axis</label>
                                 <label class="text-gray-300 text-xs">I (m⁴)</label>
                                 <label class="text-gray-300 text-xs">A (m²)</label>
-                                <div></div> <!-- Empty for action column -->
+                                <div></div> <!-- Copy button column -->
+                                <div></div> <!-- Delete button column -->
                             </div>
                             <div id="elements-container">
                                 <!-- Elements will be added here -->
