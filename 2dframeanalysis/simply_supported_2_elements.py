@@ -31,11 +31,13 @@ beam.add_member('M2', 'N2', 'N3', 'Steel', 'MySection')
 
 # Provide simple supports
 beam.def_support('N1', True, True, True, False, False, False)
-beam.def_support('N2', True, True, True, False, False, False)
+beam.def_support('N3', True, True, True, False, False, False)
 
-# Add a uniform load of 200 lbs/ft to the beam (from 0 in to 168 in)
-beam.add_member_dist_load('M1', 'Fy', -1000, -1000, 0, 5)
-beam.add_member_dist_load('M2', 'Fy', -1000, -1000, 0, 5)
+beam.add_node_load('N2','Fy', -5)
+
+# # Add a uniform load of 200 lbs/ft to the beam (from 0 in to 168 in)
+# beam.add_member_dist_load('M1', 'Fy', -1000, -1000, 0, 5)
+# beam.add_member_dist_load('M2', 'Fy', -1000, -1000, 0, 5)
 
 # Alternatively the following line would do apply the load to the full
 # length of the member as well
