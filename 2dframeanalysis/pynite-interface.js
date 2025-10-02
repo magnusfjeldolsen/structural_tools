@@ -458,6 +458,7 @@ function addNode() {
 
     nodeCounter++;
     updateVisualization();
+    updateNodesDatalist(); // Update element connectivity options
 }
 
 // Handle section type change
@@ -547,6 +548,24 @@ function onProfileChange(elementId) {
     updateVisualization();
 }
 
+// Update nodes datalist for element connectivity autocomplete
+function updateNodesDatalist() {
+    const datalist = document.getElementById('nodes-datalist');
+    if (!datalist) return;
+
+    // Get all node names from the nodes container
+    const nodeNames = [];
+    document.querySelectorAll('#nodes-container > div').forEach(nodeDiv => {
+        const nameInput = nodeDiv.querySelector('input[readonly]');
+        if (nameInput && nameInput.value) {
+            nodeNames.push(nameInput.value);
+        }
+    });
+
+    // Update datalist options
+    datalist.innerHTML = nodeNames.map(name => `<option value="${name}">`).join('');
+}
+
 // Add element to the interface
 function addElement() {
     const container = document.getElementById('elements-container');
@@ -561,8 +580,8 @@ function addElement() {
 
     elementDiv.innerHTML = `
         <input type="text" value="E${elementCounter}" readonly class="bg-gray-600 text-white p-1 rounded text-xs">
-        <input type="text" placeholder="N1" class="bg-gray-600 text-white p-1 rounded text-xs element-i">
-        <input type="text" placeholder="N2" class="bg-gray-600 text-white p-1 rounded text-xs element-j">
+        <input type="text" placeholder="N1" list="nodes-datalist" class="bg-gray-600 text-white p-1 rounded text-xs element-i">
+        <input type="text" placeholder="N2" list="nodes-datalist" class="bg-gray-600 text-white p-1 rounded text-xs element-j">
         <input type="number" step="0.1" value="200" placeholder="E" class="bg-gray-600 text-white p-1 rounded text-xs element-e">
         <select class="bg-gray-600 text-white p-1 rounded text-xs section-type" onchange="onSectionTypeChange('element-${elementCounter}')">
             ${sectionTypeOptions}
@@ -661,6 +680,7 @@ function removeNode(id) {
     // Remove the node itself (support is automatically removed with the node)
     nodeDiv.remove();
     updateVisualization();
+    updateNodesDatalist(); // Update element connectivity options
 }
 
 function removeElement(id) {
@@ -852,6 +872,152 @@ function loadCantileverExample() {
     document.querySelector('#load-1 .load-fy').value = '-15';
 
     updateVisualization();
+    updateNodesDatalist(); // Update element connectivity options
+}
+
+// Load simply supported beam example
+function loadSimplySupportedExample() {
+    clearAll();
+
+    // Add nodes
+    addNode();
+    document.querySelector('#node-1 .node-x').value = '0';
+    document.querySelector('#node-1 .node-y').value = '0';
+    document.querySelector('#node-1 .node-support').value = 'pinned';
+
+    addNode();
+    document.querySelector('#node-2 .node-x').value = '6';
+    document.querySelector('#node-2 .node-y').value = '0';
+    document.querySelector('#node-2 .node-support').value = 'roller-y';
+
+    // Add element
+    addElement();
+    document.querySelector('#element-1 .element-i').value = 'N1';
+    document.querySelector('#element-1 .element-j').value = 'N2';
+    document.querySelector('#element-1 .element-e').value = '200';
+    document.querySelector('#element-1 .element-i-val').value = '0.001';
+    document.querySelector('#element-1 .element-a').value = '0.01';
+
+    // Add load at midspan
+    addNode();
+    document.querySelector('#node-3 .node-x').value = '3';
+    document.querySelector('#node-3 .node-y').value = '0';
+    document.querySelector('#node-3 .node-support').value = 'free';
+
+    addElement();
+    document.querySelector('#element-2 .element-i').value = 'N1';
+    document.querySelector('#element-2 .element-j').value = 'N3';
+    document.querySelector('#element-2 .element-e').value = '200';
+    document.querySelector('#element-2 .element-i-val').value = '0.001';
+    document.querySelector('#element-2 .element-a').value = '0.01';
+
+    addElement();
+    document.querySelector('#element-3 .element-i').value = 'N3';
+    document.querySelector('#element-3 .element-j').value = 'N2';
+    document.querySelector('#element-3 .element-e').value = '200';
+    document.querySelector('#element-3 .element-i-val').value = '0.001';
+    document.querySelector('#element-3 .element-a').value = '0.01';
+
+    addLoad();
+    document.querySelector('#load-1 .load-node').value = 'N3';
+    document.querySelector('#load-1 .load-fx').value = '0';
+    document.querySelector('#load-1 .load-fy').value = '-20';
+
+    updateVisualization();
+    updateNodesDatalist(); // Update element connectivity options
+}
+
+// Load two span beam example
+function loadTwoSpanExample() {
+    clearAll();
+
+    // Add nodes
+    addNode();
+    document.querySelector('#node-1 .node-x').value = '0';
+    document.querySelector('#node-1 .node-y').value = '0';
+    document.querySelector('#node-1 .node-support').value = 'pinned';
+
+    addNode();
+    document.querySelector('#node-2 .node-x').value = '4';
+    document.querySelector('#node-2 .node-y').value = '0';
+    document.querySelector('#node-2 .node-support').value = 'pinned';
+
+    addNode();
+    document.querySelector('#node-3 .node-x').value = '8';
+    document.querySelector('#node-3 .node-y').value = '0';
+    document.querySelector('#node-3 .node-support').value = 'roller-y';
+
+    // Add elements
+    addElement();
+    document.querySelector('#element-1 .element-i').value = 'N1';
+    document.querySelector('#element-1 .element-j').value = 'N2';
+    document.querySelector('#element-1 .element-e').value = '200';
+    document.querySelector('#element-1 .element-i-val').value = '0.001';
+    document.querySelector('#element-1 .element-a').value = '0.01';
+
+    addElement();
+    document.querySelector('#element-2 .element-i').value = 'N2';
+    document.querySelector('#element-2 .element-j').value = 'N3';
+    document.querySelector('#element-2 .element-e').value = '200';
+    document.querySelector('#element-2 .element-i-val').value = '0.001';
+    document.querySelector('#element-2 .element-a').value = '0.01';
+
+    // Add loads at midspan of each span
+    addNode();
+    document.querySelector('#node-4 .node-x').value = '2';
+    document.querySelector('#node-4 .node-y').value = '0';
+    document.querySelector('#node-4 .node-support').value = 'free';
+
+    // Split first element
+    removeElement('element-1');
+    addElement();
+    document.querySelector('#element-1 .element-i').value = 'N1';
+    document.querySelector('#element-1 .element-j').value = 'N4';
+    document.querySelector('#element-1 .element-e').value = '200';
+    document.querySelector('#element-1 .element-i-val').value = '0.001';
+    document.querySelector('#element-1 .element-a').value = '0.01';
+
+    addElement();
+    document.querySelector('#element-3 .element-i').value = 'N4';
+    document.querySelector('#element-3 .element-j').value = 'N2';
+    document.querySelector('#element-3 .element-e').value = '200';
+    document.querySelector('#element-3 .element-i-val').value = '0.001';
+    document.querySelector('#element-3 .element-a').value = '0.01';
+
+    addNode();
+    document.querySelector('#node-5 .node-x').value = '6';
+    document.querySelector('#node-5 .node-y').value = '0';
+    document.querySelector('#node-5 .node-support').value = 'free';
+
+    // Split second element
+    removeElement('element-2');
+    addElement();
+    document.querySelector('#element-2 .element-i').value = 'N2';
+    document.querySelector('#element-2 .element-j').value = 'N5';
+    document.querySelector('#element-2 .element-e').value = '200';
+    document.querySelector('#element-2 .element-i-val').value = '0.001';
+    document.querySelector('#element-2 .element-a').value = '0.01';
+
+    addElement();
+    document.querySelector('#element-4 .element-i').value = 'N5';
+    document.querySelector('#element-4 .element-j').value = 'N3';
+    document.querySelector('#element-4 .element-e').value = '200';
+    document.querySelector('#element-4 .element-i-val').value = '0.001';
+    document.querySelector('#element-4 .element-a').value = '0.01';
+
+    // Add loads
+    addLoad();
+    document.querySelector('#load-1 .load-node').value = 'N4';
+    document.querySelector('#load-1 .load-fx').value = '0';
+    document.querySelector('#load-1 .load-fy').value = '-15';
+
+    addLoad();
+    document.querySelector('#load-2 .load-node').value = 'N5';
+    document.querySelector('#load-2 .load-fx').value = '0';
+    document.querySelector('#load-2 .load-fy').value = '-15';
+
+    updateVisualization();
+    updateNodesDatalist(); // Update element connectivity options
 }
 
 // Load portal frame example
@@ -913,79 +1079,7 @@ function loadPortalExample() {
     document.querySelector('#load-2 .load-fy').value = '0';
 
     updateVisualization();
-}
-
-// Load simply supported beam with IPE profile example
-function loadSteelBeamExample() {
-    clearAll();
-
-    // Add nodes
-    addNode();
-    document.querySelector('#node-1 .node-x').value = '0';
-    document.querySelector('#node-1 .node-y').value = '0';
-    document.querySelector('#node-1 .node-support').value = 'pinned';
-
-    addNode();
-    document.querySelector('#node-2 .node-x').value = '10';
-    document.querySelector('#node-2 .node-y').value = '0';
-    document.querySelector('#node-2 .node-support').value = 'roller';
-
-    // Add element with IPE200 steel section
-    addElement();
-    const element = document.querySelector('#element-1');
-    element.querySelector('.element-i').value = 'N1';
-    element.querySelector('.element-j').value = 'N2';
-    element.querySelector('.element-e').value = '210';  // Steel E-modulus
-
-    // Select IPE section type
-    element.querySelector('.section-type').value = 'IPE';
-    onSectionTypeChange('element-1');
-
-    // Wait a moment for the profile dropdown to populate, then select IPE200
-    setTimeout(() => {
-        element.querySelector('.profile-select').value = 'IPE200';
-        element.querySelector('.axis-select').value = 'strong';
-        onProfileChange('element-1');
-    }, 100);
-
-    // Add load at midspan
-    addNode();
-    document.querySelector('#node-3 .node-x').value = '5';
-    document.querySelector('#node-3 .node-y').value = '0';
-    document.querySelector('#node-3 .node-support').value = 'free';
-
-    addElement();
-    const element1 = document.querySelector('#element-2');
-    element1.querySelector('.element-i').value = 'N1';
-    element1.querySelector('.element-j').value = 'N3';
-    element1.querySelector('.element-e').value = '210';
-    element1.querySelector('.section-type').value = 'IPE';
-    onSectionTypeChange('element-2');
-    setTimeout(() => {
-        element1.querySelector('.profile-select').value = 'IPE200';
-        element1.querySelector('.axis-select').value = 'strong';
-        onProfileChange('element-2');
-    }, 100);
-
-    addElement();
-    const element2 = document.querySelector('#element-3');
-    element2.querySelector('.element-i').value = 'N3';
-    element2.querySelector('.element-j').value = 'N2';
-    element2.querySelector('.element-e').value = '210';
-    element2.querySelector('.section-type').value = 'IPE';
-    onSectionTypeChange('element-3');
-    setTimeout(() => {
-        element2.querySelector('.profile-select').value = 'IPE200';
-        element2.querySelector('.axis-select').value = 'strong';
-        onProfileChange('element-3');
-    }, 100);
-
-    addLoad();
-    document.querySelector('#load-1 .load-node').value = 'N3';
-    document.querySelector('#load-1 .load-fx').value = '0';
-    document.querySelector('#load-1 .load-fy').value = '-50';
-
-    updateVisualization();
+    updateNodesDatalist(); // Update element connectivity options
 }
 
 // Clear all inputs
@@ -1807,11 +1901,12 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
             // scale is designed so that max value produces offset = maxLength/10
             let physicalOffset = value * scale;
 
-            // For moments: positive values above the element (opposite perpendicular direction)
-            // For displacement: deflections plot in their natural direction (no inversion needed)
-            // For shear/axial: use standard perpendicular direction
+            // Sign convention:
+            // - Moments: positive moments should appear on the OPPOSITE side of perpendicular
+            //   (this is the standard convention - positive moment creates compression on top)
+            // - Displacement: natural direction (negative = deflects in negative perpendicular direction)
             if (diagramType === 'moment') {
-                physicalOffset = -physicalOffset; // Invert for moment diagram convention
+                physicalOffset = physicalOffset; // Invert for standard moment diagram convention
             }
 
             // Apply offset in physical coordinates
@@ -2089,3 +2184,32 @@ function autoscaleDiagram() {
 
     console.log(`Autoscale: max length=${maxLength.toFixed(2)}m, max amplitude=${maxAmplitude.toFixed(2)} ${displayUnit}, scale=${scaleValue.toExponential(3)}`);
 }
+
+// Tab switching function
+function switchTab(tabName) {
+    // Hide all tab contents
+    document.getElementById('content-structure').classList.add('hidden');
+    document.getElementById('content-loads').classList.add('hidden');
+
+    // Remove active styling from all tabs
+    document.getElementById('tab-structure').className = 'px-6 py-3 text-gray-400 font-medium hover:text-white';
+    document.getElementById('tab-loads').className = 'px-6 py-3 text-gray-400 font-medium hover:text-white';
+
+    // Show selected tab content and apply active styling
+    if (tabName === 'structure') {
+        document.getElementById('content-structure').classList.remove('hidden');
+        document.getElementById('tab-structure').className = 'px-6 py-3 text-white font-medium border-b-2 border-blue-500 bg-gray-600';
+    } else if (tabName === 'loads') {
+        document.getElementById('content-loads').classList.remove('hidden');
+        document.getElementById('tab-loads').className = 'px-6 py-3 text-white font-medium border-b-2 border-blue-500 bg-gray-600';
+    }
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(event) {
+    // Ctrl+Space to run analysis
+    if (event.ctrlKey && event.code === 'Space') {
+        event.preventDefault(); // Prevent default browser behavior
+        runAnalysis();
+    }
+});
