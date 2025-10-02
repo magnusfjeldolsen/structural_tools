@@ -265,61 +265,64 @@ class PyNiteWebAnalyzer:
                 }
             }
 
-        # Extract member forces and generate diagrams
+        # Extract member forces and generate diagrams using PyNite array methods
         for member_name, member in self.model.members.items():
             try:
                 # Get member length
                 L = member.L()
 
-                # Generate diagram data using PyNite's direct methods
-                n_points = 20
-                x_coords = [i * L / (n_points - 1) for i in range(n_points)]
+                # Use PyNite's array methods directly (much more efficient!)
+                n_points = 11  # Ensures exact midpoint at index 5
 
-                moments = []
-                shears = []
-                axials = []
+                # Get diagram arrays directly from PyNite (2D arrays: [x_coords, values])
+                moment_array = member.moment_array('Mz', n_points=n_points)
+                shear_array = member.shear_array('Fy', n_points=n_points)
+                axial_array = member.axial_array(n_points=n_points)
+                deflection_array = member.deflection_array('dy', n_points=n_points)  # Local perpendicular deflection
 
-                for x in x_coords:
-                    try:
-                        # Use PyNite's direct methods as you discovered!
-                        moment = member.moment('Mz', x)  # Moment at position x
-                        shear = member.shear('Fy', x)    # Shear at position x
-                        axial = member.axial(x)          # Axial at position x
+                # Convert numpy arrays to Python lists for JSON serialization
+                x_coords = moment_array[0].tolist()  # All arrays share same x-coords
+                moments = moment_array[1].tolist()
+                shears = shear_array[1].tolist()
+                axials = axial_array[1].tolist()
+                deflections = deflection_array[1].tolist()
 
-                        moments.append(moment)
-                        shears.append(shear)
-                        axials.append(axial)
-                    except:
-                        moments.append(0)
-                        shears.append(0)
-                        axials.append(0)
-
-                # Store element results
+                # Store element results with max values
                 self.results['elements'][member_name] = {
-                    'max_moment': max(abs(min(moments)), abs(max(moments))),
-                    'max_shear': max(abs(min(shears)), abs(max(shears))),
-                    'axial_force': axials[0] if axials else 0,  # Axial typically constant
-                    'length': L,
+                    'max_moment': float(max(abs(min(moments)), abs(max(moments)))),
+                    'max_shear': float(max(abs(min(shears)), abs(max(shears)))),
+                    'max_axial': float(max(abs(min(axials)), abs(max(axials)))),
+                    'max_deflection': float(max(abs(min(deflections)), abs(max(deflections)))),
+                    'axial_force': float(axials[0]),  # Axial at start (typically constant)
+                    'length': float(L),
                     'i_node': member.i_node.name,
                     'j_node': member.j_node.name
                 }
 
-                # Store diagram data
+                # Store full diagram data
                 self.results['diagrams'][member_name] = {
                     'x_coordinates': x_coords,
                     'moments': moments,
                     'shears': shears,
                     'axials': axials,
-                    'length': L
+                    'deflections': deflections,
+                    'length': float(L)
                 }
 
             except Exception as e:
-                # Fallback for any errors
+                # Log detailed error for debugging
+                print(f"Error extracting results for {member_name}: {str(e)}")
+
+                # Fallback with zeros
                 self.results['elements'][member_name] = {
                     'max_moment': 0,
                     'max_shear': 0,
+                    'max_axial': 0,
+                    'max_deflection': 0,
                     'axial_force': 0,
                     'length': 0,
+                    'i_node': '',
+                    'j_node': '',
                     'error': str(e)
                 }
 
@@ -1603,161 +1606,27 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
             color = '#3b82f6';
             label = 'Axial';
         } else if (diagramType === 'displacement') {
-            // For displacement, use node displacement data
-            const nodeIData = results.nodes[element.nodeI];
-            const nodeJData = results.nodes[element.nodeJ];
-            if (!nodeIData || !nodeJData) return;
-
-            // Calculate element geometry
-            const x1 = xScale(parseFloat(nodeI.x));
-            const y1 = yScale(parseFloat(nodeI.y));
-            const x2 = xScale(parseFloat(nodeJ.x));
-            const y2 = yScale(parseFloat(nodeJ.y));
-
-            const dx1 = nodeIData.DX * scale * 1000; // Convert to pixels
-            const dy1 = nodeIData.DY * scale * 1000;
-            const dx2 = nodeJData.DX * scale * 1000;
-            const dy2 = nodeJData.DY * scale * 1000;
-
-            // Draw original position (baseline)
-            svg.append("line")
-                .attr("x1", x1)
-                .attr("y1", y1)
-                .attr("x2", x2)
-                .attr("y2", y2)
-                .attr("stroke", "#9ca3af")
-                .attr("stroke-width", 1)
-                .attr("stroke-dasharray", "2,2")
-                .attr("opacity", 0.5);
-
-            // Draw displaced shape
-            svg.append("line")
-                .attr("x1", x1 + dx1)
-                .attr("y1", y1 - dy1) // Negative because SVG y-axis is inverted
-                .attr("x2", x2 + dx2)
-                .attr("y2", y2 - dy2)
-                .attr("stroke", "#fbbf24")
-                .attr("stroke-width", 2)
-                .attr("stroke-dasharray", "5,5")
-                .attr("opacity", 0.7);
-
-            // Add hover points at nodes
-            const displacementPoints = [
-                { x: x1 + dx1, y: y1 - dy1, node: element.nodeI, data: nodeIData, isStart: true },
-                { x: x2 + dx2, y: y2 - dy2, node: element.nodeJ, data: nodeJData, isStart: false }
-            ];
-
-            displacementPoints.forEach(point => {
-                const circle = svg.append("circle")
-                    .attr("cx", point.x)
-                    .attr("cy", point.y)
-                    .attr("r", 8)
-                    .attr("fill", "transparent")
-                    .attr("stroke", "none")
-                    .style("cursor", "pointer");
-
-                // Add hover interaction
-                circle.on("mouseenter", function(event) {
-                    // Highlight the point
-                    svg.append("circle")
-                        .attr("class", "diagram-hover-point")
-                        .attr("cx", point.x)
-                        .attr("cy", point.y)
-                        .attr("r", 4)
-                        .attr("fill", "#fbbf24")
-                        .attr("stroke", "#fff")
-                        .attr("stroke-width", 2);
-
-                    // Create tooltip
-                    const tooltip = svg.append("g")
-                        .attr("class", "diagram-tooltip");
-
-                    const tooltipText = [
-                        `Element: ${element.name}`,
-                        `Node: ${point.node}`,
-                        `---`,
-                        `DX: ${(point.data.DX * 1000).toFixed(2)} mm`,
-                        `DY: ${(point.data.DY * 1000).toFixed(2)} mm`,
-                        `RZ: ${(point.data.RZ * 1000).toFixed(3)} mrad`
-                    ];
-
-                    // Add diagram data if available
-                    const diagramData = results.diagrams[element.name];
-                    if (diagramData) {
-                        const idx = point.isStart ? 0 : diagramData.moments.length - 1;
-                        tooltipText.push(`---`);
-                        if (diagramData.moments && diagramData.moments[idx] !== undefined) {
-                            tooltipText.push(`Moment: ${(diagramData.moments[idx] / 1000).toFixed(2)} kNm`);
-                        }
-                        if (diagramData.shears && diagramData.shears[idx] !== undefined) {
-                            tooltipText.push(`Shear: ${(diagramData.shears[idx] / 1000).toFixed(2)} kN`);
-                        }
-                        if (diagramData.axials && diagramData.axials[idx] !== undefined) {
-                            tooltipText.push(`Axial: ${(diagramData.axials[idx] / 1000).toFixed(2)} kN`);
-                        }
-                    }
-
-                    // Calculate tooltip position
-                    const padding = 8;
-                    const lineHeight = 16;
-                    const textWidth = Math.max(...tooltipText.map(t => t.length * 7));
-                    const tooltipWidth = textWidth + padding * 2;
-                    const tooltipHeight = tooltipText.length * lineHeight + padding * 2;
-
-                    // Position tooltip
-                    let tooltipX = point.x + 15;
-                    let tooltipY = point.y - tooltipHeight / 2;
-
-                    // Keep tooltip in bounds
-                    const svgWidth = svg.node().clientWidth;
-                    const svgHeight = svg.node().clientHeight;
-                    if (tooltipX + tooltipWidth > svgWidth) tooltipX = point.x - tooltipWidth - 15;
-                    if (tooltipY < 0) tooltipY = 0;
-                    if (tooltipY + tooltipHeight > svgHeight) tooltipY = svgHeight - tooltipHeight;
-
-                    // Draw tooltip background
-                    tooltip.append("rect")
-                        .attr("x", tooltipX)
-                        .attr("y", tooltipY)
-                        .attr("width", tooltipWidth)
-                        .attr("height", tooltipHeight)
-                        .attr("fill", "#1f2937")
-                        .attr("stroke", "#fbbf24")
-                        .attr("stroke-width", 1)
-                        .attr("rx", 4);
-
-                    // Draw tooltip text
-                    tooltipText.forEach((text, i) => {
-                        tooltip.append("text")
-                            .attr("x", tooltipX + padding)
-                            .attr("y", tooltipY + padding + (i + 1) * lineHeight - 4)
-                            .attr("fill", text === '---' ? "#6b7280" : "#fff")
-                            .attr("font-size", "12px")
-                            .attr("font-family", "monospace")
-                            .text(text);
-                    });
-                })
-                .on("mouseleave", function() {
-                    svg.selectAll(".diagram-hover-point").remove();
-                    svg.selectAll(".diagram-tooltip").remove();
-                });
-            });
-
-            return;
+            // Use deflections array from diagram data (11 points)
+            dataArray = diagramData.deflections;
+            color = '#fbbf24';
+            label = 'Deflection';
         }
 
         if (!dataArray || dataArray.length === 0) return;
 
-        // Calculate element geometry
-        const x1 = xScale(parseFloat(nodeI.x));
-        const y1 = yScale(parseFloat(nodeI.y));
-        const x2 = xScale(parseFloat(nodeJ.x));
-        const y2 = yScale(parseFloat(nodeJ.y));
+        // Debug: verify n_points
+        console.log(`${diagramType} diagram for ${element.name}: ${dataArray.length} points`);
 
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx);
+        // Calculate element geometry in physical coordinates (meters)
+        const nodeIX = parseFloat(nodeI.x);
+        const nodeIY = parseFloat(nodeI.y);
+        const nodeJX = parseFloat(nodeJ.x);
+        const nodeJY = parseFloat(nodeJ.y);
+
+        const physicalDx = nodeJX - nodeIX;
+        const physicalDy = nodeJY - nodeIY;
+        const physicalLength = Math.sqrt(physicalDx * physicalDx + physicalDy * physicalDy);
+        const angle = Math.atan2(physicalDy, physicalDx);
 
         // Perpendicular direction (rotate by 90 degrees)
         const perpAngle = angle + Math.PI / 2;
@@ -1772,20 +1641,29 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
             const localX = xCoords[i];
             const value = dataArray[i];
 
-            // Position along element
+            // Position along element in physical coordinates
             const t = localX / diagramData.length;
-            const globalX = x1 + dx * t;
-            const globalY = y1 + dy * t;
+            const physicalX = nodeIX + physicalDx * t;
+            const physicalY = nodeIY + physicalDy * t;
 
-            // Offset perpendicular to element
+            // Calculate offset in physical units (meters)
+            // scale is designed so that max value produces offset = maxLength/10
+            let physicalOffset = value * scale;
+
             // For moments: positive values above the element (opposite perpendicular direction)
+            // For displacement: deflections plot in their natural direction (no inversion needed)
             // For shear/axial: use standard perpendicular direction
-            let offset = value * scale * 0.0001; // Scale factor for visualization
             if (diagramType === 'moment') {
-                offset = -offset; // Invert for moment diagram convention
+                physicalOffset = -physicalOffset; // Invert for moment diagram convention
             }
-            const offsetX = globalX + perpX * offset;
-            const offsetY = globalY + perpY * offset;
+
+            // Apply offset in physical coordinates
+            const offsetPhysicalX = physicalX + perpX * physicalOffset;
+            const offsetPhysicalY = physicalY + perpY * physicalOffset;
+
+            // Transform to pixel coordinates
+            const offsetX = xScale(offsetPhysicalX);
+            const offsetY = yScale(offsetPhysicalY);
 
             pathData.push({ x: offsetX, y: offsetY });
         }
@@ -1796,7 +1674,12 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
             .y(d => d.y)
             .curve(d3.curveMonotoneX);
 
-        // Draw baseline (element line)
+        // Draw baseline (element line) in pixel coordinates
+        const x1 = xScale(nodeIX);
+        const y1 = yScale(nodeIY);
+        const x2 = xScale(nodeJX);
+        const y2 = yScale(nodeJY);
+
         svg.append("line")
             .attr("x1", x1)
             .attr("y1", y1)
@@ -1872,6 +1755,9 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
                 }
                 if (diagramData.axials && diagramData.axials[i] !== undefined) {
                     tooltipText.push(`Axial: ${(diagramData.axials[i] / 1000).toFixed(2)} kN`);
+                }
+                if (diagramData.deflections && diagramData.deflections[i] !== undefined) {
+                    tooltipText.push(`Deflection: ${(diagramData.deflections[i] * 1000).toFixed(2)} mm`);
                 }
 
                 // Add node displacements if at element endpoints
@@ -1964,70 +1850,85 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
 
 // Autoscale diagram to 1/10 of longest element
 function autoscaleDiagram() {
-    const nodes = getNodesFromInputs();
-    const elements = getElementsFromInputs();
-
-    if (elements.length === 0) {
-        alert("No elements to scale against.");
-        return;
-    }
-
-    // Find longest element
-    let maxLength = 0;
-    elements.forEach(element => {
-        const nodeI = nodes.find(n => n.name === element.nodeI);
-        const nodeJ = nodes.find(n => n.name === element.nodeJ);
-        if (nodeI && nodeJ) {
-            const dx = parseFloat(nodeJ.x) - parseFloat(nodeI.x);
-            const dy = parseFloat(nodeJ.y) - parseFloat(nodeI.y);
-            const length = Math.sqrt(dx * dx + dy * dy);
-            maxLength = Math.max(maxLength, length);
-        }
-    });
-
     if (!lastAnalysisResults || !lastAnalysisResults.diagrams) {
         alert("Please run analysis first.");
         return;
     }
 
-    // Find maximum diagram amplitude
     const diagramType = document.getElementById('diagram-type')?.value;
     if (!diagramType || diagramType === 'none') {
         alert("Please select a diagram type first.");
         return;
     }
 
+    // Find longest element from stored results (not recalculating!)
+    let maxLength = 0;
+    for (const [elementName, diagramData] of Object.entries(lastAnalysisResults.diagrams)) {
+        maxLength = Math.max(maxLength, diagramData.length);
+    }
+
+    if (maxLength === 0) {
+        alert("No valid element lengths found.");
+        return;
+    }
+
+    // Find maximum diagram amplitude (in display units for proper scaling)
     let maxAmplitude = 0;
+    let displayUnit = '';
+
     for (const [elementName, diagramData] of Object.entries(lastAnalysisResults.diagrams)) {
         let dataArray;
+        let unitConversion = 1;
+
         if (diagramType === 'moment') {
             dataArray = diagramData.moments;
+            unitConversion = 1/1000; // Convert Nm to kNm for scaling
+            displayUnit = 'kNm';
         } else if (diagramType === 'shear') {
             dataArray = diagramData.shears;
+            unitConversion = 1/1000; // Convert N to kN for scaling
+            displayUnit = 'kN';
         } else if (diagramType === 'axial') {
             dataArray = diagramData.axials;
+            unitConversion = 1/1000; // Convert N to kN for scaling
+            displayUnit = 'kN';
         } else if (diagramType === 'displacement') {
-            // For displacement, use node displacements
-            continue;
+            dataArray = diagramData.deflections;
+            unitConversion = 1000; // Convert m to mm for scaling
+            displayUnit = 'mm';
         }
 
-        if (dataArray) {
-            const localMax = Math.max(...dataArray.map(Math.abs));
+        if (dataArray && dataArray.length > 0) {
+            // Find max in display units
+            const localMax = Math.max(...dataArray.map(v => Math.abs(v * unitConversion)));
             maxAmplitude = Math.max(maxAmplitude, localMax);
         }
     }
 
     if (maxAmplitude === 0) {
-        alert("No diagram data available.");
+        alert("No diagram data to scale.");
         return;
     }
 
-    // Calculate scale: we want max amplitude to be 1/10 of longest element
-    // Scale factor = (targetPixelSize / maxAmplitude) where targetPixelSize relates to element length
-    // Since we multiply by 0.0001 in drawing, we adjust here
-    const targetRatio = maxLength / 10;
-    const scaleValue = targetRatio / (maxAmplitude * 0.0001);
+    // Calculate scale: we want max amplitude to be 1/10 of longest element in physical units (meters)
+    // Formula: physicalOffset = value * scale
+    // We want: maxLength / 10 = maxValue * scale
+    // Therefore: scale = (maxLength / 10) / maxValue
 
-    document.getElementById('diagram-scale').value = scaleValue.toFixed(2);
+    // maxAmplitude is in display units (kNm, kN, or mm)
+    // We need to convert back to raw units for the scale calculation
+    let rawMaxAmplitude;
+    if (diagramType === 'moment' || diagramType === 'shear' || diagramType === 'axial') {
+        rawMaxAmplitude = maxAmplitude * 1000; // Convert kNm/kN back to Nm/N
+    } else if (diagramType === 'displacement') {
+        rawMaxAmplitude = maxAmplitude / 1000; // Convert mm back to m
+    }
+
+    const targetAmplitude = maxLength / 10; // Target amplitude in meters
+    const scaleValue = targetAmplitude / rawMaxAmplitude;
+
+    document.getElementById('diagram-scale').value = scaleValue.toFixed(6);
     updateVisualization();
+
+    console.log(`Autoscale: max length=${maxLength.toFixed(2)}m, max amplitude=${maxAmplitude.toFixed(2)} ${displayUnit}, scale=${scaleValue.toExponential(3)}`);
 }
