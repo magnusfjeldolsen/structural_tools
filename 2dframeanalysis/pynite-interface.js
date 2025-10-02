@@ -10,6 +10,10 @@ let elementCounter = 1;
 let loadCounter = 1;
 let lastAnalysisResults = null; // Store last analysis results for diagram display
 
+// Clipboard state for copy/paste properties
+let propertiesClipboard = null; // Stores copied element properties
+let pasteMode = false; // Whether paste UI is visible
+
 // Steel section database
 let steelSectionDatabase = {};
 const SECTION_TYPES = {
@@ -572,7 +576,13 @@ function addElement() {
         </select>
         <input type="number" step="0.0001" value="0.001" placeholder="I" class="bg-gray-600 text-white p-1 rounded text-xs element-i-val">
         <input type="number" step="0.001" value="0.01" placeholder="A" class="bg-gray-600 text-white p-1 rounded text-xs element-a">
-        <button onclick="removeElement('element-${elementCounter}')" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Remove</button>
+        <button onclick="copyElementProperties('element-${elementCounter}')" class="copy-btn" title="Copy properties">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+        </button>
+        <button onclick="removeElement('element-${elementCounter}')" class="delete-btn" title="Delete element">×</button>
     `;
 
     container.appendChild(elementDiv);
@@ -584,6 +594,12 @@ function addElement() {
     });
 
     elementCounter++;
+
+    // If in paste mode, update UI to add checkbox to new element
+    if (pasteMode && propertiesClipboard) {
+        updatePasteUI();
+    }
+
     updateVisualization();
 }
 
@@ -655,6 +671,150 @@ function removeElement(id) {
 function removeLoad(id) {
     document.getElementById(id).remove();
     updateVisualization();
+}
+
+// Copy element properties to clipboard
+function copyElementProperties(elementId) {
+    const elementDiv = document.getElementById(elementId);
+
+    propertiesClipboard = {
+        E: elementDiv.querySelector('.element-e').value,
+        sectionType: elementDiv.querySelector('.section-type').value,
+        profileName: elementDiv.querySelector('.profile-select').value,
+        bendingAxis: elementDiv.querySelector('.axis-select').value,
+        I: elementDiv.querySelector('.element-i-val').value,
+        A: elementDiv.querySelector('.element-a').value
+    };
+
+    // Enter paste mode
+    pasteMode = true;
+    updatePasteUI();
+
+    console.log('Properties copied:', propertiesClipboard);
+}
+
+// Paste properties to selected elements
+function pastePropertiesToSelected() {
+    if (!propertiesClipboard) return;
+
+    const checkboxes = document.querySelectorAll('.paste-checkbox:checked');
+
+    checkboxes.forEach(checkbox => {
+        const elementId = checkbox.dataset.elementId;
+        const elementDiv = document.getElementById(elementId);
+
+        // Set E
+        elementDiv.querySelector('.element-e').value = propertiesClipboard.E;
+
+        // Set Section Type
+        elementDiv.querySelector('.section-type').value = propertiesClipboard.sectionType;
+
+        // Trigger section type change to load profiles
+        onSectionTypeChange(elementId);
+
+        // Wait for profiles to load, then set profile and axis
+        setTimeout(() => {
+            if (propertiesClipboard.sectionType !== 'Custom') {
+                elementDiv.querySelector('.profile-select').value = propertiesClipboard.profileName;
+                elementDiv.querySelector('.axis-select').value = propertiesClipboard.bendingAxis;
+
+                // Trigger profile change to update I and A
+                onProfileChange(elementId);
+            } else {
+                // For Custom section, set I and A directly
+                elementDiv.querySelector('.element-i-val').value = propertiesClipboard.I;
+                elementDiv.querySelector('.element-a').value = propertiesClipboard.A;
+            }
+
+            // Uncheck this checkbox
+            checkbox.checked = false;
+        }, 10);
+    });
+
+    updateVisualization();
+}
+
+// Update paste mode UI
+function updatePasteUI() {
+    const elementsContainer = document.getElementById('elements-container');
+    const addElementBtnParent = document.querySelector('button[onclick="addElement()"]').parentElement;
+
+    // Remove existing paste button if any
+    const existingPasteBtn = document.getElementById('paste-properties-btn');
+    if (existingPasteBtn) existingPasteBtn.remove();
+
+    if (pasteMode && propertiesClipboard) {
+        // Show checkboxes
+        document.querySelectorAll('.element-grid').forEach(elementDiv => {
+            if (!elementDiv.querySelector('.paste-checkbox')) {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'paste-checkbox';
+                checkbox.dataset.elementId = elementDiv.id;
+                checkbox.style.width = '16px';
+                checkbox.style.height = '16px';
+                checkbox.style.cursor = 'pointer';
+                elementDiv.insertBefore(checkbox, elementDiv.firstChild);
+            }
+        });
+
+        // Update grid columns to include checkbox
+        document.querySelector('.element-grid-header').style.gridTemplateColumns =
+            '30px 50px 50px 50px 70px 110px 120px 90px 80px 80px 24px 24px';
+        document.querySelectorAll('.element-grid').forEach(el => {
+            el.style.gridTemplateColumns = '30px 50px 50px 50px 70px 110px 120px 90px 80px 80px 24px 24px';
+        });
+
+        // Add checkbox header
+        const header = document.querySelector('.element-grid-header');
+        if (!header.querySelector('.checkbox-header')) {
+            const checkboxHeader = document.createElement('div');
+            checkboxHeader.className = 'checkbox-header';
+            checkboxHeader.innerHTML = '<input type="checkbox" id="select-all-elements" style="width:16px;height:16px;cursor:pointer;" title="Select all">';
+            header.insertBefore(checkboxHeader, header.firstChild);
+
+            // Select all functionality
+            document.getElementById('select-all-elements').addEventListener('change', (e) => {
+                document.querySelectorAll('.paste-checkbox').forEach(cb => {
+                    cb.checked = e.target.checked;
+                });
+            });
+        }
+
+        // Show "Paste Properties" button
+        const pasteBtn = document.createElement('button');
+        pasteBtn.id = 'paste-properties-btn';
+        pasteBtn.className = 'bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm ml-2';
+        pasteBtn.textContent = 'Paste Properties';
+        pasteBtn.onclick = pastePropertiesToSelected;
+        document.querySelector('button[onclick="addElement()"]').after(pasteBtn);
+
+        // Highlight all copy buttons - mark all as inactive first
+        document.querySelectorAll('.copy-btn').forEach(btn => btn.classList.remove('active'));
+        // Note: We could track which button was clicked to highlight it specifically
+
+    } else {
+        // Hide checkboxes
+        document.querySelectorAll('.paste-checkbox').forEach(cb => cb.remove());
+        document.querySelector('.checkbox-header')?.remove();
+
+        // Reset grid columns (no checkbox)
+        document.querySelector('.element-grid-header').style.gridTemplateColumns =
+            '50px 50px 50px 70px 110px 120px 90px 80px 80px 24px 24px';
+        document.querySelectorAll('.element-grid').forEach(el => {
+            el.style.gridTemplateColumns = '50px 50px 50px 70px 110px 120px 90px 80px 80px 24px 24px';
+        });
+
+        // Remove active state from copy buttons
+        document.querySelectorAll('.copy-btn').forEach(btn => btn.classList.remove('active'));
+    }
+}
+
+// Clear clipboard (for future use - can be called when user wants to exit paste mode)
+function clearPropertiesClipboard() {
+    propertiesClipboard = null;
+    pasteMode = false;
+    updatePasteUI();
 }
 
 // Load example frame (cantilever - default example)
@@ -1613,9 +1773,6 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
         }
 
         if (!dataArray || dataArray.length === 0) return;
-
-        // Debug: verify n_points
-        console.log(`${diagramType} diagram for ${element.name}: ${dataArray.length} points`);
 
         // Calculate element geometry in physical coordinates (meters)
         const nodeIX = parseFloat(nodeI.x);
