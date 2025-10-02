@@ -130,6 +130,27 @@
             border: 1px solid #374151;
             background: #1f2937;
         }
+
+        .nodal-load-grid-header, .nodal-load-grid {
+            display: grid;
+            grid-template-columns: 60px 100px 80px 80px 80px 80px;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .distributed-load-grid-header, .distributed-load-grid {
+            display: grid;
+            grid-template-columns: 60px 100px 140px 90px 90px 70px 70px 80px;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .element-load-grid-header, .element-load-grid {
+            display: grid;
+            grid-template-columns: 60px 100px 80px 120px 100px 80px;
+            gap: 8px;
+            align-items: center;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
@@ -299,22 +320,67 @@
 
                 <!-- Loads Tab Content -->
                 <div id="content-loads" class="p-4 hidden">
-                    <div class="bg-gray-700 rounded-lg p-4">
-                        <h3 class="text-lg font-semibold text-white mb-3">Loads</h3>
+                    <!-- Nodal Loads Section -->
+                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
+                        <h4 class="text-md font-semibold text-gray-300 mb-3">Nodal Loads (at nodes)</h4>
                         <div class="space-y-3">
-                            <div class="input-grid">
-                                <label class="text-gray-300 text-sm">Load</label>
-                                <label class="text-gray-300 text-sm">Node</label>
-                                <label class="text-gray-300 text-sm">Fx (kN)</label>
-                                <label class="text-gray-300 text-sm">Fy (kN)</label>
-                                <label class="text-gray-300 text-sm">Mz (kNm)</label>
+                            <div class="nodal-load-grid-header">
+                                <label class="text-gray-300 text-xs">Load</label>
+                                <label class="text-gray-300 text-xs">Node</label>
+                                <label class="text-gray-300 text-xs">Fx (kN)</label>
+                                <label class="text-gray-300 text-xs">Fy (kN)</label>
+                                <label class="text-gray-300 text-xs">Mz (kNm)</label>
                                 <div></div> <!-- Empty for action column -->
                             </div>
-                            <div id="loads-container">
-                                <!-- Loads will be added here -->
+                            <div id="nodal-loads-container">
+                                <!-- Nodal loads will be added here -->
                             </div>
-                            <button onclick="addLoad()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded text-sm">
-                                Add Load
+                            <button onclick="addNodalLoad()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm mt-2">
+                                Add Nodal Load
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Distributed Loads Section -->
+                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
+                        <h4 class="text-md font-semibold text-gray-300 mb-3">Distributed Loads (on elements)</h4>
+                        <div class="space-y-3">
+                            <div class="distributed-load-grid-header">
+                                <label class="text-gray-300 text-xs">Load</label>
+                                <label class="text-gray-300 text-xs">Element</label>
+                                <label class="text-gray-300 text-xs">Direction</label>
+                                <label class="text-gray-300 text-xs">w1 (kN/m)</label>
+                                <label class="text-gray-300 text-xs">w2 (kN/m)</label>
+                                <label class="text-gray-300 text-xs">x1 (m)</label>
+                                <label class="text-gray-300 text-xs">x2 (m)</label>
+                                <div></div> <!-- Empty for action column -->
+                            </div>
+                            <div id="distributed-loads-container">
+                                <!-- Distributed loads will be added here -->
+                            </div>
+                            <button onclick="addDistributedLoad()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm mt-2">
+                                Add Distributed Load
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Element Point Loads Section -->
+                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
+                        <h4 class="text-md font-semibold text-gray-300 mb-3">Element Point Loads (on elements)</h4>
+                        <div class="space-y-3">
+                            <div class="element-load-grid-header">
+                                <label class="text-gray-300 text-xs">Load</label>
+                                <label class="text-gray-300 text-xs">Element</label>
+                                <label class="text-gray-300 text-xs">Dist (m)</label>
+                                <label class="text-gray-300 text-xs">Direction</label>
+                                <label class="text-gray-300 text-xs">Magnitude</label>
+                                <div></div> <!-- Empty for action column -->
+                            </div>
+                            <div id="element-loads-container">
+                                <!-- Element point loads will be added here -->
+                            </div>
+                            <button onclick="addElementPointLoad()" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-2 rounded text-sm mt-2">
+                                Add Element Point Load
                             </button>
                         </div>
                     </div>

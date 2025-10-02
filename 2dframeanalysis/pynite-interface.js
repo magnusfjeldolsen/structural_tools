@@ -3,11 +3,17 @@ let pyodide = null;
 let frameData = {
     nodes: [],
     elements: [],
-    loads: []
+    loads: {
+        nodal: [],          // Point loads at nodes
+        distributed: [],    // Distributed loads on elements
+        elementPoint: []    // Point loads on elements
+    }
 };
 let nodeCounter = 1;
 let elementCounter = 1;
-let loadCounter = 1;
+let nodalLoadCounter = 1;
+let distributedLoadCounter = 1;
+let elementLoadCounter = 1;
 let lastAnalysisResults = null; // Store last analysis results for diagram display
 
 // Clipboard state for copy/paste properties
@@ -202,10 +208,23 @@ class PyNiteWebAnalyzer:
         for node in nodes:
             self._add_support(node['name'], node['support'])
 
-        # Add loads
-        for load in loads:
-            if any([float(load['fx']) != 0, float(load['fy']) != 0, float(load['mz']) != 0]):
-                self._add_load(load)
+        # Add loads - handle both old array format and new object format
+        if isinstance(loads, dict):
+            # New format with load types
+            for load in loads.get('nodal', []):
+                if any([float(load['fx']) != 0, float(load['fy']) != 0, float(load['mz']) != 0]):
+                    self._add_nodal_load(load)
+
+            for load in loads.get('distributed', []):
+                self._add_distributed_load(load)
+
+            for load in loads.get('elementPoint', []):
+                self._add_element_point_load(load)
+        else:
+            # Old format - backward compatibility
+            for load in loads:
+                if any([float(load['fx']) != 0, float(load['fy']) != 0, float(load['mz']) != 0]):
+                    self._add_nodal_load(load)
 
     def _add_support(self, node_name, support_type):
         """Add support constraints to a node"""
@@ -218,8 +237,8 @@ class PyNiteWebAnalyzer:
         elif support_type == 'roller-y':
             self.model.def_support(node_name, True, False, True, False, False, False)
 
-    def _add_load(self, load):
-        """Add loads to a node"""
+    def _add_nodal_load(self, load):
+        """Add point loads to a node"""
         node_name = load['node']
         fx = float(load['fx']) * 1000  # Convert kN to N
         fy = float(load['fy']) * 1000  # Convert kN to N
@@ -231,6 +250,30 @@ class PyNiteWebAnalyzer:
             self.model.add_node_load(node_name, 'FY', fy)
         if mz != 0:
             self.model.add_node_load(node_name, 'MZ', mz)
+
+    def _add_distributed_load(self, load):
+        """Add distributed load to a member"""
+        member_name = load['element']
+        direction = load['direction']
+        w1 = float(load['w1']) * 1000  # Convert kN/m to N/m
+        w2 = float(load['w2']) * 1000  # Convert kN/m to N/m
+        x1 = float(load.get('x1', 0))  # m
+        x2 = float(load.get('x2', None))  # m (None means full element length)
+
+        # Apply distributed load
+        if x2 is not None:
+            self.model.add_member_dist_load(member_name, direction, w1, w2, x1, x2)
+        else:
+            self.model.add_member_dist_load(member_name, direction, w1, w2, x1)
+
+    def _add_element_point_load(self, load):
+        """Add point load to a member at specific distance"""
+        member_name = load['element']
+        direction = load['direction']
+        magnitude = float(load['magnitude']) * 1000  # Convert kN to N (or kNm to Nm)
+        distance = float(load['distance'])  # m from element start
+
+        self.model.add_member_pt_load(member_name, direction, magnitude, distance)
 
     def analyze(self):
         """Run the structural analysis"""
@@ -622,20 +665,20 @@ function addElement() {
     updateVisualization();
 }
 
-// Add load to the interface
-function addLoad() {
-    const container = document.getElementById('loads-container');
+// Add nodal load to the interface
+function addNodalLoad() {
+    const container = document.getElementById('nodal-loads-container');
     const loadDiv = document.createElement('div');
-    loadDiv.className = 'input-grid';
-    loadDiv.id = `load-${loadCounter}`;
+    loadDiv.className = 'nodal-load-grid';
+    loadDiv.id = `nodal-load-${nodalLoadCounter}`;
 
     loadDiv.innerHTML = `
-        <input type="text" value="L${loadCounter}" readonly class="bg-gray-600 text-white p-2 rounded text-sm">
-        <input type="text" placeholder="N1" class="bg-gray-600 text-white p-2 rounded text-sm load-node">
-        <input type="number" step="0.1" value="0" placeholder="Fx (kN)" class="bg-gray-600 text-white p-2 rounded text-sm load-fx">
-        <input type="number" step="0.1" value="-10" placeholder="Fy (kN)" class="bg-gray-600 text-white p-2 rounded text-sm load-fy">
-        <input type="number" step="0.1" value="0" placeholder="Mz (kNm)" class="bg-gray-600 text-white p-2 rounded text-sm load-mz">
-        <button onclick="removeLoad('load-${loadCounter}')" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-sm">Remove</button>
+        <input type="text" value="L${nodalLoadCounter}" readonly class="bg-gray-600 text-white p-1 rounded text-xs">
+        <input type="text" placeholder="N1" class="bg-gray-600 text-white p-1 rounded text-xs load-node">
+        <input type="number" step="0.1" value="0" placeholder="Fx" class="bg-gray-600 text-white p-1 rounded text-xs load-fx">
+        <input type="number" step="0.1" value="-10" placeholder="Fy" class="bg-gray-600 text-white p-1 rounded text-xs load-fy">
+        <input type="number" step="0.1" value="0" placeholder="Mz" class="bg-gray-600 text-white p-1 rounded text-xs load-mz">
+        <button onclick="removeNodalLoad('nodal-load-${nodalLoadCounter}')" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Remove</button>
     `;
 
     container.appendChild(loadDiv);
@@ -646,8 +689,242 @@ function addLoad() {
         input.addEventListener('change', updateVisualization);
     });
 
-    loadCounter++;
+    nodalLoadCounter++;
     updateVisualization();
+}
+
+// Add distributed load to the interface
+function addDistributedLoad() {
+    const container = document.getElementById('distributed-loads-container');
+    const loadDiv = document.createElement('div');
+    loadDiv.className = 'distributed-load-grid';
+    loadDiv.id = `distributed-load-${distributedLoadCounter}`;
+
+    // Get elements for dropdown
+    const elements = getElementsFromInputs();
+    const elementOptions = elements.map(e => `<option value="${e.name}">${e.name}</option>`).join('');
+
+    loadDiv.innerHTML = `
+        <input type="text" value="D${distributedLoadCounter}" readonly class="bg-gray-600 text-white p-1 rounded text-xs">
+        <select class="bg-gray-600 text-white p-1 rounded text-xs dist-element" onchange="onDistributedLoadElementChange('distributed-load-${distributedLoadCounter}')">
+            ${elementOptions}
+        </select>
+        <select class="bg-gray-600 text-white p-1 rounded text-xs dist-direction">
+            <option value="FY">Global Y (↓ gravity)</option>
+            <option value="FX">Global X (→)</option>
+            <option value="Fy">Local ⊥ (perpendicular)</option>
+            <option value="Fx">Local ∥ (axial)</option>
+        </select>
+        <input type="number" step="0.1" value="-10" placeholder="w1" class="bg-gray-600 text-white p-1 rounded text-xs dist-w1" oninput="onDistributedLoadW1Change('distributed-load-${distributedLoadCounter}')">
+        <input type="number" step="0.1" value="-10" placeholder="w2" class="bg-gray-600 text-white p-1 rounded text-xs dist-w2" oninput="onDistributedLoadW2Change('distributed-load-${distributedLoadCounter}')">
+        <input type="number" step="0.1" value="0" placeholder="x1" class="bg-gray-600 text-white p-1 rounded text-xs dist-x1" oninput="validateDistributedLoadPosition('distributed-load-${distributedLoadCounter}')">
+        <input type="number" step="0.1" value="0" placeholder="x2" class="bg-gray-600 text-white p-1 rounded text-xs dist-x2" oninput="validateDistributedLoadPosition('distributed-load-${distributedLoadCounter}')">
+        <button onclick="removeDistributedLoad('distributed-load-${distributedLoadCounter}')" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Remove</button>
+    `;
+
+    container.appendChild(loadDiv);
+
+    // Initialize x2 with element length if element is selected
+    if (elements.length > 0) {
+        onDistributedLoadElementChange(`distributed-load-${distributedLoadCounter}`);
+    }
+
+    // Add event listeners to all inputs for real-time updates
+    loadDiv.querySelectorAll('input, select').forEach(input => {
+        input.addEventListener('input', updateVisualization);
+        input.addEventListener('change', updateVisualization);
+    });
+
+    distributedLoadCounter++;
+    updateVisualization();
+}
+
+// Add element point load to the interface
+function addElementPointLoad() {
+    const container = document.getElementById('element-loads-container');
+    const loadDiv = document.createElement('div');
+    loadDiv.className = 'element-load-grid';
+    loadDiv.id = `element-load-${elementLoadCounter}`;
+
+    // Get elements for dropdown
+    const elements = getElementsFromInputs();
+    const elementOptions = elements.map(e => `<option value="${e.name}">${e.name}</option>`).join('');
+
+    loadDiv.innerHTML = `
+        <input type="text" value="P${elementLoadCounter}" readonly class="bg-gray-600 text-white p-1 rounded text-xs">
+        <select class="bg-gray-600 text-white p-1 rounded text-xs elem-pt-element">
+            ${elementOptions}
+        </select>
+        <input type="number" step="0.1" value="0" placeholder="Dist" class="bg-gray-600 text-white p-1 rounded text-xs elem-pt-distance" oninput="validateElementPointLoadPosition('element-load-${elementLoadCounter}')">
+        <select class="bg-gray-600 text-white p-1 rounded text-xs elem-pt-direction">
+            <option value="FY">Vertical (Y)</option>
+            <option value="FX">Horizontal (X)</option>
+            <option value="MZ">Moment (Z)</option>
+        </select>
+        <input type="number" step="0.1" value="-10" placeholder="Mag" class="bg-gray-600 text-white p-1 rounded text-xs elem-pt-magnitude">
+        <button onclick="removeElementPointLoad('element-load-${elementLoadCounter}')" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Remove</button>
+    `;
+
+    container.appendChild(loadDiv);
+
+    // Add event listeners to all inputs for real-time updates
+    loadDiv.querySelectorAll('input, select').forEach(input => {
+        input.addEventListener('input', updateVisualization);
+        input.addEventListener('change', updateVisualization);
+    });
+
+    elementLoadCounter++;
+    updateVisualization();
+}
+
+// Helper functions for distributed loads
+function getElementLength(elementName) {
+    const elements = getElementsFromInputs();
+    const element = elements.find(e => e.name === elementName);
+    if (!element) return null;
+
+    const nodes = getNodesFromInputs();
+    const nodeI = nodes.find(n => n.name === element.nodeI);
+    const nodeJ = nodes.find(n => n.name === element.nodeJ);
+
+    if (!nodeI || !nodeJ) return null;
+
+    const dx = parseFloat(nodeJ.x) - parseFloat(nodeI.x);
+    const dy = parseFloat(nodeJ.y) - parseFloat(nodeI.y);
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+function onDistributedLoadElementChange(loadId) {
+    const loadDiv = document.getElementById(loadId);
+    if (!loadDiv) return;
+
+    const elementSelect = loadDiv.querySelector('.dist-element');
+    const x2Input = loadDiv.querySelector('.dist-x2');
+
+    const elementName = elementSelect.value;
+    const elementLength = getElementLength(elementName);
+
+    if (elementLength !== null) {
+        // Auto-update x2 to element length
+        x2Input.value = elementLength.toFixed(3);
+    }
+}
+
+function onDistributedLoadW1Change(loadId) {
+    const loadDiv = document.getElementById(loadId);
+    if (!loadDiv) return;
+
+    const w1Input = loadDiv.querySelector('.dist-w1');
+    const w2Input = loadDiv.querySelector('.dist-w2');
+
+    // Only auto-sync if w2 hasn't been manually edited
+    if (!w2Input.dataset.manuallyEdited) {
+        w2Input.value = w1Input.value;
+    }
+}
+
+function onDistributedLoadW2Change(loadId) {
+    const loadDiv = document.getElementById(loadId);
+    if (!loadDiv) return;
+
+    const w2Input = loadDiv.querySelector('.dist-w2');
+
+    // Mark as manually edited
+    w2Input.dataset.manuallyEdited = 'true';
+}
+
+function validateDistributedLoadPosition(loadId) {
+    const loadDiv = document.getElementById(loadId);
+    if (!loadDiv) return { isValid: true, errors: [] };
+
+    const elementSelect = loadDiv.querySelector('.dist-element');
+    const x1Input = loadDiv.querySelector('.dist-x1');
+    const x2Input = loadDiv.querySelector('.dist-x2');
+
+    const elementName = elementSelect.value;
+    const elementLength = getElementLength(elementName);
+    const x1 = parseFloat(x1Input.value);
+    const x2 = parseFloat(x2Input.value);
+
+    let isValid = true;
+    let errors = [];
+
+    if (x1 < 0) {
+        errors.push('x1 must be ≥ 0');
+        isValid = false;
+    }
+
+    if (elementLength !== null && x2 > elementLength) {
+        errors.push(`x2 must be ≤ ${elementLength.toFixed(3)} m (element length)`);
+        isValid = false;
+    }
+
+    if (x1 >= x2) {
+        errors.push('x1 must be < x2');
+        isValid = false;
+    }
+
+    // Update UI to show validation state
+    if (!isValid) {
+        if (x1 < 0 || x1 >= x2) {
+            x1Input.classList.add('border-red-500');
+            x1Input.classList.add('border-2');
+        } else {
+            x1Input.classList.remove('border-red-500');
+            x1Input.classList.remove('border-2');
+        }
+
+        if ((elementLength !== null && x2 > elementLength) || x1 >= x2) {
+            x2Input.classList.add('border-red-500');
+            x2Input.classList.add('border-2');
+        } else {
+            x2Input.classList.remove('border-red-500');
+            x2Input.classList.remove('border-2');
+        }
+    } else {
+        x1Input.classList.remove('border-red-500');
+        x1Input.classList.remove('border-2');
+        x2Input.classList.remove('border-red-500');
+        x2Input.classList.remove('border-2');
+    }
+
+    return { isValid, errors };
+}
+
+function validateElementPointLoadPosition(loadId) {
+    const loadDiv = document.getElementById(loadId);
+    if (!loadDiv) return { isValid: true, errors: [] };
+
+    const elementSelect = loadDiv.querySelector('.elem-pt-element');
+    const distanceInput = loadDiv.querySelector('.elem-pt-distance');
+
+    const elementName = elementSelect.value;
+    const elementLength = getElementLength(elementName);
+    const distance = parseFloat(distanceInput.value);
+
+    let isValid = true;
+    let errors = [];
+
+    if (distance <= 0) {
+        errors.push('Distance must be > 0 (use nodal load for element start)');
+        isValid = false;
+    }
+
+    if (elementLength !== null && distance >= elementLength) {
+        errors.push(`Distance must be < ${elementLength.toFixed(3)} m (use nodal load for element end)`);
+        isValid = false;
+    }
+
+    // Update UI to show validation state
+    if (!isValid) {
+        distanceInput.classList.add('border-red-500');
+        distanceInput.classList.add('border-2');
+    } else {
+        distanceInput.classList.remove('border-red-500');
+        distanceInput.classList.remove('border-2');
+    }
+
+    return { isValid, errors };
 }
 
 // Remove functions
@@ -667,9 +944,9 @@ function removeNode(id) {
     });
     elementsToRemove.forEach(elemId => document.getElementById(elemId).remove());
 
-    // Remove all loads applied to this node
+    // Remove all nodal loads applied to this node
     const loadsToRemove = [];
-    document.querySelectorAll('#loads-container > div').forEach(loadDiv => {
+    document.querySelectorAll('#nodal-loads-container > div').forEach(loadDiv => {
         const loadNode = loadDiv.querySelector('.load-node').value;
         if (loadNode === nodeName) {
             loadsToRemove.push(loadDiv.id);
@@ -688,7 +965,17 @@ function removeElement(id) {
     updateVisualization();
 }
 
-function removeLoad(id) {
+function removeNodalLoad(id) {
+    document.getElementById(id).remove();
+    updateVisualization();
+}
+
+function removeDistributedLoad(id) {
+    document.getElementById(id).remove();
+    updateVisualization();
+}
+
+function removeElementPointLoad(id) {
     document.getElementById(id).remove();
     updateVisualization();
 }
@@ -866,10 +1153,10 @@ function loadCantileverExample() {
     document.querySelector('#element-1 .element-a').value = '0.01';
 
     // Add load
-    addLoad();
-    document.querySelector('#load-1 .load-node').value = 'N2';
-    document.querySelector('#load-1 .load-fx').value = '0';
-    document.querySelector('#load-1 .load-fy').value = '-15';
+    addNodalLoad();
+    document.querySelector('#nodal-load-1 .load-node').value = 'N2';
+    document.querySelector('#nodal-load-1 .load-fx').value = '0';
+    document.querySelector('#nodal-load-1 .load-fy').value = '-15';
 
     updateVisualization();
     updateNodesDatalist(); // Update element connectivity options
@@ -918,10 +1205,10 @@ function loadSimplySupportedExample() {
     document.querySelector('#element-3 .element-i-val').value = '0.001';
     document.querySelector('#element-3 .element-a').value = '0.01';
 
-    addLoad();
-    document.querySelector('#load-1 .load-node').value = 'N3';
-    document.querySelector('#load-1 .load-fx').value = '0';
-    document.querySelector('#load-1 .load-fy').value = '-20';
+    addNodalLoad();
+    document.querySelector('#nodal-load-1 .load-node').value = 'N3';
+    document.querySelector('#nodal-load-1 .load-fx').value = '0';
+    document.querySelector('#nodal-load-1 .load-fy').value = '-20';
 
     updateVisualization();
     updateNodesDatalist(); // Update element connectivity options
@@ -1006,15 +1293,15 @@ function loadTwoSpanExample() {
     document.querySelector('#element-4 .element-a').value = '0.01';
 
     // Add loads
-    addLoad();
-    document.querySelector('#load-1 .load-node').value = 'N4';
-    document.querySelector('#load-1 .load-fx').value = '0';
-    document.querySelector('#load-1 .load-fy').value = '-15';
+    addNodalLoad();
+    document.querySelector('#nodal-load-1 .load-node').value = 'N4';
+    document.querySelector('#nodal-load-1 .load-fx').value = '0';
+    document.querySelector('#nodal-load-1 .load-fy').value = '-15';
 
-    addLoad();
-    document.querySelector('#load-2 .load-node').value = 'N5';
-    document.querySelector('#load-2 .load-fx').value = '0';
-    document.querySelector('#load-2 .load-fy').value = '-15';
+    addNodalLoad();
+    document.querySelector('#nodal-load-2 .load-node').value = 'N5';
+    document.querySelector('#nodal-load-2 .load-fx').value = '0';
+    document.querySelector('#nodal-load-2 .load-fy').value = '-15';
 
     updateVisualization();
     updateNodesDatalist(); // Update element connectivity options
@@ -1068,15 +1355,15 @@ function loadPortalExample() {
     document.querySelector('#element-4 .element-j').value = 'N4';
 
     // Add loads
-    addLoad();
-    document.querySelector('#load-1 .load-node').value = 'N5';
-    document.querySelector('#load-1 .load-fx').value = '0';
-    document.querySelector('#load-1 .load-fy').value = '-25';
+    addNodalLoad();
+    document.querySelector('#nodal-load-1 .load-node').value = 'N5';
+    document.querySelector('#nodal-load-1 .load-fx').value = '0';
+    document.querySelector('#nodal-load-1 .load-fy').value = '-25';
 
-    addLoad();
-    document.querySelector('#load-2 .load-node').value = 'N3';
-    document.querySelector('#load-2 .load-fx').value = '10';
-    document.querySelector('#load-2 .load-fy').value = '0';
+    addNodalLoad();
+    document.querySelector('#nodal-load-2 .load-node').value = 'N3';
+    document.querySelector('#nodal-load-2 .load-fx').value = '10';
+    document.querySelector('#nodal-load-2 .load-fy').value = '0';
 
     updateVisualization();
     updateNodesDatalist(); // Update element connectivity options
@@ -1086,13 +1373,17 @@ function loadPortalExample() {
 function clearAll() {
     document.getElementById('nodes-container').innerHTML = '';
     document.getElementById('elements-container').innerHTML = '';
-    document.getElementById('loads-container').innerHTML = '';
+    document.getElementById('nodal-loads-container').innerHTML = '';
+    document.getElementById('distributed-loads-container').innerHTML = '';
+    document.getElementById('element-loads-container').innerHTML = '';
     document.getElementById('results-container').innerHTML = '<p>Run analysis to see results...</p>';
     document.getElementById('console-output').textContent = '';
 
     nodeCounter = 1;
     elementCounter = 1;
-    loadCounter = 1;
+    nodalLoadCounter = 1;
+    distributedLoadCounter = 1;
+    elementLoadCounter = 1;
 
     updateVisualization();
 }
@@ -1227,8 +1518,8 @@ function updateVisualization() {
         drawSupportSymbol(g, node.support);
     });
 
-    // Draw loads
-    loads.forEach(load => {
+    // Draw nodal loads
+    loads.nodal.forEach(load => {
         const node = nodes.find(n => n.name === load.node);
         if (node) {
             const x = xScale(parseFloat(node.x));
@@ -1243,6 +1534,8 @@ function updateVisualization() {
             }
         }
     });
+
+    // TODO: Draw distributed loads and element point loads (visualization implementation pending)
 }
 
 // Update visualization with diagram
@@ -1360,15 +1653,44 @@ function getElementsFromInputs() {
 }
 
 function getLoadsFromInputs() {
-    const loads = [];
-    document.querySelectorAll('#loads-container > div').forEach(loadDiv => {
+    const loads = {
+        nodal: [],
+        distributed: [],
+        elementPoint: []
+    };
+
+    // Collect nodal loads
+    document.querySelectorAll('#nodal-loads-container > div').forEach(loadDiv => {
         const name = loadDiv.querySelector('input[readonly]').value;
         const node = loadDiv.querySelector('.load-node').value;
         const fx = loadDiv.querySelector('.load-fx').value;
         const fy = loadDiv.querySelector('.load-fy').value;
         const mz = loadDiv.querySelector('.load-mz').value;
-        loads.push({ name, node, fx, fy, mz });
+        loads.nodal.push({ name, type: 'nodal', node, fx, fy, mz });
     });
+
+    // Collect distributed loads
+    document.querySelectorAll('#distributed-loads-container > div').forEach(loadDiv => {
+        const name = loadDiv.querySelector('input[readonly]').value;
+        const element = loadDiv.querySelector('.dist-element').value;
+        const direction = loadDiv.querySelector('.dist-direction').value;
+        const w1 = loadDiv.querySelector('.dist-w1').value;
+        const w2 = loadDiv.querySelector('.dist-w2').value;
+        const x1 = loadDiv.querySelector('.dist-x1').value;
+        const x2 = loadDiv.querySelector('.dist-x2').value;
+        loads.distributed.push({ name, type: 'distributed', element, direction, w1, w2, x1, x2 });
+    });
+
+    // Collect element point loads
+    document.querySelectorAll('#element-loads-container > div').forEach(loadDiv => {
+        const name = loadDiv.querySelector('input[readonly]').value;
+        const element = loadDiv.querySelector('.elem-pt-element').value;
+        const distance = loadDiv.querySelector('.elem-pt-distance').value;
+        const direction = loadDiv.querySelector('.elem-pt-direction').value;
+        const magnitude = loadDiv.querySelector('.elem-pt-magnitude').value;
+        loads.elementPoint.push({ name, type: 'elementPoint', element, distance, direction, magnitude });
+    });
+
     return loads;
 }
 

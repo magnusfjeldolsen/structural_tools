@@ -25,7 +25,9 @@
       "Bash(start awatif_frame_analysis/index.html)",
       "Read(//c/Users/magnus/AppData/Local/Programs/Python/Python39/lib/site-packages/Pynite/**)",
       "Bash(cat:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)"
     ],
     "deny": [],
     "ask": [],

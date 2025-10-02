@@ -33,7 +33,7 @@ beam.add_member('M2', 'N2', 'N3', 'Steel', 'MySection')
 beam.def_support('N1', True, True, True, False, False, False)
 beam.def_support('N3', True, True, True, False, False, False)
 
-beam.add_node_load('N2','Fy', -5)
+beam.add_node_load('N2','FY', -50)
 
 # # Add a uniform load of 200 lbs/ft to the beam (from 0 in to 168 in)
 # beam.add_member_dist_load('M1', 'Fy', -1000, -1000, 0, 5)
@@ -58,4 +58,5 @@ for m in beam.members:
     
     displ_array.append(beam.members[m].deflection_array('dy',n_points=11))
 
+print(displ_array)
 # %%
