@@ -20,6 +20,7 @@ let lastAnalysisResults = null; // Store last analysis results for diagram displ
 let propertiesClipboard = null; // Stores copied element properties
 let pasteMode = false; // Whether paste UI is visible
 
+
 // Steel section database
 let steelSectionDatabase = {};
 const SECTION_TYPES = {
@@ -1512,7 +1513,7 @@ function updateVisualization() {
 
     if (nodes.length === 0) return;
 
-    // Set up scales
+    // Set up scales with equal aspect ratio
     const margin = 50;
     const width = svg.node().clientWidth - 2 * margin;
     const height = 400 - 2 * margin;
@@ -1563,11 +1564,36 @@ function updateVisualization() {
             .attr("stroke-width", 2)
             .style("cursor", "pointer");
 
-        // Add hover interaction for nodes
+        // Add hover and click interaction for nodes
         if (lastAnalysisResults && lastAnalysisResults.nodes && lastAnalysisResults.nodes[node.name]) {
             const nodeData = lastAnalysisResults.nodes[node.name];
 
-            g.on("mouseenter", function(event) {
+            // Add click interaction
+            g.on("click", function(event) {
+                event.stopPropagation();
+
+                // Prepare export data with PyNite nomenclature
+                const exportData = {
+                    source: "2D Frame Analysis",
+                    combo: "Combo 1",
+                    type: "node",
+                    node_data: {
+                        name: node.name,
+                        DX: nodeData.DX || 0,  // m
+                        DY: nodeData.DY || 0,  // m
+                        DZ: nodeData.DZ || 0,  // m
+                        RX: nodeData.RX || 0,  // rad
+                        RY: nodeData.RY || 0,  // rad
+                        RZ: nodeData.RZ || 0,  // rad
+                        RxnFX: nodeData.reactions ? nodeData.reactions.FX : 0,  // N
+                        RxnFY: nodeData.reactions ? nodeData.reactions.FY : 0,  // N
+                        RxnMZ: nodeData.reactions ? nodeData.reactions.MZ : 0   // Nm
+                    }
+                };
+
+                showExportToolbar(svg, xScale(parseFloat(node.x)), yScale(parseFloat(node.y)), exportData);
+            })
+            .on("mouseenter", function(event) {
                 // Create tooltip
                 const tooltip = svg.append("g")
                     .attr("class", "node-tooltip")
@@ -1671,6 +1697,7 @@ function updateVisualization() {
             }
         });
     }
+
 }
 
 // Update visualization with diagram
@@ -2660,15 +2687,49 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
                 .x(d => d.x)
                 .y(d => d.y));
 
-        // Add invisible hover points along the diagram
+        // Add visible hover points along the diagram
         pathData.forEach((point, i) => {
+            // Add a small visible dot to show interactive location
+            svg.append("circle")
+                .attr("cx", point.x)
+                .attr("cy", point.y)
+                .attr("r", 2.5)
+                .attr("fill", color)
+                .attr("fill-opacity", 0.6)
+                .attr("stroke", "white")
+                .attr("stroke-width", 0.5)
+                .attr("pointer-events", "none");
+
+            // Add larger invisible hover area
             const circle = svg.append("circle")
                 .attr("cx", point.x)
                 .attr("cy", point.y)
-                .attr("r", 8)
+                .attr("r", 15)
                 .attr("fill", "transparent")
                 .attr("stroke", "none")
                 .style("cursor", "pointer");
+
+            // Add click interaction
+            circle.on("click", function(event) {
+                event.stopPropagation();
+
+                // Prepare export data with PyNite nomenclature
+                const exportData = {
+                    source: "2D Frame Analysis",
+                    combo: "Combo 1",
+                    type: "element_point",
+                    element_data: {
+                        element: element.name,
+                        position: xCoords[i],  // meters along element
+                        Mz: diagramData.moments ? diagramData.moments[i] : 0,  // Nm
+                        Fy: diagramData.shears ? diagramData.shears[i] : 0,   // N
+                        Fx: diagramData.axials ? diagramData.axials[i] : 0,   // N
+                        dy: diagramData.deflections ? diagramData.deflections[i] : 0  // m
+                    }
+                };
+
+                showExportToolbar(svg, point.x, point.y, exportData);
+            });
 
             // Add hover interaction
             circle.on("mouseenter", function(event) {
@@ -2792,6 +2853,222 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
                 .text(`${(dataArray[maxIndex] / 1000).toFixed(1)}k`);
         }
     });
+}
+
+// Show export toolbar for clicked results
+function showExportToolbar(svg, x, y, exportData) {
+    // Remove any existing toolbars
+    svg.selectAll(".export-toolbar").remove();
+
+    const toolbar = svg.append("g")
+        .attr("class", "export-toolbar");
+
+    const toolbarWidth = 180;
+    const toolbarHeight = 80;
+    const buttonHeight = 30;
+    const padding = 10;
+
+    // Position toolbar to avoid going off screen
+    let toolbarX = x + 20;
+    let toolbarY = y - toolbarHeight / 2;
+
+    const svgWidth = svg.node().clientWidth;
+    const svgHeight = 400;
+
+    if (toolbarX + toolbarWidth > svgWidth) {
+        toolbarX = x - toolbarWidth - 20;
+    }
+    if (toolbarY < 0) {
+        toolbarY = 10;
+    } else if (toolbarY + toolbarHeight > svgHeight) {
+        toolbarY = svgHeight - toolbarHeight - 10;
+    }
+
+    toolbar.attr("transform", `translate(${toolbarX}, ${toolbarY})`);
+
+    // Background
+    toolbar.append("rect")
+        .attr("width", toolbarWidth)
+        .attr("height", toolbarHeight)
+        .attr("fill", "#1f2937")
+        .attr("stroke", "#3b82f6")
+        .attr("stroke-width", 2)
+        .attr("rx", 6);
+
+    // Close button
+    const closeBtn = toolbar.append("g")
+        .attr("class", "close-button")
+        .style("cursor", "pointer")
+        .on("click", function(event) {
+            event.stopPropagation();
+            svg.selectAll(".export-toolbar").remove();
+        });
+
+    closeBtn.append("circle")
+        .attr("cx", toolbarWidth - 15)
+        .attr("cy", 15)
+        .attr("r", 8)
+        .attr("fill", "#ef4444")
+        .attr("stroke", "#fff")
+        .attr("stroke-width", 1);
+
+    closeBtn.append("text")
+        .attr("x", toolbarWidth - 15)
+        .attr("y", 19)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#fff")
+        .attr("font-size", "12px")
+        .attr("font-weight", "bold")
+        .text("×");
+
+    // Export to JSON button
+    const jsonBtn = toolbar.append("g")
+        .attr("class", "json-export-button")
+        .style("cursor", "pointer")
+        .on("click", function(event) {
+            event.stopPropagation();
+            exportToJSON(exportData);
+        });
+
+    jsonBtn.append("rect")
+        .attr("x", padding)
+        .attr("y", padding + 10)
+        .attr("width", toolbarWidth - 2 * padding)
+        .attr("height", buttonHeight)
+        .attr("fill", "#3b82f6")
+        .attr("stroke", "#60a5fa")
+        .attr("stroke-width", 1)
+        .attr("rx", 4);
+
+    jsonBtn.append("text")
+        .attr("x", toolbarWidth / 2)
+        .attr("y", padding + 30)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#fff")
+        .attr("font-size", "12px")
+        .attr("font-weight", "bold")
+        .text("Export to JSON");
+
+    // Export to Module button with arrow
+    const moduleBtn = toolbar.append("g")
+        .attr("class", "module-export-button")
+        .style("cursor", "pointer");
+
+    moduleBtn.append("rect")
+        .attr("x", padding)
+        .attr("y", padding + 15 + buttonHeight)
+        .attr("width", toolbarWidth - 2 * padding)
+        .attr("height", buttonHeight)
+        .attr("fill", "#6b7280")
+        .attr("stroke", "#9ca3af")
+        .attr("stroke-width", 1)
+        .attr("rx", 4);
+
+    moduleBtn.append("text")
+        .attr("x", padding + 10)
+        .attr("y", padding + 35 + buttonHeight)
+        .attr("fill", "#fff")
+        .attr("font-size", "12px")
+        .attr("font-weight", "bold")
+        .text("Export to Module");
+
+    moduleBtn.append("text")
+        .attr("x", toolbarWidth - padding - 10)
+        .attr("y", padding + 35 + buttonHeight)
+        .attr("text-anchor", "end")
+        .attr("fill", "#fff")
+        .attr("font-size", "14px")
+        .attr("font-weight", "bold")
+        .text("▶");
+
+    // Add hover interaction for module dropdown
+    moduleBtn.on("mouseenter", function() {
+        showModuleDropdown(toolbar, toolbarWidth, toolbarHeight, exportData);
+    });
+
+    // Close toolbar on SVG click
+    svg.on("click.toolbar", function() {
+        svg.selectAll(".export-toolbar").remove();
+        svg.selectAll(".module-dropdown").remove();
+    });
+}
+
+// Show module selection dropdown
+function showModuleDropdown(toolbar, parentWidth, parentHeight, exportData) {
+    // Remove existing dropdown
+    toolbar.selectAll(".module-dropdown").remove();
+
+    const dropdown = toolbar.append("g")
+        .attr("class", "module-dropdown");
+
+    const dropdownWidth = 180;
+    const dropdownHeight = 100;
+    const itemHeight = 30;
+    const padding = 5;
+
+    dropdown.attr("transform", `translate(${parentWidth + 5}, ${parentHeight - dropdownHeight})`);
+
+    // Background
+    dropdown.append("rect")
+        .attr("width", dropdownWidth)
+        .attr("height", dropdownHeight)
+        .attr("fill", "#374151")
+        .attr("stroke", "#9ca3af")
+        .attr("stroke-width", 1)
+        .attr("rx", 4);
+
+    // Module options (disabled for now)
+    const modules = [
+        "Concrete Slab Design",
+        "Concrete Beam Design",
+        "Steel Profile Calculator"
+    ];
+
+    modules.forEach((moduleName, i) => {
+        const moduleItem = dropdown.append("g")
+            .attr("class", "module-item")
+            .style("cursor", "not-allowed")
+            .attr("opacity", 0.5);
+
+        moduleItem.append("rect")
+            .attr("x", padding)
+            .attr("y", padding + i * itemHeight)
+            .attr("width", dropdownWidth - 2 * padding)
+            .attr("height", itemHeight - 2)
+            .attr("fill", "#4b5563")
+            .attr("rx", 3);
+
+        moduleItem.append("text")
+            .attr("x", padding + 10)
+            .attr("y", padding + i * itemHeight + 20)
+            .attr("fill", "#9ca3af")
+            .attr("font-size", "11px")
+            .text(`☐ ${moduleName}`);
+    });
+
+    // Remove dropdown on mouse leave from both toolbar and dropdown
+    dropdown.on("mouseleave", function() {
+        dropdown.remove();
+    });
+}
+
+// Export results to JSON file
+function exportToJSON(exportData) {
+    const jsonString = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    // Generate filename based on data type
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const filename = exportData.type === 'node'
+        ? `node_${exportData.node_data.name}_${timestamp}.json`
+        : `element_${exportData.element_data.element}_pos${exportData.element_data.position.toFixed(2)}m_${timestamp}.json`;
+
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
 }
 
 // Autoscale diagram to 1/10 of longest element
