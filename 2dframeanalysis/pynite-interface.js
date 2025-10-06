@@ -15,6 +15,7 @@ let nodalLoadCounter = 1;
 let distributedLoadCounter = 1;
 let elementLoadCounter = 1;
 let lastAnalysisResults = null; // Store last analysis results for diagram display
+let lastAutoscaledDiagramType = null; // Track which diagram type was last autoscaled
 
 // Clipboard state for copy/paste properties
 let propertiesClipboard = null; // Stores copied element properties
@@ -1304,60 +1305,6 @@ function loadTwoSpanExample() {
     document.querySelector('#element-2 .element-i-val').value = '0.001';
     document.querySelector('#element-2 .element-a').value = '0.01';
 
-    // // Add loads at midspan of each span
-    // addNode();
-    // document.querySelector('#node-4 .node-x').value = '2';
-    // document.querySelector('#node-4 .node-y').value = '0';
-    // document.querySelector('#node-4 .node-support').value = 'free';
-
-    // // Split first element
-    // removeElement('element-1');
-    // addElement();
-    // document.querySelector('#element-1 .element-i').value = 'N1';
-    // document.querySelector('#element-1 .element-j').value = 'N4';
-    // document.querySelector('#element-1 .element-e').value = '200';
-    // document.querySelector('#element-1 .element-i-val').value = '0.001';
-    // document.querySelector('#element-1 .element-a').value = '0.01';
-
-    // addElement();
-    // document.querySelector('#element-3 .element-i').value = 'N4';
-    // document.querySelector('#element-3 .element-j').value = 'N2';
-    // document.querySelector('#element-3 .element-e').value = '200';
-    // document.querySelector('#element-3 .element-i-val').value = '0.001';
-    // document.querySelector('#element-3 .element-a').value = '0.01';
-
-    // addNode();
-    // document.querySelector('#node-5 .node-x').value = '6';
-    // document.querySelector('#node-5 .node-y').value = '0';
-    // document.querySelector('#node-5 .node-support').value = 'free';
-
-    // // Split second element
-    // removeElement('element-2');
-    // addElement();
-    // document.querySelector('#element-2 .element-i').value = 'N2';
-    // document.querySelector('#element-2 .element-j').value = 'N5';
-    // document.querySelector('#element-2 .element-e').value = '200';
-    // document.querySelector('#element-2 .element-i-val').value = '0.001';
-    // document.querySelector('#element-2 .element-a').value = '0.01';
-
-    // addElement();
-    // document.querySelector('#element-4 .element-i').value = 'N5';
-    // document.querySelector('#element-4 .element-j').value = 'N3';
-    // document.querySelector('#element-4 .element-e').value = '200';
-    // document.querySelector('#element-4 .element-i-val').value = '0.001';
-    // document.querySelector('#element-4 .element-a').value = '0.01';
-
-    // // Add loads
-    // addNodalLoad();
-    // document.querySelector('#nodal-load-1 .load-node').value = 'N4';
-    // document.querySelector('#nodal-load-1 .load-fx').value = '0';
-    // document.querySelector('#nodal-load-1 .load-fy').value = '-15';
-
-    // addNodalLoad();
-    // document.querySelector('#nodal-load-2 .load-node').value = 'N5';
-    // document.querySelector('#nodal-load-2 .load-fx').value = '0';
-    // document.querySelector('#nodal-load-2 .load-fy').value = '-15';
-
     // Add distributed loads on both elements
     addDistributedLoad();
     document.querySelector('#distributed-load-1 .dist-element').value = 'E1';
@@ -1791,7 +1738,17 @@ function updateVisualization() {
 
 // Update visualization with diagram
 function updateVisualizationWithDiagram() {
-    updateVisualization();
+    const diagramType = document.getElementById('diagram-type')?.value;
+
+    // Auto-scale only once when a new diagram type is selected
+    if (diagramType && diagramType !== 'none' &&
+        lastAnalysisResults && lastAnalysisResults.diagrams &&
+        diagramType !== lastAutoscaledDiagramType) {
+        lastAutoscaledDiagramType = diagramType;
+        autoscaleDiagram();
+    } else {
+        updateVisualization();
+    }
 }
 
 // Helper functions for visualization
@@ -2218,6 +2175,8 @@ result
         if (results.success) {
             // Store results for diagram display
             lastAnalysisResults = results;
+            // Reset autoscale flag so diagrams will autoscale again
+            lastAutoscaledDiagramType = null;
             console.log("Analysis successful! Stored results:");
             console.log("  Nodes:", Object.keys(results.nodes).length);
             console.log("  Elements:", Object.keys(results.elements).length);
