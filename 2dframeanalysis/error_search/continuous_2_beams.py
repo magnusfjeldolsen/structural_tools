@@ -31,6 +31,7 @@ beam.add_member('M2', 'N2', 'N3', 'Steel', 'MySection')
 
 # Provide simple supports
 beam.def_support('N1', True, True, True, False, False, False)
+beam.def_support('N2', True, True, True, False, False, False)
 beam.def_support('N3', True, True, True, False, False, False)
 
 beam.add_node_load('N2','FY', -50)

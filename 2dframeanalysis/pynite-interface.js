@@ -170,21 +170,34 @@ class PyNiteWebAnalyzer:
         self.results = {}
 
     def create_model(self, nodes, elements, loads):
-        """Create PyNite model from input data"""
+        """Create PyNite model from input data - creates fresh model every time"""
+        # Create brand new model (not reusing old one)
         self.model = FEModel3D()
+        import time
+        print(f"\\n{'='*60}")
+        print(f"Creating FRESH FE model at {time.time()}")
+        print(f"  Nodes: {len(nodes)}, Elements: {len(elements)}")
+        print(f"{'='*60}")
 
         # Add nodes
         for node in nodes:
             self.model.add_node(node['name'], float(node['x']), float(node['y']), 0.0)
+            print(f"  Added node: {node['name']} at ({node['x']}, {node['y']})")
 
         # Define a default material (Steel)
-        E = 200e9  # 200 GPa in Pa
+        E = 210e9  # 200 GPa in Pa
         G = 80e9   # 80 GPa in Pa
         nu = 0.3   # Poisson's ratio
         rho = 7850 # Density kg/m³
         self.model.add_material('Steel', E, G, nu, rho)
 
+        # Add supports BEFORE elements (PyNite requirement!)
+        print(f"\\nAdding supports:")
+        for node in nodes:
+            self._add_support(node['name'], node['support'])
+
         # Add elements with material and section properties
+        print(f"\\nAdding {len(elements)} elements:")
         for element in elements:
             E_element = float(element['E']) * 1e9  # Convert GPa to Pa
             I = float(element['I'])
@@ -203,14 +216,16 @@ class PyNiteWebAnalyzer:
                 'Steel',
                 section_name
             )
-
-        # Add supports
-        for node in nodes:
-            self._add_support(node['name'], node['support'])
+            print(f"  Added element: {element['name']} from {element['nodeI']} to {element['nodeJ']}")
 
         # Add loads - handle both old array format and new object format
         if isinstance(loads, dict):
             # New format with load types
+            print(f"\\nAdding loads:")
+            print(f"  Nodal loads: {len(loads.get('nodal', []))}")
+            print(f"  Distributed loads: {len(loads.get('distributed', []))}")
+            print(f"  Element point loads: {len(loads.get('elementPoint', []))}")
+
             for load in loads.get('nodal', []):
                 if any([float(load['fx']) != 0, float(load['fy']) != 0, float(load['mz']) != 0]):
                     self._add_nodal_load(load)
@@ -222,20 +237,59 @@ class PyNiteWebAnalyzer:
                 self._add_element_point_load(load)
         else:
             # Old format - backward compatibility
+            print(f"\\nAdding {len(loads)} loads (old format):")
             for load in loads:
                 if any([float(load['fx']) != 0, float(load['fy']) != 0, float(load['mz']) != 0]):
                     self._add_nodal_load(load)
 
     def _add_support(self, node_name, support_type):
         """Add support constraints to a node"""
+        print(f"Adding support: {node_name} = {support_type}")
         if support_type == 'fixed':
-            self.model.def_support(node_name, True, True, True, True, True, True)
+            dx = True # constrained for translation in x
+            dy = True # constrained for translation in y
+            dz = True # constrained for translation in z
+            rx = True # constrained for rotation about x
+            ry = True # constrained for rotation about y
+            rz = True # constrained for rotation about z
+
+            self.model.def_support(node_name, dx, dy, dz, rx, ry, rz)
+
         elif support_type == 'pinned':
-            self.model.def_support(node_name, True, True, True, False, False, False)
+            dx = True # constrained for translation in x
+            dy = True # constrained for translation in y
+            dz = True # constrained for translation in z
+            rx = True # constrained for rotation about x
+            ry = True # constrained for rotation about y
+            rz = False # constrained for rotation about z
+            self.model.def_support(node_name, dx, dy, dz, rx, ry, rz)
+
         elif support_type == 'roller-x':
-            self.model.def_support(node_name, False, True, True, False, False, False)
+            dx = False # constrained for translation in x
+            dy = True # constrained for translation in y
+            dz = True # constrained for translation in z
+            rx = True # constrained for rotation about x
+            ry = True # constrained for rotation about y
+            rz = False # constrained for rotation about z
+
+            self.model.def_support(node_name, False, True, True, True, False, False)
+
         elif support_type == 'roller-y':
-            self.model.def_support(node_name, True, False, True, False, False, False)
+
+            dx = True # constrained for translation in x
+            dy = False # constrained for translation in y
+            dz = True # constrained for translation in z
+            rx = True # constrained for rotation about x
+            ry = True # constrained for rotation about y
+            rz = False # constrained for rotation about z
+
+            self.model.def_support(node_name, True, False, True, True, False, False)
+
+        elif support_type == 'free':
+            # Free node - no constraints
+            pass
+        else:
+            print(f"Warning: Unknown support type '{support_type}' for {node_name}")
 
     def _add_nodal_load(self, load):
         """Add point loads to a node"""
@@ -288,7 +342,8 @@ class PyNiteWebAnalyzer:
             raise Exception(f"Analysis failed: {str(e)}")
 
     def _extract_results(self):
-        """Extract results from the analyzed model"""
+        """Extract results from the analyzed model - FRESH extraction every time"""
+        print(f"\\nExtracting results from analyzed model...")
         self.results = {
             'nodes': {},
             'elements': {},
@@ -355,6 +410,7 @@ class PyNiteWebAnalyzer:
                     'deflections': deflections,
                     'length': float(L)
                 }
+                print(f"  ✓ Extracted diagram for {member_name}: {len(moments)} points")
 
             except Exception as e:
                 # Log detailed error for debugging
@@ -710,10 +766,10 @@ function addDistributedLoad() {
             ${elementOptions}
         </select>
         <select class="bg-gray-600 text-white p-1 rounded text-xs dist-direction">
-            <option value="FY">Global Y (↓ gravity)</option>
-            <option value="FX">Global X (→)</option>
-            <option value="Fy">Local ⊥ (perpendicular)</option>
-            <option value="Fx">Local ∥ (axial)</option>
+            <option value="FY">Global Y</option>
+            <option value="FX">Global X</option>
+            <option value="Fy">Local Y (perpendicular)</option>
+            <option value="Fx">Local X (axial)</option>
         </select>
         <input type="number" step="0.1" value="-10" placeholder="w1" class="bg-gray-600 text-white p-1 rounded text-xs dist-w1" oninput="onDistributedLoadW1Change('distributed-load-${distributedLoadCounter}')">
         <input type="number" step="0.1" value="-10" placeholder="w2" class="bg-gray-600 text-white p-1 rounded text-xs dist-w2" oninput="onDistributedLoadW2Change('distributed-load-${distributedLoadCounter}')">
@@ -1162,56 +1218,54 @@ function loadCantileverExample() {
     updateNodesDatalist(); // Update element connectivity options
 }
 
-// Load simply supported beam example
+// Load simply supported beam example - replicates simply_supported.py exactly
 function loadSimplySupportedExample() {
     clearAll();
 
-    // Add nodes
+    // Replicate simply_supported.py:
+    // - 2 nodes at (0,0) and (5,0)
+    // - N1: Pinned (DX=True, DY=True, DZ=True, RX=False, RY=False, RZ=False)
+    // - N2: Roller X (DX=False, DY=True, DZ=True, RX=False, RY=False, RZ=False)
+    // - 1 element
+    // - Distributed load -1 kN/m (Fy local perpendicular)
+    // - Axial load 100 kN at N2
+
     addNode();
     document.querySelector('#node-1 .node-x').value = '0';
     document.querySelector('#node-1 .node-y').value = '0';
     document.querySelector('#node-1 .node-support').value = 'pinned';
 
     addNode();
-    document.querySelector('#node-2 .node-x').value = '6';
+    document.querySelector('#node-2 .node-x').value = '5';
     document.querySelector('#node-2 .node-y').value = '0';
-    document.querySelector('#node-2 .node-support').value = 'roller-y';
+    document.querySelector('#node-2 .node-support').value = 'roller-x'; // CAN slide in X direction
 
-    // Add element
+    // Single element
     addElement();
     document.querySelector('#element-1 .element-i').value = 'N1';
     document.querySelector('#element-1 .element-j').value = 'N2';
-    document.querySelector('#element-1 .element-e').value = '200';
+    document.querySelector('#element-1 .element-e').value = '210'; // 210 GPa
     document.querySelector('#element-1 .element-i-val').value = '0.001';
     document.querySelector('#element-1 .element-a').value = '0.01';
 
-    // Add load at midspan
-    addNode();
-    document.querySelector('#node-3 .node-x').value = '3';
-    document.querySelector('#node-3 .node-y').value = '0';
-    document.querySelector('#node-3 .node-support').value = 'free';
+    // Add distributed load (-1 kN/m over full length, local perpendicular)
+    addDistributedLoad();
+    document.querySelector('#distributed-load-1 .dist-element').value = 'E1';
+    document.querySelector('#distributed-load-1 .dist-direction').value = 'Fy'; // Local perpendicular
+    document.querySelector('#distributed-load-1 .dist-w1').value = '-1';
+    document.querySelector('#distributed-load-1 .dist-w2').value = '-1';
+    document.querySelector('#distributed-load-1 .dist-x1').value = '0';
+    document.querySelector('#distributed-load-1 .dist-x2').value = '5';
 
-    addElement();
-    document.querySelector('#element-2 .element-i').value = 'N1';
-    document.querySelector('#element-2 .element-j').value = 'N3';
-    document.querySelector('#element-2 .element-e').value = '200';
-    document.querySelector('#element-2 .element-i-val').value = '0.001';
-    document.querySelector('#element-2 .element-a').value = '0.01';
-
-    addElement();
-    document.querySelector('#element-3 .element-i').value = 'N3';
-    document.querySelector('#element-3 .element-j').value = 'N2';
-    document.querySelector('#element-3 .element-e').value = '200';
-    document.querySelector('#element-3 .element-i-val').value = '0.001';
-    document.querySelector('#element-3 .element-a').value = '0.01';
-
+    // Add axial load at N2 (100 kN)
     addNodalLoad();
-    document.querySelector('#nodal-load-1 .load-node').value = 'N3';
-    document.querySelector('#nodal-load-1 .load-fx').value = '0';
-    document.querySelector('#nodal-load-1 .load-fy').value = '-20';
+    document.querySelector('#nodal-load-1 .load-node').value = 'N2';
+    document.querySelector('#nodal-load-1 .load-fx').value = '100';
+    document.querySelector('#nodal-load-1 .load-fy').value = '0';
+    document.querySelector('#nodal-load-1 .load-mz').value = '0';
 
     updateVisualization();
-    updateNodesDatalist(); // Update element connectivity options
+    updateNodesDatalist();
 }
 
 // Load two span beam example
@@ -1232,7 +1286,7 @@ function loadTwoSpanExample() {
     addNode();
     document.querySelector('#node-3 .node-x').value = '8';
     document.querySelector('#node-3 .node-y').value = '0';
-    document.querySelector('#node-3 .node-support').value = 'roller-y';
+    document.querySelector('#node-3 .node-support').value = 'roller-x';
 
     // Add elements
     addElement();
@@ -1249,59 +1303,76 @@ function loadTwoSpanExample() {
     document.querySelector('#element-2 .element-i-val').value = '0.001';
     document.querySelector('#element-2 .element-a').value = '0.01';
 
-    // Add loads at midspan of each span
-    addNode();
-    document.querySelector('#node-4 .node-x').value = '2';
-    document.querySelector('#node-4 .node-y').value = '0';
-    document.querySelector('#node-4 .node-support').value = 'free';
+    // // Add loads at midspan of each span
+    // addNode();
+    // document.querySelector('#node-4 .node-x').value = '2';
+    // document.querySelector('#node-4 .node-y').value = '0';
+    // document.querySelector('#node-4 .node-support').value = 'free';
 
-    // Split first element
-    removeElement('element-1');
-    addElement();
-    document.querySelector('#element-1 .element-i').value = 'N1';
-    document.querySelector('#element-1 .element-j').value = 'N4';
-    document.querySelector('#element-1 .element-e').value = '200';
-    document.querySelector('#element-1 .element-i-val').value = '0.001';
-    document.querySelector('#element-1 .element-a').value = '0.01';
+    // // Split first element
+    // removeElement('element-1');
+    // addElement();
+    // document.querySelector('#element-1 .element-i').value = 'N1';
+    // document.querySelector('#element-1 .element-j').value = 'N4';
+    // document.querySelector('#element-1 .element-e').value = '200';
+    // document.querySelector('#element-1 .element-i-val').value = '0.001';
+    // document.querySelector('#element-1 .element-a').value = '0.01';
 
-    addElement();
-    document.querySelector('#element-3 .element-i').value = 'N4';
-    document.querySelector('#element-3 .element-j').value = 'N2';
-    document.querySelector('#element-3 .element-e').value = '200';
-    document.querySelector('#element-3 .element-i-val').value = '0.001';
-    document.querySelector('#element-3 .element-a').value = '0.01';
+    // addElement();
+    // document.querySelector('#element-3 .element-i').value = 'N4';
+    // document.querySelector('#element-3 .element-j').value = 'N2';
+    // document.querySelector('#element-3 .element-e').value = '200';
+    // document.querySelector('#element-3 .element-i-val').value = '0.001';
+    // document.querySelector('#element-3 .element-a').value = '0.01';
 
-    addNode();
-    document.querySelector('#node-5 .node-x').value = '6';
-    document.querySelector('#node-5 .node-y').value = '0';
-    document.querySelector('#node-5 .node-support').value = 'free';
+    // addNode();
+    // document.querySelector('#node-5 .node-x').value = '6';
+    // document.querySelector('#node-5 .node-y').value = '0';
+    // document.querySelector('#node-5 .node-support').value = 'free';
 
-    // Split second element
-    removeElement('element-2');
-    addElement();
-    document.querySelector('#element-2 .element-i').value = 'N2';
-    document.querySelector('#element-2 .element-j').value = 'N5';
-    document.querySelector('#element-2 .element-e').value = '200';
-    document.querySelector('#element-2 .element-i-val').value = '0.001';
-    document.querySelector('#element-2 .element-a').value = '0.01';
+    // // Split second element
+    // removeElement('element-2');
+    // addElement();
+    // document.querySelector('#element-2 .element-i').value = 'N2';
+    // document.querySelector('#element-2 .element-j').value = 'N5';
+    // document.querySelector('#element-2 .element-e').value = '200';
+    // document.querySelector('#element-2 .element-i-val').value = '0.001';
+    // document.querySelector('#element-2 .element-a').value = '0.01';
 
-    addElement();
-    document.querySelector('#element-4 .element-i').value = 'N5';
-    document.querySelector('#element-4 .element-j').value = 'N3';
-    document.querySelector('#element-4 .element-e').value = '200';
-    document.querySelector('#element-4 .element-i-val').value = '0.001';
-    document.querySelector('#element-4 .element-a').value = '0.01';
+    // addElement();
+    // document.querySelector('#element-4 .element-i').value = 'N5';
+    // document.querySelector('#element-4 .element-j').value = 'N3';
+    // document.querySelector('#element-4 .element-e').value = '200';
+    // document.querySelector('#element-4 .element-i-val').value = '0.001';
+    // document.querySelector('#element-4 .element-a').value = '0.01';
 
-    // Add loads
-    addNodalLoad();
-    document.querySelector('#nodal-load-1 .load-node').value = 'N4';
-    document.querySelector('#nodal-load-1 .load-fx').value = '0';
-    document.querySelector('#nodal-load-1 .load-fy').value = '-15';
+    // // Add loads
+    // addNodalLoad();
+    // document.querySelector('#nodal-load-1 .load-node').value = 'N4';
+    // document.querySelector('#nodal-load-1 .load-fx').value = '0';
+    // document.querySelector('#nodal-load-1 .load-fy').value = '-15';
 
-    addNodalLoad();
-    document.querySelector('#nodal-load-2 .load-node').value = 'N5';
-    document.querySelector('#nodal-load-2 .load-fx').value = '0';
-    document.querySelector('#nodal-load-2 .load-fy').value = '-15';
+    // addNodalLoad();
+    // document.querySelector('#nodal-load-2 .load-node').value = 'N5';
+    // document.querySelector('#nodal-load-2 .load-fx').value = '0';
+    // document.querySelector('#nodal-load-2 .load-fy').value = '-15';
+
+    // Add distributed loads on both elements
+    addDistributedLoad();
+    document.querySelector('#distributed-load-1 .dist-element').value = 'E1';
+    document.querySelector('#distributed-load-1 .dist-direction').value = 'FY';
+    document.querySelector('#distributed-load-1 .dist-w1').value = '-10';
+    document.querySelector('#distributed-load-1 .dist-w2').value = '-10';
+    document.querySelector('#distributed-load-1 .dist-x1').value = '0';
+    document.querySelector('#distributed-load-1 .dist-x2').value = '4';
+
+    addDistributedLoad();
+    document.querySelector('#distributed-load-2 .dist-element').value = 'E2';
+    document.querySelector('#distributed-load-2 .dist-direction').value = 'FY';
+    document.querySelector('#distributed-load-2 .dist-w1').value = '-10';
+    document.querySelector('#distributed-load-2 .dist-w2').value = '-10';
+    document.querySelector('#distributed-load-2 .dist-x1').value = '0';
+    document.querySelector('#distributed-load-2 .dist-x2').value = '4';
 
     updateVisualization();
     updateNodesDatalist(); // Update element connectivity options
@@ -1394,6 +1465,45 @@ function updateVisualization() {
 
     const svg = d3.select("#frame-svg");
     svg.selectAll("*").remove();
+
+    // Add arrow marker definitions
+    const defs = svg.append("defs");
+
+    // Red arrowhead for nodal loads
+    defs.append("marker")
+        .attr("id", "arrowhead-red")
+        .attr("markerWidth", 10)
+        .attr("markerHeight", 10)
+        .attr("refX", 9)
+        .attr("refY", 3)
+        .attr("orient", "auto")
+        .append("polygon")
+        .attr("points", "0 0, 10 3, 0 6")
+        .attr("fill", "#F87171");
+
+    // Green arrowhead for distributed loads
+    defs.append("marker")
+        .attr("id", "arrowhead-green")
+        .attr("markerWidth", 10)
+        .attr("markerHeight", 10)
+        .attr("refX", 9)
+        .attr("refY", 3)
+        .attr("orient", "auto")
+        .append("polygon")
+        .attr("points", "0 0, 10 3, 0 6")
+        .attr("fill", "#10B981");
+
+    // Orange arrowhead for element point loads
+    defs.append("marker")
+        .attr("id", "arrowhead-orange")
+        .attr("markerWidth", 10)
+        .attr("markerHeight", 10)
+        .attr("refX", 9)
+        .attr("refY", 3)
+        .attr("orient", "auto")
+        .append("polygon")
+        .attr("points", "0 0, 10 3, 0 6")
+        .attr("fill", "#F59E0B");
 
     // Get current data from inputs
     const nodes = getNodesFromInputs();
@@ -1518,24 +1628,49 @@ function updateVisualization() {
         drawSupportSymbol(g, node.support);
     });
 
-    // Draw nodal loads
-    loads.nodal.forEach(load => {
-        const node = nodes.find(n => n.name === load.node);
-        if (node) {
-            const x = xScale(parseFloat(node.x));
-            const y = yScale(parseFloat(node.y));
+    // Draw loads only when Loads tab is active
+    if (isLoadsTabActive()) {
+        // Draw nodal loads
+        loads.nodal.forEach(load => {
+            const node = nodes.find(n => n.name === load.node);
+            if (node) {
+                const x = xScale(parseFloat(node.x));
+                const y = yScale(parseFloat(node.y));
 
-            // Draw load arrows
-            if (parseFloat(load.fx) !== 0) {
-                drawLoadArrow(svg, x, y, parseFloat(load.fx), 'horizontal');
+                // Draw load arrows
+                if (parseFloat(load.fx) !== 0) {
+                    drawLoadArrow(svg, x, y, parseFloat(load.fx), 'horizontal', '#F87171', load.name);
+                }
+                if (parseFloat(load.fy) !== 0) {
+                    drawLoadArrow(svg, x, y, parseFloat(load.fy), 'vertical', '#F87171', load.name);
+                }
             }
-            if (parseFloat(load.fy) !== 0) {
-                drawLoadArrow(svg, x, y, parseFloat(load.fy), 'vertical');
-            }
-        }
-    });
+        });
 
-    // TODO: Draw distributed loads and element point loads (visualization implementation pending)
+        // Draw distributed loads
+        loads.distributed.forEach(load => {
+            const element = elements.find(e => e.name === load.element);
+            if (element) {
+                const nodeI = nodes.find(n => n.name === element.nodeI);
+                const nodeJ = nodes.find(n => n.name === element.nodeJ);
+                if (nodeI && nodeJ) {
+                    drawDistributedLoad(svg, nodeI, nodeJ, load, xScale, yScale);
+                }
+            }
+        });
+
+        // Draw element point loads
+        loads.elementPoint.forEach(load => {
+            const element = elements.find(e => e.name === load.element);
+            if (element) {
+                const nodeI = nodes.find(n => n.name === element.nodeI);
+                const nodeJ = nodes.find(n => n.name === element.nodeJ);
+                if (nodeI && nodeJ) {
+                    drawElementPointLoad(svg, nodeI, nodeJ, load, xScale, yScale);
+                }
+            }
+        });
+    }
 }
 
 // Update visualization with diagram
@@ -1583,29 +1718,251 @@ function drawSupportSymbol(g, support) {
     }
 }
 
-function drawLoadArrow(svg, x, y, magnitude, direction) {
-    const scale = Math.abs(magnitude) * 2;
-    const color = magnitude > 0 ? "#34D399" : "#F87171";
+function drawLoadArrow(svg, x, y, magnitude, direction, color = null, label = null) {
+    const arrowLength = 40;
+    const defaultColor = magnitude > 0 ? "#34D399" : "#F87171";
+    const arrowColor = color || defaultColor;
 
     if (direction === 'vertical') {
-        const startY = magnitude > 0 ? y + 20 : y - 20;
+        const startY = magnitude > 0 ? y + arrowLength : y - arrowLength;
         const endY = y;
 
+        // Arrow line
         svg.append("line")
             .attr("x1", x)
             .attr("y1", startY)
             .attr("x2", x)
             .attr("y2", endY)
-            .attr("stroke", color)
+            .attr("stroke", arrowColor)
             .attr("stroke-width", 2)
-            .attr("marker-end", "url(#arrowhead)");
+            .attr("marker-end", "url(#arrowhead-red)");
 
+        // Load label
         svg.append("text")
             .attr("x", x + 10)
             .attr("y", (startY + endY) / 2)
-            .attr("fill", color)
+            .attr("fill", arrowColor)
             .attr("font-size", "10px")
             .text(`${magnitude} kN`);
+
+    } else if (direction === 'horizontal') {
+        const startX = magnitude > 0 ? x + arrowLength : x - arrowLength;
+        const endX = x;
+
+        // Arrow line
+        svg.append("line")
+            .attr("x1", startX)
+            .attr("y1", y)
+            .attr("x2", endX)
+            .attr("y2", y)
+            .attr("stroke", arrowColor)
+            .attr("stroke-width", 2)
+            .attr("marker-end", "url(#arrowhead-red)");
+
+        // Load label
+        svg.append("text")
+            .attr("x", (startX + endX) / 2)
+            .attr("y", y - 10)
+            .attr("fill", arrowColor)
+            .attr("font-size", "10px")
+            .text(`${magnitude} kN`);
+    }
+}
+
+// Draw distributed load on element
+function drawDistributedLoad(svg, nodeI, nodeJ, load, xScale, yScale) {
+    const x1 = xScale(parseFloat(nodeI.x));
+    const y1 = yScale(parseFloat(nodeI.y));
+    const x2 = xScale(parseFloat(nodeJ.x));
+    const y2 = yScale(parseFloat(nodeJ.y));
+
+    // Calculate element angle and length
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const angle = Math.atan2(dy, dx);
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    // Load parameters
+    const w1 = parseFloat(load.w1);
+    const w2 = parseFloat(load.w2);
+    const loadX1 = parseFloat(load.x1);
+    const loadX2 = parseFloat(load.x2);
+    const elementLength = Math.sqrt(
+        Math.pow(parseFloat(nodeJ.x) - parseFloat(nodeI.x), 2) +
+        Math.pow(parseFloat(nodeJ.y) - parseFloat(nodeI.y), 2)
+    );
+
+    // Calculate start and end positions along element (in screen coordinates)
+    const startRatio = loadX1 / elementLength;
+    const endRatio = loadX2 / elementLength;
+    const startX = x1 + dx * startRatio;
+    const startY = y1 + dy * startRatio;
+    const endX = x1 + dx * endRatio;
+    const endY = y1 + dy * endRatio;
+
+    // Determine load direction (perpendicular to element for local loads)
+    let perpAngle = angle + Math.PI / 2;
+    const isGlobalY = load.direction === 'FY';
+    const isGlobalX = load.direction === 'FX';
+
+    if (isGlobalY) {
+        perpAngle = -Math.PI / 2; // Global downward
+    } else if (isGlobalX) {
+        perpAngle = 0; // Global horizontal
+    }
+
+    // Scale the rectangle height based on w values
+    // Use same length as point load arrows (40px) for maximum magnitude
+    const maxArrowLength = 40;
+    const maxW = Math.max(Math.abs(w1), Math.abs(w2));
+
+    // Calculate scaled heights for w1 and w2 with proper sign
+    const h1 = maxW !== 0 ? (w1 / maxW) * maxArrowLength : 0;
+    const h2 = maxW !== 0 ? (w2 / maxW) * maxArrowLength : 0;
+
+    // Calculate rectangle/trapezoid corners with proper scaling and direction
+    const rectX1 = startX + Math.cos(perpAngle) * h1;
+    const rectY1 = startY + Math.sin(perpAngle) * h1;
+    const rectX2 = endX + Math.cos(perpAngle) * h2;
+    const rectY2 = endY + Math.sin(perpAngle) * h2;
+
+    // Draw load rectangle/trapezoid
+    svg.append("polygon")
+        .attr("points", `${startX},${startY} ${endX},${endY} ${rectX2},${rectY2} ${rectX1},${rectY1}`)
+        .attr("fill", "#10B981")
+        .attr("opacity", 0.3)
+        .attr("stroke", "#10B981")
+        .attr("stroke-width", 2);
+
+    // Draw arrows at start, middle, and end with scaled lengths
+    const numArrows = 3;
+    for (let i = 0; i <= numArrows; i++) {
+        const ratio = i / numArrows;
+        const arrowX = startX + (endX - startX) * ratio;
+        const arrowY = startY + (endY - startY) * ratio;
+        const w = w1 + (w2 - w1) * ratio; // Interpolate load magnitude
+
+        // Scale arrow length based on interpolated w value (preserve sign)
+        const arrowLength = maxW !== 0 ? (w / maxW) * maxArrowLength : 0;
+
+        // Arrow points from element towards the load magnitude direction
+        const arrowStartX = arrowX;
+        const arrowStartY = arrowY;
+        const arrowEndX = arrowX + Math.cos(perpAngle) * arrowLength;
+        const arrowEndY = arrowY + Math.sin(perpAngle) * arrowLength;
+
+        // Only draw arrow if magnitude is non-zero
+        if (Math.abs(w) > 0.001) {
+            svg.append("line")
+                .attr("x1", arrowStartX)
+                .attr("y1", arrowStartY)
+                .attr("x2", arrowEndX)
+                .attr("y2", arrowEndY)
+                .attr("stroke", "#10B981")
+                .attr("stroke-width", 2)
+                .attr("marker-end", "url(#arrowhead-green)");
+        }
+    }
+
+    // Draw element baseline (reference line on the beam)
+    svg.append("line")
+        .attr("x1", startX)
+        .attr("y1", startY)
+        .attr("x2", endX)
+        .attr("y2", endY)
+        .attr("stroke", "#10B981")
+        .attr("stroke-width", 1)
+        .attr("stroke-dasharray", "3,3");
+
+    // Label - position it beyond the maximum extent
+    const midX = (startX + endX) / 2;
+    const midY = (startY + endY) / 2;
+    const maxH = Math.max(h1, h2);
+    const avgW = (w1 + w2) / 2;
+    const labelOffsetX = Math.cos(perpAngle) * (avgW < 0 ? -(maxH + 15) : (maxH + 15));
+    const labelOffsetY = Math.sin(perpAngle) * (avgW < 0 ? -(maxH + 15) : (maxH + 15));
+
+    svg.append("text")
+        .attr("x", midX + labelOffsetX)
+        .attr("y", midY + labelOffsetY)
+        .attr("fill", "#10B981")
+        .attr("font-size", "10px")
+        .attr("text-anchor", "middle")
+        .text(`${load.name}: ${w1}→${w2} kN/m`);
+}
+
+// Draw element point load
+function drawElementPointLoad(svg, nodeI, nodeJ, load, xScale, yScale) {
+    const x1 = xScale(parseFloat(nodeI.x));
+    const y1 = yScale(parseFloat(nodeI.y));
+    const x2 = xScale(parseFloat(nodeJ.x));
+    const y2 = yScale(parseFloat(nodeJ.y));
+
+    // Calculate element properties
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const elementLength = Math.sqrt(
+        Math.pow(parseFloat(nodeJ.x) - parseFloat(nodeI.x), 2) +
+        Math.pow(parseFloat(nodeJ.y) - parseFloat(nodeI.y), 2)
+    );
+
+    // Load position along element
+    const distance = parseFloat(load.distance);
+    const ratio = distance / elementLength;
+    const loadX = x1 + dx * ratio;
+    const loadY = y1 + dy * ratio;
+
+    // Draw marker at load position
+    svg.append("circle")
+        .attr("cx", loadX)
+        .attr("cy", loadY)
+        .attr("r", 4)
+        .attr("fill", "#F59E0B")
+        .attr("stroke", "#fff")
+        .attr("stroke-width", 1);
+
+    // Draw load arrow based on direction
+    const magnitude = parseFloat(load.magnitude);
+    const direction = load.direction;
+    const arrowLength = 40;
+
+    if (direction === 'FY') {
+        // Vertical load
+        const startY = magnitude > 0 ? loadY + arrowLength : loadY - arrowLength;
+        svg.append("line")
+            .attr("x1", loadX)
+            .attr("y1", startY)
+            .attr("x2", loadX)
+            .attr("y2", loadY)
+            .attr("stroke", "#F59E0B")
+            .attr("stroke-width", 2)
+            .attr("marker-end", "url(#arrowhead-orange)");
+
+        svg.append("text")
+            .attr("x", loadX + 10)
+            .attr("y", (startY + loadY) / 2)
+            .attr("fill", "#F59E0B")
+            .attr("font-size", "10px")
+            .text(`${load.name}: ${magnitude} kN`);
+
+    } else if (direction === 'FX') {
+        // Horizontal load
+        const startX = magnitude > 0 ? loadX + arrowLength : loadX - arrowLength;
+        svg.append("line")
+            .attr("x1", startX)
+            .attr("y1", loadY)
+            .attr("x2", loadX)
+            .attr("y2", loadY)
+            .attr("stroke", "#F59E0B")
+            .attr("stroke-width", 2)
+            .attr("marker-end", "url(#arrowhead-orange)");
+
+        svg.append("text")
+            .attr("x", (startX + loadX) / 2)
+            .attr("y", loadY - 10)
+            .attr("fill", "#F59E0B")
+            .attr("font-size", "10px")
+            .text(`${load.name}: ${magnitude} kN`);
     }
 }
 
@@ -1725,6 +2082,12 @@ async function runAnalysis() {
         const inputDataJson = JSON.stringify(inputData);
         console.log("Input data:", inputDataJson);
 
+        // Debug: Log nodes with supports
+        console.log("Nodes collected:");
+        nodes.forEach(node => {
+            console.log(`  ${node.name}: x=${node.x}, y=${node.y}, support=${node.support}`);
+        });
+
         const analysisResult = pyodide.runPython(`
 import json
 result = analyze_frame_json('${inputDataJson.replace(/'/g, "\\'")}')
@@ -1739,6 +2102,15 @@ result
         if (results.success) {
             // Store results for diagram display
             lastAnalysisResults = results;
+            console.log("Analysis successful! Stored results:");
+            console.log("  Nodes:", Object.keys(results.nodes).length);
+            console.log("  Elements:", Object.keys(results.elements).length);
+            console.log("  Diagrams:", Object.keys(results.diagrams || {}).length);
+            if (results.diagrams) {
+                for (const [elemName, diagData] of Object.entries(results.diagrams)) {
+                    console.log(`  Diagram ${elemName}: ${diagData.moments?.length || 0} points`);
+                }
+            }
 
             // Format results for display
             let html = '<div class="space-y-4">';
@@ -2525,6 +2897,14 @@ function switchTab(tabName) {
         document.getElementById('content-loads').classList.remove('hidden');
         document.getElementById('tab-loads').className = 'px-6 py-3 text-white font-medium border-b-2 border-blue-500 bg-gray-600';
     }
+
+    // Update visualization to show/hide loads based on active tab
+    updateVisualization();
+}
+
+// Helper function to check if Loads tab is active
+function isLoadsTabActive() {
+    return !document.getElementById('content-loads').classList.contains('hidden');
 }
 
 // Keyboard shortcuts

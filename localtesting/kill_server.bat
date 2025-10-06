@@ -7,7 +7,7 @@ setlocal
 
 REM Set default port to 8000 if no argument provided
 if "%1"=="" (
-    set PORT=8000
+    set PORT=8080
 ) else (
     set PORT=%1
 )
