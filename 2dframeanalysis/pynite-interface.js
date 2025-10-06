@@ -1542,6 +1542,19 @@ function updateVisualization() {
                 .attr("y2", yScale(parseFloat(nodeJ.y)))
                 .attr("stroke", "#60A5FA")
                 .attr("stroke-width", 3);
+
+            // Add element ID label at center
+            const centerX = (xScale(parseFloat(nodeI.x)) + xScale(parseFloat(nodeJ.x))) / 2;
+            const centerY = (yScale(parseFloat(nodeI.y)) + yScale(parseFloat(nodeJ.y))) / 2;
+
+            svg.append("text")
+                .attr("x", centerX)
+                .attr("y", centerY - 5)
+                .attr("text-anchor", "middle")
+                .attr("fill", "#60A5FA")
+                .attr("font-size", "11px")
+                .attr("font-weight", "bold")
+                .text(element.name);
         }
     });
 
@@ -2619,7 +2632,7 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
             const physicalY = nodeIY + physicalDy * t;
 
             // Calculate offset in physical units (meters)
-            // scale is designed so that max value produces offset = maxLength/10
+            // Use consistent scale factor across all elements
             let physicalOffset = value * scale;
 
             // Sign convention:
