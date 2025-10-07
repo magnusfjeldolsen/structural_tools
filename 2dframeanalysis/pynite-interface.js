@@ -1577,42 +1577,26 @@ function updateVisualization() {
             .attr("stroke-width", 2)
             .style("cursor", "pointer");
 
-        // Add hover and click interaction for nodes
+        // Add click interaction for nodes
         if (lastAnalysisResults && lastAnalysisResults.nodes && lastAnalysisResults.nodes[node.name]) {
             const nodeData = lastAnalysisResults.nodes[node.name];
 
-            // Add click interaction
             g.on("click", function(event) {
                 event.stopPropagation();
 
-                // Prepare export data with PyNite nomenclature
-                const exportData = {
-                    source: "2D Frame Analysis",
-                    combo: "Combo 1",
-                    type: "node",
-                    node_data: {
-                        name: node.name,
-                        DX: nodeData.DX || 0,  // m
-                        DY: nodeData.DY || 0,  // m
-                        DZ: nodeData.DZ || 0,  // m
-                        RX: nodeData.RX || 0,  // rad
-                        RY: nodeData.RY || 0,  // rad
-                        RZ: nodeData.RZ || 0,  // rad
-                        RxnFX: nodeData.reactions ? nodeData.reactions.FX : 0,  // N
-                        RxnFY: nodeData.reactions ? nodeData.reactions.FY : 0,  // N
-                        RxnMZ: nodeData.reactions ? nodeData.reactions.MZ : 0   // Nm
-                    }
-                };
+                // Remove any existing tooltips and export menus
+                svg.selectAll(".node-tooltip").remove();
+                svg.selectAll(".diagram-tooltip").remove();
+                svg.selectAll(".diagram-hover-point").remove();
+                svg.selectAll(".export-toolbar").remove();
 
-                showExportToolbar(svg, xScale(parseFloat(node.x)), yScale(parseFloat(node.y)), exportData);
-            })
-            .on("mouseenter", function(event) {
                 // Create tooltip
+                const nodeX = xScale(parseFloat(node.x));
+                const nodeY = yScale(parseFloat(node.y));
                 const tooltip = svg.append("g")
-                    .attr("class", "node-tooltip")
-                    .attr("transform", `translate(${xScale(parseFloat(node.x)) + 15}, ${yScale(parseFloat(node.y)) - 10})`);
+                    .attr("class", "node-tooltip");
 
-                // Tooltip background
+                // Tooltip content
                 const tooltipText = [
                     `Node: ${node.name}`,
                     `DX: ${(nodeData.DX * 1000).toFixed(2)} mm`,
@@ -1631,7 +1615,39 @@ function updateVisualization() {
                 const lineHeight = 14;
                 const padding = 8;
                 const boxWidth = 150;
-                const boxHeight = tooltipText.length * lineHeight + padding * 2;
+                const buttonHeight = 25;
+                const boxHeight = tooltipText.length * lineHeight + padding * 2 + buttonHeight + 5;
+
+                const svgWidth = svg.node().clientWidth;
+                const svgHeight = 400;
+
+                // Position and constrain to SVG bounds
+                let tooltipX = nodeX + 15;
+                let tooltipY = nodeY - 10;
+                tooltipX = Math.max(0, Math.min(tooltipX, svgWidth - boxWidth));
+                tooltipY = Math.max(0, Math.min(tooltipY, svgHeight - boxHeight));
+
+                tooltip.attr("transform", `translate(${tooltipX}, ${tooltipY})`);
+
+                // Add drag behavior to make tooltip movable
+                const dragBehavior = d3.drag()
+                    .on("drag", function(event) {
+                        const transform = d3.select(this).attr("transform");
+                        const translate = transform.match(/translate\(([^,]+),([^)]+)\)/);
+                        let x = parseFloat(translate[1]);
+                        let y = parseFloat(translate[2]);
+
+                        x += event.dx;
+                        y += event.dy;
+
+                        // Constrain to SVG bounds
+                        x = Math.max(0, Math.min(x, svgWidth - boxWidth));
+                        y = Math.max(0, Math.min(y, svgHeight - boxHeight));
+
+                        d3.select(this).attr("transform", `translate(${x}, ${y})`);
+                    });
+
+                tooltip.call(dragBehavior);
 
                 tooltip.append("rect")
                     .attr("width", boxWidth)
@@ -1639,7 +1655,8 @@ function updateVisualization() {
                     .attr("fill", "#1f2937")
                     .attr("stroke", "#60A5FA")
                     .attr("stroke-width", 2)
-                    .attr("rx", 4);
+                    .attr("rx", 4)
+                    .style("cursor", "move");
 
                 tooltipText.forEach((text, i) => {
                     tooltip.append("text")
@@ -1649,9 +1666,56 @@ function updateVisualization() {
                         .attr("font-size", "11px")
                         .text(text);
                 });
-            })
-            .on("mouseleave", function() {
-                svg.selectAll(".node-tooltip").remove();
+
+                // Prepare export data with PyNite nomenclature
+                const exportData = {
+                    source: "2D Frame Analysis",
+                    combo: "Combo 1",
+                    type: "node",
+                    node_data: {
+                        name: node.name,
+                        DX: nodeData.DX || 0,
+                        DY: nodeData.DY || 0,
+                        DZ: nodeData.DZ || 0,
+                        RX: nodeData.RX || 0,
+                        RY: nodeData.RY || 0,
+                        RZ: nodeData.RZ || 0,
+                        RxnFX: nodeData.reactions ? nodeData.reactions.FX : 0,
+                        RxnFY: nodeData.reactions ? nodeData.reactions.FY : 0,
+                        RxnMZ: nodeData.reactions ? nodeData.reactions.MZ : 0
+                    }
+                };
+
+                // Add export button
+                const exportBtn = tooltip.append("g")
+                    .attr("class", "export-button")
+                    .style("cursor", "pointer")
+                    .on("click", function(event) {
+                        event.stopPropagation();
+                        svg.selectAll(".node-tooltip").remove();
+                        const svgWidth = svg.node().clientWidth;
+                        showExportToolbar(svg, nodeX > svgWidth / 2 ? nodeX - 200 : nodeX + 180, nodeY, exportData);
+                    });
+
+                const btnY = boxHeight - buttonHeight - padding;
+                exportBtn.append("rect")
+                    .attr("x", padding)
+                    .attr("y", btnY)
+                    .attr("width", boxWidth - 2 * padding)
+                    .attr("height", buttonHeight)
+                    .attr("fill", "#3b82f6")
+                    .attr("stroke", "#60a5fa")
+                    .attr("stroke-width", 1)
+                    .attr("rx", 3);
+
+                exportBtn.append("text")
+                    .attr("x", boxWidth / 2)
+                    .attr("y", btnY + buttonHeight / 2 + 4)
+                    .attr("text-anchor", "middle")
+                    .attr("fill", "#fff")
+                    .attr("font-size", "11px")
+                    .attr("font-weight", "bold")
+                    .text("📤 Export Results");
             });
         }
 
@@ -1710,6 +1774,18 @@ function updateVisualization() {
             }
         });
     }
+
+    // Add global click handler to close tooltips/export menus when clicking outside
+    svg.on("click", function(event) {
+        // Only close if clicking on the SVG itself, not on tooltips or nodes
+        if (event.target === svg.node()) {
+            svg.selectAll(".node-tooltip").remove();
+            svg.selectAll(".diagram-tooltip").remove();
+            svg.selectAll(".diagram-hover-point").remove();
+            svg.selectAll(".export-toolbar").remove();
+            svg.selectAll(".module-dropdown").remove();
+        }
+    });
 
 }
 
@@ -2722,30 +2798,16 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
                 .attr("stroke", "none")
                 .style("cursor", "pointer");
 
-            // Add click interaction
+            // Add click interaction to show tooltip
             circle.on("click", function(event) {
                 event.stopPropagation();
 
-                // Prepare export data with PyNite nomenclature
-                const exportData = {
-                    source: "2D Frame Analysis",
-                    combo: "Combo 1",
-                    type: "element_point",
-                    element_data: {
-                        element: element.name,
-                        position: xCoords[i],  // meters along element
-                        Mz: diagramData.moments ? diagramData.moments[i] : 0,  // Nm
-                        Fy: diagramData.shears ? diagramData.shears[i] : 0,   // N
-                        Fx: diagramData.axials ? diagramData.axials[i] : 0,   // N
-                        dy: diagramData.deflections ? diagramData.deflections[i] : 0  // m
-                    }
-                };
+                // Remove any existing tooltips and export menus
+                svg.selectAll(".diagram-tooltip").remove();
+                svg.selectAll(".diagram-hover-point").remove();
+                svg.selectAll(".export-toolbar").remove();
+                svg.selectAll(".node-tooltip").remove();
 
-                showExportToolbar(svg, point.x, point.y, exportData);
-            });
-
-            // Add hover interaction
-            circle.on("mouseenter", function(event) {
                 // Highlight the point
                 svg.append("circle")
                     .attr("class", "diagram-hover-point")
@@ -2800,7 +2862,8 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
                 const lineHeight = 14;
                 const padding = 8;
                 const boxWidth = 160;
-                const boxHeight = tooltipText.length * lineHeight + padding * 2;
+                const buttonHeight = 25;
+                const boxHeight = tooltipText.length * lineHeight + padding * 2 + buttonHeight + 5;
 
                 // Position tooltip to avoid going off screen
                 let tooltipX = point.x + 10;
@@ -2820,15 +2883,40 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
                     tooltipY = svgHeight - boxHeight - 10;
                 }
 
+                // Constrain to stay within SVG bounds
+                tooltipX = Math.max(0, Math.min(tooltipX, svgWidth - boxWidth));
+                tooltipY = Math.max(0, Math.min(tooltipY, svgHeight - boxHeight));
+
                 tooltip.attr("transform", `translate(${tooltipX}, ${tooltipY})`);
 
-                tooltip.append("rect")
+                // Add drag behavior to make tooltip movable
+                const dragBehavior = d3.drag()
+                    .on("drag", function(event) {
+                        const transform = d3.select(this).attr("transform");
+                        const translate = transform.match(/translate\(([^,]+),([^)]+)\)/);
+                        let x = parseFloat(translate[1]);
+                        let y = parseFloat(translate[2]);
+
+                        x += event.dx;
+                        y += event.dy;
+
+                        // Constrain to SVG bounds
+                        x = Math.max(0, Math.min(x, svgWidth - boxWidth));
+                        y = Math.max(0, Math.min(y, svgHeight - boxHeight));
+
+                        d3.select(this).attr("transform", `translate(${x}, ${y})`);
+                    });
+
+                tooltip.call(dragBehavior);
+
+                const bgRect = tooltip.append("rect")
                     .attr("width", boxWidth)
                     .attr("height", boxHeight)
                     .attr("fill", "#1f2937")
                     .attr("stroke", color)
                     .attr("stroke-width", 2)
-                    .attr("rx", 4);
+                    .attr("rx", 4)
+                    .style("cursor", "move");
 
                 tooltipText.forEach((text, idx) => {
                     const isHeader = text === '---';
@@ -2843,10 +2931,53 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
                         .attr("font-weight", (idx === 0 || text.includes('Node')) ? "bold" : "normal")
                         .text(isHeader ? "─────────────" : text);
                 });
-            })
-            .on("mouseleave", function() {
-                svg.selectAll(".diagram-tooltip").remove();
-                svg.selectAll(".diagram-hover-point").remove();
+
+                // Prepare export data for this point
+                const exportData = {
+                    source: "2D Frame Analysis",
+                    combo: "Combo 1",
+                    type: "element_point",
+                    element_data: {
+                        element: element.name,
+                        position: xCoords[i],
+                        Mz: diagramData.moments ? diagramData.moments[i] : 0,
+                        Fy: diagramData.shears ? diagramData.shears[i] : 0,
+                        Fx: diagramData.axials ? diagramData.axials[i] : 0,
+                        dy: diagramData.deflections ? diagramData.deflections[i] : 0
+                    }
+                };
+
+                // Add export button at bottom of tooltip
+                const exportBtn = tooltip.append("g")
+                    .attr("class", "export-button")
+                    .style("cursor", "pointer")
+                    .on("click", function(event) {
+                        event.stopPropagation();
+                        svg.selectAll(".diagram-tooltip").remove();
+                        svg.selectAll(".diagram-hover-point").remove();
+                        // Position export menu away from the tooltip
+                        showExportToolbar(svg, tooltipX > svgWidth / 2 ? point.x - 200 : point.x + 180, point.y, exportData);
+                    });
+
+                const btnY = boxHeight - buttonHeight - padding;
+                exportBtn.append("rect")
+                    .attr("x", padding)
+                    .attr("y", btnY)
+                    .attr("width", boxWidth - 2 * padding)
+                    .attr("height", buttonHeight)
+                    .attr("fill", "#3b82f6")
+                    .attr("stroke", "#60a5fa")
+                    .attr("stroke-width", 1)
+                    .attr("rx", 3);
+
+                exportBtn.append("text")
+                    .attr("x", boxWidth / 2)
+                    .attr("y", btnY + buttonHeight / 2 + 4)
+                    .attr("text-anchor", "middle")
+                    .attr("fill", "#fff")
+                    .attr("font-size", "11px")
+                    .attr("font-weight", "bold")
+                    .text("📤 Export Results");
             });
         });
 
