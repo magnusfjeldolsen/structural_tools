@@ -485,6 +485,148 @@ def analyze_frame_json(input_json):
             'diagrams': {}
         })
 
+def analyze_frame_single_case(input_json, case_name):
+    """Analyze frame for a single load case"""
+    try:
+        data = json.loads(input_json)
+
+        # Filter loads by case
+        all_loads = data.get('loads', {})
+        case_loads = {
+            'nodal': [l for l in all_loads.get('nodal', []) if l.get('case') == case_name],
+            'distributed': [l for l in all_loads.get('distributed', []) if l.get('case') == case_name],
+            'elementPoint': [l for l in all_loads.get('elementPoint', []) if l.get('case') == case_name]
+        }
+
+        # Convert to old format for analyzer
+        loads_list = []
+        for load in case_loads['nodal']:
+            loads_list.append(load)
+        for load in case_loads['distributed']:
+            loads_list.append(load)
+        for load in case_loads['elementPoint']:
+            loads_list.append(load)
+
+        # Create analyzer and run
+        analyzer = PyNiteWebAnalyzer()
+        analyzer.create_model(
+            data.get('nodes', []),
+            data.get('elements', []),
+            loads_list
+        )
+
+        success = analyzer.analyze()
+        results = analyzer.get_results()
+
+        if success:
+            results['success'] = True
+            results['message'] = f'Analysis completed for load case: {case_name}'
+            results['caseName'] = case_name
+        else:
+            results['success'] = False
+            results['message'] = f'Analysis failed for load case: {case_name}'
+
+        return json.dumps(results)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'message': f'Error analyzing case {case_name}: {str(e)}',
+            'nodes': {},
+            'elements': {},
+            'diagrams': {}
+        })
+
+def analyze_frame_combination(input_json, combo_json):
+    """Analyze frame for a load combination with factors"""
+    try:
+        data = json.loads(input_json)
+        combo = json.loads(combo_json)
+
+        combo_name = combo.get('name', 'Combination')
+        factors = combo.get('factors', {})
+
+        # Get all loads
+        all_loads = data.get('loads', {})
+
+        # Apply factors to loads
+        combined_loads = []
+
+        # Process nodal loads
+        for case_name, factor in factors.items():
+            if factor == 0:
+                continue
+
+            case_nodal = [l for l in all_loads.get('nodal', []) if l.get('case') == case_name]
+            for load in case_nodal:
+                combined_loads.append({
+                    'name': load['name'],
+                    'type': load['type'],
+                    'node': load['node'],
+                    'fx': float(load['fx']) * factor,
+                    'fy': float(load['fy']) * factor,
+                    'mz': float(load['mz']) * factor,
+                    'case': combo_name
+                })
+
+            # Process distributed loads
+            case_dist = [l for l in all_loads.get('distributed', []) if l.get('case') == case_name]
+            for load in case_dist:
+                combined_loads.append({
+                    'name': load['name'],
+                    'type': load['type'],
+                    'element': load['element'],
+                    'direction': load['direction'],
+                    'w1': float(load['w1']) * factor,
+                    'w2': float(load['w2']) * factor,
+                    'x1': float(load['x1']),
+                    'x2': float(load['x2']),
+                    'case': combo_name
+                })
+
+            # Process element point loads
+            case_elem = [l for l in all_loads.get('elementPoint', []) if l.get('case') == case_name]
+            for load in case_elem:
+                combined_loads.append({
+                    'name': load['name'],
+                    'type': load['type'],
+                    'element': load['element'],
+                    'distance': float(load['distance']),
+                    'direction': load['direction'],
+                    'magnitude': float(load['magnitude']) * factor,
+                    'case': combo_name
+                })
+
+        # Create analyzer and run
+        analyzer = PyNiteWebAnalyzer()
+        analyzer.create_model(
+            data.get('nodes', []),
+            data.get('elements', []),
+            combined_loads
+        )
+
+        success = analyzer.analyze()
+        results = analyzer.get_results()
+
+        if success:
+            results['success'] = True
+            results['message'] = f'Analysis completed for combination: {combo_name}'
+            results['combinationName'] = combo_name
+        else:
+            results['success'] = False
+            results['message'] = f'Analysis failed for combination: {combo_name}'
+
+        return json.dumps(results)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'message': f'Error analyzing combination: {str(e)}',
+            'nodes': {},
+            'elements': {},
+            'diagrams': {}
+        })
+
 # Create global analyzer instance
 web_analyzer = None
 
@@ -2370,6 +2512,18 @@ result
             // Update visualization with diagrams
             updateVisualization();
 
+            // Enable Analysis tab after first successful analysis
+            if (!isAnalysisTabEnabled()) {
+                enableAnalysisTab();
+                // Cache this result for the active load case
+                analysisResults.loadCases[activeLoadCase] = results;
+                // Set initial result view to this case
+                activeResultName = activeLoadCase;
+                updateResultSelectionDropdown();
+                // Switch to Analysis tab
+                switchTab('analysis');
+            }
+
         } else {
             const endTime = performance.now();
             const duration = ((endTime - startTime) / 1000).toFixed(3);
@@ -4010,6 +4164,135 @@ function updateResultSelectionDropdown() {
 }
 
 /**
+ * Analyze a single load case with caching
+ */
+async function runAnalysisForLoadCase(caseName) {
+    // Check if already cached
+    if (analysisResults.loadCases[caseName]) {
+        console.log(`✓ Using cached results for load case: ${caseName}`);
+        return analysisResults.loadCases[caseName];
+    }
+
+    console.log(`Analyzing load case: ${caseName}...`);
+    const startTime = performance.now();
+
+    try {
+        // Prepare input data
+        const inputData = {
+            nodes: getNodesFromInputs(),
+            elements: getElementsFromInputs(),
+            loads: frameData.loads  // All loads with case property
+        };
+
+        // Call Python function
+        const inputDataJson = JSON.stringify(inputData).replace(/'/g, "\\'");
+        const analysisResult = await pyodide.runPythonAsync(`
+import json
+result = analyze_frame_single_case('${inputDataJson}', '${caseName}')
+result
+        `);
+
+        const results = JSON.parse(analysisResult);
+        const endTime = performance.now();
+        const duration = ((endTime - startTime) / 1000).toFixed(3);
+
+        if (results.success) {
+            // Cache results
+            analysisResults.loadCases[caseName] = results;
+            console.log(`✓ Analysis completed for "${caseName}" in ${duration}s`);
+            return results;
+        } else {
+            throw new Error(results.message);
+        }
+
+    } catch (error) {
+        const endTime = performance.now();
+        const duration = ((endTime - startTime) / 1000).toFixed(3);
+        console.error(`✗ Analysis failed for "${caseName}" in ${duration}s:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Analyze a load combination with caching
+ */
+async function runAnalysisForCombination(comboName) {
+    // Check if already cached
+    if (analysisResults.combinations[comboName]) {
+        console.log(`✓ Using cached results for combination: ${comboName}`);
+        return analysisResults.combinations[comboName];
+    }
+
+    console.log(`Analyzing combination: ${comboName}...`);
+    const startTime = performance.now();
+
+    try {
+        // Find combination
+        const combo = loadCombinations.find(c => c.name === comboName);
+        if (!combo) {
+            throw new Error(`Combination "${comboName}" not found`);
+        }
+
+        // Prepare input data
+        const inputData = {
+            nodes: getNodesFromInputs(),
+            elements: getElementsFromInputs(),
+            loads: frameData.loads
+        };
+
+        // Call Python function
+        const inputDataJson = JSON.stringify(inputData).replace(/'/g, "\\'");
+        const comboJson = JSON.stringify(combo).replace(/'/g, "\\'");
+
+        const analysisResult = await pyodide.runPythonAsync(`
+import json
+result = analyze_frame_combination('${inputDataJson}', '${comboJson}')
+result
+        `);
+
+        const results = JSON.parse(analysisResult);
+        const endTime = performance.now();
+        const duration = ((endTime - startTime) / 1000).toFixed(3);
+
+        if (results.success) {
+            // Cache results
+            analysisResults.combinations[comboName] = results;
+            console.log(`✓ Analysis completed for "${comboName}" in ${duration}s`);
+            return results;
+        } else {
+            throw new Error(results.message);
+        }
+
+    } catch (error) {
+        const endTime = performance.now();
+        const duration = ((endTime - startTime) / 1000).toFixed(3);
+        console.error(`✗ Analysis failed for "${comboName}" in ${duration}s:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Display analysis results in the Analysis tab
+ */
+async function displayAnalysisResults(resultName, results) {
+    // Update last analysis results for visualization
+    lastAnalysisResults = results;
+
+    // TODO: Update Analysis tab SVG visualization
+    // For now, just log
+    console.log(`Displaying results for: ${resultName}`);
+    console.log('  Nodes:', Object.keys(results.nodes || {}).length);
+    console.log('  Elements:', Object.keys(results.elements || {}).length);
+    console.log('  Diagrams:', Object.keys(results.diagrams || {}).length);
+
+    // Update results container
+    const resultsContainer = document.getElementById('analysis-results-container');
+    if (resultsContainer) {
+        resultsContainer.innerHTML = `<p class="text-green-400">✓ Results loaded for: ${resultName}</p>`;
+    }
+}
+
+/**
  * Handle result selection change
  */
 async function onResultSelectionChange(resultName) {
@@ -4018,7 +4301,22 @@ async function onResultSelectionChange(resultName) {
     activeResultName = resultName;
     console.log(`Selected result: ${resultName} (${resultViewMode})`);
 
-    // Display results will be implemented next
+    try {
+        let results;
+
+        if (resultViewMode === 'loadCases') {
+            results = await runAnalysisForLoadCase(resultName);
+        } else if (resultViewMode === 'combinations') {
+            results = await runAnalysisForCombination(resultName);
+        }
+
+        if (results) {
+            await displayAnalysisResults(resultName, results);
+        }
+
+    } catch (error) {
+        alert(`Analysis failed: ${error.message}`);
+    }
 }
 
 /**
