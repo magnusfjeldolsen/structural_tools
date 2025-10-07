@@ -465,36 +465,11 @@
                         </div>
                     </div>
 
-                    <!-- Diagram Controls -->
-                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
-                        <h4 class="text-md font-semibold text-gray-300 mb-3">Diagram Display</h4>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div class="flex gap-2 items-center">
-                                <label class="text-gray-300 text-sm font-medium">Diagram:</label>
-                                <select id="analysis-diagram-type" class="bg-gray-600 text-white px-3 py-1 rounded text-sm flex-1" onchange="updateAnalysisDiagram()">
-                                    <option value="none">None</option>
-                                    <option value="moment">Moment</option>
-                                    <option value="shear">Shear</option>
-                                    <option value="axial">Axial</option>
-                                    <option value="displacement">Displacement</option>
-                                </select>
-                            </div>
-                            <div class="flex gap-2 items-center">
-                                <label class="text-gray-300 text-sm font-medium">Scale:</label>
-                                <button onclick="autoscaleAnalysisDiagram()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">
-                                    Auto
-                                </button>
-                                <input type="number" id="analysis-diagram-scale" step="0.1" value="1.0" placeholder="Manual scale"
-                                       class="bg-gray-600 text-white px-3 py-1 rounded text-sm flex-1"
-                                       onchange="updateAnalysisDiagram()">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Frame Visualization for Analysis -->
-                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
-                        <h4 class="text-md font-semibold text-gray-300 mb-3">Frame Visualization</h4>
-                        <svg id="analysis-frame-svg" class="frame-canvas w-full" height="400"></svg>
+                    <!-- Info Message -->
+                    <div class="bg-blue-900 border border-blue-600 rounded-lg p-3 mb-4">
+                        <p class="text-blue-200 text-sm">
+                            💡 Use the diagram controls and visualization at the top of the page to view results.
+                        </p>
                     </div>
 
                     <!-- Results Display -->

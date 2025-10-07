@@ -4278,16 +4278,53 @@ async function displayAnalysisResults(resultName, results) {
     // Update last analysis results for visualization
     lastAnalysisResults = results;
 
-    // TODO: Update Analysis tab SVG visualization
-    // For now, just log
     console.log(`Displaying results for: ${resultName}`);
     console.log('  Nodes:', Object.keys(results.nodes || {}).length);
     console.log('  Elements:', Object.keys(results.elements || {}).length);
     console.log('  Diagrams:', Object.keys(results.diagrams || {}).length);
 
-    // Update results container
+    // Update the main frame visualization with the new results
+    updateVisualization();
+
+    // If diagram type is selected, update with diagrams
+    const diagramType = document.getElementById('diagram-type')?.value;
+    if (diagramType && diagramType !== 'none') {
+        updateVisualizationWithDiagram();
+    }
+
+    // Format and display results summary in Analysis tab
     const resultsContainer = document.getElementById('analysis-results-container');
-    if (resultsContainer) {
+    if (resultsContainer && results.nodes && results.elements) {
+        let html = '<div class="space-y-4">';
+
+        // Node displacements
+        html += '<div><h5 class="font-semibold text-yellow-400 mb-2">Node Displacements</h5>';
+        html += '<table class="w-full text-xs"><thead><tr class="border-b border-gray-600">';
+        html += '<th class="text-left py-1">Node</th><th class="text-right py-1">DX (mm)</th><th class="text-right py-1">DY (mm)</th><th class="text-right py-1">RZ (mrad)</th></tr></thead><tbody>';
+
+        for (const [nodeName, nodeData] of Object.entries(results.nodes)) {
+            const dx = (nodeData.DX * 1000).toFixed(2);
+            const dy = (nodeData.DY * 1000).toFixed(2);
+            const rz = (nodeData.RZ * 1000).toFixed(3);
+            html += `<tr class="border-b border-gray-700"><td class="py-1">${nodeName}</td><td class="text-right py-1">${dx}</td><td class="text-right py-1">${dy}</td><td class="text-right py-1">${rz}</td></tr>`;
+        }
+        html += '</tbody></table></div>';
+
+        // Element forces
+        html += '<div><h5 class="font-semibold text-green-400 mb-2">Element Forces</h5>';
+        html += '<table class="w-full text-xs"><thead><tr class="border-b border-gray-600">';
+        html += '<th class="text-left py-1">Element</th><th class="text-right py-1">Axial (kN)</th><th class="text-right py-1">Length (m)</th></tr></thead><tbody>';
+
+        for (const [elemName, elemData] of Object.entries(results.elements)) {
+            const axial = (elemData.axial_force / 1000).toFixed(2);
+            const length = elemData.length.toFixed(2);
+            html += `<tr class="border-b border-gray-700"><td class="py-1">${elemName}</td><td class="text-right py-1">${axial}</td><td class="text-right py-1">${length}</td></tr>`;
+        }
+        html += '</tbody></table></div>';
+
+        html += '</div>';
+        resultsContainer.innerHTML = html;
+    } else {
         resultsContainer.innerHTML = `<p class="text-green-400">✓ Results loaded for: ${resultName}</p>`;
     }
 }
