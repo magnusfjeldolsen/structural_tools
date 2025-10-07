@@ -228,6 +228,9 @@
                     <button id="tab-loads" onclick="switchTab('loads')" class="px-6 py-3 text-gray-400 font-medium hover:text-white">
                         Loads
                     </button>
+                    <button id="tab-analysis" onclick="switchTab('analysis')" class="px-6 py-3 text-gray-400 font-medium hover:text-white opacity-50 cursor-not-allowed" disabled>
+                        Analysis
+                    </button>
                 </div>
 
                 <!-- Structure Tab Content -->
@@ -423,6 +426,83 @@
                         <button onclick="showLoadCombinationsDialog()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded w-full font-medium">
                             ⚙ Load Combinations
                         </button>
+                    </div>
+                </div>
+
+                <!-- Analysis Tab Content -->
+                <div id="content-analysis" class="p-4 hidden">
+                    <!-- View Mode Selection -->
+                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
+                        <h4 class="text-md font-semibold text-gray-300 mb-3">View Results</h4>
+                        <div class="flex gap-6 mb-4">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="result-view-mode" value="loadCases" checked
+                                    class="w-4 h-4 text-blue-600">
+                                <span class="text-white">Load Cases</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="result-view-mode" value="combinations"
+                                    class="w-4 h-4 text-blue-600">
+                                <span class="text-white">Load Combinations</span>
+                            </label>
+                        </div>
+
+                        <!-- Result Selection -->
+                        <div>
+                            <label class="block text-gray-300 text-sm font-medium mb-2">Show results for:</label>
+                            <select id="result-selection-dropdown"
+                                class="w-full bg-gray-600 text-white px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                <option value="">-- Select --</option>
+                            </select>
+                        </div>
+
+                        <!-- Run Analysis Button -->
+                        <div class="mt-4">
+                            <button id="run-analysis-btn" onclick="runAnalysisFromAnalysisTab()"
+                                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded w-full font-medium">
+                                Run Analysis
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Diagram Controls -->
+                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
+                        <h4 class="text-md font-semibold text-gray-300 mb-3">Diagram Display</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div class="flex gap-2 items-center">
+                                <label class="text-gray-300 text-sm font-medium">Diagram:</label>
+                                <select id="analysis-diagram-type" class="bg-gray-600 text-white px-3 py-1 rounded text-sm flex-1" onchange="updateAnalysisDiagram()">
+                                    <option value="none">None</option>
+                                    <option value="moment">Moment</option>
+                                    <option value="shear">Shear</option>
+                                    <option value="axial">Axial</option>
+                                    <option value="displacement">Displacement</option>
+                                </select>
+                            </div>
+                            <div class="flex gap-2 items-center">
+                                <label class="text-gray-300 text-sm font-medium">Scale:</label>
+                                <button onclick="autoscaleAnalysisDiagram()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">
+                                    Auto
+                                </button>
+                                <input type="number" id="analysis-diagram-scale" step="0.1" value="1.0" placeholder="Manual scale"
+                                       class="bg-gray-600 text-white px-3 py-1 rounded text-sm flex-1"
+                                       onchange="updateAnalysisDiagram()">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Frame Visualization for Analysis -->
+                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
+                        <h4 class="text-md font-semibold text-gray-300 mb-3">Frame Visualization</h4>
+                        <svg id="analysis-frame-svg" class="frame-canvas w-full" height="400"></svg>
+                    </div>
+
+                    <!-- Results Display -->
+                    <div class="bg-gray-700 rounded-lg p-4">
+                        <h4 class="text-md font-semibold text-gray-300 mb-3">Results Summary</h4>
+                        <div id="analysis-results-container" class="text-gray-300 text-sm">
+                            <p>Select a load case or combination and run analysis to see results...</p>
+                        </div>
                     </div>
                 </div>
             </div>

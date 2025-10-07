@@ -2997,6 +2997,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize load cases UI
     updateLoadCasesList();
     updateActiveLoadCaseDropdown();
+
+    // Initialize Analysis tab event listeners
+    document.querySelectorAll('input[name="result-view-mode"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            setResultViewMode(e.target.value);
+        });
+    });
+
+    document.getElementById('result-selection-dropdown')?.addEventListener('change', (e) => {
+        onResultSelectionChange(e.target.value);
+    });
+
+    // Initialize dropdown with load cases (default mode)
+    updateResultSelectionDropdown();
 });
 
 // Add event listeners for real-time updates
@@ -3882,13 +3896,23 @@ function autoscaleDiagram() {
 
 // Tab switching function
 function switchTab(tabName) {
+    // Check if Analysis tab is disabled
+    if (tabName === 'analysis' && !isAnalysisTabEnabled()) {
+        console.log('Analysis tab is disabled. Run analysis first.');
+        return;
+    }
+
     // Hide all tab contents
     document.getElementById('content-structure').classList.add('hidden');
     document.getElementById('content-loads').classList.add('hidden');
+    document.getElementById('content-analysis').classList.add('hidden');
 
     // Remove active styling from all tabs
     document.getElementById('tab-structure').className = 'px-6 py-3 text-gray-400 font-medium hover:text-white';
     document.getElementById('tab-loads').className = 'px-6 py-3 text-gray-400 font-medium hover:text-white';
+    if (isAnalysisTabEnabled()) {
+        document.getElementById('tab-analysis').className = 'px-6 py-3 text-gray-400 font-medium hover:text-white';
+    }
 
     // Show selected tab content and apply active styling
     if (tabName === 'structure') {
@@ -3897,15 +3921,118 @@ function switchTab(tabName) {
     } else if (tabName === 'loads') {
         document.getElementById('content-loads').classList.remove('hidden');
         document.getElementById('tab-loads').className = 'px-6 py-3 text-white font-medium border-b-2 border-blue-500 bg-gray-600';
+    } else if (tabName === 'analysis') {
+        document.getElementById('content-analysis').classList.remove('hidden');
+        document.getElementById('tab-analysis').className = 'px-6 py-3 text-white font-medium border-b-2 border-blue-500 bg-gray-600';
     }
 
     // Update visualization to show/hide loads based on active tab
     updateVisualization();
 }
 
+/**
+ * Check if Analysis tab is enabled
+ */
+function isAnalysisTabEnabled() {
+    const tabBtn = document.getElementById('tab-analysis');
+    return !tabBtn.hasAttribute('disabled');
+}
+
+/**
+ * Enable the Analysis tab after first successful analysis
+ */
+function enableAnalysisTab() {
+    const tabBtn = document.getElementById('tab-analysis');
+    tabBtn.removeAttribute('disabled');
+    tabBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    tabBtn.classList.add('hover:text-white');
+    console.log('✓ Analysis tab enabled');
+}
+
 // Helper function to check if Loads tab is active
 function isLoadsTabActive() {
     return !document.getElementById('content-loads').classList.contains('hidden');
+}
+
+// ========================================
+// Analysis Tab Functions
+// ========================================
+
+/**
+ * Set the result view mode (load cases or combinations)
+ */
+function setResultViewMode(mode) {
+    resultViewMode = mode;
+    console.log(`Result view mode: ${mode}`);
+    updateResultSelectionDropdown();
+}
+
+/**
+ * Update the result selection dropdown based on view mode
+ */
+function updateResultSelectionDropdown() {
+    const dropdown = document.getElementById('result-selection-dropdown');
+    if (!dropdown) return;
+
+    dropdown.innerHTML = '<option value="">-- Select --</option>';
+
+    if (resultViewMode === 'loadCases') {
+        // Populate with load cases
+        loadCases.forEach(loadCase => {
+            const option = document.createElement('option');
+            option.value = loadCase.name;
+            option.textContent = loadCase.name;
+            if (loadCase.name === activeResultName) {
+                option.selected = true;
+            }
+            dropdown.appendChild(option);
+        });
+    } else if (resultViewMode === 'combinations') {
+        // Populate with load combinations
+        if (loadCombinations.length === 0) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = '-- No combinations defined --';
+            option.disabled = true;
+            dropdown.appendChild(option);
+        } else {
+            loadCombinations.forEach(combo => {
+                const option = document.createElement('option');
+                option.value = combo.name;
+                option.textContent = combo.name;
+                if (combo.name === activeResultName) {
+                    option.selected = true;
+                }
+                dropdown.appendChild(option);
+            });
+        }
+    }
+}
+
+/**
+ * Handle result selection change
+ */
+async function onResultSelectionChange(resultName) {
+    if (!resultName) return;
+
+    activeResultName = resultName;
+    console.log(`Selected result: ${resultName} (${resultViewMode})`);
+
+    // Display results will be implemented next
+}
+
+/**
+ * Run analysis from Analysis tab button
+ */
+async function runAnalysisFromAnalysisTab() {
+    const resultName = document.getElementById('result-selection-dropdown').value;
+
+    if (!resultName) {
+        alert('Please select a load case or combination first.');
+        return;
+    }
+
+    await onResultSelectionChange(resultName);
 }
 
 // Keyboard shortcuts
