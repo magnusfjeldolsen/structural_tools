@@ -320,6 +320,15 @@
 
                 <!-- Loads Tab Content -->
                 <div id="content-loads" class="p-4 hidden">
+                    <!-- Active Load Case Selector -->
+                    <div class="bg-blue-900 border border-blue-600 rounded-lg p-3 mb-4">
+                        <label class="text-blue-300 text-sm font-medium block mb-2">Active Load Case:</label>
+                        <select id="active-load-case" onchange="setActiveLoadCase(this.value)" class="bg-gray-700 text-white px-3 py-2 rounded w-full border border-gray-600 focus:border-blue-500 focus:outline-none text-sm font-medium">
+                            <!-- Options populated by JS -->
+                        </select>
+                        <p class="text-blue-200 text-xs mt-2">⚠️ All new loads will be added to this case</p>
+                    </div>
+
                     <!-- Nodal Loads Section -->
                     <div class="bg-gray-700 rounded-lg p-4 mb-6">
                         <h4 class="text-md font-semibold text-gray-300 mb-3">Nodal Loads (at nodes)</h4>
@@ -383,6 +392,37 @@
                                 Add Element Point Load
                             </button>
                         </div>
+                    </div>
+
+                    <!-- Load Cases Section -->
+                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
+                        <h4 class="text-md font-semibold text-gray-300 mb-3">Load Cases</h4>
+
+                        <!-- Load Cases Table -->
+                        <div class="space-y-2 mb-3">
+                            <div class="grid grid-cols-4 gap-2 text-gray-300 text-xs font-medium">
+                                <div>Name</div>
+                                <div>Type</div>
+                                <div>Duration</div>
+                                <div>Action</div>
+                            </div>
+                            <div id="load-cases-list" class="space-y-1">
+                                <!-- Load cases populated by JS -->
+                            </div>
+                        </div>
+
+                        <div class="flex gap-2">
+                            <button onclick="showAddLoadCaseDialog()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm">
+                                + Add Load Case
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Load Combinations Button -->
+                    <div class="bg-gray-700 rounded-lg p-4">
+                        <button onclick="showLoadCombinationsDialog()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded w-full font-medium">
+                            ⚙ Load Combinations
+                        </button>
                     </div>
                 </div>
             </div>

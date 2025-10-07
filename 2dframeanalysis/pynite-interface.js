@@ -17,6 +17,23 @@ let elementLoadCounter = 1;
 let lastAnalysisResults = null; // Store last analysis results for diagram display
 let lastAutoscaledDiagramType = null; // Track which diagram type was last autoscaled
 
+// Load Cases and Combinations
+let loadCases = [
+    { name: 'Dead', type: 'Ordinary', durationClass: 'Permanent' },
+    { name: 'Live', type: 'Ordinary', durationClass: 'Permanent' }
+];
+let activeLoadCase = 'Dead'; // Currently active load case for new loads
+
+let loadCombinations = []; // User-defined load combinations
+
+// Analysis Results Storage (client-side caching)
+let analysisResults = {
+    loadCases: {},      // Results for individual load cases
+    combinations: {}    // Results for load combinations
+};
+let resultViewMode = 'loadCases'; // 'loadCases' or 'combinations'
+let activeResultName = 'Dead'; // Currently displayed result
+
 // Clipboard state for copy/paste properties
 let propertiesClipboard = null; // Stores copied element properties
 let pasteMode = false; // Whether paste UI is visible
@@ -835,6 +852,110 @@ function addElementPointLoad() {
     updateVisualization();
 }
 
+// Add nodal load from data (used when switching load cases)
+function addNodalLoadFromData(load) {
+    const container = document.getElementById('nodal-loads-container');
+    const loadDiv = document.createElement('div');
+    loadDiv.className = 'nodal-load-grid';
+    loadDiv.id = `nodal-load-${nodalLoadCounter}`;
+
+    loadDiv.innerHTML = `
+        <input type="text" value="${load.name}" readonly class="bg-gray-600 text-white p-1 rounded text-xs">
+        <input type="text" value="${load.node}" placeholder="N1" class="bg-gray-600 text-white p-1 rounded text-xs load-node">
+        <input type="number" step="0.1" value="${load.fx}" placeholder="Fx" class="bg-gray-600 text-white p-1 rounded text-xs load-fx">
+        <input type="number" step="0.1" value="${load.fy}" placeholder="Fy" class="bg-gray-600 text-white p-1 rounded text-xs load-fy">
+        <input type="number" step="0.1" value="${load.mz}" placeholder="Mz" class="bg-gray-600 text-white p-1 rounded text-xs load-mz">
+        <button onclick="removeNodalLoad('nodal-load-${nodalLoadCounter}')" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Remove</button>
+    `;
+
+    container.appendChild(loadDiv);
+
+    // Add event listeners to all inputs for real-time updates
+    loadDiv.querySelectorAll('input, select').forEach(input => {
+        input.addEventListener('input', updateVisualization);
+        input.addEventListener('change', updateVisualization);
+    });
+
+    nodalLoadCounter++;
+}
+
+// Add distributed load from data (used when switching load cases)
+function addDistributedLoadFromData(load) {
+    const container = document.getElementById('distributed-loads-container');
+    const loadDiv = document.createElement('div');
+    loadDiv.className = 'distributed-load-grid';
+    loadDiv.id = `distributed-load-${distributedLoadCounter}`;
+
+    // Get elements for dropdown
+    const elements = getElementsFromInputs();
+    const elementOptions = elements.map(e => `<option value="${e.name}" ${e.name === load.element ? 'selected' : ''}>${e.name}</option>`).join('');
+
+    loadDiv.innerHTML = `
+        <input type="text" value="${load.name}" readonly class="bg-gray-600 text-white p-1 rounded text-xs">
+        <select class="bg-gray-600 text-white p-1 rounded text-xs dist-element" onchange="onDistributedLoadElementChange('distributed-load-${distributedLoadCounter}')">
+            ${elementOptions}
+        </select>
+        <select class="bg-gray-600 text-white p-1 rounded text-xs dist-direction">
+            <option value="FY" ${load.direction === 'FY' ? 'selected' : ''}>Global Y</option>
+            <option value="FX" ${load.direction === 'FX' ? 'selected' : ''}>Global X</option>
+            <option value="Fy" ${load.direction === 'Fy' ? 'selected' : ''}>Local Y (perpendicular)</option>
+            <option value="Fx" ${load.direction === 'Fx' ? 'selected' : ''}>Local X (axial)</option>
+        </select>
+        <input type="number" step="0.1" value="${load.w1}" placeholder="w1" class="bg-gray-600 text-white p-1 rounded text-xs dist-w1" oninput="onDistributedLoadW1Change('distributed-load-${distributedLoadCounter}')">
+        <input type="number" step="0.1" value="${load.w2}" placeholder="w2" class="bg-gray-600 text-white p-1 rounded text-xs dist-w2" oninput="onDistributedLoadW2Change('distributed-load-${distributedLoadCounter}')">
+        <input type="number" step="0.1" value="${load.x1}" placeholder="x1" class="bg-gray-600 text-white p-1 rounded text-xs dist-x1" oninput="validateDistributedLoadPosition('distributed-load-${distributedLoadCounter}')">
+        <input type="number" step="0.1" value="${load.x2}" placeholder="x2" class="bg-gray-600 text-white p-1 rounded text-xs dist-x2" oninput="validateDistributedLoadPosition('distributed-load-${distributedLoadCounter}')">
+        <button onclick="removeDistributedLoad('distributed-load-${distributedLoadCounter}')" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Remove</button>
+    `;
+
+    container.appendChild(loadDiv);
+
+    // Add event listeners to all inputs for real-time updates
+    loadDiv.querySelectorAll('input, select').forEach(input => {
+        input.addEventListener('input', updateVisualization);
+        input.addEventListener('change', updateVisualization);
+    });
+
+    distributedLoadCounter++;
+}
+
+// Add element point load from data (used when switching load cases)
+function addElementPointLoadFromData(load) {
+    const container = document.getElementById('element-loads-container');
+    const loadDiv = document.createElement('div');
+    loadDiv.className = 'element-load-grid';
+    loadDiv.id = `element-load-${elementLoadCounter}`;
+
+    // Get elements for dropdown
+    const elements = getElementsFromInputs();
+    const elementOptions = elements.map(e => `<option value="${e.name}" ${e.name === load.element ? 'selected' : ''}>${e.name}</option>`).join('');
+
+    loadDiv.innerHTML = `
+        <input type="text" value="${load.name}" readonly class="bg-gray-600 text-white p-1 rounded text-xs">
+        <select class="bg-gray-600 text-white p-1 rounded text-xs elem-pt-element">
+            ${elementOptions}
+        </select>
+        <input type="number" step="0.1" value="${load.distance}" placeholder="Dist" class="bg-gray-600 text-white p-1 rounded text-xs elem-pt-distance" oninput="validateElementPointLoadPosition('element-load-${elementLoadCounter}')">
+        <select class="bg-gray-600 text-white p-1 rounded text-xs elem-pt-direction">
+            <option value="FY" ${load.direction === 'FY' ? 'selected' : ''}>Vertical (Y)</option>
+            <option value="FX" ${load.direction === 'FX' ? 'selected' : ''}>Horizontal (X)</option>
+            <option value="MZ" ${load.direction === 'MZ' ? 'selected' : ''}>Moment (Z)</option>
+        </select>
+        <input type="number" step="0.1" value="${load.magnitude}" placeholder="Mag" class="bg-gray-600 text-white p-1 rounded text-xs elem-pt-magnitude">
+        <button onclick="removeElementPointLoad('element-load-${elementLoadCounter}')" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Remove</button>
+    `;
+
+    container.appendChild(loadDiv);
+
+    // Add event listeners to all inputs for real-time updates
+    loadDiv.querySelectorAll('input, select').forEach(input => {
+        input.addEventListener('input', updateVisualization);
+        input.addEventListener('change', updateVisualization);
+    });
+
+    elementLoadCounter++;
+}
+
 // Helper functions for distributed loads
 function getElementLength(elementName) {
     const elements = getElementsFromInputs();
@@ -1456,7 +1577,14 @@ function updateVisualization() {
     // Get current data from inputs
     const nodes = getNodesFromInputs();
     const elements = getElementsFromInputs();
-    const loads = getLoadsFromInputs();
+    const allLoads = getLoadsFromInputs();
+
+    // Filter loads to show only active load case
+    const loads = {
+        nodal: allLoads.nodal.filter(load => load.case === activeLoadCase),
+        distributed: allLoads.distributed.filter(load => load.case === activeLoadCase),
+        elementPoint: allLoads.elementPoint.filter(load => load.case === activeLoadCase)
+    };
 
     if (nodes.length === 0) return;
 
@@ -2096,7 +2224,9 @@ function getLoadsFromInputs() {
         const fx = loadDiv.querySelector('.load-fx').value;
         const fy = loadDiv.querySelector('.load-fy').value;
         const mz = loadDiv.querySelector('.load-mz').value;
-        loads.nodal.push({ name, type: 'nodal', node, fx, fy, mz });
+        const caseInput = loadDiv.querySelector('.load-case');
+        const loadCase = caseInput ? caseInput.value : activeLoadCase;
+        loads.nodal.push({ name, type: 'nodal', node, fx, fy, mz, case: loadCase });
     });
 
     // Collect distributed loads
@@ -2108,7 +2238,9 @@ function getLoadsFromInputs() {
         const w2 = loadDiv.querySelector('.dist-w2').value;
         const x1 = loadDiv.querySelector('.dist-x1').value;
         const x2 = loadDiv.querySelector('.dist-x2').value;
-        loads.distributed.push({ name, type: 'distributed', element, direction, w1, w2, x1, x2 });
+        const caseInput = loadDiv.querySelector('.load-case');
+        const loadCase = caseInput ? caseInput.value : activeLoadCase;
+        loads.distributed.push({ name, type: 'distributed', element, direction, w1, w2, x1, x2, case: loadCase });
     });
 
     // Collect element point loads
@@ -2118,7 +2250,9 @@ function getLoadsFromInputs() {
         const distance = loadDiv.querySelector('.elem-pt-distance').value;
         const direction = loadDiv.querySelector('.elem-pt-direction').value;
         const magnitude = loadDiv.querySelector('.elem-pt-magnitude').value;
-        loads.elementPoint.push({ name, type: 'elementPoint', element, distance, direction, magnitude });
+        const caseInput = loadDiv.querySelector('.load-case');
+        const loadCase = caseInput ? caseInput.value : activeLoadCase;
+        loads.elementPoint.push({ name, type: 'elementPoint', element, distance, direction, magnitude, case: loadCase });
     });
 
     return loads;
@@ -2132,6 +2266,8 @@ async function runAnalysis() {
     }
 
     try {
+        const startTime = performance.now(); // Start timer
+
         const nodes = getNodesFromInputs();
         const elements = getElementsFromInputs();
         const loads = getLoadsFromInputs();
@@ -2217,8 +2353,14 @@ result
             html += '</div>';
 
             document.getElementById('results-container').innerHTML = html;
+
+            const endTime = performance.now(); // End timer
+            const duration = ((endTime - startTime) / 1000).toFixed(3); // Convert to seconds
+
+            console.log(`✓ Analysis completed in ${duration} seconds`);
             document.getElementById('console-output').textContent += "Analysis completed successfully!\n";
             document.getElementById('console-output').textContent += `Analyzed ${nodes.length} nodes, ${elements.length} elements, ${loads.length} loads\n`;
+            document.getElementById('console-output').textContent += `Execution time: ${duration} seconds\n`;
 
             // Display force diagrams if available
             if (results.diagrams) {
@@ -2229,12 +2371,17 @@ result
             updateVisualization();
 
         } else {
+            const endTime = performance.now();
+            const duration = ((endTime - startTime) / 1000).toFixed(3);
+            console.log(`✗ Analysis failed in ${duration} seconds`);
             document.getElementById('results-container').innerHTML = `<div class="text-red-400">Analysis failed: ${results.message}</div>`;
             document.getElementById('console-output').textContent += "Analysis failed: " + results.message + "\n";
         }
 
     } catch (error) {
-        console.error("Analysis error:", error);
+        const endTime = performance.now();
+        const duration = ((endTime - startTime) / 1000).toFixed(3);
+        console.error(`✗ Analysis error in ${duration} seconds:`, error);
         document.getElementById('console-output').textContent += `Error: ${error}\n`;
         document.getElementById('results-container').innerHTML =
             `<p class="text-red-400">Analysis failed: ${error}</p>`;
@@ -2362,6 +2509,249 @@ function displayResults(results) {
     container.innerHTML = html;
 }
 
+// ========================================
+// Load Cases Functions
+// ========================================
+
+/**
+ * Update the active load case dropdown with current load cases
+ */
+function updateActiveLoadCaseDropdown() {
+    const dropdown = document.getElementById('active-load-case');
+    if (!dropdown) return;
+
+    dropdown.innerHTML = '';
+    loadCases.forEach(loadCase => {
+        const option = document.createElement('option');
+        option.value = loadCase.name;
+        option.textContent = loadCase.name;
+        option.selected = (loadCase.name === activeLoadCase);
+        dropdown.appendChild(option);
+    });
+}
+
+/**
+ * Set the active load case (all new loads will be assigned to this case)
+ */
+async function setActiveLoadCase(caseName) {
+    // Save current UI state to frameData before switching
+    syncUIToFrameData();
+
+    activeLoadCase = caseName;
+    console.log(`Active load case set to: ${caseName}`);
+    updateActiveLoadCaseDropdown();
+
+    // Rebuild UI to show loads for the new active case
+    syncFrameDataToUI();
+
+    updateVisualization(); // Refresh to show only active case loads
+
+    // If a diagram is currently displayed and analysis has been run, re-run for new load case
+    const diagramType = document.getElementById('diagram-type')?.value;
+    if (diagramType && diagramType !== 'none' && lastAnalysisResults) {
+        console.log(`Re-running analysis for load case: ${caseName}`);
+        await runAnalysis();
+    }
+}
+
+/**
+ * Sync UI load inputs to frameData.loads
+ * Called before switching load cases to save current state
+ */
+function syncUIToFrameData() {
+    const currentLoads = getLoadsFromInputs();
+
+    // Remove existing loads for the current active case from frameData
+    frameData.loads.nodal = frameData.loads.nodal.filter(load => load.case !== activeLoadCase);
+    frameData.loads.distributed = frameData.loads.distributed.filter(load => load.case !== activeLoadCase);
+    frameData.loads.elementPoint = frameData.loads.elementPoint.filter(load => load.case !== activeLoadCase);
+
+    // Add the current UI loads to frameData
+    frameData.loads.nodal.push(...currentLoads.nodal);
+    frameData.loads.distributed.push(...currentLoads.distributed);
+    frameData.loads.elementPoint.push(...currentLoads.elementPoint);
+}
+
+/**
+ * Sync frameData.loads to UI inputs
+ * Called after switching load cases to show loads for the new case
+ */
+function syncFrameDataToUI() {
+    // Clear existing UI inputs
+    document.getElementById('nodal-loads-container').innerHTML = '';
+    document.getElementById('distributed-loads-container').innerHTML = '';
+    document.getElementById('element-loads-container').innerHTML = '';
+
+    // Reset counters
+    nodalLoadCounter = 1;
+    distributedLoadCounter = 1;
+    elementLoadCounter = 1;
+
+    // Get loads for active case
+    const caseLoads = {
+        nodal: frameData.loads.nodal.filter(load => load.case === activeLoadCase),
+        distributed: frameData.loads.distributed.filter(load => load.case === activeLoadCase),
+        elementPoint: frameData.loads.elementPoint.filter(load => load.case === activeLoadCase)
+    };
+
+    // Rebuild UI inputs for nodal loads
+    caseLoads.nodal.forEach(load => {
+        addNodalLoadFromData(load);
+    });
+
+    // Rebuild UI inputs for distributed loads
+    caseLoads.distributed.forEach(load => {
+        addDistributedLoadFromData(load);
+    });
+
+    // Rebuild UI inputs for element point loads
+    caseLoads.elementPoint.forEach(load => {
+        addElementPointLoadFromData(load);
+    });
+}
+
+/**
+ * Update the load cases list display
+ */
+function updateLoadCasesList() {
+    const listContainer = document.getElementById('load-cases-list');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = '';
+
+    loadCases.forEach((loadCase, index) => {
+        const row = document.createElement('div');
+        row.className = 'grid grid-cols-4 gap-2 items-center bg-gray-600 p-2 rounded text-sm';
+
+        row.innerHTML = `
+            <div class="text-white font-medium">${loadCase.name}</div>
+            <div class="text-gray-300">${loadCase.type}</div>
+            <div class="text-gray-300">${loadCase.durationClass}</div>
+            <div class="flex gap-1">
+                <button onclick="editLoadCase(${index})" class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs">
+                    Edit
+                </button>
+                <button onclick="deleteLoadCase(${index})" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs"
+                    ${loadCases.length <= 1 ? 'disabled title="Cannot delete the last load case"' : ''}>
+                    Delete
+                </button>
+            </div>
+        `;
+
+        listContainer.appendChild(row);
+    });
+}
+
+/**
+ * Show dialog to add a new load case
+ */
+function showAddLoadCaseDialog() {
+    const name = prompt('Load Case Name:', 'Wind');
+    if (!name || name.trim() === '') return;
+
+    // Check for duplicate names
+    if (loadCases.some(lc => lc.name === name.trim())) {
+        alert('A load case with this name already exists. Please use a unique name.');
+        return;
+    }
+
+    // For now, use default values. Later we can make a proper dialog
+    const newLoadCase = {
+        name: name.trim(),
+        type: 'Ordinary',
+        durationClass: 'Permanent'
+    };
+
+    loadCases.push(newLoadCase);
+    console.log(`Added load case: ${newLoadCase.name}`);
+
+    updateLoadCasesList();
+    updateActiveLoadCaseDropdown();
+}
+
+/**
+ * Edit an existing load case
+ */
+function editLoadCase(index) {
+    const loadCase = loadCases[index];
+    const newName = prompt('Load Case Name:', loadCase.name);
+
+    if (!newName || newName.trim() === '') return;
+
+    // Check for duplicate names (excluding current)
+    if (loadCases.some((lc, i) => i !== index && lc.name === newName.trim())) {
+        alert('A load case with this name already exists. Please use a unique name.');
+        return;
+    }
+
+    const oldName = loadCase.name;
+    loadCase.name = newName.trim();
+
+    // Update activeLoadCase if it was the one being edited
+    if (activeLoadCase === oldName) {
+        activeLoadCase = loadCase.name;
+    }
+
+    // Update all loads that reference this case
+    frameData.loads.nodal.forEach(load => {
+        if (load.case === oldName) load.case = loadCase.name;
+    });
+    frameData.loads.distributed.forEach(load => {
+        if (load.case === oldName) load.case = loadCase.name;
+    });
+    frameData.loads.elementPoint.forEach(load => {
+        if (load.case === oldName) load.case = loadCase.name;
+    });
+
+    console.log(`Edited load case: ${oldName} → ${loadCase.name}`);
+
+    updateLoadCasesList();
+    updateActiveLoadCaseDropdown();
+}
+
+/**
+ * Delete a load case
+ */
+function deleteLoadCase(index) {
+    if (loadCases.length <= 1) {
+        alert('Cannot delete the last load case. At least one load case must exist.');
+        return;
+    }
+
+    const loadCase = loadCases[index];
+    const caseName = loadCase.name;
+
+    // Check if any loads are assigned to this case
+    const hasLoads =
+        frameData.loads.nodal.some(load => load.case === caseName) ||
+        frameData.loads.distributed.some(load => load.case === caseName) ||
+        frameData.loads.elementPoint.some(load => load.case === caseName);
+
+    if (hasLoads) {
+        const confirm = window.confirm(
+            `Load case "${caseName}" has loads assigned to it. Deleting it will also delete all associated loads. Continue?`
+        );
+        if (!confirm) return;
+
+        // Remove all loads associated with this case
+        frameData.loads.nodal = frameData.loads.nodal.filter(load => load.case !== caseName);
+        frameData.loads.distributed = frameData.loads.distributed.filter(load => load.case !== caseName);
+        frameData.loads.elementPoint = frameData.loads.elementPoint.filter(load => load.case !== caseName);
+    }
+
+    loadCases.splice(index, 1);
+    console.log(`Deleted load case: ${caseName}`);
+
+    // If active case was deleted, switch to first available case
+    if (activeLoadCase === caseName) {
+        activeLoadCase = loadCases[0].name;
+    }
+
+    updateLoadCasesList();
+    updateActiveLoadCaseDropdown();
+    updateVisualization();
+}
+
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Starting initialization...');
@@ -2376,6 +2766,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (statusText) statusText.textContent = 'Initializing Analysis Environment...';
 
     await initializePyodide();
+
+    // Initialize load cases UI
+    updateLoadCasesList();
+    updateActiveLoadCaseDropdown();
 });
 
 // Add event listeners for real-time updates
