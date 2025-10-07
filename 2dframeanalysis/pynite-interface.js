@@ -2752,6 +2752,233 @@ function deleteLoadCase(index) {
     updateVisualization();
 }
 
+// ========================================
+// Load Combinations Functions
+// ========================================
+
+/**
+ * Show the load combinations modal
+ */
+function showLoadCombinationsDialog() {
+    const modal = document.getElementById('load-combinations-modal');
+    modal.classList.remove('hidden');
+    updateCombinationsList();
+}
+
+/**
+ * Close the load combinations modal
+ */
+function closeLoadCombinationsDialog() {
+    const modal = document.getElementById('load-combinations-modal');
+    modal.classList.add('hidden');
+}
+
+/**
+ * Update the combinations list display
+ */
+function updateCombinationsList() {
+    const listContainer = document.getElementById('combinations-list');
+    const noMessage = document.getElementById('no-combinations-message');
+
+    if (!listContainer) return;
+
+    listContainer.innerHTML = '';
+
+    if (loadCombinations.length === 0) {
+        noMessage.classList.remove('hidden');
+        return;
+    }
+
+    noMessage.classList.add('hidden');
+
+    loadCombinations.forEach((combo, index) => {
+        const comboDiv = document.createElement('div');
+        comboDiv.className = 'bg-gray-700 rounded-lg p-4 border border-gray-600';
+
+        // Build factors display
+        let factorsHTML = '';
+        for (const [caseName, factor] of Object.entries(combo.factors)) {
+            if (factor !== 0) {
+                factorsHTML += `<div class="text-sm text-gray-300 ml-4">• ${factor.toFixed(2)} × ${caseName}</div>`;
+            }
+        }
+
+        comboDiv.innerHTML = `
+            <div class="flex justify-between items-start mb-2">
+                <div class="flex-1">
+                    <h5 class="text-white font-medium">${combo.name}</h5>
+                    <span class="inline-block px-2 py-1 text-xs rounded mt-1 ${getComboTagStyle(combo.comboTag)}">${combo.comboTag}</span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="editCombination(${index})" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm">
+                        Edit
+                    </button>
+                    <button onclick="deleteCombination(${index})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm">
+                        Delete
+                    </button>
+                </div>
+            </div>
+            <div class="mt-3">
+                ${factorsHTML}
+            </div>
+        `;
+
+        listContainer.appendChild(comboDiv);
+    });
+}
+
+/**
+ * Get styling for combo tag badge
+ */
+function getComboTagStyle(tag) {
+    const styles = {
+        'ULS': 'bg-red-600 text-white',
+        'ALS': 'bg-orange-600 text-white',
+        'Characteristic': 'bg-blue-600 text-white',
+        'Frequent': 'bg-green-600 text-white',
+        'Quasi-Permanent': 'bg-purple-600 text-white'
+    };
+    return styles[tag] || 'bg-gray-600 text-white';
+}
+
+/**
+ * Show dialog to add a new combination
+ */
+function showAddCombinationDialog() {
+    if (loadCases.length === 0) {
+        alert('Please add at least one load case first.');
+        return;
+    }
+
+    // Reset form for adding
+    document.getElementById('combination-form-title').textContent = 'Add Combination';
+    document.getElementById('combo-name').value = '';
+    document.getElementById('combo-tag').value = 'ULS';
+    document.getElementById('combo-edit-index').value = '';
+
+    // Populate factor inputs
+    const factorsList = document.getElementById('combo-factors-list');
+    factorsList.innerHTML = '';
+
+    loadCases.forEach(loadCase => {
+        const factorDiv = document.createElement('div');
+        factorDiv.className = 'flex items-center gap-2';
+        factorDiv.innerHTML = `
+            <label class="text-gray-300 text-sm w-24">${loadCase.name}:</label>
+            <input type="number" step="0.01" value="1.0"
+                data-load-case="${loadCase.name}"
+                class="flex-1 bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none combo-factor-input">
+        `;
+        factorsList.appendChild(factorDiv);
+    });
+
+    // Show modal
+    document.getElementById('combination-form-modal').classList.remove('hidden');
+}
+
+/**
+ * Edit an existing combination
+ */
+function editCombination(index) {
+    const combo = loadCombinations[index];
+
+    // Set form for editing
+    document.getElementById('combination-form-title').textContent = 'Edit Combination';
+    document.getElementById('combo-name').value = combo.name;
+    document.getElementById('combo-tag').value = combo.comboTag;
+    document.getElementById('combo-edit-index').value = index;
+
+    // Populate factor inputs with current values
+    const factorsList = document.getElementById('combo-factors-list');
+    factorsList.innerHTML = '';
+
+    loadCases.forEach(loadCase => {
+        const currentFactor = combo.factors[loadCase.name] || 0;
+        const factorDiv = document.createElement('div');
+        factorDiv.className = 'flex items-center gap-2';
+        factorDiv.innerHTML = `
+            <label class="text-gray-300 text-sm w-24">${loadCase.name}:</label>
+            <input type="number" step="0.01" value="${currentFactor}"
+                data-load-case="${loadCase.name}"
+                class="flex-1 bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none combo-factor-input">
+        `;
+        factorsList.appendChild(factorDiv);
+    });
+
+    // Show modal
+    document.getElementById('combination-form-modal').classList.remove('hidden');
+}
+
+/**
+ * Close the combination form dialog
+ */
+function closeCombinationFormDialog() {
+    document.getElementById('combination-form-modal').classList.add('hidden');
+}
+
+/**
+ * Save combination from form
+ */
+function saveCombination(event) {
+    event.preventDefault();
+
+    const name = document.getElementById('combo-name').value.trim();
+    const comboTag = document.getElementById('combo-tag').value;
+    const editIndex = document.getElementById('combo-edit-index').value;
+
+    // Check for duplicate names (excluding current if editing)
+    const isDuplicate = loadCombinations.some((combo, i) => {
+        if (editIndex !== '' && i === parseInt(editIndex)) return false; // Skip current combo if editing
+        return combo.name === name;
+    });
+
+    if (isDuplicate) {
+        alert('A combination with this name already exists. Please use a unique name.');
+        return;
+    }
+
+    // Collect factors from inputs
+    const factors = {};
+    document.querySelectorAll('.combo-factor-input').forEach(input => {
+        const loadCaseName = input.getAttribute('data-load-case');
+        factors[loadCaseName] = parseFloat(input.value) || 0;
+    });
+
+    const combination = {
+        name: name,
+        comboTag: comboTag,
+        factors: factors
+    };
+
+    if (editIndex === '') {
+        // Adding new combination
+        loadCombinations.push(combination);
+        console.log(`Added combination: ${combination.name}`);
+    } else {
+        // Editing existing combination
+        loadCombinations[parseInt(editIndex)] = combination;
+        console.log(`Updated combination: ${combination.name}`);
+    }
+
+    closeCombinationFormDialog();
+    updateCombinationsList();
+}
+
+/**
+ * Delete a combination
+ */
+function deleteCombination(index) {
+    const combo = loadCombinations[index];
+
+    const confirm = window.confirm(`Delete combination "${combo.name}"?`);
+    if (!confirm) return;
+
+    loadCombinations.splice(index, 1);
+    console.log(`Deleted combination: ${combo.name}`);
+
+    updateCombinationsList();
+}
+
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Starting initialization...');

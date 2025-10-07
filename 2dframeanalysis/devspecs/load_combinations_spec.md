@@ -419,22 +419,52 @@ let loadCombinations = [
 17. Implement Delete combination functionality
 
 ### Phase 4: Analysis Tab & Results
-18. **Create new "Analysis" tab** in top navigation (Structure | Loads | Analysis)
-19. Tab starts disabled/grayed until first analysis
-20. Modify PyNite backend to handle load cases and combinations with combo_tags
-21. Update analysis workflow to:
-    - First analyze all individual load cases
-    - Then analyze selected combinations
-    - Store all results in browser memory (`analysisResults` object)
-22. Implement client-side results caching structure (loadCases + combinations)
-23. In Analysis tab: Add radio buttons to switch between "Load Cases" and "Load Combinations" view
-24. In Analysis tab: Add results dropdown that shows either load cases or combinations
-25. In Analysis tab: Add diagram type selector and scale controls
-26. In Analysis tab: Display frame visualization with results
-27. In Analysis tab: Add results summary section (max/min values)
-28. Update all result displays (diagrams, exports, tooltips) to use active selection
-29. Ensure fast switching between results (no re-analysis needed)
-30. Enable Analysis tab after first successful analysis
+
+#### Step 1: Create Analysis Tab Structure (HTML)
+18. Add "Analysis" tab to top navigation (Structure | Loads | **Analysis**)
+19. Add tab content container with disabled state initially
+20. Add radio buttons for view mode: "Load Cases" vs "Load Combinations"
+21. Add dropdown for result selection (populated based on radio button)
+22. Move diagram controls from Structure tab to Analysis tab
+23. Move results display sections to Analysis tab
+
+#### Step 2: PyNite Backend Integration
+24. Modify PyNite `analyze_frame_json()` to accept load case parameter
+25. Add function to analyze a single load case
+26. Add function to analyze a load combination (with factors)
+27. Update Python code to return results keyed by case/combo name
+
+#### Step 3: Analysis Workflow & Caching
+28. Create `runAnalysisForLoadCase(caseName)` function
+29. Create `runAnalysisForCombination(comboName)` function
+30. Implement results caching in `analysisResults` object:
+    - `analysisResults.loadCases[caseName] = {...results}`
+    - `analysisResults.combinations[comboName] = {...results}`
+31. Add logic: check cache before running analysis (avoid duplicate work)
+32. Update UI to show "analyzing..." state during analysis
+
+#### Step 4: Results Viewing UI
+33. Implement radio button handler to switch view mode (`resultViewMode`)
+34. Implement dropdown population based on view mode:
+    - Load Cases mode → populate with `loadCases.map(lc => lc.name)`
+    - Combinations mode → populate with `loadCombinations.map(c => c.name)`
+35. Implement dropdown change handler to:
+    - Set `activeResultName`
+    - Check if results exist in cache
+    - If not cached, run analysis
+    - Display cached/new results
+36. Update visualization to use `analysisResults[resultViewMode][activeResultName]`
+37. Update diagram display to use selected result
+38. Update tooltips/exports to use selected result
+
+#### Step 5: Analysis Tab Activation & Polish
+39. Keep Analysis tab disabled until first analysis completes
+40. Enable tab after successful analysis
+41. Switch to Analysis tab automatically after first analysis
+42. Add "Run All Load Cases" button
+43. Add "Run All Combinations" button (or checkboxes in combinations modal)
+44. Show which results are cached (visual indicator)
+45. Add clear cache button (optional)
 
 ### Phase 5: Polish & Testing
 31. Add preset combinations templates (EC/ASCE standards)

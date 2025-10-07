@@ -452,6 +452,104 @@
         </div>
     </main>
 
+    <!-- Load Combinations Modal -->
+    <div id="load-combinations-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <!-- Modal Header -->
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-semibold text-white">Load Combinations</h3>
+                    <button onclick="closeLoadCombinationsDialog()" class="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+                </div>
+
+                <!-- Combinations List -->
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="text-md font-medium text-gray-300">Combinations List</h4>
+                        <button onclick="showAddCombinationDialog()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm">
+                            + Add Combination
+                        </button>
+                    </div>
+
+                    <div id="combinations-list" class="space-y-3">
+                        <!-- Combinations will be populated here -->
+                    </div>
+
+                    <p id="no-combinations-message" class="text-gray-400 text-sm text-center py-4 hidden">
+                        No combinations defined yet. Click "+ Add Combination" to create one.
+                    </p>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="flex justify-end gap-3 pt-4 border-t border-gray-700">
+                    <button onclick="closeLoadCombinationsDialog()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Combination Modal -->
+    <div id="combination-form-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <!-- Modal Header -->
+                <div class="flex justify-between items-center mb-6">
+                    <h3 id="combination-form-title" class="text-xl font-semibold text-white">Add Combination</h3>
+                    <button onclick="closeCombinationFormDialog()" class="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+                </div>
+
+                <!-- Form -->
+                <form id="combination-form" onsubmit="saveCombination(event)" class="space-y-4">
+                    <!-- Name -->
+                    <div>
+                        <label class="block text-gray-300 text-sm font-medium mb-2">Combination Name</label>
+                        <input type="text" id="combo-name" required
+                            class="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                            placeholder="e.g., ULS - Snow Dominating">
+                    </div>
+
+                    <!-- Combo Tag -->
+                    <div>
+                        <label class="block text-gray-300 text-sm font-medium mb-2">Combo Tag</label>
+                        <select id="combo-tag" required
+                            class="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none">
+                            <option value="ULS">ULS (Ultimate Limit State)</option>
+                            <option value="ALS">ALS (Accidental Limit State)</option>
+                            <option value="Characteristic">Characteristic (SLS)</option>
+                            <option value="Frequent">Frequent (SLS)</option>
+                            <option value="Quasi-Permanent">Quasi-Permanent (SLS)</option>
+                        </select>
+                    </div>
+
+                    <!-- Load Case Factors -->
+                    <div>
+                        <label class="block text-gray-300 text-sm font-medium mb-2">Load Case Factors</label>
+                        <div id="combo-factors-list" class="space-y-2">
+                            <!-- Factor inputs will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Hidden field to track if editing -->
+                    <input type="hidden" id="combo-edit-index" value="">
+
+                    <!-- Buttons -->
+                    <div class="flex justify-end gap-3 pt-4 border-t border-gray-700">
+                        <button type="button" onclick="closeCombinationFormDialog()"
+                            class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+                            Save Combination
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="pynite-interface.js"></script>
 </body>
 </html>
