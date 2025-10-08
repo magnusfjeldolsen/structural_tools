@@ -33,6 +33,7 @@ beam.def_support('N2', False, False, False, False, False, False)
 
 # Add a uniform load of 200 lbs/ft to the beam (from 0 in to 168 in)
 beam.add_member_dist_load('M1', 'Fy', -1000, -1000, 0, 10)
+beam.add_node_load('N1', 'Fy', -500)
 
 # Alternatively the following line would do apply the load to the full
 # length of the member as well
@@ -40,6 +41,8 @@ beam.add_member_dist_load('M1', 'Fy', -1000, -1000, 0, 10)
 
 # Analyze the beam
 beam.analyze()
+
+beam.members['M1'].shear('Fy')
 # %%
 beam.members['M1'].plot_shear('Fy')
 beam.members['M1'].plot_moment('Mz')

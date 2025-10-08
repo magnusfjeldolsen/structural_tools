@@ -247,13 +247,16 @@ class PyNiteWebAnalyzer:
 
             for load in loads.get('nodal', []):
                 if any([float(load['fx']) != 0, float(load['fy']) != 0, float(load['mz']) != 0]):
-                    self._add_nodal_load(load)
+                    case_name = load.get('case')
+                    self._add_nodal_load(load, case=case_name)
 
             for load in loads.get('distributed', []):
-                self._add_distributed_load(load)
+                case_name = load.get('case')
+                self._add_distributed_load(load, case=case_name)
 
             for load in loads.get('elementPoint', []):
-                self._add_element_point_load(load)
+                case_name = load.get('case')
+                self._add_element_point_load(load, case=case_name)
         else:
             # Old format - backward compatibility
             print(f"\\nAdding {len(loads)} loads (old format):")
@@ -310,22 +313,22 @@ class PyNiteWebAnalyzer:
         else:
             print(f"Warning: Unknown support type '{support_type}' for {node_name}")
 
-    def _add_nodal_load(self, load):
-        """Add point loads to a node"""
+    def _add_nodal_load(self, load, case=None):
+        """Add point loads to a node with optional case parameter"""
         node_name = load['node']
         fx = float(load['fx']) * 1000  # Convert kN to N
         fy = float(load['fy']) * 1000  # Convert kN to N
         mz = float(load['mz']) * 1000  # Convert kNm to Nm
 
         if fx != 0:
-            self.model.add_node_load(node_name, 'FX', fx)
+            self.model.add_node_load(node_name, 'FX', fx, case=case)
         if fy != 0:
-            self.model.add_node_load(node_name, 'FY', fy)
+            self.model.add_node_load(node_name, 'FY', fy, case=case)
         if mz != 0:
-            self.model.add_node_load(node_name, 'MZ', mz)
+            self.model.add_node_load(node_name, 'MZ', mz, case=case)
 
-    def _add_distributed_load(self, load):
-        """Add distributed load to a member"""
+    def _add_distributed_load(self, load, case=None):
+        """Add distributed load to a member with optional case parameter"""
         member_name = load['element']
         direction = load['direction']
         w1 = float(load['w1']) * 1000  # Convert kN/m to N/m
@@ -335,18 +338,18 @@ class PyNiteWebAnalyzer:
 
         # Apply distributed load
         if x2 is not None:
-            self.model.add_member_dist_load(member_name, direction, w1, w2, x1, x2)
+            self.model.add_member_dist_load(member_name, direction, w1, w2, x1, x2, case=case)
         else:
-            self.model.add_member_dist_load(member_name, direction, w1, w2, x1)
+            self.model.add_member_dist_load(member_name, direction, w1, w2, x1, case=case)
 
-    def _add_element_point_load(self, load):
-        """Add point load to a member at specific distance"""
+    def _add_element_point_load(self, load, case=None):
+        """Add point load to a member at specific distance with optional case parameter"""
         member_name = load['element']
         direction = load['direction']
         magnitude = float(load['magnitude']) * 1000  # Convert kN to N (or kNm to Nm)
         distance = float(load['distance'])  # m from element start
 
-        self.model.add_member_pt_load(member_name, direction, magnitude, distance)
+        self.model.add_member_pt_load(member_name, direction, magnitude, distance, case=case)
 
     def analyze(self):
         """Run the structural analysis"""
@@ -625,6 +628,416 @@ def analyze_frame_combination(input_json, combo_json):
             'nodes': {},
             'elements': {},
             'diagrams': {}
+        })
+
+# Global storage for the analyzed model
+current_model = None
+current_load_cases = []
+current_combinations = []
+
+def extract_results_for_combo(model, combo_name):
+    """Extract results for any combo (load case or combination) using combo_name"""
+    results = {
+        'nodes': {},
+        'elements': {},
+        'diagrams': {}
+    }
+
+    # Extract node displacements and reactions for this combo
+    for node_name, node in model.nodes.items():
+        results['nodes'][node_name] = {
+            'DX': node.DX.get(combo_name, 0),
+            'DY': node.DY.get(combo_name, 0),
+            'DZ': node.DZ.get(combo_name, 0),
+            'RX': node.RX.get(combo_name, 0),
+            'RY': node.RY.get(combo_name, 0),
+            'RZ': node.RZ.get(combo_name, 0),
+            'reactions': {
+                'FX': getattr(node, 'RxnFX', {}).get(combo_name, 0),
+                'FY': getattr(node, 'RxnFY', {}).get(combo_name, 0),
+                'MZ': getattr(node, 'RxnMZ', {}).get(combo_name, 0)
+            }
+        }
+
+    # Extract member forces and diagrams using combo_name
+    for elem_name, member in model.members.items():
+        try:
+            L = member.L()
+            n_points = 11
+
+            # Use PyNite's combo_name parameter to extract results
+            # axial_array doesn't take direction, others do
+            moment_array = member.moment_array('Mz', n_points=n_points, combo_name=combo_name)
+            shear_array = member.shear_array('Fy', n_points=n_points, combo_name=combo_name)
+            axial_array = member.axial_array(n_points=n_points, combo_name=combo_name)
+            deflection_array = member.deflection_array('dy', n_points=n_points, combo_name=combo_name)
+
+            # Convert to lists for JSON
+            x_coords = moment_array[0].tolist()
+            moments = moment_array[1].tolist()
+            shears = shear_array[1].tolist()
+            axials = axial_array[1].tolist()
+            deflections = deflection_array[1].tolist()
+
+            # Store element results
+            results['elements'][elem_name] = {
+                'max_moment': float(max(abs(min(moments)), abs(max(moments)))),
+                'max_shear': float(max(abs(min(shears)), abs(max(shears)))),
+                'max_axial': float(max(abs(min(axials)), abs(max(axials)))),
+                'max_deflection': float(max(abs(min(deflections)), abs(max(deflections)))),
+                'axial_force': float(axials[0]),
+                'length': float(L),
+                'i_node': member.i_node.name,
+                'j_node': member.j_node.name
+            }
+
+            # Store diagram data
+            results['diagrams'][elem_name] = {
+                'x_coordinates': x_coords,
+                'moments': moments,
+                'shears': shears,
+                'axials': axials,
+                'deflections': deflections,
+                'length': float(L)
+            }
+
+        except Exception as e:
+            print(f"Error extracting results for {elem_name} combo {combo_name}: {str(e)}")
+            results['elements'][elem_name] = {
+                'max_moment': 0,
+                'max_shear': 0,
+                'max_axial': 0,
+                'max_deflection': 0,
+                'axial_force': 0,
+                'length': 0,
+                'i_node': '',
+                'j_node': '',
+                'error': str(e)
+            }
+
+    return results
+
+def analyze_and_store_model(input_json):
+    """
+    Build and analyze model, store it globally for later queries.
+    Returns success/failure without extracting results.
+    """
+    global current_model, current_load_cases, current_combinations
+
+    try:
+        data = json.loads(input_json)
+
+        # Create model
+        model = FEModel3D()
+
+        # Add nodes
+        for node in data.get('nodes', []):
+            model.add_node(node['name'], float(node['x']), float(node['y']), 0.0)
+
+        # Add material
+        E = 210e9
+        G = 80e9
+        nu = 0.3
+        rho = 7850
+        model.add_material('Steel', E, G, nu, rho)
+
+        # Add supports
+        for node in data.get('nodes', []):
+            support_type = node['support']
+            if support_type == 'fixed':
+                model.def_support(node['name'], True, True, True, True, True, True)
+            elif support_type == 'pinned':
+                model.def_support(node['name'], True, True, True, True, True, False)
+            elif support_type == 'roller-x':
+                model.def_support(node['name'], False, True, True, True, False, False)
+            elif support_type == 'roller-y':
+                model.def_support(node['name'], True, False, True, True, False, False)
+
+        # Add elements
+        for element in data.get('elements', []):
+            E_element = float(element['E']) * 1e9
+            I = float(element['I'])
+            A = float(element['A'])
+            J = I
+
+            section_name = f"Section_{element['name']}"
+            model.add_section(section_name, A, I, I, J)
+
+            model.add_member(
+                element['name'],
+                element['nodeI'],
+                element['nodeJ'],
+                'Steel',
+                section_name
+            )
+
+        # Add loads with case parameter
+        loads = data.get('loads', {})
+
+        for load in loads.get('nodal', []):
+            case_name = load.get('case')
+            fx = float(load['fx']) * 1000
+            fy = float(load['fy']) * 1000
+            mz = float(load['mz']) * 1000
+
+            if fx != 0:
+                model.add_node_load(load['node'], 'FX', fx, case=case_name)
+            if fy != 0:
+                model.add_node_load(load['node'], 'FY', fy, case=case_name)
+            if mz != 0:
+                model.add_node_load(load['node'], 'MZ', mz, case=case_name)
+
+        for load in loads.get('distributed', []):
+            case_name = load.get('case')
+            w1 = float(load['w1']) * 1000
+            w2 = float(load['w2']) * 1000
+            x1 = float(load.get('x1', 0))
+            x2 = load.get('x2')
+
+            if x2 is not None:
+                model.add_member_dist_load(load['element'], load['direction'], w1, w2, x1, float(x2), case=case_name)
+            else:
+                model.add_member_dist_load(load['element'], load['direction'], w1, w2, x1, case=case_name)
+
+        for load in loads.get('elementPoint', []):
+            case_name = load.get('case')
+            magnitude = float(load['magnitude']) * 1000
+            distance = float(load['distance'])
+
+            model.add_member_pt_load(load['element'], load['direction'], magnitude, distance, case=case_name)
+
+        # Store load case and combination info
+        current_load_cases = [lc['name'] for lc in data.get('loadCases', [])]
+        current_combinations = [combo['name'] for combo in data.get('loadCombinations', [])]
+
+        # Add load cases as combinations with factor 1.0
+        for load_case in data.get('loadCases', []):
+            case_name = load_case['name']
+            model.add_load_combo(name=case_name, factors={case_name: 1.0})
+
+        # Add user-defined combinations
+        for combo in data.get('loadCombinations', []):
+            combo_name = combo['name']
+            factors = combo['factors']
+            model.add_load_combo(name=combo_name, factors=factors)
+
+        # Run analysis once
+        print(f"\\nAnalyzing model with {len(data.get('loadCases', []))} load cases and {len(data.get('loadCombinations', []))} combinations...")
+        model.analyze()
+        print("✓ Analysis complete. Model stored in memory.")
+
+        # Store model globally
+        current_model = model
+
+        return json.dumps({
+            'success': True,
+            'message': 'Model analyzed and stored successfully',
+            'loadCases': current_load_cases,
+            'combinations': current_combinations
+        })
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            'success': False,
+            'message': f'Error analyzing model: {str(e)}',
+            'traceback': traceback.format_exc()
+        })
+
+def extract_for_combo(combo_name):
+    """
+    Extract results for a specific combo from the stored model.
+    This is called from JavaScript after analyze_and_store_model().
+    """
+    global current_model
+
+    if current_model is None:
+        return json.dumps({
+            'success': False,
+            'message': 'No model in memory. Run analysis first.',
+            'nodes': {},
+            'elements': {},
+            'diagrams': {}
+        })
+
+    try:
+        print(f"  Extracting results for: {combo_name}")
+        results = extract_results_for_combo(current_model, combo_name)
+        print(f"    ✓ Extracted {len(results.get('diagrams', {}))} diagrams")
+
+        return json.dumps({
+            'success': True,
+            'nodes': results['nodes'],
+            'elements': results['elements'],
+            'diagrams': results['diagrams']
+        })
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            'success': False,
+            'message': f'Error extracting results for {combo_name}: {str(e)}',
+            'traceback': traceback.format_exc(),
+            'nodes': {},
+            'elements': {},
+            'diagrams': {}
+        })
+
+def clear_model():
+    """
+    Clear the stored model from memory.
+    Useful for freeing memory when starting fresh analysis.
+    """
+    global current_model, current_load_cases, current_combinations
+    current_model = None
+    current_load_cases = []
+    current_combinations = []
+    print("✓ Model cleared from memory")
+    return json.dumps({'success': True})
+
+def analyze_frame_with_combos(input_json):
+    """
+    Unified analysis function that:
+    1. Adds all loads with case parameter
+    2. Creates load cases as combos with factor 1.0
+    3. Creates user-defined combinations with proper factors
+    4. Runs single analysis
+    5. Extracts results for all cases and combos using combo_name
+    """
+    try:
+        data = json.loads(input_json)
+
+        # Create model
+        model = FEModel3D()
+
+        # Add nodes
+        for node in data.get('nodes', []):
+            model.add_node(node['name'], float(node['x']), float(node['y']), 0.0)
+
+        # Add material
+        E = 210e9
+        G = 80e9
+        nu = 0.3
+        rho = 7850
+        model.add_material('Steel', E, G, nu, rho)
+
+        # Add supports
+        for node in data.get('nodes', []):
+            support_type = node['support']
+            if support_type == 'fixed':
+                model.def_support(node['name'], True, True, True, True, True, True)
+            elif support_type == 'pinned':
+                model.def_support(node['name'], True, True, True, True, True, False)
+            elif support_type == 'roller-x':
+                model.def_support(node['name'], False, True, True, True, False, False)
+            elif support_type == 'roller-y':
+                model.def_support(node['name'], True, False, True, True, False, False)
+
+        # Add elements
+        for element in data.get('elements', []):
+            E_element = float(element['E']) * 1e9
+            I = float(element['I'])
+            A = float(element['A'])
+            J = I
+
+            section_name = f"Section_{element['name']}"
+            model.add_section(section_name, A, I, I, J)
+
+            model.add_member(
+                element['name'],
+                element['nodeI'],
+                element['nodeJ'],
+                'Steel',
+                section_name
+            )
+
+        # Add loads with case parameter
+        loads = data.get('loads', {})
+
+        for load in loads.get('nodal', []):
+            case_name = load.get('case')
+            fx = float(load['fx']) * 1000
+            fy = float(load['fy']) * 1000
+            mz = float(load['mz']) * 1000
+
+            if fx != 0:
+                model.add_node_load(load['node'], 'FX', fx, case=case_name)
+            if fy != 0:
+                model.add_node_load(load['node'], 'FY', fy, case=case_name)
+            if mz != 0:
+                model.add_node_load(load['node'], 'MZ', mz, case=case_name)
+
+        for load in loads.get('distributed', []):
+            case_name = load.get('case')
+            w1 = float(load['w1']) * 1000
+            w2 = float(load['w2']) * 1000
+            x1 = float(load.get('x1', 0))
+            x2 = load.get('x2')
+
+            if x2 is not None:
+                model.add_member_dist_load(load['element'], load['direction'], w1, w2, x1, float(x2), case=case_name)
+            else:
+                model.add_member_dist_load(load['element'], load['direction'], w1, w2, x1, case=case_name)
+
+        for load in loads.get('elementPoint', []):
+            case_name = load.get('case')
+            magnitude = float(load['magnitude']) * 1000
+            distance = float(load['distance'])
+
+            model.add_member_pt_load(load['element'], load['direction'], magnitude, distance, case=case_name)
+
+        # Add load cases as combinations with factor 1.0
+        for load_case in data.get('loadCases', []):
+            case_name = load_case['name']
+            model.add_load_combo(name=case_name, factors={case_name: 1.0})
+
+        # Add user-defined combinations
+        for combo in data.get('loadCombinations', []):
+            combo_name = combo['name']
+            factors = combo['factors']
+            model.add_load_combo(name=combo_name, factors=factors)
+
+        # Run analysis once
+        print(f"\\nAnalyzing model with {len(data.get('loadCases', []))} load cases and {len(data.get('loadCombinations', []))} combinations...")
+        model.analyze()
+
+        # Extract results for all load cases
+        load_case_results = {}
+        for load_case in data.get('loadCases', []):
+            case_name = load_case['name']
+            print(f"  Extracting results for load case: {case_name}")
+            try:
+                results = extract_results_for_combo(model, case_name)
+                load_case_results[case_name] = results
+                print(f"    ✓ Extracted {len(results.get('diagrams', {}))} diagrams")
+            except Exception as e:
+                print(f"    ✗ Error extracting {case_name}: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                raise
+
+        # Extract results for all combinations
+        combination_results = {}
+        for combo in data.get('loadCombinations', []):
+            combo_name = combo['name']
+            print(f"  Extracting results for combination: {combo_name}")
+            combination_results[combo_name] = extract_results_for_combo(model, combo_name)
+
+        return json.dumps({
+            'success': True,
+            'message': 'Analysis completed for all cases and combinations',
+            'loadCaseResults': load_case_results,
+            'combinationResults': combination_results
+        })
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            'success': False,
+            'message': f'Error in unified analysis: {str(e)}',
+            'traceback': traceback.format_exc(),
+            'loadCaseResults': {},
+            'combinationResults': {}
         })
 
 # Create global analyzer instance
@@ -2410,6 +2823,9 @@ async function runAnalysis() {
     try {
         const startTime = performance.now(); // Start timer
 
+        // Sync current UI loads to frameData before analysis
+        syncUIToFrameData();
+
         const nodes = getNodesFromInputs();
         const elements = getElementsFromInputs();
         const loads = getLoadsFromInputs();
@@ -2439,23 +2855,51 @@ async function runAnalysis() {
             console.log(`  ${node.name}: x=${node.x}, y=${node.y}, support=${node.support}`);
         });
 
+        // Use unified analysis with load cases and combinations
+        const inputDataWithCases = {
+            nodes: nodes,
+            elements: elements,
+            loads: frameData.loads,  // Use frameData.loads which has all loads with case property
+            loadCases: loadCases,
+            loadCombinations: loadCombinations
+        };
+
+        const inputDataWithCasesJson = JSON.stringify(inputDataWithCases).replace(/'/g, "\\'");
         const analysisResult = pyodide.runPython(`
 import json
-result = analyze_frame_json('${inputDataJson.replace(/'/g, "\\'")}')
+result = analyze_frame_with_combos('${inputDataWithCasesJson}')
 result
         `);
 
         console.log("Analysis result:", analysisResult);
 
         // Parse and display results
-        const results = JSON.parse(analysisResult);
+        const analysisData = JSON.parse(analysisResult);
 
-        if (results.success) {
+        if (analysisData.success) {
+            // Cache all results
+            analysisResults.loadCases = analysisData.loadCaseResults;
+            analysisResults.combinations = analysisData.combinationResults;
+
+            console.log("Cached results:", analysisResults);
+            console.log("Active load case:", activeLoadCase);
+
+            // Get results for active load case to display
+            const results = analysisData.loadCaseResults[activeLoadCase];
+
+            if (!results) {
+                console.error(`No results found for active load case: ${activeLoadCase}`);
+                console.error("Available cases:", Object.keys(analysisData.loadCaseResults));
+            }
+
             // Store results for diagram display
             lastAnalysisResults = results;
             // Reset autoscale flag so diagrams will autoscale again
             lastAutoscaledDiagramType = null;
             console.log("Analysis successful! Stored results:");
+            console.log("  Load cases analyzed:", Object.keys(analysisData.loadCaseResults).length);
+            console.log("  Combinations analyzed:", Object.keys(analysisData.combinationResults).length);
+            console.log("  Displaying:", activeLoadCase);
             console.log("  Nodes:", Object.keys(results.nodes).length);
             console.log("  Elements:", Object.keys(results.elements).length);
             console.log("  Diagrams:", Object.keys(results.diagrams || {}).length);
@@ -2500,8 +2944,9 @@ result
             const duration = ((endTime - startTime) / 1000).toFixed(3); // Convert to seconds
 
             console.log(`✓ Analysis completed in ${duration} seconds`);
+            const totalLoads = (loads.nodal?.length || 0) + (loads.distributed?.length || 0) + (loads.elementPoint?.length || 0);
             document.getElementById('console-output').textContent += "Analysis completed successfully!\n";
-            document.getElementById('console-output').textContent += `Analyzed ${nodes.length} nodes, ${elements.length} elements, ${loads.length} loads\n`;
+            document.getElementById('console-output').textContent += `Analyzed ${nodes.length} nodes, ${elements.length} elements, ${totalLoads} loads\n`;
             document.getElementById('console-output').textContent += `Execution time: ${duration} seconds\n`;
 
             // Display force diagrams if available
@@ -2515,8 +2960,7 @@ result
             // Enable Analysis tab after first successful analysis
             if (!isAnalysisTabEnabled()) {
                 enableAnalysisTab();
-                // Cache this result for the active load case
-                analysisResults.loadCases[activeLoadCase] = results;
+                // Results already cached above at lines 2686-2687
                 // Set initial result view to this case
                 activeResultName = activeLoadCase;
                 updateResultSelectionDropdown();
@@ -4164,7 +4608,106 @@ function updateResultSelectionDropdown() {
 }
 
 /**
- * Analyze a single load case with caching
+ * Run complete unified analysis for all load cases and combinations
+ * Uses PyNite's native combo system
+ */
+async function runCompleteAnalysis() {
+    console.log('Running unified analysis for all load cases and combinations...');
+    const startTime = performance.now();
+
+    try {
+        // Prepare input data with load cases and combinations
+        const inputData = {
+            nodes: getNodesFromInputs(),
+            elements: getElementsFromInputs(),
+            loads: frameData.loads,
+            loadCases: loadCases,
+            loadCombinations: loadCombinations
+        };
+
+        // Step 1: Analyze and store model in Python memory
+        const inputDataJson = JSON.stringify(inputData).replace(/'/g, "\\'");
+        const analysisResult = await pyodide.runPythonAsync(`
+import json
+result = analyze_and_store_model('${inputDataJson}')
+result
+        `);
+
+        const analysisData = JSON.parse(analysisResult);
+
+        if (!analysisData.success) {
+            throw new Error(analysisData.message + (analysisData.traceback ? '\n' + analysisData.traceback : ''));
+        }
+
+        console.log(`✓ Model analyzed and stored in Python memory`);
+        console.log(`  - Load cases: ${analysisData.loadCases.join(', ')}`);
+        console.log(`  - Combinations: ${analysisData.combinations.join(', ')}`);
+
+        // Step 2: Extract results for all load cases
+        analysisResults.loadCases = {};
+        for (const caseName of loadCases.map(lc => lc.name)) {
+            console.log(`  Extracting results for load case: ${caseName}`);
+            const extractResult = await pyodide.runPythonAsync(`
+import json
+result = extract_for_combo('${caseName}')
+result
+            `);
+
+            const caseData = JSON.parse(extractResult);
+            if (caseData.success) {
+                analysisResults.loadCases[caseName] = {
+                    nodes: caseData.nodes,
+                    elements: caseData.elements,
+                    diagrams: caseData.diagrams
+                };
+                console.log(`    ✓ ${Object.keys(caseData.diagrams).length} diagrams extracted`);
+            } else {
+                console.error(`    ✗ Failed: ${caseData.message}`);
+            }
+        }
+
+        // Step 3: Extract results for all combinations
+        analysisResults.combinations = {};
+        for (const combo of loadCombinations) {
+            console.log(`  Extracting results for combination: ${combo.name}`);
+            const extractResult = await pyodide.runPythonAsync(`
+import json
+result = extract_for_combo('${combo.name}')
+result
+            `);
+
+            const comboData = JSON.parse(extractResult);
+            if (comboData.success) {
+                analysisResults.combinations[combo.name] = {
+                    nodes: comboData.nodes,
+                    elements: comboData.elements,
+                    diagrams: comboData.diagrams
+                };
+                console.log(`    ✓ ${Object.keys(comboData.diagrams).length} diagrams extracted`);
+            } else {
+                console.error(`    ✗ Failed: ${comboData.message}`);
+            }
+        }
+
+        const endTime = performance.now();
+        const duration = ((endTime - startTime) / 1000).toFixed(3);
+
+        console.log(`✓ Analysis completed in ${duration}s`);
+        console.log(`  - ${Object.keys(analysisResults.loadCases).length} load cases cached`);
+        console.log(`  - ${Object.keys(analysisResults.combinations).length} combinations cached`);
+
+        return true;
+
+    } catch (error) {
+        const endTime = performance.now();
+        const duration = ((endTime - startTime) / 1000).toFixed(3);
+        console.error(`✗ Analysis failed in ${duration}s:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Get results for a specific load case (from cache, run analysis if needed)
  */
 async function runAnalysisForLoadCase(caseName) {
     // Check if already cached
@@ -4173,48 +4716,20 @@ async function runAnalysisForLoadCase(caseName) {
         return analysisResults.loadCases[caseName];
     }
 
-    console.log(`Analyzing load case: ${caseName}...`);
-    const startTime = performance.now();
+    // Run complete analysis to populate cache
+    console.log(`Load case "${caseName}" not in cache. Running complete analysis...`);
+    await runCompleteAnalysis();
 
-    try {
-        // Prepare input data
-        const inputData = {
-            nodes: getNodesFromInputs(),
-            elements: getElementsFromInputs(),
-            loads: frameData.loads  // All loads with case property
-        };
-
-        // Call Python function
-        const inputDataJson = JSON.stringify(inputData).replace(/'/g, "\\'");
-        const analysisResult = await pyodide.runPythonAsync(`
-import json
-result = analyze_frame_single_case('${inputDataJson}', '${caseName}')
-result
-        `);
-
-        const results = JSON.parse(analysisResult);
-        const endTime = performance.now();
-        const duration = ((endTime - startTime) / 1000).toFixed(3);
-
-        if (results.success) {
-            // Cache results
-            analysisResults.loadCases[caseName] = results;
-            console.log(`✓ Analysis completed for "${caseName}" in ${duration}s`);
-            return results;
-        } else {
-            throw new Error(results.message);
-        }
-
-    } catch (error) {
-        const endTime = performance.now();
-        const duration = ((endTime - startTime) / 1000).toFixed(3);
-        console.error(`✗ Analysis failed for "${caseName}" in ${duration}s:`, error);
-        throw error;
+    // Return from cache
+    if (analysisResults.loadCases[caseName]) {
+        return analysisResults.loadCases[caseName];
+    } else {
+        throw new Error(`Failed to get results for load case: ${caseName}`);
     }
 }
 
 /**
- * Analyze a load combination with caching
+ * Get results for a specific combination (from cache, run analysis if needed)
  */
 async function runAnalysisForCombination(comboName) {
     // Check if already cached
@@ -4223,52 +4738,52 @@ async function runAnalysisForCombination(comboName) {
         return analysisResults.combinations[comboName];
     }
 
-    console.log(`Analyzing combination: ${comboName}...`);
-    const startTime = performance.now();
+    // Run complete analysis to populate cache
+    console.log(`Combination "${comboName}" not in cache. Running complete analysis...`);
+    await runCompleteAnalysis();
 
-    try {
-        // Find combination
-        const combo = loadCombinations.find(c => c.name === comboName);
-        if (!combo) {
-            throw new Error(`Combination "${comboName}" not found`);
-        }
-
-        // Prepare input data
-        const inputData = {
-            nodes: getNodesFromInputs(),
-            elements: getElementsFromInputs(),
-            loads: frameData.loads
-        };
-
-        // Call Python function
-        const inputDataJson = JSON.stringify(inputData).replace(/'/g, "\\'");
-        const comboJson = JSON.stringify(combo).replace(/'/g, "\\'");
-
-        const analysisResult = await pyodide.runPythonAsync(`
-import json
-result = analyze_frame_combination('${inputDataJson}', '${comboJson}')
-result
-        `);
-
-        const results = JSON.parse(analysisResult);
-        const endTime = performance.now();
-        const duration = ((endTime - startTime) / 1000).toFixed(3);
-
-        if (results.success) {
-            // Cache results
-            analysisResults.combinations[comboName] = results;
-            console.log(`✓ Analysis completed for "${comboName}" in ${duration}s`);
-            return results;
-        } else {
-            throw new Error(results.message);
-        }
-
-    } catch (error) {
-        const endTime = performance.now();
-        const duration = ((endTime - startTime) / 1000).toFixed(3);
-        console.error(`✗ Analysis failed for "${comboName}" in ${duration}s:`, error);
-        throw error;
+    // Return from cache
+    if (analysisResults.combinations[comboName]) {
+        return analysisResults.combinations[comboName];
+    } else {
+        throw new Error(`Failed to get results for combination: ${comboName}`);
     }
+}
+
+/**
+ * Get direct access to the PyNite model for advanced queries
+ * WARNING: You must call .destroy() on the returned PyProxy when done!
+ *
+ * Example usage:
+ *   const model = getStoredModel();
+ *   const member = model.members.get('E1');
+ *   const length = member.L();
+ *   model.destroy();  // MUST DO THIS!
+ */
+function getStoredModel() {
+    if (typeof pyodide === 'undefined') {
+        console.error('Pyodide not initialized');
+        return null;
+    }
+
+    const model = pyodide.globals.get('current_model');
+    if (!model) {
+        console.warn('No model in memory. Run analysis first.');
+        return null;
+    }
+
+    console.log('⚠️  Retrieved PyProxy to model. Remember to call .destroy() when done!');
+    return model;
+}
+
+/**
+ * Clear the stored model from Python memory
+ */
+async function clearStoredModel() {
+    await pyodide.runPythonAsync(`
+clear_model()
+    `);
+    console.log('✓ Stored model cleared from Python memory');
 }
 
 /**
