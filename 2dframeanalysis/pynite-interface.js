@@ -2828,159 +2828,64 @@ async function runAnalysis() {
     }
 
     try {
-        const startTime = performance.now(); // Start timer
+        const startTime = performance.now();
 
         // Sync current UI loads to frameData before analysis
         syncUIToFrameData();
 
         const nodes = getNodesFromInputs();
         const elements = getElementsFromInputs();
-        const loads = getLoadsFromInputs();
 
         if (nodes.length === 0 || elements.length === 0) {
             alert("Please add at least one node and one element.");
             return;
         }
 
-        console.log("Running PyNite analysis...");
+        console.log("Running complete PyNite analysis for all load cases and combinations...");
         document.getElementById('console-output').textContent = "Running analysis...\n";
 
-        // Prepare input data
-        const inputData = {
-            nodes: nodes,
-            elements: elements,
-            loads: loads
-        };
+        // Run complete unified analysis
+        await runCompleteAnalysis();
 
-        // Run analysis with simplified analyzer
-        const inputDataJson = JSON.stringify(inputData);
-        console.log("Input data:", inputDataJson);
+        const endTime = performance.now();
+        const duration = ((endTime - startTime) / 1000).toFixed(3);
 
-        // Debug: Log nodes with supports
-        console.log("Nodes collected:");
-        nodes.forEach(node => {
-            console.log(`  ${node.name}: x=${node.x}, y=${node.y}, support=${node.support}`);
-        });
+        console.log(`✓ Analysis workflow completed in ${duration} seconds`);
 
-        // Use unified analysis with load cases and combinations
-        const inputDataWithCases = {
-            nodes: nodes,
-            elements: elements,
-            loads: frameData.loads,  // Use frameData.loads which has all loads with case property
-            loadCases: loadCases,
-            loadCombinations: loadCombinations
-        };
+        const loads = getLoadsFromInputs();
+        const totalLoads = (loads.nodal?.length || 0) + (loads.distributed?.length || 0) + (loads.elementPoint?.length || 0);
+        document.getElementById('console-output').textContent = "Analysis completed successfully!\n";
+        document.getElementById('console-output').textContent += `Analyzed ${nodes.length} nodes, ${elements.length} elements, ${totalLoads} loads\n`;
+        document.getElementById('console-output').textContent += `Load cases: ${Object.keys(analysisResults.loadCases).length}, Combinations: ${Object.keys(analysisResults.combinations).length}\n`;
+        document.getElementById('console-output').textContent += `Execution time: ${duration} seconds\n`;
+        document.getElementById('console-output').textContent += `\nGo to Analysis tab to view results.\n`;
 
-        const inputDataWithCasesJson = JSON.stringify(inputDataWithCases).replace(/'/g, "\\'");
-        const analysisResult = pyodide.runPython(`
-import json
-result = analyze_frame_with_combos('${inputDataWithCasesJson}')
-result
-        `);
+        // Clear old results container
+        document.getElementById('results-container').innerHTML = '<p class="text-gray-400">Go to Analysis tab to view results...</p>';
 
-        console.log("Analysis result:", analysisResult);
+        // Clear active result name to force user to select
+        activeResultName = '';
 
-        // Parse and display results
-        const analysisData = JSON.parse(analysisResult);
+        // Enable Analysis tab after first successful analysis
+        if (!isAnalysisTabEnabled()) {
+            enableAnalysisTab();
+        }
 
-        if (analysisData.success) {
-            // Cache all results
-            analysisResults.loadCases = analysisData.loadCaseResults;
-            analysisResults.combinations = analysisData.combinationResults;
+        // Update dropdown to reset selection to "-- Select --"
+        updateResultSelectionDropdown();
 
-            console.log("Cached results:", analysisResults);
-            console.log("Active load case:", activeLoadCase);
+        // Always switch to Analysis tab after running analysis
+        switchTab('analysis');
 
-            // Get results for active load case to display
-            const results = analysisData.loadCaseResults[activeLoadCase];
+        // Clear any previous visualization results
+        lastAnalysisResults = null;
+        lastAutoscaledDiagramType = null;
+        updateVisualization();
 
-            if (!results) {
-                console.error(`No results found for active load case: ${activeLoadCase}`);
-                console.error("Available cases:", Object.keys(analysisData.loadCaseResults));
-            }
-
-            // Store results for diagram display
-            lastAnalysisResults = results;
-            // Reset autoscale flag so diagrams will autoscale again
-            lastAutoscaledDiagramType = null;
-            console.log("Analysis successful! Stored results:");
-            console.log("  Load cases analyzed:", Object.keys(analysisData.loadCaseResults).length);
-            console.log("  Combinations analyzed:", Object.keys(analysisData.combinationResults).length);
-            console.log("  Displaying:", activeLoadCase);
-            console.log("  Nodes:", Object.keys(results.nodes).length);
-            console.log("  Elements:", Object.keys(results.elements).length);
-            console.log("  Diagrams:", Object.keys(results.diagrams || {}).length);
-            if (results.diagrams) {
-                for (const [elemName, diagData] of Object.entries(results.diagrams)) {
-                    console.log(`  Diagram ${elemName}: ${diagData.moments?.length || 0} points`);
-                }
-            }
-
-            // Format results for display
-            let html = '<div class="space-y-4">';
-
-            // Node displacements
-            html += '<div><h4 class="font-semibold text-yellow-400 mb-3">Node Displacements</h4>';
-            html += '<table class="w-full text-sm"><thead><tr class="border-b border-gray-600">';
-            html += '<th class="text-left py-2">Node</th><th class="text-right py-2">DX (mm)</th><th class="text-right py-2">DY (mm)</th><th class="text-right py-2">RZ (mrad)</th></tr></thead><tbody>';
-
-            for (const [nodeName, nodeData] of Object.entries(results.nodes)) {
-                const dx = (nodeData.DX * 1000).toFixed(2);
-                const dy = (nodeData.DY * 1000).toFixed(2);
-                const rz = (nodeData.RZ * 1000).toFixed(3);
-                html += `<tr class="border-b border-gray-700"><td class="py-2">${nodeName}</td><td class="text-right py-2">${dx}</td><td class="text-right py-2">${dy}</td><td class="text-right py-2">${rz}</td></tr>`;
-            }
-            html += '</tbody></table></div>';
-
-            // Element forces
-            html += '<div><h4 class="font-semibold text-green-400 mb-3">Element Forces</h4>';
-            html += '<table class="w-full text-sm"><thead><tr class="border-b border-gray-600">';
-            html += '<th class="text-left py-2">Element</th><th class="text-right py-2">Axial (kN)</th><th class="text-right py-2">Length (m)</th></tr></thead><tbody>';
-
-            for (const [elemName, elemData] of Object.entries(results.elements)) {
-                const axial = (elemData.axial_force / 1000).toFixed(2);
-                const length = elemData.length.toFixed(2);
-                html += `<tr class="border-b border-gray-700"><td class="py-2">${elemName}</td><td class="text-right py-2">${axial}</td><td class="text-right py-2">${length}</td></tr>`;
-            }
-            html += '</tbody></table></div>';
-            html += '</div>';
-
-            document.getElementById('results-container').innerHTML = html;
-
-            const endTime = performance.now(); // End timer
-            const duration = ((endTime - startTime) / 1000).toFixed(3); // Convert to seconds
-
-            console.log(`✓ Analysis completed in ${duration} seconds`);
-            const totalLoads = (loads.nodal?.length || 0) + (loads.distributed?.length || 0) + (loads.elementPoint?.length || 0);
-            document.getElementById('console-output').textContent += "Analysis completed successfully!\n";
-            document.getElementById('console-output').textContent += `Analyzed ${nodes.length} nodes, ${elements.length} elements, ${totalLoads} loads\n`;
-            document.getElementById('console-output').textContent += `Execution time: ${duration} seconds\n`;
-
-            // Display force diagrams if available
-            if (results.diagrams) {
-                displayForceDiagrams(results.diagrams);
-            }
-
-            // Update visualization with diagrams
-            updateVisualization();
-
-            // Enable Analysis tab after first successful analysis
-            if (!isAnalysisTabEnabled()) {
-                enableAnalysisTab();
-                // Results already cached above at lines 2686-2687
-                // Set initial result view to this case
-                activeResultName = activeLoadCase;
-                updateResultSelectionDropdown();
-                // Switch to Analysis tab
-                switchTab('analysis');
-            }
-
-        } else {
-            const endTime = performance.now();
-            const duration = ((endTime - startTime) / 1000).toFixed(3);
-            console.log(`✗ Analysis failed in ${duration} seconds`);
-            document.getElementById('results-container').innerHTML = `<div class="text-red-400">Analysis failed: ${results.message}</div>`;
-            document.getElementById('console-output').textContent += "Analysis failed: " + results.message + "\n";
+        // Clear analysis results container in Analysis tab
+        const analysisResultsContainer = document.getElementById('analysis-results-container');
+        if (analysisResultsContainer) {
+            analysisResultsContainer.innerHTML = '<p>Select a load case or combination to see results...</p>';
         }
 
     } catch (error) {
@@ -3149,14 +3054,7 @@ async function setActiveLoadCase(caseName) {
     // Rebuild UI to show loads for the new active case
     syncFrameDataToUI();
 
-    updateVisualization(); // Refresh to show only active case loads
-
-    // If a diagram is currently displayed and analysis has been run, re-run for new load case
-    const diagramType = document.getElementById('diagram-type')?.value;
-    if (diagramType && diagramType !== 'none' && lastAnalysisResults) {
-        console.log(`Re-running analysis for load case: ${caseName}`);
-        await runAnalysis();
-    }
+    updateVisualization(); // Refresh to show only active case loads (visualization only, no analysis)
 }
 
 /**
@@ -4180,11 +4078,32 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
             });
         });
 
-        // Add max/min value labels
+        // Add max/min value labels with proper units
         const maxValue = Math.max(...dataArray.map(Math.abs));
         if (maxValue > 0) {
             const maxIndex = dataArray.findIndex(v => Math.abs(v) === maxValue);
             const maxPoint = pathData[maxIndex];
+
+            // Format value with appropriate units based on diagram type
+            let labelText = '';
+            const value = dataArray[maxIndex];
+
+            if (diagramType === 'moment') {
+                // Moment: kNm
+                labelText = `${(value / 1000).toFixed(1)} kNm`;
+            } else if (diagramType === 'shear') {
+                // Shear: kN
+                labelText = `${(value / 1000).toFixed(1)} kN`;
+            } else if (diagramType === 'axial') {
+                // Axial: kN
+                labelText = `${(value / 1000).toFixed(1)} kN`;
+            } else if (diagramType === 'displacement') {
+                // Displacement: mm (convert from m to mm)
+                labelText = `${(value * 1000).toFixed(2)} mm`;
+            } else {
+                // Fallback
+                labelText = `${(value / 1000).toFixed(1)}k`;
+            }
 
             svg.append("text")
                 .attr("x", maxPoint.x)
@@ -4193,7 +4112,7 @@ function drawDiagramsOnElements(svg, elements, nodes, xScale, yScale, results, d
                 .attr("fill", "#fbbf24")
                 .attr("font-size", "10px")
                 .attr("font-weight", "bold")
-                .text(`${(dataArray[maxIndex] / 1000).toFixed(1)}k`);
+                .text(labelText);
         }
     });
 }
@@ -4739,19 +4658,29 @@ async function runAnalysisForLoadCase(caseName) {
  * Get results for a specific combination (from cache, run analysis if needed)
  */
 async function runAnalysisForCombination(comboName) {
+    console.log(`>>> runAnalysisForCombination('${comboName}')`);
+    console.log(`    Cached combinations:`, Object.keys(analysisResults.combinations));
+
     // Check if already cached
     if (analysisResults.combinations[comboName]) {
         console.log(`✓ Using cached results for combination: ${comboName}`);
-        return analysisResults.combinations[comboName];
+        const results = analysisResults.combinations[comboName];
+        console.log(`    Returning results with ${Object.keys(results.diagrams || {}).length} diagrams`);
+        return results;
     }
 
     // Run complete analysis to populate cache
     console.log(`Combination "${comboName}" not in cache. Running complete analysis...`);
     await runCompleteAnalysis();
 
+    console.log(`    After analysis, cached combinations:`, Object.keys(analysisResults.combinations));
+
     // Return from cache
     if (analysisResults.combinations[comboName]) {
-        return analysisResults.combinations[comboName];
+        const results = analysisResults.combinations[comboName];
+        console.log(`✓ Retrieved results for combination: ${comboName}`);
+        console.log(`    Returning results with ${Object.keys(results.diagrams || {}).length} diagrams`);
+        return results;
     } else {
         throw new Error(`Failed to get results for combination: ${comboName}`);
     }
@@ -4796,7 +4725,7 @@ clear_model()
 /**
  * Display analysis results in the Analysis tab
  */
-async function displayAnalysisResults(resultName, results) {
+function displayAnalysisResults(resultName, results) {
     // Update last analysis results for visualization
     lastAnalysisResults = results;
 
@@ -4804,6 +4733,13 @@ async function displayAnalysisResults(resultName, results) {
     console.log('  Nodes:', Object.keys(results.nodes || {}).length);
     console.log('  Elements:', Object.keys(results.elements || {}).length);
     console.log('  Diagrams:', Object.keys(results.diagrams || {}).length);
+
+    // Log some sample data to verify correct results are being shown
+    if (results.diagrams) {
+        for (const [elemName, diagData] of Object.entries(results.diagrams)) {
+            console.log(`  ${elemName} moment range: [${Math.min(...diagData.moments).toFixed(2)}, ${Math.max(...diagData.moments).toFixed(2)}]`);
+        }
+    }
 
     // Update the main frame visualization with the new results
     updateVisualization();
@@ -4852,34 +4788,58 @@ async function displayAnalysisResults(resultName, results) {
 }
 
 /**
- * Handle result selection change
+ * Display result from cache without re-running analysis
+ */
+function displayResultFromCache(resultName, resultType) {
+    console.log(`>>> displayResultFromCache('${resultName}', '${resultType}')`);
+
+    let results;
+
+    if (resultType === 'loadCases') {
+        results = analysisResults.loadCases[resultName];
+    } else if (resultType === 'combinations') {
+        results = analysisResults.combinations[resultName];
+    }
+
+    if (!results) {
+        console.error(`No cached results found for ${resultType}: ${resultName}`);
+        console.error(`Available ${resultType}:`, Object.keys(resultType === 'loadCases' ? analysisResults.loadCases : analysisResults.combinations));
+        alert(`No results available for "${resultName}". Please run analysis first.`);
+        return false;
+    }
+
+    console.log(`✓ Found cached results for ${resultName}`);
+    console.log(`  Nodes: ${Object.keys(results.nodes || {}).length}`);
+    console.log(`  Elements: ${Object.keys(results.elements || {}).length}`);
+    console.log(`  Diagrams: ${Object.keys(results.diagrams || {}).length}`);
+
+    // Update active result name
+    activeResultName = resultName;
+
+    // Display the results
+    displayAnalysisResults(resultName, results);
+
+    return true;
+}
+
+/**
+ * Handle result selection change (dropdown)
+ * This should ONLY display cached results, never re-run analysis
  */
 async function onResultSelectionChange(resultName) {
     if (!resultName) return;
 
-    activeResultName = resultName;
-    console.log(`Selected result: ${resultName} (${resultViewMode})`);
+    console.log(`=== Result Selection Changed ===`);
+    console.log(`  Selected: ${resultName}`);
+    console.log(`  Mode: ${resultViewMode}`);
 
-    try {
-        let results;
-
-        if (resultViewMode === 'loadCases') {
-            results = await runAnalysisForLoadCase(resultName);
-        } else if (resultViewMode === 'combinations') {
-            results = await runAnalysisForCombination(resultName);
-        }
-
-        if (results) {
-            await displayAnalysisResults(resultName, results);
-        }
-
-    } catch (error) {
-        alert(`Analysis failed: ${error.message}`);
-    }
+    // Simply display from cache
+    displayResultFromCache(resultName, resultViewMode);
 }
 
 /**
  * Run analysis from Analysis tab button
+ * Re-runs complete analysis and displays selected result
  */
 async function runAnalysisFromAnalysisTab() {
     const resultName = document.getElementById('result-selection-dropdown').value;
@@ -4889,7 +4849,23 @@ async function runAnalysisFromAnalysisTab() {
         return;
     }
 
-    await onResultSelectionChange(resultName);
+    console.log(`=== Run Analysis Button Clicked (Analysis Tab) ===`);
+    console.log(`  Result name: ${resultName}`);
+    console.log(`  View mode: ${resultViewMode}`);
+
+    try {
+        // Re-run complete analysis to get fresh results
+        console.log(`  Running complete analysis...`);
+        await runCompleteAnalysis();
+
+        // Display the selected result from freshly cached data
+        console.log(`  Displaying selected result: ${resultName}`);
+        displayResultFromCache(resultName, resultViewMode);
+
+    } catch (error) {
+        console.error(`  Analysis failed:`, error);
+        alert(`Analysis failed: ${error.message}`);
+    }
 }
 
 // Keyboard shortcuts
