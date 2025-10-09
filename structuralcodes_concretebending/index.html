@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free concrete bending analysis calculator using structuralcodes. Calculate moment capacity and moment-curvature for rectangular sections.">
+  <meta name="keywords" content="concrete bending, moment capacity, structural engineering, Eurocode 2, EC2, reinforced concrete">
+  <title>Concrete Bending Analysis - Free Engineering Tool</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+
+  <!-- D3.js for visualization -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+
+  <!-- Plotly.js for moment-curvature plots -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+  <!-- Pyodide -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+
+  <style>
+    .tab-button {
+      @apply px-4 py-2 bg-gray-700 text-gray-300 rounded-t-lg cursor-pointer transition-colors;
+    }
+    .tab-button.active {
+      @apply bg-gray-600 text-white font-semibold;
+    }
+    .tab-content {
+      @apply hidden;
+    }
+    .tab-content.active {
+      @apply block;
+    }
+  </style>
+</head>
+
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-95 flex flex-col items-center justify-center z-50">
+    <div class="text-center">
+      <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mx-auto mb-4"></div>
+      <h2 class="text-2xl font-semibold text-white mb-2">Loading Python Engine...</h2>
+      <p class="text-gray-400" id="loading-status">Initializing Pyodide...</p>
+      <div class="mt-4 w-96 bg-gray-700 rounded-full h-2">
+        <div id="loading-progress" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <main class="w-full max-w-7xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-4">
+      <div>
+        <h1 class="text-3xl font-bold text-white">Concrete Bending Analysis</h1>
+        <p class="text-gray-400 text-sm mt-1">Rectangular section analysis using structuralcodes (Eurocode 2)</p>
+      </div>
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+        ← Back to Tools
+      </a>
+    </div>
+
+    <!-- Main Layout: Two Columns -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- LEFT PANEL: Inputs -->
+      <div class="space-y-6">
+
+        <!-- Material Properties -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-xl font-semibold text-blue-400 mb-4">Material Properties</h3>
+
+          <div class="space-y-4">
+            <div>
+              <label for="design_code" class="block text-sm font-medium text-gray-300 mb-2">Design Code</label>
+              <select id="design_code" class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="ec2_2004" selected>Eurocode 2 (2004)</option>
+              </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label for="fck" class="block text-sm font-medium text-gray-300 mb-2">f<sub>ck</sub> (MPa)</label>
+                <input type="number" id="fck" value="45" min="12" max="90" step="1"
+                       class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label for="fyk" class="block text-sm font-medium text-gray-300 mb-2">f<sub>yk</sub> (MPa)</label>
+                <input type="number" id="fyk" value="500" min="400" max="600" step="10"
+                       class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label for="ftk" class="block text-sm font-medium text-gray-300 mb-2">f<sub>tk</sub> (MPa)</label>
+                <input type="number" id="ftk" value="550" min="450" max="700" step="10"
+                       class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label for="Es" class="block text-sm font-medium text-gray-300 mb-2">E<sub>s</sub> (MPa)</label>
+                <input type="number" id="Es" value="200000" disabled
+                       class="w-full px-3 py-2 bg-gray-700 border border-gray-500 rounded-md text-gray-400 cursor-not-allowed">
+              </div>
+            </div>
+
+            <div>
+              <label for="epsuk" class="block text-sm font-medium text-gray-300 mb-2">ε<sub>suk</sub></label>
+              <input type="number" id="epsuk" value="0.075" min="0.025" max="0.1" step="0.005"
+                     class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+        </div>
+
+        <!-- Section Geometry -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-xl font-semibold text-blue-400 mb-4">Section Geometry</h3>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label for="width" class="block text-sm font-medium text-gray-300 mb-2">Width (mm)</label>
+              <input type="number" id="width" value="1000" min="100" max="5000" step="10"
+                     onchange="updateVisualization()"
+                     class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label for="height" class="block text-sm font-medium text-gray-300 mb-2">Height (mm)</label>
+              <input type="number" id="height" value="350" min="100" max="3000" step="10"
+                     onchange="updateVisualization()"
+                     class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+        </div>
+
+        <!-- Reinforcement Manager -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-xl font-semibold text-blue-400 mb-4">Reinforcement Manager</h3>
+
+          <!-- Tabs -->
+          <div class="flex space-x-2 mb-4">
+            <button class="tab-button active" onclick="switchTab('single-bar')">Single Bar</button>
+            <button class="tab-button" onclick="switchTab('rebar-line')">Rebar Line</button>
+          </div>
+
+          <!-- Tab Content: Single Bar -->
+          <div id="single-bar-tab" class="tab-content active">
+            <div class="space-y-3">
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-300 mb-1">X (mm)</label>
+                  <input type="number" id="bar-x" value="0" step="10"
+                         class="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-300 mb-1">Y (mm)</label>
+                  <input type="number" id="bar-y" value="-150" step="10"
+                         class="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-300 mb-1">φ (mm)</label>
+                  <select id="bar-diameter" class="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:ring-2 focus:ring-blue-500">
+                    <option value="8">8</option>
+                    <option value="10">10</option>
+                    <option value="12" selected>12</option>
+                    <option value="16">16</option>
+                    <option value="20">20</option>
+                    <option value="25">25</option>
+                    <option value="32">32</option>
+                    <option value="40">40</option>
+                  </select>
+                </div>
+              </div>
+              <button onclick="addSingleBar()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition">
+                Add Bar
+              </button>
+            </div>
+          </div>
+
+          <!-- Tab Content: Rebar Line -->
+          <div id="rebar-line-tab" class="tab-content">
+            <div class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-300 mb-1">Boundary</label>
+                  <select id="line-boundary" class="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:ring-2 focus:ring-blue-500">
+                    <option value="bottom" selected>Bottom</option>
+                    <option value="top">Top</option>
+                    <option value="left">Left</option>
+                    <option value="right">Right</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-300 mb-1">φ (mm)</label>
+                  <select id="line-diameter" class="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:ring-2 focus:ring-blue-500">
+                    <option value="8">8</option>
+                    <option value="10">10</option>
+                    <option value="12" selected>12</option>
+                    <option value="16">16</option>
+                    <option value="20">20</option>
+                    <option value="25">25</option>
+                    <option value="32">32</option>
+                    <option value="40">40</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-300 mb-1">Spacing (mm)</label>
+                  <input type="number" id="line-spacing" value="100" min="50" max="500" step="10"
+                         class="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-300 mb-1">Boundary Cover (mm)</label>
+                  <input type="number" id="line-boundary-cover" value="50" min="15" max="100" step="5"
+                         class="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:ring-2 focus:ring-blue-500">
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-300 mb-1">Start Cover (mm) <span class="text-gray-500">(optional)</span></label>
+                  <input type="number" id="line-start-cover" placeholder="Auto" min="15" max="200" step="5"
+                         class="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-300 mb-1">End Cover (mm) <span class="text-gray-500">(optional)</span></label>
+                  <input type="number" id="line-end-cover" placeholder="Auto" min="15" max="200" step="5"
+                         class="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:ring-2 focus:ring-blue-500">
+                </div>
+              </div>
+
+              <p class="text-xs text-gray-400 italic">
+                Boundary cover: perpendicular distance from edge<br>
+                Start/End cover: offset along boundary from corners
+              </p>
+
+              <button onclick="addRebarLine()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition">
+                Add Rebar Line
+              </button>
+            </div>
+          </div>
+
+          <!-- Reinforcement List -->
+          <div class="mt-6">
+            <h4 class="text-sm font-semibold text-gray-300 mb-2">Reinforcement List</h4>
+            <div class="text-xs text-gray-400 mb-2" id="rebar-summary">Total bars: 0 | Total As: 0 mm²</div>
+            <div class="bg-gray-800 rounded overflow-hidden max-h-64 overflow-y-auto">
+              <table class="w-full text-sm" id="rebar-list-table">
+                <thead class="bg-gray-900 sticky top-0">
+                  <tr>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-400">Type</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-400">ID</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-400">Details</th>
+                    <th class="px-2 py-2 text-center text-xs font-medium text-gray-400">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="rebar-list-body">
+                  <tr>
+                    <td colspan="4" class="px-2 py-3 text-center text-gray-500 italic text-xs">No reinforcement added</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex space-x-3">
+          <button onclick="runAnalysis()" class="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition">
+            Calculate
+          </button>
+          <button onclick="updateVisualization()" class="px-6 py-3 bg-gray-600 hover:bg-gray-500 text-white font-semibold rounded-lg transition">
+            Update Plot
+          </button>
+          <button onclick="resetAll()" class="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition">
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- RIGHT PANEL: Visualization -->
+      <div class="space-y-6">
+
+        <!-- Cross-Section Plot -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-xl font-semibold text-yellow-400 mb-4">Cross-Section</h3>
+          <div id="section-plot" class="bg-white rounded-lg p-4" style="min-height: 400px;">
+            <!-- D3.js plot will be rendered here -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RESULTS PANEL (Full Width) -->
+    <div id="results-panel" class="space-y-6 hidden">
+
+      <!-- Capacity Summary Cards -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-green-400 mb-4">Results Summary</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="bg-gray-600 rounded-lg p-4 text-center">
+            <div class="text-sm text-gray-300 mb-1">M<sub>Rd,y</sub></div>
+            <div class="text-2xl font-bold text-white" id="result-m-rdy">--</div>
+          </div>
+          <div class="bg-gray-600 rounded-lg p-4 text-center">
+            <div class="text-sm text-gray-300 mb-1">M<sub>Rd,z</sub></div>
+            <div class="text-2xl font-bold text-white" id="result-m-rdz">--</div>
+          </div>
+          <div class="bg-gray-600 rounded-lg p-4 text-center">
+            <div class="text-sm text-gray-300 mb-1">NA Depth</div>
+            <div class="text-lg font-bold text-white" id="result-na-depth">--</div>
+          </div>
+          <div class="bg-gray-600 rounded-lg p-4 text-center">
+            <div class="text-sm text-gray-300 mb-1">Calc Time</div>
+            <div class="text-lg font-bold text-white" id="result-calc-time">--</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section Properties -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-purple-400 mb-4">Section Properties</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div>
+            <div class="text-gray-400">Section Area</div>
+            <div class="text-white font-semibold" id="result-section-area">--</div>
+          </div>
+          <div>
+            <div class="text-gray-400">Rebar Area</div>
+            <div class="text-white font-semibold" id="result-rebar-area">--</div>
+          </div>
+          <div>
+            <div class="text-gray-400">Reinforcement Ratio</div>
+            <div class="text-white font-semibold" id="result-rebar-ratio">--</div>
+          </div>
+          <div>
+            <div class="text-gray-400">Number of Rebars</div>
+            <div class="text-white font-semibold" id="result-num-rebars">--</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Moment-Curvature Plot -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-orange-400 mb-4">Moment-Curvature Response</h3>
+        <div id="moment-curvature-plot" class="bg-white rounded-lg p-2">
+          <!-- Plotly chart will be rendered here -->
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="mt-8 text-center text-gray-400 text-sm">
+    <p>Analysis using <a href="https://github.com/structuralcodes/structuralcodes" target="_blank" class="text-blue-400 hover:text-blue-300">structuralcodes</a> library |
+       <a href="https://github.com/magnusfjeldolsen/structural_tools" target="_blank" class="text-blue-400 hover:text-blue-300">GitHub</a>
+    </p>
+  </footer>
+
+  <!-- Load script.js -->
+  <script src="script.js"></script>
+
+</body>
+</html>
