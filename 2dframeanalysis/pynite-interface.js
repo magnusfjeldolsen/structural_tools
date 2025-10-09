@@ -1224,7 +1224,10 @@ function onProfileChange(elementId) {
 // Update nodes datalist for element connectivity autocomplete
 function updateNodesDatalist() {
     const datalist = document.getElementById('nodes-datalist');
-    if (!datalist) return;
+    if (!datalist) {
+        console.warn('nodes-datalist element not found');
+        return;
+    }
 
     // Get all node names from the nodes container
     const nodeNames = [];
@@ -1236,7 +1239,8 @@ function updateNodesDatalist() {
     });
 
     // Update datalist options
-    datalist.innerHTML = nodeNames.map(name => `<option value="${name}">`).join('');
+    datalist.innerHTML = nodeNames.map(name => `<option value="${name}">${name}</option>`).join('');
+    console.log('Updated nodes datalist with nodes:', nodeNames);
 }
 
 // Add element to the interface
@@ -1302,9 +1306,12 @@ function addNodalLoad() {
     loadDiv.className = 'nodal-load-grid';
     loadDiv.id = `nodal-load-${nodalLoadCounter}`;
 
+    // Ensure nodes datalist is up-to-date
+    updateNodesDatalist();
+
     loadDiv.innerHTML = `
         <input type="text" value="L${nodalLoadCounter}" readonly class="bg-gray-600 text-white p-1 rounded text-xs">
-        <input type="text" placeholder="N1" class="bg-gray-600 text-white p-1 rounded text-xs load-node">
+        <input type="text" placeholder="N1" list="nodes-datalist" class="bg-gray-600 text-white p-1 rounded text-xs load-node">
         <input type="number" step="0.1" value="0" placeholder="Fx" class="bg-gray-600 text-white p-1 rounded text-xs load-fx">
         <input type="number" step="0.1" value="-10" placeholder="Fy" class="bg-gray-600 text-white p-1 rounded text-xs load-fy">
         <input type="number" step="0.1" value="0" placeholder="Mz" class="bg-gray-600 text-white p-1 rounded text-xs load-mz">
@@ -1416,7 +1423,7 @@ function addNodalLoadFromData(load) {
 
     loadDiv.innerHTML = `
         <input type="text" value="${load.name}" readonly class="bg-gray-600 text-white p-1 rounded text-xs">
-        <input type="text" value="${load.node}" placeholder="N1" class="bg-gray-600 text-white p-1 rounded text-xs load-node">
+        <input type="text" value="${load.node}" placeholder="" list="nodes-datalist" class="bg-gray-600 text-white p-1 rounded text-xs load-node">
         <input type="number" step="0.1" value="${load.fx}" placeholder="Fx" class="bg-gray-600 text-white p-1 rounded text-xs load-fx">
         <input type="number" step="0.1" value="${load.fy}" placeholder="Fy" class="bg-gray-600 text-white p-1 rounded text-xs load-fy">
         <input type="number" step="0.1" value="${load.mz}" placeholder="Mz" class="bg-gray-600 text-white p-1 rounded text-xs load-mz">
