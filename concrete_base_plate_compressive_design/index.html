@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="../assets/css/forms.css">
   <link rel="stylesheet" href="../assets/css/components.css">
   <link rel="stylesheet" href="../assets/css/print.css">
+  <link rel="stylesheet" href="../assets/css/report-print.css">
   
   <!-- Tailwind CSS -->
   <script>
@@ -117,17 +118,30 @@
       <!-- Material Properties Section -->
       <div class="bg-gray-700 rounded-lg p-6 md:col-span-2">
         <h3 class="text-xl font-semibold text-yellow-400 mb-4">Material Properties</h3>
-        
+
         <div class="grid md:grid-cols-2 gap-4">
           <div class="flex items-center gap-4">
             <label for="fyd" class="text-sm font-medium min-w-[100px] text-right">f<sub>yd</sub> (MPa):</label>
             <input type="number" id="fyd" value="338" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-yellow-400">
           </div>
-          
+
           <div class="flex items-center gap-4">
             <label for="fcd" class="text-sm font-medium min-w-[100px] text-right">f<sub>cd</sub> (MPa):</label>
             <input type="number" id="fcd" value="16" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-yellow-400">
           </div>
+        </div>
+      </div>
+
+      <!-- Calculation Description Section -->
+      <div class="bg-gray-700 rounded-lg p-6 md:col-span-2">
+        <h3 class="text-xl font-semibold text-cyan-400 mb-4">Calculation Description (Optional)</h3>
+        <div class="space-y-2">
+          <label for="calc_description" class="text-sm text-gray-300">Describe this calculation:</label>
+          <textarea id="calc_description" rows="3"
+                    placeholder="Example: Column C1 base plate - Foundation F1..."
+                    class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md resize-y">
+          </textarea>
+          <span class="text-xs text-gray-400">This description will appear at the top of the detailed report</span>
         </div>
       </div>
 
@@ -143,13 +157,29 @@
     <!-- Results -->
     <div id="results" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50 hidden">
       <div id="calc-steps" class="text-white"></div>
-      
+
       <!-- Print Button at Bottom -->
       <div class="mt-8 print:hidden">
         <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
           Print to PDF
         </button>
       </div>
+    </div>
+
+    <!-- Detailed Report Section -->
+    <div class="bg-gray-700 rounded-lg p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-xl font-semibold text-cyan-400">Detailed Calculation Report</h3>
+        <div class="space-x-2 print:hidden">
+          <button onclick="toggleDetailedReport()" id="toggle-report-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition">
+            Show Detailed Report
+          </button>
+          <button onclick="window.print()" class="bg-gray-600 hover:bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg transition">
+            Print Report
+          </button>
+        </div>
+      </div>
+      <div id="detailed-report" class="hidden"></div>
     </div>
 
   </main>
@@ -413,8 +443,183 @@
           MathJax.typesetPromise();
         }
 
+        // Generate detailed report
+        generateDetailedReport({
+          lpl, bpl, tpl, lcl, bcl, NEd, tgrout, theta_grout_deg, fyd, fcd,
+          theta_grout_rad, c, delta_l_eff_US, delta_b_eff_US,
+          lpl_eff, bpl_eff, Apl_eff, FRd_pl_trykk, eta_betongtrykk
+        });
+
       } catch (error) {
         alert('Calculation failed: ' + error.message);
+      }
+    }
+
+    function generateDetailedReport(results) {
+      const description = document.getElementById('calc_description').value.trim();
+
+      const eta_percent = (results.eta_betongtrykk * 100).toFixed(1);
+      const utilizationColor = results.eta_betongtrykk > 1.0 ? 'text-red-900' :
+                               results.eta_betongtrykk > 0.85 ? 'text-yellow-900' : 'text-green-900';
+      const statusText = results.eta_betongtrykk > 1.0 ? 'NOT OK' : 'OK';
+
+      const reportHTML = `
+        <div class="report-content bg-white text-gray-900">
+          ${description ? `<div class="mb-6 pb-4 border-b-2 border-gray-300">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Calculation Description</h2>
+            <p class="text-gray-800 whitespace-pre-wrap">${description}</p>
+          </div>` : ''}
+
+          <div class="mb-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Concrete Base Plate Compressive Design Calculation</h2>
+            <p class="text-sm text-gray-600">According to EC3-1-8 Section 6.2.5(4)</p>
+            <p class="text-sm text-gray-600">Calculation Date: ${new Date().toLocaleString()}</p>
+          </div>
+
+          <div class="mb-6">
+            <h3 class="text-xl font-bold text-blue-700 mb-3 border-b-2 border-blue-300 pb-1">INPUT PARAMETERS</h3>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <h4 class="font-semibold text-gray-800 mb-2">Plate Geometry</h4>
+                <p class="text-gray-800">lpl = ${results.lpl.toFixed(1)} mm</p>
+                <p class="text-gray-800">bpl = ${results.bpl.toFixed(1)} mm</p>
+                <p class="text-gray-800">tpl = ${results.tpl.toFixed(1)} mm</p>
+              </div>
+              <div>
+                <h4 class="font-semibold text-gray-800 mb-2">Column Geometry</h4>
+                <p class="text-gray-800">lcl = ${results.lcl.toFixed(1)} mm</p>
+                <p class="text-gray-800">bcl = ${results.bcl.toFixed(1)} mm</p>
+              </div>
+              <div>
+                <h4 class="font-semibold text-gray-800 mb-2">Material Properties</h4>
+                <p class="text-gray-800">fyd = ${results.fyd.toFixed(1)} MPa</p>
+                <p class="text-gray-800">fcd = ${results.fcd.toFixed(1)} MPa</p>
+              </div>
+              <div>
+                <h4 class="font-semibold text-gray-800 mb-2">Grout & Loading</h4>
+                <p class="text-gray-800">tgrout = ${results.tgrout.toFixed(1)} mm</p>
+                <p class="text-gray-800">θ = ${results.theta_grout_deg.toFixed(1)}°</p>
+                <p class="text-gray-800">NEd = ${results.NEd.toFixed(1)} kN</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-6">
+            <h3 class="text-xl font-bold text-green-700 mb-3 border-b-2 border-green-300 pb-1">RESULTS SUMMARY</h3>
+            <div class="bg-blue-50 p-4 mb-4">
+              <div class="text-3xl font-bold text-blue-900">FRd,pl.trykk = ${results.FRd_pl_trykk.toFixed(1)} kN</div>
+              <div class="text-lg text-gray-700 mt-1">Compressive Bearing Capacity</div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div class="bg-gray-50 p-3 rounded">
+                <h4 class="font-semibold text-gray-800 mb-1">Bearing Utilization</h4>
+                <p class="${utilizationColor} text-2xl font-bold">${eta_percent}%</p>
+                <p class="text-gray-800 text-xs mt-1">η = NEd / FRd</p>
+              </div>
+              <div class="bg-gray-50 p-3 rounded">
+                <h4 class="font-semibold text-gray-800 mb-1">Effective Area</h4>
+                <p class="text-gray-800 text-xl font-semibold">${results.Apl_eff.toFixed(0)} mm²</p>
+                <p class="text-gray-800 text-xs mt-1">Apl,eff = ${results.lpl_eff.toFixed(1)} × ${results.bpl_eff.toFixed(1)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="page-break-before">
+            <h3 class="text-xl font-bold text-purple-700 mb-4 border-b-2 border-purple-300 pb-1">DETAILED CALCULATIONS</h3>
+            <div class="space-y-4 text-sm">
+
+              <div class="bg-gray-50 p-3 rounded">
+                <h4 class="font-semibold text-gray-800 mb-2">1. Material Properties</h4>
+                <p class="text-gray-800">Steel design strength: fyd = ${results.fyd.toFixed(1)} MPa</p>
+                <p class="text-gray-800">Concrete design strength: fcd = ${results.fcd.toFixed(1)} MPa</p>
+              </div>
+
+              <div class="bg-gray-50 p-3 rounded">
+                <h4 class="font-semibold text-gray-800 mb-2">2. Steel Plate Spread (EC3-1-8 6.2.5(4))</h4>
+                <p class="text-gray-800">Steel plate spread:</p>
+                <p class="text-gray-800 ml-4">c = tpl × √(fyd / (3 × fcd))</p>
+                <p class="text-gray-800 ml-4">c = ${results.tpl.toFixed(1)} × √(${results.fyd.toFixed(1)} / (3 × ${results.fcd.toFixed(1)}))</p>
+                <p class="text-gray-800 ml-4">c = ${results.c.toFixed(2)} mm</p>
+              </div>
+
+              <div class="bg-gray-50 p-3 rounded">
+                <h4 class="font-semibold text-gray-800 mb-2">3. Grout Layer Extensions</h4>
+                <p class="text-gray-800">Grout thickness: tgrout = ${results.tgrout.toFixed(1)} mm</p>
+                <p class="text-gray-800">Grout load expansion angle: θ = ${results.theta_grout_deg.toFixed(1)}°</p>
+                <p class="text-gray-800 ml-4">θ (radians) = ${results.theta_grout_deg.toFixed(1)} × π / 180 = ${results.theta_grout_rad.toFixed(4)} rad</p>
+                <p class="text-gray-800 mt-2">Length direction extension:</p>
+                <p class="text-gray-800 ml-4">δl,eff,US = 2 × tgrout × sin(θ)</p>
+                <p class="text-gray-800 ml-4">δl,eff,US = 2 × ${results.tgrout.toFixed(1)} × sin(${results.theta_grout_rad.toFixed(4)})</p>
+                <p class="text-gray-800 ml-4">δl,eff,US = ${results.delta_l_eff_US.toFixed(2)} mm</p>
+                <p class="text-gray-800 mt-2">Width direction extension:</p>
+                <p class="text-gray-800 ml-4">δb,eff,US = 2 × tgrout × sin(θ)</p>
+                <p class="text-gray-800 ml-4">δb,eff,US = 2 × ${results.tgrout.toFixed(1)} × sin(${results.theta_grout_rad.toFixed(4)})</p>
+                <p class="text-gray-800 ml-4">δb,eff,US = ${results.delta_b_eff_US.toFixed(2)} mm</p>
+              </div>
+
+              <div class="bg-gray-50 p-3 rounded">
+                <h4 class="font-semibold text-gray-800 mb-2">4. Effective Plate Dimensions</h4>
+                <p class="text-gray-800">Effective plate length:</p>
+                <p class="text-gray-800 ml-4">lpl,eff = min(lpl, lcl + 2 × c + δl,eff,US)</p>
+                <p class="text-gray-800 ml-4">lpl,eff = min(${results.lpl.toFixed(1)}, ${results.lcl.toFixed(1)} + 2 × ${results.c.toFixed(2)} + ${results.delta_l_eff_US.toFixed(2)})</p>
+                <p class="text-gray-800 ml-4">lpl,eff = ${results.lpl_eff.toFixed(1)} mm</p>
+                <p class="text-gray-800 mt-2">Effective plate width:</p>
+                <p class="text-gray-800 ml-4">bpl,eff = min(bpl, bcl + 2 × c + δb,eff,US)</p>
+                <p class="text-gray-800 ml-4">bpl,eff = min(${results.bpl.toFixed(1)}, ${results.bcl.toFixed(1)} + 2 × ${results.c.toFixed(2)} + ${results.delta_b_eff_US.toFixed(2)})</p>
+                <p class="text-gray-800 ml-4">bpl,eff = ${results.bpl_eff.toFixed(1)} mm</p>
+                <p class="text-gray-800 mt-2">Effective area:</p>
+                <p class="text-gray-800 ml-4">Apl,eff = lpl,eff × bpl,eff</p>
+                <p class="text-gray-800 ml-4">Apl,eff = ${results.lpl_eff.toFixed(1)} × ${results.bpl_eff.toFixed(1)}</p>
+                <p class="text-gray-800 ml-4">Apl,eff = ${results.Apl_eff.toFixed(0)} mm²</p>
+              </div>
+
+              <div class="bg-gray-50 p-3 rounded">
+                <h4 class="font-semibold text-gray-800 mb-2">5. Compressive Resistance</h4>
+                <p class="text-gray-800">Compressive resistance:</p>
+                <p class="text-gray-800 ml-4">FRd,pl.trykk = Apl,eff × fcd / 1000</p>
+                <p class="text-gray-800 ml-4">FRd,pl.trykk = ${results.Apl_eff.toFixed(0)} × ${results.fcd.toFixed(1)} / 1000</p>
+                <p class="text-gray-800 ml-4">FRd,pl.trykk = ${results.FRd_pl_trykk.toFixed(1)} kN</p>
+                <p class="text-gray-800 mt-2">Bearing utilization:</p>
+                <p class="text-gray-800 ml-4">η = NEd / FRd,pl.trykk</p>
+                <p class="text-gray-800 ml-4">η = ${results.NEd.toFixed(1)} / ${results.FRd_pl_trykk.toFixed(1)}</p>
+                <p class="text-gray-800 ml-4">η = ${results.eta_betongtrykk.toFixed(4)} = ${eta_percent}%</p>
+                <p class="text-gray-800 mt-2">Design check:</p>
+                <p class="text-gray-800 ml-4">NEd ≤ FRd,pl.trykk</p>
+                <p class="text-gray-800 ml-4">${results.NEd.toFixed(1)} ≤ ${results.FRd_pl_trykk.toFixed(1)}: ${statusText}</p>
+              </div>
+
+              <div class="bg-gray-50 p-3 rounded">
+                <h4 class="font-semibold text-gray-800 mb-2">6. Design Recommendations</h4>
+                <p class="text-gray-800">Applied force: NEd = ${results.NEd.toFixed(1)} kN</p>
+                <p class="text-gray-800">Compressive capacity: FRd,pl.trykk = ${results.FRd_pl_trykk.toFixed(1)} kN</p>
+                <p class="text-gray-800">Bearing utilization: ${eta_percent}%</p>
+                <p class="text-gray-800 mt-2 font-semibold">Recommendations:</p>
+                ${results.eta_betongtrykk > 1.0 ?
+                  '<p class="text-gray-800 ml-4">• Increase plate dimensions or column dimensions</p><p class="text-gray-800 ml-4">• Increase grout thickness to improve load spread</p><p class="text-gray-800 ml-4">• Consider higher concrete strength grade</p>' :
+                  results.eta_betongtrykk > 0.85 ?
+                  '<p class="text-gray-800 ml-4">• Consider increasing plate dimensions for additional safety margin</p><p class="text-gray-800 ml-4">• Monitor construction quality closely</p>' :
+                  '<p class="text-gray-800 ml-4">• Design is adequate for bearing capacity</p><p class="text-gray-800 ml-4">• Sufficient safety margin available</p>'
+                }
+              </div>
+
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('detailed-report').innerHTML = reportHTML;
+    }
+
+    function toggleDetailedReport() {
+      const reportDiv = document.getElementById('detailed-report');
+      const btn = document.getElementById('toggle-report-btn');
+
+      if (reportDiv.classList.contains('hidden')) {
+        reportDiv.classList.remove('hidden');
+        btn.textContent = 'Hide Detailed Report';
+      } else {
+        reportDiv.classList.add('hidden');
+        btn.textContent = 'Show Detailed Report';
       }
     }
   </script>
