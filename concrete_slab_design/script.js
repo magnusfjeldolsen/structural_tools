@@ -570,7 +570,6 @@ function displayResults(result) {
     const container = document.getElementById('calc-steps');
     container.innerHTML = resultsHTML;
     document.getElementById('results').style.display = 'block';
-    document.getElementById('print-btn').style.display = 'block';
 
     // Scroll to results
     document.getElementById('results').scrollIntoView({
@@ -583,6 +582,11 @@ function displayResults(result) {
 function calculateAndShow() {
     const result = calculateConcreteSlab();
     displayResults(result);
+
+    // Generate detailed report if calculation was successful
+    if (result.success) {
+        generateDetailedReport(result);
+    }
 }
 
 // Function to populate fields from URL parameters
@@ -642,6 +646,184 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('phi_l').addEventListener('input', updateRebarArea);
     document.getElementById('cc_l').addEventListener('input', updateRebarArea);
 });
+
+// Toggle detailed report visibility
+function toggleReport() {
+    const report = document.getElementById('detailed-report');
+    report.classList.toggle('hidden');
+}
+
+// Print report function
+function printReport() {
+    window.print();
+}
+
+// Generate detailed calculation report
+function generateDetailedReport(result) {
+    try {
+        const reportDiv = document.getElementById('detailed-report');
+        if (!reportDiv) {
+            console.error('Report div not found');
+            return;
+        }
+
+        // Get user description
+        const description = document.getElementById('calc_title').value.trim();
+
+        const calc = result.calculations;
+        const inputs = result.inputs;
+        const res = result.results;
+        const shear = calc.shear;
+
+        // Status styling
+        const statusIcon = res.status === "OK" ? "✓" : res.status === "FAILED" ? "✗" : "⚠";
+        const statusColor = res.status === "OK" ? "text-green-900" : res.status === "FAILED" ? "text-red-900" : "text-yellow-900";
+
+        const reportHTML = `
+            <div class="report-content bg-white text-gray-900 p-8 rounded-lg">
+                ${description ? `
+                    <div class="mb-6 pb-4 border-b-2 border-gray-300">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-2">Calculation Description</h2>
+                        <p class="text-gray-700 whitespace-pre-wrap">${description}</p>
+                    </div>
+                ` : ''}
+
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Concrete Slab ULS Design Calculation</h2>
+                    <p class="text-sm text-gray-600">According to Eurocode 2</p>
+                    <p class="text-sm text-gray-600">Calculation Date: ${new Date().toLocaleString()}</p>
+                </div>
+
+                <!-- INPUT PARAMETERS -->
+                <div class="mb-6">
+                    <h3 class="text-xl font-bold text-blue-700 mb-3 border-b-2 border-blue-300 pb-1">INPUT PARAMETERS</h3>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Geometry</h4>
+                            <p>M<sub>Ed</sub> = ${toFixedIfNeeded(inputs.MEd)} kNm</p>
+                            <p>N<sub>Ed</sub> = ${toFixedIfNeeded(inputs.NEd)} kN</p>
+                            <p>h = ${toFixedIfNeeded(inputs.h)} mm</p>
+                            <p>c = ${toFixedIfNeeded(inputs.c)} mm</p>
+                            <p>d = ${toFixedIfNeeded(calc.d)} mm</p>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Concrete</h4>
+                            <p>f<sub>ck</sub> = ${toFixedIfNeeded(inputs.fck)} MPa</p>
+                            <p>α<sub>cc</sub> = ${toFixedIfNeeded(inputs.alphaCc)}</p>
+                            <p>γ<sub>c</sub> = ${toFixedIfNeeded(inputs.gammaC)}</p>
+                            <p>f<sub>cd</sub> = ${toFixedIfNeeded(inputs.fcd)} MPa</p>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Steel</h4>
+                            <p>f<sub>yk</sub> = ${toFixedIfNeeded(inputs.fyk)} MPa</p>
+                            <p>γ<sub>s</sub> = ${toFixedIfNeeded(inputs.gammaS)}</p>
+                            <p>f<sub>yd</sub> = ${toFixedIfNeeded(inputs.fyd)} MPa</p>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Reinforcement</h4>
+                            <p>φ<sub>l</sub> = ${toFixedIfNeeded(inputs.phi_l)} mm</p>
+                            <p>c/c = ${toFixedIfNeeded(inputs.cc)} mm</p>
+                            <p>A<sub>sl</sub> = ${toFixedIfNeeded(calc.Asl)} mm²/m</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- QUICK RESULTS -->
+                <div class="mb-6">
+                    <h3 class="text-xl font-bold text-green-700 mb-3 border-b-2 border-green-300 pb-1">RESULTS SUMMARY</h3>
+
+                    <div class="bg-blue-50 p-4 mb-4">
+                        <div class="text-3xl font-bold text-blue-900">M<sub>Rd</sub> = ${toFixedIfNeeded(calc.MRd)} kNm</div>
+                        <div class="text-sm text-blue-700 mt-1">Design Moment Capacity</div>
+                        <div class="text-lg font-semibold ${statusColor} mt-2">${statusIcon} ${res.status} - Utilization: ${res.utilization}%</div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Moment Capacity</h4>
+                            <p>M<sub>Rd,c</sub> = ${toFixedIfNeeded(calc.MRd_c)} kNm (concrete)</p>
+                            <p>M<sub>Rd,s</sub> = ${toFixedIfNeeded(calc.MRd_s)} kNm (steel)</p>
+                            <p>M<sub>Rd</sub> = ${toFixedIfNeeded(calc.MRd)} kNm</p>
+                            <p class="text-gray-600 italic">${res.governing} capacity governs</p>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Shear Capacity</h4>
+                            <p>V<sub>Rd,c</sub> = ${shear.VRd_c} kN/m</p>
+                            <p>k = ${shear.k}</p>
+                            <p>ρ<sub>l</sub> = ${shear.rho_l}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DETAILED CALCULATIONS -->
+                <div class="mb-6 page-break-before">
+                    <h3 class="text-xl font-bold text-purple-700 mb-3 border-b-2 border-purple-300 pb-1">DETAILED CALCULATIONS</h3>
+
+                    <div class="space-y-3 text-sm">
+                        <!-- The detailed calculations are copied from displayResults -->
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800">Effective Depth</h4>
+                            <p>d = h - c - φ<sub>l</sub>/2 = ${toFixedIfNeeded(inputs.h)} - ${toFixedIfNeeded(inputs.c)} - ${toFixedIfNeeded(inputs.phi_l)}/2 = ${toFixedIfNeeded(calc.d)} mm</p>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800">Design Strengths</h4>
+                            <p>f<sub>cd</sub> = f<sub>ck</sub> × α<sub>cc</sub> / γ<sub>c</sub> = ${toFixedIfNeeded(inputs.fck)} × ${toFixedIfNeeded(inputs.alphaCc)} / ${toFixedIfNeeded(inputs.gammaC)} = ${toFixedIfNeeded(inputs.fcd)} MPa</p>
+                            <p>f<sub>yd</sub> = f<sub>yk</sub> / γ<sub>s</sub> = ${toFixedIfNeeded(inputs.fyk)} / ${toFixedIfNeeded(inputs.gammaS)} = ${toFixedIfNeeded(inputs.fyd)} MPa</p>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800">Reinforcement Area</h4>
+                            <p>A<sub>sl</sub> = π × φ<sub>l</sub>² / 4 × (1000 / cc) = π × ${toFixedIfNeeded(inputs.phi_l)}² / 4 × (1000 / ${toFixedIfNeeded(inputs.cc)}) = ${toFixedIfNeeded(calc.Asl)} mm²</p>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800">Concrete Moment Capacity</h4>
+                            <p>M<sub>Rd,c</sub> = 0.275 × b × d² × f<sub>cd</sub> = 0.275 × ${calc.b} × ${toFixedIfNeeded(calc.d)}² × ${toFixedIfNeeded(inputs.fcd)} = ${toFixedIfNeeded(calc.MRd_c)} kNm</p>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800">Lever Arm</h4>
+                            <p>z<sub>bal</sub> = d × (1 - 0.17 × M<sub>Ed</sub> / M<sub>Rd,c</sub>) = ${toFixedIfNeeded(calc.d)} × (1 - 0.17 × ${toFixedIfNeeded(inputs.MEd)} / ${toFixedIfNeeded(calc.MRd_c)}) = ${toFixedIfNeeded(calc.z_bal)} mm</p>
+                            <p>z = min(0.95d, z<sub>bal</sub>) = min(${toFixedIfNeeded(calc.z_095d)}, ${toFixedIfNeeded(calc.z_bal)}) = ${toFixedIfNeeded(calc.z)} mm</p>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800">Steel Moment Capacity</h4>
+                            <p>M<sub>Rd,s</sub> = A<sub>sl</sub> × f<sub>yd</sub> × z = ${toFixedIfNeeded(calc.Asl)} × ${toFixedIfNeeded(inputs.fyd)} × ${toFixedIfNeeded(calc.z)} = ${toFixedIfNeeded(calc.MRd_s)} kNm</p>
+                        </div>
+
+                        <div class="bg-blue-50 p-3 rounded border border-blue-300">
+                            <h4 class="font-semibold text-blue-900">Design Moment Capacity</h4>
+                            <p class="font-bold">M<sub>Rd</sub> = min(M<sub>Rd,c</sub>, M<sub>Rd,s</sub>) = min(${toFixedIfNeeded(calc.MRd_c)}, ${toFixedIfNeeded(calc.MRd_s)}) = ${toFixedIfNeeded(calc.MRd)} kNm</p>
+                            <p>Utilization = M<sub>Ed</sub> / M<sub>Rd</sub> = ${toFixedIfNeeded(inputs.MEd)} / ${toFixedIfNeeded(calc.MRd)} = ${res.utilization}%</p>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800">Shear Capacity (EC2 6.2.2)</h4>
+                            <p>k = min(1 + √(200/d), 2) = ${shear.k}</p>
+                            <p>ρ<sub>l</sub> = A<sub>sl</sub> / (b × d) = ${toFixedIfNeeded(calc.Asl)} / (${calc.b} × ${toFixedIfNeeded(calc.d)}) = ${shear.rho_l}</p>
+                            <p>C<sub>Rd,c</sub> = ${toFixedIfNeeded(inputs.k1)} / γ<sub>c</sub> = ${toFixedIfNeeded(inputs.k1)} / ${toFixedIfNeeded(inputs.gammaC)} = ${shear.CRd_c}</p>
+                            <p>V<sub>Rd,c,0</sub> = [C<sub>Rd,c</sub> × k × (100ρ<sub>l</sub>f<sub>ck</sub>)<sup>1/3</sup> + k<sub>1</sub>σ<sub>cp</sub>] × b × d = ${shear.VRd_c_0} kN</p>
+                            <p>V<sub>min</sub> = ${shear.V_min} kN</p>
+                            <p class="font-bold">V<sub>Rd,c</sub> = max(V<sub>Rd,c,0</sub>, V<sub>min</sub>) = ${shear.VRd_c} kN</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-xs text-gray-500 mt-6 pt-4 border-t border-gray-300 text-center">
+                    Generated by Concrete Slab ULS Design Calculator | Eurocode 2
+                </div>
+            </div>
+        `;
+
+        reportDiv.innerHTML = reportHTML;
+        console.log('Report generated successfully');
+    } catch (error) {
+        console.error('Error generating report:', error);
+        alert('Error generating report: ' + error.message);
+    }
+}
 
 // Utility functions for clipboard functionality
 function copyToClipboard(elementId) {

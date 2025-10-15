@@ -23,6 +23,8 @@
   <link rel="stylesheet" href="../assets/css/forms.css">
   <link rel="stylesheet" href="../assets/css/components.css">
   <link rel="stylesheet" href="../assets/css/print.css">
+  <!-- Report print styles for detailed calculation reports -->
+  <link rel="stylesheet" href="../assets/css/report-print.css">
 
   <!-- Tailwind CSS -->
   <script>
@@ -50,6 +52,16 @@
 
     <!-- Input Form -->
     <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="space-y-6">
+
+      <!-- Calculation Title -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-cyan-400 mb-4">Calculation Description (Optional)</h3>
+        <div class="space-y-2">
+          <label for="calc_title" class="text-sm text-gray-300">Describe this calculation (e.g., project name, connection location):</label>
+          <textarea id="calc_title" rows="3" placeholder="Example: Project XYZ - Dowel Connection between Slab A and Wall B..." class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-cyan-400 resize-y"></textarea>
+          <span class="text-xs text-gray-400">This description will appear at the top of the detailed report</span>
+        </div>
+      </div>
 
       <!-- Load Parameters Section -->
       <div class="bg-gray-700 rounded-lg p-6">
@@ -290,6 +302,21 @@
       <p class="text-sm text-gray-300 mb-4">Calculation approach according to Norwegian "Betongelementboken"</p>
       <div id="detailed-calculations">
         <!-- Results will be populated here by JavaScript -->
+      </div>
+    </div>
+
+    <!-- Detailed Report (Collapsible & Printable) -->
+    <div class="bg-gray-700 rounded-lg p-6 mt-6">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-lg font-semibold text-white cursor-pointer" onclick="toggleReport()">
+          ▼ Detailed Calculation Report
+        </h3>
+        <button type="button" onclick="printReport()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-lg transition print:hidden">
+          🖨️ Print Report
+        </button>
+      </div>
+      <div id="detailed-report" class="hidden mt-4">
+        <!-- Report content will be generated here -->
       </div>
     </div>
 

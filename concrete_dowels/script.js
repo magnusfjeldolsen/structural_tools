@@ -134,6 +134,9 @@ function calculateAndShow() {
         displayDetailedCalculations(results, inputs);
         drawGeometryPlot(inputs);
 
+        // Generate detailed report
+        generateDetailedReport(results, inputs);
+
     } catch (error) {
         console.error('Calculation error:', error);
         alert('Error in calculations: ' + error.message);
@@ -578,6 +581,201 @@ function drawGeometryPlot(inputs) {
         .attr('font-size', '11px')
         .attr('fill', '#374151')
         .text('Concrete');
+}
+
+// Toggle detailed report visibility
+function toggleReport() {
+    const report = document.getElementById('detailed-report');
+    report.classList.toggle('hidden');
+}
+
+// Print report function
+function printReport() {
+    window.print();
+}
+
+// Generate detailed calculation report - Built from scratch according to report_spec.md
+function generateDetailedReport(results, inputs) {
+    try {
+        const reportDiv = document.getElementById('detailed-report');
+        if (!reportDiv) {
+            console.error('Report div not found');
+            return;
+        }
+
+        // Get user description
+        const description = document.getElementById('calc_title').value.trim();
+
+        // Get the SVG plot
+        const plotSvg = document.getElementById('geometry-plot').querySelector('svg');
+        let plotHTML = '';
+        if (plotSvg) {
+            plotHTML = plotSvg.outerHTML;
+        }
+
+        // Utilization color function
+        const getUtilColor = (util) => {
+            if (util > 1.0) return 'text-red-900';
+            if (util > 0.85) return 'text-yellow-900';
+            return 'text-green-900';
+        };
+
+        const vcColor = getUtilColor(results.vc);
+        const vsColor = getUtilColor(results.vs);
+        const msColor = getUtilColor(results.ms);
+
+        // Build report HTML according to spec
+        const reportHTML = `
+            <div class="report-content bg-white text-gray-900 p-8 rounded-lg">
+
+                ${description ? `
+                    <div class="mb-6 pb-4 border-b-2 border-gray-300">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-2">Calculation Description</h2>
+                        <p class="text-gray-800 whitespace-pre-wrap">${description}</p>
+                    </div>
+                ` : ''}
+
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Concrete Dowels Calculation</h2>
+                    <p class="text-sm text-gray-600">According to Norwegian "Betongelementboken"</p>
+                    <p class="text-sm text-gray-600">Calculation Date: ${new Date().toLocaleString()}</p>
+                </div>
+
+                <!-- INPUT PARAMETERS -->
+                <div class="mb-6">
+                    <h3 class="text-xl font-bold text-blue-700 mb-3 border-b-2 border-blue-300 pb-1">INPUT PARAMETERS</h3>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Load Parameters</h4>
+                            <p class="text-gray-800">V<sub>Ed</sub> = ${toFixedIfNeeded(inputs.VEd, 1)} kN</p>
+                            <p class="text-gray-800">f<sub>dowel</sub> = ${inputs.fdybel}</p>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Material Properties</h4>
+                            <p class="text-gray-800">f<sub>ck</sub> = ${inputs.fck} MPa</p>
+                            <p class="text-gray-800">f<sub>yk</sub> = ${inputs.fyk} MPa</p>
+                            <p class="text-gray-800">α<sub>cc</sub> = ${inputs.alphaCc}</p>
+                            <p class="text-gray-800">γ<sub>c</sub> = ${inputs.gammaC}</p>
+                            <p class="text-gray-800">γ<sub>s</sub> = ${inputs.gammaS}</p>
+                            <p class="text-gray-800">n-factor = ${inputs.nFactor}</p>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Dowel Configuration</h4>
+                            <p class="text-gray-800">Diameter = ${inputs.dowelDiameter} mm</p>
+                            <p class="text-gray-800">n<sub>V,parallel</sub> = ${inputs.nVParallel}</p>
+                            <p class="text-gray-800">c/c<sub>parallel</sub> = ${inputs.ccParallel} mm</p>
+                            <p class="text-gray-800">n<sub>V,ortagonal</sub> = ${inputs.nVOrtagonal}</p>
+                            <p class="text-gray-800">c/c<sub>ortagonal</sub> = ${inputs.ccOrtagonal} mm</p>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Edge Distances</h4>
+                            <p class="text-gray-800">Eccentricity = ${inputs.eccentricity} mm</p>
+                            <p class="text-gray-800">a<sub>1</sub> = ${inputs.a1} mm</p>
+                            <p class="text-gray-800">a<sub>2,h</sub> = ${inputs.a2h} mm</p>
+                            <p class="text-gray-800">a<sub>2,v</sub> = ${inputs.a2v} mm</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PLOT -->
+                <div class="mb-6">
+                    <h3 class="text-xl font-bold text-yellow-700 mb-3 border-b-2 border-yellow-300 pb-1">PLOT</h3>
+                    <div class="w-full bg-white">
+                        ${plotHTML}
+                    </div>
+                </div>
+
+                <!-- RESULTS SUMMARY -->
+                <div class="mb-6">
+                    <h3 class="text-xl font-bold text-green-700 mb-3 border-b-2 border-green-300 pb-1">RESULTS SUMMARY</h3>
+
+                    <div class="bg-blue-50 p-4 mb-4">
+                        <div class="text-3xl font-bold text-blue-900">V<sub>Rd</sub> = ${toFixedIfNeeded(results.VRd, 1)} kN</div>
+                        <div class="text-sm text-blue-700 mt-1">Shear Capacity of Dowel Group</div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-4 text-sm">
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800 mb-2">Concrete Utilization</h4>
+                            <p class="text-2xl font-bold ${vcColor}">${toFixedIfNeeded(results.vc * 100, 1)}%</p>
+                            <p class="text-xs text-gray-600">v<sub>c</sub> = V<sub>Ed</sub> / V<sub>Rd</sub></p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800 mb-2">Steel Utilization</h4>
+                            <p class="text-2xl font-bold ${vsColor}">${toFixedIfNeeded(results.vs * 100, 1)}%</p>
+                            <p class="text-xs text-gray-600">v<sub>s</sub> = V<sub>Ed</sub> / V<sub>Rd,s</sub></p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800 mb-2">Bending Utilization</h4>
+                            <p class="text-2xl font-bold ${msColor}">${toFixedIfNeeded(results.ms * 100, 1)}%</p>
+                            <p class="text-xs text-gray-600">m<sub>s</sub> = M<sub>max</sub> / M<sub>Rd,s0</sub></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DETAILED CALCULATIONS -->
+                <div class="page-break-before">
+                    <h3 class="text-xl font-bold text-purple-700 mb-4 border-b-2 border-purple-300 pb-1">DETAILED CALCULATIONS</h3>
+
+                    <div class="space-y-4 text-sm">
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800 mb-2">Basic Calculations</h4>
+                            <p class="text-gray-800">n<sub>V,tot</sub> = n<sub>V,parallel</sub> × n<sub>V,ortagonal</sub> = ${inputs.nVParallel} × ${inputs.nVOrtagonal} = ${results.nVTot}</p>
+                            <p class="text-gray-800">A<sub>s</sub> = π × ø² / 4 = π × ${inputs.dowelDiameter}² / 4 = ${toFixedIfNeeded(results.As, 1)} mm²</p>
+                            <p class="text-gray-800">f<sub>cd</sub> = α<sub>cc</sub> × f<sub>ck</sub> / γ<sub>c</sub> = ${inputs.alphaCc} × ${inputs.fck} / ${inputs.gammaC} = ${toFixedIfNeeded(results.fcd, 2)} MPa</p>
+                            <p class="text-gray-800">f<sub>yd</sub> = f<sub>yk</sub> / γ<sub>s</sub> = ${inputs.fyk} / ${inputs.gammaS} = ${toFixedIfNeeded(results.fyd, 2)} MPa</p>
+                            <p class="text-gray-800">σ<sub>cd</sub> = 3 × f<sub>cd</sub> = 3 × ${toFixedIfNeeded(results.fcd, 2)} = ${toFixedIfNeeded(results.sigmaCD, 2)} MPa</p>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800 mb-2">Steel Shear Capacity</h4>
+                            <p class="text-gray-800">V<sub>Rd,s</sub> = (n<sub>V,tot</sub> × A<sub>s</sub> × f<sub>yd</sub>) / √3 = ${toFixedIfNeeded(results.VRdS, 1)} kN</p>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800 mb-2">Plastic Moment Capacity</h4>
+                            <p class="text-gray-800">M<sub>Rd,s0</sub> = f<sub>yd</sub> × ø³ / 6 = ${toFixedIfNeeded(results.fyd, 2)} × ${inputs.dowelDiameter}³ / 6 = ${toFixedIfNeeded(results.MRdS0, 3)} kNm</p>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800 mb-2">Concrete Shear Capacity (Single Dowel)</h4>
+                            <p class="text-gray-800">V<sub>Rd,e</sub> = 1.5 × √((f<sub>cd</sub> × e × ø)² + f<sub>cd</sub> × f<sub>yd</sub> × ø⁴) - 1.5 × f<sub>cd</sub> × e × ø</p>
+                            <p class="text-gray-800">V<sub>Rd,e</sub> = ${toFixedIfNeeded(results.VRdE, 2)} kN</p>
+                            <p class="text-gray-800">V<sub>Rd,c0</sub> = V<sub>Rd,e</sub> = ${toFixedIfNeeded(results.VRdC0, 2)} kN</p>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800 mb-2">Distance Factors</h4>
+                            <p class="text-gray-800">k<sub>a</sub> = (min(n×ø, a<sub>1</sub>) - ø) / (n×ø - ø) = ${toFixedIfNeeded(results.ka, 3)}</p>
+                            <p class="text-gray-800">k<sub>s</sub> = (a<sub>2,v</sub> + (n<sub>V,ort</sub>-1)×cc<sub>ort</sub> + a<sub>2,h</sub>) / (3×min(n×ø, a<sub>1</sub>)) = ${toFixedIfNeeded(results.ks, 3)}</p>
+                            <p class="text-gray-800">k = min(n<sub>V,ortagonal</sub>, k<sub>a</sub> × k<sub>s</sub>) = ${toFixedIfNeeded(results.k, 3)}</p>
+                            <p class="text-gray-800">ψ<sub>f,V</sub> = ${toFixedIfNeeded(results.psiFV, 3)}</p>
+                        </div>
+
+                        <div class="bg-blue-50 p-3 rounded border border-blue-300">
+                            <h4 class="font-semibold text-blue-900 mb-2">Final Shear Capacity</h4>
+                            <p class="font-bold text-gray-800">V<sub>Rd</sub> = f<sub>dowel</sub> × k × ψ<sub>f,V</sub> × V<sub>Rd,c0</sub></p>
+                            <p class="font-bold text-gray-800">V<sub>Rd</sub> = ${inputs.fdybel} × ${toFixedIfNeeded(results.k, 3)} × ${toFixedIfNeeded(results.psiFV, 3)} × ${toFixedIfNeeded(results.VRdC0, 2)} = ${toFixedIfNeeded(results.VRd, 1)} kN</p>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded">
+                            <h4 class="font-semibold text-gray-800 mb-2">Utilization Checks</h4>
+                            <p class="text-gray-800">Concrete: v<sub>c</sub> = V<sub>Ed</sub> / V<sub>Rd</sub> = ${toFixedIfNeeded(inputs.VEd, 1)} / ${toFixedIfNeeded(results.VRd, 1)} = ${toFixedIfNeeded(results.vc * 100, 1)}%</p>
+                            <p class="text-gray-800">Steel: v<sub>s</sub> = V<sub>Ed</sub> / V<sub>Rd,s</sub> = ${toFixedIfNeeded(inputs.VEd, 1)} / ${toFixedIfNeeded(results.VRdS, 1)} = ${toFixedIfNeeded(results.vs * 100, 1)}%</p>
+                            <p class="text-gray-800">Bending: m<sub>s</sub> = M<sub>max</sub> / M<sub>Rd,s0</sub> = ${toFixedIfNeeded(results.Mmax, 3)} / ${toFixedIfNeeded(results.MRdS0, 3)} = ${toFixedIfNeeded(results.ms * 100, 1)}%</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        `;
+
+        reportDiv.innerHTML = reportHTML;
+        console.log('Report generated successfully');
+    } catch (error) {
+        console.error('Error generating report:', error);
+        alert('Error generating report: ' + error.message);
+    }
 }
 
 // Initialize calculations on page load
