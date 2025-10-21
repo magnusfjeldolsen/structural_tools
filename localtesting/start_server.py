@@ -16,7 +16,7 @@ import socket
 # Configuration
 HOST = "localhost"
 
-def find_available_port(start_port=8080):
+def find_available_port(start_port=8000):
     """Find an available port starting from start_port"""
     for port in range(start_port, start_port + 100):
         try:
