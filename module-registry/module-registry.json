@@ -1,0 +1,289 @@
+{
+  "_meta": {
+    "generated": "2025-10-22T12:13:02.013Z",
+    "total_modules": 20,
+    "version": "1.0.0"
+  },
+  "modules": [
+    {
+      "id": "concrete_plate_CFRP",
+      "title": "CFRP Concrete Plate Reinforcement Calculator",
+      "description": "Carbon fiber reinforcement calculator for concrete plates - CFRP strengthening analysis",
+      "keywords": [
+        "cfrp",
+        "carbon fiber",
+        "concrete strengthening",
+        "structural engineering",
+        "reinforcement"
+      ],
+      "url": "./concrete_plate_CFRP/index.html",
+      "category": "concrete"
+    },
+    {
+      "id": "concrete_anchorage_length",
+      "title": "Concrete Anchorage Length Calculator - EC2 Section 8.4",
+      "description": "Free concrete anchorage length calculator. Calculate design anchorage length (lbd) according to Eurocode 2 Section 8.4.",
+      "keywords": [
+        "concrete anchorage",
+        "anchorage length",
+        "bond strength",
+        "reinforcement anchorage",
+        "ec2",
+        "eurocode 2"
+      ],
+      "url": "./concrete_anchorage_length/index.html",
+      "category": "concrete"
+    },
+    {
+      "id": "concrete_base_plate_compressive_design",
+      "title": "Concrete Base Plate Calculator - Compressive Design Tool",
+      "description": "Free concrete base plate compressive design calculator. Calculate base plate capacity with detailed step-by-step derivations.",
+      "keywords": [
+        "concrete base plate",
+        "compressive design",
+        "base plate capacity",
+        "structural engineering"
+      ],
+      "url": "./concrete_base_plate_compressive_design/index.html",
+      "category": "concrete"
+    },
+    {
+      "id": "concrete_beam_design",
+      "title": "Concrete Beam Calculator - ULS Design Tool",
+      "description": "Free concrete beam ULS design calculator. Calculate moment and shear capacity with detailed step-by-step derivations.",
+      "keywords": [
+        "concrete beam design",
+        "uls",
+        "moment capacity",
+        "shear capacity",
+        "structural engineering"
+      ],
+      "url": "./concrete_beam_design/index.html",
+      "category": "concrete"
+    },
+    {
+      "id": "concrete_dowels",
+      "title": "Concrete Dowels Calculator - Free Engineering Tool",
+      "description": "Free concrete dowels calculation calculator. Calculate shear capacity and utilization for concrete dowel connections according to Norwegian Betongelementboken.",
+      "keywords": [
+        "concrete dowels",
+        "shear capacity",
+        "structural engineering",
+        "dowel calculation",
+        "betongelementboken"
+      ],
+      "url": "./concrete_dowels/index.html",
+      "category": "concrete"
+    },
+    {
+      "id": "concrete_minimum_reinforcement",
+      "title": "Concrete Minimum Reinforcement Calculator | Free Structural Engineering Tool",
+      "description": "Calculate minimum reinforcement for concrete structures according to EC2 and other standards. Features plates, beams, columns, and gulv på grunn calculations with scenario-based analysis and spacing compliance checks.",
+      "keywords": [
+        "minimum reinforcement",
+        "concrete reinforcement",
+        "ec2",
+        "plate reinforcement",
+        "spacing requirements",
+        "reinforcement calculation",
+        "free engineering tool",
+        "structural calculator"
+      ],
+      "url": "./concrete_minimum_reinforcement/index.html",
+      "category": "concrete"
+    },
+    {
+      "id": "concrete_slab_design",
+      "title": "Concrete Slab Design Calculator | Free Structural Engineering Tool",
+      "description": "Ultimate Limit State (ULS) moment resistance calculator for concrete slabs. Calculate MRd with detailed step-by-step mathematical derivations and visual aids according to Eurocode 2.",
+      "keywords": [
+        "concrete slab",
+        "uls design",
+        "moment resistance",
+        "mrd",
+        "reinforcement",
+        "eurocode 2",
+        "free engineering tool",
+        "structural calculator"
+      ],
+      "url": "./concrete_slab_design/index.html",
+      "category": "concrete"
+    },
+    {
+      "id": "clustering",
+      "title": "CSV Clustering Tool - Structural Tools",
+      "description": "",
+      "keywords": [],
+      "url": "./clustering/index.html",
+      "category": "other"
+    },
+    {
+      "id": "deliveryhub",
+      "title": "Delivery Hub - Advanced Document Management",
+      "description": "",
+      "keywords": [],
+      "url": "./deliveryhub/index.html",
+      "category": "other"
+    },
+    {
+      "id": "DIN_rod_torque",
+      "title": "DIN Threaded Rod Torque/Force Calculator - Free Engineering Tool",
+      "description": "Steel DIN threaded rod torque and force calculator. Calculate required torque from force or force from torque for DIN threaded rods.",
+      "keywords": [
+        "din threaded rod",
+        "torque calculator",
+        "force calculator",
+        "steel fasteners",
+        "structural engineering"
+      ],
+      "url": "./DIN_rod_torque/index.html",
+      "category": "steel"
+    },
+    {
+      "id": "ec2concrete",
+      "title": "EC2 Concrete Parameters Calculator - Structural Engineering Tools",
+      "description": "",
+      "keywords": [],
+      "url": "./ec2concrete/index.html",
+      "category": "concrete"
+    },
+    {
+      "id": "seismic_ec8",
+      "title": "EC8 Seismic Avoidance Criteria Calculator",
+      "description": "EC8 Seismic Avoidance Criteria Calculator - Determine if seismic design is required",
+      "keywords": [
+        "ec8",
+        "seismic design",
+        "avoidance criteria",
+        "response spectrum",
+        "structural engineering"
+      ],
+      "url": "./seismic_ec8/index.html",
+      "category": "other"
+    },
+    {
+      "id": "2dframeanalysis",
+      "title": "PyNite 2D Frame Analysis | Free Structural Engineering Tool",
+      "description": "Advanced 2D frame analysis using PyNite library running in browser with Pyodide. Input nodes, elements, loads and get detailed structural analysis results.",
+      "keywords": [
+        "pynite",
+        "2d frame analysis",
+        "pyodide",
+        "structural analysis",
+        "finite element",
+        "python",
+        "browser"
+      ],
+      "url": "./2dframeanalysis/index.html",
+      "category": "structural-analysis"
+    },
+    {
+      "id": "pynite-pyodide",
+      "title": "PyNite 2D Frame Analysis | Free Structural Engineering Tool",
+      "description": "Advanced 2D frame analysis using PyNite library running in browser with Pyodide. Input nodes, elements, loads and get detailed structural analysis results.",
+      "keywords": [
+        "pynite",
+        "2d frame analysis",
+        "pyodide",
+        "structural analysis",
+        "finite element",
+        "python",
+        "browser"
+      ],
+      "url": "./pynite-pyodide/index.html",
+      "category": "other"
+    },
+    {
+      "id": "steel_fire_temperature",
+      "title": "Steel Fire Temperature Calculator | Free Steel Engineering Tool",
+      "description": "Calculate fire resistance of unprotected steel structures with interactive temperature simulation. Features Am/V ratio calculation, shadow effects, and detailed temperature-time curves according to Eurocode 3.",
+      "keywords": [
+        "steel fire resistance",
+        "temperature calculation",
+        "eurocode 3 fire",
+        "am/v ratio",
+        "unprotected steel",
+        "fire design",
+        "steel temperature",
+        "free engineering tool",
+        "structural calculator"
+      ],
+      "url": "./steel_fire_temperature/index.html",
+      "category": "steel"
+    },
+    {
+      "id": "steel_beam_relative_deisgn",
+      "title": "Steel Profile Calculator - Free Engineering Tool",
+      "description": "Steel profile comparison calculator. Compare IPE, HEA, and HEB steel profiles for optimal weight and structural performance.",
+      "keywords": [
+        "steel profiles",
+        "ipe",
+        "hea",
+        "heb",
+        "structural engineering",
+        "beam design"
+      ],
+      "url": "./steel_beam_relative_deisgn/index.html",
+      "category": "steel"
+    },
+    {
+      "id": "transversal_forces_stiffened_web",
+      "title": "Transversal Forces - Stiffened Web Calculator",
+      "description": "Free transversal forces stiffened web calculator. Calculate capacity and slenderness check with detailed derivations.",
+      "keywords": [
+        "transversal forces",
+        "stiffened web",
+        "steel design",
+        "structural engineering",
+        "ec3"
+      ],
+      "url": "./transversal_forces_stiffened_web/index.html",
+      "category": "steel"
+    },
+    {
+      "id": "transversal_forces_unstiffened_web",
+      "title": "Transversal Forces - Unstiffened Web Calculator",
+      "description": "Free transversal forces unstiffened web calculator. Calculate capacity according to EC3-1-5 with detailed derivations.",
+      "keywords": [
+        "transversal forces",
+        "unstiffened web",
+        "steel design",
+        "structural engineering",
+        "ec3"
+      ],
+      "url": "./transversal_forces_unstiffened_web/index.html",
+      "category": "steel"
+    },
+    {
+      "id": "THP",
+      "title": "Two-Sided Hat Profile Calculator - Structural Engineering Tool",
+      "description": "Free two-sided hat profile calculator. Calculate structural capacities and cross-sectional classifications according to Eurocode 3.",
+      "keywords": [
+        "hat profile",
+        "steel structure",
+        "eurocode 3",
+        "cross-section classification",
+        "structural engineering"
+      ],
+      "url": "./THP/index.html",
+      "category": "steel"
+    },
+    {
+      "id": "weld_capacity",
+      "title": "Weld Capacity Calculator | Free Steel Engineering Tool",
+      "description": "Calculate weld capacity and utilization for steel welded connections. Features comprehensive stress analysis with normal force, shear force, and moment combinations using von Mises criteria.",
+      "keywords": [
+        "weld capacity",
+        "weld design",
+        "von mises stress",
+        "welded connections",
+        "steel welding",
+        "capacity analysis",
+        "free engineering tool",
+        "structural calculator"
+      ],
+      "url": "./weld_capacity/index.html",
+      "category": "steel"
+    }
+  ]
+}
