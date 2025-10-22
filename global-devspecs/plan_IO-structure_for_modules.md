@@ -3,6 +3,8 @@
 ## Overview
 This specification defines a standardized input/output structure for all calculator modules to enable automatic workflow integration. Each module should expose its inputs and calculated values in a consistent, machine-readable format.
 
+**Updated**: Based on successful implementation in `concrete_beam_design` module (2025-10-22)
+
 ---
 
 ## Core Principles
@@ -12,6 +14,8 @@ This specification defines a standardized input/output structure for all calcula
 3. **Automatic Discovery**: Workflow system can introspect available I/O without manual configuration
 4. **Type Safety**: All values have explicit types and units
 5. **Extensibility**: Adding new inputs/outputs doesn't break existing workflows
+6. **Complete Traceability**: ALL intermediate calculation values must be exposed, not just final results
+7. **Backward Compatibility**: Workflow features are additive; standalone operation preserved
 
 ---
 
@@ -20,374 +24,702 @@ This specification defines a standardized input/output structure for all calcula
 ### File Organization
 ```
 module_name/
-  ├── index.html           # UI and form inputs
-  ├── script.js            # Main calculation logic
-  └── module_config.js     # I/O metadata (NEW)
+  ├── index.html              # UI and form inputs
+  ├── module_api.js           # Pure calculation API (separate file)
+  └── (inline in index.html)  # MODULE_CONFIG + ModuleAPI (workflow layer)
 ```
 
-### JavaScript Architecture
+**Recommendation**: Keep calculation API in separate file (`module_api.js`), but inline MODULE_CONFIG and ModuleAPI in `index.html` for simpler deployment.
 
-Each module should have three distinct layers:
+---
 
-#### 1. Configuration Layer (`module_config.js` or inline)
-Declares all inputs and outputs with metadata.
+## Three-Layer Architecture
 
-```javascript
-const MODULE_CONFIG = {
-  module_id: "concrete_anchorage_length",
-  module_name: "Concrete Anchorage Length Calculator",
-  version: "1.0.0",
-  standard: "EC2 Section 8.4",
+### Layer 1: Calculation API (Pure Functions)
 
-  inputs: {
-    // Basic parameters
-    SEd: {
-      label: "Design tensile force",
-      symbol: "S_Ed",
-      type: "number",
-      unit: "kN",
-      required: true,
-      min: 0,
-      default: 50,
-      category: "loads"
-    },
-    phi_l: {
-      label: "Bar diameter",
-      symbol: "φ_l",
-      type: "number",
-      unit: "mm",
-      required: true,
-      min: 6,
-      max: 40,
-      default: 16,
-      category: "geometry"
-    },
-    bond_condition: {
-      label: "Bond condition",
-      type: "select",
-      options: ["good", "poor"],
-      default: "good",
-      category: "conditions"
-    },
-    // ... all other inputs
-  },
+**File**: `module_api.js` or `module_name_api.js`
 
-  outputs: {
-    // Primary results
-    lbd: {
-      label: "Design anchorage length",
-      symbol: "l_bd",
-      type: "number",
-      unit: "mm",
-      precision: 1,
-      category: "primary"
-    },
-    // Intermediate calculations
-    fbd: {
-      label: "Design bond strength",
-      symbol: "f_bd",
-      type: "number",
-      unit: "MPa",
-      precision: 3,
-      category: "intermediate"
-    },
-    lb_rqd: {
-      label: "Basic required anchorage length",
-      symbol: "l_b,rqd",
-      type: "number",
-      unit: "mm",
-      precision: 2,
-      category: "intermediate"
-    },
-    // ... all other outputs
-  },
-
-  // Optional: Define categories for grouping
-  categories: {
-    loads: { label: "Loading", order: 1 },
-    geometry: { label: "Geometry", order: 2 },
-    material: { label: "Material Properties", order: 3 },
-    conditions: { label: "Conditions", order: 4 },
-    primary: { label: "Primary Results", order: 1 },
-    intermediate: { label: "Intermediate Calculations", order: 2 }
-  }
-};
-```
-
-#### 2. Calculation Layer
-Pure calculation function that takes structured input and returns structured output.
+This layer contains ONLY pure calculation logic with NO DOM dependencies.
 
 ```javascript
 /**
  * Pure calculation function - no DOM access, no side effects
- * @param {Object} inputs - Input parameters matching MODULE_CONFIG.inputs
- * @returns {Object} - Calculated values matching MODULE_CONFIG.outputs
+ * @param {Object} inputs - Input parameters
+ * @returns {Object} - Complete calculation results
  */
-function calculate(inputs) {
+function calculateModuleName(inputs) {
   // Validate inputs
-  const validation = validateInputs(inputs);
-  if (!validation.valid) {
-    throw new Error(`Invalid inputs: ${validation.errors.join(', ')}`);
+  const validationErrors = validateInputs(inputs);
+  if (validationErrors.length > 0) {
+    return {
+      success: false,
+      errors: validationErrors,
+      message: 'Input validation failed'
+    };
   }
 
-  // Perform calculations
-  const results = {};
+  // Extract and evaluate inputs (handle expressions if needed)
+  const param1 = evaluateExpression(inputs.geometry.param1);
+  const param2 = parseFloat(inputs.material.param2);
+  // ... all other inputs
 
-  // Example calculations
-  results.As_l = inputs.n_l * Math.PI * Math.pow(inputs.phi_l, 2) / 4;
-  results.eta_1 = inputs.bond_condition === 'good' ? 1.0 : 0.7;
-  results.eta_2 = inputs.phi_l <= 32 ? 1.0 : (132 - inputs.phi_l) / 100;
-
+  // Perform ALL calculations, storing EVERY intermediate value
+  const intermediate1 = param1 * 2;
+  const intermediate2 = intermediate1 + param2;
+  const intermediate3 = Math.sqrt(intermediate2);
   // ... all calculations
 
-  results.lbd = Math.max(alpha_total * lb_rqd, lb_min);
+  const finalResult = intermediate3 * factor;
 
-  // Include calculation steps for tracing (optional)
-  results._steps = [];
-  results._metadata = {
-    timestamp: new Date().toISOString(),
-    module_id: MODULE_CONFIG.module_id,
-    version: MODULE_CONFIG.version
+  // Return structured results with COMPLETE traceability
+  return {
+    success: true,
+
+    // Echo back evaluated inputs for verification
+    inputs: {
+      geometry: { param1, ... },
+      material: { param2, ... }
+    },
+
+    // ALL intermediate calculations grouped by category
+    intermediate_calculations: {
+      geometry: {
+        intermediate1: parseFloat(intermediate1.toFixed(3)),
+        intermediate2: parseFloat(intermediate2.toFixed(3)),
+        // Include components of calculations for reverse engineering
+        param1_times_2: parseFloat((param1 * 2).toFixed(3))
+      },
+      material: {
+        intermediate3: parseFloat(intermediate3.toFixed(3)),
+        // Include all steps
+        sqrt_of_intermediate2: parseFloat(Math.sqrt(intermediate2).toFixed(3))
+      }
+    },
+
+    // Final results
+    results: {
+      primary_category: {
+        finalResult: parseFloat(finalResult.toFixed(2)),
+        // Also include governing conditions
+        governing: intermediate1 < intermediate2 ? 'case_a' : 'case_b'
+      }
+    },
+
+    // Status and checks
+    status: {
+      overall: "OK" | "FAILED" | "HIGH_UTILIZATION",
+      messages: [],
+      utilizations: {
+        param1_util: 85.5,
+        max: 85.5
+      },
+      checks: {
+        check1_ok: true,
+        check2_ok: false,
+        all_ok: false
+      }
+    },
+
+    // Metadata for traceability
+    _metadata: {
+      calculation_timestamp: new Date().toISOString(),
+      module_id: 'module_name',
+      module_name: 'Module Name Calculator',
+      version: '1.0.0',
+      standard: 'Eurocode X',
+      calculation_method: 'Method description'
+    }
   };
+}
 
-  return results;
+// Expression evaluator for formula inputs (if needed)
+function evaluateExpression(expr) {
+  try {
+    if (typeof expr === 'number') return expr;
+    if (typeof expr !== 'string') throw new Error('Invalid expression type');
+
+    const sanitized = expr.replace(/[^0-9+\-*/().\s^]/g, '');
+    const jsExpression = sanitized.replace(/\^/g, '**');
+    const result = new Function('return ' + jsExpression)();
+
+    if (isNaN(result) || !isFinite(result)) {
+      throw new Error('Invalid calculation result');
+    }
+
+    return result;
+  } catch (error) {
+    throw new Error(`Expression evaluation error: ${error.message}`);
+  }
+}
+
+// Expose API
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { calculateModuleName, evaluateExpression };
+} else {
+  window.ModuleNameAPI = { calculateModuleName, evaluateExpression };
 }
 ```
 
-#### 3. UI/Display Layer
-Handles DOM interaction and visualization.
+**Key Requirements**:
+- ✅ Return EVERY intermediate value, not just final results
+- ✅ Include all calculation components for reverse engineering
+- ✅ Group related values (geometry, material, etc.)
+- ✅ Add metadata with timestamp, version, standard
+- ✅ Support expression evaluation for formula inputs
+- ✅ NO DOM access - must be testable in Node.js
+
+---
+
+### Layer 2: Module Configuration (Metadata)
+
+**Location**: Inline in `index.html` within `<script>` tags
+
+Declares complete metadata for ALL inputs and outputs.
+
+```javascript
+const MODULE_CONFIG = {
+  module_id: "module_name",
+  module_name: "Module Name Calculator",
+  version: "1.0.0",
+  standard: "Eurocode X Section Y.Z",
+  description: "Brief description of what this module calculates",
+
+  inputs: {
+    // For each input field, define complete metadata
+    param1: {
+      label: "Parameter 1 description",          // Human-readable label
+      symbol: "p₁",                              // Mathematical symbol
+      type: "expression" | "number" | "select" | "text" | "checkbox",
+      unit: "mm" | "kN" | "MPa" | "-" | "",    // Physical unit
+      required: true | false,                    // Validation
+      min: 0,                                    // Min value (optional)
+      max: 1000,                                 // Max value (optional)
+      default: 250,                              // Default value
+      category: "geometry" | "material" | "loads" | "meta",
+      description: "Detailed description including accepted formats"
+    },
+
+    // Example: Expression type (accepts formulas)
+    beam_width: {
+      label: "Beam width",
+      symbol: "b",
+      type: "expression",
+      unit: "mm",
+      required: true,
+      min: 100,
+      default: 250,
+      category: "geometry",
+      description: "Width of beam (accepts expressions like 200+50)"
+    },
+
+    // Example: Optional load (can be empty)
+    applied_moment: {
+      label: "Applied moment",
+      symbol: "M_Ed",
+      type: "expression",
+      unit: "kNm",
+      required: false,  // Optional - can be empty
+      min: 0,
+      default: 0,       // Treated as 0 if empty
+      category: "loads",
+      description: "Applied bending moment (leave empty for 0)"
+    },
+
+    // Example: Select dropdown
+    material_grade: {
+      label: "Material grade",
+      symbol: "",
+      type: "select",
+      unit: "",
+      required: true,
+      options: ["C30/37", "C35/45", "C40/50"],
+      default: "C35/45",
+      category: "material",
+      description: "Concrete grade per EC2"
+    }
+  },
+
+  outputs: {
+    // For each output, define metadata AND path to value in API response
+
+    // PRIMARY RESULTS
+    primary_result: {
+      label: "Primary result description",
+      symbol: "R_d",
+      type: "number",
+      unit: "kN",
+      precision: 2,
+      category: "primary",
+      path: "results.primary_category.primary_result"  // Path in API response
+    },
+
+    utilization_percent: {
+      label: "Utilization ratio",
+      symbol: "η",
+      type: "number",
+      unit: "%",
+      precision: 1,
+      category: "primary",
+      path: "status.utilizations.primary"
+    },
+
+    // INTERMEDIATE CALCULATIONS
+    effective_depth: {
+      label: "Effective depth",
+      symbol: "d",
+      type: "number",
+      unit: "mm",
+      precision: 2,
+      category: "intermediate",
+      path: "intermediate_calculations.geometry.d"
+    },
+
+    design_strength: {
+      label: "Design material strength",
+      symbol: "f_d",
+      type: "number",
+      unit: "MPa",
+      precision: 3,
+      category: "intermediate",
+      path: "intermediate_calculations.material.fd"
+    },
+
+    // STATUS/CHECKS
+    overall_status: {
+      label: "Overall check status",
+      symbol: "",
+      type: "string",
+      unit: "",
+      precision: 0,
+      category: "status",
+      path: "status.overall"
+    },
+
+    all_checks_passed: {
+      label: "All checks OK",
+      symbol: "",
+      type: "boolean",
+      unit: "",
+      precision: 0,
+      category: "status",
+      path: "status.checks.all_ok"
+    }
+  },
+
+  categories: {
+    // Input categories
+    geometry: { label: "Geometry", order: 1 },
+    material: { label: "Material Properties", order: 2 },
+    loads: { label: "Applied Loads", order: 3 },
+    meta: { label: "Documentation", order: 4 },
+
+    // Output categories
+    primary: { label: "Primary Results", order: 1 },
+    intermediate: { label: "Intermediate Calculations", order: 2 },
+    status: { label: "Status & Checks", order: 3 }
+  }
+};
+```
+
+**Key Requirements**:
+- ✅ Define metadata for EVERY input field in the UI
+- ✅ Define metadata for ALL outputs (primary + intermediate)
+- ✅ Include `path` property for outputs to navigate nested API response
+- ✅ Support "expression" type for formula inputs
+- ✅ Support optional inputs with `required: false`
+- ✅ Organize with categories
+
+---
+
+### Layer 3: Workflow Integration API
+
+**Location**: Inline in `index.html` within `<script>` tags
+
+Provides standardized interface for workflow system.
 
 ```javascript
 /**
- * Gather inputs from DOM
- * @returns {Object} - Input object matching MODULE_CONFIG.inputs
+ * Gather inputs from DOM based on MODULE_CONFIG
  */
 function gatherInputs() {
   const inputs = {};
 
-  for (const [key, config] of Object.entries(MODULE_CONFIG.inputs)) {
-    const element = document.getElementById(key);
-
-    if (!element) {
-      if (config.required) {
-        console.warn(`Required input '${key}' not found in DOM`);
-      }
-      inputs[key] = config.default;
-      continue;
-    }
-
-    // Get value based on type
-    switch (config.type) {
-      case 'number':
-        inputs[key] = parseFloat(element.value);
-        break;
-      case 'select':
-        inputs[key] = element.value;
-        break;
-      case 'checkbox':
-        inputs[key] = element.checked;
-        break;
-      default:
-        inputs[key] = element.value;
-    }
+  // Helper for optional fields that default to 0
+  function evaluateOrZero(value) {
+    const trimmed = value.trim();
+    if (trimmed === '') return '0';
+    return trimmed;
   }
+
+  // Build structured input object matching API format
+  inputs.geometry = {
+    param1: document.getElementById('param1')?.value.trim() ||
+            MODULE_CONFIG.inputs.param1.default.toString(),
+    // ... all geometry inputs
+  };
+
+  inputs.loads = {
+    // Handle optional loads
+    applied_moment: evaluateOrZero(document.getElementById('applied_moment')?.value || '0'),
+    // ... all load inputs
+  };
+
+  inputs.material = {
+    param2: parseFloat(document.getElementById('param2')?.value ||
+                      MODULE_CONFIG.inputs.param2.default),
+    // ... all material inputs
+  };
+
+  // Optional description field
+  inputs.calc_description = document.getElementById('calc_description')?.value || '';
 
   return inputs;
 }
 
 /**
- * Display results in UI
+ * Set inputs programmatically (for workflow integration)
  */
-function displayResults(results) {
-  // Generate HTML for results display
-  // Update DOM elements
-  // Generate detailed report
-  // etc.
+function setInputs(inputs) {
+  if (inputs.geometry) {
+    if (inputs.geometry.param1 !== undefined)
+      document.getElementById('param1').value = inputs.geometry.param1;
+    // ... set all geometry inputs
+  }
+
+  if (inputs.loads) {
+    if (inputs.loads.applied_moment !== undefined)
+      document.getElementById('applied_moment').value = inputs.loads.applied_moment;
+    // ... set all load inputs
+  }
+
+  if (inputs.material) {
+    if (inputs.material.param2 !== undefined)
+      document.getElementById('param2').value = inputs.material.param2;
+    // ... set all material inputs
+  }
+
+  if (inputs.calc_description !== undefined) {
+    document.getElementById('calc_description').value = inputs.calc_description;
+  }
 }
 
 /**
- * Main entry point called from UI
+ * Get output value by path from nested results object
  */
-function calculateAndShow() {
-  try {
-    const inputs = gatherInputs();
-    const results = calculate(inputs);
-    displayResults(results);
+function getOutputByPath(path, results) {
+  if (!results) return undefined;
+  return path.split('.').reduce((obj, key) => obj?.[key], results);
+}
 
-    // Store results for workflow access
-    window.lastCalculationResults = results;
-    window.lastCalculationInputs = inputs;
+/**
+ * Module API - Standardized interface for workflow integration
+ */
+window.ModuleAPI = {
+  /**
+   * Get module configuration metadata
+   */
+  getConfig: () => MODULE_CONFIG,
 
-  } catch (error) {
-    alert('Calculation failed: ' + error.message);
+  /**
+   * Get current input values from DOM
+   */
+  getInputs: () => gatherInputs(),
+
+  /**
+   * Set input values programmatically
+   */
+  setInputs: (inputs) => setInputs(inputs),
+
+  /**
+   * Perform calculation with given inputs
+   */
+  calculate: (inputs) => {
+    return window.ModuleNameAPI.calculateModuleName(inputs);
+  },
+
+  /**
+   * Get last calculation results
+   */
+  getLastResults: () => window.lastCalculationResults || null,
+
+  /**
+   * Get last calculation inputs
+   */
+  getLastInputs: () => window.lastCalculationInputs || null,
+
+  /**
+   * Get specific output value by key
+   * Uses path from MODULE_CONFIG.outputs to navigate result structure
+   */
+  getOutput: (key) => {
+    const results = window.lastCalculationResults;
+    if (!results) return undefined;
+
+    const outputConfig = MODULE_CONFIG.outputs[key];
+    if (!outputConfig || !outputConfig.path) return undefined;
+
+    return getOutputByPath(outputConfig.path, results);
+  },
+
+  /**
+   * Check if calculation results are available
+   */
+  hasResults: () => window.lastCalculationResults !== null &&
+                    window.lastCalculationResults !== undefined,
+
+  /**
+   * Get all outputs as flat object with keys from MODULE_CONFIG
+   */
+  getAllOutputs: () => {
+    const results = window.lastCalculationResults;
+    if (!results) return null;
+
+    const outputs = {};
+    for (const [key, config] of Object.entries(MODULE_CONFIG.outputs)) {
+      if (config.path) {
+        outputs[key] = getOutputByPath(config.path, results);
+      }
+    }
+    return outputs;
   }
+};
+
+// Log API availability on page load
+console.log('Module Name - Workflow API ready');
+console.log('Access via: window.ModuleAPI');
+console.log('Configuration:', MODULE_CONFIG);
+```
+
+**Key Requirements**:
+- ✅ `gatherInputs()` collects from DOM with fallback to defaults
+- ✅ `setInputs()` enables programmatic input from workflows
+- ✅ `getOutputByPath()` navigates nested API response using dot notation
+- ✅ `window.ModuleAPI` exposes standardized interface
+- ✅ `getAllOutputs()` bonus method returns flat object of all outputs
+- ✅ Console logging for debugging
+
+---
+
+### Layer 4: UI Integration
+
+Update existing `calculateAndShow()` to store results:
+
+```javascript
+function calculateAndShow() {
+  // Helper function for optional fields
+  function evaluateOrZero(value) {
+    const trimmed = value.trim();
+    if (trimmed === '') return '0';
+    return trimmed;
+  }
+
+  // Collect inputs (can use gatherInputs() or inline)
+  const inputs = {
+    geometry: {
+      param1: document.getElementById('param1').value.trim(),
+      // ... all inputs
+    },
+    loads: {
+      applied_moment: evaluateOrZero(document.getElementById('applied_moment').value),
+      // ... all loads
+    },
+    material: {
+      param2: parseFloat(document.getElementById('param2').value),
+      // ... all material
+    }
+  };
+
+  // Call API
+  const result = window.ModuleNameAPI.calculateModuleName(inputs);
+
+  // IMPORTANT: Store for workflow access
+  window.lastCalculationResults = result;
+  window.lastCalculationInputs = inputs;
+
+  // Validate result
+  if (!result.success) {
+    alert('Calculation failed: ' + (result.errors ? result.errors.join('\n') : result.message));
+    return;
+  }
+
+  // Display results in UI (existing code continues as normal)
+  // ... display code ...
 }
 ```
 
 ---
 
-## Workflow Integration API
+## Complete Traceability Requirement
 
-### Module Interface
-Each module exposes a standardized API:
+**CRITICAL**: The API must return EVERY intermediate calculation value, not just final results.
 
+### Why This Matters
+1. **Reverse Engineering**: Users can verify calculations by working backwards
+2. **Debugging**: Easy to identify where values diverge from expected
+3. **Workflow Integration**: Downstream modules may need intermediate values
+4. **Validation**: Can compare against hand calculations at any step
+5. **Transparency**: Complete audit trail of calculation process
+
+### Example: Complete vs Incomplete
+
+❌ **INCOMPLETE** (only final results):
 ```javascript
-// Get module metadata
-window.ModuleAPI = {
-  getConfig: () => MODULE_CONFIG,
+return {
+  success: true,
+  results: {
+    MRd: 125.5  // How was this calculated?
+  }
+};
+```
 
-  getInputs: () => gatherInputs(),
-
-  setInputs: (inputs) => {
-    for (const [key, value] of Object.entries(inputs)) {
-      const element = document.getElementById(key);
-      if (element) element.value = value;
+✅ **COMPLETE** (all intermediate values):
+```javascript
+return {
+  success: true,
+  inputs: {
+    geometry: { b: 250, h: 500, c: 25 },
+    material: { fck: 35, fyk: 500, gamma_c: 1.5, gamma_s: 1.15 }
+  },
+  intermediate_calculations: {
+    material: {
+      fcd: 19.833,
+      alpha_cc_times_fck: 29.75,  // Components of fcd calculation
+      fyd: 434.783,
+      fyk_over_gamma_s: 434.783   // Components of fyd calculation
+    },
+    geometry: {
+      d: 465,
+      h_minus_c: 475,    // Component of d calculation
+      phi_l_over_2: 10,  // Component of d calculation
+      Asl: 628.32,
+      single_bar_area: 314.16,    // Component of Asl calculation
+      z: 441.75,
+      z_95d: 441.75,     // Alternative z calculation
+      z_bal: 456.23      // Alternative z calculation
+    },
+    moment: {
+      MRd_c: 135.2,
+      MRd_c_numerator: 135200000,  // Numerator before unit conversion
+      b_times_d_squared: 54112500,  // Intermediate product
+      MRd_s: 125.5,
+      MRd_s_numerator: 125500000,
+      Asl_times_fyd: 273111.66
     }
   },
-
-  calculate: (inputs) => calculate(inputs),
-
-  getLastResults: () => window.lastCalculationResults || null,
-
-  getLastInputs: () => window.lastCalculationInputs || null,
-
-  // Get specific output value
-  getOutput: (key) => {
-    const results = window.lastCalculationResults;
-    return results ? results[key] : null;
+  results: {
+    moment_capacity: {
+      MRd_c: 135.2,
+      MRd_s: 125.5,
+      MRd: 125.5,  // min(MRd_c, MRd_s)
+      governing: 'steel'  // Which governs
+    }
   },
-
-  // Check if module has calculated results available
-  hasResults: () => window.lastCalculationResults !== null
+  _metadata: {
+    calculation_timestamp: "2025-10-22T14:30:00.000Z",
+    module_id: "concrete_beam_design",
+    version: "1.1.0"
+  }
 };
 ```
 
 ---
 
-## Workflow System Integration
+## Input Type: "expression"
 
-### Module Registry
-The workflow system maintains a registry of available modules:
+For inputs that accept mathematical formulas:
 
+### UI Implementation
+```html
+<input type="text" id="beam_width" value="250"
+       placeholder="Example: 200+50"
+       onblur="updateCalculatedValue('beam_width')"
+       class="...">
+<div id="beam_width_calc" class="hidden text-cyan-400 text-xs"></div>
+```
+
+### Live Calculation Display
 ```javascript
-// workflow_engine.js
-class WorkflowEngine {
-  constructor() {
-    this.modules = new Map();
-    this.connections = [];
-  }
+function updateCalculatedValue(fieldId) {
+  const input = document.getElementById(fieldId);
+  const calcDisplay = document.getElementById(fieldId + '_calc');
+  const value = input.value.trim();
 
-  registerModule(moduleId, moduleAPI) {
-    const config = moduleAPI.getConfig();
-    this.modules.set(moduleId, {
-      id: moduleId,
-      api: moduleAPI,
-      config: config,
-      inputs: config.inputs,
-      outputs: config.outputs
-    });
-  }
-
-  connect(sourceModuleId, sourceOutput, targetModuleId, targetInput) {
-    // Validate connection
-    const source = this.modules.get(sourceModuleId);
-    const target = this.modules.get(targetModuleId);
-
-    if (!source.config.outputs[sourceOutput]) {
-      throw new Error(`Output '${sourceOutput}' not found in ${sourceModuleId}`);
+  // Check if value contains operators (is an expression)
+  if (value && /[+\-*/^()]/.test(value)) {
+    try {
+      const result = window.ModuleNameAPI.evaluateExpression(value);
+      calcDisplay.textContent = `= ${result.toFixed(2)}`;
+      calcDisplay.classList.remove('hidden');
+    } catch (error) {
+      calcDisplay.textContent = 'Invalid expression';
+      calcDisplay.classList.remove('hidden');
+      // Optionally show error state
     }
-
-    if (!target.config.inputs[targetInput]) {
-      throw new Error(`Input '${targetInput}' not found in ${targetModuleId}`);
-    }
-
-    // Check unit compatibility
-    const outputUnit = source.config.outputs[sourceOutput].unit;
-    const inputUnit = target.config.inputs[targetInput].unit;
-
-    if (outputUnit !== inputUnit) {
-      console.warn(`Unit mismatch: ${outputUnit} -> ${inputUnit}`);
-      // Could add automatic unit conversion here
-    }
-
-    this.connections.push({
-      from: { module: sourceModuleId, output: sourceOutput },
-      to: { module: targetModuleId, input: targetInput }
-    });
-  }
-
-  executeWorkflow(startModuleId) {
-    // Topological sort and execute in order
-    // Automatically propagate values through connections
+  } else {
+    // Hide if simple number or empty
+    calcDisplay.classList.add('hidden');
   }
 }
 ```
 
-### Example Workflow Usage
-
-```javascript
-// Create workflow
-const workflow = new WorkflowEngine();
-
-// Register modules (could be automatic discovery)
-workflow.registerModule('anchorage', window.ModuleAPI_Anchorage);
-workflow.registerModule('base_plate', window.ModuleAPI_BasePlate);
-
-// Connect modules
-workflow.connect('anchorage', 'lbd', 'base_plate', 'embedment_depth');
-workflow.connect('anchorage', 'fyd', 'base_plate', 'fyd');
-
-// Execute workflow
-workflow.executeWorkflow('anchorage');
-```
+### Benefits
+- Users see evaluated result immediately (e.g., `200+50` → `= 250.00`)
+- Supports formulas like `20*5^2/8` for calculated loads
+- Error feedback for invalid expressions
 
 ---
 
-## Input Validation
+## Usage Examples
 
-### Validation Function Pattern
+### Standalone Module Usage
 ```javascript
-function validateInputs(inputs) {
-  const errors = [];
+// User clicks Calculate button
+calculateAndShow();
 
-  for (const [key, config] of Object.entries(MODULE_CONFIG.inputs)) {
-    const value = inputs[key];
+// Check console
+console.log(window.ModuleAPI.getConfig());
+console.log(window.ModuleAPI.getLastResults());
+```
 
-    // Required check
-    if (config.required && (value === undefined || value === null || value === '')) {
-      errors.push(`${config.label} is required`);
-      continue;
-    }
+### Workflow Integration
+```javascript
+// Module A calculates beam capacity
+moduleA.ModuleAPI.setInputs({
+  geometry: { b: 300, h: 600 },
+  loads: { MEd: 50, VEd: 200 }
+});
 
-    // Type check
-    if (config.type === 'number') {
-      if (isNaN(value)) {
-        errors.push(`${config.label} must be a number`);
-        continue;
-      }
+const inputsA = moduleA.ModuleAPI.getInputs();
+const resultA = moduleA.ModuleAPI.calculate(inputsA);
 
-      // Range check
-      if (config.min !== undefined && value < config.min) {
-        errors.push(`${config.label} must be >= ${config.min} ${config.unit}`);
-      }
-      if (config.max !== undefined && value > config.max) {
-        errors.push(`${config.label} must be <= ${config.max} ${config.unit}`);
-      }
-    }
+// Pass results to Module B (foundation design)
+const beamDepth = moduleA.ModuleAPI.getOutput('effective_depth');
+const beamMoment = moduleA.ModuleAPI.getOutput('primary_result');
 
-    // Enum check
-    if (config.type === 'select' && config.options) {
-      if (!config.options.includes(value)) {
-        errors.push(`${config.label} must be one of: ${config.options.join(', ')}`);
-      }
-    }
+moduleB.ModuleAPI.setInputs({
+  loads: {
+    beam_reaction: beamMoment,
+    beam_depth: beamDepth
   }
+});
 
-  return {
-    valid: errors.length === 0,
-    errors: errors
-  };
-}
+moduleB.ModuleAPI.calculate(moduleB.ModuleAPI.getInputs());
+```
+
+### Get All Outputs
+```javascript
+// After calculation
+const allOutputs = window.ModuleAPI.getAllOutputs();
+console.log(allOutputs);
+// {
+//   primary_result: 125.5,
+//   effective_depth: 465,
+//   design_strength: 19.833,
+//   utilization_percent: 85.2,
+//   overall_status: "OK",
+//   all_checks_passed: true,
+//   ...
+// }
 ```
 
 ---
@@ -396,117 +728,108 @@ function validateInputs(inputs) {
 
 To convert an existing module to this structure:
 
-- [ ] Create `MODULE_CONFIG` object with all inputs and outputs
-- [ ] Extract calculation logic into pure `calculate(inputs)` function
-- [ ] Create `gatherInputs()` function to collect from DOM
-- [ ] Create `displayResults(results)` function for UI updates
-- [ ] Implement `validateInputs(inputs)` function
-- [ ] Add `window.ModuleAPI` export
-- [ ] Store results in `window.lastCalculationResults`
-- [ ] Update `calculateAndShow()` to use new structure
-- [ ] Test standalone operation (should work exactly as before)
+### Phase 1: Calculation API
+- [ ] Create separate API file (`module_api.js`)
+- [ ] Extract calculation logic into pure `calculateModuleName(inputs)` function
+- [ ] Add `evaluateExpression()` if supporting formula inputs
+- [ ] Return EVERY intermediate value in structured format
+- [ ] Add metadata (`_metadata` object)
+- [ ] Add validation function
+- [ ] Test API standalone (Node.js or console)
+
+### Phase 2: Module Configuration
+- [ ] Create `MODULE_CONFIG` object with all input metadata
+- [ ] Add metadata for ALL outputs (primary + intermediate)
+- [ ] Include `path` property for each output
+- [ ] Define categories for grouping
+- [ ] Support "expression" type for formula inputs
+- [ ] Support optional inputs with `required: false`
+
+### Phase 3: Workflow Integration
+- [ ] Implement `gatherInputs()` function
+- [ ] Implement `setInputs()` function
+- [ ] Implement `getOutputByPath()` helper
+- [ ] Create `window.ModuleAPI` interface with 8+ methods
+- [ ] Add console logging for debugging
+
+### Phase 4: UI Integration
+- [ ] Update `calculateAndShow()` to store results in `window.lastCalculationResults`
+- [ ] Store inputs in `window.lastCalculationInputs`
+- [ ] Add live calculation display for expression inputs (optional)
+- [ ] Test standalone operation (verify no regression)
+
+### Phase 5: Testing & Documentation
+- [ ] Test all ModuleAPI methods in console
+- [ ] Verify `getOutput()` returns correct values
+- [ ] Test `setInputs()` and `getInputs()` round-trip
+- [ ] Verify backward compatibility
 - [ ] Test workflow integration with another module
-- [ ] Update documentation
+- [ ] Update module documentation
 
 ---
 
-## Example: Complete Module Conversion
+## Reference Implementation
 
-### Before (Embedded Structure)
-```javascript
-function calculateAndShow() {
-  // Get inputs directly from DOM
-  const phi_l = parseFloat(document.getElementById('phi_l').value);
-  const SEd = parseFloat(document.getElementById('SEd').value);
+**See**: `concrete_beam_design` module for complete reference implementation
 
-  // Calculate inline
-  const As = Math.PI * phi_l * phi_l / 4;
-  const sigma = SEd / As;
+Files to review:
+- `concrete_beam_design/concrete_beam_api.js` - Pure calculation API with complete traceability
+- `concrete_beam_design/index.html` (lines 996-1560) - MODULE_CONFIG + ModuleAPI
 
-  // Display inline
-  document.getElementById('result').innerHTML = `σ = ${sigma.toFixed(2)} MPa`;
-}
-```
-
-### After (Workflow-Ready Structure)
-```javascript
-const MODULE_CONFIG = {
-  module_id: "example_module",
-  inputs: {
-    phi_l: { label: "Bar diameter", type: "number", unit: "mm", required: true },
-    SEd: { label: "Design force", type: "number", unit: "kN", required: true }
-  },
-  outputs: {
-    As: { label: "Bar area", type: "number", unit: "mm²", precision: 2 },
-    sigma: { label: "Stress", type: "number", unit: "MPa", precision: 2 }
-  }
-};
-
-function calculate(inputs) {
-  const results = {};
-  results.As = Math.PI * inputs.phi_l * inputs.phi_l / 4;
-  results.sigma = (inputs.SEd * 1000) / results.As;
-  return results;
-}
-
-function gatherInputs() {
-  return {
-    phi_l: parseFloat(document.getElementById('phi_l').value),
-    SEd: parseFloat(document.getElementById('SEd').value)
-  };
-}
-
-function displayResults(results) {
-  document.getElementById('result').innerHTML =
-    `σ = ${results.sigma.toFixed(2)} MPa`;
-}
-
-function calculateAndShow() {
-  const inputs = gatherInputs();
-  const results = calculate(inputs);
-  displayResults(results);
-  window.lastCalculationResults = results;
-}
-
-window.ModuleAPI = {
-  getConfig: () => MODULE_CONFIG,
-  getInputs: () => gatherInputs(),
-  setInputs: (inputs) => { /* ... */ },
-  calculate: (inputs) => calculate(inputs),
-  getLastResults: () => window.lastCalculationResults
-};
-```
+Key features demonstrated:
+- ✅ 16 inputs with complete metadata
+- ✅ 17 outputs with path navigation
+- ✅ 50+ intermediate values returned by API
+- ✅ Expression type support (b, h, c, MEd, VEd)
+- ✅ Optional inputs (MEd, VEd default to 0)
+- ✅ Live calculation display for expressions
+- ✅ Complete metadata and traceability
+- ✅ 9 ModuleAPI methods including bonus `getAllOutputs()`
+- ✅ 100% backward compatible
 
 ---
 
 ## Benefits
 
-1. **Automatic UI Generation**: Could generate input forms from MODULE_CONFIG
-2. **Type Safety**: Validation catches errors before calculation
-3. **Documentation**: Config serves as machine-readable documentation
-4. **Testing**: Pure calculate() function is easy to unit test
-5. **Workflow Integration**: Modules can be connected without code changes
+1. **Complete Traceability**: Every calculation can be reverse engineered
+2. **Self-Documenting**: MODULE_CONFIG serves as machine-readable documentation
+3. **Type Safety**: Validation catches errors before calculation
+4. **Workflow Integration**: Modules connect without code changes
+5. **Testing**: Pure calculate() function is easy to unit test
 6. **Version Control**: Track I/O changes through config versioning
-7. **API Generation**: Could auto-generate REST API from config
-8. **Serialization**: Easy to save/load workflow configurations
+7. **Automatic Discovery**: Workflows can introspect available I/O
+8. **Backward Compatible**: Standalone operation preserved
+9. **Extensibility**: Easy to add inputs/outputs without breaking workflows
+10. **Formula Support**: Expression inputs enable calculated values
 
 ---
 
 ## Future Extensions
 
+### Automatic UI Generation
+```javascript
+// Generate input form from MODULE_CONFIG
+function generateInputForm(config) {
+  let html = '';
+  for (const [key, inputConfig] of Object.entries(config.inputs)) {
+    html += `
+      <label>${inputConfig.label} (${inputConfig.unit})</label>
+      <input type="${inputConfig.type === 'expression' ? 'text' : inputConfig.type}"
+             id="${key}"
+             value="${inputConfig.default}"
+             ${inputConfig.required ? 'required' : ''}>
+    `;
+  }
+  return html;
+}
+```
+
 ### Unit Conversion
 ```javascript
 const UNIT_CONVERSIONS = {
-  length: {
-    mm: 1,
-    cm: 10,
-    m: 1000
-  },
-  force: {
-    N: 1,
-    kN: 1000,
-    MN: 1000000
-  }
+  length: { mm: 1, cm: 10, m: 1000 },
+  force: { N: 1, kN: 1000, MN: 1000000 },
+  stress: { Pa: 1, kPa: 1000, MPa: 1000000 }
 };
 
 function convertUnit(value, fromUnit, toUnit, dimension) {
@@ -518,20 +841,30 @@ function convertUnit(value, fromUnit, toUnit, dimension) {
 
 ### Formula Tracing
 ```javascript
-results._formulas = {
-  As: "π × φ_l² / 4",
-  sigma: "S_Ed / A_s"
-};
+_metadata: {
+  formulas: {
+    fcd: "α_cc × f_ck / γ_c",
+    MRd: "min(M_Rd,c, M_Rd,s)",
+    d: "h - c - φ_l/2"
+  }
+}
 ```
-
 
 ---
 
 ## Notes
 
-- Keep backward compatibility - modules should work standalone without workflow
-- Use progressive enhancement - workflow features are optional
-- Consider async calculations for heavy computations
-- Store intermediate steps for debugging/reporting
-- Implement circular dependency detection in workflow engine
-- Consider adding `onCalculationComplete` events for reactive workflows
+- **Backward Compatibility**: Modules MUST work standalone without workflow system
+- **Progressive Enhancement**: Workflow features are optional additive layer
+- **Expression Inputs**: Use `type: "expression"` and provide live calculation feedback
+- **Complete Traceability**: Return ALL intermediate values, not just final results
+- **Path Navigation**: Use dot notation in `path` property to navigate nested results
+- **Console Logging**: Add helpful logs for debugging workflow integration
+- **Testing**: Test both standalone and workflow modes thoroughly
+- **Documentation**: MODULE_CONFIG serves as living documentation
+
+---
+
+**Last Updated**: 2025-10-22
+**Reference Implementation**: `concrete_beam_design` module
+**Status**: ✅ Production-ready pattern

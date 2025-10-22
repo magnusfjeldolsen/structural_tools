@@ -629,7 +629,11 @@
 
       // Use the API function
       const result = window.ConcreteBeamAPI.calculateConcreteBeam(inputs);
-      
+
+      // Store results for workflow access
+      window.lastCalculationResults = result;
+      window.lastCalculationInputs = inputs;
+
       if (!result.success) {
         alert('Calculation failed: ' + (result.errors ? result.errors.join('\n') : result.message));
         return;
@@ -984,6 +988,577 @@
       // Typeset math with MathJax
       MathJax.typesetPromise();
     }
+
+    // ============================================================================
+    // WORKFLOW INTEGRATION - MODULE CONFIGURATION AND API
+    // ============================================================================
+
+    /**
+     * MODULE_CONFIG - Complete metadata for all inputs and outputs
+     * Enables automatic workflow integration and self-documentation
+     */
+    const MODULE_CONFIG = {
+      module_id: "concrete_beam_design",
+      module_name: "Concrete Beam ULS Design Calculator",
+      version: "1.1.0",
+      standard: "Eurocode 2",
+      description: "Calculate moment and shear capacity with detailed step-by-step derivations",
+
+      inputs: {
+        // Geometry
+        b: {
+          label: "Beam width",
+          symbol: "b",
+          type: "expression",
+          unit: "mm",
+          required: true,
+          min: 100,
+          default: 250,
+          category: "geometry",
+          description: "Width of beam cross-section (accepts expressions like 200+50)"
+        },
+        h: {
+          label: "Beam height",
+          symbol: "h",
+          type: "expression",
+          unit: "mm",
+          required: true,
+          min: 200,
+          default: 500,
+          category: "geometry",
+          description: "Overall height of beam (accepts expressions)"
+        },
+        c: {
+          label: "Concrete cover",
+          symbol: "c",
+          type: "expression",
+          unit: "mm",
+          required: true,
+          min: 15,
+          default: 25,
+          category: "geometry",
+          description: "Concrete cover to reinforcement (accepts expressions)"
+        },
+
+        // Longitudinal reinforcement
+        phi_l: {
+          label: "Longitudinal bar diameter",
+          symbol: "φ_l",
+          type: "number",
+          unit: "mm",
+          required: true,
+          min: 6,
+          max: 40,
+          default: 20,
+          category: "longitudinal_reinforcement",
+          description: "Diameter of tension reinforcement bars"
+        },
+        n_l: {
+          label: "Number of longitudinal bars",
+          symbol: "n_l",
+          type: "number",
+          unit: "bars",
+          required: true,
+          min: 1,
+          max: 20,
+          default: 2,
+          category: "longitudinal_reinforcement",
+          description: "Number of tension reinforcement bars"
+        },
+
+        // Shear reinforcement
+        phi_b: {
+          label: "Stirrup diameter",
+          symbol: "φ_b",
+          type: "number",
+          unit: "mm",
+          required: true,
+          min: 6,
+          max: 16,
+          default: 12,
+          category: "shear_reinforcement",
+          description: "Diameter of stirrup bars"
+        },
+        cc_b: {
+          label: "Stirrup spacing",
+          symbol: "s",
+          type: "number",
+          unit: "mm",
+          required: true,
+          min: 50,
+          max: 1000,
+          default: 185,
+          category: "shear_reinforcement",
+          description: "Center-to-center spacing of stirrups"
+        },
+        n_snitt: {
+          label: "Number of stirrup legs",
+          symbol: "n_snitt",
+          type: "number",
+          unit: "legs",
+          required: true,
+          min: 2,
+          max: 8,
+          default: 2,
+          category: "shear_reinforcement",
+          description: "Number of stirrup legs in shear direction"
+        },
+
+        // Material properties
+        fck: {
+          label: "Concrete characteristic strength",
+          symbol: "f_ck",
+          type: "number",
+          unit: "MPa",
+          required: true,
+          min: 12,
+          max: 90,
+          default: 35,
+          category: "material",
+          description: "Characteristic compressive cylinder strength"
+        },
+        fyk: {
+          label: "Steel characteristic strength",
+          symbol: "f_yk",
+          type: "number",
+          unit: "MPa",
+          required: true,
+          min: 400,
+          max: 600,
+          default: 500,
+          category: "material",
+          description: "Characteristic yield strength of reinforcement"
+        },
+        alpha_cc: {
+          label: "Coefficient alpha cc",
+          symbol: "α_cc",
+          type: "number",
+          unit: "-",
+          required: true,
+          min: 0.5,
+          max: 1.0,
+          default: 0.85,
+          category: "material",
+          description: "Coefficient taking account of long term effects"
+        },
+        gamma_c: {
+          label: "Concrete partial factor",
+          symbol: "γ_c",
+          type: "number",
+          unit: "-",
+          required: true,
+          min: 1.0,
+          max: 2.0,
+          default: 1.5,
+          category: "material",
+          description: "Partial safety factor for concrete"
+        },
+        gamma_s: {
+          label: "Steel partial factor",
+          symbol: "γ_s",
+          type: "number",
+          unit: "-",
+          required: true,
+          min: 1.0,
+          max: 1.5,
+          default: 1.15,
+          category: "material",
+          description: "Partial safety factor for reinforcing steel"
+        },
+
+        // Loads
+        MEd: {
+          label: "Design bending moment",
+          symbol: "M_Ed",
+          type: "expression",
+          unit: "kNm",
+          required: false,
+          min: 0,
+          default: 0,
+          category: "loads",
+          description: "Applied design moment (accepts expressions, leave empty for 0)"
+        },
+        VEd: {
+          label: "Design shear force",
+          symbol: "V_Ed",
+          type: "expression",
+          unit: "kN",
+          required: false,
+          min: 0,
+          default: 0,
+          category: "loads",
+          description: "Applied design shear force (accepts expressions, leave empty for 0)"
+        },
+
+        // Optional description
+        calc_description: {
+          label: "Calculation description",
+          symbol: "",
+          type: "text",
+          unit: "",
+          required: false,
+          default: "",
+          category: "meta",
+          description: "Optional description for documentation"
+        }
+      },
+
+      outputs: {
+        // PRIMARY RESULTS
+        MRd: {
+          label: "Moment resistance",
+          symbol: "M_Rd",
+          type: "number",
+          unit: "kNm",
+          precision: 2,
+          category: "primary",
+          path: "results.moment_capacity.MRd"
+        },
+        VRd: {
+          label: "Shear resistance",
+          symbol: "V_Rd",
+          type: "number",
+          unit: "kN",
+          precision: 2,
+          category: "primary",
+          path: "results.shear_capacity.VRd"
+        },
+        moment_utilization: {
+          label: "Moment utilization",
+          symbol: "η_M",
+          type: "number",
+          unit: "%",
+          precision: 1,
+          category: "primary",
+          path: "status.utilizations.moment"
+        },
+        shear_utilization: {
+          label: "Shear utilization",
+          symbol: "η_V",
+          type: "number",
+          unit: "%",
+          precision: 1,
+          category: "primary",
+          path: "status.utilizations.shear"
+        },
+        tensile_utilization: {
+          label: "Tensile force utilization",
+          symbol: "η_F",
+          type: "number",
+          unit: "%",
+          precision: 1,
+          category: "primary",
+          path: "status.utilizations.tensile"
+        },
+
+        // INTERMEDIATE - Material
+        fcd: {
+          label: "Design concrete strength",
+          symbol: "f_cd",
+          type: "number",
+          unit: "MPa",
+          precision: 3,
+          category: "intermediate",
+          path: "intermediate_calculations.material.fcd"
+        },
+        fyd: {
+          label: "Design steel strength",
+          symbol: "f_yd",
+          type: "number",
+          unit: "MPa",
+          precision: 3,
+          category: "intermediate",
+          path: "intermediate_calculations.material.fyd"
+        },
+
+        // INTERMEDIATE - Geometry
+        d: {
+          label: "Effective depth",
+          symbol: "d",
+          type: "number",
+          unit: "mm",
+          precision: 2,
+          category: "intermediate",
+          path: "intermediate_calculations.geometry.d"
+        },
+        Asl: {
+          label: "Longitudinal reinforcement area",
+          symbol: "A_sl",
+          type: "number",
+          unit: "mm²",
+          precision: 2,
+          category: "intermediate",
+          path: "intermediate_calculations.geometry.Asl"
+        },
+        z: {
+          label: "Lever arm",
+          symbol: "z",
+          type: "number",
+          unit: "mm",
+          precision: 2,
+          category: "intermediate",
+          path: "intermediate_calculations.geometry.z"
+        },
+
+        // INTERMEDIATE - Shear
+        Asw: {
+          label: "Shear reinforcement area",
+          symbol: "A_sw",
+          type: "number",
+          unit: "mm²",
+          precision: 2,
+          category: "intermediate",
+          path: "intermediate_calculations.shear.Asw"
+        },
+        cot_theta_final: {
+          label: "Cotangent of strut angle",
+          symbol: "cot θ",
+          type: "number",
+          unit: "-",
+          precision: 3,
+          category: "intermediate",
+          path: "intermediate_calculations.shear.cot_theta_final"
+        },
+        theta_final: {
+          label: "Strut angle",
+          symbol: "θ",
+          type: "number",
+          unit: "°",
+          precision: 2,
+          category: "intermediate",
+          path: "intermediate_calculations.shear.theta_final"
+        },
+
+        // STATUS
+        overall_status: {
+          label: "Overall status",
+          symbol: "",
+          type: "string",
+          unit: "",
+          precision: 0,
+          category: "status",
+          path: "status.overall"
+        },
+        all_checks_ok: {
+          label: "All checks passed",
+          symbol: "",
+          type: "boolean",
+          unit: "",
+          precision: 0,
+          category: "status",
+          path: "status.checks.all_ok"
+        }
+      },
+
+      categories: {
+        geometry: { label: "Geometry", order: 1 },
+        longitudinal_reinforcement: { label: "Longitudinal Reinforcement", order: 2 },
+        shear_reinforcement: { label: "Shear Reinforcement", order: 3 },
+        material: { label: "Material Properties", order: 4 },
+        loads: { label: "Applied Loads", order: 5 },
+        meta: { label: "Documentation", order: 6 },
+        primary: { label: "Primary Results", order: 1 },
+        intermediate: { label: "Intermediate Calculations", order: 2 },
+        status: { label: "Status & Checks", order: 3 }
+      }
+    };
+
+    /**
+     * Gather inputs from DOM based on MODULE_CONFIG
+     * @returns {Object} Structured inputs matching ConcreteBeamAPI format
+     */
+    function gatherInputs() {
+      const inputs = {};
+
+      // Helper function for empty MEd/VEd fields
+      function evaluateOrZero(value) {
+        const trimmed = value.trim();
+        if (trimmed === '') return '0';
+        return trimmed;
+      }
+
+      // Build structured input object
+      inputs.geometry = {
+        b: document.getElementById('b')?.value.trim() || MODULE_CONFIG.inputs.b.default.toString(),
+        h: document.getElementById('h')?.value.trim() || MODULE_CONFIG.inputs.h.default.toString(),
+        c: document.getElementById('c')?.value.trim() || MODULE_CONFIG.inputs.c.default.toString()
+      };
+
+      inputs.loads = {
+        MEd: evaluateOrZero(document.getElementById('MEd')?.value || '0'),
+        VEd: evaluateOrZero(document.getElementById('VEd')?.value || '0')
+      };
+
+      inputs.longitudinal_reinforcement = {
+        phi_l: parseFloat(document.getElementById('phi_l')?.value || MODULE_CONFIG.inputs.phi_l.default),
+        n_l: parseFloat(document.getElementById('n_l')?.value || MODULE_CONFIG.inputs.n_l.default)
+      };
+
+      inputs.shear_reinforcement = {
+        phi_b: parseFloat(document.getElementById('phi_b')?.value || MODULE_CONFIG.inputs.phi_b.default),
+        cc_b: parseFloat(document.getElementById('cc_b')?.value || MODULE_CONFIG.inputs.cc_b.default),
+        n_snitt: parseFloat(document.getElementById('n_snitt')?.value || MODULE_CONFIG.inputs.n_snitt.default)
+      };
+
+      inputs.material = {
+        fck: parseFloat(document.getElementById('fck')?.value || MODULE_CONFIG.inputs.fck.default),
+        fyk: parseFloat(document.getElementById('fyk')?.value || MODULE_CONFIG.inputs.fyk.default),
+        alpha_cc: parseFloat(document.getElementById('alpha_cc')?.value || MODULE_CONFIG.inputs.alpha_cc.default),
+        gamma_c: parseFloat(document.getElementById('gamma_c')?.value || MODULE_CONFIG.inputs.gamma_c.default),
+        gamma_s: parseFloat(document.getElementById('gamma_s')?.value || MODULE_CONFIG.inputs.gamma_s.default)
+      };
+
+      // Optional description
+      inputs.calc_description = document.getElementById('calc_description')?.value || '';
+
+      return inputs;
+    }
+
+    /**
+     * Set inputs programmatically (for workflow integration)
+     * @param {Object} inputs - Structured input object
+     */
+    function setInputs(inputs) {
+      if (inputs.geometry) {
+        if (inputs.geometry.b !== undefined) document.getElementById('b').value = inputs.geometry.b;
+        if (inputs.geometry.h !== undefined) document.getElementById('h').value = inputs.geometry.h;
+        if (inputs.geometry.c !== undefined) document.getElementById('c').value = inputs.geometry.c;
+      }
+
+      if (inputs.loads) {
+        if (inputs.loads.MEd !== undefined) document.getElementById('MEd').value = inputs.loads.MEd;
+        if (inputs.loads.VEd !== undefined) document.getElementById('VEd').value = inputs.loads.VEd;
+      }
+
+      if (inputs.longitudinal_reinforcement) {
+        if (inputs.longitudinal_reinforcement.phi_l !== undefined)
+          document.getElementById('phi_l').value = inputs.longitudinal_reinforcement.phi_l;
+        if (inputs.longitudinal_reinforcement.n_l !== undefined)
+          document.getElementById('n_l').value = inputs.longitudinal_reinforcement.n_l;
+      }
+
+      if (inputs.shear_reinforcement) {
+        if (inputs.shear_reinforcement.phi_b !== undefined)
+          document.getElementById('phi_b').value = inputs.shear_reinforcement.phi_b;
+        if (inputs.shear_reinforcement.cc_b !== undefined)
+          document.getElementById('cc_b').value = inputs.shear_reinforcement.cc_b;
+        if (inputs.shear_reinforcement.n_snitt !== undefined)
+          document.getElementById('n_snitt').value = inputs.shear_reinforcement.n_snitt;
+      }
+
+      if (inputs.material) {
+        if (inputs.material.fck !== undefined) document.getElementById('fck').value = inputs.material.fck;
+        if (inputs.material.fyk !== undefined) document.getElementById('fyk').value = inputs.material.fyk;
+        if (inputs.material.alpha_cc !== undefined) document.getElementById('alpha_cc').value = inputs.material.alpha_cc;
+        if (inputs.material.gamma_c !== undefined) document.getElementById('gamma_c').value = inputs.material.gamma_c;
+        if (inputs.material.gamma_s !== undefined) document.getElementById('gamma_s').value = inputs.material.gamma_s;
+      }
+
+      if (inputs.calc_description !== undefined) {
+        document.getElementById('calc_description').value = inputs.calc_description;
+      }
+    }
+
+    /**
+     * Get output value by path from results object
+     * @param {string} path - Dot-notation path (e.g., "results.moment_capacity.MRd")
+     * @param {Object} results - Results object from calculation
+     * @returns {*} Value at path, or undefined if not found
+     */
+    function getOutputByPath(path, results) {
+      if (!results) return undefined;
+      return path.split('.').reduce((obj, key) => obj?.[key], results);
+    }
+
+    /**
+     * Module API - Standardized interface for workflow integration
+     * Exposes module capabilities in machine-readable format
+     */
+    window.ModuleAPI = {
+      /**
+       * Get module configuration metadata
+       * @returns {Object} MODULE_CONFIG
+       */
+      getConfig: () => MODULE_CONFIG,
+
+      /**
+       * Get current input values from DOM
+       * @returns {Object} Structured inputs
+       */
+      getInputs: () => gatherInputs(),
+
+      /**
+       * Set input values programmatically
+       * @param {Object} inputs - Structured input object
+       */
+      setInputs: (inputs) => setInputs(inputs),
+
+      /**
+       * Perform calculation with given inputs
+       * @param {Object} inputs - Structured input object
+       * @returns {Object} Calculation results
+       */
+      calculate: (inputs) => {
+        return window.ConcreteBeamAPI.calculateConcreteBeam(inputs);
+      },
+
+      /**
+       * Get last calculation results
+       * @returns {Object|null} Last results or null
+       */
+      getLastResults: () => window.lastCalculationResults || null,
+
+      /**
+       * Get last calculation inputs
+       * @returns {Object|null} Last inputs or null
+       */
+      getLastInputs: () => window.lastCalculationInputs || null,
+
+      /**
+       * Get specific output value by key
+       * Uses path from MODULE_CONFIG.outputs to navigate result structure
+       * @param {string} key - Output key from MODULE_CONFIG.outputs
+       * @returns {*} Output value or undefined
+       */
+      getOutput: (key) => {
+        const results = window.lastCalculationResults;
+        if (!results) return undefined;
+
+        const outputConfig = MODULE_CONFIG.outputs[key];
+        if (!outputConfig || !outputConfig.path) return undefined;
+
+        return getOutputByPath(outputConfig.path, results);
+      },
+
+      /**
+       * Check if calculation results are available
+       * @returns {boolean} True if results exist
+       */
+      hasResults: () => window.lastCalculationResults !== null &&
+                        window.lastCalculationResults !== undefined,
+
+      /**
+       * Get all outputs as flat object with keys from MODULE_CONFIG
+       * @returns {Object} All outputs with their config keys
+       */
+      getAllOutputs: () => {
+        const results = window.lastCalculationResults;
+        if (!results) return null;
+
+        const outputs = {};
+        for (const [key, config] of Object.entries(MODULE_CONFIG.outputs)) {
+          if (config.path) {
+            outputs[key] = getOutputByPath(config.path, results);
+          }
+        }
+        return outputs;
+      }
+    };
+
+    // Log API availability
+    console.log('Concrete Beam Design Module - Workflow API ready');
+    console.log('Access via: window.ModuleAPI');
+    console.log('Configuration:', MODULE_CONFIG);
   </script>
 
   <!-- Centralized JavaScript -->
