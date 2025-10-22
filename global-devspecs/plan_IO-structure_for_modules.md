@@ -524,16 +524,6 @@ results._formulas = {
 };
 ```
 
-### Uncertainty Propagation
-```javascript
-inputs: {
-  phi_l: {
-    value: 16,
-    uncertainty: 0.5,  // ±0.5mm tolerance
-    distribution: "normal"
-  }
-}
-```
 
 ---
 

@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="../assets/css/common.css">
   <link rel="stylesheet" href="../assets/css/forms.css">
   <link rel="stylesheet" href="../assets/css/components.css">
-  <link rel="stylesheet" href="../assets/css/print.css">
+  <link rel="stylesheet" href="../assets/css/report-print.css">
   
   <!-- Tailwind CSS -->
   <script>
@@ -45,9 +45,22 @@
       <p class="text-gray-300">Calculate moment and shear capacity with detailed step-by-step derivations</p>
     </div>
 
+    <!-- Calculation Description -->
+    <div class="bg-gray-700 rounded-lg p-6">
+      <h3 class="text-xl font-semibold text-cyan-400 mb-4">Calculation Description (Optional)</h3>
+      <div class="space-y-2">
+        <label for="calc_description" class="text-sm text-gray-300">Describe this calculation:</label>
+        <textarea id="calc_description" rows="3"
+                  placeholder="Example: Project ABC - Main beam B1..."
+                  class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md resize-y">
+        </textarea>
+        <span class="text-xs text-gray-400">This description will appear at the top of the detailed report</span>
+      </div>
+    </div>
+
     <!-- Input Form -->
     <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="grid md:grid-cols-2 gap-6">
-      
+
       <!-- Geometry Section -->
       <div class="bg-gray-700 rounded-lg p-6">
         <h3 class="text-xl font-semibold text-blue-400 mb-4">Geometry</h3>
@@ -170,12 +183,20 @@
     <!-- Results -->
     <div id="results" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50 hidden">
       <div id="calc-steps" class="text-white"></div>
-      
-      <!-- Print Button at Bottom -->
-      <div class="mt-8 print:hidden">
-        <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
-          Print to PDF
+    </div>
+
+    <!-- Detailed Report Section -->
+    <div id="report-section" class="bg-gray-700 rounded-lg p-6 mt-6 hidden">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-lg font-semibold text-white cursor-pointer" onclick="toggleReport()">
+          ▼ Detailed Calculation Report
+        </h3>
+        <button type="button" onclick="printReport()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-lg transition print:hidden">
+          🖨️ Print Report
         </button>
+      </div>
+      <div id="detailed-report" class="hidden mt-4">
+        <!-- Report content will be generated here -->
       </div>
     </div>
 
@@ -186,6 +207,296 @@
 
     function toFixedIfNeeded(num, digits=2) {
       return num.toFixed(digits);
+    }
+
+    // Helper function for utilization color coding
+    function getUtilizationColor(utilization) {
+      if (utilization <= 85) return 'text-green-900';
+      if (utilization <= 100) return 'text-yellow-900';
+      return 'text-red-900';
+    }
+
+    // Toggle report visibility
+    function toggleReport() {
+      const report = document.getElementById('detailed-report');
+      const header = event.currentTarget;
+      report.classList.toggle('hidden');
+      header.textContent = report.classList.contains('hidden') ? '▼ Detailed Calculation Report' : '▲ Detailed Calculation Report';
+    }
+
+    // Print report
+    function printReport() {
+      window.print();
+    }
+
+    // Create beam cross-section SVG visualization
+    function createBeamVisualization(b, h, c, phi_l, n_l) {
+      const svgWidth = 400;
+      const svgHeight = 500;
+      const scale = Math.min(300 / h, 250 / b);
+
+      const beamWidth = b * scale;
+      const beamHeight = h * scale;
+      const centerX = svgWidth / 2;
+      const centerY = svgHeight / 2;
+
+      // Calculate bar positions
+      const barCenterY = centerY + beamHeight/2 - c*scale - phi_l*scale/2;
+      const barSpacing = n_l > 1 ? (beamWidth - 2*c*scale) / (n_l - 1) : 0;
+      const barStartX = n_l > 1 ? centerX - beamWidth/2 + c*scale : centerX;
+
+      let svg = `<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">`;
+
+      // Concrete beam rectangle (grey)
+      svg += `<rect x="${centerX - beamWidth/2}" y="${centerY - beamHeight/2}"
+                    width="${beamWidth}" height="${beamHeight}"
+                    fill="#9ca3af" stroke="#374151" stroke-width="2"/>`;
+
+      // Dimension lines and labels
+      // Width dimension (top)
+      const dimY = centerY - beamHeight/2 - 30;
+      svg += `<line x1="${centerX - beamWidth/2}" y1="${dimY}" x2="${centerX + beamWidth/2}" y2="${dimY}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<line x1="${centerX - beamWidth/2}" y1="${dimY-5}" x2="${centerX - beamWidth/2}" y2="${dimY+5}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<line x1="${centerX + beamWidth/2}" y1="${dimY-5}" x2="${centerX + beamWidth/2}" y2="${dimY+5}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<text x="${centerX}" y="${dimY-10}" text-anchor="middle" fill="#1f2937" font-size="14" font-weight="bold">b = ${b} mm</text>`;
+
+      // Height dimension (right side)
+      const dimX = centerX + beamWidth/2 + 30;
+      svg += `<line x1="${dimX}" y1="${centerY - beamHeight/2}" x2="${dimX}" y2="${centerY + beamHeight/2}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<line x1="${dimX-5}" y1="${centerY - beamHeight/2}" x2="${dimX+5}" y2="${centerY - beamHeight/2}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<line x1="${dimX-5}" y1="${centerY + beamHeight/2}" x2="${dimX+5}" y2="${centerY + beamHeight/2}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<text x="${dimX+10}" y="${centerY}" text-anchor="start" fill="#1f2937" font-size="14" font-weight="bold" transform="rotate(90 ${dimX+10} ${centerY})">h = ${h} mm</text>`;
+
+      // Cover dimension (left side)
+      const coverDimX = centerX - beamWidth/2 - 25;
+      const coverY1 = centerY + beamHeight/2;
+      const coverY2 = barCenterY;
+      svg += `<line x1="${coverDimX}" y1="${coverY1}" x2="${coverDimX}" y2="${coverY2}"
+                    stroke="#ef4444" stroke-width="1" stroke-dasharray="3,3"/>`;
+      svg += `<text x="${coverDimX-5}" y="${(coverY1+coverY2)/2}" text-anchor="end" fill="#dc2626" font-size="12">c = ${c}</text>`;
+
+      // Reinforcement bars
+      const barRadius = (phi_l * scale) / 2;
+      for (let i = 0; i < n_l; i++) {
+        const barX = n_l > 1 ? barStartX + i * barSpacing : barStartX;
+        svg += `<circle cx="${barX}" cy="${barCenterY}" r="${barRadius}"
+                        fill="#1f2937" stroke="#000" stroke-width="1.5"/>`;
+      }
+
+      // Bar label
+      svg += `<text x="${centerX}" y="${centerY + beamHeight/2 + 50}" text-anchor="middle" fill="#1f2937" font-size="12">
+                ${n_l} × φ${phi_l} mm
+              </text>`;
+
+      svg += '</svg>';
+      return svg;
+    }
+
+    // Generate detailed report
+    function generateDetailedReport(result) {
+      const description = document.getElementById('calc_description').value.trim();
+      const timestamp = new Date().toLocaleString();
+
+      // Extract values
+      const b = result.inputs.geometry.b;
+      const h = result.inputs.geometry.h;
+      const c = result.inputs.geometry.c;
+      const MEd = result.inputs.loads.MEd;
+      const VEd = result.inputs.loads.VEd;
+      const phi_l = result.inputs.longitudinal_reinforcement.phi_l;
+      const n_l = result.inputs.longitudinal_reinforcement.n_l;
+      const phi_b = result.inputs.shear_reinforcement.phi_b;
+      const cc_b = result.inputs.shear_reinforcement.cc_b;
+      const n_snitt = result.inputs.shear_reinforcement.n_snitt;
+      const fck = result.inputs.material.fck;
+      const fyk = result.inputs.material.fyk;
+      const alpha_cc = result.inputs.material.alpha_cc;
+      const gamma_c = result.inputs.material.gamma_c;
+      const gamma_s = result.inputs.material.gamma_s;
+
+      const d = result.intermediate_calculations.geometry.d;
+      const Asl = result.intermediate_calculations.geometry.Asl;
+      const z = result.intermediate_calculations.geometry.z;
+      const fcd = result.intermediate_calculations.material.fcd;
+      const fyd = result.intermediate_calculations.material.fyd;
+      const Asw = result.intermediate_calculations.shear.Asw;
+      const z_v = result.intermediate_calculations.shear.z_v;
+      const cot_theta_final = result.intermediate_calculations.shear.cot_theta_final;
+      const theta_final = result.intermediate_calculations.shear.theta_final;
+
+      const MRd = result.results.moment_capacity.MRd;
+      const VRd = result.results.shear_capacity.VRd_s;
+      const moment_util = result.status.utilizations.moment;
+      const shear_util = result.status.utilizations.shear;
+      const tensile_util = result.status.utilizations.tensile;
+      const rho = (Asl / (b * d) * 100).toFixed(3);
+
+      // Create beam visualization
+      const beamSVG = createBeamVisualization(b, h, c, phi_l, n_l);
+
+      let reportHTML = `
+        <div class="report-content bg-white text-gray-900 p-8 rounded-lg">
+      `;
+
+      // Description section (if provided)
+      if (description) {
+        reportHTML += `
+          <div class="mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
+            <p class="text-gray-800 whitespace-pre-wrap">${description}</p>
+          </div>
+        `;
+      }
+
+      // Title
+      reportHTML += `
+        <div class="text-center mb-8">
+          <h1 class="text-3xl font-bold text-gray-900 mb-2">Concrete Beam ULS Design Calculation</h1>
+          <p class="text-gray-600">Calculate moment and shear capacity with detailed step-by-step derivations</p>
+          <p class="text-sm text-gray-500 mt-2">Calculation Date: ${timestamp}</p>
+        </div>
+      `;
+
+      // INPUT PARAMETERS (Blue heading, 2-column grid)
+      reportHTML += `
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #1d4ed8;">INPUT PARAMETERS</h2>
+          <div class="grid grid-cols-2 gap-6">
+            <div>
+              <h3 class="font-semibold text-gray-800 mb-3">Geometry & Reinforcement</h3>
+              <div class="space-y-2 text-sm">
+                <div><span class="text-gray-600">Width b =</span> <span class="font-semibold">${b} mm</span></div>
+                <div><span class="text-gray-600">Overall height h =</span> <span class="font-semibold">${h} mm</span></div>
+                <div><span class="text-gray-600">Concrete cover c =</span> <span class="font-semibold">${c} mm</span></div>
+                <div><span class="text-gray-600">Effective depth d =</span> <span class="font-semibold">${d} mm</span></div>
+                <div><span class="text-gray-600">Tension reinforcement A<sub>s</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(Asl)} mm²</span> <span class="text-gray-500">(${n_l} × φ${phi_l})</span></div>
+                <div><span class="text-gray-600">Stirrup area A<sub>sw</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(Asw)} mm²</span> <span class="text-gray-500">(${n_snitt} × φ${phi_b})</span></div>
+                <div><span class="text-gray-600">Stirrup spacing s =</span> <span class="font-semibold">${cc_b} mm</span></div>
+              </div>
+            </div>
+            <div>
+              <h3 class="font-semibold text-gray-800 mb-3">Material Properties & Loading</h3>
+              <div class="space-y-2 text-sm">
+                <div><span class="text-gray-600">f<sub>ck</sub> =</span> <span class="font-semibold">${fck} MPa</span></div>
+                <div><span class="text-gray-600">f<sub>yk</sub> =</span> <span class="font-semibold">${fyk} MPa</span></div>
+                <div><span class="text-gray-600">α<sub>cc</sub> =</span> <span class="font-semibold">${alpha_cc}</span></div>
+                <div><span class="text-gray-600">γ<sub>c</sub> =</span> <span class="font-semibold">${gamma_c}</span></div>
+                <div><span class="text-gray-600">γ<sub>s</sub> =</span> <span class="font-semibold">${gamma_s}</span></div>
+                <div class="pt-2 border-t border-gray-300"><span class="text-gray-600">f<sub>cd</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(fcd)} MPa</span></div>
+                <div><span class="text-gray-600">f<sub>yd</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(fyd)} MPa</span></div>
+                <div class="pt-2 border-t border-gray-300"><span class="text-gray-600">Applied moment M<sub>Ed</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(MEd)} kNm</span></div>
+                <div><span class="text-gray-600">Applied shear V<sub>Ed</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(VEd)} kN</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // PLOT (Yellow heading)
+      reportHTML += `
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #a16207;">PLOT</h2>
+          <div class="flex justify-center bg-gray-50 p-6 rounded-lg">
+            ${beamSVG}
+          </div>
+        </div>
+      `;
+
+      // RESULTS SUMMARY (Green heading)
+      reportHTML += `
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #15803d;">RESULTS SUMMARY</h2>
+
+          <div class="bg-blue-100 border-2 border-blue-400 rounded-lg p-6 mb-6 text-center">
+            <div class="text-4xl font-bold text-blue-900 mb-2">${toFixedIfNeeded(MRd)} kNm</div>
+            <div class="text-lg text-blue-800">Moment Capacity of Beam Section</div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4">
+            <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
+              <div class="text-sm text-gray-600 mb-2">Moment Utilization</div>
+              <div class="text-2xl font-bold ${getUtilizationColor(moment_util)}">${moment_util}%</div>
+              <div class="text-xs text-gray-500 mt-1">M<sub>Ed</sub> / M<sub>Rd</sub></div>
+            </div>
+            <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
+              <div class="text-sm text-gray-600 mb-2">Shear Utilization</div>
+              <div class="text-2xl font-bold ${getUtilizationColor(shear_util)}">${shear_util}%</div>
+              <div class="text-xs text-gray-500 mt-1">V<sub>Ed</sub> / V<sub>Rd</sub></div>
+            </div>
+            <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
+              <div class="text-sm text-gray-600 mb-2">Reinforcement Ratio</div>
+              <div class="text-2xl font-bold text-gray-900">ρ = ${rho}%</div>
+              <div class="text-xs text-gray-500 mt-1">A<sub>s</sub> / (b×d)</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // DETAILED CALCULATIONS (Purple heading, page break)
+      reportHTML += `
+        <div class="page-break-before">
+          <h2 class="text-2xl font-bold mb-6 pb-2 border-b-2" style="color: #6b21a8;">DETAILED CALCULATIONS</h2>
+
+          <!-- Material Properties -->
+          <div class="bg-gray-50 rounded-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Design Strengths</h3>
+            <div class="space-y-2 text-sm">
+              <div>f<sub>cd</sub> = (α<sub>cc</sub> × f<sub>ck</sub>) / γ<sub>c</sub> = (${alpha_cc} × ${fck}) / ${gamma_c} = <span class="font-semibold">${toFixedIfNeeded(fcd)} MPa</span></div>
+              <div>f<sub>yd</sub> = f<sub>yk</sub> / γ<sub>s</sub> = ${fyk} / ${gamma_s} = <span class="font-semibold">${toFixedIfNeeded(fyd)} MPa</span></div>
+            </div>
+          </div>
+
+          <!-- Moment Capacity -->
+          <div class="bg-gray-50 rounded-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Ultimate Moment Capacity</h3>
+            <div class="space-y-3 text-sm">
+              <div>
+                <div class="font-medium text-gray-700 mb-1">Step 1: Lever Arm</div>
+                <div>z = min(0.95d, z<sub>bal</sub>) = <span class="font-semibold">${toFixedIfNeeded(z)} mm</span></div>
+              </div>
+              <div>
+                <div class="font-medium text-gray-700 mb-1">Step 2: Moment Capacity</div>
+                <div>M<sub>Rd</sub> = A<sub>s</sub> × f<sub>yd</sub> × z</div>
+                <div>M<sub>Rd</sub> = ${toFixedIfNeeded(Asl)} × ${toFixedIfNeeded(fyd)} × ${toFixedIfNeeded(z)} / 10⁶ = <span class="font-semibold">${toFixedIfNeeded(MRd)} kNm</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shear Capacity -->
+          <div class="bg-gray-50 rounded-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Shear Resistance</h3>
+            <div class="space-y-3 text-sm">
+              <div>
+                <div class="font-medium text-gray-700 mb-1">Shear Reinforcement Capacity</div>
+                <div>V<sub>Rd,s</sub> = (A<sub>sw</sub>/s) × z<sub>v</sub> × f<sub>yd</sub> × cot θ</div>
+                <div>θ<sub>final</sub> = ${toFixedIfNeeded(theta_final)}° (cot θ = ${toFixedIfNeeded(cot_theta_final)})</div>
+                <div>z<sub>v</sub> = 0.9 × d = ${toFixedIfNeeded(z_v)} mm</div>
+                <div>V<sub>Rd,s</sub> = (${toFixedIfNeeded(Asw)} / ${cc_b}) × ${toFixedIfNeeded(z_v)} × ${toFixedIfNeeded(fyd)} × ${toFixedIfNeeded(cot_theta_final)} / 1000</div>
+                <div>V<sub>Rd,s</sub> = <span class="font-semibold">${toFixedIfNeeded(VRd)} kN</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Utilization Checks -->
+          <div class="bg-gray-50 rounded-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Capacity Verification</h3>
+            <div class="space-y-2 text-sm">
+              <div>Moment utilization = M<sub>Ed</sub> / M<sub>Rd</sub> = ${toFixedIfNeeded(MEd)} / ${toFixedIfNeeded(MRd)} = <span class="font-semibold ${getUtilizationColor(moment_util)}">${moment_util}%</span></div>
+              <div>Shear utilization = V<sub>Ed</sub> / V<sub>Rd</sub> = ${toFixedIfNeeded(VEd)} / ${toFixedIfNeeded(VRd)} = <span class="font-semibold ${getUtilizationColor(shear_util)}">${shear_util}%</span></div>
+              <div>Reinforcement ratio ρ = A<sub>s</sub> / (b × d) = ${toFixedIfNeeded(Asl)} / (${b} × ${d}) = <span class="font-semibold">${rho}%</span></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      reportHTML += `</div>`;
+
+      document.getElementById('detailed-report').innerHTML = reportHTML;
     }
 
     // Utility function to copy text to clipboard
@@ -607,6 +918,10 @@
       const container = document.getElementById('calc-steps');
       container.innerHTML = stepsLatex;
       document.getElementById('results').style.display = 'block';
+
+      // Generate detailed report
+      generateDetailedReport(result);
+      document.getElementById('report-section').classList.remove('hidden');
 
       // Typeset math with MathJax
       MathJax.typesetPromise();
