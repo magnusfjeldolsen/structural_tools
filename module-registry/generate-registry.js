@@ -17,12 +17,12 @@ const OUTPUT_FILE = path.join(__dirname, 'module-registry.json');
  */
 function extractMetaTag(html, name) {
   // Try name attribute
-  const nameRegex = new RegExp(`<meta\s+name=["']${name}["']\s+content=["']([^"']+)["']`, 'i');
+  const nameRegex = new RegExp(`<meta\\s+name=["']${name}["']\\s+content=["']([^"']+)["']`, 'i');
   const nameMatch = html.match(nameRegex);
   if (nameMatch) return nameMatch[1];
 
   // Try property attribute (for og: tags)
-  const propRegex = new RegExp(`<meta\s+property=["']${name}["']\s+content=["']([^"']+)["']`, 'i');
+  const propRegex = new RegExp(`<meta\\s+property=["']${name}["']\\s+content=["']([^"']+)["']`, 'i');
   const propMatch = html.match(propRegex);
   if (propMatch) return propMatch[1];
 
