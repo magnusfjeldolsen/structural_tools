@@ -66,19 +66,28 @@
         <h3 class="text-xl font-semibold text-blue-400 mb-4">Geometry</h3>
         
         <div class="space-y-4">
-          <div class="flex items-center gap-4">
-            <label for="b" class="text-sm font-medium min-w-[100px] text-right">b (mm):</label>
-            <input type="number" id="b" value="250" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <div>
+            <div class="flex items-center gap-4">
+              <label for="b" class="text-sm font-medium min-w-[100px] text-right">b (mm):</label>
+              <input type="text" id="b" value="250" placeholder="Example: 200+50" required onblur="updateCalculatedValue('b')" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            <div id="b_calc" class="ml-[116px] mt-1 text-xs text-cyan-400 hidden"></div>
           </div>
-          
-          <div class="flex items-center gap-4">
-            <label for="h" class="text-sm font-medium min-w-[100px] text-right">h (mm):</label>
-            <input type="number" id="h" value="500" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+
+          <div>
+            <div class="flex items-center gap-4">
+              <label for="h" class="text-sm font-medium min-w-[100px] text-right">h (mm):</label>
+              <input type="text" id="h" value="500" placeholder="Example: 400+100" required onblur="updateCalculatedValue('h')" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            <div id="h_calc" class="ml-[116px] mt-1 text-xs text-cyan-400 hidden"></div>
           </div>
-          
-          <div class="flex items-center gap-4">
-            <label for="c" class="text-sm font-medium min-w-[100px] text-right">c (mm):</label>
-            <input type="number" id="c" value="25" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+
+          <div>
+            <div class="flex items-center gap-4">
+              <label for="c" class="text-sm font-medium min-w-[100px] text-right">c (mm):</label>
+              <input type="text" id="c" value="25" placeholder="Example: 20+5" required onblur="updateCalculatedValue('c')" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            <div id="c_calc" class="ml-[116px] mt-1 text-xs text-cyan-400 hidden"></div>
           </div>
         </div>
       </div>
@@ -86,16 +95,22 @@
       <!-- Loads Section -->
       <div class="bg-gray-700 rounded-lg p-6">
         <h3 class="text-xl font-semibold text-red-400 mb-4">Applied Loads</h3>
-        
+
         <div class="space-y-4">
-          <div class="flex items-center gap-4">
-            <label for="MEd" class="text-sm font-medium min-w-[100px] text-right">M<sub>Ed</sub> (kNm):</label>
-            <input type="text" id="MEd" value="39" placeholder="Example input: 20*5^2/8" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <div>
+            <div class="flex items-center gap-4">
+              <label for="MEd" class="text-sm font-medium min-w-[100px] text-right">M<sub>Ed</sub> (kNm):</label>
+              <input type="text" id="MEd" value="39" placeholder="Example: 20*5^2/8 (leave empty for 0)" onblur="updateCalculatedValue('MEd')" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            <div id="MEd_calc" class="ml-[116px] mt-1 text-xs text-cyan-400 hidden"></div>
           </div>
-          
-          <div class="flex items-center gap-4">
-            <label for="VEd" class="text-sm font-medium min-w-[100px] text-right">V<sub>Ed</sub> (kN):</label>
-            <input type="text" id="VEd" value="260" placeholder="Example input: 20*5/2" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+
+          <div>
+            <div class="flex items-center gap-4">
+              <label for="VEd" class="text-sm font-medium min-w-[100px] text-right">V<sub>Ed</sub> (kN):</label>
+              <input type="text" id="VEd" value="260" placeholder="Example: 20*5/2 (leave empty for 0)" onblur="updateCalculatedValue('VEd')" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            <div id="VEd_calc" class="ml-[116px] mt-1 text-xs text-cyan-400 hidden"></div>
           </div>
         </div>
       </div>
@@ -161,7 +176,7 @@
           
           <div class="flex items-center gap-4">
             <label for="gamma_s" class="text-sm font-medium min-w-[100px] text-right">γ<sub>s</sub>:</label>
-            <input type="number" id="gamma_s" value="1.25" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <input type="number" id="gamma_s" value="1.15" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
           </div>
           
           <div class="flex items-center gap-4">
@@ -176,7 +191,7 @@
     <!-- Calculate Button -->
     <div class="space-y-2 print:hidden">
       <button onclick="calculateAndShow()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
-        Calculate ULS Capacities
+        Calculate
       </button>
     </div>
 
@@ -207,6 +222,34 @@
 
     function toFixedIfNeeded(num, digits=2) {
       return num.toFixed(digits);
+    }
+
+    // Update calculated value display for expression inputs
+    function updateCalculatedValue(fieldId) {
+      const input = document.getElementById(fieldId);
+      const calcDisplay = document.getElementById(fieldId + '_calc');
+      const value = input.value.trim();
+
+      // Check if the value contains any operators (is an expression)
+      if (value && /[+\-*/^()]/.test(value)) {
+        try {
+          // Use the API's evaluateExpression function
+          const result = window.ConcreteBeamAPI.evaluateExpression(value);
+          calcDisplay.textContent = `= ${toFixedIfNeeded(result, 2)}`;
+          calcDisplay.classList.remove('hidden');
+        } catch (error) {
+          calcDisplay.textContent = 'Invalid expression';
+          calcDisplay.classList.remove('hidden');
+          calcDisplay.classList.add('text-red-400');
+          setTimeout(() => {
+            calcDisplay.classList.remove('text-red-400');
+            calcDisplay.classList.add('text-cyan-400');
+          }, 2000);
+        }
+      } else {
+        // Hide if it's just a simple number or empty
+        calcDisplay.classList.add('hidden');
+      }
     }
 
     // Helper function for utilization color coding
@@ -429,9 +472,9 @@
               <div class="text-xs text-gray-500 mt-1">V<sub>Ed</sub> / V<sub>Rd</sub></div>
             </div>
             <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
-              <div class="text-sm text-gray-600 mb-2">Reinforcement Ratio</div>
-              <div class="text-2xl font-bold text-gray-900">ρ = ${rho}%</div>
-              <div class="text-xs text-gray-500 mt-1">A<sub>s</sub> / (b×d)</div>
+              <div class="text-sm text-gray-600 mb-2">Tensile Force Utilization</div>
+              <div class="text-2xl font-bold ${getUtilizationColor(tensile_util)}">${tensile_util}%</div>
+              <div class="text-xs text-gray-500 mt-1">F<sub>Ed</sub> / F<sub>Rd</sub></div>
             </div>
           </div>
         </div>
@@ -548,16 +591,23 @@
     }
 
     function calculateAndShow() {
+      // Helper function to evaluate expression or return 0 if empty
+      function evaluateOrZero(value) {
+        const trimmed = value.trim();
+        if (trimmed === '') return '0';
+        return trimmed;
+      }
+
       // Collect inputs in API format
       const inputs = {
         geometry: {
-          b: parseFloat(document.getElementById('b').value),
-          h: parseFloat(document.getElementById('h').value),
-          c: parseFloat(document.getElementById('c').value)
+          b: document.getElementById('b').value.trim(),
+          h: document.getElementById('h').value.trim(),
+          c: document.getElementById('c').value.trim()
         },
         loads: {
-          MEd: document.getElementById('MEd').value.trim(),
-          VEd: document.getElementById('VEd').value.trim()
+          MEd: evaluateOrZero(document.getElementById('MEd').value),
+          VEd: evaluateOrZero(document.getElementById('VEd').value)
         },
         longitudinal_reinforcement: {
           phi_l: parseFloat(document.getElementById('phi_l').value),
@@ -631,10 +681,44 @@
 
       // Create organized calculation boxes
       const stepsLatex = `
+      <div class="mt-8 p-6 bg-gray-800 rounded-lg border-l-4 border-blue-500 mb-6">
+        <h3 class="text-xl font-bold text-white mb-4">Summary of Results</h3>
+        <div class="grid md:grid-cols-3 gap-6 text-sm">
+          <div>
+            <h4 class="font-semibold text-blue-400 mb-2">Moment Capacity</h4>
+            <p><span class="text-gray-300">M<sub>Rd,c</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_c)} kNm</span></p>
+            <p><span class="text-gray-300">M<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_s)} kNm</span></p>
+            <p><span class="text-gray-300">M<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MEd)} kNm</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.moment > 100 ? 'text-red-400' : result.status.utilizations.moment > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.moment}%</span></p>
+          </div>
+          <div>
+            <h4 class="font-semibold text-purple-400 mb-2">Shear Capacity</h4>
+            <p><span class="text-gray-300">V<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(VRd_s_final)} kN</span></p>
+            <p><span class="text-gray-300">V<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(VEd)} kN</span></p>
+            <p><span class="text-gray-300">θ<sub>final</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(theta_final)}°</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.shear > 100 ? 'text-red-400' : result.status.utilizations.shear > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.shear}%</span></p>
+          </div>
+          <div>
+            <h4 class="font-semibold text-green-400 mb-2">Tensile Force Check</h4>
+            <p><span class="text-gray-300">F<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(F_Ed)} kN</span></p>
+            <p><span class="text-gray-300">F<sub>Rd</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(F_Rd)} kN</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.tensile > 100 ? 'text-red-400' : result.status.utilizations.tensile > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.tensile}%</span></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Beam Cross-Section Plot -->
+      <div class="bg-gray-800 rounded-lg p-6 mb-6">
+        <h3 class="text-xl font-bold text-yellow-400 mb-4">Beam Cross-Section</h3>
+        <div class="flex justify-center bg-white rounded-lg p-4">
+          ${createBeamVisualization(b, h, c, phi_l, n_l)}
+        </div>
+      </div>
+
       <div class="mb-6">
         <h2 class="text-2xl font-bold text-blue-400 mb-4">ULS Calculation Results</h2>
       </div>
-      
+
       <!-- Geometry Box -->
       <div class="calc-box mb-6">
         <div class="calc-header">
@@ -884,32 +968,6 @@
             <span class="calc-expression">A<sub>sl</sub> × f<sub>yd</sub> = ${toFixedIfNeeded(Asl)} × ${toFixedIfNeeded(fyd)}</span>
             <span class="calc-equals">=</span>
             <span class="calc-value">${toFixedIfNeeded(F_Rd)} kN</span>
-          </div>
-        </div>
-      </div>
-      
-      <div class="mt-8 p-6 bg-gray-800 rounded-lg border-l-4 border-blue-500">
-        <h3 class="text-xl font-bold text-white mb-4">Summary of Results</h3>
-        <div class="grid md:grid-cols-2 gap-6 text-sm">
-          <div>
-            <h4 class="font-semibold text-blue-400 mb-2">Moment Capacity</h4>
-            <p><span class="text-gray-300">M<sub>Rd,c</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_c)} kNm</span></p>
-            <p><span class="text-gray-300">M<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_s)} kNm</span></p>
-            <p><span class="text-gray-300">M<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MEd)} kNm</span></p>
-            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.moment > 100 ? 'text-red-400' : result.status.utilizations.moment > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.moment}%</span></p>
-          </div>
-          <div>
-            <h4 class="font-semibold text-purple-400 mb-2">Shear Capacity</h4>
-            <p><span class="text-gray-300">V<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(VRd_s_final)} kN</span></p>
-            <p><span class="text-gray-300">V<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(VEd)} kN</span></p>
-            <p><span class="text-gray-300">θ<sub>final</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(theta_final)}°</span></p>
-            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.shear > 100 ? 'text-red-400' : result.status.utilizations.shear > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.shear}%</span></p>
-          </div>
-          <div>
-            <h4 class="font-semibold text-green-400 mb-2">Tensile Force Check</h4>
-            <p><span class="text-gray-300">F<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(F_Ed)} kN</span></p>
-            <p><span class="text-gray-300">F<sub>Rd</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(F_Rd)} kN</span></p>
-            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.tensile > 100 ? 'text-red-400' : result.status.utilizations.tensile > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.tensile}%</span></p>
           </div>
         </div>
       </div>

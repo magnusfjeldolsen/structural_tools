@@ -101,10 +101,10 @@ function calculateConcreteBeam(inputs) {
     }
     
     // Extract and evaluate inputs
-    const b = parseFloat(inputs.geometry.b);
-    const h = parseFloat(inputs.geometry.h);
-    const c = parseFloat(inputs.geometry.c);
-    
+    const b = evaluateExpression(inputs.geometry.b);
+    const h = evaluateExpression(inputs.geometry.h);
+    const c = evaluateExpression(inputs.geometry.c);
+
     // Evaluate load expressions
     const MEd = evaluateExpression(inputs.loads.MEd);
     const VEd = evaluateExpression(inputs.loads.VEd);
@@ -210,7 +210,7 @@ function calculateConcreteBeam(inputs) {
       }
     }
     
-    // Return structured results
+    // Return structured results - ALL intermediate values for complete traceability
     return {
       success: true,
       inputs: {
@@ -221,38 +221,119 @@ function calculateConcreteBeam(inputs) {
         material: {fck, fyk, alpha_cc, gamma_c, gamma_s}
       },
       intermediate_calculations: {
+        // Material design strengths
+        material: {
+          fcd: parseFloat(fcd.toFixed(3)),
+          fyd: parseFloat(fyd.toFixed(3)),
+          // Intermediate values for fcd calculation
+          alpha_cc_times_fck: parseFloat((alpha_cc * fck).toFixed(3)),
+          // Intermediate values for fyd calculation
+          fyk_over_gamma_s: parseFloat((fyk / gamma_s).toFixed(3))
+        },
+
+        // Geometric properties
         geometry: {
+          // Effective depth calculation
           d: parseFloat(d.toFixed(2)),
+          h_minus_c: parseFloat((h - c).toFixed(2)),
+          phi_l_over_2: parseFloat((phi_l / 2).toFixed(2)),
+
+          // Longitudinal reinforcement area
           Asl: parseFloat(Asl.toFixed(2)),
+          single_bar_area: parseFloat((Math.PI * Math.pow(phi_l, 2) / 4).toFixed(2)),
+
+          // Lever arm calculations
           z: parseFloat(z.toFixed(2)),
           z_95d: parseFloat(z_95d.toFixed(2)),
-          z_bal: parseFloat(z_bal.toFixed(2))
+          z_bal: parseFloat(z_bal.toFixed(2)),
+          z_bal_numerator: parseFloat((MEd * 1000000).toFixed(2)),
+          z_bal_denominator: parseFloat((0.275 * b * Math.pow(d, 2) * fcd).toFixed(2)),
+          z_bal_ratio: parseFloat((MEd * 1000000 / (0.275 * b * Math.pow(d, 2) * fcd)).toFixed(4))
         },
-        material: {
-          fcd: parseFloat(fcd.toFixed(2)),
-          fyd: parseFloat(fyd.toFixed(2))
+
+        // Moment capacity intermediate values
+        moment: {
+          // Concrete moment capacity
+          MRd_c: parseFloat(MRd_c.toFixed(2)),
+          MRd_c_numerator: parseFloat((0.275 * b * Math.pow(d, 2) * fcd).toFixed(2)),
+          concrete_factor: 0.275,
+          b_times_d_squared: parseFloat((b * Math.pow(d, 2)).toFixed(2)),
+
+          // Steel moment capacity
+          MRd_s: parseFloat(MRd_s.toFixed(2)),
+          MRd_s_numerator: parseFloat((Asl * fyd * z).toFixed(2)),
+          Asl_times_fyd: parseFloat((Asl * fyd).toFixed(2))
         },
+
+        // Shear reinforcement properties
         shear: {
+          // Stirrup area
           Asw: parseFloat(Asw.toFixed(2)),
+          single_stirrup_leg_area: parseFloat((Math.PI * Math.pow(phi_b, 2) / 4).toFixed(2)),
+
+          // Shear lever arm
           z_v: parseFloat(z_skjaer.toFixed(2)),
-          cot_theta_initial: parseFloat(cot_theta_initial.toFixed(2)),
-          theta_initial: parseFloat(theta_initial.toFixed(1)),
-          cot_theta_red: parseFloat(cot_theta_red.toFixed(2)),
-          theta_red: parseFloat(theta_red.toFixed(1)),
-          cot_theta_final: parseFloat(cot_theta_final.toFixed(2)),
-          theta_final: parseFloat(theta_final.toFixed(1)),
-          angle_status: angle_status
+          z_v_factor: 0.9,
+
+          // Stirrup spacing ratio
+          Asw_over_s: parseFloat((Asw / cc_b).toFixed(4)),
+
+          // Initial angle
+          cot_theta_initial: parseFloat(cot_theta_initial.toFixed(3)),
+          theta_initial: parseFloat(theta_initial.toFixed(2)),
+          theta_initial_rad: parseFloat((theta_initial * Math.PI / 180).toFixed(4)),
+
+          // Initial shear capacity
+          VRd_s_initial: parseFloat(VRd_s_initial.toFixed(2)),
+          VRd_s_initial_numerator: parseFloat(((Asw / cc_b) * z_skjaer * fyd * cot_theta_initial).toFixed(2)),
+
+          // Reduced angle calculation
+          cot_theta_red: parseFloat(cot_theta_red.toFixed(3)),
+          cot_theta_red_numerator: parseFloat(VEd.toFixed(2)),
+          cot_theta_red_denominator: parseFloat(((Asw / cc_b) * z_skjaer * fyd / 1000).toFixed(4)),
+          theta_red: parseFloat(theta_red.toFixed(2)),
+          theta_red_rad: parseFloat(theta_red_rad.toFixed(4)),
+
+          // Final angle (after limits check)
+          cot_theta_final: parseFloat(cot_theta_final.toFixed(3)),
+          theta_final: parseFloat(theta_final.toFixed(2)),
+          theta_final_rad: parseFloat((theta_final * Math.PI / 180).toFixed(4)),
+          angle_status: angle_status,
+          cot_theta_min: 1.0,
+          cot_theta_max: 2.5,
+
+          // Final shear capacity
+          VRd_s_final: parseFloat(VRd_s_final.toFixed(2)),
+          VRd_s_final_numerator: parseFloat(((Asw / cc_b) * z_skjaer * fyd * cot_theta_final).toFixed(2))
+        },
+
+        // Tensile force calculations
+        tensile_force: {
+          DeltaF_td: parseFloat(DeltaF_td.toFixed(2)),
+          DeltaF_td_factor: 0.5,
+          VEd_times_cot_theta: parseFloat((VEd * cot_theta_final).toFixed(2)),
+
+          F_tM: parseFloat(F_tM.toFixed(2)),
+          MEd_times_1000: parseFloat((MEd * 1000).toFixed(2)),
+
+          F_Ed: parseFloat(F_Ed.toFixed(2)),
+
+          F_Rd: parseFloat(F_Rd.toFixed(2)),
+          Asl_times_fyd_over_1000: parseFloat((Asl * fyd / 1000).toFixed(2))
         }
       },
+
       results: {
         moment_capacity: {
           MRd_c: parseFloat(MRd_c.toFixed(2)),
           MRd_s: parseFloat(MRd_s.toFixed(2)),
-          MRd: parseFloat(Math.min(MRd_c, MRd_s).toFixed(2))
+          MRd: parseFloat(Math.min(MRd_c, MRd_s).toFixed(2)),
+          governing: MRd_c < MRd_s ? 'concrete' : 'steel'
         },
         shear_capacity: {
           VRd_s_initial: parseFloat(VRd_s_initial.toFixed(2)),
-          VRd_s: parseFloat(VRd_s_final.toFixed(2))
+          VRd_s: parseFloat(VRd_s_final.toFixed(2)),
+          VRd: parseFloat(VRd_s_final.toFixed(2))
         },
         tensile_force: {
           DeltaF_td: parseFloat(DeltaF_td.toFixed(2)),
@@ -261,14 +342,32 @@ function calculateConcreteBeam(inputs) {
           F_Rd: parseFloat(F_Rd.toFixed(2))
         }
       },
+
       status: {
         overall: overall_status,
         messages: messages,
         utilizations: {
           moment: parseFloat(moment_utilization.toFixed(1)),
           shear: parseFloat(shear_utilization.toFixed(1)),
-          tensile: parseFloat(tensile_utilization.toFixed(1))
+          tensile: parseFloat(tensile_utilization.toFixed(1)),
+          max: parseFloat(Math.max(moment_utilization, shear_utilization, tensile_utilization).toFixed(1))
+        },
+        checks: {
+          moment_ok: moment_utilization <= 100,
+          shear_ok: shear_utilization <= 100,
+          tensile_ok: tensile_utilization <= 100,
+          all_ok: moment_utilization <= 100 && shear_utilization <= 100 && tensile_utilization <= 100
         }
+      },
+
+      // Metadata for traceability
+      _metadata: {
+        calculation_timestamp: new Date().toISOString(),
+        module_id: 'concrete_beam_design',
+        module_name: 'Concrete Beam ULS Design Calculator',
+        version: '1.1.0',
+        standard: 'Eurocode 2',
+        calculation_method: 'ULS - Ultimate Limit State'
       }
     };
     
