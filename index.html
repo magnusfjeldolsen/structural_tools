@@ -67,28 +67,236 @@
     tailwind.config = { darkMode: 'class' };
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
-  
+
+  <!-- Fuse.js for search -->
+  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
+
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID"></script>
 
   <style>
     .hero-bg {
       background: linear-gradient(135deg, #1f2937 0%, #111827 50%, #0f172a 100%);
-      background-image: 
+      background-image:
         radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
         radial-gradient(circle at 75% 75%, rgba(239, 68, 68, 0.1) 0%, transparent 50%);
     }
-    
+
     .pulse-glow {
       animation: pulse-glow 3s ease-in-out infinite;
     }
-    
+
     @keyframes pulse-glow {
       0%, 100% {
         box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
       }
       50% {
         box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+      }
+    }
+
+    /* Search Bar Styles */
+    .search-container {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+    }
+
+    .search-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 16px;
+      pointer-events: none;
+      color: #9ca3af;
+    }
+
+    #module-search {
+      width: 100%;
+      padding: 14px 48px 14px 48px;
+      background: rgba(31, 41, 55, 0.7);
+      backdrop-filter: blur(10px);
+      border: 2px solid rgba(75, 85, 99, 0.5);
+      border-radius: 12px;
+      color: white;
+      font-size: 16px;
+      transition: all 0.3s ease;
+    }
+
+    #module-search:focus {
+      outline: none;
+      border-color: rgba(59, 130, 246, 0.8);
+      background: rgba(31, 41, 55, 0.9);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    #module-search::placeholder {
+      color: #9ca3af;
+    }
+
+    #search-clear {
+      position: absolute;
+      right: 16px;
+      display: none;
+      cursor: pointer;
+      padding: 4px;
+      color: #9ca3af;
+      transition: color 0.2s;
+    }
+
+    #search-clear:hover {
+      color: #ef4444;
+    }
+
+    #search-results {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      right: 0;
+      max-height: 480px;
+      overflow-y: auto;
+      background: rgba(17, 24, 39, 0.98);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(75, 85, 99, 0.5);
+      border-radius: 12px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      z-index: 1000;
+      animation: slideDown 0.15s ease-out;
+      will-change: opacity, transform;
+      /* Performance optimizations */
+      contain: layout style paint;
+      transform: translateZ(0);
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px) translateZ(0);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) translateZ(0);
+      }
+    }
+
+    .search-result-item {
+      display: flex;
+      gap: 16px;
+      padding: 16px;
+      border-bottom: 1px solid rgba(75, 85, 99, 0.3);
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+      text-decoration: none;
+      color: inherit;
+      /* Performance optimizations */
+      will-change: background-color;
+      transform: translateZ(0);
+    }
+
+    .search-result-item:last-child {
+      border-bottom: none;
+    }
+
+    .search-result-item:hover,
+    .search-result-item.active {
+      background: rgba(59, 130, 246, 0.1);
+    }
+
+    .search-result-icon {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(75, 85, 99, 0.3);
+      border-radius: 8px;
+    }
+
+    .search-result-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .search-result-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #f9fafb;
+      margin-bottom: 4px;
+    }
+
+    .search-result-title mark {
+      background: rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+
+    .search-result-description {
+      font-size: 13px;
+      color: #9ca3af;
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+
+    .search-result-meta {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .search-category {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      background: rgba(75, 85, 99, 0.3);
+      border-radius: 4px;
+    }
+
+    .search-no-results {
+      padding: 48px 24px;
+      text-align: center;
+    }
+
+    #search-results::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #search-results::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #search-results::-webkit-scrollbar-thumb {
+      background: rgba(75, 85, 99, 0.5);
+      border-radius: 4px;
+    }
+
+    #search-results::-webkit-scrollbar-thumb:hover {
+      background: rgba(75, 85, 99, 0.7);
+    }
+
+    @media (max-width: 640px) {
+      .search-container {
+        max-width: 100%;
+      }
+
+      #module-search {
+        padding: 12px 40px 12px 40px;
+        font-size: 14px;
+      }
+
+      #search-results {
+        max-height: 360px;
+      }
+
+      .search-result-item {
+        padding: 12px;
       }
     }
   </style>
@@ -139,6 +347,28 @@
         Professional-grade structural engineering calculators, simulation and productivity tools, completely free to use.
         Built by engineers, for engineers with full Eurocode compliance.
       </p>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="flex justify-center mb-6">
+      <div class="search-container">
+        <div class="search-input-wrapper">
+          <svg class="search-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+          </svg>
+          <input
+            type="text"
+            id="module-search"
+            placeholder="Search tools, e.g., concrete beam, 2D FEM, .."
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <svg id="search-clear" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </div>
+        <div id="search-results" class="hidden"></div>
+      </div>
     </div>
   </header>
 
@@ -1078,6 +1308,9 @@
   <script src="./assets/js/common.js"></script>
   <script src="./assets/js/analytics.js"></script>
   <script src="./assets/js/cookie-consent.js"></script>
-  
+
+  <!-- Module Search -->
+  <script src="./module-registry/search-config.js"></script>
+
 </body>
 </html>
