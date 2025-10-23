@@ -1,17 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-
-    gtag('config', 'G-BFVZQQ2LYN');
-  </script>
-
-  <meta charset="UTF-8" />
+<meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Primary Meta Tags -->
   <title>Concrete Minimum Reinforcement Calculator | Free Structural Engineering Tool</title>
@@ -346,6 +336,36 @@
 
   <!-- Centralized JavaScript -->
   <script src="../assets/js/common.js"></script>
+
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
 
 </body>
 </html>

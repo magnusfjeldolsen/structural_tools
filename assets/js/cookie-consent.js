@@ -150,43 +150,42 @@ class CookieConsent {
   }
 
   enableGoogleAnalytics() {
+    const measurementId = 'G-BFVZQQ2LYN';
+
+    // Load GA script if not already loaded
+    if (!document.querySelector('script[src*="googletagmanager.com/gtag/js"]')) {
+      const script = document.createElement('script');
+      script.async = true;
+      script.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`;
+      document.head.appendChild(script);
+
+      // Initialize gtag
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function() {
+        dataLayer.push(arguments);
+      };
+      gtag('js', new Date());
+    }
+
+    // Configure GA with consent granted
     if (typeof gtag === 'function') {
-      // Enable analytics storage and initialize tracking
       gtag('consent', 'update', {
         'analytics_storage': 'granted'
       });
-      
-      // Initialize GA if measurement ID is available
-      const measurementId = this.getGoogleAnalyticsMeasurementId();
-      if (measurementId && measurementId !== 'GA_MEASUREMENT_ID') {
-        gtag('config', measurementId);
-        console.log('Google Analytics enabled with consent');
-      }
-    }
-  }
-
-  getGoogleAnalyticsMeasurementId() {
-    // Try to extract GA measurement ID from existing script tags
-    const scripts = document.querySelectorAll('script[src*="googletagmanager.com/gtag/js"]');
-    for (const script of scripts) {
-      const match = script.src.match(/id=([^&]+)/);
-      if (match) {
-        return match[1];
-      }
-    }
-    
-    // Fallback: look for GA_MEASUREMENT_ID placeholder
-    const allScripts = document.querySelectorAll('script');
-    for (const script of allScripts) {
-      if (script.textContent.includes('GA_MEASUREMENT_ID')) {
-        const match = script.textContent.match(/['"]([G]-[A-Z0-9]+)['"]/);
-        if (match) {
-          return match[1];
+      gtag('config', measurementId);
+      console.log('Google Analytics enabled with consent');
+    } else {
+      // Wait for gtag to load
+      setTimeout(() => {
+        if (typeof gtag === 'function') {
+          gtag('consent', 'update', {
+            'analytics_storage': 'granted'
+          });
+          gtag('config', measurementId);
+          console.log('Google Analytics enabled with consent (delayed)');
         }
-      }
+      }, 500);
     }
-    
-    return 'GA_MEASUREMENT_ID'; // Placeholder
   }
 
   // Callback for when consent changes
