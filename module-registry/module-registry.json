@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2025-10-22T12:13:02.013Z",
-    "total_modules": 20,
+    "generated": "2025-10-23T07:06:57.902Z",
+    "total_modules": 19,
     "version": "1.0.0"
   },
   "modules": [
@@ -178,22 +178,6 @@
       "category": "structural-analysis"
     },
     {
-      "id": "pynite-pyodide",
-      "title": "PyNite 2D Frame Analysis | Free Structural Engineering Tool",
-      "description": "Advanced 2D frame analysis using PyNite library running in browser with Pyodide. Input nodes, elements, loads and get detailed structural analysis results.",
-      "keywords": [
-        "pynite",
-        "2d frame analysis",
-        "pyodide",
-        "structural analysis",
-        "finite element",
-        "python",
-        "browser"
-      ],
-      "url": "./pynite-pyodide/index.html",
-      "category": "other"
-    },
-    {
       "id": "steel_fire_temperature",
       "title": "Steel Fire Temperature Calculator | Free Steel Engineering Tool",
       "description": "Calculate fire resistance of unprotected steel structures with interactive temperature simulation. Features Am/V ratio calculation, shadow effects, and detailed temperature-time curves according to Eurocode 3.",
@@ -284,167 +268,6 @@
       ],
       "url": "./weld_capacity/index.html",
       "category": "steel"
-    }
-  ]
-}
-{
-  "_meta": {
-    "generated": "2025-10-22T12:27:13.569Z",
-    "total_modules": 19,
-    "version": "1.0.0"
-  },
-  "modules": [
-    {
-      "id": "concrete_plate_CFRP",
-      "title": "CFRP Concrete Plate Reinforcement Calculator",
-      "description": "",
-      "keywords": [],
-      "url": "./concrete_plate_CFRP/index.html",
-      "category": "concrete"
-    },
-    {
-      "id": "concrete_anchorage_length",
-      "title": "Concrete Anchorage Length Calculator - EC2 Section 8.4",
-      "description": "",
-      "keywords": [],
-      "url": "./concrete_anchorage_length/index.html",
-      "category": "concrete"
-    },
-    {
-      "id": "concrete_base_plate_compressive_design",
-      "title": "Concrete Base Plate Calculator - Compressive Design Tool",
-      "description": "",
-      "keywords": [],
-      "url": "./concrete_base_plate_compressive_design/index.html",
-      "category": "concrete"
-    },
-    {
-      "id": "concrete_beam_design",
-      "title": "Concrete Beam Calculator - ULS Design Tool",
-      "description": "",
-      "keywords": [],
-      "url": "./concrete_beam_design/index.html",
-      "category": "concrete"
-    },
-    {
-      "id": "concrete_dowels",
-      "title": "Concrete Dowels Calculator - Free Engineering Tool",
-      "description": "",
-      "keywords": [],
-      "url": "./concrete_dowels/index.html",
-      "category": "concrete"
-    },
-    {
-      "id": "concrete_minimum_reinforcement",
-      "title": "Concrete Minimum Reinforcement Calculator | Free Structural Engineering Tool",
-      "description": "",
-      "keywords": [],
-      "url": "./concrete_minimum_reinforcement/index.html",
-      "category": "concrete"
-    },
-    {
-      "id": "concrete_slab_design",
-      "title": "Concrete Slab Design Calculator | Free Structural Engineering Tool",
-      "description": "",
-      "keywords": [],
-      "url": "./concrete_slab_design/index.html",
-      "category": "concrete"
-    },
-    {
-      "id": "clustering",
-      "title": "CSV Clustering Tool - Structural Tools",
-      "description": "",
-      "keywords": [],
-      "url": "./clustering/index.html",
-      "category": "other"
-    },
-    {
-      "id": "deliveryhub",
-      "title": "Delivery Hub - Advanced Document Management",
-      "description": "",
-      "keywords": [],
-      "url": "./deliveryhub/index.html",
-      "category": "other"
-    },
-    {
-      "id": "DIN_rod_torque",
-      "title": "DIN Threaded Rod Torque/Force Calculator - Free Engineering Tool",
-      "description": "",
-      "keywords": [],
-      "url": "./DIN_rod_torque/index.html",
-      "category": "other"
-    },
-    {
-      "id": "ec2concrete",
-      "title": "EC2 Concrete Parameters Calculator - Structural Engineering Tools",
-      "description": "",
-      "keywords": [],
-      "url": "./ec2concrete/index.html",
-      "category": "concrete"
-    },
-    {
-      "id": "seismic_ec8",
-      "title": "EC8 Seismic Avoidance Criteria Calculator",
-      "description": "",
-      "keywords": [],
-      "url": "./seismic_ec8/index.html",
-      "category": "other"
-    },
-    {
-      "id": "2dframeanalysis",
-      "title": "PyNite 2D Frame Analysis | Free Structural Engineering Tool",
-      "description": "",
-      "keywords": [],
-      "url": "./2dframeanalysis/index.html",
-      "category": "structural-analysis"
-    },
-    {
-      "id": "steel_fire_temperature",
-      "title": "Steel Fire Temperature Calculator | Free Steel Engineering Tool",
-      "description": "",
-      "keywords": [],
-      "url": "./steel_fire_temperature/index.html",
-      "category": "steel"
-    },
-    {
-      "id": "steel_beam_relative_deisgn",
-      "title": "Steel Profile Calculator - Free Engineering Tool",
-      "description": "",
-      "keywords": [],
-      "url": "./steel_beam_relative_deisgn/index.html",
-      "category": "steel"
-    },
-    {
-      "id": "transversal_forces_stiffened_web",
-      "title": "Transversal Forces - Stiffened Web Calculator",
-      "description": "",
-      "keywords": [],
-      "url": "./transversal_forces_stiffened_web/index.html",
-      "category": "other"
-    },
-    {
-      "id": "transversal_forces_unstiffened_web",
-      "title": "Transversal Forces - Unstiffened Web Calculator",
-      "description": "",
-      "keywords": [],
-      "url": "./transversal_forces_unstiffened_web/index.html",
-      "category": "other"
-    },
-    {
-      "id": "THP",
-      "title": "Two-Sided Hat Profile Calculator - Structural Engineering Tool",
-      "description": "",
-      "keywords": [],
-      "url": "./THP/index.html",
-      "category": "other"
-    },
-    {
-      "id": "weld_capacity",
-      "title": "Weld Capacity Calculator | Free Steel Engineering Tool",
-      "description": "",
-      "keywords": [],
-      "url": "./weld_capacity/index.html",
-      "category": "other"
     }
   ]
 }
