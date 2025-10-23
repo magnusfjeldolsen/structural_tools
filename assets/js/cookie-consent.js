@@ -232,19 +232,19 @@ class CookieConsent {
 
 // Auto-initialize cookie consent when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-  // Only initialize on the main landing page
-  if (window.location.pathname.endsWith('/') || 
+  // Check if on main landing page
+  const isMainPage = window.location.pathname.endsWith('/') ||
       window.location.pathname.endsWith('/index.html') ||
       window.location.pathname === '/structural_tools/' ||
-      window.location.pathname === '/structural_tools/index.html') {
-    
-    window.cookieConsent = CookieConsent.create({
-      enableAnalytics: true,
-      autoShow: true
-    });
-    
-    console.log('Cookie consent initialized');
-  }
+      window.location.pathname === '/structural_tools/index.html';
+
+  // Initialize on ALL pages, but only auto-show banner on main page
+  window.cookieConsent = CookieConsent.create({
+    enableAnalytics: true,
+    autoShow: isMainPage  // Only show automatically on main page
+  });
+
+  console.log('Cookie consent initialized' + (isMainPage ? ' (main page)' : ' (subpage)'));
 });
 
 // Export for module usage
