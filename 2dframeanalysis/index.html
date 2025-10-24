@@ -151,6 +151,72 @@
             gap: 8px;
             align-items: center;
         }
+
+        /* Editable table styles */
+        .editable-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1f2937;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+
+        .editable-table th {
+            background: #374151;
+            color: #f3f4f6;
+            padding: 10px 8px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.75rem;
+            border-bottom: 2px solid #4b5563;
+        }
+
+        .editable-table td {
+            padding: 4px;
+            border-bottom: 1px solid #374151;
+        }
+
+        .editable-table input,
+        .editable-table select {
+            width: 100%;
+            background: #111827;
+            color: #f3f4f6;
+            border: 1px solid #374151;
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+
+        .editable-table input:focus,
+        .editable-table select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            background: #1f2937;
+        }
+
+        .editable-table tr:hover {
+            background: #1f2937;
+        }
+
+        .editable-table .delete-btn {
+            width: 28px;
+            height: 28px;
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 4px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .editable-table .delete-btn:hover {
+            background: #b91c1c;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
@@ -240,21 +306,26 @@
                     <!-- Nodes Input -->
                     <div class="bg-gray-700 rounded-lg p-4">
                         <h3 class="text-lg font-semibold text-white mb-3">Nodes</h3>
-                        <div class="space-y-3">
-                            <div class="input-grid">
-                                <label class="text-gray-300 text-sm">Node</label>
-                                <label class="text-gray-300 text-sm">X (m)</label>
-                                <label class="text-gray-300 text-sm">Y (m)</label>
-                                <label class="text-gray-300 text-sm">Support</label>
-                                <div></div> <!-- Empty for action column -->
-                            </div>
-                            <div id="nodes-container">
+                        <p class="text-gray-400 text-xs mb-2">💡 Tip: You can copy/paste from Excel! Select cells and paste (Ctrl+V) into the table.</p>
+
+                        <table id="nodes-table" class="editable-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>X (m)</th>
+                                    <th>Y (m)</th>
+                                    <th>Support</th>
+                                    <th style="width: 40px;">Del</th>
+                                </tr>
+                            </thead>
+                            <tbody id="nodes-container">
                                 <!-- Nodes will be added here -->
-                            </div>
-                            <button onclick="addNode()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm">
-                                Add Node
-                            </button>
-                        </div>
+                            </tbody>
+                        </table>
+
+                        <button onclick="addNode()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm mt-3">
+                            + Add Node
+                        </button>
                     </div>
 
                     <!-- Elements Input -->

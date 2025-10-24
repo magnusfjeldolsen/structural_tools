@@ -1,0 +1,76 @@
+<!--
+  CLIPBOARD IMPORT/EXPORT UI SNIPPET
+
+  Instructions:
+  1. Include clipboard-import-export.js in <head>:
+     <script src="clipboard-import-export.js"></script>
+
+  2. Initialize the module in your main <script> section:
+     ClipboardIO.init(frameData, {
+       renderNodesTable: renderNodesTable,
+       renderElementsTable: renderElementsTable,
+       renderLoadsTable: renderLoadsTable,
+       updateVisualization: updateVisualization
+     });
+
+  3. Add the button groups below to your HTML where indicated
+
+  To REMOVE this feature later:
+  - Remove the script include
+  - Remove the initialization call
+  - Remove the button groups
+-->
+
+<!-- ============================================ -->
+<!-- ADD THIS ABOVE NODES TABLE -->
+<!-- ============================================ -->
+<div class="flex gap-2 mb-4 flex-wrap">
+  <button onclick="ClipboardIO.importNodes()"
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition">
+    📋 Import Nodes from Clipboard
+  </button>
+  <button onclick="ClipboardIO.exportNodes()"
+          class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition">
+    📤 Export Nodes to Clipboard
+  </button>
+  <button onclick="ClipboardIO.downloadNodesTemplate()"
+          class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition">
+    📥 Download Template
+  </button>
+</div>
+
+<!-- ============================================ -->
+<!-- ADD THIS ABOVE ELEMENTS TABLE -->
+<!-- ============================================ -->
+<div class="flex gap-2 mb-4 flex-wrap">
+  <button onclick="ClipboardIO.importElements()"
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition">
+    📋 Import Elements from Clipboard
+  </button>
+  <button onclick="ClipboardIO.exportElements()"
+          class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition">
+    📤 Export Elements to Clipboard
+  </button>
+  <button onclick="ClipboardIO.downloadElementsTemplate()"
+          class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition">
+    📥 Download Template
+  </button>
+</div>
+
+<!-- ============================================ -->
+<!-- ADD THIS ABOVE LOADS TABLE -->
+<!-- ============================================ -->
+<div class="flex gap-2 mb-4 flex-wrap">
+  <button onclick="ClipboardIO.importLoads()"
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition">
+    📋 Import Loads from Clipboard
+  </button>
+  <button onclick="ClipboardIO.exportLoads()"
+          class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition">
+    📤 Export Loads to Clipboard
+  </button>
+  <button onclick="ClipboardIO.downloadLoadsTemplate()"
+          class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition">
+    📥 Download Template
+  </button>
+</div>

@@ -1090,6 +1090,9 @@ def initialize_web_analyzer():
         document.getElementById('loading-status').classList.add('hidden');
         document.getElementById('main-interface').classList.remove('hidden');
 
+        // Initialize paste event listeners for tables
+        initNodesTablePaste();
+
         // Load example frame
         loadExample();
 
@@ -1102,36 +1105,159 @@ def initialize_web_analyzer():
 
 // Add node to the interface
 function addNode() {
-    const container = document.getElementById('nodes-container');
-    const nodeDiv = document.createElement('div');
-    nodeDiv.className = 'input-grid';
-    nodeDiv.id = `node-${nodeCounter}`;
+    // Add to frameData
+    const newNode = {
+        name: `N${nodeCounter}`,
+        x: 0,
+        y: 0,
+        support: 'free'
+    };
+    frameData.nodes.push(newNode);
 
-    nodeDiv.innerHTML = `
-        <input type="text" value="N${nodeCounter}" readonly class="bg-gray-600 text-white p-2 rounded text-sm">
-        <input type="number" step="0.1" value="0" placeholder="X" class="bg-gray-600 text-white p-2 rounded text-sm node-x">
-        <input type="number" step="0.1" value="0" placeholder="Y" class="bg-gray-600 text-white p-2 rounded text-sm node-y">
-        <select class="bg-gray-600 text-white p-2 rounded text-sm node-support">
-            <option value="free">Free</option>
-            <option value="pinned">Pinned</option>
-            <option value="fixed">Fixed</option>
-            <option value="roller-x">Roller X</option>
-            <option value="roller-y">Roller Y</option>
-        </select>
-        <button onclick="removeNode('node-${nodeCounter}')" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-sm">Remove</button>
-    `;
-
-    container.appendChild(nodeDiv);
-
-    // Add event listeners to all inputs for real-time updates
-    nodeDiv.querySelectorAll('input, select').forEach(input => {
-        input.addEventListener('input', updateVisualization);
-        input.addEventListener('change', updateVisualization);
-    });
+    // Render the new row
+    renderNodeRow(frameData.nodes.length - 1);
 
     nodeCounter++;
     updateVisualization();
-    updateNodesDatalist(); // Update element connectivity options
+    updateNodesDatalist();
+}
+
+// Render a single node row in the table
+function renderNodeRow(index) {
+    const node = frameData.nodes[index];
+    const tbody = document.getElementById('nodes-container');
+
+    const row = document.createElement('tr');
+    row.dataset.index = index;
+    row.innerHTML = `
+        <td><input type="text" value="${node.name}" onchange="updateNodeProperty(${index}, 'name', this.value)" oninput="updateNodeProperty(${index}, 'name', this.value)"></td>
+        <td><input type="number" step="0.1" value="${node.x}" onchange="updateNodeProperty(${index}, 'x', parseFloat(this.value))" oninput="updateNodeProperty(${index}, 'x', parseFloat(this.value))"></td>
+        <td><input type="number" step="0.1" value="${node.y}" onchange="updateNodeProperty(${index}, 'y', parseFloat(this.value))" oninput="updateNodeProperty(${index}, 'y', parseFloat(this.value))"></td>
+        <td>
+            <select onchange="updateNodeProperty(${index}, 'support', this.value)">
+                <option value="free" ${node.support === 'free' ? 'selected' : ''}>Free</option>
+                <option value="pinned" ${node.support === 'pinned' ? 'selected' : ''}>Pinned</option>
+                <option value="fixed" ${node.support === 'fixed' ? 'selected' : ''}>Fixed</option>
+                <option value="roller_x" ${node.support === 'roller_x' ? 'selected' : ''}>Roller X</option>
+                <option value="roller_y" ${node.support === 'roller_y' ? 'selected' : ''}>Roller Y</option>
+            </select>
+        </td>
+        <td><button onclick="deleteNode(${index})" class="delete-btn">🗑️</button></td>
+    `;
+    tbody.appendChild(row);
+}
+
+// Update a node property
+function updateNodeProperty(index, property, value) {
+    if (frameData.nodes[index]) {
+        frameData.nodes[index][property] = value;
+        updateVisualization();
+        if (property === 'name') {
+            updateNodesDatalist();
+        }
+    }
+}
+
+// Delete a node
+function deleteNode(index) {
+    frameData.nodes.splice(index, 1);
+    renderNodesTable();
+    updateVisualization();
+    updateNodesDatalist();
+}
+
+// Render the entire nodes table
+function renderNodesTable() {
+    const tbody = document.getElementById('nodes-container');
+    tbody.innerHTML = '';
+    frameData.nodes.forEach((node, index) => renderNodeRow(index));
+}
+
+// Initialize paste event listener for nodes table
+function initNodesTablePaste() {
+    const nodesTable = document.getElementById('nodes-table');
+    if (!nodesTable) return;
+
+    nodesTable.addEventListener('paste', (e) => {
+        e.preventDefault();
+
+        // Get clipboard data
+        const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+        if (!pastedText) return;
+
+        // Parse tab-separated values
+        const rows = pastedText.trim().split('\n');
+        const data = rows.map(row => row.split('\t').map(cell => cell.trim()));
+
+        // Check if first row is header (contains column names)
+        const firstRow = data[0].map(cell => cell.toLowerCase());
+        const isHeader = firstRow.some(cell =>
+            cell.includes('name') || cell.includes('node') || cell.includes('support')
+        );
+        const dataRows = isHeader ? data.slice(1) : data;
+
+        // Get current focused cell to determine starting position
+        const activeElement = document.activeElement;
+        let startRowIndex = 0;
+        let startColIndex = 0;
+
+        if (activeElement && activeElement.tagName === 'INPUT') {
+            const currentRow = activeElement.closest('tr');
+            if (currentRow) {
+                startRowIndex = parseInt(currentRow.dataset.index) || 0;
+                const currentCell = activeElement.closest('td');
+                const allCells = Array.from(currentRow.querySelectorAll('td'));
+                startColIndex = allCells.indexOf(currentCell);
+            }
+        }
+
+        // Process each row of pasted data
+        dataRows.forEach((rowData, rowOffset) => {
+            const targetRowIndex = startRowIndex + rowOffset;
+
+            // Add new node if needed
+            while (targetRowIndex >= frameData.nodes.length) {
+                frameData.nodes.push({
+                    name: `N${nodeCounter++}`,
+                    x: 0,
+                    y: 0,
+                    support: 'free'
+                });
+            }
+
+            // Update node properties based on pasted data
+            const node = frameData.nodes[targetRowIndex];
+            const columns = ['name', 'x', 'y', 'support'];
+
+            rowData.forEach((cellValue, colOffset) => {
+                const targetColIndex = startColIndex + colOffset;
+                if (targetColIndex >= 0 && targetColIndex < columns.length) {
+                    const property = columns[targetColIndex];
+
+                    if (property === 'x' || property === 'y') {
+                        node[property] = parseFloat(cellValue) || 0;
+                    } else if (property === 'support') {
+                        // Normalize support value
+                        const normalized = cellValue.toLowerCase().replace(/[_\s-]/g, '_');
+                        node[property] = normalized;
+                    } else {
+                        node[property] = cellValue;
+                    }
+                }
+            });
+        });
+
+        // Re-render the table
+        renderNodesTable();
+        updateVisualization();
+        updateNodesDatalist();
+
+        // Show success message
+        const addedRows = dataRows.length;
+        console.log(`✓ Pasted ${addedRows} row(s) into nodes table`);
+    });
+
+    console.log('[Nodes Table] Paste event listener initialized');
 }
 
 // Handle section type change
@@ -1229,14 +1355,8 @@ function updateNodesDatalist() {
         return;
     }
 
-    // Get all node names from the nodes container
-    const nodeNames = [];
-    document.querySelectorAll('#nodes-container > div').forEach(nodeDiv => {
-        const nameInput = nodeDiv.querySelector('input[readonly]');
-        if (nameInput && nameInput.value) {
-            nodeNames.push(nameInput.value);
-        }
-    });
+    // Get all node names from frameData
+    const nodeNames = frameData.nodes.map(node => node.name);
 
     // Update datalist options
     datalist.innerHTML = nodeNames.map(name => `<option value="${name}">${name}</option>`).join('');
@@ -1669,37 +1789,7 @@ function validateElementPointLoadPosition(loadId) {
 }
 
 // Remove functions
-function removeNode(id) {
-    // Get the node name from the id
-    const nodeDiv = document.getElementById(id);
-    const nodeName = nodeDiv.querySelector('input[readonly]').value;
-
-    // Remove all elements connected to this node
-    const elementsToRemove = [];
-    document.querySelectorAll('#elements-container > div').forEach(elementDiv => {
-        const nodeI = elementDiv.querySelector('.element-i').value;
-        const nodeJ = elementDiv.querySelector('.element-j').value;
-        if (nodeI === nodeName || nodeJ === nodeName) {
-            elementsToRemove.push(elementDiv.id);
-        }
-    });
-    elementsToRemove.forEach(elemId => document.getElementById(elemId).remove());
-
-    // Remove all nodal loads applied to this node
-    const loadsToRemove = [];
-    document.querySelectorAll('#nodal-loads-container > div').forEach(loadDiv => {
-        const loadNode = loadDiv.querySelector('.load-node').value;
-        if (loadNode === nodeName) {
-            loadsToRemove.push(loadDiv.id);
-        }
-    });
-    loadsToRemove.forEach(loadId => document.getElementById(loadId).remove());
-
-    // Remove the node itself (support is automatically removed with the node)
-    nodeDiv.remove();
-    updateVisualization();
-    updateNodesDatalist(); // Update element connectivity options
-}
+// Old removeNode function - now replaced by deleteNode which works with frameData
 
 function removeElement(id) {
     document.getElementById(id).remove();
@@ -2073,6 +2163,16 @@ function loadPortalExample() {
 
 // Clear all inputs
 function clearAll() {
+    // Clear frameData
+    frameData.nodes = [];
+    frameData.elements = [];
+    frameData.loads = {
+        nodal: [],
+        distributed: [],
+        elementPoint: []
+    };
+
+    // Clear DOM
     document.getElementById('nodes-container').innerHTML = '';
     document.getElementById('elements-container').innerHTML = '';
     document.getElementById('nodal-loads-container').innerHTML = '';
@@ -2088,6 +2188,7 @@ function clearAll() {
     elementLoadCounter = 1;
 
     updateVisualization();
+    updateNodesDatalist();
 }
 
 // Update visualization
@@ -2731,15 +2832,13 @@ function drawElementPointLoad(svg, nodeI, nodeJ, load, xScale, yScale) {
 
 // Get data from inputs
 function getNodesFromInputs() {
-    const nodes = [];
-    document.querySelectorAll('#nodes-container > div').forEach(nodeDiv => {
-        const name = nodeDiv.querySelector('input[readonly]').value;
-        const x = nodeDiv.querySelector('.node-x').value;
-        const y = nodeDiv.querySelector('.node-y').value;
-        const support = nodeDiv.querySelector('.node-support').value;
-        nodes.push({ name, x, y, support });
-    });
-    return nodes;
+    // Return nodes directly from frameData (already synchronized with table)
+    return frameData.nodes.map(node => ({
+        name: node.name,
+        x: node.x,
+        y: node.y,
+        support: node.support
+    }));
 }
 
 function getElementsFromInputs() {
