@@ -1134,6 +1134,283 @@ function addNode() {
     updateNodesDatalist(); // Update element connectivity options
 }
 
+// ===========================
+// JSON Export/Import Functions
+// ===========================
+
+// Export complete project to JSON
+function exportProjectToJSON() {
+    // Sync current UI state to frameData before export
+    syncUILoadsToFrameData();
+
+    const projectData = {
+        version: "1.0",
+        metadata: {
+            exportDate: new Date().toISOString(),
+            description: "2D Frame Analysis Project"
+        },
+        nodes: frameData.nodes,
+        elements: frameData.elements,
+        loads: frameData.loads,
+        loadCases: loadCases,
+        loadCombinations: loadCombinations
+    };
+
+    return projectData;
+}
+
+// Import project from JSON with validation
+function importProjectFromJSON(jsonData) {
+    try {
+        // Parse if string
+        const data = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
+
+        // Validate structure
+        if (!data.nodes || !Array.isArray(data.nodes)) {
+            throw new Error('Invalid JSON: missing or invalid "nodes" array');
+        }
+        if (!data.elements || !Array.isArray(data.elements)) {
+            throw new Error('Invalid JSON: missing or invalid "elements" array');
+        }
+
+        // Validate nodes
+        data.nodes.forEach((node, i) => {
+            if (!node.name || typeof node.x !== 'number' || typeof node.y !== 'number') {
+                throw new Error(`Invalid node at index ${i}: missing name, x, or y`);
+            }
+        });
+
+        // Validate elements reference valid nodes
+        const nodeNames = new Set(data.nodes.map(n => n.name));
+        data.elements.forEach((el, i) => {
+            if (!nodeNames.has(el.nodeI)) {
+                throw new Error(`Element ${el.name || i} references non-existent node: ${el.nodeI}`);
+            }
+            if (!nodeNames.has(el.nodeJ)) {
+                throw new Error(`Element ${el.name || i} references non-existent node: ${el.nodeJ}`);
+            }
+        });
+
+        // Clear existing data
+        clearAll();
+
+        // Import nodes
+        frameData.nodes = data.nodes.map(node => ({
+            name: node.name,
+            x: parseFloat(node.x),
+            y: parseFloat(node.y),
+            support: node.support || 'free'
+        }));
+
+        // Import elements
+        frameData.elements = data.elements.map(el => ({
+            name: el.name,
+            nodeI: el.nodeI,
+            nodeJ: el.nodeJ,
+            E: parseFloat(el.E) || 200,
+            sectionType: el.sectionType || 'Custom',
+            profile: el.profile || '',
+            axis: el.axis || 'strong',
+            I: parseFloat(el.I),
+            A: parseFloat(el.A)
+        }));
+
+        // Import loads (with defaults for backward compatibility)
+        if (data.loads) {
+            frameData.loads = {
+                nodal: (data.loads.nodal || []).map(load => ({
+                    case: load.case || 'Dead',
+                    node: load.node,
+                    Fx: parseFloat(load.Fx) || 0,
+                    Fy: parseFloat(load.Fy) || 0,
+                    Mz: parseFloat(load.Mz) || 0
+                })),
+                distributed: (data.loads.distributed || []).map(load => ({
+                    case: load.case || 'Dead',
+                    element: load.element,
+                    direction: load.direction,
+                    w1: parseFloat(load.w1) || 0,
+                    w2: parseFloat(load.w2) || 0,
+                    x1: parseFloat(load.x1) || 0,
+                    x2: parseFloat(load.x2) || 0
+                })),
+                elementPoint: (data.loads.elementPoint || []).map(load => ({
+                    case: load.case || 'Dead',
+                    element: load.element,
+                    distance: parseFloat(load.distance) || 0,
+                    direction: load.direction,
+                    magnitude: parseFloat(load.magnitude) || 0
+                }))
+            };
+        } else {
+            frameData.loads = { nodal: [], distributed: [], elementPoint: [] };
+        }
+
+        // Import load cases (with defaults)
+        if (data.loadCases && Array.isArray(data.loadCases)) {
+            loadCases = data.loadCases.map(lc => ({
+                name: lc.name,
+                type: lc.type || 'Ordinary',
+                durationClass: lc.durationClass || 'Permanent'
+            }));
+        } else {
+            loadCases = [
+                { name: 'Dead', type: 'Ordinary', durationClass: 'Permanent' },
+                { name: 'Live', type: 'Ordinary', durationClass: 'Permanent' }
+            ];
+        }
+
+        // Import load combinations (with defaults)
+        if (data.loadCombinations && Array.isArray(data.loadCombinations)) {
+            loadCombinations = data.loadCombinations;
+        } else {
+            loadCombinations = [];
+        }
+
+        // Update counters based on imported data
+        nodeCounter = frameData.nodes.length > 0
+            ? Math.max(...frameData.nodes.map(n => parseInt(n.name.replace(/\D/g, '')) || 0)) + 1
+            : 1;
+        elementCounter = frameData.elements.length > 0
+            ? Math.max(...frameData.elements.map(e => parseInt(e.name.replace(/\D/g, '')) || 0)) + 1
+            : 1;
+
+        // Set active load case to first available
+        activeLoadCase = loadCases.length > 0 ? loadCases[0].name : 'Dead';
+
+        // Re-render UI
+        renderNodesTable();
+        renderElements();
+        renderLoadCasesList();
+        updateActiveLoadCaseDropdown();
+        syncFrameDataLoadsToUI();
+        updateVisualization();
+        updateNodesDatalist();
+
+        console.log('✓ Project imported successfully');
+        console.log(`  - ${frameData.nodes.length} nodes`);
+        console.log(`  - ${frameData.elements.length} elements`);
+        console.log(`  - ${frameData.loads.nodal.length} nodal loads`);
+        console.log(`  - ${frameData.loads.distributed.length} distributed loads`);
+        console.log(`  - ${frameData.loads.elementPoint.length} element point loads`);
+        console.log(`  - ${loadCases.length} load cases`);
+        console.log(`  - ${loadCombinations.length} load combinations`);
+
+        return true;
+    } catch (error) {
+        console.error('Failed to import project:', error);
+        alert(`Failed to import project:\n${error.message}`);
+        return false;
+    }
+}
+
+// Download project as JSON file
+function downloadProjectJSON() {
+    const projectData = exportProjectToJSON();
+    const json = JSON.stringify(projectData, null, 2);
+
+    // Create blob and download
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `frame_project_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    console.log('✓ Project downloaded as JSON');
+}
+
+// Upload project from file
+function uploadProjectJSON() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const jsonData = event.target.result;
+                const success = importProjectFromJSON(jsonData);
+                if (success) {
+                    alert(`✓ Project "${file.name}" loaded successfully!`);
+                }
+            } catch (error) {
+                console.error('Error reading file:', error);
+                alert(`Failed to read file:\n${error.message}`);
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+// Setup drag and drop zone for JSON files
+function setupDragDropZone() {
+    const dropZone = document.getElementById('main-interface');
+    if (!dropZone) return;
+
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    // Highlight drop zone when dragging over
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.add('drag-over');
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.remove('drag-over');
+        }, false);
+    });
+
+    // Handle dropped files
+    dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+
+        if (files.length === 0) return;
+
+        const file = files[0];
+        if (!file.name.endsWith('.json')) {
+            alert('Please drop a .json file');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const jsonData = event.target.result;
+                const success = importProjectFromJSON(jsonData);
+                if (success) {
+                    alert(`✓ Project "${file.name}" loaded successfully!`);
+                }
+            } catch (error) {
+                console.error('Error reading file:', error);
+                alert(`Failed to read file:\n${error.message}`);
+            }
+        };
+        reader.readAsText(file);
+    }, false);
+
+    console.log('[Drag & Drop] JSON file upload enabled');
+}
+
 // Handle section type change
 function onSectionTypeChange(elementId) {
     const elementDiv = document.getElementById(elementId);
@@ -3500,6 +3777,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize load cases UI
     updateLoadCasesList();
     updateActiveLoadCaseDropdown();
+
+    // Setup drag and drop for JSON files
+    setupDragDropZone();
 
     // Initialize Analysis tab event listeners
     document.querySelectorAll('input[name="result-view-mode"]').forEach(radio => {

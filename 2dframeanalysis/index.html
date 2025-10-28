@@ -151,6 +151,17 @@
             gap: 8px;
             align-items: center;
         }
+
+        /* Drag and drop styling */
+        #main-interface.drag-over {
+            background: rgba(59, 130, 246, 0.1);
+            border: 2px dashed #3b82f6;
+            border-radius: 12px;
+        }
+
+        #main-interface {
+            transition: all 0.2s ease;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
@@ -287,6 +298,22 @@
                         </div>
                     </div>
 
+                    </div>
+
+                    <!-- Import/Export Section -->
+                    <div class="mt-6">
+                    <div class="bg-gray-700 rounded-lg p-4 border-2 border-dashed border-gray-500">
+                        <h3 class="text-lg font-semibold text-white mb-3">📁 Project Files (JSON)</h3>
+                        <p class="text-gray-400 text-xs mb-3">💡 Export your project as JSON, edit it in any text editor, or drag & drop to import</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="downloadProjectJSON()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium flex items-center justify-center gap-2">
+                                📥 Download JSON
+                            </button>
+                            <button onclick="uploadProjectJSON()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-medium flex items-center justify-center gap-2">
+                                📤 Upload JSON
+                            </button>
+                        </div>
+                    </div>
                     </div>
 
                     <!-- Analysis Controls (in Structure tab) -->

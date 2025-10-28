@@ -1,0 +1,113 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "exportDate": "2025-10-28T12:00:00.000Z",
+    "description": "2D Frame Analysis Project - Portal Frame Example"
+  },
+  "nodes": [
+    {
+      "name": "N1",
+      "x": 0,
+      "y": 0,
+      "support": "fixed"
+    },
+    {
+      "name": "N2",
+      "x": 0,
+      "y": 4,
+      "support": "free"
+    },
+    {
+      "name": "N3",
+      "x": 6,
+      "y": 4,
+      "support": "free"
+    },
+    {
+      "name": "N4",
+      "x": 6,
+      "y": 0,
+      "support": "fixed"
+    }
+  ],
+  "elements": [
+    {
+      "name": "E1",
+      "nodeI": "N1",
+      "nodeJ": "N2",
+      "E": 200,
+      "sectionType": "IPE",
+      "profile": "IPE200",
+      "axis": "strong",
+      "I": 0.00001943,
+      "A": 0.00284
+    },
+    {
+      "name": "E2",
+      "nodeI": "N2",
+      "nodeJ": "N3",
+      "E": 200,
+      "sectionType": "IPE",
+      "profile": "IPE240",
+      "axis": "strong",
+      "I": 0.00003892,
+      "A": 0.00391
+    },
+    {
+      "name": "E3",
+      "nodeI": "N3",
+      "nodeJ": "N4",
+      "E": 200,
+      "sectionType": "IPE",
+      "profile": "IPE200",
+      "axis": "strong",
+      "I": 0.00001943,
+      "A": 0.00284
+    }
+  ],
+  "loads": {
+    "nodal": [
+      {
+        "case": "Dead",
+        "node": "N2",
+        "Fx": 0,
+        "Fy": -10,
+        "Mz": 0
+      }
+    ],
+    "distributed": [
+      {
+        "case": "Live",
+        "element": "E2",
+        "direction": "Fy",
+        "w1": -5,
+        "w2": -5,
+        "x1": 0,
+        "x2": 6
+      }
+    ],
+    "elementPoint": []
+  },
+  "loadCases": [
+    {
+      "name": "Dead",
+      "type": "Ordinary",
+      "durationClass": "Permanent"
+    },
+    {
+      "name": "Live",
+      "type": "Ordinary",
+      "durationClass": "Permanent"
+    }
+  ],
+  "loadCombinations": [
+    {
+      "name": "ULS-1",
+      "comboTag": "ULS",
+      "factors": {
+        "Dead": 1.35,
+        "Live": 1.5
+      }
+    }
+  ]
+}
