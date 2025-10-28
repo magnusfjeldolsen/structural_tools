@@ -167,8 +167,19 @@
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
 
     <main class="w-full max-w-7xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
-        <!-- Header -->
-        <div class="flex justify-end mb-4">
+        <!-- Header with Import/Export -->
+        <div class="flex justify-between items-center mb-4">
+            <!-- Left: Import/Export Buttons -->
+            <div class="flex gap-2">
+                <button onclick="uploadProjectJSON()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm font-medium flex items-center gap-1" title="Import JSON project file">
+                    📤 Import
+                </button>
+                <button onclick="downloadProjectJSON()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm font-medium flex items-center gap-1" title="Export project as JSON">
+                    📥 Export
+                </button>
+            </div>
+
+            <!-- Right: Back to Tools -->
             <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
                 ← Back to Tools
             </a>
@@ -298,22 +309,6 @@
                         </div>
                     </div>
 
-                    </div>
-
-                    <!-- Import/Export Section -->
-                    <div class="mt-6">
-                    <div class="bg-gray-700 rounded-lg p-4 border-2 border-dashed border-gray-500">
-                        <h3 class="text-lg font-semibold text-white mb-3">📁 Project Files (JSON)</h3>
-                        <p class="text-gray-400 text-xs mb-3">💡 Export your project as JSON, edit it in any text editor, or drag & drop to import</p>
-                        <div class="grid grid-cols-2 gap-2">
-                            <button onclick="downloadProjectJSON()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium flex items-center justify-center gap-2">
-                                📥 Download JSON
-                            </button>
-                            <button onclick="uploadProjectJSON()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-medium flex items-center justify-center gap-2">
-                                📤 Upload JSON
-                            </button>
-                        </div>
-                    </div>
                     </div>
 
                     <!-- Analysis Controls (in Structure tab) -->

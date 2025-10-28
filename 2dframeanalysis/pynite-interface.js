@@ -1141,7 +1141,28 @@ function addNode() {
 // Export complete project to JSON
 function exportProjectToJSON() {
     // Sync current UI state to frameData before export
-    syncUILoadsToFrameData();
+    syncUIToFrameData();
+
+    // Get nodes from DOM (using centralized getNodesFromInputs)
+    const nodes = getNodesFromInputs().map(node => ({
+        name: node.name,
+        x: parseFloat(node.x),
+        y: parseFloat(node.y),
+        support: node.support
+    }));
+
+    // Get elements from DOM (using centralized getElementsFromInputs)
+    const elements = getElementsFromInputs().map(el => ({
+        name: el.name,
+        nodeI: el.nodeI,
+        nodeJ: el.nodeJ,
+        E: parseFloat(el.E) || 200,
+        sectionType: el.sectionType || 'Custom',
+        profile: el.profileName || '',
+        axis: el.bendingAxis || 'strong',
+        I: parseFloat(el.I),
+        A: parseFloat(el.A)
+    }));
 
     const projectData = {
         version: "1.0",
@@ -1149,8 +1170,8 @@ function exportProjectToJSON() {
             exportDate: new Date().toISOString(),
             description: "2D Frame Analysis Project"
         },
-        nodes: frameData.nodes,
-        elements: frameData.elements,
+        nodes: nodes,
+        elements: elements,
         loads: frameData.loads,
         loadCases: loadCases,
         loadCombinations: loadCombinations
@@ -1194,26 +1215,63 @@ function importProjectFromJSON(jsonData) {
         // Clear existing data
         clearAll();
 
-        // Import nodes
-        frameData.nodes = data.nodes.map(node => ({
-            name: node.name,
-            x: parseFloat(node.x),
-            y: parseFloat(node.y),
-            support: node.support || 'free'
-        }));
+        // Import nodes - create DOM elements
+        data.nodes.forEach(node => {
+            const container = document.getElementById('nodes-container');
+            const nodeDiv = document.createElement('div');
+            nodeDiv.className = 'input-grid';
+            nodeDiv.id = `node-${nodeCounter}`;
 
-        // Import elements
-        frameData.elements = data.elements.map(el => ({
-            name: el.name,
-            nodeI: el.nodeI,
-            nodeJ: el.nodeJ,
-            E: parseFloat(el.E) || 200,
-            sectionType: el.sectionType || 'Custom',
-            profile: el.profile || '',
-            axis: el.axis || 'strong',
-            I: parseFloat(el.I),
-            A: parseFloat(el.A)
-        }));
+            nodeDiv.innerHTML = `
+                <input type="text" value="${node.name}" readonly class="bg-gray-600 text-white p-2 rounded text-sm">
+                <input type="number" step="0.1" value="${node.x}" placeholder="X" class="bg-gray-600 text-white p-2 rounded text-sm node-x">
+                <input type="number" step="0.1" value="${node.y}" placeholder="Y" class="bg-gray-600 text-white p-2 rounded text-sm node-y">
+                <select class="bg-gray-600 text-white p-2 rounded text-sm node-support">
+                    <option value="free" ${node.support === 'free' ? 'selected' : ''}>Free</option>
+                    <option value="pinned" ${node.support === 'pinned' ? 'selected' : ''}>Pinned</option>
+                    <option value="fixed" ${node.support === 'fixed' ? 'selected' : ''}>Fixed</option>
+                    <option value="roller_x" ${node.support === 'roller_x' ? 'selected' : ''}>Roller X</option>
+                    <option value="roller_y" ${node.support === 'roller_y' ? 'selected' : ''}>Roller Y</option>
+                </select>
+                <button onclick="removeNode('node-${nodeCounter}')" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-sm">Remove</button>
+            `;
+
+            container.appendChild(nodeDiv);
+            nodeDiv.querySelectorAll('input, select').forEach(input => {
+                input.addEventListener('input', updateVisualization);
+                input.addEventListener('change', updateVisualization);
+            });
+            nodeCounter++;
+        });
+
+        // Import elements - create DOM elements
+        data.elements.forEach(el => {
+            addElement();
+            const elementDiv = document.getElementById(`element-${elementCounter - 1}`);
+            if (elementDiv) {
+                elementDiv.querySelector('.element-i').value = el.nodeI;
+                elementDiv.querySelector('.element-j').value = el.nodeJ;
+                elementDiv.querySelector('.element-e').value = el.E || 200;
+                elementDiv.querySelector('.element-i-val').value = el.I;
+                elementDiv.querySelector('.element-a').value = el.A;
+
+                const sectionSelect = elementDiv.querySelector('.section-type');
+                if (sectionSelect) {
+                    sectionSelect.value = el.sectionType || 'Custom';
+                    onSectionTypeChange(`element-${elementCounter - 1}`);
+                }
+
+                if (el.profile) {
+                    const profileSelect = elementDiv.querySelector('.profile-select');
+                    if (profileSelect) profileSelect.value = el.profile;
+                }
+
+                if (el.axis) {
+                    const axisSelect = elementDiv.querySelector('.axis-select');
+                    if (axisSelect) axisSelect.value = el.axis;
+                }
+            }
+        });
 
         // Import loads (with defaults for backward compatibility)
         if (data.loads) {
@@ -1267,29 +1325,19 @@ function importProjectFromJSON(jsonData) {
             loadCombinations = [];
         }
 
-        // Update counters based on imported data
-        nodeCounter = frameData.nodes.length > 0
-            ? Math.max(...frameData.nodes.map(n => parseInt(n.name.replace(/\D/g, '')) || 0)) + 1
-            : 1;
-        elementCounter = frameData.elements.length > 0
-            ? Math.max(...frameData.elements.map(e => parseInt(e.name.replace(/\D/g, '')) || 0)) + 1
-            : 1;
-
         // Set active load case to first available
         activeLoadCase = loadCases.length > 0 ? loadCases[0].name : 'Dead';
 
-        // Re-render UI
-        renderNodesTable();
-        renderElements();
-        renderLoadCasesList();
+        // Re-render UI components
+        updateLoadCasesList();
         updateActiveLoadCaseDropdown();
-        syncFrameDataLoadsToUI();
+        syncFrameDataToUI();
         updateVisualization();
         updateNodesDatalist();
 
         console.log('✓ Project imported successfully');
-        console.log(`  - ${frameData.nodes.length} nodes`);
-        console.log(`  - ${frameData.elements.length} elements`);
+        console.log(`  - ${data.nodes.length} nodes`);
+        console.log(`  - ${data.elements.length} elements`);
         console.log(`  - ${frameData.loads.nodal.length} nodal loads`);
         console.log(`  - ${frameData.loads.distributed.length} distributed loads`);
         console.log(`  - ${frameData.loads.elementPoint.length} element point loads`);
