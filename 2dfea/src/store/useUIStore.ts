@@ -1,5 +1,5 @@
 /**
- * UI Store - Manages UI state (tools, view, snapping)
+ * UI Store - Manages UI state (tools, view, snapping, visualization)
  *
  * Separate from model store to avoid re-renders when UI state changes
  */
@@ -74,11 +74,25 @@ export interface UIState {
   showSupports: boolean;
   showDimensions: boolean;
   showResults: boolean;
+  showDisplacedShape: boolean;
+  showMomentDiagram: boolean;
+  showShearDiagram: boolean;
+  showAxialDiagram: boolean;
   toggleGrid: () => void;
   toggleLoads: () => void;
   toggleSupports: () => void;
   toggleDimensions: () => void;
   toggleResults: () => void;
+  toggleDisplacedShape: () => void;
+  toggleMomentDiagram: () => void;
+  toggleShearDiagram: () => void;
+  toggleAxialDiagram: () => void;
+
+  // Visualization scales
+  displacementScale: number;  // Multiplier for displaced shape
+  diagramScale: number;        // Multiplier for force diagrams
+  setDisplacementScale: (scale: number) => void;
+  setDiagramScale: (scale: number) => void;
 
   // Coordinate input
   coordinateInput: string;
@@ -115,6 +129,12 @@ const initialState = {
   showSupports: true,
   showDimensions: false,
   showResults: false,
+  showDisplacedShape: false,
+  showMomentDiagram: false,
+  showShearDiagram: false,
+  showAxialDiagram: false,
+  displacementScale: 100,  // Auto-calculated but user can override
+  diagramScale: 1,         // Auto-calculated but user can override
   coordinateInput: '',
   showPropertiesPanel: true,
   showResultsPanel: false,
@@ -251,6 +271,39 @@ export const useUIStore = create<UIState>()(
         set((state) => {
           state.showResults = !state.showResults;
         });
+      },
+
+      toggleDisplacedShape: () => {
+        set((state) => {
+          state.showDisplacedShape = !state.showDisplacedShape;
+        });
+      },
+
+      toggleMomentDiagram: () => {
+        set((state) => {
+          state.showMomentDiagram = !state.showMomentDiagram;
+        });
+      },
+
+      toggleShearDiagram: () => {
+        set((state) => {
+          state.showShearDiagram = !state.showShearDiagram;
+        });
+      },
+
+      toggleAxialDiagram: () => {
+        set((state) => {
+          state.showAxialDiagram = !state.showAxialDiagram;
+        });
+      },
+
+      // Scale setters
+      setDisplacementScale: (scale) => {
+        set({ displacementScale: scale });
+      },
+
+      setDiagramScale: (scale) => {
+        set({ diagramScale: scale });
       },
 
       // Coordinate input
