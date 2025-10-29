@@ -4,16 +4,17 @@
  * Responsibilities:
  * - Initialize solver on mount
  * - Provide main layout structure
- * - Render Canvas, Toolbar, and Results Panel
+ * - Render Canvas, Toolbar, Results Panel, and Load Case Manager
  */
 
 import { useEffect, useState } from 'react';
 import { useModelStore } from './store';
-import { CanvasView, Toolbar, ResultsPanel } from './components';
+import { CanvasView, Toolbar, ResultsPanel, LoadCasePanel } from './components';
 
 export default function App() {
   const [initStatus, setInitStatus] = useState<'pending' | 'loading' | 'ready' | 'error'>('pending');
   const [initError, setInitError] = useState<string | null>(null);
+  const [rightPanelTab, setRightPanelTab] = useState<'results' | 'loadcases'>('results');
 
   const initializeSolver = useModelStore((state) => state.initializeSolver);
 
@@ -118,7 +119,7 @@ export default function App() {
       {/* Toolbar at top */}
       <Toolbar />
 
-      {/* Main content: Canvas (left) + Results Panel (right) */}
+      {/* Main content: Canvas (left) + Right Panel (right) */}
       <div style={{
         flex: 1,
         display: 'flex',
@@ -129,9 +130,50 @@ export default function App() {
           <CanvasView width={window.innerWidth * 0.7} height={window.innerHeight - 60} />
         </div>
 
-        {/* Results Panel - takes 30% of width */}
-        <div style={{ flex: 3, overflow: 'hidden' }}>
-          <ResultsPanel />
+        {/* Right Panel with Tabs - takes 30% of width */}
+        <div style={{ flex: 3, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {/* Tab Bar */}
+          <div style={{
+            display: 'flex',
+            backgroundColor: '#e0e0e0',
+            borderBottom: '2px solid #ccc',
+          }}>
+            <button
+              onClick={() => setRightPanelTab('results')}
+              style={{
+                flex: 1,
+                padding: '12px',
+                border: 'none',
+                backgroundColor: rightPanelTab === 'results' ? '#fff' : '#e0e0e0',
+                borderBottom: rightPanelTab === 'results' ? '3px solid #2196F3' : 'none',
+                cursor: 'pointer',
+                fontWeight: rightPanelTab === 'results' ? 'bold' : 'normal',
+                fontSize: '14px',
+              }}
+            >
+              Results
+            </button>
+            <button
+              onClick={() => setRightPanelTab('loadcases')}
+              style={{
+                flex: 1,
+                padding: '12px',
+                border: 'none',
+                backgroundColor: rightPanelTab === 'loadcases' ? '#fff' : '#e0e0e0',
+                borderBottom: rightPanelTab === 'loadcases' ? '3px solid #2196F3' : 'none',
+                cursor: 'pointer',
+                fontWeight: rightPanelTab === 'loadcases' ? 'bold' : 'normal',
+                fontSize: '14px',
+              }}
+            >
+              Load Cases
+            </button>
+          </div>
+
+          {/* Panel Content */}
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            {rightPanelTab === 'results' ? <ResultsPanel /> : <LoadCasePanel />}
+          </div>
         </div>
       </div>
     </div>
