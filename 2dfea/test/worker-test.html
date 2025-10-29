@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyNite Worker Test</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        h1 {
+            color: #00ff00;
+            text-align: center;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .panel {
+            background: #2a2a2a;
+            border: 1px solid #00ff00;
+            border-radius: 5px;
+            padding: 15px;
+        }
+        .panel h2 {
+            margin-top: 0;
+            color: #00ff00;
+            font-size: 16px;
+            border-bottom: 1px solid #00ff00;
+            padding-bottom: 5px;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #00cc00;
+        }
+        button:disabled {
+            background: #555;
+            color: #888;
+            cursor: not-allowed;
+        }
+        #log {
+            background: #000;
+            color: #00ff00;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+            border: 1px solid #00ff00;
+            margin-top: 10px;
+        }
+        #results {
+            background: #000;
+            color: #00ff00;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+            border: 1px solid #00ff00;
+            white-space: pre-wrap;
+        }
+        .status {
+            padding: 5px 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+        }
+        .status.pending {
+            background: #555;
+        }
+        .status.running {
+            background: #ff9900;
+            color: #000;
+        }
+        .status.success {
+            background: #00ff00;
+            color: #000;
+        }
+        .status.error {
+            background: #ff0000;
+            color: #fff;
+        }
+        .test-data {
+            background: #000;
+            border: 1px solid #00ff00;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 11px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 PyNite Worker Test Harness</h1>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Worker Controls</h2>
+            <div>
+                <button id="btn-init" onclick="testInit()">1. Initialize Worker</button>
+                <span id="status-init" class="status pending">Not Started</span>
+            </div>
+            <div>
+                <button id="btn-ping" onclick="testPing()" disabled>2. Ping Worker</button>
+                <span id="status-ping" class="status pending">Not Started</span>
+            </div>
+            <div>
+                <button id="btn-analyze" onclick="testAnalyze()" disabled>3. Run Analysis</button>
+                <span id="status-analyze" class="status pending">Not Started</span>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <h3 style="font-size: 14px;">Test Model:</h3>
+                <div class="test-data">
+                    <strong>Cantilever Beam</strong><br>
+                    Node 1: (0, 0) Fixed<br>
+                    Node 2: (4, 0) Free<br>
+                    Element: E1 (N1→N2)<br>
+                    Load: 10 kN downward at N2
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Console Log</h2>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <h2>Analysis Results</h2>
+        <div id="results">No results yet...</div>
+    </div>
+
+    <script>
+        let worker = null;
+        let messageId = 0;
+
+        // Test model data (cantilever beam)
+        const testModel = {
+            nodes: [
+                { name: 'N1', x: 0, y: 0, support: 'fixed' },
+                { name: 'N2', x: 4, y: 0, support: 'free' }
+            ],
+            elements: [
+                { name: 'E1', nodeI: 'N1', nodeJ: 'N2', E: 210, I: 1e-4, A: 1e-3 }
+            ],
+            loads: {
+                nodal: [{ node: 'N2', fx: 0, fy: -10, mz: 0, case: 'Dead' }],
+                distributed: [],
+                elementPoint: []
+            }
+        };
+
+        function log(message, color = '#00ff00') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.style.color = color;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateStatus(id, status, text) {
+            const elem = document.getElementById(id);
+            elem.className = `status ${status}`;
+            elem.textContent = text;
+        }
+
+        function testInit() {
+            log('Initializing worker...', '#ffff00');
+            updateStatus('status-init', 'running', 'Initializing...');
+
+            // Create worker
+            worker = new Worker('../public/workers/solverWorker.js');
+
+            // Setup message handler
+            worker.onmessage = (e) => {
+                const { type, payload, msgId } = e.data;
+                log(`Received: ${type}`, '#00ccff');
+
+                switch(type) {
+                    case 'ready':
+                        updateStatus('status-init', 'success', 'Ready ✓');
+                        log('✓ Worker initialized successfully!', '#00ff00');
+                        document.getElementById('btn-ping').disabled = false;
+                        document.getElementById('btn-analyze').disabled = false;
+                        break;
+
+                    case 'pong':
+                        updateStatus('status-ping', 'success', `OK (init: ${payload.initialized})`);
+                        log(`Pong received - initialized: ${payload.initialized}`, '#00ff00');
+                        break;
+
+                    case 'results':
+                        updateStatus('status-analyze', 'success', 'Complete ✓');
+                        log('✓ Analysis complete!', '#00ff00');
+                        displayResults(payload);
+                        break;
+
+                    case 'error':
+                        log(`✗ Error: ${payload.message}`, '#ff0000');
+                        console.error('Worker error:', payload);
+                        if (payload.phase === 'initialization') {
+                            updateStatus('status-init', 'error', 'Failed ✗');
+                        } else {
+                            updateStatus('status-analyze', 'error', 'Failed ✗');
+                        }
+                        break;
+                }
+            };
+
+            worker.onerror = (error) => {
+                log(`✗ Worker error: ${error.message}`, '#ff0000');
+                console.error('Worker error:', error);
+                updateStatus('status-init', 'error', 'Failed ✗');
+            };
+
+            // Send init message
+            worker.postMessage({ type: 'init', msgId: ++messageId });
+        }
+
+        function testPing() {
+            log('Pinging worker...', '#ffff00');
+            updateStatus('status-ping', 'running', 'Pinging...');
+            worker.postMessage({ type: 'ping', msgId: ++messageId });
+        }
+
+        function testAnalyze() {
+            log('Starting analysis...', '#ffff00');
+            updateStatus('status-analyze', 'running', 'Analyzing...');
+
+            const startTime = performance.now();
+
+            worker.postMessage({
+                type: 'analyze',
+                payload: {
+                    modelData: testModel,
+                    analysisType: 'simple'
+                },
+                msgId: ++messageId
+            });
+        }
+
+        function displayResults(results) {
+            const resultsDiv = document.getElementById('results');
+
+            let output = '';
+            output += '========================================\n';
+            output += 'ANALYSIS RESULTS\n';
+            output += '========================================\n\n';
+
+            output += `Success: ${results.success}\n`;
+            output += `Message: ${results.message}\n\n`;
+
+            if (results.success && results.nodes) {
+                output += 'NODE DISPLACEMENTS (mm, rad):\n';
+                output += '------------------------------\n';
+                for (const [nodeName, data] of Object.entries(results.nodes)) {
+                    output += `${nodeName}:\n`;
+                    output += `  DX = ${data.DX.toFixed(3)} mm\n`;
+                    output += `  DY = ${data.DY.toFixed(3)} mm\n`;
+                    output += `  RZ = ${data.RZ.toFixed(6)} rad\n`;
+                    if (data.reactions.FX !== 0 || data.reactions.FY !== 0 || data.reactions.MZ !== 0) {
+                        output += `  Reactions:\n`;
+                        output += `    FX = ${data.reactions.FX.toFixed(2)} kN\n`;
+                        output += `    FY = ${data.reactions.FY.toFixed(2)} kN\n`;
+                        output += `    MZ = ${data.reactions.MZ.toFixed(2)} kNm\n`;
+                    }
+                    output += '\n';
+                }
+
+                output += '\nELEMENT FORCES (kN, kNm, mm):\n';
+                output += '------------------------------\n';
+                for (const [elemName, data] of Object.entries(results.elements)) {
+                    output += `${elemName}:\n`;
+                    output += `  Max Moment    = ${data.max_moment.toFixed(2)} kNm\n`;
+                    output += `  Max Shear     = ${data.max_shear.toFixed(2)} kN\n`;
+                    output += `  Max Axial     = ${data.max_axial.toFixed(2)} kN\n`;
+                    output += `  Max Deflection = ${data.max_deflection.toFixed(2)} mm\n`;
+                    output += '\n';
+                }
+
+                if (results.diagrams && Object.keys(results.diagrams).length > 0) {
+                    output += '\nDIAGRAM DATA (kN, kNm, mm):\n';
+                    output += '---------------------------\n';
+                    for (const [elemName, diagram] of Object.entries(results.diagrams)) {
+                        output += `${elemName}: ${diagram.moments.length} points\n`;
+                        output += `  Moment range: [${Math.min(...diagram.moments).toFixed(2)}, ${Math.max(...diagram.moments).toFixed(2)}] kNm\n`;
+                        output += `  Shear range: [${Math.min(...diagram.shears).toFixed(2)}, ${Math.max(...diagram.shears).toFixed(2)}] kN\n`;
+                        output += `  Deflection range: [${Math.min(...diagram.deflections).toFixed(2)}, ${Math.max(...diagram.deflections).toFixed(2)}] mm\n`;
+                    }
+                }
+            }
+
+            resultsDiv.textContent = output;
+        }
+
+        // Log initial state
+        log('Worker test harness loaded');
+        log('Click "Initialize Worker" to begin');
+    </script>
+</body>
+</html>
