@@ -1,0 +1,29 @@
+/**
+ * Global styles
+ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Courier New', monospace;
+  background: #1a1a1a;
+  color: #00ff00;
+  overflow: hidden;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+button {
+  font-family: 'Courier New', monospace;
+}
+
+input, select, textarea {
+  font-family: 'Courier New', monospace;
+}
