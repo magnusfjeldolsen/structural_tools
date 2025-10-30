@@ -167,8 +167,11 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
       if (activeTool === 'draw-node') {
         // Add node at cursor position
-        const nodeName = `N${nodes.length + 1}`;
-        addNode(nodeName, worldX, worldY);
+        addNode({
+          x: worldX,
+          y: worldY,
+          support: 'free',
+        });
       }
       // TODO: Add other tool handlers (draw-element, select, etc.)
     }
