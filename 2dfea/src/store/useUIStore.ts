@@ -75,6 +75,22 @@ export interface UIState {
   selectElement: (name: string, append?: boolean) => void;
   clearSelection: () => void;
 
+  // Snapping
+  snapEnabled: boolean;
+  snapToNodes: boolean;
+  snapToElements: boolean;
+  snapTolerance: number;  // pixels
+  toggleSnapEnabled: () => void;
+  toggleSnapToNodes: () => void;
+  toggleSnapToElements: () => void;
+  setSnapTolerance: (tolerance: number) => void;
+
+  // Hover state (for snapping feedback)
+  hoveredNode: string | null;
+  hoveredElement: string | null;
+  setHoveredNode: (name: string | null) => void;
+  setHoveredElement: (name: string | null) => void;
+
   // UI visibility
   showGrid: boolean;
   showLoads: boolean;
@@ -132,6 +148,12 @@ const initialState = {
   },
   selectedNodes: [],
   selectedElements: [],
+  snapEnabled: true,
+  snapToNodes: true,
+  snapToElements: true,
+  snapTolerance: 10,  // pixels
+  hoveredNode: null,
+  hoveredElement: null,
   showGrid: true,
   showLoads: true,
   showSupports: true,
@@ -294,6 +316,38 @@ export const useUIStore = create<UIState>()(
 
       clearSelection: () => {
         set({ selectedNodes: [], selectedElements: [] });
+      },
+
+      // Snapping actions
+      toggleSnapEnabled: () => {
+        set((state) => {
+          state.snapEnabled = !state.snapEnabled;
+        });
+      },
+
+      toggleSnapToNodes: () => {
+        set((state) => {
+          state.snapToNodes = !state.snapToNodes;
+        });
+      },
+
+      toggleSnapToElements: () => {
+        set((state) => {
+          state.snapToElements = !state.snapToElements;
+        });
+      },
+
+      setSnapTolerance: (tolerance) => {
+        set({ snapTolerance: tolerance });
+      },
+
+      // Hover state actions
+      setHoveredNode: (name) => {
+        set({ hoveredNode: name });
+      },
+
+      setHoveredElement: (name) => {
+        set({ hoveredElement: name });
       },
 
       // Visibility toggles
