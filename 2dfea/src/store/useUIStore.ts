@@ -58,9 +58,12 @@ export interface UIState {
   zoomToFit: () => void;
 
   // Drawing state (for multi-step operations)
-  tempElementStart: string | null;  // Node ID for element start
-  setTempElementStart: (nodeId: string | null) => void;
-  clearTempElement: () => void;
+  drawingElement: {
+    startNode: string | null;  // Node name if snapped to existing node
+    startPos: { x: number; y: number } | null;  // World coordinates
+  } | null;
+  setDrawingElement: (data: { startNode: string; startPos: { x: number; y: number } }) => void;
+  clearDrawingElement: () => void;
 
   // Snap state
   snap: SnapSettings;
@@ -139,7 +142,7 @@ const initialState = {
     centerY: 0,
     scale: 50,     // 50 pixels per meter
   },
-  tempElementStart: null,
+  drawingElement: null,
   snap: {
     enabled: true,
     modes: ['endpoint', 'midpoint', 'grid'] as SnapMode[],
@@ -250,12 +253,12 @@ export const useUIStore = create<UIState>()(
       },
 
       // Drawing state actions
-      setTempElementStart: (nodeId) => {
-        set({ tempElementStart: nodeId });
+      setDrawingElement: (data) => {
+        set({ drawingElement: data });
       },
 
-      clearTempElement: () => {
-        set({ tempElementStart: null });
+      clearDrawingElement: () => {
+        set({ drawingElement: null });
       },
 
       // Snap actions

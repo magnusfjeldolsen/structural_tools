@@ -8,7 +8,7 @@
  * - All rendering done in world coordinates, Stage handles transform
  */
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Stage, Layer, Circle, Line, Text, Arrow } from 'react-konva';
 import Konva from 'konva';
 import { useModelStore, useUIStore } from '../store';
@@ -39,6 +39,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const analysisResults = useModelStore((state) => state.analysisResults);
   const addNode = useModelStore((state) => state.addNode);
+  const addElement = useModelStore((state) => state.addElement);
   const deleteNode = useModelStore((state) => state.deleteNode);
   const deleteElement = useModelStore((state) => state.deleteElement);
 
@@ -67,6 +68,11 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const hoveredElement = useUIStore((state) => state.hoveredElement);
   const setHoveredNode = useUIStore((state) => state.setHoveredNode);
   const setHoveredElement = useUIStore((state) => state.setHoveredElement);
+
+  // Drawing state
+  const drawingElement = useUIStore((state) => state.drawingElement);
+  const setDrawingElement = useUIStore((state) => state.setDrawingElement);
+  const clearDrawingElement = useUIStore((state) => state.clearDrawingElement);
 
   // Canvas center
   const cx = width / 2;
@@ -143,6 +149,20 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     setView({ centerX: modelCenterX, centerY: modelCenterY, scale: clampedScale });
   };
 
+  // === KEYBOARD EVENT HANDLERS ===
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && drawingElement) {
+        // Cancel drawing
+        clearDrawingElement();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [drawingElement, clearDrawingElement]);
+
   // === MOUSE EVENT HANDLERS ===
 
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -186,6 +206,59 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           y: worldY,
           support: 'free',
         });
+      } else if (activeTool === 'draw-element') {
+        if (!drawingElement) {
+          // First click - start drawing
+          let startNode: string;
+
+          if (hoveredNode) {
+            // Snapped to existing node
+            startNode = hoveredNode;
+          } else {
+            // Create new node
+            addNode({
+              x: worldX,
+              y: worldY,
+              support: 'free',
+            });
+            // Get the newly created node name (last node in array)
+            startNode = `N${nodes.length + 1}`;
+          }
+
+          setDrawingElement({
+            startNode,
+            startPos: { x: worldX, y: worldY }
+          });
+        } else {
+          // Second click - complete element
+          let endNode: string;
+
+          if (hoveredNode && hoveredNode !== drawingElement.startNode) {
+            // Snapped to existing node (and not the same as start)
+            endNode = hoveredNode;
+          } else {
+            // Create new node
+            addNode({
+              x: worldX,
+              y: worldY,
+              support: 'free',
+            });
+            // Get the newly created node name
+            endNode = `N${nodes.length + 1}`;
+          }
+
+          // Create element with default properties
+          addElement({
+            nodeI: drawingElement.startNode,
+            nodeJ: endNode,
+            E: 210,      // GPa (steel)
+            I: 1e-4,     // m^4
+            A: 1e-3,     // m^2
+          });
+
+          // Clear drawing state
+          clearDrawingElement();
+        }
       } else if (activeTool === 'delete') {
         // Delete mode: delete the hovered entity
         // Priority: nodes > elements (nodes delete connected elements and loads automatically)
@@ -200,7 +273,6 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           setHoveredElement(null);
         }
       }
-      // TODO: Add other tool handlers (draw-element, select, etc.)
     }
   };
 
@@ -693,6 +765,29 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     });
   };
 
+  // Render drawing preview (rubber-band line when drawing element)
+  const renderDrawingPreview = () => {
+    if (!drawingElement || !mouseWorldPos) return null;
+
+    // Get start node position
+    const startNode = nodes.find((n) => n.name === drawingElement.startNode);
+    if (!startNode) return null;
+
+    const [sx, sy] = toScreen(startNode.x, startNode.y);
+    const [ex, ey] = toScreen(mouseWorldPos.x, mouseWorldPos.y);
+
+    return (
+      <Line
+        key="drawing-preview"
+        points={[sx, sy, ex, ey]}
+        stroke="#FFA500"
+        strokeWidth={2}
+        dash={[10, 5]}
+        lineCap="round"
+      />
+    );
+  };
+
   return (
     <div style={{ position: 'relative', border: '1px solid #ccc', backgroundColor: '#fafafa' }}>
       <Stage
@@ -708,6 +803,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           cursor: isPanning
             ? 'grabbing'
             : activeTool === 'draw-node'
+            ? 'crosshair'
+            : activeTool === 'draw-element'
             ? 'crosshair'
             : activeTool === 'delete' && (hoveredNode || hoveredElement)
             ? 'pointer'
@@ -726,6 +823,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           {renderSupports()}
           {renderNodes()}
           {renderLoads()}
+          {renderDrawingPreview()}
         </Layer>
       </Stage>
 
