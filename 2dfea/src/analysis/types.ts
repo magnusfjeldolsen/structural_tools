@@ -114,7 +114,8 @@ export interface DiagramData {
   moments: number[];        // kNm
   shears: number[];         // kN
   axials: number[];         // kN
-  deflections: number[];    // mm
+  deflections_dx: number[]; // mm - local axial deflection
+  deflections_dy: number[]; // mm - local perpendicular deflection
   length: number;           // m
 }
 
