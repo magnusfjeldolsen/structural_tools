@@ -429,15 +429,31 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
       const isHovered = hoveredElement === element.name;
 
+      // Calculate midpoint for label
+      const midX = (posI[0] + posJ[0]) / 2;
+      const midY = (posI[1] + posJ[1]) / 2;
+
       return (
-        <Line
-          key={element.name}
-          points={[posI[0], posI[1], posJ[0], posJ[1]]}
-          stroke={isHovered ? "#00FFFF" : "#2196F3"}
-          strokeWidth={isHovered ? 5 : 3}
-          lineCap="round"
-          lineJoin="round"
-        />
+        <>
+          <Line
+            key={element.name}
+            points={[posI[0], posI[1], posJ[0], posJ[1]]}
+            stroke={isHovered ? "#00FFFF" : "#2196F3"}
+            strokeWidth={isHovered ? 5 : 3}
+            lineCap="round"
+            lineJoin="round"
+          />
+          <Text
+            key={`label-${element.name}`}
+            x={midX}
+            y={midY - 10}
+            text={element.name}
+            fontSize={12}
+            fill="#2196F3"
+            fontStyle="bold"
+            offsetX={element.name.length * 3}
+          />
+        </>
       );
     });
   };
