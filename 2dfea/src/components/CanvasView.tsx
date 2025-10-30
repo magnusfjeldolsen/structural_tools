@@ -18,6 +18,7 @@ import {
   getMaxDiagramValue,
 } from '../visualization';
 import { findNearestNode, findNearestElement } from '../geometry/snapUtils';
+import { calculateDeformedElementShape } from '../geometry/deformationUtils';
 import { SnapBar } from './SnapBar';
 
 interface CanvasViewProps {
@@ -458,74 +459,42 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     });
   };
 
-  // Render displaced shape using intermediate deflection values
+  // Render displaced shape using globally correct deformation
   const renderDisplacedShape = () => {
     if (!analysisResults || !analysisResults.diagrams || !showDisplacedShape) return null;
 
     return elements.map((element) => {
       const diagram = analysisResults.diagrams[element.name];
-      if (!diagram || !diagram.deflections) return null;
+      if (!diagram || !diagram.deflections_dx || !diagram.deflections_dy) return null;
 
-      // Get original node positions
+      // Get node objects
       const nodeI = nodes.find((n) => n.name === element.nodeI);
       const nodeJ = nodes.find((n) => n.name === element.nodeJ);
       if (!nodeI || !nodeJ) return null;
 
-      // Get node displacements (global)
-      const resultI = analysisResults.nodes[element.nodeI];
-      const resultJ = analysisResults.nodes[element.nodeJ];
-      if (!resultI || !resultJ) return null;
+      // Calculate deformed shape using utility function with both deflection components
+      const deformedPoints = calculateDeformedElementShape(
+        nodeI,
+        nodeJ,
+        analysisResults,
+        diagram.deflections_dx,  // Local axial deflections
+        diagram.deflections_dy,  // Local perpendicular deflections
+        displacementScale
+      );
 
-      // Element vector
-      const dx = nodeJ.x - nodeI.x;
-      const dy = nodeJ.y - nodeI.y;
-      const length = Math.sqrt(dx * dx + dy * dy);
+      if (deformedPoints.length === 0) return null;
 
-      // Unit vectors along and perpendicular to element
-      const ux = dx / length; // Along element (local x)
-      const uy = dy / length;
-      const perpX = -uy;      // Perpendicular to element (local y)
-      const perpY = ux;
-
-      // Global displacements at ends (mm converted to m)
-      const dispI_x = resultI.DX / 1000; // mm to m
-      const dispI_y = resultI.DY / 1000;
-      const dispJ_x = resultJ.DX / 1000;
-      const dispJ_y = resultJ.DY / 1000;
-
-      // Build displaced shape points using intermediate deflections
-      const points: number[] = [];
-      const n = diagram.deflections.length; // Should be 11
-
-      for (let i = 0; i < n; i++) {
-        const t = i / (n - 1); // Position along element (0 to 1)
-
-        // Original position along element
-        const origX = nodeI.x + t * dx;
-        const origY = nodeI.y + t * dy;
-
-        // Linear interpolation of global end displacements
-        const globalDispX = dispI_x * (1 - t) + dispJ_x * t;
-        const globalDispY = dispI_y * (1 - t) + dispJ_y * t;
-
-        // Local deflection perpendicular to element (from diagram)
-        // deflections are in mm, convert to m
-        const localDefl = diagram.deflections[i] / 1000; // mm to m
-
-        // Total displaced position =
-        // original + global displacement + local deflection (perpendicular)
-        const displX = origX + globalDispX + localDefl * perpX * displacementScale;
-        const displY = origY + globalDispY + localDefl * perpY * displacementScale;
-
-        // Convert to screen coordinates
-        const [sx, sy] = toScreen(displX, displY);
-        points.push(sx, sy);
+      // Convert world coordinates to screen coordinates
+      const screenPoints: number[] = [];
+      for (const point of deformedPoints) {
+        const [sx, sy] = toScreen(point.x, point.y);
+        screenPoints.push(sx, sy);
       }
 
       return (
         <Line
           key={`displaced-${element.name}`}
-          points={points}
+          points={screenPoints}
           stroke="#FF6B6B"
           strokeWidth={2}
           lineCap="round"

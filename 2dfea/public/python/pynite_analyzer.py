@@ -307,27 +307,30 @@ class PyNiteWebAnalyzer:
                 moment_array = member.moment_array('Mz', n_points=n_points)
                 shear_array = member.shear_array('Fy', n_points=n_points)
                 axial_array = member.axial_array(n_points=n_points)
-                deflection_array = member.deflection_array('dy', n_points=n_points)  # Local perpendicular deflection
+                deflection_dx_array = member.deflection_array('dx', n_points=n_points)  # Local axial deflection
+                deflection_dy_array = member.deflection_array('dy', n_points=n_points)  # Local perpendicular deflection
 
                 # Convert numpy arrays to Python lists (PyNite units: m, N, Nm)
                 x_coords = moment_array[0].tolist()  # m (keep as is)
                 moments_N_m = moment_array[1].tolist()  # Nm (need → kNm)
                 shears_N = shear_array[1].tolist()  # N (need → kN)
                 axials_N = axial_array[1].tolist()  # N (need → kN)
-                deflections_m = deflection_array[1].tolist()  # m (need → mm)
+                deflections_dx_m = deflection_dx_array[1].tolist()  # m (need → mm)
+                deflections_dy_m = deflection_dy_array[1].tolist()  # m (need → mm)
 
                 # Convert to engineering units for frontend
                 moments = [m / 1000 for m in moments_N_m]  # Nm → kNm
                 shears = [s / 1000 for s in shears_N]  # N → kN
                 axials = [a / 1000 for a in axials_N]  # N → kN
-                deflections = [d * 1000 for d in deflections_m]  # m → mm
+                deflections_dx = [d * 1000 for d in deflections_dx_m]  # m → mm
+                deflections_dy = [d * 1000 for d in deflections_dy_m]  # m → mm
 
                 # Store element results with max values (in engineering units)
                 self.results['elements'][member_name] = {
                     'max_moment': float(max(abs(min(moments)), abs(max(moments)))),  # kNm
                     'max_shear': float(max(abs(min(shears)), abs(max(shears)))),  # kN
                     'max_axial': float(max(abs(min(axials)), abs(max(axials)))),  # kN
-                    'max_deflection': float(max(abs(min(deflections)), abs(max(deflections)))),  # mm
+                    'max_deflection': float(max(abs(min(deflections_dy)), abs(max(deflections_dy)))),  # mm (perpendicular)
                     'axial_force': float(axials[0]),  # kN at start
                     'length': float(L),  # m
                     'i_node': member.i_node.name,
@@ -340,7 +343,8 @@ class PyNiteWebAnalyzer:
                     'moments': moments,  # kNm
                     'shears': shears,  # kN
                     'axials': axials,  # kN
-                    'deflections': deflections,  # mm
+                    'deflections_dx': deflections_dx,  # mm - local axial
+                    'deflections_dy': deflections_dy,  # mm - local perpendicular
                     'length': float(L)  # m
                 }
                 print(f"  * Extracted diagram for {member_name}: {len(moments)} points")
