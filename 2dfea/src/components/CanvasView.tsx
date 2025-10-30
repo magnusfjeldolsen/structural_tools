@@ -1,9 +1,16 @@
 /**
  * Canvas View Component
- * Renders the 2D frame model using Konva with displaced shape using intermediate values
+ * Renders the 2D frame model using Konva with clean world-coordinate system
+ *
+ * Coordinate System:
+ * - view.centerX, view.centerY: World coordinates (meters) at canvas center
+ * - view.scale: Pixels per meter (zoom level)
+ * - All rendering done in world coordinates, Stage handles transform
  */
 
+import { useRef, useState } from 'react';
 import { Stage, Layer, Circle, Line, Text, Arrow } from 'react-konva';
+import Konva from 'konva';
 import { useModelStore, useUIStore } from '../store';
 import {
   diagramToFilledPath,
@@ -17,13 +24,26 @@ interface CanvasViewProps {
 }
 
 export function CanvasView({ width, height }: CanvasViewProps) {
+  const stageRef = useRef<Konva.Stage>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
+  const [lastMiddleClick, setLastMiddleClick] = useState<number>(0);
+  const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Model store
   const nodes = useModelStore((state) => state.nodes);
   const elements = useModelStore((state) => state.elements);
   const loads = useModelStore((state) => state.loads);
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const analysisResults = useModelStore((state) => state.analysisResults);
+  const addNode = useModelStore((state) => state.addNode);
 
+  // UI store
   const view = useUIStore((state) => state.view);
+  const activeTool = useUIStore((state) => state.activeTool);
+  const setView = useUIStore((state) => state.setView);
+  const panView = useUIStore((state) => state.panView);
+  const zoomView = useUIStore((state) => state.zoomView);
   const showGrid = useUIStore((state) => state.showGrid);
   const showLoads = useUIStore((state) => state.showLoads);
   const showSupports = useUIStore((state) => state.showSupports);
@@ -38,14 +58,24 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const cx = width / 2;
   const cy = height / 2;
 
-  // Scale factor for world coordinates to pixels (pixels per meter)
-  const worldScale = 50 * view.scale;
-
   // Convert world coordinates (meters) to screen coordinates (pixels)
-  const toScreen = (x: number, y: number): [number, number] => {
+  // Simple transform: world point relative to view center, scaled, then offset to canvas center
+  const toScreen = (worldX: number, worldY: number): [number, number] => {
+    const relX = worldX - view.centerX;
+    const relY = worldY - view.centerY;
     return [
-      cx + x * worldScale + view.x,
-      cy - y * worldScale + view.y, // Flip Y axis (up is positive)
+      cx + relX * view.scale,
+      cy - relY * view.scale, // Flip Y axis (up is positive in world coordinates)
+    ];
+  };
+
+  // Convert screen coordinates to world coordinates
+  const toWorld = (screenX: number, screenY: number): [number, number] => {
+    const relX = (screenX - cx) / view.scale;
+    const relY = -(screenY - cy) / view.scale; // Flip Y
+    return [
+      view.centerX + relX,
+      view.centerY + relY,
     ];
   };
 
@@ -56,41 +86,198 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     return toScreen(node.x, node.y);
   };
 
+  // === UTILITY FUNCTIONS ===
+
+  const zoomToFit = () => {
+    if (nodes.length === 0) {
+      setView({ centerX: 0, centerY: 0, scale: 50 });
+      return;
+    }
+
+    // Calculate bounding box of all nodes in world coordinates
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    nodes.forEach((node) => {
+      minX = Math.min(minX, node.x);
+      maxX = Math.max(maxX, node.x);
+      minY = Math.min(minY, node.y);
+      maxY = Math.max(maxY, node.y);
+    });
+
+    // Add padding (10% of model size or minimum 1m)
+    const modelWidth = maxX - minX;
+    const modelHeight = maxY - minY;
+    const padding = Math.max(Math.max(modelWidth, modelHeight) * 0.1, 1);
+
+    const paddedWidth = modelWidth + 2 * padding;
+    const paddedHeight = modelHeight + 2 * padding;
+
+    // Calculate center of bounding box
+    const modelCenterX = (minX + maxX) / 2;
+    const modelCenterY = (minY + maxY) / 2;
+
+    // Calculate scale to fit bounding box in canvas (use 90% of canvas)
+    const scaleX = (width * 0.9) / paddedWidth;
+    const scaleY = (height * 0.9) / paddedHeight;
+    const newScale = Math.min(scaleX, scaleY, 500); // Cap at max zoom
+    const clampedScale = Math.max(newScale, 10); // Min zoom
+
+    // Set view to center on model center
+    setView({ centerX: modelCenterX, centerY: modelCenterY, scale: clampedScale });
+  };
+
+  // === MOUSE EVENT HANDLERS ===
+
+  const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    // Middle mouse button - panning or double-click to recenter
+    if (e.evt.button === 1) {
+      e.evt.preventDefault();
+
+      // Check for double-click (within 300ms)
+      const now = Date.now();
+      if (now - lastMiddleClick < 300) {
+        // Double middle-click: zoom to fit
+        zoomToFit();
+        setLastMiddleClick(0);
+        return;
+      }
+      setLastMiddleClick(now);
+
+      // Start panning
+      setIsPanning(true);
+      const pointerPos = stage.getPointerPosition();
+      if (pointerPos) {
+        setPanStart(pointerPos);
+      }
+      return;
+    }
+
+    // Left mouse button - tool actions
+    if (e.evt.button === 0) {
+      const pointerPos = stage.getPointerPosition();
+      if (!pointerPos) return;
+
+      const [worldX, worldY] = toWorld(pointerPos.x, pointerPos.y);
+
+      if (activeTool === 'draw-node') {
+        // Add node at cursor position
+        const nodeName = `N${nodes.length + 1}`;
+        addNode(nodeName, worldX, worldY);
+      }
+      // TODO: Add other tool handlers (draw-element, select, etc.)
+    }
+  };
+
+  const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    // Update mouse position for display - convert screen to world coordinates
+    const pointerPos = stage.getPointerPosition();
+    if (pointerPos) {
+      const [worldX, worldY] = toWorld(pointerPos.x, pointerPos.y);
+      setMouseWorldPos({ x: worldX, y: worldY });
+    }
+
+    // Handle panning
+    if (isPanning && panStart) {
+      const pointerPos = stage.getPointerPosition();
+      if (pointerPos) {
+        const dx = pointerPos.x - panStart.x;
+        const dy = pointerPos.y - panStart.y;
+        panView(dx, dy);
+        setPanStart(pointerPos);
+      }
+    }
+
+    // TODO: Handle other tool mousemove logic (rubberband, hover highlights, etc.)
+  };
+
+  const handleMouseUp = () => {
+    // End panning
+    if (isPanning) {
+      setIsPanning(false);
+      setPanStart(null);
+    }
+
+    // TODO: Handle tool mouseup logic
+  };
+
+  const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
+    e.evt.preventDefault();
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return;
+
+    const [worldX, worldY] = toWorld(pointerPos.x, pointerPos.y);
+
+    // Zoom in/out centered on cursor
+    const scaleMultiplier = e.evt.deltaY > 0 ? 0.9 : 1.1;
+    zoomView(scaleMultiplier, worldX, worldY);
+  };
+
+  const handleContextMenu = (e: Konva.KonvaEventObject<PointerEvent>) => {
+    e.evt.preventDefault();
+    // Right-click: zoom to fit
+    zoomToFit();
+  };
+
   // Filter loads by active case
   const visibleLoads = loads.nodal.filter(
     (load) => !activeLoadCase || load.case === activeLoadCase
   );
 
-  // Render grid
+  // Render grid (in world coordinates)
   const renderGrid = () => {
     if (!showGrid) return null;
 
     const gridLines: JSX.Element[] = [];
-    const gridSpacing = 1;
-    const gridPixels = gridSpacing * worldScale;
-    const numLinesX = Math.ceil(width / gridPixels) + 2;
-    const numLinesY = Math.ceil(height / gridPixels) + 2;
+    const gridSpacing = 1; // 1 meter grid spacing
 
-    for (let i = -numLinesX / 2; i < numLinesX / 2; i++) {
-      const x = cx + i * gridPixels + (view.x % gridPixels);
+    // Calculate visible world bounds
+    const [minWorldX, maxWorldY] = toWorld(0, 0);
+    const [maxWorldX, minWorldY] = toWorld(width, height);
+
+    // Extend grid slightly beyond visible area
+    const startX = Math.floor(minWorldX / gridSpacing) - 1;
+    const endX = Math.ceil(maxWorldX / gridSpacing) + 1;
+    const startY = Math.floor(minWorldY / gridSpacing) - 1;
+    const endY = Math.ceil(maxWorldY / gridSpacing) + 1;
+
+    // Vertical lines
+    for (let i = startX; i <= endX; i++) {
+      const x = i * gridSpacing;
+      const [sx1, sy1] = toScreen(x, minWorldY - gridSpacing);
+      const [sx2, sy2] = toScreen(x, maxWorldY + gridSpacing);
       gridLines.push(
         <Line
           key={`v${i}`}
-          points={[x, 0, x, height]}
-          stroke="#e0e0e0"
-          strokeWidth={0.5}
+          points={[sx1, sy1, sx2, sy2]}
+          stroke={i === 0 ? '#aaa' : '#e0e0e0'}
+          strokeWidth={i === 0 ? 1.5 : 0.5}
         />
       );
     }
 
-    for (let i = -numLinesY / 2; i < numLinesY / 2; i++) {
-      const y = cy + i * gridPixels + (view.y % gridPixels);
+    // Horizontal lines
+    for (let i = startY; i <= endY; i++) {
+      const y = i * gridSpacing;
+      const [sx1, sy1] = toScreen(minWorldX - gridSpacing, y);
+      const [sx2, sy2] = toScreen(maxWorldX + gridSpacing, y);
       gridLines.push(
         <Line
           key={`h${i}`}
-          points={[0, y, width, y]}
-          stroke="#e0e0e0"
-          strokeWidth={0.5}
+          points={[sx1, sy1, sx2, sy2]}
+          stroke={i === 0 ? '#aaa' : '#e0e0e0'}
+          strokeWidth={i === 0 ? 1.5 : 0.5}
         />
       );
     }
@@ -173,7 +360,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         const localDefl = diagram.deflections[i] / 1000; // mm to m
 
         // Total displaced position =
-        // original + global displacement (along element direction) + local deflection (perpendicular)
+        // original + global displacement + local deflection (perpendicular)
         const displX = origX + globalDispX + localDefl * perpX * displacementScale;
         const displY = origY + globalDispY + localDefl * perpY * displacementScale;
 
@@ -201,7 +388,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     if (!analysisResults || !analysisResults.diagrams || !showMomentDiagram) return null;
 
     const maxMoment = getMaxDiagramValue(analysisResults.diagrams, 'moment');
-    const scale = calculateDiagramScale(maxMoment, view.scale, 30) * diagramScale;
+    const scale = calculateDiagramScale(maxMoment, view.scale / 50, 30) * diagramScale;
 
     return elements.map((element) => {
       const diagram = analysisResults.diagrams[element.name];
@@ -237,7 +424,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     if (!analysisResults || !analysisResults.diagrams || !showShearDiagram) return null;
 
     const maxShear = getMaxDiagramValue(analysisResults.diagrams, 'shear');
-    const scale = calculateDiagramScale(maxShear, view.scale, 25) * diagramScale;
+    const scale = calculateDiagramScale(maxShear, view.scale / 50, 25) * diagramScale;
 
     return elements.map((element) => {
       const diagram = analysisResults.diagrams[element.name];
@@ -273,7 +460,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     if (!analysisResults || !analysisResults.diagrams || !showAxialDiagram) return null;
 
     const maxAxial = getMaxDiagramValue(analysisResults.diagrams, 'axial');
-    const scale = calculateDiagramScale(maxAxial, view.scale, 20) * diagramScale;
+    const scale = calculateDiagramScale(maxAxial, view.scale / 50, 20) * diagramScale;
 
     return elements.map((element) => {
       const diagram = analysisResults.diagrams[element.name];
@@ -312,7 +499,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       if (node.support === 'free') return null;
 
       const [sx, sy] = toScreen(node.x, node.y);
-      const size = 15;
+      const size = 15; // Fixed size in pixels
 
       if (node.support === 'fixed') {
         return (
@@ -441,8 +628,18 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   };
 
   return (
-    <div style={{ border: '1px solid #ccc', backgroundColor: '#fafafa' }}>
-      <Stage width={width} height={height}>
+    <div style={{ position: 'relative', border: '1px solid #ccc', backgroundColor: '#fafafa' }}>
+      <Stage
+        ref={stageRef}
+        width={width}
+        height={height}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onWheel={handleWheel}
+        onContextMenu={handleContextMenu}
+        style={{ cursor: isPanning ? 'grabbing' : activeTool === 'draw-node' ? 'crosshair' : 'default' }}
+      >
         <Layer>
           {renderGrid()}
           {renderMomentDiagrams()}
@@ -455,6 +652,25 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           {renderLoads()}
         </Layer>
       </Stage>
+
+      {/* Mouse coordinates display */}
+      {mouseWorldPos && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 8,
+            left: 8,
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            padding: '4px 8px',
+            borderRadius: 4,
+            fontSize: 12,
+            fontFamily: 'monospace',
+            border: '1px solid #ccc',
+          }}
+        >
+          X: {mouseWorldPos.x.toFixed(3)} m, Y: {mouseWorldPos.y.toFixed(3)} m
+        </div>
+      )}
     </div>
   );
 }

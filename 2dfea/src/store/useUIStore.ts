@@ -30,9 +30,9 @@ export type SnapMode =
   | 'nearest';
 
 export interface ViewTransform {
-  x: number;      // Pan offset X
-  y: number;      // Pan offset Y
-  scale: number;  // Zoom level (1 = 100%)
+  centerX: number;  // World X coordinate (meters) at canvas center
+  centerY: number;  // World Y coordinate (meters) at canvas center
+  scale: number;    // Zoom scale: pixels per meter (default 50)
 }
 
 export interface SnapSettings {
@@ -50,10 +50,17 @@ export interface UIState {
   // View state
   view: ViewTransform;
   setView: (transform: Partial<ViewTransform>) => void;
+  panView: (dx: number, dy: number) => void;
+  zoomView: (scaleMultiplier: number, centerX?: number, centerY?: number) => void;
   resetView: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
   zoomToFit: () => void;
+
+  // Drawing state (for multi-step operations)
+  tempElementStart: string | null;  // Node ID for element start
+  setTempElementStart: (nodeId: string | null) => void;
+  clearTempElement: () => void;
 
   // Snap state
   snap: SnapSettings;
@@ -112,10 +119,11 @@ export interface UIState {
 const initialState = {
   activeTool: 'select' as Tool,
   view: {
-    x: 0,
-    y: 0,
-    scale: 1,
+    centerX: 0,    // World origin at canvas center
+    centerY: 0,
+    scale: 50,     // 50 pixels per meter
   },
+  tempElementStart: null,
   snap: {
     enabled: true,
     modes: ['endpoint', 'midpoint', 'grid'] as SnapMode[],
@@ -161,25 +169,71 @@ export const useUIStore = create<UIState>()(
         });
       },
 
+      panView: (dx, dy) => {
+        // Pan by screen pixel delta - convert to world coordinate delta
+        set((state) => {
+          const worldDx = dx / state.view.scale;
+          const worldDy = -dy / state.view.scale; // Flip Y
+          state.view.centerX -= worldDx;
+          state.view.centerY -= worldDy;
+        });
+      },
+
+      zoomView: (scaleMultiplier, centerX, centerY) => {
+        // Zoom with optional world coordinate to zoom towards
+        // centerX/centerY are in world coordinates
+        set((state) => {
+          const oldScale = state.view.scale;
+          const newScale = Math.max(10, Math.min(500, oldScale * scaleMultiplier));
+
+          if (centerX !== undefined && centerY !== undefined) {
+            // Zoom towards a world point, keeping it stationary on screen
+            const offsetX = centerX - state.view.centerX;
+            const offsetY = centerY - state.view.centerY;
+            const scaleRatio = oldScale / newScale;
+            const newOffsetX = offsetX * scaleRatio;
+            const newOffsetY = offsetY * scaleRatio;
+
+            state.view.centerX = centerX - newOffsetX;
+            state.view.centerY = centerY - newOffsetY;
+            state.view.scale = newScale;
+          } else {
+            // Simple zoom at current center
+            state.view.scale = newScale;
+          }
+        });
+      },
+
       resetView: () => {
         set({ view: initialState.view });
       },
 
       zoomIn: () => {
         set((state) => {
-          state.view.scale = Math.min(state.view.scale * 1.2, 10);
+          state.view.scale = Math.min(state.view.scale * 1.2, 500);
         });
       },
 
       zoomOut: () => {
         set((state) => {
-          state.view.scale = Math.max(state.view.scale / 1.2, 0.1);
+          state.view.scale = Math.max(state.view.scale / 1.2, 10);
         });
       },
 
       zoomToFit: () => {
-        // TODO: Calculate bounds and fit to canvas
-        set({ view: { x: 0, y: 0, scale: 1 } });
+        // This will be called with model data from the component
+        // Since store doesn't have direct access to canvas size, we just reset
+        // The actual calculation happens in CanvasView
+        set({ view: { centerX: 0, centerY: 0, scale: 50 } });
+      },
+
+      // Drawing state actions
+      setTempElementStart: (nodeId) => {
+        set({ tempElementStart: nodeId });
+      },
+
+      clearTempElement: () => {
+        set({ tempElementStart: null });
       },
 
       // Snap actions
