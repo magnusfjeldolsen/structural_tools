@@ -39,6 +39,8 @@ interface ModelState {
   // Geometry
   nodes: Node[];
   elements: Element[];
+  nextNodeNumber: number;  // Counter for node naming (never decrements)
+  nextElementNumber: number;  // Counter for element naming (never decrements)
 
   // Loads
   loads: Loads;
@@ -106,6 +108,8 @@ interface ModelState {
 const initialState = {
   nodes: [],
   elements: [],
+  nextNodeNumber: 1,
+  nextElementNumber: 1,
   loads: {
     nodal: [],
     distributed: [],
@@ -140,8 +144,9 @@ export const useModelStore = create<ModelState>()(
 
         addNode: (nodeData) => {
           set((state) => {
-            const name = `N${state.nodes.length + 1}`;
+            const name = `N${state.nextNodeNumber}`;
             state.nodes.push({ name, ...nodeData });
+            state.nextNodeNumber++;
           });
         },
 
@@ -179,8 +184,9 @@ export const useModelStore = create<ModelState>()(
 
         addElement: (elementData) => {
           set((state) => {
-            const name = `E${state.elements.length + 1}`;
+            const name = `E${state.nextElementNumber}`;
             state.elements.push({ name, ...elementData });
+            state.nextElementNumber++;
           });
         },
 
@@ -480,6 +486,7 @@ export const useModelStore = create<ModelState>()(
               { name: 'N1', x: 0, y: 0, support: 'fixed' },
               { name: 'N2', x: 4, y: 0, support: 'free' },
             ];
+            state.nextNodeNumber = 3;  // Next node will be N3
 
             state.elements = [
               {
@@ -491,6 +498,7 @@ export const useModelStore = create<ModelState>()(
                 A: 1e-3,     // m²
               },
             ];
+            state.nextElementNumber = 2;  // Next element will be E2
 
             state.loads = {
               nodal: [
