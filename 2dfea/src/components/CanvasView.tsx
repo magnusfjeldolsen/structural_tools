@@ -17,6 +17,8 @@ import {
   calculateDiagramScale,
   getMaxDiagramValue,
 } from '../visualization';
+import { findNearestNode, findNearestElement } from '../geometry/snapUtils';
+import { SnapBar } from './SnapBar';
 
 interface CanvasViewProps {
   width: number;
@@ -37,6 +39,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const analysisResults = useModelStore((state) => state.analysisResults);
   const addNode = useModelStore((state) => state.addNode);
+  const deleteNode = useModelStore((state) => state.deleteNode);
+  const deleteElement = useModelStore((state) => state.deleteElement);
 
   // UI store
   const view = useUIStore((state) => state.view);
@@ -53,6 +57,16 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const showAxialDiagram = useUIStore((state) => state.showAxialDiagram);
   const displacementScale = useUIStore((state) => state.displacementScale);
   const diagramScale = useUIStore((state) => state.diagramScale);
+
+  // Snapping state
+  const snapEnabled = useUIStore((state) => state.snapEnabled);
+  const snapToNodes = useUIStore((state) => state.snapToNodes);
+  const snapToElements = useUIStore((state) => state.snapToElements);
+  const snapTolerance = useUIStore((state) => state.snapTolerance);
+  const hoveredNode = useUIStore((state) => state.hoveredNode);
+  const hoveredElement = useUIStore((state) => state.hoveredElement);
+  const setHoveredNode = useUIStore((state) => state.setHoveredNode);
+  const setHoveredElement = useUIStore((state) => state.setHoveredElement);
 
   // Canvas center
   const cx = width / 2;
@@ -172,6 +186,19 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           y: worldY,
           support: 'free',
         });
+      } else if (activeTool === 'delete') {
+        // Delete mode: delete the hovered entity
+        // Priority: nodes > elements (nodes delete connected elements and loads automatically)
+        if (hoveredNode) {
+          deleteNode(hoveredNode);
+          // Clear hover state after deletion
+          setHoveredNode(null);
+          setHoveredElement(null);
+        } else if (hoveredElement) {
+          deleteElement(hoveredElement);
+          // Clear hover state after deletion
+          setHoveredElement(null);
+        }
       }
       // TODO: Add other tool handlers (draw-element, select, etc.)
     }
@@ -186,6 +213,39 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     if (pointerPos) {
       const [worldX, worldY] = toWorld(pointerPos.x, pointerPos.y);
       setMouseWorldPos({ x: worldX, y: worldY });
+
+      // Snapping detection
+      if (snapEnabled) {
+        // Convert tolerance from pixels to world units
+        const worldTolerance = snapTolerance / view.scale;
+
+        let nearestNode: string | null = null;
+        let nearestElement: string | null = null;
+
+        // Check for nearest node first (nodes have priority)
+        if (snapToNodes) {
+          const nearest = findNearestNode(nodes, { x: worldX, y: worldY }, worldTolerance);
+          if (nearest) {
+            nearestNode = nearest.name;
+          }
+        }
+
+        // Check for nearest element only if no node is snapped
+        if (snapToElements && !nearestNode) {
+          const nearest = findNearestElement(nodes, elements, { x: worldX, y: worldY }, worldTolerance);
+          if (nearest) {
+            nearestElement = nearest.name;
+          }
+        }
+
+        // Update hover state
+        setHoveredNode(nearestNode);
+        setHoveredElement(nearestElement);
+      } else {
+        // Clear hover state when snapping is disabled
+        setHoveredNode(null);
+        setHoveredElement(null);
+      }
     }
 
     // Handle panning
@@ -295,12 +355,14 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const posJ = getNodePos(element.nodeJ);
       if (!posI || !posJ) return null;
 
+      const isHovered = hoveredElement === element.name;
+
       return (
         <Line
           key={element.name}
           points={[posI[0], posI[1], posJ[0], posJ[1]]}
-          stroke="#2196F3"
-          strokeWidth={3}
+          stroke={isHovered ? "#00FFFF" : "#2196F3"}
+          strokeWidth={isHovered ? 5 : 3}
           lineCap="round"
           lineJoin="round"
         />
@@ -557,6 +619,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const renderNodes = () => {
     return nodes.map((node) => {
       const [sx, sy] = toScreen(node.x, node.y);
+      const isHovered = hoveredNode === node.name;
 
       return (
         <>
@@ -564,10 +627,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
             key={`node-${node.name}`}
             x={sx}
             y={sy}
-            radius={5}
-            fill="#FF5722"
-            stroke="#000"
-            strokeWidth={1}
+            radius={isHovered ? 7 : 5}
+            fill={isHovered ? "#00FFFF" : "#FF5722"}
+            stroke={isHovered ? "#00AAAA" : "#000"}
+            strokeWidth={isHovered ? 2 : 1}
           />
           <Text
             key={`label-${node.name}`}
@@ -641,7 +704,17 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         onMouseUp={handleMouseUp}
         onWheel={handleWheel}
         onContextMenu={handleContextMenu}
-        style={{ cursor: isPanning ? 'grabbing' : activeTool === 'draw-node' ? 'crosshair' : 'default' }}
+        style={{
+          cursor: isPanning
+            ? 'grabbing'
+            : activeTool === 'draw-node'
+            ? 'crosshair'
+            : activeTool === 'delete' && (hoveredNode || hoveredElement)
+            ? 'pointer'
+            : activeTool === 'delete'
+            ? 'not-allowed'
+            : 'default'
+        }}
       >
         <Layer>
           {renderGrid()}
@@ -674,6 +747,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           X: {mouseWorldPos.x.toFixed(3)} m, Y: {mouseWorldPos.y.toFixed(3)} m
         </div>
       )}
+
+      {/* Snapping controls */}
+      <SnapBar />
     </div>
   );
 }
