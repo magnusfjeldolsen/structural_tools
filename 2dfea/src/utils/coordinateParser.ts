@@ -19,23 +19,35 @@ export interface ParsedCoordinate {
 /**
  * Parse coordinate input string
  *
- * @param input - Input string (e.g., "10,20" or "d5,0")
+ * Supported formats:
+ * - Absolute: "X,Y" or "X Y" (e.g., "10,20" or "10 20")
+ * - Relative: "dX,Y" or "dX Y" or "DX,Y" or "DX Y" (e.g., "d5,0" or "d5 0")
+ *
+ * @param input - Input string
  * @returns Parsed coordinate with delta flag, or null if invalid
  */
 export function parseCoordinateInput(input: string): ParsedCoordinate | null {
-  // Remove all whitespace
-  const clean = input.trim().replace(/\s+/g, '');
+  const trimmed = input.trim();
 
-  if (clean.length === 0) {
+  if (trimmed.length === 0) {
     return null;
   }
 
-  // Check for delta prefix
-  const isDelta = clean.toLowerCase().startsWith('d');
-  const coordString = isDelta ? clean.substring(1) : clean;
+  // Check for delta prefix (d or D)
+  const isDelta = trimmed.toLowerCase().startsWith('d');
+  const coordString = isDelta ? trimmed.substring(1).trim() : trimmed;
 
-  // Split by comma
-  const parts = coordString.split(',');
+  // Split by comma or space (but normalize multiple spaces first)
+  const normalized = coordString.replace(/\s+/g, ' ');
+  let parts: string[];
+
+  if (normalized.includes(',')) {
+    // Comma-separated: split by comma and remove spaces
+    parts = normalized.split(',').map(p => p.trim());
+  } else {
+    // Space-separated
+    parts = normalized.split(' ');
+  }
 
   if (parts.length !== 2) {
     return null;
@@ -71,7 +83,7 @@ export function validateCoordinateInput(input: string): string | null {
   const result = parseCoordinateInput(input);
 
   if (result === null) {
-    return 'Invalid format. Use: X,Y or dX,Y';
+    return 'Invalid format. Use: X,Y or X Y (absolute) or dX,Y or dX Y (relative)';
   }
 
   return null;

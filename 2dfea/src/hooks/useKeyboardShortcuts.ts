@@ -2,12 +2,12 @@
  * Keyboard Shortcuts Hook
  *
  * Handles keyboard shortcuts for the application.
- * Escape hierarchy:
- * 1. Command input (if visible)
- * 2. Move command (if active)
- * 3. Draw element (if in progress)
- * 4. Clear selection (if any selected)
- * 5. Reset to select tool
+ *
+ * Shortcuts:
+ * - Escape: Hierarchical cancellation (command input → move → draw → selection → tool)
+ * - M: Activate move tool
+ * - Delete: Activate delete tool
+ * - Ctrl+Space: Run analysis
  */
 
 import { useEffect } from 'react';
@@ -22,12 +22,15 @@ export function useKeyboardShortcuts() {
   const moveCommand = useUIStore((state) => state.moveCommand);
   const clearMoveCommand = useUIStore((state) => state.clearMoveCommand);
   const setMoveStage = useUIStore((state) => state.setMoveStage);
+  const startMoveCommand = useUIStore((state) => state.startMoveCommand);
   const drawingElement = useUIStore((state) => state.drawingElement);
   const clearDrawingElement = useUIStore((state) => state.clearDrawingElement);
 
   const selectedNodes = useModelStore((state) => state.selectedNodes);
   const selectedElements = useModelStore((state) => state.selectedElements);
   const clearSelection = useModelStore((state) => state.clearSelection);
+  const runAnalysis = useModelStore((state) => state.runAnalysis);
+  const solver = useModelStore((state) => state.solver);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -72,11 +75,29 @@ export function useKeyboardShortcuts() {
         }
       }
 
+      // M key - activate move tool
+      if ((e.key === 'm' || e.key === 'M') && !commandInput?.visible) {
+        e.preventDefault();
+        if (selectedNodes.length > 0) {
+          startMoveCommand(selectedNodes);
+        } else {
+          setTool('move');
+        }
+      }
+
       // Delete key - delete selected entities
       if (e.key === 'Delete' && !commandInput?.visible) {
         e.preventDefault();
         if (activeTool !== 'delete') {
           setTool('delete');
+        }
+      }
+
+      // Ctrl+Space - run analysis
+      if (e.key === ' ' && e.ctrlKey && !commandInput?.visible) {
+        e.preventDefault();
+        if (solver) {
+          runAnalysis();
         }
       }
 
@@ -96,11 +117,14 @@ export function useKeyboardShortcuts() {
     drawingElement,
     selectedNodes,
     selectedElements,
+    solver,
     setTool,
     setCommandInput,
     clearMoveCommand,
     setMoveStage,
+    startMoveCommand,
     clearDrawingElement,
     clearSelection,
+    runAnalysis,
   ]);
 }

@@ -96,6 +96,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const commandInput = useUIStore((state) => state.commandInput);
   const setCommandInput = useUIStore((state) => state.setCommandInput);
 
+  // Cursor position
+  const setCursorPosition = useUIStore((state) => state.setCursorPosition);
+
   // Canvas center
   const cx = width / 2;
   const cy = height / 2;
@@ -258,6 +261,24 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const [worldX, worldY] = toWorld(pointerPos.x, pointerPos.y);
       const isShiftPressed = e.evt.shiftKey;
 
+      // Priority 1: Check for active move command first
+      if (moveCommand?.stage === 'awaiting-basepoint-click') {
+        // Set base point by click
+        setMoveBasePoint({ x: worldX, y: worldY });
+        return;
+      } else if (moveCommand?.stage === 'awaiting-endpoint-click') {
+        // Set end point by click and execute move
+        const basePoint = moveCommand.basePoint;
+        if (basePoint) {
+          const dx = worldX - basePoint.x;
+          const dy = worldY - basePoint.y;
+          moveNodes(selectedNodes, dx, dy);
+          clearMoveCommand();
+        }
+        return;
+      }
+
+      // Priority 2: Regular tool behavior
       if (activeTool === 'select') {
         if (selectionStart) {
           // Second click - finalize selection rectangle
@@ -314,21 +335,6 @@ export function CanvasView({ width, height }: CanvasViewProps) {
             }
             setSelectionStart({ x: worldX, y: worldY, isShift: isShiftPressed });
             setSelectionRect({ x1: worldX, y1: worldY, x2: worldX, y2: worldY });
-          }
-        }
-      } else if (activeTool === 'move') {
-        // Move tool: handle base point and end point
-        if (moveCommand?.stage === 'awaiting-basepoint-click') {
-          // Set base point by click
-          setMoveBasePoint({ x: worldX, y: worldY });
-        } else if (moveCommand?.stage === 'awaiting-endpoint-click') {
-          // Set end point by click and execute move
-          const basePoint = moveCommand.basePoint;
-          if (basePoint) {
-            const dx = worldX - basePoint.x;
-            const dy = worldY - basePoint.y;
-            moveNodes(selectedNodes, dx, dy);
-            clearMoveCommand();
           }
         }
       } else if (activeTool === 'draw-node') {
@@ -417,6 +423,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     if (pointerPos) {
       const [worldX, worldY] = toWorld(pointerPos.x, pointerPos.y);
       setMouseWorldPos({ x: worldX, y: worldY });
+      setCursorPosition({ x: worldX, y: worldY });
 
       // Snapping detection
       if (snapEnabled) {

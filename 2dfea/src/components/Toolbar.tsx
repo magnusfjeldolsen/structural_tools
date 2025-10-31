@@ -15,6 +15,7 @@
 import { useModelStore, useUIStore } from '../store';
 
 export function Toolbar() {
+  const activeTab = useUIStore((state) => state.activeTab);
   const activeTool = useUIStore((state) => state.activeTool);
   const setTool = useUIStore((state) => state.setTool);
   const startMoveCommand = useUIStore((state) => state.startMoveCommand);
@@ -115,34 +116,46 @@ export function Toolbar() {
           gap: '8px',
         }}
       >
-        {/* Tool Group */}
+        {/* Tool Group - Changes based on active tab */}
         <div style={{ display: 'flex', gap: '4px', marginRight: '16px' }}>
-          <button style={toolButtonStyle('select')} onClick={() => setTool('select')}>
-            Select
-          </button>
-          <button
-            style={{
-              ...toolButtonStyle('move'),
-              opacity: selectedNodes.length === 0 ? 0.5 : 1,
-              cursor: selectedNodes.length === 0 ? 'not-allowed' : 'pointer',
-            }}
-            onClick={handleMoveClick}
-            disabled={selectedNodes.length === 0}
-          >
-            Move ({selectedNodes.length})
-          </button>
-          <button style={toolButtonStyle('draw-node')} onClick={() => setTool('draw-node')}>
-            Draw Node
-          </button>
-          <button style={toolButtonStyle('draw-element')} onClick={() => setTool('draw-element')}>
-            Draw Element
-          </button>
-          <button style={toolButtonStyle('add-load')} onClick={() => setTool('add-load')}>
-            Add Load
-          </button>
-          <button style={toolButtonStyle('delete')} onClick={() => setTool('delete')}>
-            Delete
-          </button>
+          {/* Structure Tab Tools - Creation tools only (CAD tools in left panel) */}
+          {activeTab === 'structure' && (
+            <>
+              <button style={toolButtonStyle('draw-node')} onClick={() => setTool('draw-node')}>
+                Draw Node
+              </button>
+              <button style={toolButtonStyle('draw-element')} onClick={() => setTool('draw-element')}>
+                Draw Element
+              </button>
+              <button style={toolButtonStyle('add-support')} onClick={() => setTool('add-support')}>
+                Add Support
+              </button>
+            </>
+          )}
+
+          {/* Loads Tab Tools */}
+          {activeTab === 'loads' && (
+            <>
+              <button style={toolButtonStyle('select')} onClick={() => setTool('select')}>
+                Select
+              </button>
+              <button style={toolButtonStyle('add-load')} onClick={() => setTool('add-load')}>
+                Add Nodal Load
+              </button>
+              <button style={toolButtonStyle('delete')} onClick={() => setTool('delete')}>
+                Delete
+              </button>
+            </>
+          )}
+
+          {/* Analysis Tab Tools */}
+          {activeTab === 'analysis' && (
+            <>
+              <button style={toolButtonStyle('select')} onClick={() => setTool('select')}>
+                Select
+              </button>
+            </>
+          )}
         </div>
 
         {/* Divider */}
@@ -155,24 +168,31 @@ export function Toolbar() {
           }}
         />
 
-        {/* Action Group */}
+        {/* Action Group - Tab-specific actions */}
         <div style={{ display: 'flex', gap: '4px' }}>
-          <button style={actionButtonStyle} onClick={loadExample}>
-            Load Example
-          </button>
-          <button
-            style={!solver || isAnalyzing ? disabledButtonStyle : actionButtonStyle}
-            onClick={handleRunAnalysis}
-            disabled={!solver || isAnalyzing}
-          >
-            {isAnalyzing ? 'Analyzing...' : 'Run Analysis'}
-          </button>
-          <button
-            style={{ ...actionButtonStyle, backgroundColor: '#f44336' }}
-            onClick={clearModel}
-          >
-            Clear Model
-          </button>
+          {activeTab === 'structure' && (
+            <>
+              <button style={actionButtonStyle} onClick={loadExample}>
+                Load Example
+              </button>
+              <button
+                style={{ ...actionButtonStyle, backgroundColor: '#f44336' }}
+                onClick={clearModel}
+              >
+                Clear Model
+              </button>
+            </>
+          )}
+
+          {activeTab === 'analysis' && (
+            <button
+              style={!solver || isAnalyzing ? disabledButtonStyle : actionButtonStyle}
+              onClick={handleRunAnalysis}
+              disabled={!solver || isAnalyzing}
+            >
+              {isAnalyzing ? 'Analyzing...' : 'Run Analysis'}
+            </button>
+          )}
         </div>
 
         {/* Status Indicator */}
@@ -195,8 +215,8 @@ export function Toolbar() {
         </div>
       </div>
 
-      {/* Bottom Row: Visualization Controls */}
-      {analysisResults && (
+      {/* Bottom Row: Visualization Controls - Analysis Tab Only */}
+      {activeTab === 'analysis' && analysisResults && (
         <div
           style={{
             display: 'flex',
