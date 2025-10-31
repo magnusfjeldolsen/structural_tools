@@ -42,7 +42,13 @@ export interface SnapSettings {
   tolerance: number; // pixels
 }
 
+export type AppTab = 'structure' | 'loads' | 'analysis';
+
 export interface UIState {
+  // Tab state
+  activeTab: AppTab;
+  setActiveTab: (tab: AppTab) => void;
+
   // Tool state
   activeTool: Tool;
   setTool: (tool: Tool) => void;
@@ -146,6 +152,10 @@ export interface UIState {
   showResultsPanel: boolean;
   togglePropertiesPanel: () => void;
   toggleResultsPanel: () => void;
+
+  // Cursor position (in model coordinates)
+  cursorPosition: { x: number; y: number } | null;
+  setCursorPosition: (position: { x: number; y: number } | null) => void;
 }
 
 // ============================================================================
@@ -153,6 +163,7 @@ export interface UIState {
 // ============================================================================
 
 const initialState = {
+  activeTab: 'structure' as AppTab,
   activeTool: 'select' as Tool,
   view: {
     centerX: 0,    // World origin at canvas center
@@ -191,6 +202,7 @@ const initialState = {
   coordinateInput: '',
   showPropertiesPanel: true,
   showResultsPanel: false,
+  cursorPosition: null,
 };
 
 // ============================================================================
@@ -201,6 +213,11 @@ export const useUIStore = create<UIState>()(
   devtools(
     immer((set, get) => ({
       ...initialState,
+
+      // Tab actions
+      setActiveTab: (tab) => {
+        set({ activeTab: tab });
+      },
 
       // Tool actions
       setTool: (tool) => {
@@ -467,6 +484,11 @@ export const useUIStore = create<UIState>()(
         set((state) => {
           state.showResultsPanel = !state.showResultsPanel;
         });
+      },
+
+      // Cursor position
+      setCursorPosition: (position) => {
+        set({ cursorPosition: position });
       },
     })),
     { name: 'UIStore' }

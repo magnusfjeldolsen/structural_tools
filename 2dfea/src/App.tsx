@@ -9,9 +9,14 @@
 
 import { useEffect, useState } from 'react';
 import { useModelStore } from './store';
+import { useUIStore } from './store/useUIStore';
 import { CanvasView, Toolbar, ResultsPanel, LoadCasePanel } from './components';
+import { TabBar } from './components/TabBar';
+import { LeftCADPanel } from './components/LeftCADPanel';
 import { CommandInput } from './components/CommandInput';
+import { CoordinateDisplay } from './components/CoordinateDisplay';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { theme } from './styles/theme';
 
 export default function App() {
   const [initStatus, setInitStatus] = useState<'pending' | 'loading' | 'ready' | 'error'>('pending');
@@ -19,6 +24,7 @@ export default function App() {
   const [rightPanelTab, setRightPanelTab] = useState<'results' | 'loadcases'>('results');
 
   const initializeSolver = useModelStore((state) => state.initializeSolver);
+  const activeTab = useUIStore((state) => state.activeTab);
 
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
@@ -112,7 +118,7 @@ export default function App() {
     );
   }
 
-  // Main app UI - 2 column layout with Toolbar on top
+  // Main app UI - 2 column layout with TabBar and Toolbar on top
   return (
     <div style={{
       display: 'flex',
@@ -121,7 +127,10 @@ export default function App() {
       fontFamily: 'Arial, sans-serif',
       overflow: 'hidden',
     }}>
-      {/* Toolbar at top */}
+      {/* Tab Navigation */}
+      <TabBar />
+
+      {/* Toolbar with tab-specific tools */}
       <Toolbar />
 
       {/* Main content: Canvas (left) + Right Panel (right) */}
@@ -131,8 +140,14 @@ export default function App() {
         overflow: 'hidden',
       }}>
         {/* Canvas View - takes 70% of width */}
-        <div style={{ flex: 7, overflow: 'hidden' }}>
+        <div style={{ flex: 7, overflow: 'hidden', position: 'relative' }}>
+          {/* Left CAD Panel - only visible in Structure tab */}
+          {activeTab === 'structure' && <LeftCADPanel />}
+
           <CanvasView width={window.innerWidth * 0.7} height={window.innerHeight - 60} />
+
+          {/* Coordinate Display - bottom left of canvas */}
+          <CoordinateDisplay />
         </div>
 
         {/* Right Panel with Tabs - takes 30% of width */}
@@ -140,8 +155,8 @@ export default function App() {
           {/* Tab Bar */}
           <div style={{
             display: 'flex',
-            backgroundColor: '#e0e0e0',
-            borderBottom: '2px solid #ccc',
+            backgroundColor: theme.colors.bgLight,
+            borderBottom: `2px solid ${theme.colors.border}`,
           }}>
             <button
               onClick={() => setRightPanelTab('results')}
@@ -149,11 +164,12 @@ export default function App() {
                 flex: 1,
                 padding: '12px',
                 border: 'none',
-                backgroundColor: rightPanelTab === 'results' ? '#fff' : '#e0e0e0',
-                borderBottom: rightPanelTab === 'results' ? '3px solid #2196F3' : 'none',
+                backgroundColor: rightPanelTab === 'results' ? theme.colors.bgWhite : theme.colors.bgLight,
+                borderBottom: rightPanelTab === 'results' ? `3px solid ${theme.colors.primary}` : 'none',
                 cursor: 'pointer',
                 fontWeight: rightPanelTab === 'results' ? 'bold' : 'normal',
                 fontSize: '14px',
+                color: rightPanelTab === 'results' ? theme.colors.primary : theme.colors.textPrimary,
               }}
             >
               Results
@@ -164,11 +180,12 @@ export default function App() {
                 flex: 1,
                 padding: '12px',
                 border: 'none',
-                backgroundColor: rightPanelTab === 'loadcases' ? '#fff' : '#e0e0e0',
-                borderBottom: rightPanelTab === 'loadcases' ? '3px solid #2196F3' : 'none',
+                backgroundColor: rightPanelTab === 'loadcases' ? theme.colors.bgWhite : theme.colors.bgLight,
+                borderBottom: rightPanelTab === 'loadcases' ? `3px solid ${theme.colors.primary}` : 'none',
                 cursor: 'pointer',
                 fontWeight: rightPanelTab === 'loadcases' ? 'bold' : 'normal',
                 fontSize: '14px',
+                color: rightPanelTab === 'loadcases' ? theme.colors.primary : theme.colors.textPrimary,
               }}
             >
               Load Cases

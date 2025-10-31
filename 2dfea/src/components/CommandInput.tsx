@@ -127,7 +127,7 @@ export const CommandInput: React.FC = () => {
           type="text"
           value={commandInput.value}
           onChange={(e) => updateCommandInputValue(e.target.value)}
-          placeholder="X,Y or dX,Y"
+          placeholder="X,Y or X Y (absolute) or dX,Y or dX Y (relative)"
           style={{
             width: '100%',
             padding: 6,
