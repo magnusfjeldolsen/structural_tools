@@ -33,7 +33,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
   const [lastMiddleClick, setLastMiddleClick] = useState<number>(0);
   const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
-  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number; isCtrl: boolean } | null>(null);
+  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number; isShift: boolean } | null>(null);
 
   // Model store
   const nodes = useModelStore((state) => state.nodes);
@@ -256,7 +256,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       if (!pointerPos) return;
 
       const [worldX, worldY] = toWorld(pointerPos.x, pointerPos.y);
-      const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey;
+      const isShiftPressed = e.evt.shiftKey;
 
       if (activeTool === 'select') {
         if (selectionStart) {
@@ -281,17 +281,13 @@ export function CanvasView({ width, height }: CanvasViewProps) {
             const newNodeNames = findNodesInRect(nodes, rect);
             const newElementNames = findElementsInRect(nodes, elements, rect, mode);
 
-            if (selectionStart.isCtrl) {
-              // Add to selection
+            if (selectionStart.isShift) {
+              // Toggle selection (add if not selected, remove if selected)
               newNodeNames.forEach((name: string) => {
-                if (!selectedNodes.includes(name)) {
-                  selectNode(name, true);
-                }
+                selectNode(name, true); // true = additive/toggle mode
               });
               newElementNames.forEach((name: string) => {
-                if (!selectedElements.includes(name)) {
-                  selectElement(name, true);
-                }
+                selectElement(name, true); // true = additive/toggle mode
               });
             } else {
               // Replace selection
@@ -306,17 +302,17 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         } else {
           // First click - start selection rectangle or select entity
           if (hoveredNode) {
-            // Clicked on a node
-            selectNode(hoveredNode, isCtrlPressed);
+            // Clicked on a node - toggle if Shift is pressed
+            selectNode(hoveredNode, isShiftPressed);
           } else if (hoveredElement) {
-            // Clicked on an element
-            selectElement(hoveredElement, isCtrlPressed);
+            // Clicked on an element - toggle if Shift is pressed
+            selectElement(hoveredElement, isShiftPressed);
           } else {
             // Start selection rectangle
-            if (!isCtrlPressed) {
+            if (!isShiftPressed) {
               clearSelection();
             }
-            setSelectionStart({ x: worldX, y: worldY, isCtrl: isCtrlPressed });
+            setSelectionStart({ x: worldX, y: worldY, isShift: isShiftPressed });
             setSelectionRect({ x1: worldX, y1: worldY, x2: worldX, y2: worldY });
           }
         }
