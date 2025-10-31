@@ -17,10 +17,9 @@ import {
   calculateDiagramScale,
   getMaxDiagramValue,
 } from '../visualization';
-import { findNearestNode, findNearestElement } from '../geometry/snapUtils';
+import { findNearestNode, findNearestElement, getSnappedPosition } from '../geometry/snapUtils';
 import { calculateDeformedElementShape } from '../geometry/deformationUtils';
 import { findNodesInRect, findElementsInRect } from '../geometry/selectionUtils';
-import { SnapBar } from './SnapBar';
 
 interface CanvasViewProps {
   width: number;
@@ -263,15 +262,17 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
       // Priority 1: Check for active move command first
       if (moveCommand?.stage === 'awaiting-basepoint-click') {
-        // Set base point by click
-        setMoveBasePoint({ x: worldX, y: worldY });
+        // Set base point by click - use centralized snapping
+        const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
+        setMoveBasePoint(snappedPos);
         return;
       } else if (moveCommand?.stage === 'awaiting-endpoint-click') {
-        // Set end point by click and execute move
+        // Set end point by click and execute move - use centralized snapping
         const basePoint = moveCommand.basePoint;
         if (basePoint) {
-          const dx = worldX - basePoint.x;
-          const dy = worldY - basePoint.y;
+          const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
+          const dx = snappedPos.x - basePoint.x;
+          const dy = snappedPos.y - basePoint.y;
           moveNodes(selectedNodes, dx, dy);
           clearMoveCommand();
         }
@@ -338,25 +339,27 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           }
         }
       } else if (activeTool === 'draw-node') {
-        // Add node at cursor position
+        // Add node at cursor position - use centralized snapping
+        const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
         addNode({
-          x: worldX,
-          y: worldY,
+          x: snappedPos.x,
+          y: snappedPos.y,
           support: 'free',
         });
       } else if (activeTool === 'draw-element') {
         if (!drawingElement) {
           // First click - start drawing
           let startNode: string;
+          const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
 
           if (hoveredNode) {
             // Snapped to existing node
             startNode = hoveredNode;
           } else {
-            // Create new node
+            // Create new node at snapped position
             addNode({
-              x: worldX,
-              y: worldY,
+              x: snappedPos.x,
+              y: snappedPos.y,
               support: 'free',
             });
             // Get the newly created node name (last node in array)
@@ -365,20 +368,21 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
           setDrawingElement({
             startNode,
-            startPos: { x: worldX, y: worldY }
+            startPos: snappedPos
           });
         } else {
           // Second click - complete element
           let endNode: string;
+          const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
 
           if (hoveredNode && hoveredNode !== drawingElement.startNode) {
             // Snapped to existing node (and not the same as start)
             endNode = hoveredNode;
           } else {
-            // Create new node
+            // Create new node at snapped position
             addNode({
-              x: worldX,
-              y: worldY,
+              x: snappedPos.x,
+              y: snappedPos.y,
               support: 'free',
             });
             // Get the newly created node name
@@ -1165,9 +1169,6 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           {moveCommand.stage === 'awaiting-endpoint-input' && 'Type end point coordinates...'}
         </div>
       )}
-
-      {/* Snapping controls */}
-      <SnapBar />
     </div>
   );
 }
