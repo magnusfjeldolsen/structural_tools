@@ -17,6 +17,10 @@ import { useModelStore, useUIStore } from '../store';
 export function Toolbar() {
   const activeTool = useUIStore((state) => state.activeTool);
   const setTool = useUIStore((state) => state.setTool);
+  const startMoveCommand = useUIStore((state) => state.startMoveCommand);
+
+  const selectedNodes = useModelStore((state) => state.selectedNodes);
+  const selectedElements = useModelStore((state) => state.selectedElements);
 
   const showDisplacedShape = useUIStore((state) => state.showDisplacedShape);
   const showMomentDiagram = useUIStore((state) => state.showMomentDiagram);
@@ -41,6 +45,15 @@ export function Toolbar() {
       console.error('Analysis failed:', error);
       alert(`Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  };
+
+  const handleMoveClick = () => {
+    if (selectedNodes.length === 0) {
+      alert('Please select nodes to move');
+      return;
+    }
+    setTool('move');
+    startMoveCommand();
   };
 
   const toolButtonStyle = (tool: string) => ({
@@ -106,6 +119,17 @@ export function Toolbar() {
         <div style={{ display: 'flex', gap: '4px', marginRight: '16px' }}>
           <button style={toolButtonStyle('select')} onClick={() => setTool('select')}>
             Select
+          </button>
+          <button
+            style={{
+              ...toolButtonStyle('move'),
+              opacity: selectedNodes.length === 0 ? 0.5 : 1,
+              cursor: selectedNodes.length === 0 ? 'not-allowed' : 'pointer',
+            }}
+            onClick={handleMoveClick}
+            disabled={selectedNodes.length === 0}
+          >
+            Move ({selectedNodes.length})
           </button>
           <button style={toolButtonStyle('draw-node')} onClick={() => setTool('draw-node')}>
             Draw Node

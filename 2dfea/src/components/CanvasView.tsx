@@ -32,6 +32,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
   const [lastMiddleClick, setLastMiddleClick] = useState<number>(0);
   const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
+  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
 
   // Model store
   const nodes = useModelStore((state) => state.nodes);
@@ -39,10 +40,18 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const loads = useModelStore((state) => state.loads);
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const analysisResults = useModelStore((state) => state.analysisResults);
+  const selectedNodes = useModelStore((state) => state.selectedNodes);
+  const selectedElements = useModelStore((state) => state.selectedElements);
   const addNode = useModelStore((state) => state.addNode);
   const addElement = useModelStore((state) => state.addElement);
   const deleteNode = useModelStore((state) => state.deleteNode);
   const deleteElement = useModelStore((state) => state.deleteElement);
+  const selectNode = useModelStore((state) => state.selectNode);
+  const selectElement = useModelStore((state) => state.selectElement);
+  const selectNodesInRect = useModelStore((state) => state.selectNodesInRect);
+  const selectElementsInRect = useModelStore((state) => state.selectElementsInRect);
+  const clearSelection = useModelStore((state) => state.clearSelection);
+  const moveNodes = useModelStore((state) => state.moveNodes);
 
   // UI store
   const view = useUIStore((state) => state.view);
@@ -74,6 +83,17 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const drawingElement = useUIStore((state) => state.drawingElement);
   const setDrawingElement = useUIStore((state) => state.setDrawingElement);
   const clearDrawingElement = useUIStore((state) => state.clearDrawingElement);
+
+  // Selection and move state
+  const selectionRect = useUIStore((state) => state.selectionRect);
+  const setSelectionRect = useUIStore((state) => state.setSelectionRect);
+  const moveCommand = useUIStore((state) => state.moveCommand);
+  const startMoveCommand = useUIStore((state) => state.startMoveCommand);
+  const setMoveBasePoint = useUIStore((state) => state.setMoveBasePoint);
+  const setMoveStage = useUIStore((state) => state.setMoveStage);
+  const clearMoveCommand = useUIStore((state) => state.clearMoveCommand);
+  const commandInput = useUIStore((state) => state.commandInput);
+  const setCommandInput = useUIStore((state) => state.setCommandInput);
 
   // Canvas center
   const cx = width / 2;
@@ -154,15 +174,40 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if command input is already visible
+      if (commandInput?.visible) return;
+
       if (e.key === 'Escape' && drawingElement) {
         // Cancel drawing
         clearDrawingElement();
+      }
+
+      // Space bar during move command - show coordinate input
+      if (e.key === ' ' && moveCommand) {
+        e.preventDefault();
+        if (moveCommand.stage === 'awaiting-basepoint-click') {
+          setCommandInput({
+            visible: true,
+            prompt: 'Enter base point (X,Y):',
+            value: '',
+            error: null,
+          });
+          setMoveStage('awaiting-basepoint-input');
+        } else if (moveCommand.stage === 'awaiting-endpoint-click') {
+          setCommandInput({
+            visible: true,
+            prompt: 'Enter end point (X,Y or dX,Y):',
+            value: '',
+            error: null,
+          });
+          setMoveStage('awaiting-endpoint-input');
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [drawingElement, clearDrawingElement]);
+  }, [drawingElement, clearDrawingElement, moveCommand, commandInput, setCommandInput, setMoveStage]);
 
   // === MOUSE EVENT HANDLERS ===
 
@@ -199,8 +244,40 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       if (!pointerPos) return;
 
       const [worldX, worldY] = toWorld(pointerPos.x, pointerPos.y);
+      const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey;
 
-      if (activeTool === 'draw-node') {
+      if (activeTool === 'select') {
+        // Select tool: handle clicking on entities or start selection rectangle
+        if (hoveredNode) {
+          // Clicked on a node
+          selectNode(hoveredNode, isCtrlPressed);
+        } else if (hoveredElement) {
+          // Clicked on an element
+          selectElement(hoveredElement, isCtrlPressed);
+        } else {
+          // Start selection rectangle (will be cleared if no drag happens)
+          if (!isCtrlPressed) {
+            clearSelection();
+          }
+          setSelectionStart({ x: worldX, y: worldY });
+          setSelectionRect({ x1: worldX, y1: worldY, x2: worldX, y2: worldY });
+        }
+      } else if (activeTool === 'move') {
+        // Move tool: handle base point and end point
+        if (moveCommand?.stage === 'awaiting-basepoint-click') {
+          // Set base point by click
+          setMoveBasePoint({ x: worldX, y: worldY });
+        } else if (moveCommand?.stage === 'awaiting-endpoint-click') {
+          // Set end point by click and execute move
+          const basePoint = moveCommand.basePoint;
+          if (basePoint) {
+            const dx = worldX - basePoint.x;
+            const dy = worldY - basePoint.y;
+            moveNodes(selectedNodes, dx, dy);
+            clearMoveCommand();
+          }
+        }
+      } else if (activeTool === 'draw-node') {
         // Add node at cursor position
         addNode({
           x: worldX,
@@ -332,7 +409,16 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       }
     }
 
-    // TODO: Handle other tool mousemove logic (rubberband, hover highlights, etc.)
+    // Handle selection rectangle dragging
+    if (activeTool === 'select' && selectionStart && pointerPos) {
+      const [worldX, worldY] = toWorld(pointerPos.x, pointerPos.y);
+      setSelectionRect({
+        x1: selectionStart.x,
+        y1: selectionStart.y,
+        x2: worldX,
+        y2: worldY,
+      });
+    }
   };
 
   const handleMouseUp = () => {
@@ -342,7 +428,30 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       setPanStart(null);
     }
 
-    // TODO: Handle tool mouseup logic
+    // Finalize selection rectangle
+    if (activeTool === 'select' && selectionStart && selectionRect) {
+      const rect = selectionRect;
+
+      // Determine selection mode based on drag direction
+      // Left-to-right (x2 > x1) = window selection (fully inside)
+      // Right-to-left (x2 < x1) = crossing selection (touching)
+      const mode: 'window' | 'crossing' = rect.x2 > rect.x1 ? 'window' : 'crossing';
+
+      // Only perform selection if there was a drag (not just a click)
+      const dragDistance = Math.sqrt(
+        Math.pow(rect.x2 - rect.x1, 2) + Math.pow(rect.y2 - rect.y1, 2)
+      );
+
+      if (dragDistance > 0.1) { // Minimum drag distance in meters
+        // Perform selection
+        selectNodesInRect(rect, mode);
+        selectElementsInRect(rect, mode);
+      }
+
+      // Clear selection rectangle
+      setSelectionStart(null);
+      setSelectionRect(null);
+    }
   };
 
   const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -773,6 +882,141 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     );
   };
 
+  // Render selection rectangle
+  const renderSelectionRect = () => {
+    if (!selectionRect) return null;
+
+    const [x1, y1] = toScreen(selectionRect.x1, selectionRect.y1);
+    const [x2, y2] = toScreen(selectionRect.x2, selectionRect.y2);
+
+    // Determine color based on selection mode
+    const mode = selectionRect.x2 > selectionRect.x1 ? 'window' : 'crossing';
+    const strokeColor = mode === 'window' ? '#0066CC' : '#00AA00';
+
+    return (
+      <Line
+        key="selection-rect"
+        points={[x1, y1, x2, y1, x2, y2, x1, y2, x1, y1]}
+        stroke={strokeColor}
+        strokeWidth={1}
+        dash={[5, 5]}
+        opacity={0.8}
+      />
+    );
+  };
+
+  // Render selection highlighting (for selected nodes/elements)
+  const renderSelectionHighlights = () => {
+    const highlights: JSX.Element[] = [];
+
+    // Highlight selected nodes
+    selectedNodes.forEach((nodeName) => {
+      const node = nodes.find((n) => n.name === nodeName);
+      if (!node) return;
+
+      const [sx, sy] = toScreen(node.x, node.y);
+      highlights.push(
+        <Circle
+          key={`select-node-${nodeName}`}
+          x={sx}
+          y={sy}
+          radius={10}
+          stroke="#0066CC"
+          strokeWidth={2}
+          fill="rgba(0, 102, 204, 0.1)"
+        />
+      );
+    });
+
+    // Highlight selected elements
+    selectedElements.forEach((elementName) => {
+      const element = elements.find((e) => e.name === elementName);
+      if (!element) return;
+
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) return;
+
+      const [x1, y1] = toScreen(nodeI.x, nodeI.y);
+      const [x2, y2] = toScreen(nodeJ.x, nodeJ.y);
+
+      highlights.push(
+        <Line
+          key={`select-element-${elementName}`}
+          points={[x1, y1, x2, y2]}
+          stroke="#0066CC"
+          strokeWidth={6}
+          opacity={0.3}
+          lineCap="round"
+        />
+      );
+    });
+
+    return highlights;
+  };
+
+  // Render move command visualization
+  const renderMoveCommandViz = () => {
+    if (!moveCommand || !moveCommand.basePoint) return null;
+
+    const [bx, by] = toScreen(moveCommand.basePoint.x, moveCommand.basePoint.y);
+
+    const viz: JSX.Element[] = [];
+
+    // Base point marker
+    viz.push(
+      <Circle
+        key="move-basepoint"
+        x={bx}
+        y={by}
+        radius={8}
+        fill="#FF9800"
+        stroke="#F57C00"
+        strokeWidth={2}
+      />
+    );
+
+    // Preview lines from base point to mouse (if awaiting endpoint)
+    if (moveCommand.stage === 'awaiting-endpoint-click' && mouseWorldPos) {
+      const [mx, my] = toScreen(mouseWorldPos.x, mouseWorldPos.y);
+
+      // Line from base to mouse
+      viz.push(
+        <Line
+          key="move-preview-line"
+          points={[bx, by, mx, my]}
+          stroke="#FF9800"
+          strokeWidth={2}
+          dash={[5, 5]}
+        />
+      );
+
+      // Preview of moved nodes
+      const dx = mouseWorldPos.x - moveCommand.basePoint.x;
+      const dy = mouseWorldPos.y - moveCommand.basePoint.y;
+
+      selectedNodes.forEach((nodeName) => {
+        const node = nodes.find((n) => n.name === nodeName);
+        if (!node) return;
+
+        const [newX, newY] = toScreen(node.x + dx, node.y + dy);
+        viz.push(
+          <Circle
+            key={`move-preview-${nodeName}`}
+            x={newX}
+            y={newY}
+            radius={6}
+            fill="rgba(255, 152, 0, 0.5)"
+            stroke="#FF9800"
+            strokeWidth={1}
+          />
+        );
+      });
+    }
+
+    return viz;
+  };
+
   return (
     <div style={{ position: 'relative', border: '1px solid #ccc', backgroundColor: '#fafafa' }}>
       <Stage
@@ -805,10 +1049,13 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           {renderAxialDiagrams()}
           {renderElements()}
           {renderDisplacedShape()}
+          {renderSelectionHighlights()}
           {renderSupports()}
           {renderNodes()}
           {renderLoads()}
           {renderDrawingPreview()}
+          {renderSelectionRect()}
+          {renderMoveCommandViz()}
         </Layer>
       </Stage>
 
@@ -828,6 +1075,31 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           }}
         >
           X: {mouseWorldPos.x.toFixed(3)} m, Y: {mouseWorldPos.y.toFixed(3)} m
+        </div>
+      )}
+
+      {/* Move command status message */}
+      {moveCommand && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: 'rgba(255, 152, 0, 0.95)',
+            color: '#fff',
+            padding: '8px 16px',
+            borderRadius: 4,
+            fontSize: 14,
+            fontWeight: 'bold',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            zIndex: 100,
+          }}
+        >
+          {moveCommand.stage === 'awaiting-basepoint-click' && 'Click base point or press Space to type coordinates'}
+          {moveCommand.stage === 'awaiting-basepoint-input' && 'Type base point coordinates...'}
+          {moveCommand.stage === 'awaiting-endpoint-click' && 'Click end point or press Space to type coordinates'}
+          {moveCommand.stage === 'awaiting-endpoint-input' && 'Type end point coordinates...'}
         </div>
       )}
 

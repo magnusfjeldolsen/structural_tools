@@ -10,6 +10,8 @@
 import { useEffect, useState } from 'react';
 import { useModelStore } from './store';
 import { CanvasView, Toolbar, ResultsPanel, LoadCasePanel } from './components';
+import { CommandInput } from './components/CommandInput';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 export default function App() {
   const [initStatus, setInitStatus] = useState<'pending' | 'loading' | 'ready' | 'error'>('pending');
@@ -17,6 +19,9 @@ export default function App() {
   const [rightPanelTab, setRightPanelTab] = useState<'results' | 'loadcases'>('results');
 
   const initializeSolver = useModelStore((state) => state.initializeSolver);
+
+  // Initialize keyboard shortcuts
+  useKeyboardShortcuts();
 
   // Initialize solver on mount
   useEffect(() => {
@@ -176,6 +181,9 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Command Input Modal */}
+      <CommandInput />
     </div>
   );
 }

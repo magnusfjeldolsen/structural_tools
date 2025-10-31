@@ -42,6 +42,10 @@ interface ModelState {
   nextNodeNumber: number;  // Counter for node naming (never decrements)
   nextElementNumber: number;  // Counter for element naming (never decrements)
 
+  // Selection
+  selectedNodes: string[];
+  selectedElements: string[];
+
   // Loads
   loads: Loads;
   loadCases: LoadCase[];
@@ -65,6 +69,16 @@ interface ModelState {
   updateElement: (name: string, updates: Partial<Omit<Element, 'name'>>) => void;
   deleteElement: (name: string) => void;
   clearElements: () => void;
+
+  // Actions - Selection
+  selectNode: (name: string, additive: boolean) => void;
+  selectElement: (name: string, additive: boolean) => void;
+  selectNodesInRect: (rect: { x1: number; y1: number; x2: number; y2: number }, mode: 'window' | 'crossing') => void;
+  selectElementsInRect: (rect: { x1: number; y1: number; x2: number; y2: number }, mode: 'window' | 'crossing') => void;
+  clearSelection: () => void;
+
+  // Actions - Movement
+  moveNodes: (nodeNames: string[], dx: number, dy: number) => void;
 
   // Actions - Loads
   addNodalLoad: (load: Omit<NodalLoad, 'name'>) => void;
@@ -110,6 +124,8 @@ const initialState = {
   elements: [],
   nextNodeNumber: 1,
   nextElementNumber: 1,
+  selectedNodes: [],
+  selectedElements: [],
   loads: {
     nodal: [],
     distributed: [],
@@ -218,6 +234,83 @@ export const useModelStore = create<ModelState>()(
             state.elements = [];
             state.loads.distributed = [];
             state.loads.elementPoint = [];
+          });
+        },
+
+        // ====================================================================
+        // SELECTION ACTIONS
+        // ====================================================================
+
+        selectNode: (name, additive) => {
+          set((state) => {
+            if (additive) {
+              // Toggle: add if not selected, remove if selected
+              if (state.selectedNodes.includes(name)) {
+                state.selectedNodes = state.selectedNodes.filter((n) => n !== name);
+              } else {
+                state.selectedNodes.push(name);
+              }
+            } else {
+              // Replace selection
+              state.selectedNodes = [name];
+              state.selectedElements = [];
+            }
+          });
+        },
+
+        selectElement: (name, additive) => {
+          set((state) => {
+            if (additive) {
+              // Toggle: add if not selected, remove if selected
+              if (state.selectedElements.includes(name)) {
+                state.selectedElements = state.selectedElements.filter((e) => e !== name);
+              } else {
+                state.selectedElements.push(name);
+              }
+            } else {
+              // Replace selection
+              state.selectedElements = [name];
+              state.selectedNodes = [];
+            }
+          });
+        },
+
+        selectNodesInRect: (rect, mode) => {
+          set((state) => {
+            const { findNodesInRect } = require('../geometry/selectionUtils');
+            const nodeNames = findNodesInRect(state.nodes, rect);
+            state.selectedNodes = nodeNames;
+          });
+        },
+
+        selectElementsInRect: (rect, mode) => {
+          set((state) => {
+            const { findElementsInRect } = require('../geometry/selectionUtils');
+            const elementNames = findElementsInRect(state.nodes, state.elements, rect, mode);
+            state.selectedElements = elementNames;
+          });
+        },
+
+        clearSelection: () => {
+          set((state) => {
+            state.selectedNodes = [];
+            state.selectedElements = [];
+          });
+        },
+
+        // ====================================================================
+        // MOVEMENT ACTIONS
+        // ====================================================================
+
+        moveNodes: (nodeNames, dx, dy) => {
+          set((state) => {
+            for (const name of nodeNames) {
+              const node = state.nodes.find((n) => n.name === name);
+              if (node) {
+                node.x += dx;
+                node.y += dy;
+              }
+            }
           });
         },
 

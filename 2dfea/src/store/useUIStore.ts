@@ -71,12 +71,29 @@ export interface UIState {
   setSnapMode: (mode: SnapMode, enabled: boolean) => void;
   setSnapGridSize: (size: number) => void;
 
-  // Selection
-  selectedNodes: string[];
-  selectedElements: string[];
-  selectNode: (name: string, append?: boolean) => void;
-  selectElement: (name: string, append?: boolean) => void;
-  clearSelection: () => void;
+  // Selection rectangle state
+  selectionRect: { x1: number; y1: number; x2: number; y2: number } | null;
+  setSelectionRect: (rect: { x1: number; y1: number; x2: number; y2: number } | null) => void;
+
+  // Move command state
+  moveCommand: {
+    stage: 'idle' | 'awaiting-basepoint-click' | 'awaiting-basepoint-input' | 'awaiting-endpoint-click' | 'awaiting-endpoint-input';
+    basePoint: { x: number; y: number } | null;
+  } | null;
+  startMoveCommand: () => void;
+  setMoveBasePoint: (point: { x: number; y: number }) => void;
+  setMoveStage: (stage: 'idle' | 'awaiting-basepoint-click' | 'awaiting-basepoint-input' | 'awaiting-endpoint-click' | 'awaiting-endpoint-input') => void;
+  clearMoveCommand: () => void;
+
+  // Command input field
+  commandInput: {
+    visible: boolean;
+    prompt: string;
+    value: string;
+    error: string | null;
+  } | null;
+  setCommandInput: (input: { visible: boolean; prompt: string; value: string; error: string | null } | null) => void;
+  updateCommandInputValue: (value: string) => void;
 
   // Snapping
   snapEnabled: boolean;
@@ -151,6 +168,9 @@ const initialState = {
   },
   selectedNodes: [],
   selectedElements: [],
+  selectionRect: null,
+  moveCommand: null,
+  commandInput: null,
   snapEnabled: true,
   snapToNodes: true,
   snapToElements: true,
@@ -286,39 +306,53 @@ export const useUIStore = create<UIState>()(
         });
       },
 
-      // Selection actions
-      selectNode: (name, append = false) => {
-        set((state) => {
-          if (append) {
-            if (state.selectedNodes.includes(name)) {
-              state.selectedNodes = state.selectedNodes.filter((n) => n !== name);
-            } else {
-              state.selectedNodes.push(name);
-            }
-          } else {
-            state.selectedNodes = [name];
-          }
-          state.selectedElements = []; // Clear element selection
+      // Selection rectangle actions
+      setSelectionRect: (rect) => {
+        set({ selectionRect: rect });
+      },
+
+      // Move command actions
+      startMoveCommand: () => {
+        set({
+          moveCommand: {
+            stage: 'awaiting-basepoint-click',
+            basePoint: null,
+          },
         });
       },
 
-      selectElement: (name, append = false) => {
+      setMoveBasePoint: (point) => {
         set((state) => {
-          if (append) {
-            if (state.selectedElements.includes(name)) {
-              state.selectedElements = state.selectedElements.filter((e) => e !== name);
-            } else {
-              state.selectedElements.push(name);
-            }
-          } else {
-            state.selectedElements = [name];
+          if (state.moveCommand) {
+            state.moveCommand.basePoint = point;
+            state.moveCommand.stage = 'awaiting-endpoint-click';
           }
-          state.selectedNodes = []; // Clear node selection
         });
       },
 
-      clearSelection: () => {
-        set({ selectedNodes: [], selectedElements: [] });
+      setMoveStage: (stage) => {
+        set((state) => {
+          if (state.moveCommand) {
+            state.moveCommand.stage = stage;
+          }
+        });
+      },
+
+      clearMoveCommand: () => {
+        set({ moveCommand: null });
+      },
+
+      // Command input actions
+      setCommandInput: (input) => {
+        set({ commandInput: input });
+      },
+
+      updateCommandInputValue: (value) => {
+        set((state) => {
+          if (state.commandInput) {
+            state.commandInput.value = value;
+          }
+        });
       },
 
       // Snapping actions
