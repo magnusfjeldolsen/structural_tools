@@ -19,6 +19,7 @@ import {
 } from '../visualization';
 import { findNearestNode, findNearestElement } from '../geometry/snapUtils';
 import { calculateDeformedElementShape } from '../geometry/deformationUtils';
+import { findNodesInRect, findElementsInRect } from '../geometry/selectionUtils';
 import { SnapBar } from './SnapBar';
 
 interface CanvasViewProps {
@@ -32,7 +33,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
   const [lastMiddleClick, setLastMiddleClick] = useState<number>(0);
   const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
-  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
+  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number; isCtrl: boolean } | null>(null);
 
   // Model store
   const nodes = useModelStore((state) => state.nodes);
@@ -177,9 +178,20 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       // Don't handle if command input is already visible
       if (commandInput?.visible) return;
 
-      if (e.key === 'Escape' && drawingElement) {
-        // Cancel drawing
-        clearDrawingElement();
+      // Escape key handling
+      if (e.key === 'Escape') {
+        // Cancel selection rectangle if active
+        if (selectionStart) {
+          setSelectionStart(null);
+          setSelectionRect(null);
+          return;
+        }
+
+        // Cancel drawing if active
+        if (drawingElement) {
+          clearDrawingElement();
+          return;
+        }
       }
 
       // Space bar during move command - show coordinate input
@@ -207,7 +219,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [drawingElement, clearDrawingElement, moveCommand, commandInput, setCommandInput, setMoveStage]);
+  }, [drawingElement, clearDrawingElement, moveCommand, commandInput, setCommandInput, setMoveStage, selectionStart]);
 
   // === MOUSE EVENT HANDLERS ===
 
@@ -247,20 +259,66 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey;
 
       if (activeTool === 'select') {
-        // Select tool: handle clicking on entities or start selection rectangle
-        if (hoveredNode) {
-          // Clicked on a node
-          selectNode(hoveredNode, isCtrlPressed);
-        } else if (hoveredElement) {
-          // Clicked on an element
-          selectElement(hoveredElement, isCtrlPressed);
-        } else {
-          // Start selection rectangle (will be cleared if no drag happens)
-          if (!isCtrlPressed) {
-            clearSelection();
+        if (selectionStart) {
+          // Second click - finalize selection rectangle
+          const rect = {
+            x1: selectionStart.x,
+            y1: selectionStart.y,
+            x2: worldX,
+            y2: worldY,
+          };
+
+          // Determine selection mode based on drag direction
+          const mode: 'window' | 'crossing' = rect.x2 > rect.x1 ? 'window' : 'crossing';
+
+          // Check if this was just a click (very small rectangle)
+          const dragDistance = Math.sqrt(
+            Math.pow(rect.x2 - rect.x1, 2) + Math.pow(rect.y2 - rect.y1, 2)
+          );
+
+          if (dragDistance > 0.1) {
+            // Significant rectangle - perform selection
+            const newNodeNames = findNodesInRect(nodes, rect);
+            const newElementNames = findElementsInRect(nodes, elements, rect, mode);
+
+            if (selectionStart.isCtrl) {
+              // Add to selection
+              newNodeNames.forEach((name: string) => {
+                if (!selectedNodes.includes(name)) {
+                  selectNode(name, true);
+                }
+              });
+              newElementNames.forEach((name: string) => {
+                if (!selectedElements.includes(name)) {
+                  selectElement(name, true);
+                }
+              });
+            } else {
+              // Replace selection
+              selectNodesInRect(rect, mode);
+              selectElementsInRect(rect, mode);
+            }
           }
-          setSelectionStart({ x: worldX, y: worldY });
-          setSelectionRect({ x1: worldX, y1: worldY, x2: worldX, y2: worldY });
+
+          // Clear selection rectangle
+          setSelectionStart(null);
+          setSelectionRect(null);
+        } else {
+          // First click - start selection rectangle or select entity
+          if (hoveredNode) {
+            // Clicked on a node
+            selectNode(hoveredNode, isCtrlPressed);
+          } else if (hoveredElement) {
+            // Clicked on an element
+            selectElement(hoveredElement, isCtrlPressed);
+          } else {
+            // Start selection rectangle
+            if (!isCtrlPressed) {
+              clearSelection();
+            }
+            setSelectionStart({ x: worldX, y: worldY, isCtrl: isCtrlPressed });
+            setSelectionRect({ x1: worldX, y1: worldY, x2: worldX, y2: worldY });
+          }
         }
       } else if (activeTool === 'move') {
         // Move tool: handle base point and end point
@@ -409,7 +467,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       }
     }
 
-    // Handle selection rectangle dragging
+    // Update selection rectangle preview while moving mouse
     if (activeTool === 'select' && selectionStart && pointerPos) {
       const [worldX, worldY] = toWorld(pointerPos.x, pointerPos.y);
       setSelectionRect({
@@ -426,31 +484,6 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     if (isPanning) {
       setIsPanning(false);
       setPanStart(null);
-    }
-
-    // Finalize selection rectangle
-    if (activeTool === 'select' && selectionStart && selectionRect) {
-      const rect = selectionRect;
-
-      // Determine selection mode based on drag direction
-      // Left-to-right (x2 > x1) = window selection (fully inside)
-      // Right-to-left (x2 < x1) = crossing selection (touching)
-      const mode: 'window' | 'crossing' = rect.x2 > rect.x1 ? 'window' : 'crossing';
-
-      // Only perform selection if there was a drag (not just a click)
-      const dragDistance = Math.sqrt(
-        Math.pow(rect.x2 - rect.x1, 2) + Math.pow(rect.y2 - rect.y1, 2)
-      );
-
-      if (dragDistance > 0.1) { // Minimum drag distance in meters
-        // Perform selection
-        selectNodesInRect(rect, mode);
-        selectElementsInRect(rect, mode);
-      }
-
-      // Clear selection rectangle
-      setSelectionStart(null);
-      setSelectionRect(null);
     }
   };
 
@@ -909,12 +942,26 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const renderSelectionHighlights = () => {
     const highlights: JSX.Element[] = [];
 
-    // Highlight selected nodes
+    // Highlight selected nodes with bold circle and glow
     selectedNodes.forEach((nodeName) => {
       const node = nodes.find((n) => n.name === nodeName);
       if (!node) return;
 
       const [sx, sy] = toScreen(node.x, node.y);
+
+      // Outer glow
+      highlights.push(
+        <Circle
+          key={`select-node-glow-${nodeName}`}
+          x={sx}
+          y={sy}
+          radius={12}
+          fill="rgba(0, 102, 204, 0.2)"
+          stroke="none"
+        />
+      );
+
+      // Main selection ring
       highlights.push(
         <Circle
           key={`select-node-${nodeName}`}
@@ -922,13 +969,13 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           y={sy}
           radius={10}
           stroke="#0066CC"
-          strokeWidth={2}
-          fill="rgba(0, 102, 204, 0.1)"
+          strokeWidth={3}
+          fill="rgba(0, 102, 204, 0.3)"
         />
       );
     });
 
-    // Highlight selected elements
+    // Highlight selected elements with thick bright line overlay
     selectedElements.forEach((elementName) => {
       const element = elements.find((e) => e.name === elementName);
       if (!element) return;
@@ -940,13 +987,26 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const [x1, y1] = toScreen(nodeI.x, nodeI.y);
       const [x2, y2] = toScreen(nodeJ.x, nodeJ.y);
 
+      // Outer glow effect
+      highlights.push(
+        <Line
+          key={`select-element-glow-${elementName}`}
+          points={[x1, y1, x2, y2]}
+          stroke="#0066CC"
+          strokeWidth={12}
+          opacity={0.2}
+          lineCap="round"
+        />
+      );
+
+      // Main selection highlight
       highlights.push(
         <Line
           key={`select-element-${elementName}`}
           points={[x1, y1, x2, y2]}
-          stroke="#0066CC"
-          strokeWidth={6}
-          opacity={0.3}
+          stroke="#0088FF"
+          strokeWidth={8}
+          opacity={0.7}
           lineCap="round"
         />
       );
