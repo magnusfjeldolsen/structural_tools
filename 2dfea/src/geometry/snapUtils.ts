@@ -6,6 +6,28 @@ import type { Node, Element } from '../analysis/types';
 import { distance, type Point } from './transformUtils';
 
 /**
+ * Get snapped position - returns node coordinates if hovering over a node, else cursor position
+ * This is the centralized snapping behavior used by all tools
+ * @param worldPos - Current cursor position in world coordinates
+ * @param hoveredNode - Name of hovered node (if any)
+ * @param nodes - Array of all nodes
+ * @returns Snapped coordinates
+ */
+export function getSnappedPosition(
+  worldPos: Point,
+  hoveredNode: string | null,
+  nodes: Node[]
+): Point {
+  if (hoveredNode) {
+    const node = nodes.find(n => n.name === hoveredNode);
+    if (node) {
+      return { x: node.x, y: node.y };
+    }
+  }
+  return worldPos;
+}
+
+/**
  * Find the nearest node to a point within tolerance
  * @param nodes - Array of nodes to search
  * @param worldPos - Position in world coordinates

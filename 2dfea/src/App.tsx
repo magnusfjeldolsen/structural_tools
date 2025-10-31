@@ -15,6 +15,7 @@ import { TabBar } from './components/TabBar';
 import { LeftCADPanel } from './components/LeftCADPanel';
 import { CommandInput } from './components/CommandInput';
 import { CoordinateDisplay } from './components/CoordinateDisplay';
+import { SnapBar } from './components/SnapBar';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { theme } from './styles/theme';
 
@@ -148,6 +149,9 @@ export default function App() {
 
           {/* Coordinate Display - bottom left of canvas */}
           <CoordinateDisplay />
+
+          {/* Snap Bar - bottom right of canvas */}
+          <SnapBar />
         </div>
 
         {/* Right Panel with Tabs - takes 30% of width */}
