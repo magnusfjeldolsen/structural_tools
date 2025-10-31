@@ -47,7 +47,18 @@ export function calculateDeformedElementShape(
     return [];
   }
 
-  // Step 1: Calculate deformed node positions (mm to m conversion)
+  // Step 1: Check ORIGINAL element orientation (before deformation)
+  // Calculate angle of element from I to J
+  const dx_orig = nodeJ.x - nodeI.x;
+  const dy_orig = nodeJ.y - nodeI.y;
+  const angleRad = Math.atan2(dy_orig, dx_orig);
+  const angleDeg = angleRad * (180 / Math.PI);
+
+  // Flip signs if element points in "backwards" direction
+  // >= 90° (pointing upward-left) or <= -90° (pointing downward-left)
+  const shouldFlipSigns = angleDeg >= 90 || angleDeg <= -90;
+
+  // Step 2: Calculate deformed node positions (mm to m conversion)
   const defI = {
     x: nodeI.x + resultI.DX / 1000,  // mm to m
     y: nodeI.y + resultI.DY / 1000,  // mm to m
@@ -58,7 +69,7 @@ export function calculateDeformedElementShape(
     y: nodeJ.y + resultJ.DY / 1000,  // mm to m
   };
 
-  // Step 2: Calculate deformed element axis
+  // Step 3: Calculate deformed element axis
   const dx_def = defJ.x - defI.x;
   const dy_def = defJ.y - defI.y;
   const length_def = Math.sqrt(dx_def * dx_def + dy_def * dy_def);
@@ -68,16 +79,16 @@ export function calculateDeformedElementShape(
     return [defI, defJ];
   }
 
-  // Step 3: Local coordinate system unit vectors (on deformed element)
-  // Local x-axis: along deformed element
+  // Step 4: Local coordinate system unit vectors (on deformed element)
+  // Local x-axis: along deformed element (I→J direction)
   const ux_local = dx_def / length_def;
   const uy_local = dy_def / length_def;
 
-  // Local y-axis: perpendicular to deformed element (90° CCW)
+  // Local y-axis: perpendicular to deformed element (90° CCW from local x)
   const vx_local = -uy_local;
   const vy_local = ux_local;
 
-  // Step 4: Build deformed shape points
+  // Step 5: Build deformed shape points
   const points: DeformedPoint[] = [];
   const n = deflections_dx.length;
 
@@ -88,11 +99,13 @@ export function calculateDeformedElementShape(
     const baseX = defI.x + t * dx_def;
     const baseY = defI.y + t * dy_def;
 
-    // Local deflections (convert mm to m, apply scale)
+    // Local deflections (mm to m, apply scale)
     const local_dx = (deflections_dx[i] / 1000) * displacementScale;  // Along element
-    const local_dy = (deflections_dy[i] / 1000) * displacementScale;  // Perpendicular
 
-    // Step 5: Transform local deflections to global coordinates
+    // Flip dy sign for elements pointing backwards (angle >= 90° or <= -90°)
+    const local_dy = (deflections_dy[i] / 1000) * displacementScale * (shouldFlipSigns ? -1 : 1);
+
+    // Step 6: Transform local deflections to global coordinates
     // [Global_X]   [ux_local  vx_local] [local_dx]
     // [Global_Y] = [uy_local  vy_local] [local_dy]
     const global_dx = local_dx * ux_local + local_dy * vx_local;
