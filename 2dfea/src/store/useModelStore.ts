@@ -30,6 +30,7 @@ import {
   validateModel,
   getLoadCaseNames,
 } from '../analysis';
+import { findNodesInRect, findElementsInRect } from '../geometry/selectionUtils';
 
 // ============================================================================
 // STATE INTERFACE
@@ -277,7 +278,6 @@ export const useModelStore = create<ModelState>()(
 
         selectNodesInRect: (rect, mode) => {
           set((state) => {
-            const { findNodesInRect } = require('../geometry/selectionUtils');
             const nodeNames = findNodesInRect(state.nodes, rect);
             state.selectedNodes = nodeNames;
           });
@@ -285,7 +285,6 @@ export const useModelStore = create<ModelState>()(
 
         selectElementsInRect: (rect, mode) => {
           set((state) => {
-            const { findElementsInRect } = require('../geometry/selectionUtils');
             const elementNames = findElementsInRect(state.nodes, state.elements, rect, mode);
             state.selectedElements = elementNames;
           });
