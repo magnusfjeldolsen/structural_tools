@@ -1502,31 +1502,37 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const midWorldY = (nodeI.y + nodeJ.y) / 2;
       const [midScreenX, midScreenY] = toScreen(midWorldX, midWorldY);
 
-      // Get element direction in world coordinates
+      // Get element direction in world coordinates (normalized)
       const dx = nodeJ.x - nodeI.x;
       const dy = nodeJ.y - nodeI.y;
       const elementLength = Math.sqrt(dx * dx + dy * dy);
 
       if (elementLength < 0.01) return; // Skip zero-length elements
 
-      // Local X axis: along element from nodeI to nodeJ
+      // Local X axis direction: along element from nodeI to nodeJ (normalized in world coords)
       const localXX = dx / elementLength;
       const localXY = dy / elementLength;
 
-      // Local Y axis: perpendicular to element (90° CCW from local X)
+      // Local Y axis direction: perpendicular to element (90° CCW from local X in world coords)
+      // Right-hand rule: if X points right, Y points up (in element's local view)
       const localYX = -dy / elementLength;
       const localYY = dx / elementLength;
 
-      // Scale to screen coordinates considering view.scale
-      const screenAxisLength = axisLength;
+      // Convert world coordinate directions to screen space using view.scale
+      // This scales the normalized directions by the view scale and proper orientation
+      const xAxisScreenOffsetX = localXX * view.scale * axisLength;
+      const xAxisScreenOffsetY = localXY * view.scale * axisLength;
 
-      // Local X axis endpoint (red)
-      const xAxisEndX = midScreenX + localXX * screenAxisLength;
-      const xAxisEndY = midScreenY + localXY * screenAxisLength;
+      const yAxisScreenOffsetX = localYX * view.scale * axisLength;
+      const yAxisScreenOffsetY = localYY * view.scale * axisLength;
 
-      // Local Y axis endpoint (green)
-      const yAxisEndX = midScreenX + localYX * screenAxisLength;
-      const yAxisEndY = midScreenY + localYY * screenAxisLength;
+      // Local X axis endpoint (red) - in screen coordinates
+      const xAxisEndX = midScreenX + xAxisScreenOffsetX;
+      const xAxisEndY = midScreenY + xAxisScreenOffsetY;
+
+      // Local Y axis endpoint (green) - in screen coordinates
+      const yAxisEndX = midScreenX + yAxisScreenOffsetX;
+      const yAxisEndY = midScreenY + yAxisScreenOffsetY;
 
       // Draw X axis (red)
       allElements.push(
