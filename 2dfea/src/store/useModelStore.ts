@@ -20,7 +20,6 @@ import type {
   DistributedLoad,
   ElementPointLoad,
   AnalysisResults,
-  SupportType,
   LoadCase,
   LoadCombinationDefinition,
 } from '../analysis/types';
@@ -28,7 +27,6 @@ import {
   SolverInterface,
   translateModelToWorker,
   validateModel,
-  getLoadCaseNames,
 } from '../analysis';
 import { findNodesInRect, findElementsInRect } from '../geometry/selectionUtils';
 
@@ -276,7 +274,7 @@ export const useModelStore = create<ModelState>()(
           });
         },
 
-        selectNodesInRect: (rect, mode) => {
+        selectNodesInRect: (rect) => {
           set((state) => {
             const nodeNames = findNodesInRect(state.nodes, rect);
             state.selectedNodes = nodeNames;

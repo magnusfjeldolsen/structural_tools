@@ -13,6 +13,7 @@ import type {
   AnalysisType,
   LoadCombination,
   WorkerMessage,
+  WorkerMessageType,
   WorkerError,
 } from './types';
 
@@ -129,7 +130,7 @@ export class SolverInterface {
   /**
    * Send message to worker
    */
-  private sendMessage(type: string, payload?: any): string {
+  private sendMessage(type: WorkerMessageType, payload?: any): string {
     if (!this.worker) {
       throw new Error('Worker not created');
     }
@@ -164,7 +165,7 @@ export class SolverInterface {
     // Handle response
     switch (type) {
       case 'ready':
-        pending.resolve();
+        pending.resolve(payload);
         break;
 
       case 'results':

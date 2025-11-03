@@ -9,7 +9,7 @@
  */
 
 import { useRef, useState, useEffect } from 'react';
-import { Stage, Layer, Circle, Line, Text, Arrow } from 'react-konva';
+import { Stage, Layer, Circle, Line, Text, Arrow, Group } from 'react-konva';
 import Konva from 'konva';
 import { useModelStore, useUIStore } from '../store';
 import {
@@ -44,6 +44,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const selectedElements = useModelStore((state) => state.selectedElements);
   const addNode = useModelStore((state) => state.addNode);
   const addElement = useModelStore((state) => state.addElement);
+  const updateNode = useModelStore((state) => state.updateNode);
   const deleteNode = useModelStore((state) => state.deleteNode);
   const deleteElement = useModelStore((state) => state.deleteElement);
   const selectNode = useModelStore((state) => state.selectNode);
@@ -88,7 +89,6 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const selectionRect = useUIStore((state) => state.selectionRect);
   const setSelectionRect = useUIStore((state) => state.setSelectionRect);
   const moveCommand = useUIStore((state) => state.moveCommand);
-  const startMoveCommand = useUIStore((state) => state.startMoveCommand);
   const setMoveBasePoint = useUIStore((state) => state.setMoveBasePoint);
   const setMoveStage = useUIStore((state) => state.setMoveStage);
   const clearMoveCommand = useUIStore((state) => state.clearMoveCommand);
@@ -390,13 +390,15 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           }
 
           // Create element with default properties
-          addElement({
-            nodeI: drawingElement.startNode,
-            nodeJ: endNode,
-            E: 210,      // GPa (steel)
-            I: 1e-4,     // m^4
-            A: 1e-3,     // m^2
-          });
+          if (drawingElement.startNode) {
+            addElement({
+              nodeI: drawingElement.startNode,
+              nodeJ: endNode,
+              E: 210,      // GPa (steel)
+              I: 1e-4,     // m^4
+              A: 1e-3,     // m^2
+            });
+          }
 
           // Clear drawing state
           clearDrawingElement();
@@ -404,15 +406,58 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       } else if (activeTool === 'delete') {
         // Delete mode: delete the hovered entity
         // Priority: nodes > elements (nodes delete connected elements and loads automatically)
+        // If node has a support, first remove the support, then delete the node on second click
         if (hoveredNode) {
-          deleteNode(hoveredNode);
-          // Clear hover state after deletion
-          setHoveredNode(null);
-          setHoveredElement(null);
+          const node = nodes.find(n => n.name === hoveredNode);
+          if (node && node.support !== 'free') {
+            // Node has a support - remove it first
+            updateNode(hoveredNode, { support: 'free' });
+          } else {
+            // Node has no support - delete it
+            deleteNode(hoveredNode);
+            // Clear hover state after deletion
+            setHoveredNode(null);
+            setHoveredElement(null);
+          }
         } else if (hoveredElement) {
           deleteElement(hoveredElement);
           // Clear hover state after deletion
           setHoveredElement(null);
+        }
+      } else if (activeTool === 'add-support') {
+        // Legacy: cycle through support types when clicking a node
+        if (hoveredNode) {
+          const node = nodes.find(n => n.name === hoveredNode);
+          if (node) {
+            // Cycle through support types: free -> pinned -> fixed -> roller-x -> roller-y -> free
+            const supportCycle: Array<'free' | 'pinned' | 'fixed' | 'roller-x' | 'roller-y'> =
+              ['free', 'pinned', 'fixed', 'roller-x', 'roller-y'];
+            const currentIndex = supportCycle.indexOf(node.support);
+            const nextIndex = (currentIndex + 1) % supportCycle.length;
+            const nextSupport = supportCycle[nextIndex];
+
+            updateNode(hoveredNode, { support: nextSupport });
+          }
+        }
+      } else if (activeTool === 'support-fixed') {
+        // Fixed support: apply fixed support to clicked node
+        if (hoveredNode) {
+          updateNode(hoveredNode, { support: 'fixed' });
+        }
+      } else if (activeTool === 'support-pinned') {
+        // Pinned support: apply pinned support to clicked node
+        if (hoveredNode) {
+          updateNode(hoveredNode, { support: 'pinned' });
+        }
+      } else if (activeTool === 'support-roller-x') {
+        // Roller-X support: apply roller-x support to clicked node
+        if (hoveredNode) {
+          updateNode(hoveredNode, { support: 'roller-x' });
+        }
+      } else if (activeTool === 'support-roller-y') {
+        // Roller-Y support: apply roller-y support to clicked node
+        if (hoveredNode) {
+          updateNode(hoveredNode, { support: 'roller-y' });
         }
       }
     }
@@ -773,47 +818,72 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const size = 15; // Fixed size in pixels
 
       if (node.support === 'fixed') {
+        // Fixed support: draw an X
+        const offset = size * 0.6;
         return (
-          <Line
-            key={`sup-${node.name}`}
-            points={[sx, sy, sx - size, sy + size, sx + size, sy + size, sx, sy]}
-            fill="#666"
-            stroke="#000"
-            strokeWidth={1}
-            closed
-          />
+          <Group key={`sup-${node.name}`}>
+            <Line
+              points={[sx - offset, sy - offset, sx + offset, sy + offset]}
+              stroke="#000"
+              strokeWidth={2.5}
+            />
+            <Line
+              points={[sx + offset, sy - offset, sx - offset, sy + offset]}
+              stroke="#000"
+              strokeWidth={2.5}
+            />
+          </Group>
         );
       } else if (node.support === 'pinned') {
+        // Pinned support: circle
         return (
           <Circle
             key={`sup-${node.name}`}
             x={sx}
-            y={sy + size / 2}
+            y={sy}
             radius={size / 2}
             fill="#fff"
             stroke="#000"
             strokeWidth={2}
           />
         );
-      } else if (node.support === 'roller') {
+      } else if (node.support === 'roller-x') {
+        // Roller-X: circle with horizontal line below
         return (
-          <>
+          <Group key={`sup-${node.name}`}>
             <Circle
-              key={`sup-cir-${node.name}`}
               x={sx}
-              y={sy + size / 2}
+              y={sy - size / 4}
               radius={size / 2}
               fill="#fff"
               stroke="#000"
               strokeWidth={2}
             />
             <Line
-              key={`sup-line-${node.name}`}
-              points={[sx - size, sy + size, sx + size, sy + size]}
+              points={[sx - size * 0.8, sy + size * 0.6, sx + size * 0.8, sy + size * 0.6]}
+              stroke="#000"
+              strokeWidth={2.5}
+            />
+          </Group>
+        );
+      } else if (node.support === 'roller-y') {
+        // Roller-Y: circle with vertical line below
+        return (
+          <Group key={`sup-${node.name}`}>
+            <Circle
+              x={sx}
+              y={sy - size / 4}
+              radius={size / 2}
+              fill="#fff"
               stroke="#000"
               strokeWidth={2}
             />
-          </>
+            <Line
+              points={[sx, sy + size * 0.2, sx, sy + size * 0.8]}
+              stroke="#000"
+              strokeWidth={2.5}
+            />
+          </Group>
         );
       }
 
@@ -983,7 +1053,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     });
 
     // Highlight selected elements with thick bright line overlay
-    selectedElements.forEach((elementName) => {
+    selectedElements.forEach((elementName: string) => {
       const element = elements.find((e) => e.name === elementName);
       if (!element) return;
 

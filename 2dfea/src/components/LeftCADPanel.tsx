@@ -19,7 +19,7 @@ export function LeftCADPanel() {
 
   const handleMoveClick = () => {
     if (selectedNodes.length > 0) {
-      startMoveCommand(selectedNodes);
+      startMoveCommand();
     } else {
       // Just activate the tool if no selection
       setTool('move');

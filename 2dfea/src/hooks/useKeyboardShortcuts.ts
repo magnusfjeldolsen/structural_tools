@@ -79,7 +79,7 @@ export function useKeyboardShortcuts() {
       if ((e.key === 'm' || e.key === 'M') && !commandInput?.visible) {
         e.preventDefault();
         if (selectedNodes.length > 0) {
-          startMoveCommand(selectedNodes);
+          startMoveCommand();
         } else {
           setTool('move');
         }

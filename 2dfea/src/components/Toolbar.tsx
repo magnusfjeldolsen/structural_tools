@@ -18,10 +18,6 @@ export function Toolbar() {
   const activeTab = useUIStore((state) => state.activeTab);
   const activeTool = useUIStore((state) => state.activeTool);
   const setTool = useUIStore((state) => state.setTool);
-  const startMoveCommand = useUIStore((state) => state.startMoveCommand);
-
-  const selectedNodes = useModelStore((state) => state.selectedNodes);
-  const selectedElements = useModelStore((state) => state.selectedElements);
 
   const showDisplacedShape = useUIStore((state) => state.showDisplacedShape);
   const showMomentDiagram = useUIStore((state) => state.showMomentDiagram);
@@ -48,14 +44,6 @@ export function Toolbar() {
     }
   };
 
-  const handleMoveClick = () => {
-    if (selectedNodes.length === 0) {
-      alert('Please select nodes to move');
-      return;
-    }
-    setTool('move');
-    startMoveCommand();
-  };
 
   const toolButtonStyle = (tool: string) => ({
     padding: '8px 16px',
@@ -127,9 +115,38 @@ export function Toolbar() {
               <button style={toolButtonStyle('draw-element')} onClick={() => setTool('draw-element')}>
                 Draw Element
               </button>
-              <button style={toolButtonStyle('add-support')} onClick={() => setTool('add-support')}>
-                Add Support
-              </button>
+
+              {/* Support Type Buttons */}
+              <div style={{ display: 'flex', gap: '2px', marginLeft: '8px', padding: '0 8px', borderLeft: '1px solid #ccc' }}>
+                <button
+                  style={toolButtonStyle('support-fixed')}
+                  onClick={() => setTool('support-fixed')}
+                  title="Fixed Support (prevents translation and rotation)"
+                >
+                  ✕
+                </button>
+                <button
+                  style={toolButtonStyle('support-pinned')}
+                  onClick={() => setTool('support-pinned')}
+                  title="Pinned Support (prevents translation)"
+                >
+                  ⭕
+                </button>
+                <button
+                  style={toolButtonStyle('support-roller-x')}
+                  onClick={() => setTool('support-roller-x')}
+                  title="Roller-X (prevents Y translation, allows X movement)"
+                >
+                  ⭕━
+                </button>
+                <button
+                  style={toolButtonStyle('support-roller-y')}
+                  onClick={() => setTool('support-roller-y')}
+                  title="Roller-Y (prevents X translation, allows Y movement)"
+                >
+                  ⭕┃
+                </button>
+              </div>
             </>
           )}
 

@@ -9,9 +9,6 @@ import type {
   Node,
   Element,
   Loads,
-  NodalLoad,
-  DistributedLoad,
-  ElementPointLoad,
   ModelData,
   SupportType,
 } from './types';

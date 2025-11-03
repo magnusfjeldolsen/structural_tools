@@ -13,8 +13,6 @@
 import type {
   AnalysisResults,
   NodeResult,
-  ElementResult,
-  DiagramData,
 } from './types';
 
 /**

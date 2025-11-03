@@ -19,7 +19,11 @@ export type Tool =
   | 'move'
   | 'delete'
   | 'add-load'
-  | 'add-support';
+  | 'add-support'
+  | 'support-fixed'
+  | 'support-pinned'
+  | 'support-roller-x'
+  | 'support-roller-y';
 
 export type SnapMode =
   | 'grid'
@@ -211,7 +215,7 @@ const initialState = {
 
 export const useUIStore = create<UIState>()(
   devtools(
-    immer((set, get) => ({
+    immer((set) => ({
       ...initialState,
 
       // Tab actions
