@@ -18,6 +18,7 @@ import { CoordinateDisplay } from './components/CoordinateDisplay';
 import { SnapBar } from './components/SnapBar';
 import { LoadInputDialog } from './components/LoadInputDialog';
 import { LoadListPanel } from './components/LoadListPanel';
+import { LoadContextMenu } from './components/LoadContextMenu';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { theme } from './styles/theme';
 
@@ -25,6 +26,9 @@ export default function App() {
   const [initStatus, setInitStatus] = useState<'pending' | 'loading' | 'ready' | 'error'>('pending');
   const [initError, setInitError] = useState<string | null>(null);
   const [rightPanelTab, setRightPanelTab] = useState<'results' | 'loadcases' | 'loads'>('results');
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenuLoad, setContextMenuLoad] = useState<{ type: 'nodal' | 'distributed' | 'elementPoint'; index: number } | null>(null);
 
   const initializeSolver = useModelStore((state) => state.initializeSolver);
   const loads = useModelStore((state) => state.loads);
@@ -36,6 +40,22 @@ export default function App() {
 
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Listen for load context menu events from canvas
+  useEffect(() => {
+    const handleShowLoadContextMenu = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { position, loadType, loadIndex } = customEvent.detail;
+      console.log('[App] Received showLoadContextMenu event:', { position, loadType, loadIndex });
+      setContextMenuPosition(position);
+      setContextMenuLoad({ type: loadType, index: loadIndex });
+      setContextMenuOpen(true);
+      console.log('[App] Context menu state updated, contextMenuOpen is now true');
+    };
+
+    window.addEventListener('showLoadContextMenu', handleShowLoadContextMenu);
+    return () => window.removeEventListener('showLoadContextMenu', handleShowLoadContextMenu);
+  }, []);
 
   // Initialize solver on mount
   useEffect(() => {
@@ -244,6 +264,19 @@ export default function App() {
             ? loads.elementPoint[editingLoadData.index]
             : loads.distributed[editingLoadData.index]
         } : null}
+      />
+
+      {/* Load Context Menu */}
+      <LoadContextMenu
+        isOpen={contextMenuOpen}
+        position={contextMenuPosition}
+        loadType={contextMenuLoad?.type || null}
+        loadIndex={contextMenuLoad?.index !== undefined ? contextMenuLoad.index : null}
+        onClose={() => {
+          setContextMenuOpen(false);
+          setContextMenuPosition(null);
+          setContextMenuLoad(null);
+        }}
       />
 
       {/* Command Input Modal */}
