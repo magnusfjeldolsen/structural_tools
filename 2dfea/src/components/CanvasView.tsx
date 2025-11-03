@@ -1490,7 +1490,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   // Render element local coordinate system axes at element midpoints
   const renderElementAxes = () => {
     const allElements: JSX.Element[] = [];
-    const axisLength = 20; // Screen pixels for axis length
+    const axisLength = 20
+
+    ; // Screen pixels for axis length
 
     elements.forEach((element) => {
       const nodeI = nodes.find((n) => n.name === element.nodeI);
@@ -1518,13 +1520,13 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const localYX = -dy / elementLength;
       const localYY = dx / elementLength;
 
-      // Convert world coordinate directions to screen space using view.scale
-      // This scales the normalized directions by the view scale and proper orientation
-      const xAxisScreenOffsetX = localXX * view.scale * axisLength;
-      const xAxisScreenOffsetY = localXY * view.scale * axisLength;
+      // Calculate screen pixel offsets (axisLength is already in screen pixels)
+      // Multiply the normalized directions by axisLength to get screen pixel offsets
+      const xAxisScreenOffsetX = localXX * axisLength;
+      const xAxisScreenOffsetY = localXY * axisLength;
 
-      const yAxisScreenOffsetX = localYX * view.scale * axisLength;
-      const yAxisScreenOffsetY = localYY * view.scale * axisLength;
+      const yAxisScreenOffsetX = localYX * axisLength;
+      const yAxisScreenOffsetY = localYY * axisLength;
 
       // Local X axis endpoint (red) - in screen coordinates
       const xAxisEndX = midScreenX + xAxisScreenOffsetX;

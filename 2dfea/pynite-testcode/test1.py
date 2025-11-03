@@ -45,3 +45,5 @@ beam.add_node_load
 # Analyze the beam
 beam.analyze()
 # %%
+beam.members['M1'].deflection_array('dy',n_points=11)
+# %%
