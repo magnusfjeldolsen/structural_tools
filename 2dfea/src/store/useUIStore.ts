@@ -160,6 +160,34 @@ export interface UIState {
   // Cursor position (in model coordinates)
   cursorPosition: { x: number; y: number } | null;
   setCursorPosition: (position: { x: number; y: number } | null) => void;
+
+  // Load input dialog
+  loadDialogOpen: boolean;
+  loadDialogType?: 'nodal' | 'point' | 'distributed' | 'lineLoad';
+  editingLoadData?: {
+    type: 'nodal' | 'point' | 'distributed';
+    index: number;
+  };
+  openLoadDialog: (type?: 'nodal' | 'point' | 'distributed' | 'lineLoad', editData?: { type: 'nodal' | 'point' | 'distributed'; index: number }) => void;
+  closeLoadDialog: () => void;
+
+  // Load creation mode (interactive selection on canvas)
+  loadCreationMode: null | 'nodal' | 'point' | 'distributed' | 'lineLoad';
+  loadParameters: {
+    fx?: number;
+    fy?: number;
+    mz?: number;
+    distance?: number;
+    direction?: 'Fx' | 'Fy' | 'Mz';
+    magnitude?: number;
+    w1?: number;
+    w2?: number;
+    x1?: number;
+    x2?: number;
+    case?: string;
+  } | null;
+  setLoadCreationMode: (mode: null | 'nodal' | 'point' | 'distributed' | 'lineLoad', params?: any) => void;
+  cancelLoadCreation: () => void;
 }
 
 // ============================================================================
@@ -207,6 +235,11 @@ const initialState = {
   showPropertiesPanel: true,
   showResultsPanel: false,
   cursorPosition: null,
+  loadDialogOpen: false,
+  loadDialogType: undefined,
+  editingLoadData: undefined,
+  loadCreationMode: null,
+  loadParameters: null,
 };
 
 // ============================================================================
@@ -493,6 +526,24 @@ export const useUIStore = create<UIState>()(
       // Cursor position
       setCursorPosition: (position) => {
         set({ cursorPosition: position });
+      },
+
+      // Load dialog actions
+      openLoadDialog: (type, editData) => {
+        set({ loadDialogOpen: true, loadDialogType: type, editingLoadData: editData });
+      },
+
+      closeLoadDialog: () => {
+        set({ loadDialogOpen: false, loadDialogType: undefined, editingLoadData: undefined });
+      },
+
+      // Load creation mode actions
+      setLoadCreationMode: (mode, params) => {
+        set({ loadCreationMode: mode, loadParameters: params || null });
+      },
+
+      cancelLoadCreation: () => {
+        set({ loadCreationMode: null, loadParameters: null });
       },
     })),
     { name: 'UIStore' }

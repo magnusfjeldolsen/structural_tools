@@ -16,16 +16,23 @@ import { LeftCADPanel } from './components/LeftCADPanel';
 import { CommandInput } from './components/CommandInput';
 import { CoordinateDisplay } from './components/CoordinateDisplay';
 import { SnapBar } from './components/SnapBar';
+import { LoadInputDialog } from './components/LoadInputDialog';
+import { LoadListPanel } from './components/LoadListPanel';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { theme } from './styles/theme';
 
 export default function App() {
   const [initStatus, setInitStatus] = useState<'pending' | 'loading' | 'ready' | 'error'>('pending');
   const [initError, setInitError] = useState<string | null>(null);
-  const [rightPanelTab, setRightPanelTab] = useState<'results' | 'loadcases'>('results');
+  const [rightPanelTab, setRightPanelTab] = useState<'results' | 'loadcases' | 'loads'>('results');
 
   const initializeSolver = useModelStore((state) => state.initializeSolver);
+  const loads = useModelStore((state) => state.loads);
   const activeTab = useUIStore((state) => state.activeTab);
+  const loadDialogOpen = useUIStore((state) => state.loadDialogOpen);
+  const loadDialogType = useUIStore((state) => state.loadDialogType);
+  const editingLoadData = useUIStore((state) => state.editingLoadData);
+  const closeLoadDialog = useUIStore((state) => state.closeLoadDialog);
 
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
@@ -179,6 +186,22 @@ export default function App() {
               Results
             </button>
             <button
+              onClick={() => setRightPanelTab('loads')}
+              style={{
+                flex: 1,
+                padding: '12px',
+                border: 'none',
+                backgroundColor: rightPanelTab === 'loads' ? theme.colors.bgWhite : theme.colors.bgLight,
+                borderBottom: rightPanelTab === 'loads' ? `3px solid ${theme.colors.primary}` : 'none',
+                cursor: 'pointer',
+                fontWeight: rightPanelTab === 'loads' ? 'bold' : 'normal',
+                fontSize: '14px',
+                color: rightPanelTab === 'loads' ? theme.colors.primary : theme.colors.textPrimary,
+              }}
+            >
+              Loads
+            </button>
+            <button
               onClick={() => setRightPanelTab('loadcases')}
               style={{
                 flex: 1,
@@ -197,11 +220,31 @@ export default function App() {
           </div>
 
           {/* Panel Content */}
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            {rightPanelTab === 'results' ? <ResultsPanel /> : <LoadCasePanel />}
+          <div style={{ flex: 1, overflow: 'auto' }}>
+            {rightPanelTab === 'results' && <ResultsPanel />}
+            {rightPanelTab === 'loads' && <LoadListPanel onEditLoad={(type, index) => {
+              useUIStore.setState({ loadDialogOpen: true, editingLoadData: { type, index } });
+            }} />}
+            {rightPanelTab === 'loadcases' && <LoadCasePanel />}
           </div>
         </div>
       </div>
+
+      {/* Load Input Dialog */}
+      <LoadInputDialog
+        isOpen={loadDialogOpen}
+        onClose={closeLoadDialog}
+        loadType={loadDialogType}
+        editingLoad={editingLoadData ? {
+          type: editingLoadData.type,
+          index: editingLoadData.index,
+          data: editingLoadData.type === 'nodal'
+            ? loads.nodal[editingLoadData.index]
+            : editingLoadData.type === 'point'
+            ? loads.elementPoint[editingLoadData.index]
+            : loads.distributed[editingLoadData.index]
+        } : null}
+      />
 
       {/* Command Input Modal */}
       <CommandInput />
