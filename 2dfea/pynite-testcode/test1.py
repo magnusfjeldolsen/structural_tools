@@ -35,6 +35,8 @@ beam.def_support('N2', True, True, True, True, False, False)
 
 # Add a uniform load of 200 lbs/ft to the beam (from 0 in to 168 in)
 beam.add_member_dist_load('M1', 'Fy', -200/1000/12, -200/1000/12, 0, 168)
+beam.add_member_pt_load
+beam.add_node_load
 
 # Alternatively the following line would do apply the load to the full
 # length of the member as well

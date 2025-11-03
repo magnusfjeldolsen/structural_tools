@@ -15,6 +15,13 @@ export type AppTab = 'structure' | 'loads' | 'analysis';
 export function TabBar() {
   const activeTab = useUIStore((state) => state.activeTab);
   const setActiveTab = useUIStore((state) => state.setActiveTab);
+  const clearPasteData = useUIStore((state) => state.clearPasteData);
+
+  // Wrapper to clear paste mode when switching tabs
+  const handleTabChange = (tab: AppTab) => {
+    clearPasteData();
+    setActiveTab(tab);
+  };
 
   const tabStyle = (tab: AppTab) => ({
     flex: 1,
@@ -40,19 +47,19 @@ export function TabBar() {
     >
       <button
         style={tabStyle('structure')}
-        onClick={() => setActiveTab('structure')}
+        onClick={() => handleTabChange('structure')}
       >
         📐 Structure
       </button>
       <button
         style={tabStyle('loads')}
-        onClick={() => setActiveTab('loads')}
+        onClick={() => handleTabChange('loads')}
       >
         ⚡ Loads
       </button>
       <button
         style={tabStyle('analysis')}
-        onClick={() => setActiveTab('analysis')}
+        onClick={() => handleTabChange('analysis')}
       >
         📊 Analysis
       </button>

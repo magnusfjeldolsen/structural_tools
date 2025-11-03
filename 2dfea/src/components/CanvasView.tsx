@@ -59,6 +59,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const addNodalLoad = useModelStore((state) => state.addNodalLoad);
   const addElementPointLoad = useModelStore((state) => state.addElementPointLoad);
   const addDistributedLoad = useModelStore((state) => state.addDistributedLoad);
+  const pasteLoadProperties = useModelStore((state) => state.pasteLoadProperties);
 
   // UI store
   const view = useUIStore((state) => state.view);
@@ -91,6 +92,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const setHoveredNode = useUIStore((state) => state.setHoveredNode);
   const setHoveredElement = useUIStore((state) => state.setHoveredElement);
   const setHoveredLoad = useUIStore((state) => state.setHoveredLoad);
+  const copiedData = useUIStore((state) => state.copiedData);
+  const pasteMode = useUIStore((state) => state.pasteMode);
+  const clearPasteData = useUIStore((state) => state.clearPasteData);
 
   // Drawing state
   const drawingElement = useUIStore((state) => state.drawingElement);
@@ -194,6 +198,12 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
       // Escape key handling
       if (e.key === 'Escape') {
+        // Exit paste mode if active
+        if (pasteMode) {
+          clearPasteData();
+          return;
+        }
+
         // Cancel load creation mode if active
         if (loadCreationMode) {
           cancelLoadCreation();
@@ -295,6 +305,19 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           clearMoveCommand();
         }
         return;
+      }
+
+      // Priority 1.4: Paste mode - left-click to paste properties
+      if (pasteMode && copiedData && copiedData.entityType === 'load' && hoveredLoad) {
+        const targetLoadType = hoveredLoad.type;
+        const sourceLoadType = copiedData.loadType;
+
+        // Only paste if types match
+        if (targetLoadType === sourceLoadType) {
+          pasteLoadProperties(targetLoadType, hoveredLoad.index, copiedData.properties);
+          // Keep paste mode active for multiple pastes
+          return;
+        }
       }
 
       // Priority 1.5: Load creation mode - interactive selection
@@ -622,10 +645,14 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     const [screenX, screenY] = toScreen(worldX, worldY);
     const screenTolerance = snapTolerance; // Use same pixel tolerance as nodes
 
+    console.log('[checkLoadHover] Checking loads at screen position:', screenX, screenY, 'tolerance:', screenTolerance);
+
     // Check nodal loads
     const visibleNodalLoads = loads.nodal.filter(
       (load) => !activeLoadCase || load.case === activeLoadCase
     );
+
+    console.log('[checkLoadHover] Visible nodal loads:', visibleNodalLoads.length);
 
     for (let i = 0; i < visibleNodalLoads.length; i++) {
       const load = visibleNodalLoads[i];
@@ -639,7 +666,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const dy = screenY - nodeScreenY;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
+      console.log(`[checkLoadHover] Nodal load ${i}: distance=${distance.toFixed(1)}, threshold=${screenTolerance}`);
+
       if (distance <= screenTolerance) {
+        console.log('[checkLoadHover] FOUND nodal load at index', i);
         setHoveredLoad({ type: 'nodal', index: i });
         return;
       }

@@ -191,12 +191,18 @@ export interface UIState {
   setLoadCreationMode: (mode: null | 'nodal' | 'point' | 'distributed' | 'lineLoad', params?: any) => void;
   cancelLoadCreation: () => void;
 
-  // Copied load properties (for paste)
-  copiedLoadData?: {
-    type: 'nodal' | 'distributed' | 'elementPoint';
+  // Copied data (for paste) - generic system supporting loads, elements, etc.
+  copiedData?: {
+    entityType: 'load' | 'element';  // Extensible for future entity types
+    loadType?: 'nodal' | 'distributed' | 'elementPoint';  // For loads only
     properties: any;
   };
-  setCopiedLoadData: (data?: { type: 'nodal' | 'distributed' | 'elementPoint'; properties: any }) => void;
+  setCopiedData: (data?: { entityType: 'load' | 'element'; loadType?: 'nodal' | 'distributed' | 'elementPoint'; properties: any }) => void;
+
+  // Paste mode - automatically activated when data is copied
+  pasteMode: boolean;
+  setPasteMode: (enabled: boolean) => void;
+  clearPasteData: () => void;  // Clears both copiedData and pasteMode
 }
 
 // ============================================================================
@@ -250,6 +256,8 @@ const initialState = {
   editingLoadData: undefined,
   loadCreationMode: null,
   loadParameters: null,
+  copiedData: undefined,
+  pasteMode: false,
 };
 
 // ============================================================================
@@ -560,8 +568,17 @@ export const useUIStore = create<UIState>()(
         set({ loadCreationMode: null, loadParameters: null });
       },
 
-      setCopiedLoadData: (data) => {
-        set({ copiedLoadData: data });
+      // Generic copy/paste system (supports loads, elements, and future entities)
+      setCopiedData: (data) => {
+        set({ copiedData: data });
+      },
+
+      setPasteMode: (enabled) => {
+        set({ pasteMode: enabled });
+      },
+
+      clearPasteData: () => {
+        set({ copiedData: undefined, pasteMode: false });
       },
     })),
     { name: 'UIStore' }

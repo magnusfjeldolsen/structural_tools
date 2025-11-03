@@ -166,9 +166,6 @@ export function Toolbar() {
               <button style={toolButtonStyle('add-load')} onClick={() => openLoadDialog('distributed')}>
                 Distributed Load
               </button>
-              <button style={toolButtonStyle('delete')} onClick={() => setTool('delete')}>
-                Delete
-              </button>
             </>
           )}
 

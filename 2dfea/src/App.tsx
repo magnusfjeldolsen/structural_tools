@@ -46,11 +46,9 @@ export default function App() {
     const handleShowLoadContextMenu = (e: Event) => {
       const customEvent = e as CustomEvent;
       const { position, loadType, loadIndex } = customEvent.detail;
-      console.log('[App] Received showLoadContextMenu event:', { position, loadType, loadIndex });
       setContextMenuPosition(position);
       setContextMenuLoad({ type: loadType, index: loadIndex });
       setContextMenuOpen(true);
-      console.log('[App] Context menu state updated, contextMenuOpen is now true');
     };
 
     window.addEventListener('showLoadContextMenu', handleShowLoadContextMenu);
@@ -169,8 +167,8 @@ export default function App() {
       }}>
         {/* Canvas View - takes 70% of width */}
         <div style={{ flex: 7, overflow: 'hidden', position: 'relative' }}>
-          {/* Left CAD Panel - only visible in Structure tab */}
-          {activeTab === 'structure' && <LeftCADPanel />}
+          {/* Left CAD Panel - visible in Structure and Loads tabs */}
+          {(activeTab === 'structure' || activeTab === 'loads') && <LeftCADPanel />}
 
           <CanvasView width={window.innerWidth * 0.7} height={window.innerHeight - 60} />
 
