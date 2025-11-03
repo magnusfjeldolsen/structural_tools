@@ -54,6 +54,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const selectLoad = useModelStore((state) => state.selectLoad);
   const clearSelection = useModelStore((state) => state.clearSelection);
   const deleteSelectedLoads = useModelStore((state) => state.deleteSelectedLoads);
+  const selectedLoads = useModelStore((state) => state.selectedLoads);
   const moveNodes = useModelStore((state) => state.moveNodes);
   const addNodalLoad = useModelStore((state) => state.addNodalLoad);
   const addElementPointLoad = useModelStore((state) => state.addElementPointLoad);
@@ -562,6 +563,196 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     }
   };
 
+  // Helper: Check if a point is inside a trapezoid (for distributed load hover detection)
+  const isPointInTrapezoid = (
+    px: number,
+    py: number,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    w1_offset_x: number,
+    w1_offset_y: number,
+    w2_offset_x: number,
+    w2_offset_y: number,
+    tolerance: number
+  ): boolean => {
+    // Create trapezoid points
+    const points = [
+      [x1, y1],
+      [x2, y2],
+      [w2_offset_x, w2_offset_y],
+      [w1_offset_x, w1_offset_y],
+    ];
+
+    // Point-in-polygon using ray casting algorithm
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const [xi, yi] = points[i];
+      const [xj, yj] = points[j];
+
+      const intersect = ((yi > py) !== (yj > py)) && (px < ((xj - xi) * (py - yi)) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+
+    // Check tolerance distance to edges
+    if (!inside) {
+      for (let i = 0; i < points.length; i++) {
+        const [x_a, y_a] = points[i];
+        const [x_b, y_b] = points[(i + 1) % points.length];
+
+        // Distance from point to line segment
+        const dx = x_b - x_a;
+        const dy = y_b - y_a;
+        const t = Math.max(0, Math.min(1, ((px - x_a) * dx + (py - y_a) * dy) / (dx * dx + dy * dy)));
+        const closestX = x_a + t * dx;
+        const closestY = y_a + t * dy;
+        const distance = Math.sqrt((px - closestX) ** 2 + (py - closestY) ** 2);
+
+        if (distance <= tolerance) return true;
+      }
+    }
+
+    return inside;
+  };
+
+  // Check for hovered loads in Loads tab
+  const checkLoadHover = (worldX: number, worldY: number) => {
+    const loadScale = 5;
+    const [screenX, screenY] = toScreen(worldX, worldY);
+    const screenTolerance = snapTolerance; // Use same pixel tolerance as nodes
+
+    // Check nodal loads
+    const visibleNodalLoads = loads.nodal.filter(
+      (load) => !activeLoadCase || load.case === activeLoadCase
+    );
+
+    for (let i = 0; i < visibleNodalLoads.length; i++) {
+      const load = visibleNodalLoads[i];
+      const node = nodes.find((n) => n.name === load.node);
+      if (!node) continue;
+
+      const [nodeScreenX, nodeScreenY] = toScreen(node.x, node.y);
+
+      // Check distance to node position
+      const dx = screenX - nodeScreenX;
+      const dy = screenY - nodeScreenY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance <= screenTolerance) {
+        setHoveredLoad({ type: 'nodal', index: i });
+        return;
+      }
+    }
+
+    // Check element point loads
+    const visibleElementPointLoads = loads.elementPoint.filter(
+      (load) => !activeLoadCase || load.case === activeLoadCase
+    );
+
+    for (let i = 0; i < visibleElementPointLoads.length; i++) {
+      const load = visibleElementPointLoads[i];
+      const element = elements.find((el) => el.name === load.element);
+      if (!element) continue;
+
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) continue;
+
+      // Calculate the impact point position along the element
+      const elementWorldLength = Math.sqrt((nodeJ.x - nodeI.x) ** 2 + (nodeJ.y - nodeI.y) ** 2);
+      const distanceRatio = Math.min(1, Math.max(0, load.distance / elementWorldLength));
+
+      const impactWorldX = nodeI.x + (nodeJ.x - nodeI.x) * distanceRatio;
+      const impactWorldY = nodeI.y + (nodeJ.y - nodeI.y) * distanceRatio;
+      const [impactScreenX, impactScreenY] = toScreen(impactWorldX, impactWorldY);
+
+      // Check distance to impact point
+      const dx = screenX - impactScreenX;
+      const dy = screenY - impactScreenY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance <= screenTolerance) {
+        setHoveredLoad({ type: 'elementPoint', index: i });
+        return;
+      }
+    }
+
+    // Check distributed loads
+    const visibleDistributedLoads = loads.distributed.filter(
+      (load) => !activeLoadCase || load.case === activeLoadCase
+    );
+
+    for (let i = 0; i < visibleDistributedLoads.length; i++) {
+      const load = visibleDistributedLoads[i];
+      const element = elements.find((el) => el.name === load.element);
+      if (!element) continue;
+
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) continue;
+
+      const [x1, y1] = toScreen(nodeI.x, nodeI.y);
+      const [x2, y2] = toScreen(nodeJ.x, nodeJ.y);
+
+      // Element vector and perpendicular offset
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const elementLength = Math.sqrt(dx * dx + dy * dy);
+
+      if (elementLength < 1) continue;
+
+      // Perpendicular direction
+      const perpX = -dy / elementLength;
+      const perpY = dx / elementLength;
+
+      // Calculate positions along element for w1 and w2
+      const x1_pos = load.x2 > 0 ? x1 + (dx * load.x1) / load.x2 : x1;
+      const y1_pos = load.x2 > 0 ? y1 + (dy * load.x1) / load.x2 : y1;
+      const x2_pos = load.x2 > 0 ? x1 + dx : x1;
+      const y2_pos = load.x2 > 0 ? y1 + dy : y1;
+
+      // Determine load direction
+      const isFx = load.direction === 'Fx';
+
+      // Offset perpendicular to load direction
+      const offsetDir = load.w1 > 0 ? 1 : -1;
+      const offsetMult = isFx ? perpY : -perpX;
+
+      const w1Scale = Math.abs(load.w1) * loadScale;
+      const w2Scale = Math.abs(load.w2) * loadScale;
+
+      // Arrow start points
+      const w1_offset_x = x1_pos + offsetMult * offsetDir * w1Scale;
+      const w1_offset_y = y1_pos + (isFx ? perpX : -perpY) * offsetDir * w1Scale;
+      const w2_offset_x = x2_pos + offsetMult * offsetDir * w2Scale;
+      const w2_offset_y = y2_pos + (isFx ? perpX : -perpY) * offsetDir * w2Scale;
+
+      // Check if point is in trapezoid
+      if (
+        isPointInTrapezoid(
+          screenX,
+          screenY,
+          x1_pos,
+          y1_pos,
+          x2_pos,
+          y2_pos,
+          w1_offset_x,
+          w1_offset_y,
+          w2_offset_x,
+          w2_offset_y,
+          screenTolerance
+        )
+      ) {
+        setHoveredLoad({ type: 'distributed', index: i });
+        return;
+      }
+    }
+
+    // No load hovered
+    setHoveredLoad(null);
+  };
+
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage();
     if (!stage) return;
@@ -573,37 +764,91 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       setMouseWorldPos({ x: worldX, y: worldY });
       setCursorPosition({ x: worldX, y: worldY });
 
-      // Snapping detection
-      if (snapEnabled) {
-        // Convert tolerance from pixels to world units
-        const worldTolerance = snapTolerance / view.scale;
+      // Determine what to hover based on active tab
+      if (activeTab === 'loads') {
+        // In Loads tab: normally only hover loads, but when creating loads, allow element/node snapping
+        if (loadCreationMode) {
+          // During load creation: allow node/element snapping for interactive selection
+          setHoveredLoad(null);
 
-        let nearestNode: string | null = null;
-        let nearestElement: string | null = null;
+          // Enable snapping for element point selection
+          if (snapEnabled) {
+            const worldTolerance = snapTolerance / view.scale;
 
-        // Check for nearest node first (nodes have priority)
-        if (snapToNodes) {
-          const nearest = findNearestNode(nodes, { x: worldX, y: worldY }, worldTolerance);
-          if (nearest) {
-            nearestNode = nearest.name;
+            let nearestNode: string | null = null;
+            let nearestElement: string | null = null;
+
+            // Check for nearest node first (nodes have priority)
+            if (snapToNodes) {
+              const nearest = findNearestNode(nodes, { x: worldX, y: worldY }, worldTolerance);
+              if (nearest) {
+                nearestNode = nearest.name;
+              }
+            }
+
+            // Check for nearest element only if no node is snapped
+            if (snapToElements && !nearestNode) {
+              const nearest = findNearestElement(nodes, elements, { x: worldX, y: worldY }, worldTolerance);
+              if (nearest) {
+                nearestElement = nearest.name;
+              }
+            }
+
+            setHoveredNode(nearestNode);
+            setHoveredElement(nearestElement);
+          } else {
+            setHoveredNode(null);
+            setHoveredElement(null);
           }
-        }
+        } else {
+          // Not in load creation mode: only hover over loads, not nodes/elements
+          setHoveredNode(null);
+          setHoveredElement(null);
 
-        // Check for nearest element only if no node is snapped
-        if (snapToElements && !nearestNode) {
-          const nearest = findNearestElement(nodes, elements, { x: worldX, y: worldY }, worldTolerance);
-          if (nearest) {
-            nearestElement = nearest.name;
+          // Check for hovered loads
+          checkLoadHover(worldX, worldY);
+        }
+      } else if (activeTab === 'structure') {
+        // In Structure tab: hover over nodes/elements as normal
+        setHoveredLoad(null);
+
+        // Snapping detection for nodes and elements
+        if (snapEnabled) {
+          // Convert tolerance from pixels to world units
+          const worldTolerance = snapTolerance / view.scale;
+
+          let nearestNode: string | null = null;
+          let nearestElement: string | null = null;
+
+          // Check for nearest node first (nodes have priority)
+          if (snapToNodes) {
+            const nearest = findNearestNode(nodes, { x: worldX, y: worldY }, worldTolerance);
+            if (nearest) {
+              nearestNode = nearest.name;
+            }
           }
-        }
 
-        // Update hover state
-        setHoveredNode(nearestNode);
-        setHoveredElement(nearestElement);
+          // Check for nearest element only if no node is snapped
+          if (snapToElements && !nearestNode) {
+            const nearest = findNearestElement(nodes, elements, { x: worldX, y: worldY }, worldTolerance);
+            if (nearest) {
+              nearestElement = nearest.name;
+            }
+          }
+
+          // Update hover state
+          setHoveredNode(nearestNode);
+          setHoveredElement(nearestElement);
+        } else {
+          // Clear hover state when snapping is disabled
+          setHoveredNode(null);
+          setHoveredElement(null);
+        }
       } else {
-        // Clear hover state when snapping is disabled
+        // Analysis tab: no hovering
         setHoveredNode(null);
         setHoveredElement(null);
+        setHoveredLoad(null);
       }
     }
 
@@ -655,8 +900,159 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
   const handleContextMenu = (e: Konva.KonvaEventObject<PointerEvent>) => {
     e.evt.preventDefault();
-    // Right-click: zoom to fit
-    zoomToFit();
+
+    // Right-click context menu for loads
+    if (activeTab === 'loads') {
+      const stage = e.target.getStage();
+      if (!stage) return;
+
+      const pointerPos = stage.getPointerPosition();
+      if (!pointerPos) return;
+
+      // Get native browser coordinates for menu positioning
+      const clientX = (e.evt as PointerEvent).clientX;
+      const clientY = (e.evt as PointerEvent).clientY;
+
+      // Check for loads at this position (same logic as hover detection)
+      const loadScale = 5;
+      const screenTolerance = snapTolerance;
+
+      // Check nodal loads
+      const visibleNodalLoads = loads.nodal.filter(
+        (load) => !activeLoadCase || load.case === activeLoadCase
+      );
+
+      for (let i = 0; i < visibleNodalLoads.length; i++) {
+        const load = visibleNodalLoads[i];
+        const node = nodes.find((n) => n.name === load.node);
+        if (!node) continue;
+
+        const [nodeScreenX, nodeScreenY] = toScreen(node.x, node.y);
+        const dx = pointerPos.x - nodeScreenX;
+        const dy = pointerPos.y - nodeScreenY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance <= screenTolerance) {
+          showLoadContextMenu('nodal', i, clientX, clientY);
+          return;
+        }
+      }
+
+      // Check element point loads
+      const visibleElementPointLoads = loads.elementPoint.filter(
+        (load) => !activeLoadCase || load.case === activeLoadCase
+      );
+
+      for (let i = 0; i < visibleElementPointLoads.length; i++) {
+        const load = visibleElementPointLoads[i];
+        const element = elements.find((el) => el.name === load.element);
+        if (!element) continue;
+
+        const nodeI = nodes.find((n) => n.name === element.nodeI);
+        const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+        if (!nodeI || !nodeJ) continue;
+
+        const elementWorldLength = Math.sqrt((nodeJ.x - nodeI.x) ** 2 + (nodeJ.y - nodeI.y) ** 2);
+        const distanceRatio = Math.min(1, Math.max(0, load.distance / elementWorldLength));
+
+        const impactWorldX = nodeI.x + (nodeJ.x - nodeI.x) * distanceRatio;
+        const impactWorldY = nodeI.y + (nodeJ.y - nodeI.y) * distanceRatio;
+        const [impactScreenX, impactScreenY] = toScreen(impactWorldX, impactWorldY);
+
+        const dx = pointerPos.x - impactScreenX;
+        const dy = pointerPos.y - impactScreenY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance <= screenTolerance) {
+          showLoadContextMenu('elementPoint', i, clientX, clientY);
+          return;
+        }
+      }
+
+      // Check distributed loads
+      const visibleDistributedLoads = loads.distributed.filter(
+        (load) => !activeLoadCase || load.case === activeLoadCase
+      );
+
+      for (let i = 0; i < visibleDistributedLoads.length; i++) {
+        const load = visibleDistributedLoads[i];
+        const element = elements.find((el) => el.name === load.element);
+        if (!element) continue;
+
+        const nodeI = nodes.find((n) => n.name === element.nodeI);
+        const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+        if (!nodeI || !nodeJ) continue;
+
+        const [x1, y1] = toScreen(nodeI.x, nodeI.y);
+        const [x2, y2] = toScreen(nodeJ.x, nodeJ.y);
+
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const elementLength = Math.sqrt(dx * dx + dy * dy);
+
+        if (elementLength < 1) continue;
+
+        const perpX = -dy / elementLength;
+        const perpY = dx / elementLength;
+
+        const x1_pos = load.x2 > 0 ? x1 + (dx * load.x1) / load.x2 : x1;
+        const y1_pos = load.x2 > 0 ? y1 + (dy * load.x1) / load.x2 : y1;
+        const x2_pos = load.x2 > 0 ? x1 + dx : x1;
+        const y2_pos = load.x2 > 0 ? y1 + dy : y1;
+
+        const isFx = load.direction === 'Fx';
+        const offsetDir = load.w1 > 0 ? 1 : -1;
+        const offsetMult = isFx ? perpY : -perpX;
+
+        const w1Scale = Math.abs(load.w1) * loadScale;
+        const w2Scale = Math.abs(load.w2) * loadScale;
+
+        const w1_offset_x = x1_pos + offsetMult * offsetDir * w1Scale;
+        const w1_offset_y = y1_pos + (isFx ? perpX : -perpY) * offsetDir * w1Scale;
+        const w2_offset_x = x2_pos + offsetMult * offsetDir * w2Scale;
+        const w2_offset_y = y2_pos + (isFx ? perpX : -perpY) * offsetDir * w2Scale;
+
+        if (
+          isPointInTrapezoid(
+            pointerPos.x,
+            pointerPos.y,
+            x1_pos,
+            y1_pos,
+            x2_pos,
+            y2_pos,
+            w1_offset_x,
+            w1_offset_y,
+            w2_offset_x,
+            w2_offset_y,
+            screenTolerance
+          )
+        ) {
+          showLoadContextMenu('distributed', i, clientX, clientY);
+          return;
+        }
+      }
+    }
+    // Right-click no longer centers the model (double middle-click does that instead)
+  };
+
+  // Helper function to dispatch load context menu event
+  const showLoadContextMenu = (
+    loadType: 'nodal' | 'distributed' | 'elementPoint',
+    loadIndex: number,
+    clientX: number,
+    clientY: number
+  ) => {
+    console.log('Right-click on load:', { loadType, loadIndex }, 'at position:', clientX, clientY);
+
+    window.dispatchEvent(
+      new CustomEvent('showLoadContextMenu', {
+        detail: {
+          position: { x: clientX, y: clientY },
+          loadType,
+          loadIndex,
+        },
+      })
+    );
   };
 
   // Filter loads by active case
@@ -1020,13 +1416,23 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     });
   };
 
+  // Helper: Get load color based on selection/hover state
+  const getLoadColor = (type: 'nodal' | 'distributed' | 'elementPoint', index: number): string => {
+    const isSelected = selectedLoads[type].includes(index);
+    const isHovered = hoveredLoad?.type === type && hoveredLoad?.index === index;
+
+    if (isSelected && isHovered) return '#00D4FF'; // Light blue - selected + hovered
+    if (isSelected) return '#00A8FF'; // Medium blue - selected
+    if (isHovered) return '#FF69B4'; // Hot pink - hovered
+    return '#E91E63'; // Default pink
+  };
+
   // Render nodal loads as arrows (only visible in Loads tab)
   const renderLoads = () => {
     if (!showLoads || activeTab !== 'loads') return null;
 
     const allElements: JSX.Element[] = [];
     const loadScale = 5;
-    const arrowColor = '#E91E63';
 
     // Render nodal loads
     visibleLoads.forEach((load, index) => {
@@ -1034,6 +1440,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       if (!pos) return;
 
       const [sx, sy] = pos;
+      const arrowColor = getLoadColor('nodal', index);
 
       if (Math.abs(load.fx) > 0.01) {
         const length = Math.abs(load.fx) * loadScale;
@@ -1159,6 +1566,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         w1_offset_x, w1_offset_y,
       ];
 
+      const arrowColor = getLoadColor('distributed', index);
+
       allElements.push(
         <Line
           key={`dist-load-${index}-shape`}
@@ -1232,6 +1641,129 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           />
         );
       }
+    });
+
+    // Render element point loads (arrows at specific positions on elements)
+    const visibleElementPointLoads = loads.elementPoint.filter(
+      (load) => !activeLoadCase || load.case === activeLoadCase
+    );
+
+    visibleElementPointLoads.forEach((load, index) => {
+      const element = elements.find((el) => el.name === load.element);
+      if (!element) return;
+
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) return;
+
+      // Calculate the impact point position along the element
+      const elementWorldLength = Math.sqrt((nodeJ.x - nodeI.x) ** 2 + (nodeJ.y - nodeI.y) ** 2);
+      const distanceRatio = Math.min(1, Math.max(0, load.distance / elementWorldLength));
+
+      const impactWorldX = nodeI.x + (nodeJ.x - nodeI.x) * distanceRatio;
+      const impactWorldY = nodeI.y + (nodeJ.y - nodeI.y) * distanceRatio;
+      const [impactScreenX, impactScreenY] = toScreen(impactWorldX, impactWorldY);
+
+      // Element vector for determining perpendicular direction
+      const [x1, y1] = toScreen(nodeI.x, nodeI.y);
+      const [x2, y2] = toScreen(nodeJ.x, nodeJ.y);
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const elementScreenLength = Math.sqrt(dx * dx + dy * dy);
+
+      if (elementScreenLength < 1) return;
+
+      // Perpendicular direction (pointing "up" from element)
+      const perpX = -dy / elementScreenLength;
+      const perpY = dx / elementScreenLength;
+
+      const isFx = load.direction === 'Fx';
+      const arrowColor = getLoadColor('elementPoint', index);
+      const length = Math.abs(load.magnitude) * loadScale;
+      const dir = load.magnitude > 0 ? 1 : -1;
+
+      // For point loads on elements, we draw perpendicular to the element
+      let arrowEndX = 0, arrowEndY = 0, labelX = 0, labelY = 0;
+
+      if (load.direction === 'Mz') {
+        // Moment: draw a small curved arc (simplified as small circle)
+        const arcRadius = 8;
+        allElements.push(
+          <Circle
+            key={`point-load-${index}-moment`}
+            x={impactScreenX}
+            y={impactScreenY}
+            radius={arcRadius}
+            stroke={arrowColor}
+            strokeWidth={2}
+            fill="none"
+          />
+        );
+
+        // Add arrow to show direction of rotation
+        const arrowAngle = Math.PI / 4;
+        const arrowTipX = impactScreenX + arcRadius * Math.cos(arrowAngle);
+        const arrowTipY = impactScreenY + arcRadius * Math.sin(arrowAngle);
+        allElements.push(
+          <Arrow
+            key={`point-load-${index}-moment-arrow`}
+            points={[
+              impactScreenX + arcRadius * Math.cos(arrowAngle - 0.3),
+              impactScreenY + arcRadius * Math.sin(arrowAngle - 0.3),
+              arrowTipX,
+              arrowTipY,
+            ]}
+            fill={arrowColor}
+            stroke={arrowColor}
+            strokeWidth={2}
+            pointerLength={6}
+            pointerWidth={6}
+          />
+        );
+
+        labelX = impactScreenX - 15;
+        labelY = impactScreenY - 15;
+      } else if (isFx) {
+        // Horizontal force: perpendicular to element direction
+        arrowEndX = impactScreenX + perpX * dir * length;
+        arrowEndY = impactScreenY + perpY * dir * length;
+        labelX = (impactScreenX + arrowEndX) / 2;
+        labelY = (impactScreenY + arrowEndY) / 2 - 8;
+      } else {
+        // Vertical force (Fy): along element perpendicular
+        arrowEndX = impactScreenX - perpY * dir * length;
+        arrowEndY = impactScreenY + perpX * dir * length;
+        labelX = (impactScreenX + arrowEndX) / 2 + 8;
+        labelY = (impactScreenY + arrowEndY) / 2;
+      }
+
+      if (load.direction !== 'Mz') {
+        allElements.push(
+          <Arrow
+            key={`point-load-${index}`}
+            points={[impactScreenX, impactScreenY, arrowEndX, arrowEndY]}
+            fill={arrowColor}
+            stroke={arrowColor}
+            strokeWidth={2}
+            pointerLength={8}
+            pointerWidth={8}
+          />
+        );
+      }
+
+      // Add label showing magnitude
+      allElements.push(
+        <Text
+          key={`point-load-${index}-label`}
+          x={labelX}
+          y={labelY}
+          text={Math.abs(load.magnitude).toFixed(1)}
+          fontSize={10}
+          fill={arrowColor}
+          align="center"
+          offsetX={Math.abs(load.magnitude).toFixed(1).length * 3}
+        />
+      );
     });
 
     return allElements;
