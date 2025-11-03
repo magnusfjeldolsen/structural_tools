@@ -118,8 +118,10 @@ export interface UIState {
   // Hover state (for snapping feedback)
   hoveredNode: string | null;
   hoveredElement: string | null;
+  hoveredLoad: { type: 'nodal' | 'distributed' | 'elementPoint'; index: number } | null;
   setHoveredNode: (name: string | null) => void;
   setHoveredElement: (name: string | null) => void;
+  setHoveredLoad: (load: { type: 'nodal' | 'distributed' | 'elementPoint'; index: number } | null) => void;
 
   // UI visibility
   showGrid: boolean;
@@ -188,6 +190,13 @@ export interface UIState {
   } | null;
   setLoadCreationMode: (mode: null | 'nodal' | 'point' | 'distributed' | 'lineLoad', params?: any) => void;
   cancelLoadCreation: () => void;
+
+  // Copied load properties (for paste)
+  copiedLoadData?: {
+    type: 'nodal' | 'distributed' | 'elementPoint';
+    properties: any;
+  };
+  setCopiedLoadData: (data?: { type: 'nodal' | 'distributed' | 'elementPoint'; properties: any }) => void;
 }
 
 // ============================================================================
@@ -220,6 +229,7 @@ const initialState = {
   snapTolerance: 10,  // pixels
   hoveredNode: null,
   hoveredElement: null,
+  hoveredLoad: null,
   showGrid: true,
   showLoads: true,
   showSupports: true,
@@ -253,7 +263,7 @@ export const useUIStore = create<UIState>()(
 
       // Tab actions
       setActiveTab: (tab) => {
-        set({ activeTab: tab });
+        set({ activeTab: tab, activeTool: 'select' });
       },
 
       // Tool actions
@@ -441,6 +451,10 @@ export const useUIStore = create<UIState>()(
         set({ hoveredElement: name });
       },
 
+      setHoveredLoad: (load) => {
+        set({ hoveredLoad: load });
+      },
+
       // Visibility toggles
       toggleGrid: () => {
         set((state) => {
@@ -544,6 +558,10 @@ export const useUIStore = create<UIState>()(
 
       cancelLoadCreation: () => {
         set({ loadCreationMode: null, loadParameters: null });
+      },
+
+      setCopiedLoadData: (data) => {
+        set({ copiedLoadData: data });
       },
     })),
     { name: 'UIStore' }

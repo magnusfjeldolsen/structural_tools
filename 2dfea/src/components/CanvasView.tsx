@@ -51,7 +51,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const selectElement = useModelStore((state) => state.selectElement);
   const selectNodesInRect = useModelStore((state) => state.selectNodesInRect);
   const selectElementsInRect = useModelStore((state) => state.selectElementsInRect);
+  const selectLoad = useModelStore((state) => state.selectLoad);
   const clearSelection = useModelStore((state) => state.clearSelection);
+  const deleteSelectedLoads = useModelStore((state) => state.deleteSelectedLoads);
   const moveNodes = useModelStore((state) => state.moveNodes);
   const addNodalLoad = useModelStore((state) => state.addNodalLoad);
   const addElementPointLoad = useModelStore((state) => state.addElementPointLoad);
@@ -84,8 +86,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const snapTolerance = useUIStore((state) => state.snapTolerance);
   const hoveredNode = useUIStore((state) => state.hoveredNode);
   const hoveredElement = useUIStore((state) => state.hoveredElement);
+  const hoveredLoad = useUIStore((state) => state.hoveredLoad);
   const setHoveredNode = useUIStore((state) => state.setHoveredNode);
   const setHoveredElement = useUIStore((state) => state.setHoveredElement);
+  const setHoveredLoad = useUIStore((state) => state.setHoveredLoad);
 
   // Drawing state
   const drawingElement = useUIStore((state) => state.drawingElement);
@@ -358,61 +362,71 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
       // Priority 2: Regular tool behavior
       if (activeTool === 'select') {
-        if (selectionStart) {
-          // Second click - finalize selection rectangle
-          const rect = {
-            x1: selectionStart.x,
-            y1: selectionStart.y,
-            x2: worldX,
-            y2: worldY,
-          };
+        // Tab-based selection filtering
+        if (activeTab === 'structure') {
+          // Structure tab: only select nodes and elements
+          if (selectionStart) {
+            // Second click - finalize selection rectangle
+            const rect = {
+              x1: selectionStart.x,
+              y1: selectionStart.y,
+              x2: worldX,
+              y2: worldY,
+            };
 
-          // Determine selection mode based on drag direction
-          const mode: 'window' | 'crossing' = rect.x2 > rect.x1 ? 'window' : 'crossing';
+            // Determine selection mode based on drag direction
+            const mode: 'window' | 'crossing' = rect.x2 > rect.x1 ? 'window' : 'crossing';
 
-          // Check if this was just a click (very small rectangle)
-          const dragDistance = Math.sqrt(
-            Math.pow(rect.x2 - rect.x1, 2) + Math.pow(rect.y2 - rect.y1, 2)
-          );
+            // Check if this was just a click (very small rectangle)
+            const dragDistance = Math.sqrt(
+              Math.pow(rect.x2 - rect.x1, 2) + Math.pow(rect.y2 - rect.y1, 2)
+            );
 
-          if (dragDistance > 0.1) {
-            // Significant rectangle - perform selection
-            const newNodeNames = findNodesInRect(nodes, rect);
-            const newElementNames = findElementsInRect(nodes, elements, rect, mode);
+            if (dragDistance > 0.1) {
+              // Significant rectangle - perform selection
+              const newNodeNames = findNodesInRect(nodes, rect);
+              const newElementNames = findElementsInRect(nodes, elements, rect, mode);
 
-            if (selectionStart.isShift) {
-              // Toggle selection (add if not selected, remove if selected)
-              newNodeNames.forEach((name: string) => {
-                selectNode(name, true); // true = additive/toggle mode
-              });
-              newElementNames.forEach((name: string) => {
-                selectElement(name, true); // true = additive/toggle mode
-              });
+              if (selectionStart.isShift) {
+                // Toggle selection (add if not selected, remove if selected)
+                newNodeNames.forEach((name: string) => {
+                  selectNode(name, true); // true = additive/toggle mode
+                });
+                newElementNames.forEach((name: string) => {
+                  selectElement(name, true); // true = additive/toggle mode
+                });
+              } else {
+                // Replace selection
+                selectNodesInRect(rect, mode);
+                selectElementsInRect(rect, mode);
+              }
+            }
+
+            // Clear selection rectangle
+            setSelectionStart(null);
+            setSelectionRect(null);
+          } else {
+            // First click - start selection rectangle or select entity
+            if (hoveredNode) {
+              // Clicked on a node - toggle if Shift is pressed
+              selectNode(hoveredNode, isShiftPressed);
+            } else if (hoveredElement) {
+              // Clicked on an element - toggle if Shift is pressed
+              selectElement(hoveredElement, isShiftPressed);
             } else {
-              // Replace selection
-              selectNodesInRect(rect, mode);
-              selectElementsInRect(rect, mode);
+              // Start selection rectangle
+              if (!isShiftPressed) {
+                clearSelection();
+              }
+              setSelectionStart({ x: worldX, y: worldY, isShift: isShiftPressed });
+              setSelectionRect({ x1: worldX, y1: worldY, x2: worldX, y2: worldY });
             }
           }
-
-          // Clear selection rectangle
-          setSelectionStart(null);
-          setSelectionRect(null);
-        } else {
-          // First click - start selection rectangle or select entity
-          if (hoveredNode) {
-            // Clicked on a node - toggle if Shift is pressed
-            selectNode(hoveredNode, isShiftPressed);
-          } else if (hoveredElement) {
-            // Clicked on an element - toggle if Shift is pressed
-            selectElement(hoveredElement, isShiftPressed);
-          } else {
-            // Start selection rectangle
-            if (!isShiftPressed) {
-              clearSelection();
-            }
-            setSelectionStart({ x: worldX, y: worldY, isShift: isShiftPressed });
-            setSelectionRect({ x1: worldX, y1: worldY, x2: worldX, y2: worldY });
+        } else if (activeTab === 'loads') {
+          // Loads tab: only select loads (handled by load click handlers)
+          // Clear geometry selection when switching to loads tab
+          if (selectedNodes.length > 0 || selectedElements.length > 0) {
+            clearSelection();
           }
         }
       } else if (activeTool === 'draw-node') {
@@ -481,25 +495,33 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           clearDrawingElement();
         }
       } else if (activeTool === 'delete') {
-        // Delete mode: delete the hovered entity
-        // Priority: nodes > elements (nodes delete connected elements and loads automatically)
-        // If node has a support, first remove the support, then delete the node on second click
-        if (hoveredNode) {
-          const node = nodes.find(n => n.name === hoveredNode);
-          if (node && node.support !== 'free') {
-            // Node has a support - remove it first
-            updateNode(hoveredNode, { support: 'free' });
-          } else {
-            // Node has no support - delete it
-            deleteNode(hoveredNode);
+        // Delete mode: delete hovered entity (structure) or selected loads
+        if (activeTab === 'loads' && hoveredLoad) {
+          // Delete mode in Loads tab: delete hoveredLoad or selected loads
+          selectLoad(hoveredLoad.type, hoveredLoad.index, false);
+          deleteSelectedLoads();
+          setHoveredLoad(null);
+        } else if (activeTab === 'structure') {
+          // Delete mode in Structure tab: delete nodes/elements
+          // Priority: nodes > elements (nodes delete connected elements and loads automatically)
+          // If node has a support, first remove the support, then delete the node on second click
+          if (hoveredNode) {
+            const node = nodes.find(n => n.name === hoveredNode);
+            if (node && node.support !== 'free') {
+              // Node has a support - remove it first
+              updateNode(hoveredNode, { support: 'free' });
+            } else {
+              // Node has no support - delete it
+              deleteNode(hoveredNode);
+              // Clear hover state after deletion
+              setHoveredNode(null);
+              setHoveredElement(null);
+            }
+          } else if (hoveredElement) {
+            deleteElement(hoveredElement);
             // Clear hover state after deletion
-            setHoveredNode(null);
             setHoveredElement(null);
           }
-        } else if (hoveredElement) {
-          deleteElement(hoveredElement);
-          // Clear hover state after deletion
-          setHoveredElement(null);
         }
       } else if (activeTool === 'add-support') {
         // Legacy: cycle through support types when clicking a node

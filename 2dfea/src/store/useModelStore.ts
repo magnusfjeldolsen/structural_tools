@@ -44,6 +44,11 @@ interface ModelState {
   // Selection
   selectedNodes: string[];
   selectedElements: string[];
+  selectedLoads: {
+    nodal: number[];
+    distributed: number[];
+    elementPoint: number[];
+  };
 
   // Loads
   loads: Loads;
@@ -74,7 +79,11 @@ interface ModelState {
   selectElement: (name: string, additive: boolean) => void;
   selectNodesInRect: (rect: { x1: number; y1: number; x2: number; y2: number }, mode: 'window' | 'crossing') => void;
   selectElementsInRect: (rect: { x1: number; y1: number; x2: number; y2: number }, mode: 'window' | 'crossing') => void;
+  selectLoad: (type: 'nodal' | 'distributed' | 'elementPoint', index: number, additive: boolean) => void;
+  selectLoadsInRect: (rect: { x1: number; y1: number; x2: number; y2: number }, mode: 'window' | 'crossing') => void;
   clearSelection: () => void;
+  clearLoadSelection: () => void;
+  deleteSelectedLoads: () => void;
 
   // Actions - Movement
   moveNodes: (nodeNames: string[], dx: number, dy: number) => void;
@@ -125,6 +134,11 @@ const initialState = {
   nextElementNumber: 1,
   selectedNodes: [],
   selectedElements: [],
+  selectedLoads: {
+    nodal: [],
+    distributed: [],
+    elementPoint: [],
+  },
   loads: {
     nodal: [],
     distributed: [],
@@ -292,6 +306,62 @@ export const useModelStore = create<ModelState>()(
           set((state) => {
             state.selectedNodes = [];
             state.selectedElements = [];
+            state.selectedLoads = { nodal: [], distributed: [], elementPoint: [] };
+          });
+        },
+
+        selectLoad: (type, index, additive) => {
+          set((state) => {
+            const selectedArray = state.selectedLoads[type];
+            if (additive) {
+              // Toggle: add if not selected, remove if selected
+              if (selectedArray.includes(index)) {
+                state.selectedLoads[type] = selectedArray.filter((i) => i !== index);
+              } else {
+                state.selectedLoads[type].push(index);
+              }
+            } else {
+              // Replace selection (clear nodes/elements too)
+              state.selectedLoads = { nodal: [], distributed: [], elementPoint: [] };
+              state.selectedLoads[type] = [index];
+              state.selectedNodes = [];
+              state.selectedElements = [];
+            }
+          });
+        },
+
+        selectLoadsInRect: () => {
+          // Simplified: just clear for now, can implement full rect selection later
+          set((state) => {
+            state.selectedLoads = { nodal: [], distributed: [], elementPoint: [] };
+          });
+        },
+
+        clearLoadSelection: () => {
+          set((state) => {
+            state.selectedLoads = { nodal: [], distributed: [], elementPoint: [] };
+          });
+        },
+
+        deleteSelectedLoads: () => {
+          set((state) => {
+            // Delete in reverse order to maintain indices
+            state.selectedLoads.nodal
+              .sort((a, b) => b - a)
+              .forEach((index) => {
+                state.loads.nodal.splice(index, 1);
+              });
+            state.selectedLoads.distributed
+              .sort((a, b) => b - a)
+              .forEach((index) => {
+                state.loads.distributed.splice(index, 1);
+              });
+            state.selectedLoads.elementPoint
+              .sort((a, b) => b - a)
+              .forEach((index) => {
+                state.loads.elementPoint.splice(index, 1);
+              });
+            state.selectedLoads = { nodal: [], distributed: [], elementPoint: [] };
           });
         },
 
