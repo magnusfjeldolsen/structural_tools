@@ -54,9 +54,10 @@ export function calculateDeformedElementShape(
   const angleRad = Math.atan2(dy_orig, dx_orig);
   const angleDeg = angleRad * (180 / Math.PI);
 
-  // Flip signs if element points in "backwards" direction
-  // >= 90° (pointing upward-left) or <= -90° (pointing downward-left)
-  const shouldFlipSigns = angleDeg >= 90 || angleDeg <= -90;
+  // Flip signs if element points in "backwards" direction (towards negative X)
+  // > 90° (pointing upward-left) or < -90° (pointing downward-left)
+  // Note: strictly greater/less than, NOT >= or <=, to exclude vertical elements
+  const shouldFlipSigns = angleDeg > 90 || angleDeg < -90;
 
   // Step 2: Calculate deformed node positions (mm to m conversion)
   const defI = {

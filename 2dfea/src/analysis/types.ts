@@ -43,7 +43,7 @@ export interface NodalLoad {
 
 export interface DistributedLoad {
   element: string;
-  direction: 'Fx' | 'Fy';  // PyNite directions
+  direction: 'Fx' | 'Fy' | 'FX' | 'FY';  // Local (Fx, Fy) or Global (FX, FY) coordinate system
   w1: number;     // kN/m (start)
   w2: number;     // kN/m (end)
   x1: number;     // m (start position)
@@ -54,7 +54,7 @@ export interface DistributedLoad {
 export interface ElementPointLoad {
   element: string;
   distance: number;   // m (from element start)
-  direction: 'Fx' | 'Fy' | 'Mz';
+  direction: 'Fx' | 'Fy' | 'Mz' | 'FX' | 'FY' | 'MZ';  // Local (fx, fy, mz) or Global (FX, FY, MZ)
   magnitude: number;  // kN or kNm
   case?: string;
 }
