@@ -18,6 +18,7 @@ export function Toolbar() {
   const activeTab = useUIStore((state) => state.activeTab);
   const activeTool = useUIStore((state) => state.activeTool);
   const setTool = useUIStore((state) => state.setTool);
+  const openLoadDialog = useUIStore((state) => state.openLoadDialog);
 
   const showDisplacedShape = useUIStore((state) => state.showDisplacedShape);
   const showMomentDiagram = useUIStore((state) => state.showMomentDiagram);
@@ -153,11 +154,17 @@ export function Toolbar() {
           {/* Loads Tab Tools */}
           {activeTab === 'loads' && (
             <>
-              <button style={toolButtonStyle('select')} onClick={() => setTool('select')}>
-                Select
+              <button style={toolButtonStyle('add-load')} onClick={() => openLoadDialog('nodal')}>
+                Nodal Load
               </button>
-              <button style={toolButtonStyle('add-load')} onClick={() => setTool('add-load')}>
-                Add Nodal Load
+              <button style={toolButtonStyle('add-load')} onClick={() => openLoadDialog('point')}>
+                Point Load
+              </button>
+              <button style={toolButtonStyle('add-load')} onClick={() => openLoadDialog('lineLoad')}>
+                Line Load
+              </button>
+              <button style={toolButtonStyle('add-load')} onClick={() => openLoadDialog('distributed')}>
+                Distributed Load
               </button>
               <button style={toolButtonStyle('delete')} onClick={() => setTool('delete')}>
                 Delete

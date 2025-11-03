@@ -32,7 +32,9 @@
       "Bash(git commit -m \"$(cat <<''EOF''\nPhase 1 & 2: Load Cases Implementation\n\n- Implemented load cases data structure with Dead/Live defaults\n- Active load case dropdown at top of Loads tab for quick switching\n- Load cases table with add/edit/delete functionality\n- Loads now isolated per case (UI syncs when switching)\n- All loads include case property and stored in frameData\n- Visualization filters to show only active case loads\n- Auto-rerun analysis when switching cases if diagrams displayed\n- Added analysis timing to console output\n- Load case management prevents deleting last case\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(git push:*)",
       "Bash(sed:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": [],

@@ -53,10 +53,17 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const selectElementsInRect = useModelStore((state) => state.selectElementsInRect);
   const clearSelection = useModelStore((state) => state.clearSelection);
   const moveNodes = useModelStore((state) => state.moveNodes);
+  const addNodalLoad = useModelStore((state) => state.addNodalLoad);
+  const addElementPointLoad = useModelStore((state) => state.addElementPointLoad);
+  const addDistributedLoad = useModelStore((state) => state.addDistributedLoad);
 
   // UI store
   const view = useUIStore((state) => state.view);
   const activeTool = useUIStore((state) => state.activeTool);
+  const activeTab = useUIStore((state) => state.activeTab);
+  const loadCreationMode = useUIStore((state) => state.loadCreationMode);
+  const loadParameters = useUIStore((state) => state.loadParameters);
+  const cancelLoadCreation = useUIStore((state) => state.cancelLoadCreation);
   const setView = useUIStore((state) => state.setView);
   const panView = useUIStore((state) => state.panView);
   const zoomView = useUIStore((state) => state.zoomView);
@@ -182,6 +189,12 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
       // Escape key handling
       if (e.key === 'Escape') {
+        // Cancel load creation mode if active
+        if (loadCreationMode) {
+          cancelLoadCreation();
+          return;
+        }
+
         // Cancel selection rectangle if active
         if (selectionStart) {
           setSelectionStart(null);
@@ -221,7 +234,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [drawingElement, clearDrawingElement, moveCommand, commandInput, setCommandInput, setMoveStage, selectionStart]);
+  }, [drawingElement, clearDrawingElement, moveCommand, commandInput, setCommandInput, setMoveStage, selectionStart, loadCreationMode, cancelLoadCreation]);
 
   // === MOUSE EVENT HANDLERS ===
 
@@ -277,6 +290,70 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           clearMoveCommand();
         }
         return;
+      }
+
+      // Priority 1.5: Load creation mode - interactive selection
+      if (loadCreationMode && loadParameters) {
+        if (loadCreationMode === 'nodal' && hoveredNode) {
+          // Apply nodal load to clicked node
+          addNodalLoad({
+            node: hoveredNode,
+            fx: loadParameters.fx || 0,
+            fy: loadParameters.fy || 0,
+            mz: loadParameters.mz || 0,
+            case: loadParameters.case,
+          });
+          // Brief visual feedback - could add highlighting here
+          return;
+        } else if ((loadCreationMode === 'point' || loadCreationMode === 'distributed' || loadCreationMode === 'lineLoad') && hoveredElement) {
+          // Apply element load to clicked element
+          if (loadCreationMode === 'point') {
+            addElementPointLoad({
+              element: hoveredElement,
+              distance: loadParameters.distance || 0,
+              direction: (loadParameters.direction || 'Fy') as 'Fx' | 'Fy' | 'Mz',
+              magnitude: loadParameters.magnitude || 0,
+              case: loadParameters.case,
+            });
+          } else if (loadCreationMode === 'lineLoad') {
+            // Line load: distributed load across entire element (can be uniform or varying)
+            // Get element length to calculate x2
+            const element = elements.find((el) => el.name === hoveredElement);
+            if (element) {
+              const startNode = nodes.find((n) => n.name === element.nodeI);
+              const endNode = nodes.find((n) => n.name === element.nodeJ);
+              if (startNode && endNode) {
+                const dx = endNode.x - startNode.x;
+                const dy = endNode.y - startNode.y;
+                const elementLength = Math.sqrt(dx * dx + dy * dy);
+
+                // Apply distributed load across entire element (x1=0, x2=length, w1 and w2 from user input)
+                addDistributedLoad({
+                  element: hoveredElement,
+                  direction: (loadParameters.direction || 'Fy') as 'Fx' | 'Fy',
+                  w1: loadParameters.w1 || 0,
+                  w2: loadParameters.w2 || 0,
+                  x1: 0,
+                  x2: elementLength,
+                  case: loadParameters.case,
+                });
+              }
+            }
+          } else {
+            // distributed load with custom distribution
+            addDistributedLoad({
+              element: hoveredElement,
+              direction: (loadParameters.direction || 'Fy') as 'Fx' | 'Fy',
+              w1: loadParameters.w1 || 0,
+              w2: loadParameters.w2 || 0,
+              x1: loadParameters.x1 || 0,
+              x2: loadParameters.x2 || 0,
+              case: loadParameters.case,
+            });
+          }
+          // Brief visual feedback - could add highlighting here
+          return;
+        }
       }
 
       // Priority 2: Regular tool behavior
@@ -921,30 +998,50 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     });
   };
 
-  // Render nodal loads as arrows
+  // Render nodal loads as arrows (only visible in Loads tab)
   const renderLoads = () => {
-    if (!showLoads) return null;
+    if (!showLoads || activeTab !== 'loads') return null;
 
-    return visibleLoads.flatMap((load, index) => {
+    const allElements: JSX.Element[] = [];
+    const loadScale = 5;
+    const arrowColor = '#E91E63';
+
+    // Render nodal loads
+    visibleLoads.forEach((load, index) => {
       const pos = getNodePos(load.node);
-      if (!pos) return [];
+      if (!pos) return;
 
       const [sx, sy] = pos;
-      const loadScale = 5;
-      const arrows: JSX.Element[] = [];
 
       if (Math.abs(load.fx) > 0.01) {
         const length = Math.abs(load.fx) * loadScale;
         const dir = load.fx > 0 ? 1 : -1;
-        arrows.push(
+        const arrowStartX = sx - dir * length;
+        const labelX = (sx + arrowStartX) / 2;
+
+        allElements.push(
           <Arrow
-            key={`load-${index}-fx`}
-            points={[sx - dir * length, sy, sx, sy]}
-            fill="#E91E63"
-            stroke="#E91E63"
+            key={`nodal-load-${index}-fx`}
+            points={[arrowStartX, sy, sx, sy]}
+            fill={arrowColor}
+            stroke={arrowColor}
             strokeWidth={2}
             pointerLength={8}
             pointerWidth={8}
+          />
+        );
+
+        // Add label showing magnitude
+        allElements.push(
+          <Text
+            key={`nodal-load-${index}-fx-label`}
+            x={labelX}
+            y={sy - 12}
+            text={Math.abs(load.fx).toFixed(1)}
+            fontSize={10}
+            fill={arrowColor}
+            align="center"
+            offsetX={Math.abs(load.fx).toFixed(1).length * 3}
           />
         );
       }
@@ -952,21 +1049,170 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       if (Math.abs(load.fy) > 0.01) {
         const length = Math.abs(load.fy) * loadScale;
         const dir = load.fy > 0 ? -1 : 1;
-        arrows.push(
+        const arrowStartY = sy - dir * length;
+        const labelY = (sy + arrowStartY) / 2;
+
+        allElements.push(
           <Arrow
-            key={`load-${index}-fy`}
-            points={[sx, sy - dir * length, sx, sy]}
-            fill="#E91E63"
-            stroke="#E91E63"
+            key={`nodal-load-${index}-fy`}
+            points={[sx, arrowStartY, sx, sy]}
+            fill={arrowColor}
+            stroke={arrowColor}
             strokeWidth={2}
             pointerLength={8}
             pointerWidth={8}
           />
         );
+
+        // Add label showing magnitude
+        allElements.push(
+          <Text
+            key={`nodal-load-${index}-fy-label`}
+            x={sx + 8}
+            y={labelY}
+            text={Math.abs(load.fy).toFixed(1)}
+            fontSize={10}
+            fill={arrowColor}
+            align="left"
+            offsetY={5}
+          />
+        );
+      }
+    });
+
+    // Render distributed loads (trapezoids/rectangles with arrows at ends)
+    const visibleDistributedLoads = loads.distributed.filter(
+      (load) => !activeLoadCase || load.case === activeLoadCase
+    );
+
+    visibleDistributedLoads.forEach((load, index) => {
+      const element = elements.find((el) => el.name === load.element);
+      if (!element) return;
+
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) return;
+
+      const [x1, y1] = toScreen(nodeI.x, nodeI.y);
+      const [x2, y2] = toScreen(nodeJ.x, nodeJ.y);
+
+      // Element vector and perpendicular offset
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const elementLength = Math.sqrt(dx * dx + dy * dy);
+
+      if (elementLength < 1) return; // Skip tiny elements
+
+      // Perpendicular direction (pointing up/left from element)
+      const perpX = -dy / elementLength;
+      const perpY = dx / elementLength;
+
+      // Calculate positions along element for w1 and w2
+      const x1_pos = load.x2 > 0 ? x1 + (dx * load.x1) / load.x2 : x1;
+      const y1_pos = load.x2 > 0 ? y1 + (dy * load.x1) / load.x2 : y1;
+      const x2_pos = load.x2 > 0 ? x1 + dx : x1;
+      const y2_pos = load.x2 > 0 ? y1 + dy : y1;
+
+      // Determine load direction (which way the arrows point)
+      const isFx = load.direction === 'Fx';
+
+      // Offset perpendicular to load direction (arrows point away from element)
+      const offsetDir = load.w1 > 0 ? 1 : -1;
+      const offsetMult = isFx ? perpY : -perpX;
+
+      const w1Scale = Math.abs(load.w1) * loadScale;
+      const w2Scale = Math.abs(load.w2) * loadScale;
+
+      // Arrow start points (offset from element)
+      const w1_offset_x = x1_pos + offsetMult * offsetDir * w1Scale;
+      const w1_offset_y = y1_pos + (isFx ? perpX : -perpY) * offsetDir * w1Scale;
+      const w2_offset_x = x2_pos + offsetMult * offsetDir * w2Scale;
+      const w2_offset_y = y2_pos + (isFx ? perpX : -perpY) * offsetDir * w2Scale;
+
+      // Draw trapezoid/rectangle fill
+      const trapezoidPoints = [
+        x1_pos, y1_pos,
+        x2_pos, y2_pos,
+        w2_offset_x, w2_offset_y,
+        w1_offset_x, w1_offset_y,
+      ];
+
+      allElements.push(
+        <Line
+          key={`dist-load-${index}-shape`}
+          points={trapezoidPoints}
+          fill="rgba(233, 30, 99, 0.15)"
+          stroke={arrowColor}
+          strokeWidth={1}
+          opacity={0.6}
+          closed={true}
+        />
+      );
+
+      // Draw arrow at start (w1)
+      if (Math.abs(load.w1) > 0.01) {
+        allElements.push(
+          <Arrow
+            key={`dist-load-${index}-w1-arrow`}
+            points={[x1_pos, y1_pos, w1_offset_x, w1_offset_y]}
+            fill={arrowColor}
+            stroke={arrowColor}
+            strokeWidth={2}
+            pointerLength={8}
+            pointerWidth={8}
+          />
+        );
+
+        // Label for w1
+        const labelX = (x1_pos + w1_offset_x) / 2;
+        const labelY = (y1_pos + w1_offset_y) / 2 - 8;
+        allElements.push(
+          <Text
+            key={`dist-load-${index}-w1-label`}
+            x={labelX}
+            y={labelY}
+            text={Math.abs(load.w1).toFixed(1)}
+            fontSize={9}
+            fill={arrowColor}
+            align="center"
+            offsetX={Math.abs(load.w1).toFixed(1).length * 2.5}
+          />
+        );
       }
 
-      return arrows;
+      // Draw arrow at end (w2)
+      if (Math.abs(load.w2) > 0.01) {
+        allElements.push(
+          <Arrow
+            key={`dist-load-${index}-w2-arrow`}
+            points={[x2_pos, y2_pos, w2_offset_x, w2_offset_y]}
+            fill={arrowColor}
+            stroke={arrowColor}
+            strokeWidth={2}
+            pointerLength={8}
+            pointerWidth={8}
+          />
+        );
+
+        // Label for w2
+        const labelX = (x2_pos + w2_offset_x) / 2;
+        const labelY = (y2_pos + w2_offset_y) / 2 - 8;
+        allElements.push(
+          <Text
+            key={`dist-load-${index}-w2-label`}
+            x={labelX}
+            y={labelY}
+            text={Math.abs(load.w2).toFixed(1)}
+            fontSize={9}
+            fill={arrowColor}
+            align="center"
+            offsetX={Math.abs(load.w2).toFixed(1).length * 2.5}
+          />
+        );
+      }
     });
+
+    return allElements;
   };
 
   // Render drawing preview (rubber-band line when drawing element)
