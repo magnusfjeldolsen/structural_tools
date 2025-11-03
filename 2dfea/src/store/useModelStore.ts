@@ -101,6 +101,13 @@ interface ModelState {
   updateElementPointLoad: (index: number, updates: Partial<ElementPointLoad>) => void;
   deleteElementPointLoad: (index: number) => void;
 
+  // Paste load properties from copied data
+  pasteLoadProperties: (
+    targetType: 'nodal' | 'distributed' | 'elementPoint',
+    targetIndex: number,
+    properties: any
+  ) => void;
+
   clearLoads: () => void;
 
   // Actions - Load Cases
@@ -445,6 +452,35 @@ export const useModelStore = create<ModelState>()(
         deleteElementPointLoad: (index) => {
           set((state) => {
             state.loads.elementPoint.splice(index, 1);
+          });
+        },
+
+        pasteLoadProperties: (targetType, targetIndex, properties) => {
+          set((state) => {
+            if (targetType === 'nodal') {
+              const targetLoad = state.loads.nodal[targetIndex];
+              if (targetLoad) {
+                // Paste nodal load properties: fx, fy, mz (keep node and case)
+                targetLoad.fx = properties.fx ?? targetLoad.fx;
+                targetLoad.fy = properties.fy ?? targetLoad.fy;
+                targetLoad.mz = properties.mz ?? targetLoad.mz;
+              }
+            } else if (targetType === 'elementPoint') {
+              const targetLoad = state.loads.elementPoint[targetIndex];
+              if (targetLoad) {
+                // Paste element point load properties: direction, magnitude (keep element and distance)
+                targetLoad.direction = properties.direction ?? targetLoad.direction;
+                targetLoad.magnitude = properties.magnitude ?? targetLoad.magnitude;
+              }
+            } else if (targetType === 'distributed') {
+              const targetLoad = state.loads.distributed[targetIndex];
+              if (targetLoad) {
+                // Paste distributed load properties: direction, w1, w2 (keep element and positions)
+                targetLoad.direction = properties.direction ?? targetLoad.direction;
+                targetLoad.w1 = properties.w1 ?? targetLoad.w1;
+                targetLoad.w2 = properties.w2 ?? targetLoad.w2;
+              }
+            }
           });
         },
 

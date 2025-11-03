@@ -20,12 +20,8 @@ export function LoadContextMenu({ isOpen, position, loadType, loadIndex, onClose
   const selectLoad = useModelStore((state) => state.selectLoad);
   const loads = useModelStore((state) => state.loads);
   const openLoadDialog = useUIStore((state) => state.openLoadDialog);
-  const setCopiedLoadData = useUIStore((state) => state.setCopiedLoadData);
-
-  // Debug logging
-  React.useEffect(() => {
-    console.log('[LoadContextMenu] Render: isOpen=', isOpen, 'position=', position, 'loadType=', loadType, 'loadIndex=', loadIndex);
-  }, [isOpen, position, loadType, loadIndex]);
+  const setCopiedData = useUIStore((state) => state.setCopiedData);
+  const setPasteMode = useUIStore((state) => state.setPasteMode);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -42,20 +38,14 @@ export function LoadContextMenu({ isOpen, position, loadType, loadIndex, onClose
   }, [isOpen, onClose]);
 
   if (!isOpen || !position || !loadType || loadIndex === null) {
-    console.log('[LoadContextMenu] Rendering null due to:', { isOpen, position, loadType, loadIndex });
     return null;
   }
-
-  console.log('[LoadContextMenu] Attempting to render menu');
 
   // Get the load data
   const loadData = loads[loadType === 'nodal' ? 'nodal' : loadType === 'distributed' ? 'distributed' : 'elementPoint'][loadIndex];
   if (!loadData) {
-    console.log('[LoadContextMenu] No load data found for:', { loadType, loadIndex });
     return null;
   }
-
-  console.log('[LoadContextMenu] Rendering context menu with load:', loadData);
 
   const handleProperties = () => {
     selectLoad(loadType, loadIndex, false);
@@ -68,10 +58,13 @@ export function LoadContextMenu({ isOpen, position, loadType, loadIndex, onClose
   };
 
   const handleCopy = () => {
-    setCopiedLoadData({
-      type: loadType,
+    // Copy load properties and auto-activate paste mode
+    setCopiedData({
+      entityType: 'load',
+      loadType: loadType,
       properties: { ...loadData },
     });
+    setPasteMode(true);
     onClose();
   };
 
