@@ -32,26 +32,27 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
   const [fy, setFy] = useState<number>(0);
   const [mz, setMz] = useState<number>(0);
 
-  // Form state - point load parameters
+  // Form state - point load parameters (direction can be local 'Fx'/'Fy'/'Mz' or global 'FX'/'FY'/'MZ')
   const [distance, setDistance] = useState<number>(0);
-  const [pointDirection, setPointDirection] = useState<'Fx' | 'Fy' | 'Mz'>('Fy');
+  const [pointDirection, setPointDirection] = useState<'Fx' | 'Fy' | 'Mz' | 'FX' | 'FY' | 'MZ'>('Fy');
   const [magnitude, setMagnitude] = useState<number>(0);
 
-  // Form state - distributed load parameters
-  const [distributedDirection, setDistributedDirection] = useState<'Fx' | 'Fy'>('Fy');
+  // Form state - distributed load parameters (direction can be local 'Fx'/'Fy' or global 'FX'/'FY')
+  const [distributedDirection, setDistributedDirection] = useState<'Fx' | 'Fy' | 'FX' | 'FY'>('Fy');
   const [w1, setW1] = useState<number>(0);
   const [w2, setW2] = useState<number>(0);
   const [x1, setX1] = useState<number>(0);
   const [x2, setX2] = useState<number>(0);
 
   // Form state - line load parameters (simplified - applied across entire element)
-  const [lineLoadDirection, setLineLoadDirection] = useState<'Fx' | 'Fy'>('Fy');
+  const [lineLoadDirection, setLineLoadDirection] = useState<'Fx' | 'Fy' | 'FX' | 'FY'>('Fy');
   const [lineLoadW1, setLineLoadW1] = useState<number>(0);  // Start intensity
   const [lineLoadW2, setLineLoadW2] = useState<number>(0);  // End intensity
 
   // Common
   const [selectedCase, setSelectedCase] = useState<string | undefined>(activeLoadCase || undefined);
   const [error, setError] = useState<string>('');
+  const [coordinateSystem, setCoordinateSystem] = useState<'global' | 'local'>('global');
 
   // Initialize form with editing data
   useEffect(() => {
@@ -67,12 +68,16 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
       } else if (editingLoad.type === 'point') {
         const load = editingLoad.data;
         setDistance(load.distance);
-        setPointDirection(load.direction as 'Fx' | 'Fy' | 'Mz');
+        setPointDirection(load.direction);
+        // Determine coordinate system from direction case
+        setCoordinateSystem(load.direction && load.direction[0] === load.direction[0].toLowerCase() ? 'local' : 'global');
         setMagnitude(load.magnitude);
         setSelectedCase(load.case || activeLoadCase || undefined);
       } else if (editingLoad.type === 'distributed') {
         const load = editingLoad.data;
-        setDistributedDirection(load.direction as 'Fx' | 'Fy');
+        setDistributedDirection(load.direction);
+        // Determine coordinate system from direction case
+        setCoordinateSystem(load.direction && load.direction[0] === load.direction[0].toLowerCase() ? 'local' : 'global');
         setW1(load.w1);
         setW2(load.w2);
         setX1(load.x1);
@@ -315,6 +320,47 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
           </select>
         </div>
 
+        {/* Coordinate System Selector - for member loads (point and distributed) */}
+        {(loadType === 'point' || loadType === 'distributed' || loadType === 'lineLoad') && (
+          <div style={fieldGroupStyle}>
+            <label style={labelStyle}>Coordinate System</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setCoordinateSystem('global')}
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  backgroundColor: coordinateSystem === 'global' ? '#2196F3' : '#4b5563',
+                  color: coordinateSystem === 'global' ? '#fff' : '#d1d5db',
+                  border: '1px solid #666',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: coordinateSystem === 'global' ? 'bold' : 'normal',
+                  fontSize: '13px',
+                }}
+              >
+                Global (FX, FY)
+              </button>
+              <button
+                onClick={() => setCoordinateSystem('local')}
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  backgroundColor: coordinateSystem === 'local' ? '#2196F3' : '#4b5563',
+                  color: coordinateSystem === 'local' ? '#fff' : '#d1d5db',
+                  border: '1px solid #666',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: coordinateSystem === 'local' ? 'bold' : 'normal',
+                  fontSize: '13px',
+                }}
+              >
+                Local (Fx, Fy)
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Nodal Load Fields */}
         {loadType === 'nodal' && (
           <>
@@ -372,12 +418,22 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>Direction</label>
               <select
                 value={pointDirection}
-                onChange={(e) => setPointDirection(e.target.value as 'Fx' | 'Fy' | 'Mz')}
+                onChange={(e) => setPointDirection(e.target.value as 'Fx' | 'Fy' | 'Mz' | 'FX' | 'FY' | 'MZ')}
                 style={selectStyle}
               >
-                <option value="Fx">Fx (Horizontal)</option>
-                <option value="Fy">Fy (Vertical)</option>
-                <option value="Mz">Mz (Moment)</option>
+                {coordinateSystem === 'global' ? (
+                  <>
+                    <option value="FX">FX (Horizontal - Global)</option>
+                    <option value="FY">FY (Vertical - Global)</option>
+                    <option value="MZ">MZ (Moment - Global)</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="Fx">Fx (Along Member)</option>
+                    <option value="Fy">Fy (Perpendicular)</option>
+                    <option value="Mz">Mz (Moment)</option>
+                  </>
+                )}
               </select>
             </div>
 
@@ -401,11 +457,20 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>Direction</label>
               <select
                 value={distributedDirection}
-                onChange={(e) => setDistributedDirection(e.target.value as 'Fx' | 'Fy')}
+                onChange={(e) => setDistributedDirection(e.target.value as 'Fx' | 'Fy' | 'FX' | 'FY')}
                 style={selectStyle}
               >
-                <option value="Fx">Fx (Horizontal)</option>
-                <option value="Fy">Fy (Vertical)</option>
+                {coordinateSystem === 'global' ? (
+                  <>
+                    <option value="FX">FX (Horizontal - Global)</option>
+                    <option value="FY">FY (Vertical - Global)</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="Fx">Fx (Along Member)</option>
+                    <option value="Fy">Fy (Perpendicular)</option>
+                  </>
+                )}
               </select>
             </div>
 
@@ -464,11 +529,20 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>Direction</label>
               <select
                 value={lineLoadDirection}
-                onChange={(e) => setLineLoadDirection(e.target.value as 'Fx' | 'Fy')}
+                onChange={(e) => setLineLoadDirection(e.target.value as 'Fx' | 'Fy' | 'FX' | 'FY')}
                 style={selectStyle}
               >
-                <option value="Fx">Fx (Horizontal)</option>
-                <option value="Fy">Fy (Vertical)</option>
+                {coordinateSystem === 'global' ? (
+                  <>
+                    <option value="FX">FX (Horizontal - Global)</option>
+                    <option value="FY">FY (Vertical - Global)</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="Fx">Fx (Along Member)</option>
+                    <option value="Fy">Fy (Perpendicular)</option>
+                  </>
+                )}
               </select>
             </div>
 

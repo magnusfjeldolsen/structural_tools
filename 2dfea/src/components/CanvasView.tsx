@@ -20,6 +20,7 @@ import {
 import { findNearestNode, findNearestElement, getSnappedPosition } from '../geometry/snapUtils';
 import { calculateDeformedElementShape } from '../geometry/deformationUtils';
 import { findNodesInRect, findElementsInRect } from '../geometry/selectionUtils';
+import { isLocalDirection } from '../utils/coordinateUtils';
 
 interface CanvasViewProps {
   width: number;
@@ -1224,6 +1225,26 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     });
   };
 
+  // Helper: Apply angle-based sign correction to diagram values
+  // Elements pointing "backwards" (towards negative X) need sign flipping
+  // > 90° (upward-left) or < -90° (downward-left)
+  const applyAngleCorrection = (values: number[], element: any): number[] => {
+    const nodeI = nodes.find((n) => n.name === element.nodeI);
+    const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+    if (!nodeI || !nodeJ) return values;
+
+    const dx = nodeJ.x - nodeI.x;
+    const dy = nodeJ.y - nodeI.y;
+    const angleRad = Math.atan2(dy, dx);
+    const angleDeg = angleRad * (180 / Math.PI);
+
+    // Strictly greater/less than to exclude vertical elements (exactly 90° or -90°)
+    const shouldFlipSigns = angleDeg > 90 || angleDeg < -90;
+    if (!shouldFlipSigns) return values;
+
+    return values.map(v => -v);
+  };
+
   // Render moment diagrams
   const renderMomentDiagrams = () => {
     if (!analysisResults || !analysisResults.diagrams || !showMomentDiagram) return null;
@@ -1239,10 +1260,13 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const posJ = getNodePos(element.nodeJ);
       if (!posI || !posJ) return null;
 
+      // Apply angle-based sign correction
+      const correctedMoments = applyAngleCorrection(diagram.moments, element);
+
       const path = diagramToFilledPath(
         posI[0], posI[1],
         posJ[0], posJ[1],
-        diagram.moments,
+        correctedMoments,
         scale,
         true // Flip moment diagram
       );
@@ -1275,10 +1299,13 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const posJ = getNodePos(element.nodeJ);
       if (!posI || !posJ) return null;
 
+      // Apply angle-based sign correction
+      const correctedShears = applyAngleCorrection(diagram.shears, element);
+
       const path = diagramToFilledPath(
         posI[0], posI[1],
         posJ[0], posJ[1],
-        diagram.shears,
+        correctedShears,
         scale,
         false
       );
@@ -1311,10 +1338,13 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const posJ = getNodePos(element.nodeJ);
       if (!posI || !posJ) return null;
 
+      // Apply angle-based sign correction
+      const correctedAxials = applyAngleCorrection(diagram.axials, element);
+
       const path = diagramToFilledPath(
         posI[0], posI[1],
         posJ[0], posJ[1],
-        diagram.axials,
+        correctedAxials,
         scale,
         false
       );
@@ -1457,6 +1487,103 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     return '#E91E63'; // Default pink
   };
 
+  // Render element local coordinate system axes at element midpoints
+  const renderElementAxes = () => {
+    const allElements: JSX.Element[] = [];
+    const axisLength = 20; // Screen pixels for axis length
+
+    elements.forEach((element) => {
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) return;
+
+      // Get element midpoint in world coordinates
+      const midWorldX = (nodeI.x + nodeJ.x) / 2;
+      const midWorldY = (nodeI.y + nodeJ.y) / 2;
+      const [midScreenX, midScreenY] = toScreen(midWorldX, midWorldY);
+
+      // Get element direction in world coordinates
+      const dx = nodeJ.x - nodeI.x;
+      const dy = nodeJ.y - nodeI.y;
+      const elementLength = Math.sqrt(dx * dx + dy * dy);
+
+      if (elementLength < 0.01) return; // Skip zero-length elements
+
+      // Local X axis: along element from nodeI to nodeJ
+      const localXX = dx / elementLength;
+      const localXY = dy / elementLength;
+
+      // Local Y axis: perpendicular to element (90° CCW from local X)
+      const localYX = -dy / elementLength;
+      const localYY = dx / elementLength;
+
+      // Scale to screen coordinates considering view.scale
+      const screenAxisLength = axisLength;
+
+      // Local X axis endpoint (red)
+      const xAxisEndX = midScreenX + localXX * screenAxisLength;
+      const xAxisEndY = midScreenY + localXY * screenAxisLength;
+
+      // Local Y axis endpoint (green)
+      const yAxisEndX = midScreenX + localYX * screenAxisLength;
+      const yAxisEndY = midScreenY + localYY * screenAxisLength;
+
+      // Draw X axis (red)
+      allElements.push(
+        <Arrow
+          key={`element-axis-x-${element.name}`}
+          points={[midScreenX, midScreenY, xAxisEndX, xAxisEndY]}
+          fill="#FF5252"
+          stroke="#FF5252"
+          strokeWidth={2}
+          pointerLength={6}
+          pointerWidth={6}
+        />
+      );
+
+      // Draw X label
+      allElements.push(
+        <Text
+          key={`element-axis-x-label-${element.name}`}
+          x={xAxisEndX + 4}
+          y={xAxisEndY - 6}
+          text="x"
+          fontSize={10}
+          fill="#FF5252"
+          fontStyle="bold"
+        />
+      );
+
+      // Draw Y axis (green)
+      allElements.push(
+        <Arrow
+          key={`element-axis-y-${element.name}`}
+          points={[midScreenX, midScreenY, yAxisEndX, yAxisEndY]}
+          fill="#4CAF50"
+          stroke="#4CAF50"
+          strokeWidth={2}
+          pointerLength={6}
+          pointerWidth={6}
+        />
+      );
+
+      // Draw Y label
+      allElements.push(
+        <Text
+          key={`element-axis-y-label-${element.name}`}
+          x={yAxisEndX + 4}
+          y={yAxisEndY - 6}
+          text="y"
+          fontSize={10}
+          fill="#4CAF50"
+          fontStyle="bold"
+        />
+      );
+    });
+
+    return allElements.length > 0 ? allElements : null;
+  };
+
   // Render nodal loads as arrows (only visible in Loads tab)
   const renderLoads = () => {
     if (!showLoads || activeTab !== 'loads') return null;
@@ -1572,21 +1699,52 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const x2_pos = load.x2 > 0 ? x1 + dx : x1;
       const y2_pos = load.x2 > 0 ? y1 + dy : y1;
 
-      // Determine load direction (which way the arrows point)
-      const isFx = load.direction === 'Fx';
+      // Determine load direction and coordinate system
+      const isLocal = isLocalDirection(load.direction);
+      const baseDir = load.direction.toLowerCase();
+
+      // For local directions: Fx = along element, Fy = perpendicular
+      // For global directions: FX = horizontal, FY = vertical (need rotation)
+      let arrowDirX = 0, arrowDirY = 0;
+
+      if (isLocal) {
+        // Local coordinate system: use element-aligned or perpendicular
+        if (baseDir === 'fx') {
+          // Fx: along element
+          arrowDirX = dx / elementLength;
+          arrowDirY = dy / elementLength;
+        } else {
+          // Fy: perpendicular to element (90° CCW)
+          arrowDirX = perpX;
+          arrowDirY = perpY;
+        }
+      } else {
+        // Global coordinate system: horizontal or vertical
+        if (baseDir === 'fx') {
+          // FX: horizontal
+          arrowDirX = 1;
+          arrowDirY = 0;
+        } else {
+          // FY: vertical
+          arrowDirX = 0;
+          arrowDirY = 1;
+        }
+      }
 
       // Offset perpendicular to load direction (arrows point away from element)
       const offsetDir = load.w1 > 0 ? 1 : -1;
-      const offsetMult = isFx ? perpY : -perpX;
+      // Perpendicular to arrow direction: rotate 90° CCW
+      const offsetX = -arrowDirY;
+      const offsetY = arrowDirX;
 
       const w1Scale = Math.abs(load.w1) * loadScale;
       const w2Scale = Math.abs(load.w2) * loadScale;
 
-      // Arrow start points (offset from element)
-      const w1_offset_x = x1_pos + offsetMult * offsetDir * w1Scale;
-      const w1_offset_y = y1_pos + (isFx ? perpX : -perpY) * offsetDir * w1Scale;
-      const w2_offset_x = x2_pos + offsetMult * offsetDir * w2Scale;
-      const w2_offset_y = y2_pos + (isFx ? perpX : -perpY) * offsetDir * w2Scale;
+      // Arrow start points (offset from element in direction perpendicular to load)
+      const w1_offset_x = x1_pos + offsetX * offsetDir * w1Scale;
+      const w1_offset_y = y1_pos + offsetY * offsetDir * w1Scale;
+      const w2_offset_x = x2_pos + offsetX * offsetDir * w2Scale;
+      const w2_offset_y = y2_pos + offsetY * offsetDir * w2Scale;
 
       // Draw trapezoid/rectangle fill
       const trapezoidPoints = [
@@ -1610,12 +1768,18 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         />
       );
 
-      // Draw arrow at start (w1)
+      // Draw arrow at start (w1) - pointing in load direction
       if (Math.abs(load.w1) > 0.01) {
+        // Arrow points in the load direction (arrowDirX/Y), magnitude determines length
+        const dir = load.w1 > 0 ? 1 : -1;
+        const arrowScale = Math.abs(load.w1) * loadScale;
+        const w1_arrow_x = x1_pos + arrowDirX * dir * arrowScale;
+        const w1_arrow_y = y1_pos + arrowDirY * dir * arrowScale;
+
         allElements.push(
           <Arrow
             key={`dist-load-${index}-w1-arrow`}
-            points={[x1_pos, y1_pos, w1_offset_x, w1_offset_y]}
+            points={[x1_pos, y1_pos, w1_arrow_x, w1_arrow_y]}
             fill={arrowColor}
             stroke={arrowColor}
             strokeWidth={2}
@@ -1625,8 +1789,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         );
 
         // Label for w1
-        const labelX = (x1_pos + w1_offset_x) / 2;
-        const labelY = (y1_pos + w1_offset_y) / 2 - 8;
+        const labelX = (x1_pos + w1_arrow_x) / 2;
+        const labelY = (y1_pos + w1_arrow_y) / 2 - 8;
         allElements.push(
           <Text
             key={`dist-load-${index}-w1-label`}
@@ -1641,12 +1805,18 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         );
       }
 
-      // Draw arrow at end (w2)
+      // Draw arrow at end (w2) - pointing in load direction
       if (Math.abs(load.w2) > 0.01) {
+        // Arrow points in the load direction (arrowDirX/Y), magnitude determines length
+        const dir = load.w2 > 0 ? 1 : -1;
+        const arrowScale = Math.abs(load.w2) * loadScale;
+        const w2_arrow_x = x2_pos + arrowDirX * dir * arrowScale;
+        const w2_arrow_y = y2_pos + arrowDirY * dir * arrowScale;
+
         allElements.push(
           <Arrow
             key={`dist-load-${index}-w2-arrow`}
-            points={[x2_pos, y2_pos, w2_offset_x, w2_offset_y]}
+            points={[x2_pos, y2_pos, w2_arrow_x, w2_arrow_y]}
             fill={arrowColor}
             stroke={arrowColor}
             strokeWidth={2}
@@ -1656,8 +1826,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         );
 
         // Label for w2
-        const labelX = (x2_pos + w2_offset_x) / 2;
-        const labelY = (y2_pos + w2_offset_y) / 2 - 8;
+        const labelX = (x2_pos + w2_arrow_x) / 2;
+        const labelY = (y2_pos + w2_arrow_y) / 2 - 8;
         allElements.push(
           <Text
             key={`dist-load-${index}-w2-label`}
@@ -1707,15 +1877,47 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const perpX = -dy / elementScreenLength;
       const perpY = dx / elementScreenLength;
 
-      const isFx = load.direction === 'Fx';
       const arrowColor = getLoadColor('elementPoint', index);
       const length = Math.abs(load.magnitude) * loadScale;
       const dir = load.magnitude > 0 ? 1 : -1;
 
-      // For point loads on elements, we draw perpendicular to the element
+      // Determine load direction and coordinate system
+      const isLocal = isLocalDirection(load.direction);
+      const baseDir = load.direction.toLowerCase();
+
+      // Calculate arrow direction
+      let arrowDirX = 0, arrowDirY = 0;
+
+      if (baseDir === 'mz') {
+        // Moment - handled separately below
+      } else if (isLocal) {
+        // Local coordinate system: Fx = along element, Fy = perpendicular
+        if (baseDir === 'fx') {
+          // Fx: along element
+          arrowDirX = dx / elementScreenLength;
+          arrowDirY = dy / elementScreenLength;
+        } else {
+          // Fy: perpendicular to element (90° CCW)
+          arrowDirX = perpX;
+          arrowDirY = perpY;
+        }
+      } else {
+        // Global coordinate system: FX = horizontal, FY = vertical
+        if (baseDir === 'fx') {
+          // FX: horizontal
+          arrowDirX = 1;
+          arrowDirY = 0;
+        } else {
+          // FY: vertical
+          arrowDirX = 0;
+          arrowDirY = 1;
+        }
+      }
+
+      // For point loads on elements, we draw in the calculated direction
       let arrowEndX = 0, arrowEndY = 0, labelX = 0, labelY = 0;
 
-      if (load.direction === 'Mz') {
+      if (baseDir === 'mz') {
         // Moment: draw a small curved arc (simplified as small circle)
         const arcRadius = 8;
         allElements.push(
@@ -1753,21 +1955,15 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
         labelX = impactScreenX - 15;
         labelY = impactScreenY - 15;
-      } else if (isFx) {
-        // Horizontal force: perpendicular to element direction
-        arrowEndX = impactScreenX + perpX * dir * length;
-        arrowEndY = impactScreenY + perpY * dir * length;
+      } else {
+        // Force: draw arrow in calculated direction
+        arrowEndX = impactScreenX + arrowDirX * dir * length;
+        arrowEndY = impactScreenY + arrowDirY * dir * length;
         labelX = (impactScreenX + arrowEndX) / 2;
         labelY = (impactScreenY + arrowEndY) / 2 - 8;
-      } else {
-        // Vertical force (Fy): along element perpendicular
-        arrowEndX = impactScreenX - perpY * dir * length;
-        arrowEndY = impactScreenY + perpX * dir * length;
-        labelX = (impactScreenX + arrowEndX) / 2 + 8;
-        labelY = (impactScreenY + arrowEndY) / 2;
       }
 
-      if (load.direction !== 'Mz') {
+      if (baseDir !== 'mz') {
         allElements.push(
           <Arrow
             key={`point-load-${index}`}
@@ -2019,6 +2215,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           {renderSelectionHighlights()}
           {renderSupports()}
           {renderNodes()}
+          {renderElementAxes()}
           {renderLoads()}
           {renderDrawingPreview()}
           {renderSelectionRect()}

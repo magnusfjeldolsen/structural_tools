@@ -3,6 +3,11 @@
  *
  * This module ensures clean separation between UI representation
  * and the backend analysis format.
+ *
+ * COORDINATE SYSTEM CONVERSION:
+ * - UI can express loads in local (Fx, Fy, Mz) or global (FX, FY, MZ) coordinates
+ * - Backend (PyNite) expects loads in local member coordinates (Fx, Fy, Mz)
+ * - This translator converts global loads to local before sending to backend
  */
 
 import type {
@@ -16,11 +21,16 @@ import type {
 /**
  * Translate complete model to worker format
  *
+ * IMPORTANT: PyNite natively understands coordinate system encoding in direction strings:
+ * - Lowercase (Fx, Fy, Mz) = Local member coordinates
+ * - Uppercase (FX, FY, MZ) = Global coordinates
+ * No conversion needed - direction case is preserved for backend.
+ *
  * @param nodes - Array of nodes from UI
  * @param elements - Array of elements from UI
- * @param loads - Loads object from UI
+ * @param loads - Loads object from UI (may contain local or global directions)
  * @param filterCase - Optional: filter loads by case name
- * @returns ModelData ready for worker
+ * @returns ModelData ready for worker with loads unchanged
  */
 export function translateModelToWorker(
   nodes: Node[],
@@ -28,10 +38,13 @@ export function translateModelToWorker(
   loads: Loads,
   filterCase?: string
 ): ModelData {
+  // Filter loads by case if specified
+  const filteredLoads = filterCase ? filterLoadsByCase(loads, filterCase) : loads;
+
   return {
     nodes: translateNodes(nodes),
     elements: translateElements(elements),
-    loads: filterCase ? filterLoadsByCase(loads, filterCase) : loads,
+    loads: filteredLoads, // Send loads as-is with direction case preserved
   };
 }
 
