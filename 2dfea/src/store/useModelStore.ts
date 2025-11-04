@@ -29,7 +29,7 @@ import {
   validateModel,
 } from '../analysis';
 import { findNodesInRect, findElementsInRect } from '../geometry/selectionUtils';
-import { renumberNodes, renumberElements } from '../utils/renumberingUtils';
+import { renumberNodes, renumberElements, getNextNodeNumber, getNextElementNumber } from '../utils/renumberingUtils';
 
 // ============================================================================
 // STATE INTERFACE
@@ -279,6 +279,9 @@ export const useModelStore = create<ModelState>()(
               node: nameMapping.get(load.node) ?? load.node,
             }));
 
+            // Update next node number to continue from highest existing
+            state.nextNodeNumber = getNextNodeNumber(state.nodes);
+
             // Clear selection
             state.selectedNodes = [];
             state.selectedElements = [];
@@ -305,6 +308,9 @@ export const useModelStore = create<ModelState>()(
               ...load,
               element: nameMapping.get(load.element) ?? load.element,
             }));
+
+            // Update next element number to continue from highest existing
+            state.nextElementNumber = getNextElementNumber(state.elements);
 
             // Clear selection
             state.selectedNodes = [];
