@@ -34,6 +34,7 @@ export default function App() {
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [contextMenuLoad, setContextMenuLoad] = useState<{ type: 'nodal' | 'distributed' | 'elementPoint'; index: number } | null>(null);
+  const [expandedLoadForm, setExpandedLoadForm] = useState<'nodal' | 'point' | 'distributed' | 'lineLoad' | null>(null);
 
   const initializeSolver = useModelStore((state) => state.initializeSolver);
   const loads = useModelStore((state) => state.loads);
@@ -201,8 +202,17 @@ export default function App() {
           {/* Loads Tab Toolbar - visible only in Loads tab */}
           {activeTab === 'loads' && (
             <>
-              <LoadsTabToolbar />
-              <LoadCreationPanel />
+              <LoadsTabToolbar
+                expandedForm={expandedLoadForm}
+                onToggleForm={(formType) => {
+                  if (expandedLoadForm === formType) {
+                    setExpandedLoadForm(null);
+                  } else {
+                    setExpandedLoadForm(formType);
+                  }
+                }}
+              />
+              <LoadCreationPanel expandedForm={expandedLoadForm} />
             </>
           )}
 

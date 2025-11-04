@@ -1,6 +1,7 @@
 /**
  * Loads Tab Toolbar
- * Provides load case management, active case selection, and load combination management
+ * Provides load case management, active case selection, load combination management,
+ * and load type selection buttons
  */
 
 import { useState } from 'react';
@@ -9,13 +10,25 @@ import { theme } from '../styles/theme';
 import { LoadCasesManager } from './LoadCasesManager';
 import { LoadCombinationsManager } from './LoadCombinationsManager';
 
-export function LoadsTabToolbar() {
+interface LoadsTabToolbarProps {
+  expandedForm: 'nodal' | 'point' | 'distributed' | 'lineLoad' | null;
+  onToggleForm: (formType: 'nodal' | 'point' | 'distributed' | 'lineLoad') => void;
+}
+
+export function LoadsTabToolbar({ expandedForm, onToggleForm }: LoadsTabToolbarProps) {
   const loadCases = useModelStore((state) => state.loadCases);
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const setActiveLoadCase = useModelStore((state) => state.setActiveLoadCase);
 
   const [loadCasesModalOpen, setLoadCasesModalOpen] = useState(false);
   const [loadCombinationsModalOpen, setLoadCombinationsModalOpen] = useState(false);
+
+  const loadTypeButtons = [
+    { type: 'nodal' as const, label: 'Nodal Load' },
+    { type: 'point' as const, label: 'Element Point Load' },
+    { type: 'distributed' as const, label: 'Distributed Load' },
+    { type: 'lineLoad' as const, label: 'Line Load' },
+  ];
 
   return (
     <>
@@ -51,6 +64,24 @@ export function LoadsTabToolbar() {
         >
           Load Combinations
         </button>
+
+        {/* Separator */}
+        <div style={separatorStyle} />
+
+        {/* Load Type Buttons */}
+        {loadTypeButtons.map((btn) => (
+          <button
+            key={btn.type}
+            onClick={() => onToggleForm(btn.type)}
+            style={{
+              ...loadTypeButtonStyle,
+              backgroundColor: expandedForm === btn.type ? theme.colors.primaryDark : theme.colors.primary,
+            }}
+            title={btn.label}
+          >
+            {btn.label} {expandedForm === btn.type ? '▼' : '▶'}
+          </button>
+        ))}
       </div>
 
       {/* Modals */}
@@ -95,4 +126,23 @@ const selectStyle: React.CSSProperties = {
   backgroundColor: theme.colors.bgWhite,
   cursor: 'pointer',
   minWidth: '150px',
+};
+
+const separatorStyle: React.CSSProperties = {
+  width: '1px',
+  height: '24px',
+  backgroundColor: theme.colors.border,
+  margin: '0 4px',
+};
+
+const loadTypeButtonStyle: React.CSSProperties = {
+  padding: '6px 10px',
+  backgroundColor: theme.colors.primary,
+  color: theme.colors.textWhite,
+  border: 'none',
+  borderRadius: '4px',
+  cursor: 'pointer',
+  fontSize: '12px',
+  fontWeight: 'bold',
+  whiteSpace: 'nowrap',
 };
