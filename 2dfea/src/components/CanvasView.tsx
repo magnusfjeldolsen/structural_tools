@@ -81,7 +81,17 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const showShearDiagram = useUIStore((state) => state.showShearDiagram);
   const showAxialDiagram = useUIStore((state) => state.showAxialDiagram);
   const displacementScale = useUIStore((state) => state.displacementScale);
-  const diagramScale = useUIStore((state) => state.diagramScale);
+  const displacementScaleManual = useUIStore((state) => state.displacementScaleManual);
+  const useManualDisplacementScale = useUIStore((state) => state.useManualDisplacementScale);
+  const momentDiagramScale = useUIStore((state) => state.momentDiagramScale);
+  const momentDiagramScaleManual = useUIStore((state) => state.momentDiagramScaleManual);
+  const useManualMomentDiagramScale = useUIStore((state) => state.useManualMomentDiagramScale);
+  const shearDiagramScale = useUIStore((state) => state.shearDiagramScale);
+  const shearDiagramScaleManual = useUIStore((state) => state.shearDiagramScaleManual);
+  const useManualShearDiagramScale = useUIStore((state) => state.useManualShearDiagramScale);
+  const axialDiagramScale = useUIStore((state) => state.axialDiagramScale);
+  const axialDiagramScaleManual = useUIStore((state) => state.axialDiagramScaleManual);
+  const useManualAxialDiagramScale = useUIStore((state) => state.useManualAxialDiagramScale);
 
   // Snapping state
   const snapEnabled = useUIStore((state) => state.snapEnabled);
@@ -1202,6 +1212,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const renderDisplacedShape = () => {
     if (!analysisResults || !analysisResults.diagrams || !showDisplacedShape) return null;
 
+    // Use manual displacement scale if set, otherwise use automatic
+    const effectiveDisplacementScale = useManualDisplacementScale ? displacementScaleManual : displacementScale;
+
     return elements.map((element) => {
       const diagram = analysisResults.diagrams[element.name];
       if (!diagram || !diagram.deflections_dx || !diagram.deflections_dy) return null;
@@ -1218,7 +1231,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         analysisResults,
         diagram.deflections_dx,  // Local axial deflections
         diagram.deflections_dy,  // Local perpendicular deflections
-        displacementScale
+        effectiveDisplacementScale
       );
 
       if (deformedPoints.length === 0) return null;
@@ -1269,7 +1282,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     if (!analysisResults || !analysisResults.diagrams || !showMomentDiagram) return null;
 
     const maxMoment = getMaxDiagramValue(analysisResults.diagrams, 'moment');
-    const scale = calculateDiagramScale(maxMoment, view.scale / 50, 30) * diagramScale;
+    const effectiveScale = useManualMomentDiagramScale ? momentDiagramScaleManual : momentDiagramScale;
+    const scale = calculateDiagramScale(maxMoment, view.scale / 50, 30) * effectiveScale;
 
     return elements.map((element) => {
       const diagram = analysisResults.diagrams[element.name];
@@ -1308,7 +1322,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     if (!analysisResults || !analysisResults.diagrams || !showShearDiagram) return null;
 
     const maxShear = getMaxDiagramValue(analysisResults.diagrams, 'shear');
-    const scale = calculateDiagramScale(maxShear, view.scale / 50, 25) * diagramScale;
+    const effectiveScale = useManualShearDiagramScale ? shearDiagramScaleManual : shearDiagramScale;
+    const scale = calculateDiagramScale(maxShear, view.scale / 50, 25) * effectiveScale;
 
     return elements.map((element) => {
       const diagram = analysisResults.diagrams[element.name];
@@ -1347,7 +1362,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     if (!analysisResults || !analysisResults.diagrams || !showAxialDiagram) return null;
 
     const maxAxial = getMaxDiagramValue(analysisResults.diagrams, 'axial');
-    const scale = calculateDiagramScale(maxAxial, view.scale / 50, 20) * diagramScale;
+    const effectiveScale = useManualAxialDiagramScale ? axialDiagramScaleManual : axialDiagramScale;
+    const scale = calculateDiagramScale(maxAxial, view.scale / 50, 20) * effectiveScale;
 
     return elements.map((element) => {
       const diagram = analysisResults.diagrams[element.name];
