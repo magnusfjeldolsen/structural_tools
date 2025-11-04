@@ -1,5 +1,5 @@
 /**
- * Point Load Form - Compact expandable form for element point loads
+ * Point Load Form - Compact form content for element point loads
  */
 
 import { useModelStore, useUIStore } from '../../store';
@@ -10,7 +10,7 @@ interface PointLoadFormProps {
   onToggleExpand: () => void;
 }
 
-export function PointLoadForm({ isExpanded, onToggleExpand }: PointLoadFormProps) {
+export function PointLoadForm({ isExpanded }: PointLoadFormProps) {
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const loadParameters = useUIStore((state) => state.loadParameters) || {};
   const setLoadCreationMode = useUIStore((state) => state.setLoadCreationMode);
@@ -61,126 +61,119 @@ export function PointLoadForm({ isExpanded, onToggleExpand }: PointLoadFormProps
     });
   };
 
+  // Only render the form content (no button wrapper)
+  if (!isExpanded) return null;
+
   return (
-    <div style={containerStyle}>
-      <button
-        onClick={onToggleExpand}
-        style={{ ...buttonStyle, backgroundColor: isExpanded ? theme.colors.primaryDark : theme.colors.primary }}
-      >
-        Point Loads {isExpanded ? '▼' : '▶'}
-      </button>
+    <div style={formContentStyle}>
+      <div style={formGroupStyle}>
+        <label style={labelStyle}>Distance (m)</label>
+        <input
+          type="number"
+          value={loadParameters.distance || ''}
+          onChange={(e) => handleParameterChange('distance', parseFloat(e.target.value) || 0)}
+          placeholder="0"
+          style={inputStyle}
+          step="0.01"
+          min="0"
+        />
+      </div>
 
-      {isExpanded && (
-        <div style={expandedContentStyle}>
-          <div style={formGroupStyle}>
-            <label style={labelStyle}>Distance from start (m)</label>
-            <input
-              type="number"
-              value={loadParameters.distance || ''}
-              onChange={(e) => handleParameterChange('distance', parseFloat(e.target.value) || 0)}
-              placeholder="0"
-              style={inputStyle}
-              step="0.01"
-              min="0"
-            />
-          </div>
-
-          <div style={formGroupStyle}>
-            <label style={labelStyle}>
-              Direction
-              <button onClick={toggleCoordinateSystem} style={toggleButtonStyle}>
-                {isLocal ? 'Local' : 'Global'}
-              </button>
-            </label>
-            <select
-              value={loadParameters.direction || 'Fx'}
-              onChange={(e) => handleParameterChange('direction', e.target.value)}
-              style={selectStyle}
-            >
-              {isLocal ? (
-                <>
-                  <option value="fx">fx (along element)</option>
-                  <option value="fy">fy (perpendicular)</option>
-                  <option value="mz">mz (moment)</option>
-                </>
-              ) : (
-                <>
-                  <option value="Fx">Fx (horizontal)</option>
-                  <option value="Fy">Fy (vertical)</option>
-                  <option value="Mz">Mz (moment)</option>
-                </>
-              )}
-            </select>
-          </div>
-
-          <div style={formGroupStyle}>
-            <label style={labelStyle}>Magnitude (kN or kNm)</label>
-            <input
-              type="number"
-              value={loadParameters.magnitude || ''}
-              onChange={(e) => handleParameterChange('magnitude', parseFloat(e.target.value) || 0)}
-              placeholder="0"
-              style={inputStyle}
-              step="0.1"
-            />
-          </div>
-
-          <button onClick={handleCreateLoad} style={createButtonStyle}>
-            Create Point Load → Click Elements
+      <div style={formGroupStyle}>
+        <label style={labelStyle}>Direction</label>
+        <div style={directionGroupStyle}>
+          <select
+            value={loadParameters.direction || 'Fx'}
+            onChange={(e) => handleParameterChange('direction', e.target.value)}
+            style={selectStyle}
+          >
+            {isLocal ? (
+              <>
+                <option value="fx">fx</option>
+                <option value="fy">fy</option>
+                <option value="mz">mz</option>
+              </>
+            ) : (
+              <>
+                <option value="Fx">Fx</option>
+                <option value="Fy">Fy</option>
+                <option value="Mz">Mz</option>
+              </>
+            )}
+          </select>
+          <button onClick={toggleCoordinateSystem} style={toggleButtonStyle}>
+            {isLocal ? 'Local' : 'Global'}
           </button>
         </div>
-      )}
+      </div>
+
+      <div style={formGroupStyle}>
+        <label style={labelStyle}>Magnitude (kN)</label>
+        <input
+          type="number"
+          value={loadParameters.magnitude || ''}
+          onChange={(e) => handleParameterChange('magnitude', parseFloat(e.target.value) || 0)}
+          placeholder="0"
+          style={inputStyle}
+          step="0.1"
+        />
+      </div>
+
+      <button onClick={handleCreateLoad} style={createButtonStyle}>
+        Create Point Load → Click Elements
+      </button>
     </div>
   );
 }
 
-const containerStyle: React.CSSProperties = {
+const formContentStyle: React.CSSProperties = {
   display: 'flex',
-  flexDirection: 'column',
-  marginBottom: '8px',
-};
-
-const buttonStyle: React.CSSProperties = {
-  padding: '10px',
-  backgroundColor: theme.colors.primary,
-  color: theme.colors.textWhite,
-  border: 'none',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  fontSize: '13px',
-  fontWeight: 'bold',
-  textAlign: 'left',
-};
-
-const expandedContentStyle: React.CSSProperties = {
-  padding: '12px',
-  backgroundColor: '#f9f9f9',
-  border: `1px solid ${theme.colors.border}`,
-  borderTop: 'none',
-  borderBottomLeftRadius: '4px',
-  borderBottomRightRadius: '4px',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '8px',
+  flexDirection: 'row',
+  gap: '12px',
+  alignItems: 'flex-end',
+  flexWrap: 'wrap',
 };
 
 const formGroupStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '4px',
+  flex: '0 1 auto',
+  minWidth: '100px',
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: '12px',
+  fontSize: '11px',
   fontWeight: 'bold',
   color: theme.colors.textPrimary,
+};
+
+const inputStyle: React.CSSProperties = {
+  padding: '4px 6px',
+  border: `1px solid ${theme.colors.border}`,
+  borderRadius: '3px',
+  fontSize: '12px',
+  boxSizing: 'border-box',
+  width: '80px',
+};
+
+const selectStyle: React.CSSProperties = {
+  padding: '4px 6px',
+  border: `1px solid ${theme.colors.border}`,
+  borderRadius: '3px',
+  fontSize: '12px',
+  boxSizing: 'border-box',
+  flex: 1,
+  minWidth: '70px',
+};
+
+const directionGroupStyle: React.CSSProperties = {
   display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
+  gap: '4px',
 };
 
 const toggleButtonStyle: React.CSSProperties = {
-  padding: '2px 6px',
+  padding: '4px 6px',
   backgroundColor: theme.colors.warning,
   color: theme.colors.textWhite,
   border: 'none',
@@ -188,26 +181,11 @@ const toggleButtonStyle: React.CSSProperties = {
   fontSize: '11px',
   cursor: 'pointer',
   fontWeight: 'bold',
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: '6px',
-  border: `1px solid ${theme.colors.border}`,
-  borderRadius: '3px',
-  fontSize: '12px',
-  boxSizing: 'border-box',
-};
-
-const selectStyle: React.CSSProperties = {
-  padding: '6px',
-  border: `1px solid ${theme.colors.border}`,
-  borderRadius: '3px',
-  fontSize: '12px',
-  boxSizing: 'border-box',
+  whiteSpace: 'nowrap',
 };
 
 const createButtonStyle: React.CSSProperties = {
-  padding: '8px',
+  padding: '6px 12px',
   backgroundColor: theme.colors.success,
   color: theme.colors.textWhite,
   border: 'none',
@@ -215,5 +193,5 @@ const createButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: '12px',
   fontWeight: 'bold',
-  marginTop: '8px',
+  whiteSpace: 'nowrap',
 };
