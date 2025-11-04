@@ -144,10 +144,32 @@ export interface UIState {
   toggleAxialDiagram: () => void;
 
   // Visualization scales
-  displacementScale: number;  // Multiplier for displaced shape
-  diagramScale: number;        // Multiplier for force diagrams
-  setDisplacementScale: (scale: number) => void;
-  setDiagramScale: (scale: number) => void;
+  displacementScale: number;  // Automatic multiplier for displaced shape
+  displacementScaleManual: number;  // User-set multiplier (if useManualDisplacementScale is true)
+  useManualDisplacementScale: boolean;  // Whether to use manual or automatic scale
+  momentDiagramScale: number;  // Automatic multiplier for moment diagram
+  momentDiagramScaleManual: number;  // User-set multiplier
+  useManualMomentDiagramScale: boolean;  // Whether to use manual or automatic scale
+  shearDiagramScale: number;  // Automatic multiplier for shear diagram
+  shearDiagramScaleManual: number;  // User-set multiplier
+  useManualShearDiagramScale: boolean;  // Whether to use manual or automatic scale
+  axialDiagramScale: number;  // Automatic multiplier for axial diagram
+  axialDiagramScaleManual: number;  // User-set multiplier
+  useManualAxialDiagramScale: boolean;  // Whether to use manual or automatic scale
+
+  // Scale setters
+  setDisplacementScale: (scale: number) => void;  // Sets automatic scale
+  setDisplacementScaleManual: (scale: number) => void;  // Sets manual scale and switches to manual mode
+  resetDisplacementScale: () => void;  // Resets to automatic mode
+  setMomentDiagramScale: (scale: number) => void;  // Sets automatic scale
+  setMomentDiagramScaleManual: (scale: number) => void;  // Sets manual scale
+  resetMomentDiagramScale: () => void;  // Resets to automatic mode
+  setShearDiagramScale: (scale: number) => void;  // Sets automatic scale
+  setShearDiagramScaleManual: (scale: number) => void;  // Sets manual scale
+  resetShearDiagramScale: () => void;  // Resets to automatic mode
+  setAxialDiagramScale: (scale: number) => void;  // Sets automatic scale
+  setAxialDiagramScaleManual: (scale: number) => void;  // Sets manual scale
+  resetAxialDiagramScale: () => void;  // Resets to automatic mode
 
   // Coordinate input
   coordinateInput: string;
@@ -245,8 +267,18 @@ const initialState = {
   showMomentDiagram: false,
   showShearDiagram: false,
   showAxialDiagram: false,
-  displacementScale: 100,  // Auto-calculated but user can override
-  diagramScale: 1,         // Auto-calculated but user can override
+  displacementScale: 1,  // Auto-calculated value
+  displacementScaleManual: 1,  // User-set value
+  useManualDisplacementScale: false,  // Start with automatic
+  momentDiagramScale: 1,  // Auto-calculated value
+  momentDiagramScaleManual: 1,  // User-set value
+  useManualMomentDiagramScale: false,  // Start with automatic
+  shearDiagramScale: 1,  // Auto-calculated value
+  shearDiagramScaleManual: 1,  // User-set value
+  useManualShearDiagramScale: false,  // Start with automatic
+  axialDiagramScale: 1,  // Auto-calculated value
+  axialDiagramScaleManual: 1,  // User-set value
+  useManualAxialDiagramScale: false,  // Start with automatic
   coordinateInput: '',
   showPropertiesPanel: true,
   showResultsPanel: false,
@@ -518,13 +550,56 @@ export const useUIStore = create<UIState>()(
         });
       },
 
-      // Scale setters
+      // Scale setters - Displacement
       setDisplacementScale: (scale) => {
         set({ displacementScale: scale });
       },
 
-      setDiagramScale: (scale) => {
-        set({ diagramScale: scale });
+      setDisplacementScaleManual: (scale) => {
+        set({ displacementScaleManual: scale, useManualDisplacementScale: true });
+      },
+
+      resetDisplacementScale: () => {
+        set({ useManualDisplacementScale: false });
+      },
+
+      // Scale setters - Moment Diagram
+      setMomentDiagramScale: (scale) => {
+        set({ momentDiagramScale: scale });
+      },
+
+      setMomentDiagramScaleManual: (scale) => {
+        set({ momentDiagramScaleManual: scale, useManualMomentDiagramScale: true });
+      },
+
+      resetMomentDiagramScale: () => {
+        set({ useManualMomentDiagramScale: false });
+      },
+
+      // Scale setters - Shear Diagram
+      setShearDiagramScale: (scale) => {
+        set({ shearDiagramScale: scale });
+      },
+
+      setShearDiagramScaleManual: (scale) => {
+        set({ shearDiagramScaleManual: scale, useManualShearDiagramScale: true });
+      },
+
+      resetShearDiagramScale: () => {
+        set({ useManualShearDiagramScale: false });
+      },
+
+      // Scale setters - Axial Diagram
+      setAxialDiagramScale: (scale) => {
+        set({ axialDiagramScale: scale });
+      },
+
+      setAxialDiagramScaleManual: (scale) => {
+        set({ axialDiagramScaleManual: scale, useManualAxialDiagramScale: true });
+      },
+
+      resetAxialDiagramScale: () => {
+        set({ useManualAxialDiagramScale: false });
       },
 
       // Coordinate input

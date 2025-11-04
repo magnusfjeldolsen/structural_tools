@@ -13,12 +13,12 @@
  */
 
 import { useModelStore, useUIStore } from '../store';
+import { ScaleControl } from './ScaleControl';
 
 export function Toolbar() {
   const activeTab = useUIStore((state) => state.activeTab);
   const activeTool = useUIStore((state) => state.activeTool);
   const setTool = useUIStore((state) => state.setTool);
-  const openLoadDialog = useUIStore((state) => state.openLoadDialog);
 
   const showDisplacedShape = useUIStore((state) => state.showDisplacedShape);
   const showMomentDiagram = useUIStore((state) => state.showMomentDiagram);
@@ -28,6 +28,29 @@ export function Toolbar() {
   const toggleMomentDiagram = useUIStore((state) => state.toggleMomentDiagram);
   const toggleShearDiagram = useUIStore((state) => state.toggleShearDiagram);
   const toggleAxialDiagram = useUIStore((state) => state.toggleAxialDiagram);
+
+  // Scale states and setters
+  const displacementScale = useUIStore((state) => state.displacementScale);
+  const displacementScaleManual = useUIStore((state) => state.displacementScaleManual);
+  const useManualDisplacementScale = useUIStore((state) => state.useManualDisplacementScale);
+  const momentDiagramScale = useUIStore((state) => state.momentDiagramScale);
+  const momentDiagramScaleManual = useUIStore((state) => state.momentDiagramScaleManual);
+  const useManualMomentDiagramScale = useUIStore((state) => state.useManualMomentDiagramScale);
+  const shearDiagramScale = useUIStore((state) => state.shearDiagramScale);
+  const shearDiagramScaleManual = useUIStore((state) => state.shearDiagramScaleManual);
+  const useManualShearDiagramScale = useUIStore((state) => state.useManualShearDiagramScale);
+  const axialDiagramScale = useUIStore((state) => state.axialDiagramScale);
+  const axialDiagramScaleManual = useUIStore((state) => state.axialDiagramScaleManual);
+  const useManualAxialDiagramScale = useUIStore((state) => state.useManualAxialDiagramScale);
+
+  const setDisplacementScaleManual = useUIStore((state) => state.setDisplacementScaleManual);
+  const resetDisplacementScale = useUIStore((state) => state.resetDisplacementScale);
+  const setMomentDiagramScaleManual = useUIStore((state) => state.setMomentDiagramScaleManual);
+  const resetMomentDiagramScale = useUIStore((state) => state.resetMomentDiagramScale);
+  const setShearDiagramScaleManual = useUIStore((state) => state.setShearDiagramScaleManual);
+  const resetShearDiagramScale = useUIStore((state) => state.resetShearDiagramScale);
+  const setAxialDiagramScaleManual = useUIStore((state) => state.setAxialDiagramScaleManual);
+  const resetAxialDiagramScale = useUIStore((state) => state.resetAxialDiagramScale);
 
   const loadExample = useModelStore((state) => state.loadExample);
   const runAnalysis = useModelStore((state) => state.runAnalysis);
@@ -151,23 +174,7 @@ export function Toolbar() {
             </>
           )}
 
-          {/* Loads Tab Tools */}
-          {activeTab === 'loads' && (
-            <>
-              <button style={toolButtonStyle('add-load')} onClick={() => openLoadDialog('nodal')}>
-                Nodal Load
-              </button>
-              <button style={toolButtonStyle('add-load')} onClick={() => openLoadDialog('point')}>
-                Point Load
-              </button>
-              <button style={toolButtonStyle('add-load')} onClick={() => openLoadDialog('lineLoad')}>
-                Line Load
-              </button>
-              <button style={toolButtonStyle('add-load')} onClick={() => openLoadDialog('distributed')}>
-                Distributed Load
-              </button>
-            </>
-          )}
+          {/* Loads Tab - tools now in LoadsTabToolbar */}
 
           {/* Analysis Tab Tools */}
           {activeTab === 'analysis' && (
@@ -241,44 +248,99 @@ export function Toolbar() {
         <div
           style={{
             display: 'flex',
-            alignItems: 'center',
-            padding: '8px 12px',
+            flexDirection: 'column',
             backgroundColor: '#e8e8e8',
             borderTop: '1px solid #ccc',
-            gap: '8px',
+            gap: '0',
           }}
         >
-          <span style={{ fontSize: '14px', fontWeight: 'bold', marginRight: '8px' }}>
-            Visualize:
-          </span>
-          <button
-            style={toggleButtonStyle(showDisplacedShape)}
-            onClick={toggleDisplacedShape}
-            disabled={!analysisResults}
+          {/* Button Row */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '8px 12px',
+              gap: '8px',
+            }}
           >
-            {showDisplacedShape ? '✓' : ''} Displaced Shape
-          </button>
-          <button
-            style={toggleButtonStyle(showMomentDiagram)}
-            onClick={toggleMomentDiagram}
-            disabled={!analysisResults}
-          >
-            {showMomentDiagram ? '✓' : ''} Moment
-          </button>
-          <button
-            style={toggleButtonStyle(showShearDiagram)}
-            onClick={toggleShearDiagram}
-            disabled={!analysisResults}
-          >
-            {showShearDiagram ? '✓' : ''} Shear
-          </button>
-          <button
-            style={toggleButtonStyle(showAxialDiagram)}
-            onClick={toggleAxialDiagram}
-            disabled={!analysisResults}
-          >
-            {showAxialDiagram ? '✓' : ''} Axial
-          </button>
+            <span style={{ fontSize: '14px', fontWeight: 'bold', marginRight: '8px' }}>
+              Visualize:
+            </span>
+            <button
+              style={toggleButtonStyle(showDisplacedShape)}
+              onClick={toggleDisplacedShape}
+              disabled={!analysisResults}
+            >
+              {showDisplacedShape ? '✓' : ''} Displaced Shape
+            </button>
+            <button
+              style={toggleButtonStyle(showMomentDiagram)}
+              onClick={toggleMomentDiagram}
+              disabled={!analysisResults}
+            >
+              {showMomentDiagram ? '✓' : ''} Moment
+            </button>
+            <button
+              style={toggleButtonStyle(showShearDiagram)}
+              onClick={toggleShearDiagram}
+              disabled={!analysisResults}
+            >
+              {showShearDiagram ? '✓' : ''} Shear
+            </button>
+            <button
+              style={toggleButtonStyle(showAxialDiagram)}
+              onClick={toggleAxialDiagram}
+              disabled={!analysisResults}
+            >
+              {showAxialDiagram ? '✓' : ''} Axial
+            </button>
+          </div>
+
+          {/* Scale Controls Row */}
+          {(showDisplacedShape || showMomentDiagram || showShearDiagram || showAxialDiagram) && (
+            <div
+              style={{
+                display: 'flex',
+                gap: '16px',
+                padding: '8px 12px',
+                borderTop: '1px solid #ccc',
+                flexWrap: 'wrap',
+              }}
+            >
+              {showDisplacedShape && (
+                <ScaleControl
+                  label="Displaced Shape Scale"
+                  value={useManualDisplacementScale ? displacementScaleManual : displacementScale}
+                  onChange={setDisplacementScaleManual}
+                  onReset={resetDisplacementScale}
+                />
+              )}
+              {showMomentDiagram && (
+                <ScaleControl
+                  label="Moment Diagram Scale"
+                  value={useManualMomentDiagramScale ? momentDiagramScaleManual : momentDiagramScale}
+                  onChange={setMomentDiagramScaleManual}
+                  onReset={resetMomentDiagramScale}
+                />
+              )}
+              {showShearDiagram && (
+                <ScaleControl
+                  label="Shear Diagram Scale"
+                  value={useManualShearDiagramScale ? shearDiagramScaleManual : shearDiagramScale}
+                  onChange={setShearDiagramScaleManual}
+                  onReset={resetShearDiagramScale}
+                />
+              )}
+              {showAxialDiagram && (
+                <ScaleControl
+                  label="Axial Diagram Scale"
+                  value={useManualAxialDiagramScale ? axialDiagramScaleManual : axialDiagramScale}
+                  onChange={setAxialDiagramScaleManual}
+                  onReset={resetAxialDiagramScale}
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
