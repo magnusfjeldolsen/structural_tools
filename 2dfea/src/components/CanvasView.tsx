@@ -43,6 +43,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const analysisResults = useModelStore((state) => state.analysisResults);
   const selectedNodes = useModelStore((state) => state.selectedNodes);
   const selectedElements = useModelStore((state) => state.selectedElements);
+  const nextNodeNumber = useModelStore((state) => state.nextNodeNumber);
   const addNode = useModelStore((state) => state.addNode);
   const addElement = useModelStore((state) => state.addElement);
   const updateNode = useModelStore((state) => state.updateNode);
@@ -465,44 +466,71 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       } else if (activeTool === 'draw-element') {
         if (!drawingElement) {
           // First click - start drawing
+          // Scenario 1 & 2: Get or create start node
           let startNode: string;
           const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
 
           if (hoveredNode) {
-            // Snapped to existing node
+            // Start node exists - use it
             startNode = hoveredNode;
           } else {
-            // Create new node at snapped position
+            // Start node doesn't exist - create new node
+            // Capture the node name BEFORE calling addNode (which increments nextNodeNumber)
+            const newNodeName = `N${nextNodeNumber}`;
             addNode({
               x: snappedPos.x,
               y: snappedPos.y,
               support: 'free',
             });
-            // Get the newly created node name (last node in array)
-            startNode = `N${nodes.length + 1}`;
+            startNode = newNodeName;
           }
 
           setDrawingElement({
             startNode,
-            startPos: snappedPos
+            startPos: snappedPos,
           });
         } else {
           // Second click - complete element
+          // Scenario: End node may or may not exist
           let endNode: string;
           const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
 
-          if (hoveredNode && hoveredNode !== drawingElement.startNode) {
-            // Snapped to existing node (and not the same as start)
+          // Validation: Check if end node is same as start (prevent self-loops)
+          if (hoveredNode && hoveredNode === drawingElement.startNode) {
+            console.warn('Cannot create element: start and end nodes are the same');
+            clearDrawingElement();
+            return;
+          }
+
+          if (hoveredNode) {
+            // End node exists - use it
             endNode = hoveredNode;
           } else {
-            // Create new node at snapped position
+            // End node doesn't exist - create new node
+            // Capture the node name BEFORE calling addNode (which increments nextNodeNumber)
+            const newNodeName = `N${nextNodeNumber}`;
             addNode({
               x: snappedPos.x,
               y: snappedPos.y,
               support: 'free',
             });
-            // Get the newly created node name
-            endNode = `N${nodes.length + 1}`;
+            endNode = newNodeName;
+          }
+
+          // Additional validation: Check for zero-length element
+          const startNodeObj = nodes.find((n) => n.name === drawingElement.startNode);
+          const endNodeObj = nodes.find((n) => n.name === endNode);
+
+          if (startNodeObj && endNodeObj) {
+            const dx = endNodeObj.x - startNodeObj.x;
+            const dy = endNodeObj.y - startNodeObj.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+
+            if (length < 0.01) {
+              console.warn('Cannot create element: zero-length element');
+              clearDrawingElement();
+              return;
+            }
           }
 
           // Create element with default properties
@@ -510,9 +538,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
             addElement({
               nodeI: drawingElement.startNode,
               nodeJ: endNode,
-              E: 210,      // GPa (steel)
-              I: 1e-4,     // m^4
-              A: 1e-3,     // m^2
+              E: 210, // GPa (steel)
+              I: 1e-4, // m^4
+              A: 1e-3, // m^2
             });
           }
 
@@ -1519,13 +1547,14 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const localYY = cosTheta;
 
       // Convert to screen space: screen coordinates have Y-axis flipped (down is positive)
-      // When converting from world to screen, Y component gets negated (due to cy - relY * scale)
-      // So we need to negate the Y components of our axes
-      const xAxisScreenOffsetX = localXX * axisLength * view.scale;
-      const xAxisScreenOffsetY = -localXY * axisLength * view.scale; // Negate for screen Y-flip
+      // Axes should be constant screen pixels regardless of zoom level
+      // The local X and Y are already unit vectors, so multiply by desired pixel length
+      // Negate Y components to account for screen Y-axis flip
+      const xAxisScreenOffsetX = localXX * axisLength;
+      const xAxisScreenOffsetY = -localXY * axisLength; // Negate for screen Y-flip
 
-      const yAxisScreenOffsetX = localYX * axisLength * view.scale;
-      const yAxisScreenOffsetY = -localYY * axisLength * view.scale; // Negate for screen Y-flip
+      const yAxisScreenOffsetX = localYX * axisLength;
+      const yAxisScreenOffsetY = -localYY * axisLength; // Negate for screen Y-flip
 
       // Local X axis endpoint (red) - in screen coordinates
       const xAxisEndX = midScreenX + xAxisScreenOffsetX;

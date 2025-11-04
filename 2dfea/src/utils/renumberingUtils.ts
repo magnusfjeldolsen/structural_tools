@@ -194,3 +194,43 @@ export function getRenumberingSummary(mapping: RenumberingMap[]): string {
   const lines = mapping.map((m) => `${m.oldName} → ${m.newName}`);
   return lines.join('\n');
 }
+
+/**
+ * Extract the next node number to use after renumbering
+ * Looks for highest Nxxx number and returns next number
+ * For example: [N1, N2, N5] -> returns 6
+ */
+export function getNextNodeNumber(nodes: Node[]): number {
+  if (nodes.length === 0) return 1;
+
+  let maxNum = 0;
+  for (const node of nodes) {
+    const match = node.name.match(/^N(\d+)/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      maxNum = Math.max(maxNum, num);
+    }
+  }
+
+  return maxNum + 1;
+}
+
+/**
+ * Extract the next element number to use after renumbering
+ * Looks for highest Exxx number and returns next number
+ * For example: [E1, E2, E5] -> returns 6
+ */
+export function getNextElementNumber(elements: Element[]): number {
+  if (elements.length === 0) return 1;
+
+  let maxNum = 0;
+  for (const element of elements) {
+    const match = element.name.match(/^E(\d+)/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      maxNum = Math.max(maxNum, num);
+    }
+  }
+
+  return maxNum + 1;
+}
