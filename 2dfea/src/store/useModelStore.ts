@@ -29,6 +29,7 @@ import {
   validateModel,
 } from '../analysis';
 import { findNodesInRect, findElementsInRect } from '../geometry/selectionUtils';
+import { renumberNodes, renumberElements } from '../utils/renumberingUtils';
 
 // ============================================================================
 // STATE INTERFACE
@@ -68,11 +69,13 @@ interface ModelState {
   updateNode: (name: string, updates: Partial<Omit<Node, 'name'>>) => void;
   deleteNode: (name: string) => void;
   clearNodes: () => void;
+  renumberNodes: () => void;
 
   addElement: (element: Omit<Element, 'name'>) => void;
   updateElement: (name: string, updates: Partial<Omit<Element, 'name'>>) => void;
   deleteElement: (name: string) => void;
   clearElements: () => void;
+  renumberElements: () => void;
 
   // Actions - Selection
   selectNode: (name: string, additive: boolean) => void;
@@ -254,6 +257,58 @@ export const useModelStore = create<ModelState>()(
             state.elements = [];
             state.loads.distributed = [];
             state.loads.elementPoint = [];
+          });
+        },
+
+        renumberNodes: () => {
+          set((state) => {
+            const result = renumberNodes(state.nodes, state.elements);
+
+            // Create mapping for loads
+            const nameMapping = new Map(result.mapping.map((m: any) => [m.oldName, m.newName]));
+
+            // Update nodes
+            state.nodes = result.updatedNodes;
+
+            // Update elements
+            state.elements = result.updatedElements;
+
+            // Update loads to reference new node names
+            state.loads.nodal = state.loads.nodal.map((load) => ({
+              ...load,
+              node: nameMapping.get(load.node) ?? load.node,
+            }));
+
+            // Clear selection
+            state.selectedNodes = [];
+            state.selectedElements = [];
+          });
+        },
+
+        renumberElements: () => {
+          set((state) => {
+            const result = renumberElements(state.elements, state.nodes);
+
+            // Create mapping for loads
+            const nameMapping = new Map(result.mapping.map((m: any) => [m.oldName, m.newName]));
+
+            // Update elements
+            state.elements = result.updatedElements;
+
+            // Update loads to reference new element names
+            state.loads.distributed = state.loads.distributed.map((load) => ({
+              ...load,
+              element: nameMapping.get(load.element) ?? load.element,
+            }));
+
+            state.loads.elementPoint = state.loads.elementPoint.map((load) => ({
+              ...load,
+              element: nameMapping.get(load.element) ?? load.element,
+            }));
+
+            // Clear selection
+            state.selectedNodes = [];
+            state.selectedElements = [];
           });
         },
 

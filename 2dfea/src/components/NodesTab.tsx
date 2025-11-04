@@ -70,10 +70,17 @@ export function NodesTab() {
             setValidationError('Node name cannot be empty');
             return;
           }
-          // Check for duplicate names
-          const isDuplicate = nodes.some((n) => n.name !== nodeName && n.name === newName);
+          // Check for duplicate names (allow intermediate temporary names)
+          const isDuplicate = nodes.some(
+            (n) => n.name !== nodeName && n.name === newName && !newName.endsWith('_temp')
+          );
           if (isDuplicate) {
-            setValidationError(`Node name "${newName}" already exists`);
+            setValidationError(
+              `Node name "${newName}" already exists. ` +
+              `To rename multiple nodes, you can:\n` +
+              `1. Use temporary names (e.g., "${newName}_temp")\n` +
+              `2. Or use "Renumber Nodes" button to auto-renumber all nodes`
+            );
             return;
           }
           updates.name = newName;

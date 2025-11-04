@@ -1495,29 +1495,37 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const midWorldY = (nodeI.y + nodeJ.y) / 2;
       const [midScreenX, midScreenY] = toScreen(midWorldX, midWorldY);
 
-      // Get element direction in world coordinates (normalized)
+      // Get element direction in world coordinates
       const dx = nodeJ.x - nodeI.x;
       const dy = nodeJ.y - nodeI.y;
       const elementLength = Math.sqrt(dx * dx + dy * dy);
 
       if (elementLength < 0.01) return; // Skip zero-length elements
 
-      // Local X axis direction: along element from nodeI to nodeJ (normalized in world coords)
-      const localXX = dx / elementLength;
-      const localXY = dy / elementLength;
+      // Calculate element angle: theta = atan2(dy, dx)
+      // Note: This is in world coordinates where Y increases upward
+      const theta = Math.atan2(dy, dx);
+      const cosTheta = Math.cos(theta);
+      const sinTheta = Math.sin(theta);
 
-      // Local Y axis direction: perpendicular to element (90° CCW from local X in world coords)
-      // Right-hand rule: if X points right, Y points up (in element's local view)
-      const localYX = -dy / elementLength;
-      const localYY = dx / elementLength;
+      // Local X axis direction: along element from nodeI to nodeJ (world coordinates)
+      // Using theta: [cos(theta), sin(theta)]
+      const localXX = cosTheta;
+      const localXY = sinTheta;
 
-      // Calculate screen pixel offsets (axisLength is already in screen pixels)
-      // Multiply the normalized directions by axisLength to get screen pixel offsets
-      const xAxisScreenOffsetX = localXX * axisLength;
-      const xAxisScreenOffsetY = localXY * axisLength;
+      // Local Y axis direction: perpendicular to element (90° CCW from local X) (world coordinates)
+      // Using theta: [-sin(theta), cos(theta)]
+      const localYX = -sinTheta;
+      const localYY = cosTheta;
 
-      const yAxisScreenOffsetX = localYX * axisLength;
-      const yAxisScreenOffsetY = localYY * axisLength;
+      // Convert to screen space: screen coordinates have Y-axis flipped (down is positive)
+      // When converting from world to screen, Y component gets negated (due to cy - relY * scale)
+      // So we need to negate the Y components of our axes
+      const xAxisScreenOffsetX = localXX * axisLength * view.scale;
+      const xAxisScreenOffsetY = -localXY * axisLength * view.scale; // Negate for screen Y-flip
+
+      const yAxisScreenOffsetX = localYX * axisLength * view.scale;
+      const yAxisScreenOffsetY = -localYY * axisLength * view.scale; // Negate for screen Y-flip
 
       // Local X axis endpoint (red) - in screen coordinates
       const xAxisEndX = midScreenX + xAxisScreenOffsetX;
