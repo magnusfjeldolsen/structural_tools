@@ -646,14 +646,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     const [screenX, screenY] = toScreen(worldX, worldY);
     const screenTolerance = snapTolerance; // Use same pixel tolerance as nodes
 
-    console.log('[checkLoadHover] Checking loads at screen position:', screenX, screenY, 'tolerance:', screenTolerance);
-
     // Check nodal loads
     const visibleNodalLoads = loads.nodal.filter(
       (load) => !activeLoadCase || load.case === activeLoadCase
     );
-
-    console.log('[checkLoadHover] Visible nodal loads:', visibleNodalLoads.length);
 
     for (let i = 0; i < visibleNodalLoads.length; i++) {
       const load = visibleNodalLoads[i];
@@ -667,10 +663,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const dy = screenY - nodeScreenY;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      console.log(`[checkLoadHover] Nodal load ${i}: distance=${distance.toFixed(1)}, threshold=${screenTolerance}`);
-
       if (distance <= screenTolerance) {
-        console.log('[checkLoadHover] FOUND nodal load at index', i);
         setHoveredLoad({ type: 'nodal', index: i });
         return;
       }
@@ -1073,8 +1066,6 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     clientX: number,
     clientY: number
   ) => {
-    console.log('Right-click on load:', { loadType, loadIndex }, 'at position:', clientX, clientY);
-
     window.dispatchEvent(
       new CustomEvent('showLoadContextMenu', {
         detail: {

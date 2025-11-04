@@ -17,6 +17,7 @@ import type {
   ModelData,
   SupportType,
 } from './types';
+import { collectActiveNodes, collectActiveElements } from './dataCollector';
 
 /**
  * Translate complete model to worker format
@@ -38,12 +39,16 @@ export function translateModelToWorker(
   loads: Loads,
   filterCase?: string
 ): ModelData {
+  // Collect only valid elements and their referenced nodes
+  const { valid: validElements } = collectActiveElements(elements, nodes);
+  const activeNodes = collectActiveNodes(nodes, validElements);
+
   // Filter loads by case if specified
   const filteredLoads = filterCase ? filterLoadsByCase(loads, filterCase) : loads;
 
   return {
-    nodes: translateNodes(nodes),
-    elements: translateElements(elements),
+    nodes: translateNodes(activeNodes),
+    elements: translateElements(validElements),
     loads: filteredLoads, // Send loads as-is with direction case preserved
   };
 }

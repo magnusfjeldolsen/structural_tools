@@ -19,13 +19,17 @@ import { SnapBar } from './components/SnapBar';
 import { LoadInputDialog } from './components/LoadInputDialog';
 import { LoadListPanel } from './components/LoadListPanel';
 import { LoadContextMenu } from './components/LoadContextMenu';
+import { NodesTab } from './components/NodesTab';
+import { ElementsTab } from './components/ElementsTab';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { theme } from './styles/theme';
 
 export default function App() {
   const [initStatus, setInitStatus] = useState<'pending' | 'loading' | 'ready' | 'error'>('pending');
   const [initError, setInitError] = useState<string | null>(null);
-  const [rightPanelTab, setRightPanelTab] = useState<'results' | 'loadcases' | 'loads'>('results');
+  const [rightPanelTab, setRightPanelTab] = useState<'nodes' | 'elements' | 'loadcases' | 'loads' | 'results'>('nodes');
+  const [rightPanelWidth, setRightPanelWidth] = useState(30); // Percentage of viewport width
+  const [isResizingPanel, setIsResizingPanel] = useState(false);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [contextMenuLoad, setContextMenuLoad] = useState<{ type: 'nodal' | 'distributed' | 'elementPoint'; index: number } | null>(null);
@@ -54,6 +58,32 @@ export default function App() {
     window.addEventListener('showLoadContextMenu', handleShowLoadContextMenu);
     return () => window.removeEventListener('showLoadContextMenu', handleShowLoadContextMenu);
   }, []);
+
+  // Handle right panel resize
+  useEffect(() => {
+    if (!isResizingPanel) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const viewportWidth = window.innerWidth;
+      const newWidth = ((viewportWidth - e.clientX) / viewportWidth) * 100;
+      // Constrain width between 15% and 80%
+      if (newWidth >= 15 && newWidth <= 80) {
+        setRightPanelWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingPanel(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingPanel]);
 
   // Initialize solver on mount
   useEffect(() => {
@@ -159,18 +189,18 @@ export default function App() {
       {/* Toolbar with tab-specific tools */}
       <Toolbar />
 
-      {/* Main content: Canvas (left) + Right Panel (right) */}
+      {/* Main content: Canvas (left) + Right Panel (right) with resizable divider */}
       <div style={{
         flex: 1,
         display: 'flex',
         overflow: 'hidden',
       }}>
-        {/* Canvas View - takes 70% of width */}
-        <div style={{ flex: 7, overflow: 'hidden', position: 'relative' }}>
+        {/* Canvas View - dynamic width based on right panel size */}
+        <div style={{ width: `${100 - rightPanelWidth}%`, overflow: 'hidden', position: 'relative' }}>
           {/* Left CAD Panel - visible in Structure and Loads tabs */}
           {(activeTab === 'structure' || activeTab === 'loads') && <LeftCADPanel />}
 
-          <CanvasView width={window.innerWidth * 0.7} height={window.innerHeight - 60} />
+          <CanvasView width={window.innerWidth * ((100 - rightPanelWidth) / 100)} height={window.innerHeight - 60} />
 
           {/* Coordinate Display - bottom left of canvas */}
           <CoordinateDisplay />
@@ -179,71 +209,62 @@ export default function App() {
           <SnapBar />
         </div>
 
-        {/* Right Panel with Tabs - takes 30% of width */}
-        <div style={{ flex: 3, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {/* Tab Bar */}
+        {/* Resizable divider */}
+        <div
+          onMouseDown={() => setIsResizingPanel(true)}
+          style={{
+            width: '4px',
+            backgroundColor: theme.colors.border,
+            cursor: 'col-resize',
+            userSelect: 'none',
+            transition: isResizingPanel ? 'none' : 'background-color 0.2s',
+          }}
+        />
+
+        {/* Right Panel with Tabs - dynamic width */}
+        <div style={{ width: `${rightPanelWidth}%`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {/* Tab Bar - reordered: Nodes, Elements, Load Cases, Loads, Results */}
           <div style={{
             display: 'flex',
             backgroundColor: theme.colors.bgLight,
             borderBottom: `2px solid ${theme.colors.border}`,
+            overflowX: 'auto',
           }}>
-            <button
-              onClick={() => setRightPanelTab('results')}
-              style={{
-                flex: 1,
-                padding: '12px',
-                border: 'none',
-                backgroundColor: rightPanelTab === 'results' ? theme.colors.bgWhite : theme.colors.bgLight,
-                borderBottom: rightPanelTab === 'results' ? `3px solid ${theme.colors.primary}` : 'none',
-                cursor: 'pointer',
-                fontWeight: rightPanelTab === 'results' ? 'bold' : 'normal',
-                fontSize: '14px',
-                color: rightPanelTab === 'results' ? theme.colors.primary : theme.colors.textPrimary,
-              }}
-            >
-              Results
-            </button>
-            <button
-              onClick={() => setRightPanelTab('loads')}
-              style={{
-                flex: 1,
-                padding: '12px',
-                border: 'none',
-                backgroundColor: rightPanelTab === 'loads' ? theme.colors.bgWhite : theme.colors.bgLight,
-                borderBottom: rightPanelTab === 'loads' ? `3px solid ${theme.colors.primary}` : 'none',
-                cursor: 'pointer',
-                fontWeight: rightPanelTab === 'loads' ? 'bold' : 'normal',
-                fontSize: '14px',
-                color: rightPanelTab === 'loads' ? theme.colors.primary : theme.colors.textPrimary,
-              }}
-            >
-              Loads
-            </button>
-            <button
-              onClick={() => setRightPanelTab('loadcases')}
-              style={{
-                flex: 1,
-                padding: '12px',
-                border: 'none',
-                backgroundColor: rightPanelTab === 'loadcases' ? theme.colors.bgWhite : theme.colors.bgLight,
-                borderBottom: rightPanelTab === 'loadcases' ? `3px solid ${theme.colors.primary}` : 'none',
-                cursor: 'pointer',
-                fontWeight: rightPanelTab === 'loadcases' ? 'bold' : 'normal',
-                fontSize: '14px',
-                color: rightPanelTab === 'loadcases' ? theme.colors.primary : theme.colors.textPrimary,
-              }}
-            >
-              Load Cases
-            </button>
+            {(['nodes', 'elements', 'loadcases', 'loads', 'results'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setRightPanelTab(tab)}
+                style={{
+                  padding: '12px 16px',
+                  border: 'none',
+                  backgroundColor: rightPanelTab === tab ? theme.colors.bgWhite : theme.colors.bgLight,
+                  borderBottom: rightPanelTab === tab ? `3px solid ${theme.colors.primary}` : 'none',
+                  cursor: 'pointer',
+                  fontWeight: rightPanelTab === tab ? 'bold' : 'normal',
+                  fontSize: '14px',
+                  color: rightPanelTab === tab ? theme.colors.primary : theme.colors.textPrimary,
+                  whiteSpace: 'nowrap',
+                  flex: 'none',
+                }}
+              >
+                {tab === 'nodes' && 'Nodes'}
+                {tab === 'elements' && 'Elements'}
+                {tab === 'loadcases' && 'Load Cases'}
+                {tab === 'loads' && 'Loads'}
+                {tab === 'results' && 'Results'}
+              </button>
+            ))}
           </div>
 
           {/* Panel Content */}
           <div style={{ flex: 1, overflow: 'auto' }}>
-            {rightPanelTab === 'results' && <ResultsPanel />}
+            {rightPanelTab === 'nodes' && <NodesTab />}
+            {rightPanelTab === 'elements' && <ElementsTab />}
+            {rightPanelTab === 'loadcases' && <LoadCasePanel />}
             {rightPanelTab === 'loads' && <LoadListPanel onEditLoad={(type, index) => {
               useUIStore.setState({ loadDialogOpen: true, editingLoadData: { type, index } });
             }} />}
-            {rightPanelTab === 'loadcases' && <LoadCasePanel />}
+            {rightPanelTab === 'results' && <ResultsPanel />}
           </div>
         </div>
       </div>
