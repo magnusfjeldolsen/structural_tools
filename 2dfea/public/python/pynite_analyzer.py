@@ -155,6 +155,33 @@ class PyNiteWebAnalyzer:
         else:
             print(f"Warning: Unknown support type '{support_type}' for {node_name}")
 
+    def _normalize_direction(self, direction: str) -> str:
+        """
+        Normalize load direction string for PyNite compatibility
+
+        PyNite convention:
+        - Local: 'Fx', 'Fy', 'Fz', 'Mx', 'My', 'Mz' (uppercase F/M + lowercase axis)
+        - Global: 'FX', 'FY', 'FZ', 'MX', 'MY', 'MZ' (all uppercase)
+
+        The axis letter (second character) determines coordinate system:
+        - Lowercase axis letter (x, y, z) → Local coordinates
+        - Uppercase axis letter (X, Y, Z) → Global coordinates
+        """
+        if not direction or len(direction) < 2:
+            return direction
+
+        # First character should be F or M (Force or Moment)
+        first_char = direction[0].upper()
+        # Second character (axis) determines if local or global
+        axis_char = direction[1]
+
+        if axis_char.isupper():
+            # Global coordinates - all uppercase
+            return first_char + axis_char.upper()
+        else:
+            # Local coordinates - F/M uppercase + axis lowercase
+            return first_char + axis_char.lower()
+
     def _add_nodal_load(self, load: Dict, case: Optional[str] = None):
         """Add point loads to a node with optional case parameter"""
         node_name = load['node']
@@ -172,7 +199,7 @@ class PyNiteWebAnalyzer:
     def _add_distributed_load(self, load: Dict, case: Optional[str] = None):
         """Add distributed load to a member with optional case parameter"""
         member_name = load['element']
-        direction = load['direction']
+        direction = self._normalize_direction(load['direction'])
         w1 = float(load['w1']) * 1000  # Convert kN/m to N/m
         w2 = float(load['w2']) * 1000  # Convert kN/m to N/m
         x1 = float(load.get('x1', 0))  # m
@@ -187,7 +214,7 @@ class PyNiteWebAnalyzer:
     def _add_element_point_load(self, load: Dict, case: Optional[str] = None):
         """Add point load to a member at specific distance with optional case parameter"""
         member_name = load['element']
-        direction = load['direction']
+        direction = self._normalize_direction(load['direction'])
         magnitude = float(load['magnitude']) * 1000  # Convert kN to N (or kNm to Nm)
         distance = float(load['distance'])  # m from element start
 

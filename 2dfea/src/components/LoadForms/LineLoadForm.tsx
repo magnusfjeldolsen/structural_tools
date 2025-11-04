@@ -40,9 +40,19 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
       return;
     }
 
+    const w1 = parseFloat((loadParameters.w1 as any) || '0');
+    const w2 = parseFloat((loadParameters.w2 as any) || '0');
+
+    if (w1 === 0 && w2 === 0) {
+      alert('Please enter at least one magnitude value');
+      return;
+    }
+
     // Start load creation mode - user will click to draw a line on elements
     setLoadCreationMode('lineLoad', {
       direction,
+      w1,
+      w2,
       case: activeLoadCase,
     });
   };
@@ -78,8 +88,28 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
         </div>
       </div>
 
-      <div style={infoStyle}>
-        Distributes load across multiple elements proportionally
+      <div style={formGroupStyle}>
+        <label style={labelStyle}>Start (kN/m)</label>
+        <input
+          type="number"
+          step="0.1"
+          value={loadParameters.w1 || ''}
+          onChange={(e) => handleParameterChange('w1', e.target.value ? parseFloat(e.target.value) : 0)}
+          placeholder="w1"
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={formGroupStyle}>
+        <label style={labelStyle}>End (kN/m)</label>
+        <input
+          type="number"
+          step="0.1"
+          value={loadParameters.w2 || ''}
+          onChange={(e) => handleParameterChange('w2', e.target.value ? parseFloat(e.target.value) : 0)}
+          placeholder="w2"
+          style={inputStyle}
+        />
       </div>
 
       <button onClick={handleCreateLoad} style={createButtonStyle}>
@@ -121,6 +151,15 @@ const selectStyle: React.CSSProperties = {
   minWidth: '60px',
 };
 
+const inputStyle: React.CSSProperties = {
+  padding: '4px 6px',
+  border: `1px solid ${theme.colors.border}`,
+  borderRadius: '3px',
+  fontSize: '12px',
+  boxSizing: 'border-box',
+  width: '80px',
+};
+
 const directionGroupStyle: React.CSSProperties = {
   display: 'flex',
   gap: '4px',
@@ -136,13 +175,6 @@ const toggleButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontWeight: 'bold',
   whiteSpace: 'nowrap',
-};
-
-const infoStyle: React.CSSProperties = {
-  fontSize: '11px',
-  color: theme.colors.textSecondary,
-  fontStyle: 'italic',
-  flex: '0 1 auto',
 };
 
 const createButtonStyle: React.CSSProperties = {

@@ -21,6 +21,17 @@ import { findNearestNode, findNearestElement, getSnappedPosition } from '../geom
 import { calculateDeformedElementShape } from '../geometry/deformationUtils';
 import { findNodesInRect, findElementsInRect } from '../geometry/selectionUtils';
 import { isLocalDirection } from '../utils/coordinateUtils';
+import {
+  findExtremeIndices,
+  findDisplacementExtremes,
+  getLocalPositionFromIndex,
+} from '../utils/diagramLabelUtils';
+import {
+  getElementAngle,
+  getPointAlongElement,
+  calculateLabelWorldPos,
+  shouldLabelBeAbove,
+} from '../utils/labelPositioning';
 
 interface CanvasViewProps {
   width: number;
@@ -92,6 +103,12 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const axialDiagramScale = useUIStore((state) => state.axialDiagramScale);
   const axialDiagramScaleManual = useUIStore((state) => state.axialDiagramScaleManual);
   const useManualAxialDiagramScale = useUIStore((state) => state.useManualAxialDiagramScale);
+
+  // Label visibility states
+  const showDisplacementLabels = useUIStore((state) => state.showDisplacementLabels);
+  const showMomentLabels = useUIStore((state) => state.showMomentLabels);
+  const showShearLabels = useUIStore((state) => state.showShearLabels);
+  const showAxialLabels = useUIStore((state) => state.showAxialLabels);
 
   // Snapping state
   const snapEnabled = useUIStore((state) => state.snapEnabled);
@@ -1243,7 +1260,60 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         screenPoints.push(sx, sy);
       }
 
-      return (
+      // Find max/min displacement magnitudes
+      const extremes = findDisplacementExtremes(diagram.deflections_dx, diagram.deflections_dy);
+      const labelElements: React.ReactNode[] = [];
+
+      // Render max/min labels if enabled
+      if (showDisplacementLabels && (extremes.maxMagnitude > 0 || extremes.minMagnitude > 0)) {
+        const angle = getElementAngle([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y]);
+
+        // Max displacement label
+        const maxLocalPos = getLocalPositionFromIndex(extremes.maxIndex, diagram.deflections_dx.length);
+        const maxWorldPos = getPointAlongElement([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y], maxLocalPos);
+        const maxLabelWorldPos = calculateLabelWorldPos(maxWorldPos, angle, 0.15, true);
+        const [maxScreenX, maxScreenY] = toScreen(maxLabelWorldPos[0], maxLabelWorldPos[1]);
+
+        labelElements.push(
+          <Text
+            key={`disp-max-label-${element.name}`}
+            x={maxScreenX}
+            y={maxScreenY}
+            text={`max: ${extremes.maxMagnitude.toFixed(2)} mm`}
+            fontSize={12}
+            fontFamily="Arial"
+            fill="#FF6B6B"
+            align="center"
+            verticalAlign="middle"
+            offsetX={45}
+          />
+        );
+
+        // Min displacement label (if significantly different from zero)
+        if (Math.abs(extremes.minMagnitude) > 0.01) {
+          const minLocalPos = getLocalPositionFromIndex(extremes.minIndex, diagram.deflections_dx.length);
+          const minWorldPos = getPointAlongElement([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y], minLocalPos);
+          const minLabelWorldPos = calculateLabelWorldPos(minWorldPos, angle, 0.15, false);
+          const [minScreenX, minScreenY] = toScreen(minLabelWorldPos[0], minLabelWorldPos[1]);
+
+          labelElements.push(
+            <Text
+              key={`disp-min-label-${element.name}`}
+              x={minScreenX}
+              y={minScreenY}
+              text={`min: ${extremes.minMagnitude.toFixed(2)} mm`}
+              fontSize={12}
+              fontFamily="Arial"
+              fill="#FF6B6B"
+              align="center"
+              verticalAlign="middle"
+              offsetX={45}
+            />
+          );
+        }
+      }
+
+      return [
         <Line
           key={`displaced-${element.name}`}
           points={screenPoints}
@@ -1252,8 +1322,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           lineCap="round"
           lineJoin="round"
           dash={[5, 5]}
-        />
-      );
+        />,
+        ...labelElements,
+      ];
     });
   };
 
@@ -1289,6 +1360,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const diagram = analysisResults.diagrams[element.name];
       if (!diagram) return null;
 
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) return null;
+
       const posI = getNodePos(element.nodeI);
       const posJ = getNodePos(element.nodeJ);
       if (!posI || !posJ) return null;
@@ -1304,7 +1379,62 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         true // Flip moment diagram
       );
 
-      return (
+      // Find max/min moments
+      const extremes = findExtremeIndices(correctedMoments);
+      const labelElements: React.ReactNode[] = [];
+
+      // Render max/min labels if enabled
+      if (showMomentLabels) {
+        const angle = getElementAngle([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y]);
+
+        // Max moment label
+        const maxLocalPos = getLocalPositionFromIndex(extremes.maxIndex, correctedMoments.length);
+        const maxWorldPos = getPointAlongElement([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y], maxLocalPos);
+        const isMaxAbove = shouldLabelBeAbove(angle, true);
+        const maxLabelWorldPos = calculateLabelWorldPos(maxWorldPos, angle, 0.2, isMaxAbove);
+        const [maxScreenX, maxScreenY] = toScreen(maxLabelWorldPos[0], maxLabelWorldPos[1]);
+
+        labelElements.push(
+          <Text
+            key={`moment-max-label-${element.name}`}
+            x={maxScreenX}
+            y={maxScreenY}
+            text={`max: ${extremes.maxValue.toFixed(2)} kNm`}
+            fontSize={11}
+            fontFamily="Arial"
+            fill="#9C27B0"
+            align="center"
+            verticalAlign="middle"
+            offsetX={50}
+          />
+        );
+
+        // Min moment label
+        if (extremes.minValue < 0) {
+          const minLocalPos = getLocalPositionFromIndex(extremes.minIndex, correctedMoments.length);
+          const minWorldPos = getPointAlongElement([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y], minLocalPos);
+          const isMinAbove = shouldLabelBeAbove(angle, false);
+          const minLabelWorldPos = calculateLabelWorldPos(minWorldPos, angle, 0.2, isMinAbove);
+          const [minScreenX, minScreenY] = toScreen(minLabelWorldPos[0], minLabelWorldPos[1]);
+
+          labelElements.push(
+            <Text
+              key={`moment-min-label-${element.name}`}
+              x={minScreenX}
+              y={minScreenY}
+              text={`min: ${extremes.minValue.toFixed(2)} kNm`}
+              fontSize={11}
+              fontFamily="Arial"
+              fill="#9C27B0"
+              align="center"
+              verticalAlign="middle"
+              offsetX={50}
+            />
+          );
+        }
+      }
+
+      return [
         <Line
           key={`moment-${element.name}`}
           points={path}
@@ -1312,8 +1442,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           stroke="#9C27B0"
           strokeWidth={1.5}
           closed
-        />
-      );
+        />,
+        ...labelElements,
+      ];
     });
   };
 
@@ -1328,6 +1459,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     return elements.map((element) => {
       const diagram = analysisResults.diagrams[element.name];
       if (!diagram) return null;
+
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) return null;
 
       const posI = getNodePos(element.nodeI);
       const posJ = getNodePos(element.nodeJ);
@@ -1344,7 +1479,62 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         false
       );
 
-      return (
+      // Find max/min shears
+      const extremes = findExtremeIndices(correctedShears);
+      const labelElements: React.ReactNode[] = [];
+
+      // Render max/min labels if enabled
+      if (showShearLabels) {
+        const angle = getElementAngle([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y]);
+
+        // Max shear label
+        const maxLocalPos = getLocalPositionFromIndex(extremes.maxIndex, correctedShears.length);
+        const maxWorldPos = getPointAlongElement([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y], maxLocalPos);
+        const isMaxAbove = shouldLabelBeAbove(angle, true);
+        const maxLabelWorldPos = calculateLabelWorldPos(maxWorldPos, angle, 0.18, isMaxAbove);
+        const [maxScreenX, maxScreenY] = toScreen(maxLabelWorldPos[0], maxLabelWorldPos[1]);
+
+        labelElements.push(
+          <Text
+            key={`shear-max-label-${element.name}`}
+            x={maxScreenX}
+            y={maxScreenY}
+            text={`max: ${extremes.maxValue.toFixed(2)} kN`}
+            fontSize={11}
+            fontFamily="Arial"
+            fill="#FF9800"
+            align="center"
+            verticalAlign="middle"
+            offsetX={45}
+          />
+        );
+
+        // Min shear label
+        if (extremes.minValue < 0) {
+          const minLocalPos = getLocalPositionFromIndex(extremes.minIndex, correctedShears.length);
+          const minWorldPos = getPointAlongElement([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y], minLocalPos);
+          const isMinAbove = shouldLabelBeAbove(angle, false);
+          const minLabelWorldPos = calculateLabelWorldPos(minWorldPos, angle, 0.18, isMinAbove);
+          const [minScreenX, minScreenY] = toScreen(minLabelWorldPos[0], minLabelWorldPos[1]);
+
+          labelElements.push(
+            <Text
+              key={`shear-min-label-${element.name}`}
+              x={minScreenX}
+              y={minScreenY}
+              text={`min: ${extremes.minValue.toFixed(2)} kN`}
+              fontSize={11}
+              fontFamily="Arial"
+              fill="#FF9800"
+              align="center"
+              verticalAlign="middle"
+              offsetX={45}
+            />
+          );
+        }
+      }
+
+      return [
         <Line
           key={`shear-${element.name}`}
           points={path}
@@ -1352,8 +1542,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           stroke="#FF9800"
           strokeWidth={1.5}
           closed
-        />
-      );
+        />,
+        ...labelElements,
+      ];
     });
   };
 
@@ -1368,6 +1559,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     return elements.map((element) => {
       const diagram = analysisResults.diagrams[element.name];
       if (!diagram) return null;
+
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) return null;
 
       const posI = getNodePos(element.nodeI);
       const posJ = getNodePos(element.nodeJ);
@@ -1384,7 +1579,62 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         false
       );
 
-      return (
+      // Find max/min axials
+      const extremes = findExtremeIndices(correctedAxials);
+      const labelElements: React.ReactNode[] = [];
+
+      // Render max/min labels if enabled
+      if (showAxialLabels) {
+        const angle = getElementAngle([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y]);
+
+        // Max axial label
+        const maxLocalPos = getLocalPositionFromIndex(extremes.maxIndex, correctedAxials.length);
+        const maxWorldPos = getPointAlongElement([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y], maxLocalPos);
+        const isMaxAbove = shouldLabelBeAbove(angle, true);
+        const maxLabelWorldPos = calculateLabelWorldPos(maxWorldPos, angle, 0.15, isMaxAbove);
+        const [maxScreenX, maxScreenY] = toScreen(maxLabelWorldPos[0], maxLabelWorldPos[1]);
+
+        labelElements.push(
+          <Text
+            key={`axial-max-label-${element.name}`}
+            x={maxScreenX}
+            y={maxScreenY}
+            text={`max: ${extremes.maxValue.toFixed(2)} kN`}
+            fontSize={11}
+            fontFamily="Arial"
+            fill="#4CAF50"
+            align="center"
+            verticalAlign="middle"
+            offsetX={45}
+          />
+        );
+
+        // Min axial label
+        if (extremes.minValue < 0) {
+          const minLocalPos = getLocalPositionFromIndex(extremes.minIndex, correctedAxials.length);
+          const minWorldPos = getPointAlongElement([nodeI.x, nodeI.y], [nodeJ.x, nodeJ.y], minLocalPos);
+          const isMinAbove = shouldLabelBeAbove(angle, false);
+          const minLabelWorldPos = calculateLabelWorldPos(minWorldPos, angle, 0.15, isMinAbove);
+          const [minScreenX, minScreenY] = toScreen(minLabelWorldPos[0], minLabelWorldPos[1]);
+
+          labelElements.push(
+            <Text
+              key={`axial-min-label-${element.name}`}
+              x={minScreenX}
+              y={minScreenY}
+              text={`min: ${extremes.minValue.toFixed(2)} kN`}
+              fontSize={11}
+              fontFamily="Arial"
+              fill="#4CAF50"
+              align="center"
+              verticalAlign="middle"
+              offsetX={45}
+            />
+          );
+        }
+      }
+
+      return [
         <Line
           key={`axial-${element.name}`}
           points={path}
@@ -1392,8 +1642,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           stroke="#4CAF50"
           strokeWidth={1.5}
           closed
-        />
-      );
+        />,
+        ...labelElements,
+      ];
     });
   };
 
