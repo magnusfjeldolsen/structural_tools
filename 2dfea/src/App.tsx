@@ -10,24 +10,25 @@
 import { useEffect, useState } from 'react';
 import { useModelStore } from './store';
 import { useUIStore } from './store/useUIStore';
-import { CanvasView, Toolbar, ResultsPanel, LoadCasePanel } from './components';
+import { CanvasView, Toolbar, ResultsPanel } from './components';
 import { TabBar } from './components/TabBar';
 import { LeftCADPanel } from './components/LeftCADPanel';
 import { CommandInput } from './components/CommandInput';
 import { CoordinateDisplay } from './components/CoordinateDisplay';
 import { SnapBar } from './components/SnapBar';
 import { LoadInputDialog } from './components/LoadInputDialog';
-import { LoadListPanel } from './components/LoadListPanel';
 import { LoadContextMenu } from './components/LoadContextMenu';
 import { NodesTab } from './components/NodesTab';
 import { ElementsTab } from './components/ElementsTab';
+import { LoadsTabToolbar } from './components/LoadsTabToolbar';
+import { LoadCreationPanel } from './components/LoadCreationPanel';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { theme } from './styles/theme';
 
 export default function App() {
   const [initStatus, setInitStatus] = useState<'pending' | 'loading' | 'ready' | 'error'>('pending');
   const [initError, setInitError] = useState<string | null>(null);
-  const [rightPanelTab, setRightPanelTab] = useState<'nodes' | 'elements' | 'loadcases' | 'loads' | 'results'>('nodes');
+  const [rightPanelTab, setRightPanelTab] = useState<'nodes' | 'elements' | 'results'>('nodes');
   const [rightPanelWidth, setRightPanelWidth] = useState(30); // Percentage of viewport width
   const [isResizingPanel, setIsResizingPanel] = useState(false);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
@@ -196,17 +197,27 @@ export default function App() {
         overflow: 'hidden',
       }}>
         {/* Canvas View - dynamic width based on right panel size */}
-        <div style={{ width: `${100 - rightPanelWidth}%`, overflow: 'hidden', position: 'relative' }}>
+        <div style={{ width: `${100 - rightPanelWidth}%`, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+          {/* Loads Tab Toolbar - visible only in Loads tab */}
+          {activeTab === 'loads' && (
+            <>
+              <LoadsTabToolbar />
+              <LoadCreationPanel />
+            </>
+          )}
+
           {/* Left CAD Panel - visible in Structure and Loads tabs */}
           {(activeTab === 'structure' || activeTab === 'loads') && <LeftCADPanel />}
 
-          <CanvasView width={window.innerWidth * ((100 - rightPanelWidth) / 100)} height={window.innerHeight - 60} />
+          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+            <CanvasView width={window.innerWidth * ((100 - rightPanelWidth) / 100)} height={window.innerHeight - 60} />
 
-          {/* Coordinate Display - bottom left of canvas */}
-          <CoordinateDisplay />
+            {/* Coordinate Display - bottom left of canvas */}
+            <CoordinateDisplay />
 
-          {/* Snap Bar - bottom right of canvas */}
-          <SnapBar />
+            {/* Snap Bar - bottom right of canvas */}
+            <SnapBar />
+          </div>
         </div>
 
         {/* Resizable divider */}
@@ -223,14 +234,14 @@ export default function App() {
 
         {/* Right Panel with Tabs - dynamic width */}
         <div style={{ width: `${rightPanelWidth}%`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {/* Tab Bar - reordered: Nodes, Elements, Load Cases, Loads, Results */}
+          {/* Tab Bar - Nodes, Elements, Results */}
           <div style={{
             display: 'flex',
             backgroundColor: theme.colors.bgLight,
             borderBottom: `2px solid ${theme.colors.border}`,
             overflowX: 'auto',
           }}>
-            {(['nodes', 'elements', 'loadcases', 'loads', 'results'] as const).map((tab) => (
+            {(['nodes', 'elements', 'results'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setRightPanelTab(tab)}
@@ -249,8 +260,6 @@ export default function App() {
               >
                 {tab === 'nodes' && 'Nodes'}
                 {tab === 'elements' && 'Elements'}
-                {tab === 'loadcases' && 'Load Cases'}
-                {tab === 'loads' && 'Loads'}
                 {tab === 'results' && 'Results'}
               </button>
             ))}
@@ -260,10 +269,6 @@ export default function App() {
           <div style={{ flex: 1, overflow: 'auto' }}>
             {rightPanelTab === 'nodes' && <NodesTab />}
             {rightPanelTab === 'elements' && <ElementsTab />}
-            {rightPanelTab === 'loadcases' && <LoadCasePanel />}
-            {rightPanelTab === 'loads' && <LoadListPanel onEditLoad={(type, index) => {
-              useUIStore.setState({ loadDialogOpen: true, editingLoadData: { type, index } });
-            }} />}
             {rightPanelTab === 'results' && <ResultsPanel />}
           </div>
         </div>
