@@ -3,7 +3,7 @@
  *
  * Editable table view of all elements in the model
  * Displays: Name, Start Node, End Node, E (GPa), I (m⁴), A (m²)
- * Allows editing of node connectivity and material properties
+ * All fields are editable with validation
  */
 
 import { useState } from 'react';
@@ -14,14 +14,15 @@ import { theme } from '../styles/theme';
 export function ElementsTab() {
   const elements = useModelStore((state) => state.elements);
   const nodes = useModelStore((state) => state.nodes);
-  const updateElement = useModelStore((state) => state.updateElement);
   const selectedElements = useModelStore((state) => state.selectedElements);
   const selectElement = useModelStore((state) => state.selectElement);
   const clearSelection = useModelStore((state) => state.clearSelection);
+  const updateElement = useModelStore((state) => state.updateElement);
   const activeTab = useUIStore((state) => state.activeTab);
 
   const [editingCell, setEditingCell] = useState<{ elementName: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Only show elements tab in loads or structure tabs
   if (activeTab !== 'loads' && activeTab !== 'structure') {
@@ -43,6 +44,7 @@ export function ElementsTab() {
   };
 
   const handleCellDoubleClick = (elementName: string, field: string, value: string) => {
+    setValidationError(null);
     setEditingCell({ elementName, field });
     setEditValue(value);
   };
@@ -51,7 +53,7 @@ export function ElementsTab() {
     setEditValue(e.target.value);
   };
 
-  const handleCellSave = (elementName: string, field: string) => {
+  const validateAndSave = (elementName: string, field: string) => {
     const element = elements.find((e) => e.name === elementName);
     if (!element) return;
 
@@ -59,48 +61,100 @@ export function ElementsTab() {
       const updates: any = {};
 
       switch (field) {
-        case 'nodeI':
-          if (!nodes.find((n) => n.name === editValue)) {
-            alert('Node not found');
+        case 'name': {
+          const newName = editValue.trim();
+          if (!newName) {
+            setValidationError('Element name cannot be empty');
             return;
           }
-          updates.nodeI = editValue;
-          break;
-        case 'nodeJ':
-          if (!nodes.find((n) => n.name === editValue)) {
-            alert('Node not found');
+          // Check for duplicate names
+          const isDuplicate = elements.some((e) => e.name !== elementName && e.name === newName);
+          if (isDuplicate) {
+            setValidationError(`Element name "${newName}" already exists`);
             return;
           }
-          updates.nodeJ = editValue;
+          updates.name = newName;
+          updateElement(elementName, updates);
+          setEditingCell(null);
+          return;
+        }
+
+        case 'nodeI': {
+          const nodeIName = editValue.trim();
+          if (!nodeIName) {
+            setValidationError('Start node cannot be empty');
+            return;
+          }
+          if (!nodes.find((n) => n.name === nodeIName)) {
+            setValidationError(`Node "${nodeIName}" not found`);
+            return;
+          }
+          // Check for self-loop
+          if (nodeIName === element.nodeJ) {
+            setValidationError('Start and end nodes cannot be the same');
+            return;
+          }
+          updates.nodeI = nodeIName;
           break;
-        case 'E':
+        }
+
+        case 'nodeJ': {
+          const nodeJName = editValue.trim();
+          if (!nodeJName) {
+            setValidationError('End node cannot be empty');
+            return;
+          }
+          if (!nodes.find((n) => n.name === nodeJName)) {
+            setValidationError(`Node "${nodeJName}" not found`);
+            return;
+          }
+          // Check for self-loop
+          if (nodeJName === element.nodeI) {
+            setValidationError('Start and end nodes cannot be the same');
+            return;
+          }
+          updates.nodeJ = nodeJName;
+          break;
+        }
+
+        case 'E': {
           const E = parseFloat(editValue);
           if (isNaN(E) || E <= 0) {
-            alert('E must be a positive number');
+            setValidationError('E (Young\'s Modulus) must be a positive number');
             return;
           }
           updates.E = E;
           break;
-        case 'I':
+        }
+
+        case 'I': {
           const I = parseFloat(editValue);
           if (isNaN(I) || I <= 0) {
-            alert('I must be a positive number');
+            setValidationError('I (Moment of Inertia) must be a positive number');
             return;
           }
           updates.I = I;
           break;
-        case 'A':
+        }
+
+        case 'A': {
           const A = parseFloat(editValue);
           if (isNaN(A) || A <= 0) {
-            alert('A must be a positive number');
+            setValidationError('A (Cross-sectional Area) must be a positive number');
             return;
           }
           updates.A = A;
           break;
+        }
       }
+
       updateElement(elementName, updates);
+      setValidationError(null);
     } catch (error) {
-      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setValidationError(
+        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+      return;
     }
 
     setEditingCell(null);
@@ -109,10 +163,11 @@ export function ElementsTab() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       if (editingCell) {
-        handleCellSave(editingCell.elementName, editingCell.field);
+        validateAndSave(editingCell.elementName, editingCell.field);
       }
     } else if (e.key === 'Escape') {
       setEditingCell(null);
+      setValidationError(null);
     }
   };
 
@@ -140,7 +195,24 @@ export function ElementsTab() {
   });
 
   return (
-    <div style={{ padding: '12px', overflow: 'auto' }}>
+    <div style={{ padding: '12px', overflow: 'auto', display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Validation Error Alert */}
+      {validationError && (
+        <div
+          style={{
+            backgroundColor: '#FFEBEE',
+            border: `1px solid ${theme.colors.error || '#C62828'}`,
+            borderRadius: '4px',
+            padding: '8px 12px',
+            marginBottom: '12px',
+            color: theme.colors.error || '#C62828',
+            fontSize: '12px',
+          }}
+        >
+          ⚠️ {validationError}
+        </div>
+      )}
+
       {elements.length === 0 ? (
         <p style={{ color: theme.colors.textSecondary, textAlign: 'center', padding: '20px' }}>
           No elements yet. Create elements in the Structure tab.
@@ -171,14 +243,42 @@ export function ElementsTab() {
                   }}
                   onMouseEnter={(e) => {
                     if (!editingCell) {
-                      (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isSelected ? '#BBDEFB' : '#F5F5F5';
+                      (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isSelected
+                        ? '#BBDEFB'
+                        : '#F5F5F5';
                     }
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isSelected ? '#E3F2FD' : theme.colors.bgWhite;
+                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isSelected
+                      ? '#E3F2FD'
+                      : theme.colors.bgWhite;
                   }}
                 >
-                  <td style={getCellStyle(isSelected, false)}>{element.name}</td>
+                  {/* Name */}
+                  <td
+                    style={getCellStyle(isSelected, editingCell?.elementName === element.name && editingCell.field === 'name')}
+                    onDoubleClick={() => handleCellDoubleClick(element.name, 'name', element.name)}
+                  >
+                    {editingCell?.elementName === element.name && editingCell.field === 'name' ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editValue}
+                        onChange={handleCellChange}
+                        onBlur={() => validateAndSave(element.name, 'name')}
+                        onKeyDown={handleKeyDown}
+                        style={{
+                          width: '100%',
+                          padding: '4px',
+                          border: `1px solid ${theme.colors.primary}`,
+                          borderRadius: '2px',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    ) : (
+                      element.name
+                    )}
+                  </td>
 
                   {/* Start Node - Editable Dropdown */}
                   <td
@@ -190,7 +290,7 @@ export function ElementsTab() {
                         autoFocus
                         value={editValue}
                         onChange={handleCellChange}
-                        onBlur={() => handleCellSave(element.name, 'nodeI')}
+                        onBlur={() => validateAndSave(element.name, 'nodeI')}
                         onKeyDown={handleKeyDown}
                         style={{
                           width: '100%',
@@ -199,7 +299,7 @@ export function ElementsTab() {
                           borderRadius: '2px',
                         }}
                       >
-                        <option value="">Select node</option>
+                        <option value="">Select start node</option>
                         {nodes.map((node) => (
                           <option key={node.name} value={node.name}>
                             {node.name}
@@ -221,7 +321,7 @@ export function ElementsTab() {
                         autoFocus
                         value={editValue}
                         onChange={handleCellChange}
-                        onBlur={() => handleCellSave(element.name, 'nodeJ')}
+                        onBlur={() => validateAndSave(element.name, 'nodeJ')}
                         onKeyDown={handleKeyDown}
                         style={{
                           width: '100%',
@@ -230,7 +330,7 @@ export function ElementsTab() {
                           borderRadius: '2px',
                         }}
                       >
-                        <option value="">Select node</option>
+                        <option value="">Select end node</option>
                         {nodes.map((node) => (
                           <option key={node.name} value={node.name}>
                             {node.name}
@@ -254,7 +354,7 @@ export function ElementsTab() {
                         step="0.1"
                         value={editValue}
                         onChange={handleCellChange}
-                        onBlur={() => handleCellSave(element.name, 'E')}
+                        onBlur={() => validateAndSave(element.name, 'E')}
                         onKeyDown={handleKeyDown}
                         style={{
                           width: '100%',
@@ -281,7 +381,7 @@ export function ElementsTab() {
                         step="1e-4"
                         value={editValue}
                         onChange={handleCellChange}
-                        onBlur={() => handleCellSave(element.name, 'I')}
+                        onBlur={() => validateAndSave(element.name, 'I')}
                         onKeyDown={handleKeyDown}
                         style={{
                           width: '100%',
@@ -308,7 +408,7 @@ export function ElementsTab() {
                         step="1e-4"
                         value={editValue}
                         onChange={handleCellChange}
-                        onBlur={() => handleCellSave(element.name, 'A')}
+                        onBlur={() => validateAndSave(element.name, 'A')}
                         onKeyDown={handleKeyDown}
                         style={{
                           width: '100%',
