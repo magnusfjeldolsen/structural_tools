@@ -143,6 +143,16 @@ export interface UIState {
   toggleShearDiagram: () => void;
   toggleAxialDiagram: () => void;
 
+  // Label visibility for diagrams and deformations
+  showDisplacementLabels: boolean;
+  showMomentLabels: boolean;
+  showShearLabels: boolean;
+  showAxialLabels: boolean;
+  toggleDisplacementLabels: () => void;
+  toggleMomentLabels: () => void;
+  toggleShearLabels: () => void;
+  toggleAxialLabels: () => void;
+
   // Visualization scales
   displacementScale: number;  // Automatic multiplier for displaced shape
   displacementScaleManual: number;  // User-set multiplier (if useManualDisplacementScale is true)
@@ -267,6 +277,10 @@ const initialState = {
   showMomentDiagram: false,
   showShearDiagram: false,
   showAxialDiagram: false,
+  showDisplacementLabels: true,
+  showMomentLabels: true,
+  showShearLabels: true,
+  showAxialLabels: true,
   displacementScale: 1,  // Auto-calculated value
   displacementScaleManual: 1,  // User-set value
   useManualDisplacementScale: false,  // Start with automatic
@@ -547,6 +561,31 @@ export const useUIStore = create<UIState>()(
       toggleAxialDiagram: () => {
         set((state) => {
           state.showAxialDiagram = !state.showAxialDiagram;
+        });
+      },
+
+      // Label visibility toggles
+      toggleDisplacementLabels: () => {
+        set((state) => {
+          state.showDisplacementLabels = !state.showDisplacementLabels;
+        });
+      },
+
+      toggleMomentLabels: () => {
+        set((state) => {
+          state.showMomentLabels = !state.showMomentLabels;
+        });
+      },
+
+      toggleShearLabels: () => {
+        set((state) => {
+          state.showShearLabels = !state.showShearLabels;
+        });
+      },
+
+      toggleAxialLabels: () => {
+        set((state) => {
+          state.showAxialLabels = !state.showAxialLabels;
         });
       },
 

@@ -52,6 +52,16 @@ export function Toolbar() {
   const setAxialDiagramScaleManual = useUIStore((state) => state.setAxialDiagramScaleManual);
   const resetAxialDiagramScale = useUIStore((state) => state.resetAxialDiagramScale);
 
+  // Label visibility toggles
+  const showDisplacementLabels = useUIStore((state) => state.showDisplacementLabels);
+  const showMomentLabels = useUIStore((state) => state.showMomentLabels);
+  const showShearLabels = useUIStore((state) => state.showShearLabels);
+  const showAxialLabels = useUIStore((state) => state.showAxialLabels);
+  const toggleDisplacementLabels = useUIStore((state) => state.toggleDisplacementLabels);
+  const toggleMomentLabels = useUIStore((state) => state.toggleMomentLabels);
+  const toggleShearLabels = useUIStore((state) => state.toggleShearLabels);
+  const toggleAxialLabels = useUIStore((state) => state.toggleAxialLabels);
+
   const loadExample = useModelStore((state) => state.loadExample);
   const runAnalysis = useModelStore((state) => state.runAnalysis);
   const clearModel = useModelStore((state) => state.clearModel);
@@ -338,6 +348,72 @@ export function Toolbar() {
                   onChange={setAxialDiagramScaleManual}
                   onReset={resetAxialDiagramScale}
                 />
+              )}
+            </div>
+          )}
+
+          {/* Label Toggle Row */}
+          {(showDisplacedShape || showMomentDiagram || showShearDiagram || showAxialDiagram) && (
+            <div
+              style={{
+                display: 'flex',
+                gap: '8px',
+                padding: '8px 12px',
+                borderTop: '1px solid #ccc',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+              }}
+            >
+              <span style={{ fontSize: '12px', fontWeight: 'bold', marginRight: '4px' }}>
+                Labels:
+              </span>
+              {showDisplacedShape && (
+                <button
+                  style={{
+                    ...toggleButtonStyle(showDisplacementLabels),
+                    padding: '4px 10px',
+                    fontSize: '12px',
+                  }}
+                  onClick={toggleDisplacementLabels}
+                >
+                  {showDisplacementLabels ? '✓' : ''} Displacements
+                </button>
+              )}
+              {showMomentDiagram && (
+                <button
+                  style={{
+                    ...toggleButtonStyle(showMomentLabels),
+                    padding: '4px 10px',
+                    fontSize: '12px',
+                  }}
+                  onClick={toggleMomentLabels}
+                >
+                  {showMomentLabels ? '✓' : ''} Moments
+                </button>
+              )}
+              {showShearDiagram && (
+                <button
+                  style={{
+                    ...toggleButtonStyle(showShearLabels),
+                    padding: '4px 10px',
+                    fontSize: '12px',
+                  }}
+                  onClick={toggleShearLabels}
+                >
+                  {showShearLabels ? '✓' : ''} Shears
+                </button>
+              )}
+              {showAxialDiagram && (
+                <button
+                  style={{
+                    ...toggleButtonStyle(showAxialLabels),
+                    padding: '4px 10px',
+                    fontSize: '12px',
+                  }}
+                  onClick={toggleAxialLabels}
+                >
+                  {showAxialLabels ? '✓' : ''} Axials
+                </button>
               )}
             </div>
           )}
