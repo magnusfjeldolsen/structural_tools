@@ -90,7 +90,7 @@ export function LeftCADPanel() {
       style={{
         position: 'absolute',
         left: 0,
-        top: 0,
+        bottom: '60px',
         width: '70px',
         backgroundColor: theme.colors.bgWhite,
         borderRight: `2px solid ${theme.colors.border}`,

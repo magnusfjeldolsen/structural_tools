@@ -1,5 +1,5 @@
 /**
- * Nodal Load Form - Compact expandable form for nodal loads
+ * Nodal Load Form - Compact form content for nodal loads
  */
 
 import { useModelStore, useUIStore } from '../../store';
@@ -10,7 +10,7 @@ interface NodalLoadFormProps {
   onToggleExpand: () => void;
 }
 
-export function NodalLoadForm({ isExpanded, onToggleExpand }: NodalLoadFormProps) {
+export function NodalLoadForm({ isExpanded }: NodalLoadFormProps) {
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const loadParameters = useUIStore((state) => state.loadParameters) || {};
   const setLoadCreationMode = useUIStore((state) => state.setLoadCreationMode);
@@ -44,114 +44,87 @@ export function NodalLoadForm({ isExpanded, onToggleExpand }: NodalLoadFormProps
     });
   };
 
+  // Only render the form content (no button wrapper)
+  if (!isExpanded) return null;
+
   return (
-    <div style={containerStyle}>
-      <button
-        onClick={onToggleExpand}
-        style={{ ...buttonStyle, backgroundColor: isExpanded ? theme.colors.primaryDark : theme.colors.primary }}
-      >
-        Nodal Loads {isExpanded ? '▼' : '▶'}
+    <div style={formContentStyle}>
+      <div style={formGroupStyle}>
+        <label style={labelStyle}>Fx (kN)</label>
+        <input
+          type="number"
+          value={loadParameters.fx || ''}
+          onChange={(e) => handleParameterChange('fx', parseFloat(e.target.value) || 0)}
+          placeholder="0"
+          style={inputStyle}
+          step="0.1"
+        />
+      </div>
+
+      <div style={formGroupStyle}>
+        <label style={labelStyle}>Fy (kN)</label>
+        <input
+          type="number"
+          value={loadParameters.fy || ''}
+          onChange={(e) => handleParameterChange('fy', parseFloat(e.target.value) || 0)}
+          placeholder="0"
+          style={inputStyle}
+          step="0.1"
+        />
+      </div>
+
+      <div style={formGroupStyle}>
+        <label style={labelStyle}>Mz (kNm)</label>
+        <input
+          type="number"
+          value={loadParameters.mz || ''}
+          onChange={(e) => handleParameterChange('mz', parseFloat(e.target.value) || 0)}
+          placeholder="0"
+          style={inputStyle}
+          step="0.1"
+        />
+      </div>
+
+      <button onClick={handleCreateLoad} style={createButtonStyle}>
+        Create Nodal Load → Click Nodes
       </button>
-
-      {isExpanded && (
-        <div style={expandedContentStyle}>
-          <div style={formGroupStyle}>
-            <label style={labelStyle}>Fx (kN)</label>
-            <input
-              type="number"
-              value={loadParameters.fx || ''}
-              onChange={(e) => handleParameterChange('fx', parseFloat(e.target.value) || 0)}
-              placeholder="0"
-              style={inputStyle}
-              step="0.1"
-            />
-          </div>
-
-          <div style={formGroupStyle}>
-            <label style={labelStyle}>Fy (kN)</label>
-            <input
-              type="number"
-              value={loadParameters.fy || ''}
-              onChange={(e) => handleParameterChange('fy', parseFloat(e.target.value) || 0)}
-              placeholder="0"
-              style={inputStyle}
-              step="0.1"
-            />
-          </div>
-
-          <div style={formGroupStyle}>
-            <label style={labelStyle}>Mz (kNm)</label>
-            <input
-              type="number"
-              value={loadParameters.mz || ''}
-              onChange={(e) => handleParameterChange('mz', parseFloat(e.target.value) || 0)}
-              placeholder="0"
-              style={inputStyle}
-              step="0.1"
-            />
-          </div>
-
-          <button onClick={handleCreateLoad} style={createButtonStyle}>
-            Create Nodal Load → Click Nodes
-          </button>
-        </div>
-      )}
     </div>
   );
 }
 
-const containerStyle: React.CSSProperties = {
+const formContentStyle: React.CSSProperties = {
   display: 'flex',
-  flexDirection: 'column',
-  marginBottom: '8px',
-};
-
-const buttonStyle: React.CSSProperties = {
-  padding: '10px',
-  backgroundColor: theme.colors.primary,
-  color: theme.colors.textWhite,
-  border: 'none',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  fontSize: '13px',
-  fontWeight: 'bold',
-  textAlign: 'left',
-};
-
-const expandedContentStyle: React.CSSProperties = {
-  padding: '12px',
-  backgroundColor: '#f9f9f9',
-  border: `1px solid ${theme.colors.border}`,
-  borderTop: 'none',
-  borderBottomLeftRadius: '4px',
-  borderBottomRightRadius: '4px',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '8px',
+  flexDirection: 'row',
+  gap: '12px',
+  alignItems: 'flex-end',
+  flexWrap: 'wrap',
 };
 
 const formGroupStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '4px',
+  flex: '0 1 auto',
+  minWidth: '100px',
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: '12px',
+  fontSize: '11px',
   fontWeight: 'bold',
   color: theme.colors.textPrimary,
 };
 
 const inputStyle: React.CSSProperties = {
-  padding: '6px',
+  padding: '4px 6px',
   border: `1px solid ${theme.colors.border}`,
   borderRadius: '3px',
   fontSize: '12px',
   boxSizing: 'border-box',
+  width: '80px',
 };
 
 const createButtonStyle: React.CSSProperties = {
-  padding: '8px',
+  padding: '6px 12px',
   backgroundColor: theme.colors.success,
   color: theme.colors.textWhite,
   border: 'none',
@@ -159,5 +132,5 @@ const createButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: '12px',
   fontWeight: 'bold',
-  marginTop: '8px',
+  whiteSpace: 'nowrap',
 };

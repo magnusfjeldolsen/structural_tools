@@ -1,7 +1,7 @@
 /**
  * Load Creation Panel
- * Contains expandable load type buttons with compact forms
- * Only one load type can be expanded at a time
+ * Horizontal button bar with expandable form content
+ * Spans from left toolbar to right panel tabs
  */
 
 import { useState } from 'react';
@@ -25,10 +25,29 @@ export function LoadCreationPanel() {
     }
   };
 
+  const buttonLoadTypes: Array<{ type: 'nodal' | 'point' | 'distributed' | 'lineLoad'; label: string }> = [
+    { type: 'nodal', label: 'Nodal Load' },
+    { type: 'point', label: 'Point Load' },
+    { type: 'distributed', label: 'Distributed Load' },
+    { type: 'lineLoad', label: 'Line Load' },
+  ];
+
   return (
     <div style={containerStyle}>
-      <div style={headerStyle}>
-        <h4 style={titleStyle}>Load Creation</h4>
+      {/* Top button row */}
+      <div style={buttonRowStyle}>
+        {buttonLoadTypes.map((btn) => (
+          <button
+            key={btn.type}
+            onClick={() => handleToggleForm(btn.type)}
+            style={{
+              ...buttonStyle,
+              backgroundColor: expandedForm === btn.type ? theme.colors.primaryDark : theme.colors.primary,
+            }}
+          >
+            {btn.label} {expandedForm === btn.type ? '▼' : '▶'}
+          </button>
+        ))}
         {loadCreationMode && (
           <button onClick={cancelLoadCreation} style={cancelButtonStyle}>
             Cancel
@@ -36,32 +55,24 @@ export function LoadCreationPanel() {
         )}
       </div>
 
-      <div style={formsContainerStyle}>
-        <NodalLoadForm
-          isExpanded={expandedForm === 'nodal'}
-          onToggleExpand={() => handleToggleForm('nodal')}
-        />
-        <PointLoadForm
-          isExpanded={expandedForm === 'point'}
-          onToggleExpand={() => handleToggleForm('point')}
-        />
-        <DistributedLoadForm
-          isExpanded={expandedForm === 'distributed'}
-          onToggleExpand={() => handleToggleForm('distributed')}
-        />
-        <LineLoadForm
-          isExpanded={expandedForm === 'lineLoad'}
-          onToggleExpand={() => handleToggleForm('lineLoad')}
-        />
-      </div>
+      {/* Expandable content area */}
+      {expandedForm && (
+        <div style={expandedContentContainerStyle}>
+          {expandedForm === 'nodal' && <NodalLoadForm isExpanded={true} onToggleExpand={() => {}} />}
+          {expandedForm === 'point' && <PointLoadForm isExpanded={true} onToggleExpand={() => {}} />}
+          {expandedForm === 'distributed' && <DistributedLoadForm isExpanded={true} onToggleExpand={() => {}} />}
+          {expandedForm === 'lineLoad' && <LineLoadForm isExpanded={true} onToggleExpand={() => {}} />}
+        </div>
+      )}
 
+      {/* Mode indicator when in creation mode */}
       {loadCreationMode && (
         <div style={modeIndicatorStyle}>
           <span style={modeTextStyle}>
-            {loadCreationMode === 'nodal' && 'Click nodes to apply nodal loads'}
-            {loadCreationMode === 'point' && 'Click elements to apply point loads'}
-            {loadCreationMode === 'distributed' && 'Click elements to apply distributed loads'}
-            {loadCreationMode === 'lineLoad' && 'Click elements to apply line loads'}
+            {loadCreationMode === 'nodal' && '➜ Click nodes to apply nodal loads'}
+            {loadCreationMode === 'point' && '➜ Click elements to apply point loads'}
+            {loadCreationMode === 'distributed' && '➜ Click elements to apply distributed loads'}
+            {loadCreationMode === 'lineLoad' && '➜ Click elements to apply line loads'}
           </span>
         </div>
       )}
@@ -72,51 +83,66 @@ export function LoadCreationPanel() {
 const containerStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  padding: '8px',
   backgroundColor: theme.colors.bgWhite,
   borderBottom: `1px solid ${theme.colors.border}`,
-  gap: '8px',
+  overflow: 'hidden',
 };
 
-const headerStyle: React.CSSProperties = {
+const buttonRowStyle: React.CSSProperties = {
   display: 'flex',
-  justifyContent: 'space-between',
+  gap: '4px',
+  padding: '6px 8px',
+  backgroundColor: theme.colors.bgLight,
   alignItems: 'center',
+  flexWrap: 'wrap',
+  minHeight: '32px',
 };
 
-const titleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: '13px',
+const buttonStyle: React.CSSProperties = {
+  padding: '6px 12px',
+  backgroundColor: theme.colors.primary,
+  color: theme.colors.textWhite,
+  border: 'none',
+  borderRadius: '4px',
+  cursor: 'pointer',
+  fontSize: '12px',
   fontWeight: 'bold',
-  color: theme.colors.textPrimary,
+  whiteSpace: 'nowrap',
+  flex: 'none',
 };
 
 const cancelButtonStyle: React.CSSProperties = {
-  padding: '4px 8px',
+  padding: '6px 12px',
   backgroundColor: theme.colors.error,
   color: theme.colors.textWhite,
   border: 'none',
-  borderRadius: '3px',
+  borderRadius: '4px',
   cursor: 'pointer',
-  fontSize: '11px',
+  fontSize: '12px',
   fontWeight: 'bold',
+  marginLeft: 'auto',
+  whiteSpace: 'nowrap',
 };
 
-const formsContainerStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '4px',
+const expandedContentContainerStyle: React.CSSProperties = {
+  padding: '12px 8px',
+  backgroundColor: '#f9f9f9',
+  borderTop: `1px solid ${theme.colors.border}`,
+  maxHeight: '200px',
+  overflowY: 'auto',
 };
 
 const modeIndicatorStyle: React.CSSProperties = {
-  padding: '8px',
+  padding: '6px 8px',
   backgroundColor: theme.colors.info,
-  borderRadius: '3px',
-  border: `1px solid ${theme.colors.primary}`,
+  borderTop: `1px solid ${theme.colors.primary}`,
 };
 
 const modeTextStyle: React.CSSProperties = {
   color: theme.colors.textWhite,
   fontSize: '12px',
   fontWeight: 'bold',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
 };
