@@ -70,7 +70,7 @@ export function calculateDeformedElementShape(
     y: nodeJ.y + resultJ.DY / 1000,  // mm to m
   };
 
-  // Step 3: Calculate deformed element axis
+  // Step 3: Calculate deformed element axis and angle
   const dx_def = defJ.x - defI.x;
   const dy_def = defJ.y - defI.y;
   const length_def = Math.sqrt(dx_def * dx_def + dy_def * dy_def);
@@ -80,14 +80,21 @@ export function calculateDeformedElementShape(
     return [defI, defJ];
   }
 
-  // Step 4: Local coordinate system unit vectors (on deformed element)
-  // Local x-axis: along deformed element (I→J direction)
-  const ux_local = dx_def / length_def;
-  const uy_local = dy_def / length_def;
+  // Step 4: Local coordinate system using element angle
+  // theta = atan2(dy, dx)
+  // Local X-axis: [cos(theta), sin(theta)]
+  // Local Y-axis: [-sin(theta), cos(theta)]
+  const theta_def = Math.atan2(dy_def, dx_def);
+  const cosTheta = Math.cos(theta_def);
+  const sinTheta = Math.sin(theta_def);
 
-  // Local y-axis: perpendicular to deformed element (90° CCW from local x)
-  const vx_local = -uy_local;
-  const vy_local = ux_local;
+  // Local x-axis unit vector: along deformed element (I→J direction)
+  const ux_local = cosTheta;
+  const uy_local = sinTheta;
+
+  // Local y-axis unit vector: perpendicular to deformed element (90° CCW from local x)
+  const vx_local = -sinTheta;
+  const vy_local = cosTheta;
 
   // Step 5: Build deformed shape points
   const points: DeformedPoint[] = [];

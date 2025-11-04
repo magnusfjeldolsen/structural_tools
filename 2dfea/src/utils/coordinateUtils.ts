@@ -160,6 +160,12 @@ export function getElementAngle(element: Element, nodes: Node[]): number {
 
 /**
  * Get element local coordinate axes in global space
+ *
+ * Local coordinate system is defined by element angle:
+ * - theta = atan2(yJ - yI, xJ - xI)
+ * - Local X-axis: [cos(theta), sin(theta)] (along element)
+ * - Local Y-axis: [-sin(theta), cos(theta)] (perpendicular, 90° CCW)
+ *
  * @param element Element object
  * @param nodes Array of all nodes
  * @returns Object with local axes expressed in global coordinates
@@ -177,13 +183,17 @@ export function getElementLocalAxes(
 
   const dx = nodeJ.x - nodeI.x;
   const dy = nodeJ.y - nodeI.y;
-  const length = Math.sqrt(dx * dx + dy * dy);
 
-  // Local x-axis: along element
-  const localX: [number, number] = [dx / length, dy / length];
+  // Calculate element angle: theta = atan2(dy, dx)
+  const theta = Math.atan2(dy, dx);
+  const cosTheta = Math.cos(theta);
+  const sinTheta = Math.sin(theta);
 
-  // Local y-axis: perpendicular (90° counterclockwise)
-  const localY: [number, number] = [-dy / length, dx / length];
+  // Local X-axis: along element direction
+  const localX: [number, number] = [cosTheta, sinTheta];
+
+  // Local Y-axis: perpendicular (90° counterclockwise from local X)
+  const localY: [number, number] = [-sinTheta, cosTheta];
 
   return { localX, localY };
 }
