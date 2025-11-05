@@ -1,10 +1,30 @@
 {
   "_meta": {
-    "generated": "2025-10-23T07:06:57.902Z",
-    "total_modules": 19,
-    "version": "1.0.0"
+    "generated": "2025-11-05T13:19:29.326Z",
+    "total_modules": 20,
+    "version": "1.0.0",
+    "duplicates_removed": 0,
+    "skipped_count": 3
   },
   "modules": [
+    {
+      "id": "2dfea",
+      "title": "2D FEM - Interactive GUI",
+      "description": "Interactive 2D Finite Element Analysis with visual canvas editor, load case management, and real-time diagram visualization. Perfect for structural engineering analysis and frame design.",
+      "keywords": [
+        "2d analysis",
+        "frame analysis",
+        "fea",
+        "fem",
+        "finite element",
+        "structural analysis",
+        "interactive modeling",
+        "load cases",
+        "structural engineering"
+      ],
+      "url": "./2dfea/index.html",
+      "category": "structural-analysis"
+    },
     {
       "id": "concrete_plate_CFRP",
       "title": "CFRP Concrete Plate Reinforcement Calculator",
@@ -159,7 +179,7 @@
         "structural engineering"
       ],
       "url": "./seismic_ec8/index.html",
-      "category": "other"
+      "category": "structural-analysis"
     },
     {
       "id": "2dframeanalysis",
