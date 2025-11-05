@@ -7,7 +7,7 @@
  * - Escape: Hierarchical cancellation (command input → move → draw → selection → tool)
  * - M: Activate move tool
  * - Delete: Activate delete tool
- * - Ctrl+Space: Run analysis
+ * - Ctrl+Space: Run full analysis (all load cases and combinations)
  */
 
 import { useEffect } from 'react';
@@ -29,7 +29,7 @@ export function useKeyboardShortcuts() {
   const selectedNodes = useModelStore((state) => state.selectedNodes);
   const selectedElements = useModelStore((state) => state.selectedElements);
   const clearSelection = useModelStore((state) => state.clearSelection);
-  const runAnalysis = useModelStore((state) => state.runAnalysis);
+  const runFullAnalysis = useModelStore((state) => state.runFullAnalysis);
   const solver = useModelStore((state) => state.solver);
 
   useEffect(() => {
@@ -93,11 +93,13 @@ export function useKeyboardShortcuts() {
         }
       }
 
-      // Ctrl+Space - run analysis
+      // Ctrl+Space - run full analysis (all load cases and combinations)
       if (e.key === ' ' && e.ctrlKey && !commandInput?.visible) {
         e.preventDefault();
         if (solver) {
-          runAnalysis();
+          runFullAnalysis().catch((error) => {
+            console.error('[Keyboard Shortcut] Full analysis failed:', error);
+          });
         }
       }
 
@@ -125,6 +127,6 @@ export function useKeyboardShortcuts() {
     startMoveCommand,
     clearDrawingElement,
     clearSelection,
-    runAnalysis,
+    runFullAnalysis,
   ]);
 }

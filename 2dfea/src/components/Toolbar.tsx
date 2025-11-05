@@ -69,6 +69,10 @@ export function Toolbar() {
   const isAnalyzing = useModelStore((state) => state.isAnalyzing);
   const solver = useModelStore((state) => state.solver);
   const analysisResults = useModelStore((state) => state.analysisResults);
+  const resultsCache = useModelStore((state) => state.resultsCache);
+
+  // Check if we have any cached results available
+  const hasResults = analysisResults || Object.keys(resultsCache.caseResults).length > 0 || Object.keys(resultsCache.combinationResults).length > 0;
 
   const handleRunFullAnalysis = async () => {
     try {
@@ -259,7 +263,7 @@ export function Toolbar() {
       </div>
 
       {/* Bottom Row: Visualization Controls - Analysis Tab Only */}
-      {activeTab === 'analysis' && analysisResults && (
+      {activeTab === 'analysis' && hasResults && (
         <div
           style={{
             display: 'flex',
@@ -284,28 +288,28 @@ export function Toolbar() {
             <button
               style={toggleButtonStyle(showDisplacedShape)}
               onClick={toggleDisplacedShape}
-              disabled={!analysisResults}
+              disabled={!hasResults}
             >
               {showDisplacedShape ? '✓' : ''} Displaced Shape
             </button>
             <button
               style={toggleButtonStyle(showMomentDiagram)}
               onClick={toggleMomentDiagram}
-              disabled={!analysisResults}
+              disabled={!hasResults}
             >
               {showMomentDiagram ? '✓' : ''} Moment
             </button>
             <button
               style={toggleButtonStyle(showShearDiagram)}
               onClick={toggleShearDiagram}
-              disabled={!analysisResults}
+              disabled={!hasResults}
             >
               {showShearDiagram ? '✓' : ''} Shear
             </button>
             <button
               style={toggleButtonStyle(showAxialDiagram)}
               onClick={toggleAxialDiagram}
-              disabled={!analysisResults}
+              disabled={!hasResults}
             >
               {showAxialDiagram ? '✓' : ''} Axial
             </button>
