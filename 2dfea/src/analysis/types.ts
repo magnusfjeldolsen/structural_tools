@@ -177,6 +177,31 @@ export interface LoadCombinationDefinition {
 }
 
 // ============================================================================
+// RESULTS CACHING & QUERYING
+// ============================================================================
+
+export interface AnalysisStatus {
+  totalCases: number;
+  totalCombinations: number;
+  successfulCases: number;
+  successfulCombinations: number;
+  failedCases: Array<{ name: string; error: string }>;
+  failedCombinations: Array<{ name: string; error: string }>;
+}
+
+export interface ResultsCache {
+  // Indexed results by case/combination name for O(1) retrieval
+  caseResults: Record<string, AnalysisResults>;
+  combinationResults: Record<string, AnalysisResults>;
+
+  // Metadata about the analysis run
+  lastUpdated: number;  // Unix timestamp
+
+  // Status tracking from last full analysis run
+  analysisStatus: AnalysisStatus;
+}
+
+// ============================================================================
 // UI STATE
 // ============================================================================
 
