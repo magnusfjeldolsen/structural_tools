@@ -2,6 +2,10 @@
   "name": "2dfea",
   "version": "0.1.0",
   "type": "module",
+  "description": "2D Finite Element Method Interactive Modeling and Analysis GUI",
+  "homepage": "https://magnusfjeldolsen.github.io/structural_tools/2dfea/",
+  "author": "Magnus Fjeld Olsen",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
