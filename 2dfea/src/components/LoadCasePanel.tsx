@@ -3,7 +3,7 @@
  * Manages load cases and combinations for analysis
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useModelStore } from '../store';
 
 export function LoadCasePanel() {
@@ -19,6 +19,13 @@ export function LoadCasePanel() {
   const [newCaseName, setNewCaseName] = useState('');
   const [newComboName, setNewComboName] = useState('');
   const [comboFactors, setComboFactors] = useState<Record<string, number>>({});
+
+  // Initialize activeLoadCase to first load case if not set
+  useEffect(() => {
+    if (loadCases.length > 0 && !activeLoadCase) {
+      setActiveLoadCase(loadCases[0].name);
+    }
+  }, [loadCases, activeLoadCase, setActiveLoadCase]);
 
   const handleAddCase = () => {
     if (!newCaseName.trim()) return;
@@ -78,10 +85,9 @@ export function LoadCasePanel() {
           <h4 style={subHeaderStyle}>Active Load Case (for visualization)</h4>
           <select
             value={activeLoadCase || ''}
-            onChange={(e) => setActiveLoadCase(e.target.value || null)}
+            onChange={(e) => setActiveLoadCase(e.target.value)}
             style={selectStyle}
           >
-            <option value="">All Cases</option>
             {loadCases.map((lc) => (
               <option key={lc.name} value={lc.name}>
                 {lc.name}

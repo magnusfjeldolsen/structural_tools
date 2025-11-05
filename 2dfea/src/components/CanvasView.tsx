@@ -1992,7 +1992,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
       if (elementLength < 1) return; // Skip tiny elements
 
-      // Perpendicular direction (pointing up/left from element)
+      // Perpendicular direction (90° CCW rotation from element direction)
       const perpX = -dy / elementLength;
       const perpY = dx / elementLength;
 
@@ -2017,28 +2017,31 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           arrowDirX = dx / elementLength;
           arrowDirY = dy / elementLength;
         } else {
-          // Fy: perpendicular to element (90° CCW)
-          arrowDirX = perpX;
-          arrowDirY = perpY;
+          // Fy: perpendicular to element (90° CW - pointing away from element)
+          // Invert the perpendicular direction to correct the visual orientation
+          arrowDirX = -perpX;
+          arrowDirY = -perpY;
         }
       } else {
         // Global coordinate system: horizontal or vertical
         if (baseDir === 'fx') {
-          // FX: horizontal
+          // FX: horizontal (pointing right)
           arrowDirX = 1;
           arrowDirY = 0;
         } else {
-          // FY: vertical
+          // FY: vertical (pointing down, since positive Y in screen space is down)
           arrowDirX = 0;
-          arrowDirY = 1;
+          arrowDirY = -1;
         }
       }
 
-      // Offset perpendicular to load direction (arrows point away from element)
+      // Offset in direction of the load (trapezoid extends in load direction)
       const offsetDir = load.w1 > 0 ? 1 : -1;
-      // Perpendicular to arrow direction: rotate 90° CCW
-      const offsetX = -arrowDirY;
-      const offsetY = arrowDirX;
+
+      // Trapezoid extends in the same direction as the arrows (both local and global)
+      // Offset uses the arrow direction to create a region that follows the load arrows
+      const offsetX = arrowDirX;
+      const offsetY = arrowDirY;
 
       const w1Scale = Math.abs(load.w1) * loadScale;
       const w2Scale = Math.abs(load.w2) * loadScale;

@@ -18,6 +18,7 @@ interface LoadCreationPanelProps {
 export function LoadCreationPanel({ expandedForm }: LoadCreationPanelProps) {
   const loadCreationMode = useUIStore((state) => state.loadCreationMode);
   const cancelLoadCreation = useUIStore((state) => state.cancelLoadCreation);
+  const resetFormParameters = useUIStore((state) => state.resetFormParameters);
 
   return (
     <div style={containerStyle}>
@@ -30,7 +31,13 @@ export function LoadCreationPanel({ expandedForm }: LoadCreationPanelProps) {
           {expandedForm === 'lineLoad' && <LineLoadForm isExpanded={true} onToggleExpand={() => {}} />}
 
           {loadCreationMode && (
-            <button onClick={cancelLoadCreation} style={cancelButtonStyle}>
+            <button
+              onClick={() => {
+                cancelLoadCreation();
+                resetFormParameters();
+              }}
+              style={cancelButtonStyle}
+            >
               Cancel
             </button>
           )}

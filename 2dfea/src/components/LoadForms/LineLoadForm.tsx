@@ -12,17 +12,19 @@ interface LineLoadFormProps {
 
 export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
-  const loadParameters = useUIStore((state) => state.loadParameters) || {};
+  const formParameters = useUIStore((state) => state.formParameters) || {};
+  const setFormParameters = useUIStore((state) => state.setFormParameters);
   const setLoadCreationMode = useUIStore((state) => state.setLoadCreationMode);
+  const resetFormParameters = useUIStore((state) => state.resetFormParameters);
 
-  const isLocal = (loadParameters.direction as string)?.toLowerCase() === loadParameters.direction;
+  const isLocal = (formParameters.direction as string)?.toLowerCase() === formParameters.direction;
 
   const handleParameterChange = (key: string, value: string | number) => {
-    setLoadCreationMode('lineLoad', { ...loadParameters, [key]: value });
+    setFormParameters({ ...formParameters, [key]: value });
   };
 
   const toggleCoordinateSystem = () => {
-    const currentDir = (loadParameters.direction as string) || 'Fx';
+    const currentDir = (formParameters.direction as string) || 'Fx';
     const newDir = isLocal ? currentDir.toUpperCase() : currentDir.toLowerCase();
     handleParameterChange('direction', newDir);
   };
@@ -34,14 +36,14 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
       return;
     }
 
-    const direction = (loadParameters.direction as string) || 'Fx';
+    const direction = (formParameters.direction as string) || 'Fx';
     if (!['Fx', 'Fy', 'fx', 'fy'].includes(direction)) {
       alert('Please select a direction');
       return;
     }
 
-    const w1 = parseFloat((loadParameters.w1 as any) || '0');
-    const w2 = parseFloat((loadParameters.w2 as any) || '0');
+    const w1 = parseFloat((formParameters.w1 as any) || '0');
+    const w2 = parseFloat((formParameters.w2 as any) || '0');
 
     if (w1 === 0 && w2 === 0) {
       alert('Please enter at least one magnitude value');
@@ -55,6 +57,8 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
       w2,
       case: activeLoadCase,
     });
+    // Reset form parameters after entering creation mode
+    resetFormParameters();
   };
 
   // Only render the form content (no button wrapper)
@@ -66,7 +70,7 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
         <label style={labelStyle}>Direction</label>
         <div style={directionGroupStyle}>
           <select
-            value={loadParameters.direction || 'Fx'}
+            value={formParameters.direction || 'Fx'}
             onChange={(e) => handleParameterChange('direction', e.target.value)}
             style={selectStyle}
           >
@@ -93,7 +97,7 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
         <input
           type="number"
           step="0.1"
-          value={loadParameters.w1 || ''}
+          value={formParameters.w1 || ''}
           onChange={(e) => handleParameterChange('w1', e.target.value ? parseFloat(e.target.value) : 0)}
           placeholder="w1"
           style={inputStyle}
@@ -105,7 +109,7 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
         <input
           type="number"
           step="0.1"
-          value={loadParameters.w2 || ''}
+          value={formParameters.w2 || ''}
           onChange={(e) => handleParameterChange('w2', e.target.value ? parseFloat(e.target.value) : 0)}
           placeholder="w2"
           style={inputStyle}

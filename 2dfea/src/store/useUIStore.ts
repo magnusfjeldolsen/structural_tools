@@ -205,6 +205,23 @@ export interface UIState {
   openLoadDialog: (type?: 'nodal' | 'point' | 'distributed' | 'lineLoad', editData?: { type: 'nodal' | 'point' | 'distributed'; index: number }) => void;
   closeLoadDialog: () => void;
 
+  // Load form parameters (edited by user, not in creation mode yet)
+  formParameters: {
+    fx?: number;
+    fy?: number;
+    mz?: number;
+    distance?: number;
+    direction?: 'Fx' | 'Fy' | 'Mz';
+    magnitude?: number;
+    w1?: number;
+    w2?: number;
+    x1?: number;
+    x2?: number;
+    case?: string;
+  } | null;
+  setFormParameters: (params: any) => void;
+  resetFormParameters: () => void;
+
   // Load creation mode (interactive selection on canvas)
   loadCreationMode: null | 'nodal' | 'point' | 'distributed' | 'lineLoad';
   loadParameters: {
@@ -300,6 +317,7 @@ const initialState = {
   loadDialogOpen: false,
   loadDialogType: undefined,
   editingLoadData: undefined,
+  formParameters: null,
   loadCreationMode: null,
   loadParameters: null,
   copiedData: undefined,
@@ -673,7 +691,16 @@ export const useUIStore = create<UIState>()(
         set({ loadDialogOpen: false, loadDialogType: undefined, editingLoadData: undefined });
       },
 
-      // Load creation mode actions
+      // Load form parameters (user editing, not in creation mode)
+      setFormParameters: (params) => {
+        set({ formParameters: params });
+      },
+
+      resetFormParameters: () => {
+        set({ formParameters: null });
+      },
+
+      // Load creation mode actions (activated when user clicks button)
       setLoadCreationMode: (mode, params) => {
         set({ loadCreationMode: mode, loadParameters: params || null });
       },
