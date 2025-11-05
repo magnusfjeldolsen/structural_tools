@@ -4,7 +4,7 @@
  * and load type selection buttons
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useModelStore } from '../store';
 import { theme } from '../styles/theme';
 import { LoadCasesManager } from './LoadCasesManager';
@@ -22,6 +22,13 @@ export function LoadsTabToolbar({ expandedForm, onToggleForm }: LoadsTabToolbarP
 
   const [loadCasesModalOpen, setLoadCasesModalOpen] = useState(false);
   const [loadCombinationsModalOpen, setLoadCombinationsModalOpen] = useState(false);
+
+  // Initialize activeLoadCase to first load case if not set
+  useEffect(() => {
+    if (loadCases.length > 0 && !activeLoadCase) {
+      setActiveLoadCase(loadCases[0].name);
+    }
+  }, [loadCases, activeLoadCase, setActiveLoadCase]);
 
   const loadTypeButtons = [
     { type: 'nodal' as const, label: 'Nodal Load' },
@@ -45,10 +52,9 @@ export function LoadsTabToolbar({ expandedForm, onToggleForm }: LoadsTabToolbarP
         {/* Active Load Case Dropdown */}
         <select
           value={activeLoadCase || ''}
-          onChange={(e) => setActiveLoadCase(e.target.value || null)}
+          onChange={(e) => setActiveLoadCase(e.target.value)}
           style={selectStyle}
         >
-          <option value="">All Cases</option>
           {loadCases.map((lc) => (
             <option key={lc.name} value={lc.name}>
               {lc.name}
