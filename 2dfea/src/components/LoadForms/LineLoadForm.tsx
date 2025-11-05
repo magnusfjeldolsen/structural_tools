@@ -37,7 +37,7 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
     }
 
     const direction = (formParameters.direction as string) || 'Fx';
-    if (!['Fx', 'Fy', 'fx', 'fy'].includes(direction)) {
+    if (!['Fx', 'Fy', 'fx', 'fy', 'FX', 'FY'].includes(direction)) {
       alert('Please select a direction');
       return;
     }
@@ -81,8 +81,8 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
               </>
             ) : (
               <>
-                <option value="Fx">Fx</option>
-                <option value="Fy">Fy</option>
+                <option value="FX">FX</option>
+                <option value="FY">FY</option>
               </>
             )}
           </select>
