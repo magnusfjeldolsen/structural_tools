@@ -24,9 +24,6 @@ jobs:
   build-and-deploy:
     name: Build and Deploy 2D FEM
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}2dfea/
 
     steps:
       - name: Checkout repository
