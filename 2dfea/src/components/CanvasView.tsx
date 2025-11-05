@@ -51,7 +51,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const elements = useModelStore((state) => state.elements);
   const loads = useModelStore((state) => state.loads);
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
-  const analysisResults = useModelStore((state) => state.analysisResults);
+  const getResultsForCase = useModelStore((state) => state.getResultsForCase);
+  const getResultsForCombination = useModelStore((state) => state.getResultsForCombination);
+  const analysisResults = useModelStore((state) => state.analysisResults);  // Keep for backward compat
   const selectedNodes = useModelStore((state) => state.selectedNodes);
   const selectedElements = useModelStore((state) => state.selectedElements);
   const nextNodeNumber = useModelStore((state) => state.nextNodeNumber);
@@ -103,6 +105,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const axialDiagramScale = useUIStore((state) => state.axialDiagramScale);
   const axialDiagramScaleManual = useUIStore((state) => state.axialDiagramScaleManual);
   const useManualAxialDiagramScale = useUIStore((state) => state.useManualAxialDiagramScale);
+
+  // Results query state
+  const selectedResultType = useUIStore((state) => state.selectedResultType);
+  const selectedResultName = useUIStore((state) => state.selectedResultName);
 
   // Label visibility states
   const showDisplacementLabels = useUIStore((state) => state.showDisplacementLabels);
@@ -166,6 +172,28 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       view.centerX + relX,
       view.centerY + relY,
     ];
+  };
+
+  // Helper: Get the currently active analysis results based on user selection
+  // Tries to get from cache first, falls back to analysisResults for backward compat
+  const getActiveResults = () => {
+    // If user has selected a result, try to get it from cache
+    if (selectedResultName) {
+      if (selectedResultType === 'case') {
+        const caseResults = getResultsForCase(selectedResultName);
+        if (caseResults) return caseResults;
+      } else {
+        const comboResults = getResultsForCombination(selectedResultName);
+        if (comboResults) return comboResults;
+      }
+      // Selection exists but results don't
+      console.warn(
+        `[CanvasView] No results available for ${selectedResultType} "${selectedResultName}"`
+      );
+      return null;
+    }
+    // Fall back to current analysisResults for backward compatibility
+    return analysisResults;
   };
 
   // Get node screen position
@@ -1227,13 +1255,14 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
   // Render displaced shape using globally correct deformation
   const renderDisplacedShape = () => {
-    if (!analysisResults || !analysisResults.diagrams || !showDisplacedShape) return null;
+    const results = getActiveResults();
+    if (!results || !results.diagrams || !showDisplacedShape) return null;
 
     // Use manual displacement scale if set, otherwise use automatic
     const effectiveDisplacementScale = useManualDisplacementScale ? displacementScaleManual : displacementScale;
 
     return elements.map((element) => {
-      const diagram = analysisResults.diagrams[element.name];
+      const diagram = results.diagrams[element.name];
       if (!diagram || !diagram.deflections_dx || !diagram.deflections_dy) return null;
 
       // Get node objects
@@ -1245,7 +1274,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const deformedPoints = calculateDeformedElementShape(
         nodeI,
         nodeJ,
-        analysisResults,
+        results,
         diagram.deflections_dx,  // Local axial deflections
         diagram.deflections_dy,  // Local perpendicular deflections
         effectiveDisplacementScale
@@ -1350,14 +1379,15 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
   // Render moment diagrams
   const renderMomentDiagrams = () => {
-    if (!analysisResults || !analysisResults.diagrams || !showMomentDiagram) return null;
+    const results = getActiveResults();
+    if (!results || !results.diagrams || !showMomentDiagram) return null;
 
-    const maxMoment = getMaxDiagramValue(analysisResults.diagrams, 'moment');
+    const maxMoment = getMaxDiagramValue(results.diagrams, 'moment');
     const effectiveScale = useManualMomentDiagramScale ? momentDiagramScaleManual : momentDiagramScale;
     const scale = calculateDiagramScale(maxMoment, view.scale / 50, 30) * effectiveScale;
 
     return elements.map((element) => {
-      const diagram = analysisResults.diagrams[element.name];
+      const diagram = results.diagrams[element.name];
       if (!diagram) return null;
 
       const nodeI = nodes.find((n) => n.name === element.nodeI);
@@ -1450,14 +1480,15 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
   // Render shear diagrams
   const renderShearDiagrams = () => {
-    if (!analysisResults || !analysisResults.diagrams || !showShearDiagram) return null;
+    const results = getActiveResults();
+    if (!results || !results.diagrams || !showShearDiagram) return null;
 
-    const maxShear = getMaxDiagramValue(analysisResults.diagrams, 'shear');
+    const maxShear = getMaxDiagramValue(results.diagrams, 'shear');
     const effectiveScale = useManualShearDiagramScale ? shearDiagramScaleManual : shearDiagramScale;
     const scale = calculateDiagramScale(maxShear, view.scale / 50, 25) * effectiveScale;
 
     return elements.map((element) => {
-      const diagram = analysisResults.diagrams[element.name];
+      const diagram = results.diagrams[element.name];
       if (!diagram) return null;
 
       const nodeI = nodes.find((n) => n.name === element.nodeI);
@@ -1550,14 +1581,15 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
   // Render axial diagrams
   const renderAxialDiagrams = () => {
-    if (!analysisResults || !analysisResults.diagrams || !showAxialDiagram) return null;
+    const results = getActiveResults();
+    if (!results || !results.diagrams || !showAxialDiagram) return null;
 
-    const maxAxial = getMaxDiagramValue(analysisResults.diagrams, 'axial');
+    const maxAxial = getMaxDiagramValue(results.diagrams, 'axial');
     const effectiveScale = useManualAxialDiagramScale ? axialDiagramScaleManual : axialDiagramScale;
     const scale = calculateDiagramScale(maxAxial, view.scale / 50, 20) * effectiveScale;
 
     return elements.map((element) => {
-      const diagram = analysisResults.diagrams[element.name];
+      const diagram = results.diagrams[element.name];
       if (!diagram) return null;
 
       const nodeI = nodes.find((n) => n.name === element.nodeI);
