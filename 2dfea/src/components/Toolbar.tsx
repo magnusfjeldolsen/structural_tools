@@ -14,6 +14,7 @@
 
 import { useModelStore, useUIStore } from '../store';
 import { ScaleControl } from './ScaleControl';
+import { ResultsSelector } from './ResultsSelector';
 
 export function Toolbar() {
   const activeTab = useUIStore((state) => state.activeTab);
@@ -63,18 +64,18 @@ export function Toolbar() {
   const toggleAxialLabels = useUIStore((state) => state.toggleAxialLabels);
 
   const loadExample = useModelStore((state) => state.loadExample);
-  const runAnalysis = useModelStore((state) => state.runAnalysis);
+  const runFullAnalysis = useModelStore((state) => state.runFullAnalysis);
   const clearModel = useModelStore((state) => state.clearModel);
   const isAnalyzing = useModelStore((state) => state.isAnalyzing);
   const solver = useModelStore((state) => state.solver);
   const analysisResults = useModelStore((state) => state.analysisResults);
 
-  const handleRunAnalysis = async () => {
+  const handleRunFullAnalysis = async () => {
     try {
-      await runAnalysis();
+      await runFullAnalysis();
     } catch (error) {
-      console.error('Analysis failed:', error);
-      alert(`Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Full analysis failed:', error);
+      alert(`Full analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -223,13 +224,17 @@ export function Toolbar() {
           )}
 
           {activeTab === 'analysis' && (
-            <button
-              style={!solver || isAnalyzing ? disabledButtonStyle : actionButtonStyle}
-              onClick={handleRunAnalysis}
-              disabled={!solver || isAnalyzing}
-            >
-              {isAnalyzing ? 'Analyzing...' : 'Run Analysis'}
-            </button>
+            <>
+              <ResultsSelector isAnalyzing={isAnalyzing} />
+
+              <button
+                style={!solver || isAnalyzing ? disabledButtonStyle : actionButtonStyle}
+                onClick={handleRunFullAnalysis}
+                disabled={!solver || isAnalyzing}
+              >
+                {isAnalyzing ? 'Analyzing...' : 'Run Full Analysis'}
+              </button>
+            </>
           )}
         </div>
 

@@ -22,6 +22,7 @@ import type {
   AnalysisResults,
   LoadCase,
   LoadCombinationDefinition,
+  ResultsCache,
 } from '../analysis/types';
 import {
   SolverInterface,
@@ -63,6 +64,7 @@ interface ModelState {
   isAnalyzing: boolean;
   analysisResults: AnalysisResults | null;
   analysisError: string | null;
+  resultsCache: ResultsCache;  // Multi-result storage indexed by case/combo name
 
   // Actions - Geometry
   addNode: (node: Omit<Node, 'name'>) => void;
@@ -126,7 +128,12 @@ interface ModelState {
   // Actions - Analysis
   initializeSolver: () => Promise<void>;
   runAnalysis: (caseOrCombo?: string | LoadCombinationDefinition) => Promise<void>;
+  runFullAnalysis: () => Promise<void>;  // Run analysis for all cases and combinations
+  getResultsForCase: (caseName: string) => AnalysisResults | null;
+  getResultsForCombination: (comboName: string) => AnalysisResults | null;
+  getActiveResults: () => AnalysisResults | null;  // Get currently selected results
   clearAnalysis: () => void;
+  clearAnalysisCache: () => void;
 
   // Actions - Model Management
   clearModel: () => void;
@@ -165,6 +172,19 @@ const initialState = {
   isAnalyzing: false,
   analysisResults: null,
   analysisError: null,
+  resultsCache: {
+    caseResults: {},
+    combinationResults: {},
+    lastUpdated: 0,
+    analysisStatus: {
+      totalCases: 0,
+      totalCombinations: 0,
+      successfulCases: 0,
+      successfulCombinations: 0,
+      failedCases: [],
+      failedCombinations: [],
+    },
+  },
 };
 
 // ============================================================================
@@ -722,6 +742,171 @@ export const useModelStore = create<ModelState>()(
           set({
             analysisResults: null,
             analysisError: null,
+          });
+        },
+
+        // ====================================================================
+        // FULL ANALYSIS - RUN ALL CASES & COMBINATIONS
+        // ====================================================================
+
+        runFullAnalysis: async () => {
+          const state = get();
+
+          // Ensure solver is initialized
+          if (!state.solver) {
+            throw new Error('Solver not initialized. Call initializeSolver() first.');
+          }
+
+          set({ isAnalyzing: true, analysisError: null });
+
+          const resultsCache: ResultsCache = {
+            caseResults: {},
+            combinationResults: {},
+            lastUpdated: Date.now(),
+            analysisStatus: {
+              totalCases: state.loadCases.length,
+              totalCombinations: state.loadCombinations.length,
+              successfulCases: 0,
+              successfulCombinations: 0,
+              failedCases: [],
+              failedCombinations: [],
+            },
+          };
+
+          try {
+            // Prepare model data once
+            const modelData = translateModelToWorker(
+              state.nodes,
+              state.elements,
+              state.loads
+            );
+
+            // Validate before sending
+            const errors = validateModel(modelData);
+            if (errors.length > 0) {
+              throw new Error(`Model validation failed:\n${errors.join('\n')}`);
+            }
+
+            // Run analysis for each load case
+            console.log('[FullAnalysis] Starting analysis for', state.loadCases.length, 'load cases...');
+            for (const loadCase of state.loadCases) {
+              try {
+                const caseResults = await state.solver.runAnalysis(
+                  modelData,
+                  'loadCase',
+                  loadCase.name
+                );
+                resultsCache.caseResults[loadCase.name] = caseResults;
+                resultsCache.analysisStatus.successfulCases++;
+                console.log(`[FullAnalysis] ✓ Analyzed load case: ${loadCase.name}`);
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                resultsCache.analysisStatus.failedCases.push({
+                  name: loadCase.name,
+                  error: errorMsg,
+                });
+                console.warn(`[FullAnalysis] ✗ Failed to analyze load case "${loadCase.name}":`, errorMsg);
+              }
+            }
+
+            // Run analysis for each load combination
+            console.log('[FullAnalysis] Starting analysis for', state.loadCombinations.length, 'load combinations...');
+            for (const combination of state.loadCombinations) {
+              try {
+                const comboResults = await state.solver.runAnalysis(
+                  modelData,
+                  'combination',
+                  combination
+                );
+                resultsCache.combinationResults[combination.name] = comboResults;
+                resultsCache.analysisStatus.successfulCombinations++;
+                console.log(`[FullAnalysis] ✓ Analyzed combination: ${combination.name}`);
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                resultsCache.analysisStatus.failedCombinations.push({
+                  name: combination.name,
+                  error: errorMsg,
+                });
+                console.warn(`[FullAnalysis] ✗ Failed to analyze combination "${combination.name}":`, errorMsg);
+              }
+            }
+
+            // Store results cache
+            set({
+              resultsCache,
+              isAnalyzing: false,
+              analysisError: null,
+            });
+
+            // Log summary
+            const totalSuccessful = resultsCache.analysisStatus.successfulCases +
+                                   resultsCache.analysisStatus.successfulCombinations;
+            const totalFailed = resultsCache.analysisStatus.failedCases.length +
+                               resultsCache.analysisStatus.failedCombinations.length;
+            console.log('[FullAnalysis] Complete:', {
+              successful: totalSuccessful,
+              failed: totalFailed,
+              cases: `${resultsCache.analysisStatus.successfulCases}/${resultsCache.analysisStatus.totalCases}`,
+              combinations: `${resultsCache.analysisStatus.successfulCombinations}/${resultsCache.analysisStatus.totalCombinations}`,
+            });
+          } catch (error) {
+            const errorMessage =
+              error instanceof Error ? error.message : 'Full analysis failed';
+
+            set({
+              isAnalyzing: false,
+              analysisError: errorMessage,
+            });
+
+            console.error('[FullAnalysis] Failed:', error);
+            throw error;
+          }
+        },
+
+        // ====================================================================
+        // RESULTS QUERY FUNCTIONS
+        // ====================================================================
+
+        getResultsForCase: (caseName: string) => {
+          const caseResults = get().resultsCache.caseResults[caseName];
+          if (!caseResults) {
+            console.warn(`[Results Query] No results found for load case: "${caseName}"`);
+            return null;
+          }
+          return caseResults;
+        },
+
+        getResultsForCombination: (comboName: string) => {
+          const comboResults = get().resultsCache.combinationResults[comboName];
+          if (!comboResults) {
+            console.warn(`[Results Query] No results found for combination: "${comboName}"`);
+            return null;
+          }
+          return comboResults;
+        },
+
+        getActiveResults: () => {
+          // This will be called by UI components that manage selectedResultType and selectedResultName
+          // For now, return the current analysisResults for backward compatibility
+          // TODO: Integrate with UI store to get selectedResultType and selectedResultName
+          return get().analysisResults;
+        },
+
+        clearAnalysisCache: () => {
+          set({
+            resultsCache: {
+              caseResults: {},
+              combinationResults: {},
+              lastUpdated: 0,
+              analysisStatus: {
+                totalCases: 0,
+                totalCombinations: 0,
+                successfulCases: 0,
+                successfulCombinations: 0,
+                failedCases: [],
+                failedCombinations: [],
+              },
+            },
           });
         },
 
