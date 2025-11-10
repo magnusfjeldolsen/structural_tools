@@ -40,8 +40,8 @@ export class SolverInterface {
 
     return new Promise((resolve, reject) => {
       try {
-        // Create worker
-        this.worker = new Worker('/public/workers/solverWorker.js');
+        // Create worker with proper module resolution
+        this.worker = new Worker(new URL('/workers/solverWorker.js', import.meta.url), { type: 'module' });
 
         // Setup message handler
         this.worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
