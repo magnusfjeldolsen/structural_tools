@@ -62,6 +62,9 @@ jobs:
           path: 2dfea/dist/
           retention-days: 1
 
+      - name: Create .nojekyll file for GitHub Pages
+        run: echo "" > ./2dfea/dist/.nojekyll
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
