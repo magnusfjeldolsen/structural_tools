@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://magnusfjeldolsen.github.io/unprotected_stee_firetemp/sitemap.xml

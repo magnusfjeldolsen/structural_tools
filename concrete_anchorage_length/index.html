@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free concrete anchorage length calculator. Calculate design anchorage length (lbd) according to Eurocode 2 Section 8.4.">
+  <meta name="keywords" content="concrete anchorage, anchorage length, bond strength, reinforcement anchorage, EC2, Eurocode 2">
+  <title>Concrete Anchorage Length Calculator - EC2 Section 8.4</title>
+
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Concrete Anchorage Length Calculator - EC2 Section 8.4">
+  <meta property="og:description" content="Calculate design anchorage length for reinforcement bars according to Eurocode 2">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_anchorage_length">
+
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  <!-- Report print styles for detailed calculation reports -->
+  <link rel="stylesheet" href="../assets/css/report-print.css">
+
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  
+  <script src="script.js" defer></script>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <!-- Header -->
+    <div class="flex justify-end mb-4">
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+        ← Back to Tools
+      </a>
+    </div>
+
+    <div class="text-center mb-6">
+      <h1 class="text-3xl font-bold text-white mb-2">Concrete Anchorage Length Calculator</h1>
+      <p class="text-gray-300">Calculate design anchorage length (l<sub>bd</sub>) according to EC2 Section 8.4</p>
+    </div>
+
+    <!-- Input Form -->
+    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="space-y-6">
+
+      <!-- Calculation Description -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-cyan-400 mb-4">Calculation Description (Optional)</h3>
+        <div class="space-y-2">
+          <label for="calc_description" class="text-sm text-gray-300">Describe this calculation (e.g., project name, location, member ID):</label>
+          <textarea id="calc_description" rows="3" placeholder="Example: Westside Building - Column C3 - Anchorage of bottom reinforcement..." class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-cyan-400 resize-y"></textarea>
+          <span class="text-xs text-gray-400">This description will appear at the top of the detailed report</span>
+        </div>
+      </div>
+
+      <!-- Basic Parameters -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Basic Parameters</h3>
+        <div class="grid grid-cols-[200px_200px_1fr] gap-4 items-center text-sm">
+          <!-- Header Row -->
+          <div class="font-semibold text-gray-300">Parameter</div>
+          <div class="font-semibold text-gray-300">Value</div>
+          <div class="font-semibold text-gray-300">Description</div>
+
+          <!-- SEd -->
+          <label for="SEd" class="text-gray-200">S<sub>Ed</sub> [kN]</label>
+          <input type="text" id="SEd" value="220" placeholder="e.g., 200" required oninput="updateSigmaSEd()" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Design tension force</span>
+
+          <!-- phi_l -->
+          <label for="phi_l" class="text-gray-200">φ<sub>l</sub> [mm]</label>
+          <input type="number" id="phi_l" value="25" step="any" required oninput="updateSigmaSEd()" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Diameter of rebar to be anchored</span>
+
+          <!-- n_l -->
+          <label for="n_l" class="text-gray-200">n<sub>l</sub></label>
+          <input type="number" id="n_l" value="3" step="1" min="1" required oninput="updateSigmaSEd()" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Number of rebars to be anchored</span>
+
+          <!-- phi_t -->
+          <label for="phi_t" class="text-gray-200">φ<sub>t</sub> [mm]</label>
+          <input type="number" id="phi_t" value="12" step="any" required class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Diameter of transverse reinforcement</span>
+
+          <!-- n_l_orthogonal -->
+          <label for="n_l_orthogonal" class="text-gray-200">n<sub>l,orth</sub></label>
+          <input type="number" id="n_l_orthogonal" value="0" step="1" min="0" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400 text-xs">Number of bars orthogonal to anchored bars along l<sub>bd</sub>. <span class="text-yellow-300">⚠️ Must be iterated manually!</span></span>
+        </div>
+      </div>
+
+      <!-- Material Properties -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-yellow-400 mb-4">Material Properties</h3>
+        <div class="grid grid-cols-[200px_200px_1fr] gap-4 items-center text-sm">
+          <!-- Header Row -->
+          <div class="font-semibold text-gray-300">Parameter</div>
+          <div class="font-semibold text-gray-300">Value</div>
+          <div class="font-semibold text-gray-300">Description</div>
+
+          <!-- fck -->
+          <label for="fck" class="text-gray-200">f<sub>ck</sub> [MPa]</label>
+          <input type="number" id="fck" value="30" step="any" required class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Characteristic concrete compressive strength</span>
+
+          <!-- gamma_c -->
+          <label for="gamma_c" class="text-gray-200">γ<sub>c</sub></label>
+          <input type="number" id="gamma_c" value="1.8" step="any" required class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Concrete material safety factor (standard: 1.5)</span>
+
+          <!-- alpha_cc -->
+          <label for="alpha_cc" class="text-gray-200">α<sub>cc</sub></label>
+          <input type="number" id="alpha_cc" value="0.85" step="any" required class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Coefficient for concrete strength (standard: 0.85)</span>
+
+          <!-- fyk -->
+          <label for="fyk" class="text-gray-200">f<sub>yk</sub> [MPa]</label>
+          <input type="number" id="fyk" value="500" step="any" required class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Characteristic yield strength of reinforcement</span>
+
+          <!-- gamma_s -->
+          <label for="gamma_s" class="text-gray-200">γ<sub>s</sub></label>
+          <input type="number" id="gamma_s" value="1.25" step="any" required class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Steel material safety factor (standard: 1.25)</span>
+
+          <!-- sigma_sEd -->
+          <label for="sigma_sEd" class="text-gray-200">σ<sub>sEd</sub> [MPa]</label>
+          <div class="flex flex-col gap-1">
+            <input type="text" id="sigma_sEd" value="" placeholder="Auto-calculated" oninput="updateSigmaSEd()" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span id="sigma_sEd_calc" class="text-xs text-blue-300"></span>
+          </div>
+          <span class="text-gray-400 text-xs">Design stress in rebar. <span class="text-green-300">Auto-calculated from S<sub>Ed</sub>, but can be overwritten.</span> Accepts mathematical formulas.</span>
+        </div>
+      </div>
+
+      <!-- Cover & Spacing -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-green-400 mb-4">Cover & Spacing</h3>
+        <div class="grid grid-cols-[200px_200px_1fr] gap-4 items-center text-sm">
+          <!-- Header Row -->
+          <div class="font-semibold text-gray-300">Parameter</div>
+          <div class="font-semibold text-gray-300">Value</div>
+          <div class="font-semibold text-gray-300">Description</div>
+
+          <!-- c -->
+          <label for="c" class="text-gray-200">c [mm]</label>
+          <input type="number" id="c" value="40" step="any" required class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Concrete cover (top/bottom)</span>
+
+          <!-- c1 -->
+          <label for="c1" class="text-gray-200">c<sub>1</sub> [mm]</label>
+          <input type="number" id="c1" value="50" step="any" required class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Concrete cover at sides</span>
+
+          <!-- cc_phi_l -->
+          <label for="cc_phi_l" class="text-gray-200">c/c φ<sub>l</sub> [mm]</label>
+          <input type="number" id="cc_phi_l" value="200" step="any" required class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <span class="text-gray-400">Center-to-center distance of main rebars</span>
+        </div>
+      </div>
+
+      <!-- Configuration -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-purple-400 mb-4">Configuration</h3>
+        <div class="grid grid-cols-[200px_200px_1fr] gap-4 items-center text-sm">
+          <!-- Header Row -->
+          <div class="font-semibold text-gray-300">Parameter</div>
+          <div class="font-semibold text-gray-300">Value</div>
+          <div class="font-semibold text-gray-300">Description</div>
+
+          <!-- bond_condition -->
+          <label for="bond_condition" class="text-gray-200">Bond Condition</label>
+          <select id="bond_condition" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <option value="good">Good</option>
+            <option value="poor">Poor</option>
+          </select>
+          <span class="text-gray-400">Good: η<sub>1</sub>=1.0, Poor: η<sub>1</sub>=0.7</span>
+
+          <!-- tension_compression -->
+          <label for="tension_compression" class="text-gray-200">Loading Type</label>
+          <select id="tension_compression" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <option value="tension">Tension</option>
+            <option value="compression">Compression</option>
+          </select>
+          <span class="text-gray-400">Anchorage in tension or compression</span>
+
+          <!-- bar_type -->
+          <label for="bar_type" class="text-gray-200">Bar Type</label>
+          <select id="bar_type" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <option value="straight">Straight bars</option>
+            <option value="hooks">Angle hooks or hooks</option>
+            <option value="loops">Loops</option>
+          </select>
+          <span class="text-gray-400">Affects c<sub>d</sub> calculation and α<sub>1</sub></span>
+
+          <!-- bar_shape -->
+          <label for="bar_shape" class="text-gray-200">Bar Shape</label>
+          <select id="bar_shape" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <option value="straight">Straight</option>
+            <option value="non-straight">Non-straight</option>
+          </select>
+          <span class="text-gray-400">Straight or bent bar configuration</span>
+
+          <!-- element_type -->
+          <label for="element_type" class="text-gray-200">Element Type</label>
+          <select id="element_type" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <option value="slab">Slab</option>
+            <option value="beam">Beam</option>
+          </select>
+          <span class="text-gray-400">Structural element type</span>
+
+          <!-- K -->
+          <label for="K" class="text-gray-200">K</label>
+          <select id="K" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <option value="0.05">0.05</option>
+            <option value="0.1">0.1</option>
+            <option value="0">0</option>
+          </select>
+          <span class="text-gray-400">Coefficient for transverse reinforcement: 0.1=bar inside bend, 0.05=orth. reinf. outside bars, 0=bar outside orth. bars</span>
+        </div>
+      </div>
+
+      <!-- Advanced Parameters (Collapsible) -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-orange-400 mb-4 cursor-pointer" onclick="toggleAdvanced()">
+          ▼ Advanced Parameters (Optional)
+        </h3>
+
+        <div id="advanced-params" class="hidden">
+          <div class="grid grid-cols-[200px_200px_1fr] gap-4 items-center text-sm">
+            <!-- Header Row -->
+            <div class="font-semibold text-gray-300">Parameter</div>
+            <div class="font-semibold text-gray-300">Value</div>
+            <div class="font-semibold text-gray-300">Description</div>
+
+            <!-- alpha_4 -->
+            <label for="alpha_4" class="text-gray-200">α<sub>4</sub></label>
+            <input type="number" id="alpha_4" value="1.0" step="0.1" min="0.7" max="1.0" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span class="text-gray-400">Welded transverse reinforcement factor (1.0 = no weld, 0.7 = with weld)</span>
+
+            <!-- p -->
+            <label for="p" class="text-gray-200">p [MPa]</label>
+            <input type="number" id="p" value="0" step="any" min="0" class="px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span class="text-gray-400">Transverse pressure perpendicular to splitting plane</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Calculate Button -->
+      <div class="flex justify-center">
+        <button type="submit" class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition shadow-lg">
+          Calculate Anchorage Length
+        </button>
+      </div>
+    </form>
+
+    <!-- Results Section -->
+    <div id="results" class="hidden space-y-6">
+      <!-- Summary Card -->
+      <div class="bg-gradient-to-r from-blue-900/50 to-purple-900/50 rounded-lg p-6 border border-blue-500/30">
+        <h2 class="text-2xl font-bold text-white mb-4 text-center">Design Anchorage Length</h2>
+        <div class="text-center">
+          <div class="text-5xl font-bold text-blue-300 mb-2" id="lbd-result">---</div>
+          <div class="text-gray-300 text-sm">Eurocode 2 Section 8.4</div>
+        </div>
+      </div>
+
+      <!-- Detailed Results -->
+      <div class="grid md:grid-cols-2 gap-6">
+        <!-- Bond Strength -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-lg font-semibold text-blue-400 mb-3">8.4.2 Bond Strength</h3>
+          <div id="bond-results" class="space-y-2 text-sm"></div>
+        </div>
+
+        <!-- Basic Anchorage Length -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-lg font-semibold text-green-400 mb-3">8.4.3 Basic Length</h3>
+          <div id="basic-results" class="space-y-2 text-sm"></div>
+        </div>
+
+        <!-- Alpha Factors -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-lg font-semibold text-purple-400 mb-3">Alpha Factors</h3>
+          <div id="alpha-results" class="space-y-2 text-sm"></div>
+        </div>
+
+        <!-- Final Calculations -->
+        <div class="bg-gray-700 rounded-lg p-6">
+          <h3 class="text-lg font-semibold text-yellow-400 mb-3">Final Calculations</h3>
+          <div id="final-results" class="space-y-2 text-sm"></div>
+        </div>
+      </div>
+
+      <!-- Detailed Report (Collapsible & Printable) -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-lg font-semibold text-white cursor-pointer" onclick="toggleReport()">
+            ▼ Detailed Calculation Report
+          </h3>
+          <button type="button" onclick="printReport()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-lg transition print:hidden">
+            🖨️ Print Report
+          </button>
+        </div>
+        <div id="detailed-report" class="hidden mt-4">
+          <!-- Report content will be generated here -->
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    function toggleAdvanced() {
+      const advancedParams = document.getElementById('advanced-params');
+      advancedParams.classList.toggle('hidden');
+    }
+
+    function toggleReport() {
+      const report = document.getElementById('detailed-report');
+      report.classList.toggle('hidden');
+    }
+
+    function printReport() {
+      window.print();
+    }
+
+    // Update sigma_sEd calculated value display
+    function updateSigmaSEd() {
+      try {
+        const SEd = parseFloat(document.getElementById('SEd').value) || 0;
+        const phi_l = parseFloat(document.getElementById('phi_l').value) || 1;
+        const n_l = parseFloat(document.getElementById('n_l').value) || 1;
+        const sigma_sEd_input = document.getElementById('sigma_sEd').value.trim();
+
+        const As_l = n_l * Math.PI * Math.pow(phi_l, 2) / 4;
+        const sigma_sEd_calc = (SEd * 1000) / As_l;
+
+        const calcDisplay = document.getElementById('sigma_sEd_calc');
+
+        if (SEd > 0 && phi_l > 0 && n_l > 0) {
+          // Check if user has overwritten the value
+          if (sigma_sEd_input !== '') {
+            // Try to evaluate the overwritten value
+            try {
+              const sanitized = sigma_sEd_input.replace(/[^0-9+\-*/().\s^]/g, '');
+              const jsExpression = sanitized.replace(/\^/g, '**');
+              const overwrittenValue = new Function('return ' + jsExpression)();
+
+              if (!isNaN(overwrittenValue) && isFinite(overwrittenValue)) {
+                calcDisplay.innerHTML = `Calculated: <span class="text-gray-400">${sigma_sEd_calc.toFixed(2)} MPa</span> - Overwritten: <span class="text-orange-300 font-semibold">${overwrittenValue.toFixed(2)} MPa</span>`;
+              } else {
+                calcDisplay.innerHTML = `Calculated: ${sigma_sEd_calc.toFixed(2)} MPa - <span class="text-red-300">Invalid override value</span>`;
+              }
+            } catch (e) {
+              calcDisplay.innerHTML = `Calculated: ${sigma_sEd_calc.toFixed(2)} MPa - <span class="text-red-300">Invalid formula</span>`;
+            }
+          } else {
+            // No override - just show calculated value
+            calcDisplay.textContent = `Calculated: ${sigma_sEd_calc.toFixed(2)} MPa`;
+          }
+        } else {
+          calcDisplay.textContent = '';
+        }
+      } catch (e) {
+        document.getElementById('sigma_sEd_calc').textContent = '';
+      }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      updateSigmaSEd();
+    });
+  </script>
+  
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+
+  <!-- Cookie Consent Scripts -->
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/cookie-consent.js"></script>
+
+</body>
+</html>

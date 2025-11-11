@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free transversal forces stiffened web calculator. Calculate capacity and slenderness check with detailed derivations.">
+  <meta name="keywords" content="transversal forces, stiffened web, steel design, structural engineering, EC3">
+  <title>Transversal Forces - Stiffened Web Calculator</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Transversal Forces - Stiffened Web Calculator">
+  <meta property="og:description" content="Calculate capacity of transversally stiffened webs for vertical forces">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/transversal_forces_stiffened_web">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+  <!-- Print color override -->
+  <style>
+    @media print {
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
+      
+      /* Force status colors in print - highest specificity */
+      .calc-value.text-green-400,
+      span.calc-value.text-green-400,
+      .text-green-400 {
+        color: #22c55e !important;
+        background: rgba(34, 197, 94, 0.1) !important;
+        border-color: rgba(34, 197, 94, 0.3) !important;
+      }
+      
+      .calc-value.text-red-400,
+      span.calc-value.text-red-400,
+      .text-red-400 {
+        color: #dc2626 !important;
+        background: rgba(220, 38, 38, 0.1) !important;
+        border-color: rgba(220, 38, 38, 0.3) !important;
+      }
+      
+      .calc-value.text-yellow-400,
+      span.calc-value.text-yellow-400,
+      .text-yellow-400 {
+        color: #ca8a04 !important;
+        background: rgba(202, 138, 4, 0.1) !important;
+        border-color: rgba(202, 138, 4, 0.3) !important;
+      }
+    }
+  </style>
+
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <!-- Header -->
+    <div class="flex justify-end mb-4">
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+        ← Back to Tools
+      </a>
+    </div>
+
+    <div class="text-center mb-6">
+      <h1 class="text-3xl font-bold text-white mb-2">Transversal Forces - Stiffened Web Calculator</h1>
+      <p class="text-gray-300">Calculate capacity of transversally stiffened webs with detailed step-by-step derivations</p>
+    </div>
+
+    <!-- Input Form -->
+    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="grid md:grid-cols-2 gap-6">
+      
+      <!-- Profile Selection Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Profile Selection</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="profileType" class="text-sm font-medium min-w-[120px] text-right">Profile Type:</label>
+            <select id="profileType" onchange="loadProfiles()" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="">Select Type</option>
+              <!-- Options will be populated automatically from available JSON files -->
+            </select>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="profileSection" class="text-sm font-medium min-w-[120px] text-right">Profile:</label>
+            <select id="profileSection" onchange="loadProfileData()" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="">Select Profile</option>
+            </select>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <input type="checkbox" id="includeRadius" onchange="calculateWebHeight()" class="w-4 h-4 text-blue-600 bg-gray-600 border-gray-500 rounded focus:ring-blue-500">
+            <label for="includeRadius" class="text-sm font-medium text-white">Include radius in web height calculation</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Web Geometry Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Web Geometry</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="hw" class="text-sm font-medium min-w-[120px] text-right">h<sub>w</sub> (mm):</label>
+            <input type="number" id="hw" value="290" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span id="hw-calculated" class="flex-1 px-3 py-2 bg-gray-500 text-gray-300 border border-gray-500 rounded-md hidden"></span>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="tw" class="text-sm font-medium min-w-[120px] text-right">t<sub>w</sub> (mm):</label>
+            <input type="number" id="tw" value="8.5" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span id="tw-calculated" class="flex-1 px-3 py-2 bg-gray-500 text-gray-300 border border-gray-500 rounded-md hidden"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stiffener Geometry Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-green-400 mb-4">Stiffener Geometry</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="tst" class="text-sm font-medium min-w-[120px] text-right">t<sub>st</sub> (mm):</label>
+            <input type="number" id="tst" value="10" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="bst" class="text-sm font-medium min-w-[120px] text-right">b<sub>st</sub> (mm):</label>
+            <input type="number" id="bst" value="100" step="any" required onchange="validateStiffenerWidth()" oninput="validateStiffenerWidth()" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="a" class="text-sm font-medium min-w-[120px] text-right">a (mm):</label>
+            <input type="number" id="a" value="190" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+      <!-- Applied Load Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-red-400 mb-4">Applied Load</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="FEd" class="text-sm font-medium min-w-[120px] text-right">F<sub>Ed</sub> (kN):</label>
+            <input type="number" id="FEd" value="830" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+      <!-- Material Properties Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-yellow-400 mb-4">Material Properties</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="fyk" class="text-sm font-medium min-w-[120px] text-right">f<sub>yk</sub> (MPa):</label>
+            <input type="number" id="fyk" value="355" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="gammaM1" class="text-sm font-medium min-w-[120px] text-right">�<sub>M1</sub>:</label>
+            <input type="number" id="gammaM1" value="1.05" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+    </form>
+
+    <!-- Geometry Model -->
+    <div class="bg-gray-700 rounded-lg p-6">
+      <h3 class="text-xl font-semibold text-purple-400 mb-4">Model Geometry</h3>
+      <div class="flex justify-center">
+        <img src="calculation_model.png" alt="Transversal Forces Stiffened Web Model Geometry" class="max-w-full h-auto rounded-lg border border-gray-600">
+      </div>
+      <p class="text-gray-300 text-sm mt-4 text-center">
+        Geometry and nomenclature for transversal forces in stiffened webs
+      </p>
+    </div>
+
+    <!-- Calculate Button -->
+    <div class="space-y-2 print:hidden">
+      <button onclick="calculateAndShow()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+        Calculate Capacity
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50 hidden">
+      <div id="calc-steps" class="text-white"></div>
+      
+      <!-- Print Button at Bottom -->
+      <div class="mt-8 print:hidden">
+        <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
+          Print to PDF
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="script.js"></script>
+  
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+
+  <!-- Cookie Consent Scripts -->
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/cookie-consent.js"></script>
+
+</body>
+</html>

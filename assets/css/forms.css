@@ -1,0 +1,306 @@
+/* 
+ * Forms CSS for Structural Engineering Tools
+ * Input fields, buttons, labels, and form layouts
+ */
+
+/* Form layouts */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .form-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.form-section {
+  background-color: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+  padding: 1rem;
+}
+
+.form-section h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+/* Input field styling */
+.input-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.input-group-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.input-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: right;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.input-label-compact {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: left;
+  margin-bottom: 0.125rem;
+}
+
+.input-field {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--bg-quaternary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  font-size: 0.875rem;
+  transition: var(--transition);
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.input-field:hover {
+  border-color: var(--text-muted);
+}
+
+.input-field::placeholder {
+  color: var(--text-muted);
+}
+
+/* Specialized input variations */
+.input-field-large {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+}
+
+.input-field-small {
+  padding: 0.375rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.input-field-compact {
+  padding: 0.375rem 0.5rem;
+  font-size: 0.75rem;
+  background-color: var(--bg-quaternary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  transition: var(--transition);
+}
+
+.input-field-compact:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+/* Button styling */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: var(--border-radius-sm);
+  border: none;
+  cursor: pointer;
+  transition: var(--transition);
+  user-select: none;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Button variants */
+.btn-primary {
+  background-color: var(--accent-blue);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--accent-blue-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+}
+
+.btn-secondary {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--bg-quaternary);
+  border-color: var(--text-muted);
+}
+
+.btn-success {
+  background-color: var(--accent-green);
+  color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+  background-color: var(--accent-green-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+}
+
+.btn-danger {
+  background-color: var(--accent-red);
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: var(--accent-red-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Button sizes */
+.btn-large {
+  padding: 1rem 2rem;
+  font-size: 1rem;
+}
+
+.btn-small {
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+}
+
+.btn-full-width {
+  width: 100%;
+}
+
+/* Form validation styles */
+.input-field.error {
+  border-color: var(--accent-red);
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
+}
+
+.input-field.success {
+  border-color: var(--accent-green);
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.2);
+}
+
+.error-message {
+  color: var(--accent-red);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.success-message {
+  color: var(--accent-green);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+/* Checkbox and radio styling */
+.checkbox-group,
+.radio-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.checkbox,
+.radio {
+  width: 1rem;
+  height: 1rem;
+  background-color: var(--bg-quaternary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.radio {
+  border-radius: 50%;
+}
+
+.checkbox:checked,
+.radio:checked {
+  background-color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
+/* Select dropdown styling */
+.select-field {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--bg-quaternary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.select-field:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+/* Fieldset styling */
+.fieldset {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.fieldset legend {
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 0 0.5rem;
+}
+
+/* Responsive form adjustments */
+@media (max-width: 767px) {
+  .input-group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  
+  .input-label {
+    text-align: left;
+    min-width: auto;
+  }
+  
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Focus visible for better accessibility */
+.btn:focus-visible,
+.input-field:focus-visible,
+.select-field:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}

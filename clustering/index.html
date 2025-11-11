@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSV Clustering Tool - Structural Tools</title>
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  
+  <!-- External Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <script src="script.js" defer></script>
+  
+  <style>
+    .clustering-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      background-color: var(--bg-tertiary);
+      border-radius: var(--border-radius-sm);
+      overflow: hidden;
+    }
+    
+    .clustering-table th,
+    .clustering-table td {
+      padding: 0.75rem;
+      border: 1px solid var(--border-light);
+      text-align: left;
+      font-size: 0.875rem;
+    }
+    
+    .clustering-table th {
+      background-color: var(--bg-quaternary);
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    
+    .clustering-table td {
+      color: var(--text-secondary);
+    }
+    
+    .preview-container {
+      background-color: var(--bg-tertiary);
+      border-radius: var(--border-radius-sm);
+      padding: 1rem;
+      margin-top: 1rem;
+      border: 1px solid var(--border-light);
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    
+    .csv-textarea {
+      width: 100%;
+      min-height: 300px;
+      background-color: var(--bg-quaternary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--border-radius-sm);
+      padding: 1rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      resize: vertical;
+    }
+    
+    .csv-textarea:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    }
+    
+    .results-section {
+      margin-top: 2rem;
+    }
+    
+    .upload-area {
+      border: 2px dashed var(--border-color);
+      border-radius: var(--border-radius);
+      padding: 2rem;
+      text-align: center;
+      background-color: var(--bg-secondary);
+      transition: var(--transition);
+    }
+    
+    .upload-area:hover {
+      border-color: var(--accent-blue);
+      background-color: rgba(59, 130, 246, 0.05);
+    }
+    
+    .file-input {
+      margin: 1rem 0;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen">
+  
+  <!-- Header -->
+  <header class="w-full max-w-6xl mx-auto p-6">
+    <div class="text-center mb-8">
+      <h1 class="heading-1 text-center">1D CSV Clustering Tool</h1>
+      <p class="text-description text-center">Upload a CSV file and cluster data points based on numeric values in any column</p>
+    </div>
+    
+    <!-- Back to Home -->
+    <div class="mb-6">
+      <a href="../index.html" class="btn btn-secondary">
+        ← Back to Tools
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="w-full max-w-6xl mx-auto p-6">
+    
+    <!-- File Upload Section -->
+    <section class="section-card mb-6">
+      <h2 class="heading-3">Step 1: Upload CSV File</h2>
+      
+      <div class="upload-area">
+        <div class="input-group">
+          <label for="fileInput" class="input-label">Upload CSV File:</label>
+          <input type="file" id="fileInput" accept=".csv" class="input-field file-input">
+        </div>
+      </div>
+      
+      <div class="input-group mt-4">
+        <label for="delimiterSelect" class="input-label">Delimiter:</label>
+        <select id="delimiterSelect" class="select-field">
+          <option value="">Auto-detect</option>
+          <option value=",">Comma (,)</option>
+          <option value=";">Semicolon (;)</option>
+          <option value="\t">Tab (↹)</option>
+          <option value="|">Pipe (|)</option>
+        </select>
+      </div>
+      
+      <div class="mt-6">
+        <button id="previewBtn" class="btn btn-secondary">Preview CSV</button>
+      </div>
+    </section>
+
+    <!-- Column Selection and Clustering Section -->
+    <section class="section-card mb-6" id="clusteringSection" style="display: none;">
+      <h3 class="heading-3">Step 2: Configure Clustering</h3>
+      
+      <div class="form-grid">
+        <div class="input-group">
+          <label for="columnSelect" class="input-label">Select column for clustering:</label>
+          <select id="columnSelect" class="select-field"></select>
+        </div>
+        
+        <div class="input-group">
+          <label for="clusterCount" class="input-label">Number of clusters:</label>
+          <input type="number" id="clusterCount" min="1" value="2" class="input-field">
+        </div>
+      </div>
+      
+      <div class="mt-6">
+        <button id="runClustering" class="btn btn-primary">Run Clustering</button>
+      </div>
+    </section>
+
+    <!-- Preview Section -->
+    <section class="section-card mb-6" id="previewSection" style="display: none;">
+      <h3 class="heading-3">Step 3: CSV Preview</h3>
+      <div id="preview" class="preview-container"></div>
+    </section>
+
+    <!-- Download Section -->
+    <section class="section-card mb-6" id="downloadSection" style="display: none;">
+      <h3 class="heading-3">Step 4: Download Results</h3>
+      <p class="text-secondary mb-4">Your clustered data is ready for download:</p>
+      
+      <div class="flex gap-4 mb-4">
+        <button id="downloadBtn" class="btn btn-success">
+          Download Clustered CSV
+        </button>
+      </div>
+      
+      <div>
+        <h4 class="heading-3 mb-4">CSV Output Preview</h4>
+        <textarea id="csvPreview" class="csv-textarea" readonly></textarea>
+      </div>
+    </section>
+
+    <!-- Results Section -->
+    <section class="results-section" id="resultsSection" style="display: none;">
+      <div class="results-container">
+        <div class="results-header">
+          <h3 class="heading-2">Step 5: Detailed Clustering Results</h3>
+          <p class="text-secondary">Complete table view of your clustered data</p>
+        </div>
+        
+        <div id="output"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="w-full max-w-6xl mx-auto p-6 mt-12">
+    <div class="border-t border-gray-700 pt-6">
+      <div class="text-center">
+        <p class="text-sm text-gray-400">
+          Part of <a href="../index.html" class="text-blue-400 hover:text-blue-300">Structural Engineering Tools</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+
+  <!-- Cookie Consent Scripts -->
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/cookie-consent.js"></script>
+
+</body>
+</html>

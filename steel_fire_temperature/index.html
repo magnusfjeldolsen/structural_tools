@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Primary Meta Tags -->
+  <title>Steel Fire Temperature Calculator | Free Steel Engineering Tool</title>
+  <meta name="title" content="Steel Fire Temperature Calculator | Free Steel Engineering Tool">
+  <meta name="description" content="Calculate fire resistance of unprotected steel structures with interactive temperature simulation. Features Am/V ratio calculation, shadow effects, and detailed temperature-time curves according to Eurocode 3.">
+  <meta name="keywords" content="steel fire resistance, temperature calculation, eurocode 3 fire, am/v ratio, unprotected steel, fire design, steel temperature, free engineering tool, structural calculator">
+  <meta name="author" content="Magnus Fjeld Olsen">
+  <meta name="robots" content="index, follow">
+
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://magnusfjeldolsen.github.io/structural_tools/steel_fire_temperature/">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/steel_fire_temperature/">
+  <meta property="og:title" content="Steel Fire Temperature Calculator">
+  <meta property="og:description" content="Calculate fire resistance of unprotected steel structures with interactive temperature simulation. Features Am/V ratio calculation, shadow effects, and detailed temperature-time curves.">
+  <meta property="og:site_name" content="Structural Engineering Tools">
+  
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://magnusfjeldolsen.github.io/structural_tools/steel_fire_temperature/">
+  <meta property="twitter:title" content="Steel Fire Temperature Calculator">
+  <meta property="twitter:description" content="Calculate fire resistance of unprotected steel structures with interactive temperature simulation.">
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+
+  <main class="w-full max-w-4xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <!-- Header -->
+    <div class="flex justify-end mb-4">
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+        ← Back to Tools
+      </a>
+    </div>
+
+    <header>
+      <h1 class="text-2xl font-semibold text-center text-white">Steel Fire Temperature Calculator</h1>
+      <p class="text-center text-gray-300 mt-2">Calculate fire resistance of unprotected steel structures with interactive temperature simulation</p>
+    </header>
+
+    <!-- Main input + result container -->
+    <div class="space-y-6">
+      <!-- Am/V Row -->
+      <div class="flex items-center gap-4">
+        <label for="amv" class="text-sm font-medium min-w-[120px] text-right">Am/V [m⁻¹] =</label>
+        <input id="amv" value="" placeholder="Math input is possible, i.e. 1/0.008" class="flex-1 px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-md focus:outline-none focus:ring focus:ring-blue-400" />
+        <span class="text-green-400 min-w-[100px] text-right font-mono" id="amv-eval">-</span>
+      </div>
+
+      <!-- Fire Duration Row -->
+      <div class="flex items-center gap-4">
+        <label for="duration" class="text-sm font-medium min-w-[120px] text-right">Fire Duration =</label>
+        <div class="flex-1 flex items-center gap-2">
+          <input type="number" id="duration" value="15" class="w-24 px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-md focus:outline-none focus:ring focus:ring-blue-400" />
+          <span class="text-gray-300">minutes</span>
+        </div>
+        <div class="min-w-[100px]"></div>
+      </div>
+
+      <!-- k_sh Row -->
+      <div class="flex items-center gap-4">
+        <label for="ksh" class="text-sm font-medium min-w-[120px] text-right">k<sub>sh</sub> =</label>
+        <div class="flex-1 flex items-center gap-2">
+          <input type="number" id="ksh" value="1" step="0.01" min="0" max="1" class="w-24 px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-md focus:outline-none focus:ring focus:ring-blue-400" />
+          <span class="text-gray-300">[shadow effect]</span>
+        </div>
+        <div class="min-w-[100px]"></div>
+      </div>
+    </div>
+
+    <!-- Buttons -->
+    <div class="space-y-2 print:hidden">
+      <button onclick="runSimulation()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition">
+        Run Simulation
+      </button>
+      <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
+        Print to PDF
+      </button>
+    </div>
+
+    <!-- Chart -->
+    <div class="w-full aspect-[5/4] print:border print:rounded print:p-4 print:mt-6 bg-gray-900">
+      <canvas id="resultChart" class="print:!bg-gray-900"></canvas>
+    </div>
+
+    <!-- Material Reduction Factors at Final Temperature -->
+    <div id="materialFactors" class="hidden bg-gray-700 rounded-lg p-4 mt-4">
+      <h3 class="text-lg font-semibold text-white mb-3">Material Reduction Factors at Final Temperature</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-gray-800 rounded p-3">
+          <div class="text-xs text-gray-400">ky,θ</div>
+          <div class="text-xl font-mono text-red-400" id="kyValue">-</div>
+          <div class="text-sm text-gray-300">Yield Strength Factor</div>
+        </div>
+        <div class="bg-gray-800 rounded p-3">
+          <div class="text-xs text-gray-400">kp,θ</div>
+          <div class="text-xl font-mono text-yellow-400" id="kpValue">-</div>
+          <div class="text-sm text-gray-300">Proportional Limit Factor</div>
+        </div>
+        <div class="bg-gray-800 rounded p-3">
+          <div class="text-xs text-gray-400">kE,θ</div>
+          <div class="text-xl font-mono text-blue-400" id="kEValue">-</div>
+          <div class="text-sm text-gray-300">Elastic Modulus Factor</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+
+    // Copy input values to print placeholders before printing
+    function updatePrintFields() {
+      document.getElementById('amv-print').textContent = document.getElementById('amv').value;
+      document.getElementById('duration-print').textContent = document.getElementById('duration').value + ' minutes';
+      document.getElementById('ksh-print').textContent = document.getElementById('ksh').value + ' [shadow effect]';
+    }
+
+    window.addEventListener('beforeprint', updatePrintFields);
+
+    // Fire simulation functions
+    function caCalculate(theta) {
+      if (theta >= 20 && theta < 600)
+        return 425 + 0.773 * theta - 0.00169 * theta ** 2 + 2.22e-6 * theta ** 3;
+      else if (theta >= 600 && theta < 735)
+        return 666 + 13002 / (738 - theta);
+      else if (theta >= 735 && theta < 900)
+        return 545 + 17820 / (theta - 731);
+      else if (theta >= 900 && theta <= 1200)
+        return 650;
+      else
+        return null;
+    }
+
+    function hNetCalc(theta_g, theta_a, alpha_c = 25, phi = 1.0, e_m = 0.7, e_f = 1.0, sigma = 5.67e-8) {
+      const h_net_c = alpha_c * (theta_g - theta_a);
+      const h_net_r = phi * e_m * e_f * sigma * ((theta_g + 273.15) ** 4 - (theta_a + 273.15) ** 4);
+      return h_net_c + h_net_r;
+    }
+
+    function deltaThetaStep(theta_a, theta_g, AmV, delta_t, ksh = 1.0, rho_a = 7850) {
+      const c_a = caCalculate(theta_a);
+      if (!c_a) return 0;
+      const h_net = hNetCalc(theta_g, theta_a);
+      return ksh * AmV / (c_a * rho_a) * h_net * delta_t;
+    }
+
+    function thetaGas(t_seconds) {
+      return 20 + 345 * Math.log10(8 * t_seconds / 60 + 1);
+    }
+
+    function evaluateExpression(input) {
+      try {
+        return Function('"use strict"; return (' + input + ')')();
+      } catch (e) {
+        alert("Invalid Am/V expression.");
+        throw e;
+      }
+    }
+
+    // Steel property data at elevated temperatures
+    const ky_theta_data = {
+      theta_a: [20, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200],
+      ky_theta: [1.0, 1.0, 1.0, 1.0, 1.0, 0.78, 0.47, 0.23, 0.11, 0.06, 0.04, 0.02, 0.0]
+    };
+
+    const kp_theta_data = {
+      theta_a: [20, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200],
+      kp_theta: [1.0, 1.0, 0.807, 0.613, 0.42, 0.36, 0.18, 0.075, 0.05, 0.0375, 0.025, 0.0125, 0.0]
+    };
+
+    const kE_theta_data = {
+      theta_a: [20, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200],
+      kE_theta: [1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.31, 0.13, 0.09, 0.0675, 0.045, 0.0225, 0.0]
+    };
+
+    // Interpolation function for steel properties
+    function interpolatePiecewise(dataDict, xInput) {
+      const xKey = Object.keys(dataDict)[0];
+      const yKey = Object.keys(dataDict)[1];
+      const x = dataDict[xKey];
+      const y = dataDict[yKey];
+
+      // Create sorted array of [x, y] pairs
+      const xyPairs = x.map((xVal, i) => [xVal, y[i]]).sort((a, b) => a[0] - b[0]);
+      const xSorted = xyPairs.map(pair => pair[0]);
+      const ySorted = xyPairs.map(pair => pair[1]);
+
+      // Handle out-of-bounds
+      if (xInput <= xSorted[0]) return ySorted[0];
+      if (xInput >= xSorted[xSorted.length - 1]) return ySorted[ySorted.length - 1];
+
+      // Find interval for interpolation
+      for (let i = 0; i < xSorted.length - 1; i++) {
+        if (xSorted[i] <= xInput && xInput <= xSorted[i + 1]) {
+          const x0 = xSorted[i], y0 = ySorted[i];
+          const x1 = xSorted[i + 1], y1 = ySorted[i + 1];
+          return y0 + (y1 - y0) * (xInput - x0) / (x1 - x0);
+        }
+      }
+      return null;
+    }
+
+    // Steel property calculation functions
+    function kyThetaCalc(thetaA) {
+      return interpolatePiecewise(ky_theta_data, thetaA);
+    }
+
+    function kpThetaCalc(thetaA) {
+      return interpolatePiecewise(kp_theta_data, thetaA);
+    }
+
+    function kEThetaCalc(thetaA) {
+      return interpolatePiecewise(kE_theta_data, thetaA);
+    }
+
+    function runSimulation() {
+      const amvInput = document.getElementById('amv').value.trim();
+      if (!amvInput) {
+        alert("Please enter a valid Am/V expression.");
+        return;
+      }
+
+      let AmV;
+      try {
+        AmV = evaluateExpression(amvInput);
+        document.getElementById('amv-eval').textContent = `= ${AmV.toFixed(2)}`;
+        document.getElementById('amv-eval').classList.remove('hidden');
+      } catch {
+        document.getElementById('amv-eval').classList.add('hidden');
+        return;
+      }
+
+      const duration_min = parseFloat(document.getElementById('duration').value);
+      const ksh = parseFloat(document.getElementById('ksh').value);
+      const delta_t = 1;
+      const duration_sec = duration_min * 60;
+      const steps = Math.floor(duration_sec / delta_t);
+
+      let theta_a = 20;
+      const theta_a_array = [theta_a];
+      const time_array = [0];
+      const gas_temp_array = [thetaGas(0)];
+
+      for (let i = 1; i <= steps; i++) {
+        const t = i * delta_t;
+        const theta_g = thetaGas(t);
+        const delta_theta = deltaThetaStep(theta_a, theta_g, AmV, delta_t, ksh);
+        theta_a += delta_theta;
+
+        time_array.push(t / 60);
+        theta_a_array.push(theta_a);
+        gas_temp_array.push(theta_g);
+      }
+
+      plotResult(time_array, theta_a_array, gas_temp_array);
+    }
+
+    function plotResult(time, temperature, gas_temp) {
+      const ctx = document.getElementById('resultChart').getContext('2d');
+      if (window.chartInstance) window.chartInstance.destroy();
+
+      const finalGasTemp = gas_temp[gas_temp.length - 1].toFixed(1);
+      const finalSteelTemp = temperature[temperature.length - 1].toFixed(1);
+      
+      // Calculate material reduction factors at final temperature
+      const finalSteelTempNum = temperature[temperature.length - 1];
+      const finalKy = kyThetaCalc(finalSteelTempNum);
+      const finalKp = kpThetaCalc(finalSteelTempNum);
+      const finalKE = kEThetaCalc(finalSteelTempNum);
+
+      window.chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: time,
+          datasets: [
+            {
+              label: 'Steel Temperature (°C)',
+              data: temperature,
+              borderColor: 'rgb(239, 68, 68)',
+              backgroundColor: 'rgba(239, 68, 68, 0.2)',
+              tension: 0.1
+            },
+            {
+              label: 'Gas Temperature (°C)',
+              data: gas_temp,
+              borderColor: 'rgb(251, 191, 36)',
+              backgroundColor: 'rgba(251, 191, 36, 0.2)',
+              borderDash: [5, 5],
+              tension: 0.1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: {
+            intersect: false,
+            mode: 'index'
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: `Steel Temp: ${finalSteelTemp}°C | Gas Temp: ${finalGasTemp}°C at ${time[time.length - 1].toFixed(1)} min`,
+              color: '#fff',
+              font: { size: 16 }
+            },
+            legend: {
+              labels: {
+                color: '#ddd'
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(31, 41, 55, 0.95)',
+              titleColor: '#fff',
+              bodyColor: '#ddd',
+              borderColor: '#6b7280',
+              borderWidth: 1,
+              callbacks: {
+                title: function(context) {
+                  return `Time: ${context[0].label} min`;
+                },
+                label: function(context) {
+                  return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}°C`;
+                },
+                afterBody: function(context) {
+                  // Get steel temperature from the first dataset (steel temperature)
+                  const steelTempPoint = context.find(c => c.datasetIndex === 0);
+                  if (steelTempPoint) {
+                    const steelTemp = steelTempPoint.parsed.y;
+                    const ky = kyThetaCalc(steelTemp);
+                    const kp = kpThetaCalc(steelTemp);
+                    const kE = kEThetaCalc(steelTemp);
+                    
+                    return [
+                      '',
+                      'Material Reduction Factors:',
+                      `ky,θ (yield strength): ${ky.toFixed(3)}`,
+                      `kp,θ (prop. limit): ${kp.toFixed(3)}`,
+                      `kE,θ (elastic modulus): ${kE.toFixed(3)}`
+                    ];
+                  }
+                  return [];
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Time (minutes)', color: '#ccc' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' }
+            },
+            y: {
+              title: { display: true, text: 'Temperature (°C)', color: '#ccc' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' },
+              min: 0
+            }
+          }
+        }
+      });
+
+      // Update material reduction factors display
+      document.getElementById('kyValue').textContent = finalKy.toFixed(3);
+      document.getElementById('kpValue').textContent = finalKp.toFixed(3);
+      document.getElementById('kEValue').textContent = finalKE.toFixed(3);
+      document.getElementById('materialFactors').classList.remove('hidden');
+    }
+  </script>
+
+<footer class="text-xs text-gray-400 fixed bottom-2 right-2 print:relative print:bottom-0 print:right-0 print:mb-2 print:mr-2">
+  Free to use. Created by Magnus Fjeld Olsen.
+</footer>
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+  
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+
+  <!-- Cookie Consent Scripts -->
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/cookie-consent.js"></script>
+
+</body>
+</html>

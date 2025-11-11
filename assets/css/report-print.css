@@ -1,0 +1,578 @@
+/*
+ * Print CSS for Concrete Anchorage Length Calculator
+ * Ensures clean, professional light-background PDF output
+ */
+
+@media print {
+  /* ===== PAGE SETUP ===== */
+  /* Word standard A4 margins: Left 31.7mm (1.25"), Right 25mm, Top 25mm, Bottom 25mm */
+  @page {
+    size: A4;
+    margin: 25mm 25mm 25mm 31.7mm; /* top right bottom left - mimics Word Normal margins */
+
+    /* Remove browser-generated headers and footers */
+    @top-left { content: none; }
+    @top-center { content: none; }
+    @top-right { content: none; }
+    @bottom-left { content: none; }
+    @bottom-center { content: none; }
+    @bottom-right { content: none; }
+  }
+
+  /* Additional rule to hide browser chrome elements */
+  html {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* ===== FORCE LIGHT THEME FOR PRINT ===== */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Body - light background */
+  body {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    padding-left: 15mm !important; /* Additional left margin */
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+
+  /* ===== HIDE NON-REPORT ELEMENTS ===== */
+  /* Hide EVERYTHING in main except #results and .bg-gray-700 containers */
+  body > main > *:not(.bg-gray-700):not(#results) {
+    display: none !important;
+  }
+
+  /* If #results exists, hide its children except the report container */
+  #results > *:not(.bg-gray-700) {
+    display: none !important;
+  }
+
+  /* Hide all children of .bg-gray-700 except #detailed-report */
+  body > main > .bg-gray-700 > *:not(#detailed-report),
+  #results > .bg-gray-700 > *:not(#detailed-report),
+  .bg-gray-700 > *:not(#detailed-report),
+  .bg-gray-700 > .flex,
+  .bg-gray-700 > div.flex {
+    display: none !important;
+  }
+
+  /* Additional rules to ensure everything is hidden */
+  body > main > .flex,
+  body > main > .text-center,
+  body > main > form,
+  body > main > h2,
+  body > main > p,
+  body > main > div:not(.bg-gray-700):not(#detailed-report):not(#results),
+  button:not(#detailed-report button),
+  input,
+  select,
+  textarea,
+  footer,
+  .print\:hidden,
+  [class*="print:hidden"] {
+    display: none !important;
+  }
+
+  /* ===== MAIN CONTAINER - FULL WIDTH ===== */
+  body > main,
+  main {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    border-radius: 0 !important;
+    border: none !important;
+  }
+
+  /* Results container */
+  #results {
+    display: block !important;
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    box-shadow: none !important;
+  }
+
+  /* Report wrapper - completely remove all container styling */
+  #results > .bg-gray-700,
+  body > main > .bg-gray-700,
+  .bg-gray-700 {
+    background: white !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    box-shadow: none !important;
+  }
+
+  /* ===== DETAILED REPORT - ALWAYS VISIBLE ===== */
+  #detailed-report {
+    display: block !important;
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Report content - light theme */
+  .report-content,
+  #detailed-report .report-content {
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    border-radius: 0 !important;
+    border: none !important;
+    outline: none !important;
+  }
+
+  /* Override general text colors to dark for readability */
+  .report-content p,
+  .report-content div:not([class*="text-"]),
+  #detailed-report p,
+  #detailed-report div:not([class*="text-"]) {
+    color: black !important;
+  }
+
+  /* ===== TYPOGRAPHY ===== */
+  .report-content h1,
+  #detailed-report h1 {
+    font-size: 20pt !important;
+    color: black !important;
+    margin-bottom: 8pt !important;
+    page-break-after: avoid;
+  }
+
+  .report-content h2,
+  #detailed-report h2 {
+    font-size: 16pt !important;
+    color: black !important;
+    margin-top: 12pt !important;
+    margin-bottom: 8pt !important;
+    page-break-after: avoid;
+  }
+
+  .report-content h3,
+  #detailed-report h3 {
+    font-size: 14pt !important;
+    color: black !important;
+    margin-top: 10pt !important;
+    margin-bottom: 6pt !important;
+    page-break-after: avoid;
+  }
+
+  .report-content h4,
+  #detailed-report h4 {
+    font-size: 12pt !important;
+    color: black !important;
+    font-weight: 600 !important;
+    margin-top: 8pt !important;
+    margin-bottom: 4pt !important;
+  }
+
+  /* Specific heading colors for sections */
+  .report-content .text-blue-700,
+  #detailed-report .text-blue-700 {
+    color: #1d4ed8 !important;
+  }
+
+  .report-content .text-green-700,
+  #detailed-report .text-green-700 {
+    color: #15803d !important;
+  }
+
+  .report-content .text-purple-700,
+  #detailed-report .text-purple-700 {
+    color: #6b21a8 !important;
+  }
+
+  .report-content .text-yellow-700,
+  #detailed-report .text-yellow-700 {
+    color: #a16207 !important;
+  }
+
+  /* Utilization colors */
+  .report-content .text-red-900,
+  #detailed-report .text-red-900 {
+    color: #7f1d1d !important;
+  }
+
+  .report-content .text-yellow-900,
+  #detailed-report .text-yellow-900 {
+    color: #713f12 !important;
+  }
+
+  .report-content .text-green-900,
+  #detailed-report .text-green-900 {
+    color: #14532d !important;
+  }
+
+  .report-content .text-blue-900,
+  #detailed-report .text-blue-900 {
+    color: #1e3a8a !important;
+  }
+
+  .report-content .text-blue-700,
+  #detailed-report .text-blue-700 {
+    color: #1d4ed8 !important;
+  }
+
+  /* Gray text variants */
+  .report-content .text-gray-600,
+  #detailed-report .text-gray-600,
+  .report-content .text-gray-700,
+  #detailed-report .text-gray-700 {
+    color: #4b5563 !important;
+  }
+
+  .report-content .text-gray-800,
+  #detailed-report .text-gray-800 {
+    color: #1f2937 !important;
+  }
+
+  .report-content .text-gray-900,
+  #detailed-report .text-gray-900 {
+    color: #111827 !important;
+  }
+
+  /* ===== BORDERS ===== */
+  .report-content .border-b-2,
+  #detailed-report .border-b-2 {
+    border-bottom: 2px solid #e5e7eb !important;
+  }
+
+  .report-content .border-blue-300,
+  #detailed-report .border-blue-300 {
+    border-color: #93c5fd !important;
+  }
+
+  .report-content .border-gray-300,
+  #detailed-report .border-gray-300 {
+    border-color: #d1d5db !important;
+  }
+
+  /* ===== TABLES ===== */
+  .report-content table,
+  #detailed-report table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 8pt !important;
+    background: white !important;
+    page-break-inside: avoid;
+  }
+
+  .report-content th,
+  #detailed-report th,
+  .report-content td,
+  #detailed-report td {
+    padding: 4pt 6pt !important;
+    border: 1px solid #d1d5db !important;
+    color: black !important;
+    text-align: left !important;
+    background: white !important;
+  }
+
+  .report-content th,
+  #detailed-report th {
+    background: #f3f4f6 !important;
+    font-weight: 600 !important;
+  }
+
+  /* ===== GRID LAYOUTS ===== */
+  .report-content .grid,
+  #detailed-report .grid {
+    display: grid !important;
+    width: 100% !important;
+  }
+
+  .report-content .grid-cols-2,
+  #detailed-report .grid-cols-2 {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12pt !important;
+  }
+
+  .report-content .grid-cols-3,
+  #detailed-report .grid-cols-3 {
+    grid-template-columns: 1fr 1fr 1fr !important;
+    gap: 12pt !important;
+  }
+
+  .report-content .grid-cols-4,
+  #detailed-report .grid-cols-4 {
+    grid-template-columns: 1fr 1fr 1fr 1fr !important;
+    gap: 12pt !important;
+  }
+
+  /* ===== CALCULATION STEPS ===== */
+  .report-content .calc-step,
+  #detailed-report .calc-step,
+  .report-content .bg-gray-50,
+  #detailed-report .bg-gray-50,
+  .report-content .bg-blue-50,
+  #detailed-report .bg-blue-50,
+  .report-content .bg-green-50,
+  #detailed-report .bg-green-50 {
+    background: white !important;
+    border: none !important;
+    padding: 8pt 0 !important;
+    margin-bottom: 6pt !important;
+    border-radius: 0 !important;
+    page-break-inside: avoid;
+  }
+
+  /* Step numbers/labels */
+  .report-content .font-mono,
+  #detailed-report .font-mono,
+  .report-content code,
+  #detailed-report code {
+    font-family: 'Courier New', Courier, monospace !important;
+    background: #f3f4f6 !important;
+    padding: 2pt 4pt !important;
+    border-radius: 3pt !important;
+    font-size: 10pt !important;
+  }
+
+  /* ===== RESULT BOXES ===== */
+  .report-content .result-box,
+  #detailed-report .result-box,
+  .report-content .border-l-4,
+  #detailed-report .border-l-4 {
+    border: none !important;
+    background: white !important;
+    padding: 10pt 0 !important;
+    margin: 8pt 0 !important;
+    page-break-inside: avoid;
+  }
+
+  /* Final result highlighting */
+  .report-content .text-3xl,
+  #detailed-report .text-3xl,
+  .report-content .text-4xl,
+  #detailed-report .text-4xl {
+    color: #1d4ed8 !important;
+    font-weight: bold !important;
+  }
+
+  /* ===== SPACING ===== */
+  .report-content .mb-6,
+  #detailed-report .mb-6 {
+    margin-bottom: 12pt !important;
+  }
+
+  .report-content .mb-4,
+  #detailed-report .mb-4 {
+    margin-bottom: 8pt !important;
+  }
+
+  .report-content .mb-3,
+  #detailed-report .mb-3 {
+    margin-bottom: 6pt !important;
+  }
+
+  .report-content .mb-2,
+  #detailed-report .mb-2 {
+    margin-bottom: 4pt !important;
+  }
+
+  .report-content .mt-6,
+  #detailed-report .mt-6 {
+    margin-top: 12pt !important;
+  }
+
+  .report-content .p-8,
+  #detailed-report .p-8 {
+    padding: 0 !important;
+  }
+
+  .report-content .rounded-lg,
+  #detailed-report .rounded-lg {
+    border-radius: 0 !important;
+  }
+
+  /* ===== PAGE BREAKS ===== */
+  .page-break-before,
+  .report-content .page-break-before,
+  #detailed-report .page-break-before {
+    page-break-before: always !important;
+  }
+
+  .page-break-after,
+  .report-content .page-break-after,
+  #detailed-report .page-break-after {
+    page-break-after: always !important;
+  }
+
+  .page-break-inside-avoid,
+  .report-content > div,
+  #detailed-report > div > div {
+    page-break-inside: avoid !important;
+  }
+
+  /* ===== MATHEMATICAL CONTENT ===== */
+  .MathJax,
+  .MathJax_Display {
+    color: black !important;
+    background: transparent !important;
+  }
+
+  /* Subscripts and superscripts */
+  sub,
+  sup {
+    color: inherit !important;
+  }
+
+  /* ===== IMAGES & DIAGRAMS ===== */
+  img,
+  canvas,
+  svg {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+  }
+
+  /* ===== WHITESPACE HANDLING ===== */
+  .whitespace-pre-wrap {
+    white-space: pre-wrap !important;
+  }
+
+  /* ===== OVERRIDE DARK MODE CLASSES ===== */
+  .bg-gray-900,
+  .bg-gray-800,
+  .bg-gray-700,
+  [class*="bg-gray-"],
+  [class*="bg-blue-"],
+  [class*="bg-green-"],
+  [class*="bg-purple-"] {
+    background: white !important;
+  }
+
+  .text-white,
+  .text-gray-100,
+  .text-gray-200,
+  .text-gray-300,
+  .text-gray-400 {
+    color: black !important;
+  }
+
+  /* Keep only specific colored text for emphasis */
+  .text-blue-600,
+  .text-blue-700 {
+    color: #1d4ed8 !important;
+  }
+
+  .text-green-600,
+  .text-green-700 {
+    color: #15803d !important;
+  }
+
+  .text-red-600,
+  .text-red-700 {
+    color: #dc2626 !important;
+  }
+
+  /* ===== ENSURE FULL WIDTH USAGE ===== */
+  .max-w-6xl,
+  .max-w-4xl,
+  .max-w-3xl,
+  .max-w-2xl,
+  [class*="max-w-"] {
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  .w-full {
+    width: 100% !important;
+  }
+
+  /* ===== CONTAINER ADJUSTMENTS ===== */
+  .container {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* ===== GAP ADJUSTMENTS FOR PRINT ===== */
+  .gap-6 {
+    gap: 12pt !important;
+  }
+
+  .gap-4 {
+    gap: 8pt !important;
+  }
+
+  /* ===== FONT SIZES ===== */
+  .text-sm {
+    font-size: 10pt !important;
+  }
+
+  .text-base {
+    font-size: 11pt !important;
+  }
+
+  .text-lg {
+    font-size: 12pt !important;
+  }
+
+  .text-xl {
+    font-size: 14pt !important;
+  }
+
+  .text-2xl {
+    font-size: 16pt !important;
+  }
+
+  /* ===== LINKS (if any) ===== */
+  a {
+    color: #1d4ed8 !important;
+    text-decoration: underline !important;
+  }
+
+  /* ===== BOX SHADOWS ===== */
+  * {
+    box-shadow: none !important;
+  }
+
+  /* ===== REMOVE ALL UNWANTED BORDERS/OUTLINES ===== */
+  /* Remove borders from ALL elements except tables and section heading borders */
+  #detailed-report,
+  #detailed-report *,
+  .report-content,
+  .report-content *,
+  main,
+  body {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Only keep bottom borders on section headings */
+  .report-content h3.border-b-2,
+  #detailed-report h3.border-b-2 {
+    border-bottom: 2px solid !important;
+  }
+
+  /* Keep table borders */
+  .report-content table,
+  #detailed-report table,
+  .report-content th,
+  #detailed-report th,
+  .report-content td,
+  #detailed-report td {
+    border: 1px solid #d1d5db !important;
+  }
+}

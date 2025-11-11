@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Steel DIN threaded rod torque and force calculator. Calculate required torque from force or force from torque for DIN threaded rods.">
+  <meta name="keywords" content="DIN threaded rod, torque calculator, force calculator, steel fasteners, structural engineering">
+  <title>DIN Threaded Rod Torque/Force Calculator - Free Engineering Tool</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="DIN Threaded Rod Torque/Force Calculator - Free Engineering Tool">
+  <meta property="og:description" content="Calculate required torque from force or force from torque for DIN threaded rods">
+  <meta property="og:type" content="website">
+  
+  <!-- Twitter Card tags -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="DIN Threaded Rod Torque/Force Calculator - Free Engineering Tool">
+  <meta name="twitter:description" content="Calculate required torque from force or force from torque for DIN threaded rods">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <main class="main-container">
+    <!-- Header -->
+    <div class="flex justify-end mb-4">
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+        ← Back to Tools
+      </a>
+    </div>
+
+    <h1 class="heading-1 text-center mb-6">DIN Threaded Rod Calculator</h1>
+    <p class="text-description text-center mb-8">Professional torque and force calculations for DIN threaded rods</p>
+
+    <!-- Rod Selection Section -->
+    <div class="section-card">
+      <h2 class="heading-3">Rod Selection</h2>
+      
+      <div class="grid-2-dropdown">
+        <div class="input-group">
+          <label for="rodType" class="input-label">Select DIN Rod Type:</label>
+          <select id="rodType" class="select-field" onchange="updateRodProperties()">
+            <option value="">Select a DIN threaded rod type...</option>
+          </select>
+        </div>
+        <div></div> <!-- Empty second column -->
+      </div>
+
+      <!-- Rod Properties Display -->
+      <div id="rodProperties" class="hidden" style="margin-top: 1rem;">
+        <h3 class="heading-3">Rod Properties (from DIN Standard)</h3>
+        <div class="grid-4x3">
+          <!-- First row: P - D_min - blank - blank -->
+          <div class="input-group-compact">
+            <label class="input-label-compact">P (Pitch)</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propP" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
+          </div>
+          <div class="input-group-compact">
+            <label class="input-label-compact">D_min</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propDMin" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
+          </div>
+          <div></div> <!-- Empty third column -->
+          <div></div> <!-- Empty fourth column -->
+          
+          <!-- Second row: D1 - D2 - blank - blank -->
+          <div class="input-group-compact">
+            <label class="input-label-compact">D1 (avg)</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propD1Avg" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
+          </div>
+          <div class="input-group-compact">
+            <label class="input-label-compact">D2</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propD2" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
+          </div>
+          <div></div> <!-- Empty third column -->
+          <div></div> <!-- Empty fourth column -->
+          
+          <!-- Third row: Key Width - Normal Fit Hole - blank - blank -->
+          <div class="input-group-compact">
+            <label class="input-label-compact">Key Width</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propKeyWidth" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
+          </div>
+          <div class="input-group-compact">
+            <label class="input-label-compact">Normal Fit Hole</label>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <input id="propNormalFitHole" class="input-field-compact" readonly />
+              <span style="font-size: 0.75rem; color: var(--text-muted);">mm</span>
+            </div>
+          </div>
+          <div></div> <!-- Empty third column -->
+          <div></div> <!-- Empty fourth column -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Calculation Mode Selection -->
+    <div class="section-card">
+      <h2 class="heading-3">Calculation Mode</h2>
+      <div class="flex gap-6 mb-4">
+        <div class="radio-group">
+          <input type="radio" id="forceToTorque" name="calculationMode" value="forceToTorque" checked onchange="toggleCalculationMode()">
+          <label for="forceToTorque" class="text-lg font-medium text-white ml-2">Force → Torque</label>
+        </div>
+        <div class="radio-group">
+          <input type="radio" id="torqueToForce" name="calculationMode" value="torqueToForce" onchange="toggleCalculationMode()">
+          <label for="torqueToForce" class="text-lg font-medium text-white ml-2">Torque → Force</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Force to Torque Section -->
+    <div id="forceToTorqueSection" class="section-card">
+      <h2 class="heading-3">Force to Torque Calculation</h2>
+      <p class="text-description mb-6">Calculate required torque based on applied axial force</p>
+      
+      <div class="grid-2">
+        <div class="form-section">
+          <h3>Input Parameters</h3>
+          
+          <div class="input-group">
+            <label for="inputForce" class="input-label">Force F:</label>
+            <input type="number" id="inputForce" class="input-field" placeholder="Enter axial force" />
+            <span class="text-gray-400">kN</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="alphaAngle" class="input-label">Half Thread Angle α:</label>
+            <input type="number" id="alphaAngle" class="input-field" value="30" step="0.1" />
+            <span class="text-gray-400">degrees</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="frictionThread" class="input-label">Thread Friction μ:</label>
+            <input type="number" id="frictionThread" class="input-field" value="0.10" step="0.01" />
+            <span class="text-gray-400">-</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="frictionHead" class="input-label">Head Friction μ':</label>
+            <input type="number" id="frictionHead" class="input-field" value="0.10" step="0.01" />
+            <span class="text-gray-400">-</span>
+          </div>
+        </div>
+        
+        <div class="form-section">
+          <h3>Calculation</h3>
+          <p class="text-gray-300 text-sm mb-4">Enter parameters and click calculate to see results</p>
+          
+          <button onclick="calculateTorqueFromForce()" class="btn btn-primary btn-full-width">
+            Calculate Torque from Force
+          </button>
+          
+          <div id="quickResults" class="hidden mt-4 p-4 bg-gray-700 rounded-lg">
+            <h4 class="text-lg font-semibold text-white mb-3">Quick Results</h4>
+            <div class="space-y-3">
+              <div class="flex justify-between border-b border-gray-600 pb-2">
+                <span class="text-white font-bold text-lg">Total Torque M:</span>
+                <span class="text-yellow-400 font-mono text-lg font-bold" id="resultMTotal">-</span>
+              </div>
+              <div class="text-gray-400 text-sm italic mb-2">where:</div>
+              <div class="space-y-2 ml-4">
+                <div class="flex justify-between">
+                  <span class="text-gray-300">Thread Torque Mγ:</span>
+                  <span class="text-blue-400 font-mono" id="resultMgamma">-</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-300">Head Torque Ms:</span>
+                  <span class="text-green-400 font-mono" id="resultMs">-</span>
+                </div>
+              </div>
+              <div class="border-t border-gray-600 pt-2 mt-3">
+                <div class="flex justify-between">
+                  <span class="text-white font-semibold">Rod Tensile Stress σ_rod:</span>
+                  <span class="text-orange-400 font-mono font-bold" id="resultTensileStress">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Torque to Force Section -->
+    <div id="torqueToForceSection" class="section-card hidden">
+      <h2 class="heading-3">Torque to Force Calculation</h2>
+      <p class="text-description mb-6">Calculate axial force based on applied torque</p>
+      
+      <div class="grid-2">
+        <div class="form-section">
+          <h3>Input Parameters</h3>
+          
+          <div class="input-group">
+            <label for="inputTorque" class="input-label">Torque M:</label>
+            <input type="number" id="inputTorque" class="input-field" placeholder="Enter applied torque" />
+            <span class="text-gray-400">Nm</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="alphaAngle2" class="input-label">Half Thread Angle α:</label>
+            <input type="number" id="alphaAngle2" class="input-field" value="30" step="0.1" />
+            <span class="text-gray-400">degrees</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="frictionThread2" class="input-label">Thread Friction μ:</label>
+            <input type="number" id="frictionThread2" class="input-field" value="0.10" step="0.01" />
+            <span class="text-gray-400">-</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="frictionHead2" class="input-label">Head Friction μ':</label>
+            <input type="number" id="frictionHead2" class="input-field" value="0.10" step="0.01" />
+            <span class="text-gray-400">-</span>
+          </div>
+        </div>
+        
+        <div class="form-section">
+          <h3>Calculation</h3>
+          <p class="text-gray-300 text-sm mb-4">Enter parameters and click calculate to see results</p>
+          
+          <button onclick="calculateForceFromTorque()" class="btn btn-primary btn-full-width">
+            Calculate Force from Torque
+          </button>
+          
+          <div id="quickResults2" class="hidden mt-4 p-4 bg-gray-700 rounded-lg">
+            <h4 class="text-lg font-semibold text-white mb-3">Quick Results</h4>
+            <div class="space-y-3">
+              <div class="flex justify-between border-b border-gray-600 pb-2">
+                <span class="text-white font-bold text-lg">Calculated Force F:</span>
+                <span class="text-yellow-400 font-mono text-lg font-bold" id="resultForce">-</span>
+              </div>
+              <div class="text-gray-400 text-sm italic mb-2">verification:</div>
+              <div class="space-y-2 ml-4">
+                <div class="flex justify-between">
+                  <span class="text-gray-300">Verification Mγ:</span>
+                  <span class="text-blue-400 font-mono" id="resultMgammaVerify">-</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-300">Verification Ms:</span>
+                  <span class="text-green-400 font-mono" id="resultMsVerify">-</span>
+                </div>
+              </div>
+              <div class="border-t border-gray-600 pt-2 mt-3">
+                <div class="flex justify-between">
+                  <span class="text-white font-semibold">Rod Tensile Stress σ_rod:</span>
+                  <span class="text-orange-400 font-mono font-bold" id="resultTensileStress2">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detailed Calculations Display -->
+    <div id="detailedCalculations" class="results-container hidden">
+      <div class="results-header">
+        <h2 class="heading-2">Detailed Calculations (M27 Method)</h2>
+      </div>
+      
+      <!-- Input Summary -->
+      <div class="calc-box">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-white">Input Parameters</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">F</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispForce">-</span>
+            <span class="text-gray-400">kN</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">Rod Type</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispRodType">-</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">α</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispAlpha">-</span>
+            <span class="text-gray-400">degrees</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">μ</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispMuThread">-</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">μ'</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispMuHead">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rod Properties -->
+      <div class="calc-box">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-white">Rod Properties (from DIN Standard)</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">D_min</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispDMin">-</span>
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">D1</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispD1">-</span>
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">P</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispP">-</span>
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">Key_Width</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispKeyWidth">-</span>
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">Normal_Fit_Hole</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispNormalFitHole">-</span>
+            <span class="text-gray-400">mm</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Intermediate Calculations -->
+      <div class="calc-box">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-white">Intermediate Calculations</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">rm</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">D1 / 2</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispRm">-</span>
+            <span class="text-gray-400">mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">φ</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">atan(P / (π × D_min))</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispPhi">-</span>
+            <span class="text-gray-400">degrees</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">ε₁</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">atan(μ / cos(α))</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispEpsilon1">-</span>
+            <span class="text-gray-400">degrees</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">r'm</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">(Key_Width + Normal_Fit_Hole) / 4</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispRmPrime">-</span>
+            <span class="text-gray-400">mm</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Final Results -->
+      <div class="calc-box">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-white">Final Results</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">σ_rod</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">F / (π × D2² / 4)</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispTensileStressFinal">-</span>
+            <span class="text-gray-400">MPa</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">Mγ</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">F × tan(φ + ε₁) × rm</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispMgammaFinal">-</span>
+            <span class="text-gray-400">Nm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">Ms</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">μ' × F × r'm</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispMsFinal">-</span>
+            <span class="text-gray-400">Nm</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">M</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">Mγ + Ms</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value" id="dispMTotalFinal">-</span>
+            <span class="text-gray-400">Nm</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let rodData = [];
+    let selectedRod = null;
+
+    // Load CSV data and populate dropdown
+    async function loadRodData() {
+      try {
+        const response = await fetch('DIN_threaded_rods.csv');
+        const csvText = await response.text();
+        
+        // Parse CSV data
+        const lines = csvText.split('\n');
+        const headers = lines[0].split(';');
+        
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (line) {
+            const values = line.split(';');
+            if (values.length >= 10) {
+              rodData.push({
+                Type: values[0],
+                P: parseFloat(values[1]),
+                D_min: parseFloat(values[2]),
+                D_max: parseFloat(values[3]),
+                D1_min: parseFloat(values[4]),
+                D1_max: parseFloat(values[5]),
+                D2: parseFloat(values[6]),
+                Nut_Height: parseFloat(values[7]),
+                Key_Width: parseFloat(values[8]),
+                Normal_Fit_Hole: parseFloat(values[9])
+              });
+            }
+          }
+        }
+        
+        // Populate dropdown
+        const dropdown = document.getElementById('rodType');
+        rodData.forEach(rod => {
+          const option = document.createElement('option');
+          option.value = rod.Type;
+          option.textContent = rod.Type;
+          dropdown.appendChild(option);
+        });
+        
+      } catch (error) {
+        console.error('Error loading rod data:', error);
+        alert('Error loading rod data. Please check the CSV file.');
+      }
+    }
+
+    // Update rod properties display when type is selected
+    function updateRodProperties() {
+      const selectedType = document.getElementById('rodType').value;
+      const propertiesDiv = document.getElementById('rodProperties');
+      
+      if (selectedType) {
+        selectedRod = rodData.find(rod => rod.Type === selectedType);
+        
+        if (selectedRod) {
+          document.getElementById('propP').value = selectedRod.P;
+          document.getElementById('propDMin').value = selectedRod.D_min;
+          document.getElementById('propD1Avg').value = ((selectedRod.D1_min + selectedRod.D1_max) / 2).toFixed(2);
+          document.getElementById('propD2').value = selectedRod.D2;
+          document.getElementById('propKeyWidth').value = selectedRod.Key_Width;
+          document.getElementById('propNormalFitHole').value = selectedRod.Normal_Fit_Hole;
+          
+          propertiesDiv.classList.remove('hidden');
+        }
+      } else {
+        propertiesDiv.classList.add('hidden');
+        selectedRod = null;
+        hideResults();
+      }
+    }
+
+    // Toggle between calculation modes
+    function toggleCalculationMode() {
+      const forceToTorque = document.getElementById('forceToTorque').checked;
+      const forceToTorqueSection = document.getElementById('forceToTorqueSection');
+      const torqueToForceSection = document.getElementById('torqueToForceSection');
+      
+      if (forceToTorque) {
+        forceToTorqueSection.classList.remove('hidden');
+        torqueToForceSection.classList.add('hidden');
+      } else {
+        forceToTorqueSection.classList.add('hidden');
+        torqueToForceSection.classList.remove('hidden');
+      }
+      
+      hideResults();
+    }
+
+    // Calculate torque from force using M27 methodology
+    function calculateTorqueFromForce() {
+      if (!selectedRod) {
+        alert('Please select a DIN threaded rod type first.');
+        return;
+      }
+      
+      const force = parseFloat(document.getElementById('inputForce').value);
+      const alpha = parseFloat(document.getElementById('alphaAngle').value);
+      const muThread = parseFloat(document.getElementById('frictionThread').value);
+      const muHead = parseFloat(document.getElementById('frictionHead').value);
+      
+      if (isNaN(force) || isNaN(alpha) || isNaN(muThread) || isNaN(muHead)) {
+        alert('Please enter valid values for all input parameters.');
+        return;
+      }
+      
+      if (force <= 0) {
+        alert('Force must be greater than 0.');
+        return;
+      }
+      
+      // Convert inputs
+      const forceN = force * 1000; // kN to N
+      const alphaRad = alpha * Math.PI / 180; // degrees to radians
+      
+      // Rod properties
+      const D_min = selectedRod.D_min;
+      const D1_avg = (selectedRod.D1_min + selectedRod.D1_max) / 2;
+      const P = selectedRod.P;
+      const Key_Width = selectedRod.Key_Width;
+      const Normal_Fit_Hole = selectedRod.Normal_Fit_Hole;
+      
+      // Calculate according to M27 methodology
+      const rm = D1_avg / 2; // Mean radius in mm
+      const phi = Math.atan(P / (Math.PI * D_min)) * 180 / Math.PI; // Lead angle in degrees
+      const epsilon1 = Math.atan(muThread / Math.cos(alphaRad)) * 180 / Math.PI; // Friction angle in degrees
+      const rmPrime = (Key_Width + Normal_Fit_Hole) / 4; // Mean radius for head friction
+      
+      // Calculate torques
+      const phiRad = phi * Math.PI / 180;
+      const epsilon1Rad = epsilon1 * Math.PI / 180;
+      const Mgamma = forceN * Math.tan(phiRad + epsilon1Rad) * (rm / 1000); // Convert mm to m
+      const Ms = muHead * forceN * (rmPrime / 1000); // Convert mm to m
+      const totalTorque = Mgamma + Ms;
+      
+      // Calculate rod tensile stress: σ_rod = F/(π*D2^2/4) in MPa
+      const D2 = selectedRod.D2; // mm
+      const crossSectionalArea = Math.PI * Math.pow(D2 / 1000, 2) / 4; // m²
+      const tensileStress = (forceN / crossSectionalArea) / 1000000; // Convert Pa to MPa
+      
+      // Display results
+      displayResults({
+        force: force,
+        forceN: forceN,
+        alpha: alpha,
+        muThread: muThread,
+        muHead: muHead,
+        D_min: D_min,
+        D1_avg: D1_avg,
+        P: P,
+        Key_Width: Key_Width,
+        Normal_Fit_Hole: Normal_Fit_Hole,
+        rm: rm,
+        phi: phi,
+        epsilon1: epsilon1,
+        rmPrime: rmPrime,
+        Mgamma: Mgamma,
+        Ms: Ms,
+        totalTorque: totalTorque,
+        tensileStress: tensileStress,
+        D2: D2
+      });
+      
+      showResults();
+      
+      // Console logging for verification (matching M27 values)
+      console.log('=== M27 Force to Torque Calculation ===');
+      console.log('Input: F = ' + force + ' kN (' + forceN + ' N)');
+      console.log('Rod: ' + selectedRod.Type);
+      console.log('α = ' + alpha + '°');
+      console.log('μ = ' + muThread + ', μ\' = ' + muHead);
+      console.log('---');
+      console.log('D_min = ' + D_min + ' mm');
+      console.log('D1 (avg) = ' + D1_avg.toFixed(2) + ' mm');
+      console.log('P = ' + P + ' mm');
+      console.log('Key_Width = ' + Key_Width + ' mm');
+      console.log('Normal_Fit_Hole = ' + Normal_Fit_Hole + ' mm');
+      console.log('---');
+      console.log('rm = D1/2 = ' + rm.toFixed(2) + ' mm');
+      console.log('φ = atan(P/(π×D_min)) = ' + phi.toFixed(4) + '°');
+      console.log('ε₁ = atan(μ/cos(α)) = ' + epsilon1.toFixed(3) + '°');
+      console.log('r\'m = (Key_Width + Normal_Fit_Hole)/4 = ' + rmPrime.toFixed(2) + ' mm');
+      console.log('---');
+      console.log('Mγ = F × tan(φ + ε₁) × rm = ' + Mgamma.toFixed(3) + ' Nm');
+      console.log('Ms = μ\' × F × r\'m = ' + Ms.toFixed(3) + ' Nm');
+      console.log('M = Mγ + Ms = ' + totalTorque.toFixed(3) + ' Nm');
+    }
+
+    // Display calculation results
+    function displayResults(data) {
+      // Quick results
+      document.getElementById('resultMgamma').textContent = data.Mgamma.toFixed(1) + ' Nm';
+      document.getElementById('resultMs').textContent = data.Ms.toFixed(1) + ' Nm';
+      document.getElementById('resultMTotal').textContent = data.totalTorque.toFixed(1) + ' Nm';
+      document.getElementById('resultTensileStress').textContent = data.tensileStress.toFixed(1) + ' MPa';
+      
+      // Detailed display - Input parameters
+      document.getElementById('dispForce').textContent = data.force.toFixed(1);
+      document.getElementById('dispRodType').textContent = selectedRod.Type;
+      document.getElementById('dispAlpha').textContent = data.alpha.toFixed(1);
+      document.getElementById('dispMuThread').textContent = data.muThread.toFixed(2);
+      document.getElementById('dispMuHead').textContent = data.muHead.toFixed(2);
+      
+      // Detailed display - Rod properties
+      document.getElementById('dispDMin').textContent = data.D_min.toFixed(2);
+      document.getElementById('dispD1').textContent = data.D1_avg.toFixed(2);
+      document.getElementById('dispP').textContent = data.P.toFixed(1);
+      document.getElementById('dispKeyWidth').textContent = data.Key_Width;
+      document.getElementById('dispNormalFitHole').textContent = data.Normal_Fit_Hole;
+      
+      // Detailed display - Intermediate calculations
+      document.getElementById('dispRm').textContent = data.rm.toFixed(2);
+      document.getElementById('dispPhi').textContent = data.phi.toFixed(4);
+      document.getElementById('dispEpsilon1').textContent = data.epsilon1.toFixed(3);
+      document.getElementById('dispRmPrime').textContent = data.rmPrime.toFixed(2);
+      
+      // Detailed display - Final results
+      document.getElementById('dispTensileStressFinal').textContent = data.tensileStress.toFixed(1);
+      document.getElementById('dispMgammaFinal').textContent = data.Mgamma.toFixed(3);
+      document.getElementById('dispMsFinal').textContent = data.Ms.toFixed(3);
+      document.getElementById('dispMTotalFinal').textContent = data.totalTorque.toFixed(3);
+    }
+    
+    // Show results sections for force to torque
+    function showResults() {
+      document.getElementById('quickResults').classList.remove('hidden');
+      document.getElementById('detailedCalculations').classList.remove('hidden');
+      
+      // Update section header for force to torque mode  
+      document.querySelector('#detailedCalculations .results-header h2').textContent = 'Detailed Calculations (M27 Force to Torque Method)';
+    }
+    
+    // Calculate force from torque using M27 methodology  
+    function calculateForceFromTorque() {
+      if (!selectedRod) {
+        alert('Please select a DIN threaded rod type first.');
+        return;
+      }
+      
+      const torque = parseFloat(document.getElementById('inputTorque').value);
+      const alpha = parseFloat(document.getElementById('alphaAngle2').value);
+      const muThread = parseFloat(document.getElementById('frictionThread2').value);
+      const muHead = parseFloat(document.getElementById('frictionHead2').value);
+      
+      if (isNaN(torque) || isNaN(alpha) || isNaN(muThread) || isNaN(muHead)) {
+        alert('Please enter valid values for all input parameters.');
+        return;
+      }
+      
+      if (torque <= 0) {
+        alert('Torque must be greater than 0.');
+        return;
+      }
+      
+      // Convert inputs
+      const alphaRad = alpha * Math.PI / 180; // degrees to radians
+      
+      // Rod properties
+      const D_min = selectedRod.D_min;
+      const D1_avg = (selectedRod.D1_min + selectedRod.D1_max) / 2;
+      const P = selectedRod.P;
+      const Key_Width = selectedRod.Key_Width;
+      const Normal_Fit_Hole = selectedRod.Normal_Fit_Hole;
+      
+      // Calculate intermediate values (same as Force→Torque)
+      const rm = D1_avg / 2; // Mean radius in mm
+      const phi = Math.atan(P / (Math.PI * D_min)) * 180 / Math.PI; // Lead angle in degrees
+      const epsilon1 = Math.atan(muThread / Math.cos(alphaRad)) * 180 / Math.PI; // Friction angle in degrees
+      const rmPrime = (Key_Width + Normal_Fit_Hole) / 4; // Mean radius for head friction
+      
+      // Calculate force using M27 Torque to Force formula
+      const phiRad = phi * Math.PI / 180;
+      const epsilon1Rad = epsilon1 * Math.PI / 180;
+      
+      // F = M / (μ' × r'm + 1 × tan(φ + ε₁) × rm)
+      // Converting mm to m in denominator
+      const denominator = muHead * (rmPrime / 1000) + Math.tan(phiRad + epsilon1Rad) * (rm / 1000);
+      const forceN = torque / denominator;
+      const forceKN = forceN / 1000; // Convert N to kN
+      
+      // Verification calculations
+      const MgammaVerify = forceN * Math.tan(phiRad + epsilon1Rad) * (rm / 1000);
+      const MsVerify = muHead * forceN * (rmPrime / 1000);
+      const totalTorqueVerify = MgammaVerify + MsVerify;
+      
+      // Calculate rod tensile stress: σ_rod = F/(π*D2^2/4) in MPa
+      const D2 = selectedRod.D2; // mm
+      const crossSectionalArea = Math.PI * Math.pow(D2 / 1000, 2) / 4; // m²
+      const tensileStress = (forceN / crossSectionalArea) / 1000000; // Convert Pa to MPa
+      
+      // Display results
+      displayTorqueToForceResults({
+        torque: torque,
+        alpha: alpha,
+        muThread: muThread,
+        muHead: muHead,
+        D_min: D_min,
+        D1_avg: D1_avg,
+        P: P,
+        Key_Width: Key_Width,
+        Normal_Fit_Hole: Normal_Fit_Hole,
+        rm: rm,
+        phi: phi,
+        epsilon1: epsilon1,
+        rmPrime: rmPrime,
+        forceN: forceN,
+        forceKN: forceKN,
+        MgammaVerify: MgammaVerify,
+        MsVerify: MsVerify,
+        totalTorqueVerify: totalTorqueVerify,
+        tensileStress: tensileStress,
+        D2: D2
+      });
+      
+      showTorqueToForceResults();
+      
+      // Console logging for verification (matching M27 Torque to Force)
+      console.log('=== M27 Torque to Force Calculation ===');
+      console.log('Input: M = ' + torque + ' Nm');
+      console.log('Rod: ' + selectedRod.Type);
+      console.log('α = ' + alpha + '°');
+      console.log('μ = ' + muThread + ', μ\' = ' + muHead);
+      console.log('---');
+      console.log('D_min = ' + D_min + ' mm');
+      console.log('D1 (avg) = ' + D1_avg.toFixed(2) + ' mm');
+      console.log('P = ' + P + ' mm');
+      console.log('Key_Width = ' + Key_Width + ' mm');
+      console.log('Normal_Fit_Hole = ' + Normal_Fit_Hole + ' mm');
+      console.log('---');
+      console.log('rm = D1/2 = ' + rm.toFixed(2) + ' mm');
+      console.log('φ = atan(P/(π×D_min)) = ' + phi.toFixed(4) + '°');
+      console.log('ε₁ = atan(μ/cos(α)) = ' + epsilon1.toFixed(3) + '°');
+      console.log('r\'m = (Key_Width + Normal_Fit_Hole)/4 = ' + rmPrime.toFixed(2) + ' mm');
+      console.log('---');
+      console.log('Denominator = μ\' × r\'m + tan(φ + ε₁) × rm = ' + denominator.toFixed(6));
+      console.log('F = M / denominator = ' + forceKN.toFixed(4) + ' kN');
+      console.log('---');
+      console.log('Verification:');
+      console.log('Mγ = F × tan(φ + ε₁) × rm = ' + MgammaVerify.toFixed(4) + ' Nm');
+      console.log('Ms = μ\' × F × r\'m = ' + MsVerify.toFixed(4) + ' Nm');
+      console.log('M_total = Mγ + Ms = ' + totalTorqueVerify.toFixed(4) + ' Nm (should equal input)');
+    }
+    
+    // Display torque to force results
+    function displayTorqueToForceResults(data) {
+      // Quick results
+      document.getElementById('resultForce').textContent = data.forceKN.toFixed(4) + ' kN';
+      document.getElementById('resultMgammaVerify').textContent = data.MgammaVerify.toFixed(4) + ' Nm';
+      document.getElementById('resultMsVerify').textContent = data.MsVerify.toFixed(4) + ' Nm';
+      document.getElementById('resultTensileStress2').textContent = data.tensileStress.toFixed(1) + ' MPa';
+      
+      // Update detailed display for torque to force mode
+      document.getElementById('dispForce').textContent = data.forceKN.toFixed(4);
+      document.getElementById('dispRodType').textContent = selectedRod.Type;
+      document.getElementById('dispAlpha').textContent = data.alpha.toFixed(1);
+      document.getElementById('dispMuThread').textContent = data.muThread.toFixed(2);
+      document.getElementById('dispMuHead').textContent = data.muHead.toFixed(2);
+      
+      // Rod properties (same as force to torque)
+      document.getElementById('dispDMin').textContent = data.D_min.toFixed(2);
+      document.getElementById('dispD1').textContent = data.D1_avg.toFixed(2);
+      document.getElementById('dispP').textContent = data.P.toFixed(1);
+      document.getElementById('dispKeyWidth').textContent = data.Key_Width;
+      document.getElementById('dispNormalFitHole').textContent = data.Normal_Fit_Hole;
+      
+      // Intermediate calculations (same as force to torque)
+      document.getElementById('dispRm').textContent = data.rm.toFixed(2);
+      document.getElementById('dispPhi').textContent = data.phi.toFixed(4);
+      document.getElementById('dispEpsilon1').textContent = data.epsilon1.toFixed(3);
+      document.getElementById('dispRmPrime').textContent = data.rmPrime.toFixed(2);
+      
+      // Final results - show verification torques
+      document.getElementById('dispTensileStressFinal').textContent = data.tensileStress.toFixed(1);
+      document.getElementById('dispMgammaFinal').textContent = data.MgammaVerify.toFixed(4);
+      document.getElementById('dispMsFinal').textContent = data.MsVerify.toFixed(4);
+      document.getElementById('dispMTotalFinal').textContent = data.totalTorqueVerify.toFixed(4);
+      
+      // Update section headers for torque to force mode
+      document.querySelector('#detailedCalculations .results-header h2').textContent = 'Detailed Calculations (M27 Torque to Force Method)';
+    }
+    
+    // Show results sections for torque to force
+    function showTorqueToForceResults() {
+      document.getElementById('quickResults2').classList.remove('hidden');
+      document.getElementById('detailedCalculations').classList.remove('hidden');
+    }
+    
+    // Hide results sections
+    function hideResults() {
+      document.getElementById('quickResults').classList.add('hidden');
+      document.getElementById('quickResults2').classList.add('hidden');
+      document.getElementById('detailedCalculations').classList.add('hidden');
+    }
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', loadRodData);
+  </script>
+
+  <footer class="text-xs text-gray-400 text-center mt-8">
+    Free to use. Created by Magnus Fjeld Olsen.
+  </footer>
+  
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+  
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+
+  <!-- Cookie Consent Scripts -->
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/cookie-consent.js"></script>
+
+</body>
+</html>

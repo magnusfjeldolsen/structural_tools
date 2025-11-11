@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Primary Meta Tags -->
+  <title>Free Structural Engineering Tools | Steel, Concrete & Seismic Calculators</title>
+  <meta name="title" content="Free Structural Engineering Tools | Steel, Concrete & Seismic Calculators">
+  <meta name="description" content="Professional structural engineering calculators for steel design, concrete analysis, fire resistance, weld capacity, and seismic design. Free Eurocode-compliant tools for engineers.">
+  <meta name="keywords" content="structural engineering calculator, steel design tool, concrete calculator, eurocode 3, eurocode 2, fire resistance calculator, weld capacity, seismic design, free engineering tools, structural analysis">
+  <meta name="author" content="Magnus Fjeld Olsen">
+  <meta name="robots" content="index, follow">
+
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://magnusfjeldolsen.github.io/structural_tools/">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/">
+  <meta property="og:title" content="Free Structural Engineering Tools">
+  <meta property="og:description" content="Professional structural engineering calculators for steel, concrete, and seismic design. Free Eurocode-compliant tools.">
+  <meta property="og:site_name" content="Structural Engineering Tools">
+  
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://magnusfjeldolsen.github.io/structural_tools/">
+  <meta property="twitter:title" content="Free Structural Engineering Tools">
+  <meta property="twitter:description" content="Professional structural engineering calculators for steel, concrete, and seismic design.">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="./assets/css/common.css">
+  <link rel="stylesheet" href="./assets/css/forms.css">
+  <link rel="stylesheet" href="./assets/css/components.css">
+  <link rel="stylesheet" href="./assets/css/print.css">
+  
+  <!-- Schema.org structured data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Structural Engineering Tools",
+    "url": "https://magnusfjeldolsen.github.io/structural_tools/",
+    "description": "Free professional structural engineering calculators and analysis tools",
+    "applicationCategory": "Engineering",
+    "operatingSystem": "Web Browser",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "creator": {
+      "@type": "Person",
+      "name": "Magnus Fjeld Olsen"
+    },
+    "featureList": [
+      "Steel Design Calculators",
+      "Concrete Analysis Tools",
+      "Fire Resistance Calculations",
+      "Seismic Design Tools",
+      "Eurocode Compliance"
+    ]
+  }
+  </script>
+
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Fuse.js for search -->
+  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
+
+  <style>
+    .hero-bg {
+      background: linear-gradient(135deg, #1f2937 0%, #111827 50%, #0f172a 100%);
+      background-image:
+        radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 75% 75%, rgba(239, 68, 68, 0.1) 0%, transparent 50%);
+    }
+
+    .pulse-glow {
+      animation: pulse-glow 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% {
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+      }
+      50% {
+        box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+      }
+    }
+
+    /* Search Bar Styles */
+    .search-container {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+    }
+
+    .search-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 16px;
+      pointer-events: none;
+      color: #9ca3af;
+    }
+
+    #module-search {
+      width: 100%;
+      padding: 14px 48px 14px 48px;
+      background: rgba(31, 41, 55, 0.7);
+      backdrop-filter: blur(10px);
+      border: 2px solid rgba(75, 85, 99, 0.5);
+      border-radius: 12px;
+      color: white;
+      font-size: 16px;
+      transition: all 0.3s ease;
+    }
+
+    #module-search:focus {
+      outline: none;
+      border-color: rgba(59, 130, 246, 0.8);
+      background: rgba(31, 41, 55, 0.9);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    #module-search::placeholder {
+      color: #9ca3af;
+    }
+
+    #search-clear {
+      position: absolute;
+      right: 16px;
+      display: none;
+      cursor: pointer;
+      padding: 4px;
+      color: #9ca3af;
+      transition: color 0.2s;
+    }
+
+    #search-clear:hover {
+      color: #ef4444;
+    }
+
+    #search-results {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      right: 0;
+      max-height: 480px;
+      overflow-y: auto;
+      background: rgba(17, 24, 39, 0.98);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(75, 85, 99, 0.5);
+      border-radius: 12px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      z-index: 1000;
+      animation: slideDown 0.15s ease-out;
+      will-change: opacity, transform;
+      /* Performance optimizations */
+      contain: layout style paint;
+      transform: translateZ(0);
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px) translateZ(0);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) translateZ(0);
+      }
+    }
+
+    .search-result-item {
+      display: flex;
+      gap: 16px;
+      padding: 16px;
+      border-bottom: 1px solid rgba(75, 85, 99, 0.3);
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+      text-decoration: none;
+      color: inherit;
+      /* Performance optimizations */
+      will-change: background-color;
+      transform: translateZ(0);
+    }
+
+    .search-result-item:last-child {
+      border-bottom: none;
+    }
+
+    .search-result-item:hover,
+    .search-result-item.active {
+      background: rgba(59, 130, 246, 0.1);
+    }
+
+    .search-result-icon {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(75, 85, 99, 0.3);
+      border-radius: 8px;
+    }
+
+    .search-result-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .search-result-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #f9fafb;
+      margin-bottom: 4px;
+    }
+
+    .search-result-title mark {
+      background: rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+
+    .search-result-description {
+      font-size: 13px;
+      color: #9ca3af;
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+
+    .search-result-meta {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .search-category {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      background: rgba(75, 85, 99, 0.3);
+      border-radius: 4px;
+    }
+
+    .search-no-results {
+      padding: 48px 24px;
+      text-align: center;
+    }
+
+    #search-results::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #search-results::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #search-results::-webkit-scrollbar-thumb {
+      background: rgba(75, 85, 99, 0.5);
+      border-radius: 4px;
+    }
+
+    #search-results::-webkit-scrollbar-thumb:hover {
+      background: rgba(75, 85, 99, 0.7);
+    }
+
+    @media (max-width: 640px) {
+      .search-container {
+        max-width: 100%;
+      }
+
+      #module-search {
+        padding: 12px 40px 12px 40px;
+        font-size: 14px;
+      }
+
+      #search-results {
+        max-height: 360px;
+      }
+
+      .search-result-item {
+        padding: 12px;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen hero-bg">
+
+  <!-- Cookie Consent -->
+  <div id="cookie-consent" class="fixed inset-0 bg-black bg-opacity-90 text-white flex flex-col items-center justify-center z-50 p-6 hidden">
+    <div class="bg-gray-800 rounded-xl p-8 max-w-md text-center border border-gray-600">
+      <h3 class="text-xl font-semibold mb-4">Cookie Settings</h3>
+      <p class="text-gray-300 mb-6">
+        We use cookies and Google Analytics to understand how you use our structural engineering tools and improve your experience.
+      </p>
+      <div class="flex flex-col gap-3">
+        <button id="accept-cookies" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition font-semibold">
+          Accept All Cookies
+        </button>
+        <button id="accept-essential" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition font-semibold">
+          Essential Only
+        </button>
+        <button id="decline-cookies" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition">
+          Decline All
+        </button>
+      </div>
+      <p class="text-xs text-gray-400 mt-4">
+        You can change these settings anytime using the "Cookie Settings" link in the footer.
+      </p>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="w-full max-w-6xl mx-auto p-6">
+    <!-- Company Logo Button -->
+    <div class="flex flex-col items-end mb-4">
+      <p class="text-sm text-gray-400 mb-2">Structural Tools developed by</p>
+      <a href="http://www.tommerdal.no/" target="_blank" class="group">
+        <div class="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3 hover:bg-white/20 transition-all duration-300 hover:scale-105">
+          <img src="./assets/images/LogoTC.png" alt="Tømmerdal Consult AS" class="h-12 w-auto opacity-90 group-hover:opacity-100 transition-opacity duration-300">
+        </div>
+      </a>
+    </div>
+    
+    <div class="text-center mb-8">
+      <h1 class="text-5xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-red-400 bg-clip-text text-transparent mb-4">
+        Free Structural Engineering Tools
+      </h1>
+      <p class="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
+        Professional-grade structural engineering calculators, simulation and productivity tools, completely free to use.
+        Built by engineers, for engineers with full Eurocode compliance.
+      </p>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="flex justify-center mb-6">
+      <div class="search-container">
+        <div class="search-input-wrapper">
+          <svg class="search-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+          </svg>
+          <input
+            type="text"
+            id="module-search"
+            placeholder="Search tools, e.g., concrete beam, 2D FEM, .."
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <svg id="search-clear" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </div>
+        <div id="search-results" class="hidden"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Pilot Project Notice -->
+  <section class="w-full max-w-6xl mx-auto p-6">
+    <div class="bg-blue-900/30 border border-blue-500/30 rounded-xl p-6 mb-6">
+      <div class="flex items-start">
+        <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mr-4 mt-1 flex-shrink-0">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div>
+          <h3 class="text-lg font-semibold text-blue-300 mb-2">🚀 Pilot Project</h3>
+          <p class="text-gray-300 leading-relaxed">
+            This is a pilot project exploring how traditional speardsheet engineering tools can be converted to online, open-source solutions utilizing the power of AI.
+            Our goal is to make professional structural engineering calculations more accessible while maintaining accuracy and compliance with established standards.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Disclaimer -->
+    <div class="bg-amber-900/20 border border-amber-500/30 rounded-xl p-6 mb-8">
+      <div class="flex items-start">
+        <div class="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center mr-4 mt-1 flex-shrink-0">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+        </div>
+        <div>
+          <h3 class="text-lg font-semibold text-amber-300 mb-2">⚠️ Disclaimer</h3>
+          <p class="text-gray-300 leading-relaxed text-sm">
+            <strong>Use with care:</strong> These tools are provided for educational and preliminary design purposes. All calculations should be verified by qualified structural engineers.
+            Users are responsible for ensuring results meet local building codes and standards. Tømmerdal Consult AS accepts no responsibility for the use of these tools or the application of their results in any project.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content -->
+  <main class="w-full max-w-6xl mx-auto p-6">
+
+    <!-- About Tools Section -->
+    <section id="about-tools" class="mb-12">
+      <div class="text-center mb-8">
+        <h2 class="text-3xl font-semibold text-white mb-4">About Our Engineering Calculators</h2>
+        <p class="text-xl text-gray-300 max-w-4xl mx-auto leading-relaxed">
+          Our comprehensive suite of structural engineering tools provides accurate calculations for steel design, concrete analysis and much more. All tools are developed according to Eurocode standards and are used by structural engineers worldwide.
+        </p>
+      </div>
+
+      <div class="grid md:grid-cols-4 gap-6 mb-8">
+        <div class="text-center">
+          <div class="w-16 h-16 bg-blue-500/20 rounded-lg flex items-center justify-center mx-auto mb-3">
+            <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-white mb-2">Eurocode Compliant</h3>
+          <p class="text-gray-400 text-sm">All calculations follow EN 1992, EN 1993, and EN 1998 standards</p>
+        </div>
+
+        <div class="text-center">
+          <div class="w-16 h-16 bg-green-500/20 rounded-lg flex items-center justify-center mx-auto mb-3">
+            <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-white mb-2">Free & Open</h3>
+          <p class="text-gray-400 text-sm">No registration required, completely free to use</p>
+        </div>
+
+        <div class="text-center">
+          <div class="w-16 h-16 bg-purple-500/20 rounded-lg flex items-center justify-center mx-auto mb-3">
+            <svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-white mb-2">Professional Quality</h3>
+          <p class="text-gray-400 text-sm">Used by structural engineers in design practice</p>
+        </div>
+
+        <div class="text-center">
+          <div class="w-16 h-16 bg-red-500/20 rounded-lg flex items-center justify-center mx-auto mb-3">
+            <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-white mb-2">Regular Updates</h3>
+          <p class="text-gray-400 text-sm">Continuously improved with new features and tools</p>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Steel Design Tools -->
+    <section class="mb-12">
+      <div class="text-center mb-8">
+        <div class="flex items-center justify-center mb-4">
+          <div class="w-12 h-12 bg-gray-600 rounded-lg flex items-center justify-center mr-4">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <h2 class="text-3xl font-semibold text-white">Steel Design Tools</h2>
+        </div>
+        <p class="text-gray-300 max-w-2xl mx-auto">Professional steel structure analysis and design calculators</p>
+      </div>
+      
+      <div class="grid md:grid-cols-2 gap-8 mb-8">
+        
+        <!-- Steel Fire Temperature Tool -->
+        <div class="tool-card rounded-xl p-8 pulse-glow">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Steel Fire Temperature</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate fire resistance of unprotected steel structures with interactive temperature simulation. 
+            Features Am/V ratio calculation, shadow effects, and detailed temperature-time curves.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-red-500/20 text-red-300 rounded-full text-sm">Fire Resistance</span>
+            <span class="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-sm">Temperature Simulation</span>
+            <span class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">Am/V Calculation</span>
+          </div>
+          
+          <a href="./steel_fire_temperature/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+        <!-- Two-Sided Hat Profile Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Two-Sided Hat Profile</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate structural capacities and cross-sectional classifications for two-sided hat profiles. 
+            Features Eurocode 3 compliance with detailed geometric property calculations.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm">Eurocode 3</span>
+            <span class="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-sm">Cross-Section Class</span>
+            <span class="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm">Hat Profile</span>
+          </div>
+          
+          <a href="./THP/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+        <!-- Weld Capacity Calculator -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Weld Capacity Calculator</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate weld capacity and utilization for steel welded connections. 
+            Features comprehensive stress analysis with normal force, shear force, and moment combinations using von Mises criteria.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-sm">Weld Design</span>
+            <span class="px-3 py-1 bg-red-500/20 text-red-300 rounded-full text-sm">von Mises Stress</span>
+            <span class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">Capacity Analysis</span>
+          </div>
+          
+          <a href="./weld_capacity/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+        <!-- DIN Rod Torque Calculator -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-gray-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">DIN Rod Torque Calculator</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate required torque from force or force from torque for DIN threaded rods. 
+            Features detailed step-by-step calculations with thread friction, head friction, and geometric parameters.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-gray-500/20 text-gray-300 rounded-full text-sm">DIN Standards</span>
+            <span class="px-3 py-1 bg-slate-500/20 text-slate-300 rounded-full text-sm">Torque Analysis</span>
+            <span class="px-3 py-1 bg-zinc-500/20 text-zinc-300 rounded-full text-sm">Thread Mechanics</span>
+          </div>
+          
+          <a href="./DIN_rod_torque/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+        <!-- Steel Profile Calculator -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2H9a2 2 0 00-2 2" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Steel Profile Calculator</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Compare IPE, HEA, and HEB steel profiles for optimal structural performance and weight efficiency. 
+            Features moment capacity, deflection analysis, and comprehensive profile comparison across different series.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Profile Comparison</span>
+            <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">Weight Optimization</span>
+            <span class="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm">Deflection Analysis</span>
+          </div>
+          
+          <a href="./steel_beam_relative_deisgn/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+        <!-- Transversal Forces - Stiffened Web Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Transversal Forces - Stiffened Web</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate capacity of transversally stiffened webs for vertical forces. 
+            Features automatic steel section database integration, web height calculation, and slenderness checks per EC3-1-5.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm">Stiffened Webs</span>
+            <span class="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm">EC3-1-5</span>
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Steel Database</span>
+          </div>
+          
+          <a href="./transversal_forces_stiffened_web/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+        <!-- Transversal Forces - Unstiffened Web Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-teal-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Transversal Forces - Unstiffened Web</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate capacity of unstiffened webs for transversal forces according to EC3-1-5. 
+            Features iterative calculation procedure, multiple load types, and steel section database integration.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-teal-500/20 text-teal-300 rounded-full text-sm">Unstiffened Webs</span>
+            <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">EC3-1-5 Ch.6</span>
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Load Types</span>
+          </div>
+          
+          <a href="./transversal_forces_unstiffened_web/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+        
+      </div>
+    </section>
+
+    <!-- Concrete Design Tools -->
+    <section class="mb-12">
+      <div class="text-center mb-8">
+        <div class="flex items-center justify-center mb-4">
+          <div class="w-12 h-12 bg-gray-600 rounded-lg flex items-center justify-center mr-4">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0v-8a2 2 0 012-2h4a2 2 0 012 2v8m0-8V9a2 2 0 012-2h2a2 2 0 012 2v4" />
+            </svg>
+          </div>
+          <h2 class="text-3xl font-semibold text-white">Concrete Design Tools</h2>
+        </div>
+        <p class="text-gray-300 max-w-2xl mx-auto">Ultimate Limit State calculations for concrete structural elements</p>
+      </div>
+      
+      <!-- Row 1: Concrete Slab Design and Concrete Beam Design -->
+      <div class="grid md:grid-cols-2 gap-8 mb-8">
+
+        <!-- Concrete Slab Design Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0v-8a2 2 0 012-2h4a2 2 0 012 2v8m0-8V9a2 2 0 012-2h2a2 2 0 012 2v4" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Concrete Slab Design</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Ultimate Limit State (ULS) moment resistance calculator for concrete slabs. 
+            Calculate MRd with detailed step-by-step mathematical derivations and visual aids.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">ULS Design</span>
+            <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">Moment Resistance</span>
+            <span class="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm">Reinforcement</span>
+          </div>
+          
+          <a href="./concrete_slab_design/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+        <!-- Concrete Beam Design Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Concrete Beam Design</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Ultimate Limit State (ULS) calculator for concrete beams. 
+            Calculate moment and shear capacity with detailed step-by-step derivations.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-sm">ULS Design</span>
+            <span class="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-sm">Moment Capacity</span>
+            <span class="px-3 py-1 bg-teal-500/20 text-teal-300 rounded-full text-sm">Shear Design</span>
+          </div>
+          
+          <a href="./concrete_beam_design/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+
+      </div>
+
+      <!-- Row 2: Concrete Material Properties -->
+      <div class="grid md:grid-cols-1 gap-8 mb-8">
+        <!-- EC2 Concrete Material Parameters Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">EC2 Concrete Material Parameters</h3>
+          </div>
+
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate all concrete material parameters according to Eurocode 2 Table 3.1.
+            Select concrete grade and get fck,cube, fcm, fctm, Ecm, strain parameters, and more with analytical formulas.
+          </p>
+
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm">Eurocode 2</span>
+            <span class="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm">Material Properties</span>
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Table 3.1</span>
+          </div>
+
+          <a href="./ec2concrete/index.html"
+             class="inline-flex items-center px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <!-- Row 3: Concrete Minimum Reinforcement -->
+      <div class="grid md:grid-cols-1 gap-8 mb-8">
+        <!-- Concrete Minimum Reinforcement Calculator -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-emerald-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Concrete Minimum Reinforcement Calculator</h3>
+          </div>
+
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate minimum reinforcement for concrete structures according to EC2 and other standards.
+            Features plates, beams, columns, and gulv på grunn calculations with scenario-based analysis and spacing compliance checks.
+          </p>
+
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-sm">EC2 Standards</span>
+            <span class="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-sm">Min Reinforcement</span>
+            <span class="px-3 py-1 bg-teal-500/20 text-teal-300 rounded-full text-sm">Spacing Checks</span>
+          </div>
+
+          <a href="./concrete_minimum_reinforcement/index.html"
+             class="inline-flex items-center px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <!-- Row 4: Concrete Base Plate and Concrete Dowels -->
+      <div class="grid md:grid-cols-2 gap-8 mb-8">
+        <!-- Concrete Base Plate Tool (moved from above) -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0v-8a2 2 0 012-2h4a2 2 0 012 2v8m0-8V9a2 2 0 012-2h2a2 2 0 012 2v4" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Concrete Base Plate</h3>
+          </div>
+
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate compressive capacity of concrete base plates with detailed step-by-step calculations.
+            Features effective area determination and steel plate spread calculations per EC3-1-8.
+          </p>
+
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-sm">Base Plate Design</span>
+            <span class="px-3 py-1 bg-amber-500/20 text-amber-300 rounded-full text-sm">Compressive Capacity</span>
+            <span class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">EC3-1-8</span>
+          </div>
+
+          <a href="./concrete_base_plate_compressive_design/index.html"
+             class="inline-flex items-center px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+        <!-- Concrete Dowels Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-cyan-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Concrete Dowels</h3>
+          </div>
+
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate shear capacity for concrete dowel connections according to Norwegian Betongelementboken.
+            Features comprehensive analysis with distance factors, utilization checks, and interactive geometry visualization.
+          </p>
+
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">Dowel Design</span>
+            <span class="px-3 py-1 bg-teal-500/20 text-teal-300 rounded-full text-sm">Shear Capacity</span>
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Betongelementboken</span>
+          </div>
+
+          <a href="./concrete_dowels/index.html"
+             class="inline-flex items-center px-6 py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <!-- Row 5: Concrete Anchorage Length -->
+      <div class="grid md:grid-cols-1 gap-8 mb-8">
+        <!-- Concrete Anchorage Length Calculator -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-indigo-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Concrete Anchorage Length Calculator</h3>
+          </div>
+
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate design anchorage length for reinforcement bars according to Eurocode 2 Section 8.4.
+            Features comprehensive bond strength calculations, alpha factors, and detailed step-by-step derivations for tension and compression anchorages.
+          </p>
+
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm">EC2 Section 8.4</span>
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Bond Strength</span>
+            <span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm">Anchorage Design</span>
+          </div>
+
+          <a href="./concrete_anchorage_length/index.html"
+             class="inline-flex items-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Concrete Carbon Reinforcement -->
+    <section class="mb-12">
+      <div class="text-center mb-8">
+        <div class="flex items-center justify-center mb-4">
+          <div class="w-12 h-12 bg-gray-600 rounded-lg flex items-center justify-center mr-4">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <h2 class="text-3xl font-semibold text-white">Concrete Carbon Reinforcement</h2>
+        </div>
+        <p class="text-gray-300 max-w-2xl mx-auto">Carbon Fiber Reinforced Polymer (CFRP) strengthening analysis tools</p>
+      </div>
+      
+      <div class="grid md:grid-cols-2 gap-8 mb-8">
+
+        <!-- CFRP Concrete Reinforcement Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Concrete Plate - Flexural Carbon Fibre Reinforcement</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate carbon fiber reinforcement effects on concrete plates with detailed step-by-step analysis. 
+            Features moment capacity calculations, section classification, and CFRP strengthening verification.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-red-500/20 text-red-300 rounded-full text-sm">CFRP Design</span>
+            <span class="px-3 py-1 bg-pink-500/20 text-pink-300 rounded-full text-sm">Carbon Fiber</span>
+            <span class="px-3 py-1 bg-rose-500/20 text-rose-300 rounded-full text-sm">Strengthening</span>
+          </div>
+          
+          <a href="./concrete_plate_CFRP/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+        
+      </div>
+    </section>
+
+    <!-- Seismic Design -->
+    <section class="mb-12">
+      <div class="text-center mb-8">
+        <div class="flex items-center justify-center mb-4">
+          <div class="w-12 h-12 bg-red-600 rounded-lg flex items-center justify-center mr-4">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <h2 class="text-3xl font-semibold text-white">Seismic Design</h2>
+        </div>
+        <p class="text-gray-300 max-w-2xl mx-auto">Seismic analysis and design tools according to Eurocode 8</p>
+      </div>
+      
+      <div class="grid md:grid-cols-2 gap-8 mb-8">
+
+        <!-- EC8 Seismic Avoidance Criteria Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-yellow-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">EC8 Seismic Avoidance Criteria</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate if seismic design is required according to Eurocode 8 avoidance criteria. 
+            Features response spectrum analysis, parameter summary, and interactive visualization with real-time updates.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">Eurocode 8</span>
+            <span class="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-sm">Response Spectrum</span>
+            <span class="px-3 py-1 bg-red-500/20 text-red-300 rounded-full text-sm">Avoidance Criteria</span>
+          </div>
+          
+          <a href="./seismic_ec8/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+        
+      </div>
+    </section>
+
+    <!-- Structural Analysis Tools -->
+    <section class="mb-12">
+      <div class="text-center mb-8">
+        <div class="flex items-center justify-center mb-4">
+          <div class="w-12 h-12 bg-gray-600 rounded-lg flex items-center justify-center mr-4">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2H9a2 2 0 00-2 2" />
+            </svg>
+          </div>
+          <h2 class="text-3xl font-semibold text-white">Structural Analysis Tools</h2>
+        </div>
+        <p class="text-gray-300 max-w-2xl mx-auto">Advanced finite element analysis and structural modeling tools</p>
+      </div>
+      
+      <div class="grid md:grid-cols-2 gap-8 mb-8">
+
+        <!-- 2D Frame Analysis Tool -->
+        <div class="tool-card rounded-xl p-8 pulse-glow">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2H9a2 2 0 00-2 2" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">2D Frame Analysis</h3>
+          </div>
+
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Advanced finite element analysis of 2D frame structures using matrix stiffness method.
+            Features interactive displaced shape visualization, D3.js hover tooltips, and auto-loads a 10m simply supported beam test case.
+          </p>
+
+          <div class="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+            <p class="text-yellow-300 text-sm font-medium">
+              ⚠️ Under Development: This tool is currently being improved and may not function properly yet.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm">Matrix Stiffness</span>
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">FEA Method</span>
+            <span class="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-sm">Interactive</span>
+          </div>
+
+          <a href="./2dframeanalysis/index.html"
+             class="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+        <!-- 2D FEA Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-indigo-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">2D FEA</h3>
+          </div>
+
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Interactive 2D finite element analysis tool with visual modeling, interactive mesh, and real-time results.
+            Create complex geometries, apply loads and constraints, and visualize stress distributions and deformations.
+          </p>
+
+          <div class="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+            <p class="text-yellow-300 text-sm font-medium">
+              ⚠️ Under Development: This tool is still being actively developed and features may be incomplete.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm">2D FEA</span>
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Interactive Modeling</span>
+            <span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm">Stress Analysis</span>
+          </div>
+
+          <a href="./2dfea/index.html"
+             class="inline-flex items-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition group">
+            Launch Tool
+            <svg class="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Data Processing Tools -->
+    <section class="mb-12">
+      <div class="text-center mb-8">
+        <div class="flex items-center justify-center mb-4">
+          <div class="w-12 h-12 bg-cyan-600 rounded-lg flex items-center justify-center mr-4">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h2 class="text-3xl font-semibold text-white">Data Processing</h2>
+        </div>
+        <p class="text-gray-300 max-w-2xl mx-auto">Tools for analyzing, clustering, and processing data from CSV files and other sources</p>
+      </div>
+      
+      <div class="grid md:grid-cols-2 gap-8 mb-8">
+
+        <!-- Concrete Slab Design Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0v-8a2 2 0 012-2h4a2 2 0 012 2v8m0-8V9a2 2 0 012-2h2a2 2 0 012 2v4" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">1D CSV Clustering</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Upload a CSV file, select a column and cluster by numeric values in the column
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">1D Clustering</span>
+            <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">Data Processing</span>
+          </div>
+          
+          <a href="./clustering/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition group">
+            Launch Tool
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>       
+      </div>
+    </section>
+
+    <!-- Productivity Tools -->
+    <section class="mb-12">
+      <div class="text-center mb-8">
+        <div class="flex items-center justify-center mb-4">
+          <div class="w-12 h-12 bg-emerald-600 rounded-lg flex items-center justify-center mr-4">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <h2 class="text-3xl font-semibold text-white">Productivity Tools</h2>
+        </div>
+        <p class="text-gray-300 max-w-2xl mx-auto">Tools to improve workflow efficiency and document management</p>
+      </div>
+      
+      <div class="grid md:grid-cols-2 gap-8 mb-8">
+
+        <!-- Delivery Hub -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-emerald-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Delivery Hub</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Advanced document management and delivery organization tool. 
+            Organize files by categories and subcategories, set folder paths, copy file paths, split filenames, and manage deliveries with persistence and export/import functionality.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-sm">Document Management</span>
+            <span class="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-sm">File Organization</span>
+            <span class="px-3 py-1 bg-teal-500/20 text-teal-300 rounded-full text-sm">Delivery Tracking</span>
+          </div>
+          
+          <a href="./deliveryhub/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition group">
+            Launch Hub
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+        
+      </div>
+    </section>
+
+    <!-- Coming Soon Section -->
+    <section class="mb-12">
+      <h2 class="text-3xl font-semibold text-center text-white mb-8">Coming Soon</h2>
+      
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="tool-card rounded-xl p-6 opacity-60">
+          <div class="flex items-center mb-3">
+            <div class="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center mr-3">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white">Beam Design</h3>
+          </div>
+          <p class="text-gray-400 text-sm">Steel beam calculators</p>
+        </div>
+        
+        <div class="tool-card rounded-xl p-6 opacity-60">
+          <div class="flex items-center mb-3">
+            <div class="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center mr-3">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white">Column Design</h3>
+          </div>
+          <p class="text-gray-400 text-sm">Compression member analysis</p>
+        </div>
+        
+        <div class="tool-card rounded-xl p-6 opacity-60">
+          <div class="flex items-center mb-3">
+            <div class="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center mr-3">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+              </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white">Load Analysis</h3>
+          </div>
+          <p class="text-gray-400 text-sm">Load combination tools</p>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- About Section -->
+    <section class="bg-gray-800/50 rounded-xl p-8 mb-8 backdrop-blur-sm border border-gray-700/30">
+      <h2 class="text-2xl font-bold text-white mb-4">About These Tools</h2>
+      <div class="grid md:grid-cols-2 gap-8">
+        <div>
+          <h3 class="text-lg font-semibold text-blue-400 mb-3">Professional Quality</h3>
+          <p class="text-gray-300 mb-4">
+            Built with the same rigor and accuracy standards used in professional engineering practice. 
+            All calculations are based on established codes and standards.
+          </p>
+        </div>
+        <div>
+          <h3 class="text-lg font-semibold text-green-400 mb-3">Open Source & Free</h3>
+          <p class="text-gray-300 mb-4">
+            Completely free to use with no registration required. Source code is available on GitHub 
+            for transparency and community contributions.
+          </p>
+        </div>
+        <div>
+          <h3 class="text-lg font-semibold text-purple-400 mb-3">Interactive Results</h3>
+          <p class="text-gray-300 mb-4">
+            Dynamic charts, step-by-step calculations, and exportable results make it easy to 
+            understand and document your engineering decisions.
+          </p>
+        </div>
+        <div>
+          <h3 class="text-lg font-semibold text-red-400 mb-3">Continuously Updated</h3>
+          <p class="text-gray-300 mb-4">
+            Regular updates with new tools, improved accuracy, and user-requested features. 
+            Built by structural engineers for the engineering community.
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="w-full max-w-6xl mx-auto p-6 mt-12">
+    <div class="border-t border-gray-700 pt-6">
+      <div class="flex flex-col md:flex-row justify-between items-center">
+        <div class="text-sm text-gray-400 mb-4 md:mb-0">
+          <p>Free to use. Created by <span class="text-blue-400 font-semibold">Magnus Fjeld Olsen</span></p>
+          <p class="mt-1">Licensed under MIT. Contribute on <a href="https://github.com/magnusfjeldolsen" class="text-blue-400 hover:text-blue-300 transition">GitHub</a></p>
+        </div>
+        <div class="flex gap-4 text-sm">
+          <a href="https://github.com/magnusfjeldolsen/structural_tools" class="text-gray-400 hover:text-white transition">Source Code</a>
+          <a href="mailto:magnus@example.com" class="text-gray-400 hover:text-white transition">Contact</a>
+          <button onclick="document.getElementById('cookie-consent').classList.remove('hidden')" class="text-gray-400 hover:text-white transition">Cookie Settings</button>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+
+  <!-- Centralized JavaScript -->
+  <script src="./assets/js/seo-metadata.js"></script>
+  <script src="./assets/js/common.js"></script>
+  <script src="./assets/js/analytics.js"></script>
+  <script src="./assets/js/cookie-consent.js"></script>
+
+  <!-- Module Search -->
+  <script src="./module-registry/search-config.js"></script>
+
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+</body>
+</html>

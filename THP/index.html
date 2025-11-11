@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free two-sided hat profile calculator. Calculate structural capacities and cross-sectional classifications according to Eurocode 3.">
+  <meta name="keywords" content="hat profile, steel structure, eurocode 3, cross-section classification, structural engineering">
+  <title>Two-Sided Hat Profile Calculator - Structural Engineering Tool</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Two-Sided Hat Profile Calculator - Structural Engineering Tool">
+  <meta property="og:description" content="Calculate structural capacities and cross-sectional classifications for two-sided hat profiles according to Eurocode 3">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/THP">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .hero-bg {
+      background: linear-gradient(135deg, #1f2937 0%, #111827 50%, #0f172a 100%);
+      background-image: 
+        radial-gradient(circle at 25% 25%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 75% 75%, rgba(147, 51, 234, 0.1) 0%, transparent 50%);
+    }
+    
+    .pulse-glow {
+      animation: pulse-glow 3s ease-in-out infinite;
+    }
+    
+    @keyframes pulse-glow {
+      0%, 100% {
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+      }
+      50% {
+        box-shadow: 0 0 30px rgba(139, 92, 246, 0.5);
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen hero-bg">
+
+  <main class="w-full max-w-6xl mx-auto p-6">
+    <!-- Header -->
+    <div class="flex justify-end mb-4">
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+        ← Back to Tools
+      </a>
+    </div>
+
+    <div class="text-center mb-8">
+      <h1 class="text-4xl font-bold bg-gradient-to-r from-purple-400 via-violet-400 to-indigo-400 bg-clip-text text-transparent mb-4">
+        Two-Sided Hat Profile Calculator
+      </h1>
+      <p class="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
+        Calculate structural capacities and cross-sectional classifications according to Eurocode 3
+      </p>
+    </div>
+
+    <!-- Input Section with PDF -->    
+    <div class="grid lg:grid-cols-2 gap-8 mb-8">
+      <!-- Compact Input Section -->
+      <div class="bg-gray-800 rounded-xl p-6 pulse-glow">
+        <h2 class="text-2xl font-semibold text-purple-400 mb-6">Input Parameters</h2>
+        
+        <!-- Compact Input Grid -->
+        <div class="space-y-4 mb-6">
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <label for="b_o" class="block text-purple-300 mb-1">b₀ (mm)</label>
+              <input type="number" id="b_o" value="188" step="0.1" class="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white">
+            </div>
+            <div>
+              <label for="H" class="block text-purple-300 mb-1">H (mm)</label>
+              <input type="number" id="H" value="200" step="0.1" class="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white">
+            </div>
+            <div>
+              <label for="t_w" class="block text-purple-300 mb-1">tₘ (mm)</label>
+              <input type="number" id="t_w" value="6" step="0.1" class="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white">
+            </div>
+            <div>
+              <label for="b_u" class="block text-purple-300 mb-1">bᵤ (mm)</label>
+              <input type="number" id="b_u" value="450" step="0.1" class="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white">
+            </div>
+            <div>
+              <label for="t_u" class="block text-purple-300 mb-1">tᵤ (mm)</label>
+              <input type="number" id="t_u" value="15" step="0.1" class="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white">
+            </div>
+            <div>
+              <label for="t_o" class="block text-purple-300 mb-1">t₀ (mm)</label>
+              <input type="number" id="t_o" value="25" step="0.1" class="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white">
+            </div>
+          </div>
+        </div>
+
+        <!-- Material Properties -->
+        <div class="border-t border-gray-700 pt-4 mb-6">
+          <h3 class="text-lg font-semibold text-purple-300 mb-3">Material Properties</h3>
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <label for="f_yk" class="block text-purple-300 mb-1">fᵧₖ (MPa)</label>
+              <input type="number" id="f_yk" value="355" step="1" class="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white">
+            </div>
+            <div>
+              <label for="gamma_M0" class="block text-purple-300 mb-1">γₘ₀</label>
+              <input type="number" id="gamma_M0" value="1.05" step="0.01" class="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white">
+            </div>
+            <div class="col-span-2">
+              <label for="rho_steel" class="block text-purple-300 mb-1">ρₛ (kg/m³)</label>
+              <input type="number" id="rho_steel" value="7850" step="1" class="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white">
+            </div>
+          </div>
+        </div>
+
+        <button class="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-lg transition" onclick="calculate()">Calculate Properties</button>
+      </div>
+      
+      <!-- PDF Parameters Guide -->
+      <div class="bg-gray-800 rounded-xl p-6">
+        <h2 class="text-2xl font-semibold text-purple-400 mb-6">Parameter Guide</h2>
+        <div class="bg-gray-700 rounded-lg p-2 h-96">
+          <embed src="THP_parameters.pdf" type="application/pdf" class="w-full h-full rounded" />
+        </div>
+        <p class="text-sm text-gray-400 mt-2">Parameter definitions and cross-section diagram</p>
+      </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="bg-gray-800 rounded-xl p-6 mb-8">
+      <h2 class="text-2xl font-semibold text-purple-400 mb-6">Results</h2>
+      
+      <div class="grid md:grid-cols-3 gap-6 text-center">
+        <div class="bg-gray-700 rounded-lg p-4">
+          <h3 class="text-sm font-semibold text-purple-300 mb-2">Unit Weight</h3>
+          <div class="text-2xl font-bold text-white" id="unit_weight">-</div>
+          <div class="text-xs text-gray-400">kg/m</div>
+        </div>
+        
+        <div class="bg-gray-700 rounded-lg p-4">
+          <h3 class="text-sm font-semibold text-purple-300 mb-2">Moment Capacity</h3>
+          <div class="text-2xl font-bold text-white" id="M_Rd">-</div>
+          <div class="text-xs text-gray-400">kNm</div>
+        </div>
+        
+        <div class="bg-gray-700 rounded-lg p-4">
+          <h3 class="text-sm font-semibold text-purple-300 mb-2">Second Moment of Area</h3>
+          <div class="text-2xl font-bold text-white" id="I_y">-</div>
+          <div class="text-xs text-gray-400">mm⁴</div>
+        </div>
+      </div>
+      
+      <!-- Print Button -->
+      <div class="mt-6 print:hidden">
+        <button onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
+          Print to PDF
+        </button>
+      </div>
+    </div>
+
+    <!-- Cross-Section Diagram -->
+    <div class="bg-gray-800 rounded-xl p-6 mb-8">
+      <h2 class="text-2xl font-semibold text-purple-400 mb-6">Cross-Section Diagram</h2>
+      <div class="bg-gray-700 rounded-lg p-4">
+        <svg class="w-full h-80 bg-gray-600 rounded-md" id="diagram"></svg>
+      </div>
+    </div>
+
+    <!-- Detailed Calculations -->
+    <div class="bg-gray-800 rounded-xl p-6 mb-8">
+      <h2 class="text-2xl font-semibold text-purple-400 mb-6">Detailed Calculations</h2>
+      <div id="step-calculations" class="calculation-steps"></div>
+      
+      <!-- Detailed Results (Hidden by default) -->
+      <div class="mt-8 border-t border-gray-700 pt-6">
+        <button onclick="toggleDetailedResults()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition mb-4">
+          Show/Hide Detailed Results
+        </button>
+        
+        <div id="detailed-results" class="hidden">
+          <div id="geometric-results" class="mb-6">
+            <h3 class="text-lg font-semibold text-purple-300 mb-4">Geometric Properties</h3>
+            <div class="space-y-3">
+              <div class="summary-item">
+                <span class="summary-label">Total Height (mm)</span>
+                <span class="summary-value" id="H_tot">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Total Area (mm²)</span>
+                <span class="summary-value" id="A_total">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Neutral Axis z_NA (mm)</span>
+                <span class="summary-value" id="z_NA">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Section Modulus Wₑₗ (mm³)</span>
+                <span class="summary-value" id="W_el">-</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="material-results" class="mb-6">
+            <h3 class="text-lg font-semibold text-purple-300 mb-4">Material Properties</h3>
+            <div class="space-y-3">
+              <div class="summary-item">
+                <span class="summary-label">Design Strength fᵧd (MPa)</span>
+                <span class="summary-value" id="f_yd">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Epsilon ε</span>
+                <span class="summary-value" id="epsilon">-</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="classification-results">
+            <h3 class="text-lg font-semibold text-purple-300 mb-4">Cross-Section Classification</h3>
+            <div class="space-y-3">
+              <div class="summary-item">
+                <span class="summary-label">Upper Flange Class</span>
+                <span class="summary-value status-ok" id="upper_flange_class">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Lower Flange Class (Inner)</span>
+                <span class="summary-value status-ok" id="lower_flange_inner_class">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Lower Flange Class (Outer)</span>
+                <span class="summary-value status-ok" id="lower_flange_outer_class">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Web Class</span>
+                <span class="summary-value status-ok" id="web_class">-</span>
+              </div>
+              <div class="summary-item border-l-4 border-purple-500 pl-3">
+                <span class="summary-label text-white font-bold">Overall Section Class</span>
+                <span class="summary-value text-purple-300 text-lg font-bold" id="overall_class">-</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+  
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+  
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+
+  <!-- Cookie Consent Scripts -->
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/cookie-consent.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free concrete dowels calculation calculator. Calculate shear capacity and utilization for concrete dowel connections according to Norwegian Betongelementboken.">
+  <meta name="keywords" content="concrete dowels, shear capacity, structural engineering, dowel calculation, Betongelementboken">
+  <title>Concrete Dowels Calculator - Free Engineering Tool</title>
+
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Concrete Dowels Calculator - Free Engineering Tool">
+  <meta property="og:description" content="Calculate shear capacity for concrete dowel connections with detailed mathematical steps">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_dowels">
+
+  <!-- Twitter Card tags -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Concrete Dowels Calculator - Free Engineering Tool">
+  <meta name="twitter:description" content="Calculate shear capacity for concrete dowel connections with detailed mathematical steps">
+
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  <!-- Report print styles for detailed calculation reports -->
+  <link rel="stylesheet" href="../assets/css/report-print.css">
+
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mtml-chtml.js"></script>
+  <script src="script.js"></script>
+
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <!-- Header -->
+    <div class="flex justify-end mb-4">
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+        ← Back to Tools
+      </a>
+    </div>
+
+    <h2 class="text-2xl font-semibold text-center text-white">Concrete Dowels Calculator</h2>
+    <p class="text-center text-gray-300 text-sm">Calculate shear capacity for concrete dowel connections according to Norwegian "Betongelementboken"</p>
+
+    <!-- Input Form -->
+    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="space-y-6">
+
+      <!-- Calculation Title -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-cyan-400 mb-4">Calculation Description (Optional)</h3>
+        <div class="space-y-2">
+          <label for="calc_title" class="text-sm text-gray-300">Describe this calculation (e.g., project name, connection location):</label>
+          <textarea id="calc_title" rows="3" placeholder="Example: Project XYZ - Dowel Connection between Slab A and Wall B..." class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-cyan-400 resize-y"></textarea>
+          <span class="text-xs text-gray-400">This description will appear at the top of the detailed report</span>
+        </div>
+      </div>
+
+      <!-- Load Parameters Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Load Parameters</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label for="v_ed" class="block text-sm font-medium text-gray-300 mb-2">Applied Shear Force V<sub>Ed</sub> (kN)</label>
+            <input type="number" id="v_ed" value="27.5" step="0.1"
+                   onchange="calculateAndShow()"
+                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label for="f_dybel" class="block text-sm font-medium text-gray-300 mb-2">Dowel Factor f<sub>dowel</sub></label>
+            <select id="f_dybel" onchange="calculateAndShow()"
+                    class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="1.0">1.0 (Single-sided)</option>
+              <option value="1.4" selected>1.4 (Double-sided)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Material Properties Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Material Properties</h3>
+
+        <!-- Concrete Properties -->
+        <div class="mb-6">
+          <h4 class="text-lg font-medium text-gray-300 mb-3">Concrete</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label for="concrete_grade" class="block text-sm font-medium text-gray-300 mb-2">Concrete Grade</label>
+              <select id="concrete_grade" onchange="updateConcreteProperties()"
+                      class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="B25">B25</option>
+                <option value="B30">B30</option>
+                <option value="B35" selected>B35</option>
+                <option value="B40">B40</option>
+                <option value="B45">B45</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+            <div>
+              <label for="fck" class="block text-sm font-medium text-gray-300 mb-2">f<sub>ck</sub> (MPa)</label>
+              <input type="number" id="fck" value="35" min="12" max="90" step="1"
+                     onchange="updateFcd(); calculateAndShow()"
+                     class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label for="alpha_cc" class="block text-sm font-medium text-gray-300 mb-2">α<sub>cc</sub></label>
+              <input type="number" id="alpha_cc" value="0.85" min="0.5" max="1.0" step="0.01"
+                     onchange="updateFcd(); calculateAndShow()"
+                     class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label for="gamma_c" class="block text-sm font-medium text-gray-300 mb-2">γ<sub>c</sub></label>
+              <input type="number" id="gamma_c" value="1.5" min="1.0" max="2.0" step="0.1"
+                     onchange="updateFcd(); calculateAndShow()"
+                     class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+          <div class="mt-2 text-sm text-gray-300">
+            Design strength: f<sub>cd</sub> = <span id="fcd_display" class="text-white font-semibold">19.8</span> MPa
+          </div>
+        </div>
+
+        <!-- Steel Properties -->
+        <div>
+          <h4 class="text-lg font-medium text-gray-300 mb-3">Steel</h4>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label for="steel_quality" class="block text-sm font-medium text-gray-300 mb-2">Steel Quality (Table B19.4.2)</label>
+              <select id="steel_quality" onchange="updateSteelProperties()"
+                      class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="S235">S235 (n=10)</option>
+                <option value="K4.8">K4.8 (n=11)</option>
+                <option value="S355">S355 (n=12)</option>
+                <option value="B500NC" selected>B500NC (n=14)</option>
+                <option value="K8.8">K8.8 (n=16)</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+            <div>
+              <label for="n_factor" class="block text-sm font-medium text-gray-300 mb-2">Min. Edge Distance Factor n</label>
+              <input type="number" id="n_factor" value="14" min="6" max="20" step="1"
+                     onchange="calculateAndShow()"
+                     class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label for="fyk" class="block text-sm font-medium text-gray-300 mb-2">f<sub>yk</sub> (MPa)</label>
+              <input type="number" id="fyk" value="500" min="200" max="800" step="1"
+                     onchange="updateFyd(); calculateAndShow()"
+                     class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label for="gamma_s" class="block text-sm font-medium text-gray-300 mb-2">γ<sub>s</sub></label>
+              <input type="number" id="gamma_s" value="1.15" min="1.0" max="2.0" step="0.05"
+                     onchange="updateFyd(); calculateAndShow()"
+                     class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+          <div class="mt-2 text-sm text-gray-300">
+            Design strength: f<sub>yd</sub> = <span id="fyd_display" class="text-white font-semibold">434.8</span> MPa
+          </div>
+        </div>
+      </div>
+
+      <!-- Dowel Configuration Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Dowel Configuration</h3>
+
+        <!-- Row 1: Dowel Diameter and Eccentricity -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label for="dowel_diameter" class="block text-sm font-medium text-gray-300 mb-2">Dowel Diameter φ (mm)</label>
+            <input type="number" id="dowel_diameter" value="12" min="6" max="40" step="1"
+                   onchange="updateDowelArea(); calculateAndShow()"
+                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label for="eccentricity" class="block text-sm font-medium text-gray-300 mb-2">Eccentricity e (mm)</label>
+            <input type="number" id="eccentricity" value="0" min="0" step="1"
+                   onchange="calculateAndShow()"
+                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+        </div>
+
+        <!-- Row 2: Parallel Configuration -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label for="n_v_parallel" class="block text-sm font-medium text-gray-300 mb-2">Dowels Parallel to Force n<sub>V,parallel</sub></label>
+            <input type="number" id="n_v_parallel" value="1" min="1" step="1"
+                   onchange="updateDowelArea(); calculateAndShow()"
+                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label for="cc_parallel" class="block text-sm font-medium text-gray-300 mb-2">Spacing Parallel cc<sub>parallel</sub> (mm)</label>
+            <input type="number" id="cc_parallel" value="200" min="50" step="10"
+                   onchange="calculateAndShow()"
+                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+        </div>
+
+        <!-- Row 3: Orthogonal Configuration -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label for="n_v_ortagonal" class="block text-sm font-medium text-gray-300 mb-2">Dowels Orthogonal to Force n<sub>V,orthogonal</sub></label>
+            <input type="number" id="n_v_ortagonal" value="5" min="1" step="1"
+                   onchange="updateDowelArea(); calculateAndShow()"
+                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label for="cc_ortagonal" class="block text-sm font-medium text-gray-300 mb-2">Spacing Orthogonal cc<sub>orthogonal</sub> (mm)</label>
+            <input type="number" id="cc_ortagonal" value="200" min="50" step="10"
+                   onchange="calculateAndShow()"
+                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+        </div>
+
+        <!-- Summary Display -->
+        <div class="text-sm text-gray-300 text-center">
+          <div>Total dowels: <span id="n_v_tot_display" class="text-white font-semibold">5</span> |
+               Dowel area: <span id="dowel_area_display" class="text-white font-semibold">113.1</span> mm²</div>
+        </div>
+      </div>
+
+      <!-- Edge Distances Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Edge Distances</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label for="a1" class="block text-sm font-medium text-gray-300 mb-2">End Distance a<sub>1</sub> (mm)</label>
+            <input type="number" id="a1" value="200" min="15" step="1"
+                   onchange="calculateAndShow()"
+                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label for="a2_h" class="block text-sm font-medium text-gray-300 mb-2">Edge Distance Right a<sub>2,h</sub> (mm)</label>
+            <input type="number" id="a2_h" value="200" min="15" step="1"
+                   onchange="calculateAndShow()"
+                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label for="a2_v" class="block text-sm font-medium text-gray-300 mb-2">Edge Distance Left a<sub>2,v</sub> (mm)</label>
+            <input type="number" id="a2_v" value="200" min="15" step="1"
+                   onchange="calculateAndShow()"
+                   class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+        </div>
+      </div>
+
+      <!-- Geometry Visualization -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-yellow-400 mb-4">Dowel Geometry Visualization</h3>
+        <p class="text-sm text-gray-300 mb-4">Interactive visualization of dowel layout and dimensions</p>
+        <div id="geometry-plot" class="bg-white rounded-lg p-4">
+          <!-- D3.js plot will be rendered here -->
+        </div>
+      </div>
+
+      <!-- Calculate Button -->
+      <div class="text-center">
+        <button type="submit" class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors duration-200">
+          Calculate
+        </button>
+      </div>
+    </form>
+
+    <!-- Results Summary -->
+    <div class="bg-gray-700 rounded-lg p-6">
+      <h3 class="text-xl font-semibold text-green-400 mb-4">Results Summary</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-gray-600 rounded-lg p-4 text-center">
+          <div class="text-sm text-gray-300 mb-1">Shear Capacity</div>
+          <div class="text-lg font-bold text-white" id="result_v_rd">140.4 kN</div>
+        </div>
+        <div class="bg-gray-600 rounded-lg p-4 text-center">
+          <div class="text-sm text-gray-300 mb-1">Concrete Utilization</div>
+          <div class="text-lg font-bold" id="result_utilization_concrete">19.6%</div>
+        </div>
+        <div class="bg-gray-600 rounded-lg p-4 text-center">
+          <div class="text-sm text-gray-300 mb-1">Steel Utilization</div>
+          <div class="text-lg font-bold" id="result_utilization_steel">19.4%</div>
+        </div>
+        <div class="bg-gray-600 rounded-lg p-4 text-center">
+          <div class="text-sm text-gray-300 mb-1">Bending Utilization</div>
+          <div class="text-lg font-bold" id="result_utilization_bending">39.5%</div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- Detailed Calculations -->
+    <div class="bg-gray-700 rounded-lg p-6">
+      <h3 class="text-xl font-semibold text-purple-400 mb-4">Detailed Calculations</h3>
+      <p class="text-sm text-gray-300 mb-4">Calculation approach according to Norwegian "Betongelementboken"</p>
+      <div id="detailed-calculations">
+        <!-- Results will be populated here by JavaScript -->
+      </div>
+    </div>
+
+    <!-- Detailed Report (Collapsible & Printable) -->
+    <div class="bg-gray-700 rounded-lg p-6 mt-6">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-lg font-semibold text-white cursor-pointer" onclick="toggleReport()">
+          ▼ Detailed Calculation Report
+        </h3>
+        <button type="button" onclick="printReport()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-lg transition print:hidden">
+          🖨️ Print Report
+        </button>
+      </div>
+      <div id="detailed-report" class="hidden mt-4">
+        <!-- Report content will be generated here -->
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="mt-8 text-center text-gray-400 text-sm">
+    <p>Calculation approach according to Norwegian "Betongelementboken" |
+       <a href="https://github.com/magnusfjeldolsen/structural_tools" target="_blank" class="text-blue-400 hover:text-blue-300">GitHub</a>
+    </p>
+  </footer>
+
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+
+  <!-- Cookie Consent Scripts -->
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/cookie-consent.js"></script>
+
+</body>
+</html>

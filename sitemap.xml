@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- Main page -->
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+
+  <!-- Steel Design Tools -->
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/steel_fire_temperature/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/THP/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/weld_capacity/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/DIN_rod_torque/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/steel_beam_relative_deisgn/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/transversal_forces_stiffened_web/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/transversal_forces_unstiffened_web/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+
+  <!-- Concrete Design Tools -->
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/concrete_minimum_reinforcement/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/concrete_slab_design/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/concrete_beam_design/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/ec2concrete/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/concrete_base_plate_compressive_design/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/concrete_dowels/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+
+  <!-- Concrete Carbon Reinforcement -->
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/concrete_plate_CFRP/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+
+  <!-- Seismic Design -->
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/seismic_ec8/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+
+  <!-- Structural Analysis -->
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/2dframeanalysis/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+
+  <!-- Data Processing -->
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/clustering/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+
+  <!-- Productivity Tools -->
+  <url>
+    <loc>https://magnusfjeldolsen.github.io/structural_tools/deliveryhub/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <lastmod>2024-09-29</lastmod>
+  </url>
+</urlset>

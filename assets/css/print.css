@@ -1,0 +1,666 @@
+/* 
+ * Print CSS for Structural Engineering Tools
+ * Optimized for dark-themed PDF output
+ */
+
+@media print {
+  /* Force dark background and text for all elements */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Body styling for print */
+  body {
+    background: #111827 !important;
+    color: #f9fafb !important;
+    font-size: 12pt;
+    line-height: 1.4;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Hide interactive elements */
+  button,
+  input,
+  select,
+  textarea,
+  .btn,
+  .print\\:hidden,
+  [class*="print:hidden"] {
+    display: none !important;
+  }
+
+  /* Show print-specific elements */
+  .print\\:block,
+  [class*="print:block"] {
+    display: block !important;
+  }
+
+  .print\\:inline,
+  [class*="print:inline"] {
+    display: inline !important;
+  }
+
+  .print\\:flex,
+  [class*="print:flex"] {
+    display: flex !important;
+  }
+
+  .print\\:grid,
+  [class*="print:grid"] {
+    display: grid !important;
+  }
+
+  /* Print-specific spacing */
+  .print\\:mt-4,
+  [class*="print:mt-4"] {
+    margin-top: 1rem !important;
+  }
+
+  .print\\:mt-6,
+  [class*="print:mt-6"] {
+    margin-top: 1.5rem !important;
+  }
+
+  .print\\:mb-4,
+  [class*="print:mb-4"] {
+    margin-bottom: 1rem !important;
+  }
+
+  .print\\:mb-6,
+  [class*="print:mb-6"] {
+    margin-bottom: 1.5rem !important;
+  }
+
+  .print\\:p-4,
+  [class*="print:p-4"] {
+    padding: 1rem !important;
+  }
+
+  /* Print-specific borders */
+  .print\\:border,
+  [class*="print:border"] {
+    border: 1px solid #6b7280 !important;
+  }
+
+  .print\\:border-t,
+  [class*="print:border-t"] {
+    border-top: 1px solid #6b7280 !important;
+  }
+
+  .print\\:rounded,
+  [class*="print:rounded"] {
+    border-radius: 0.375rem !important;
+  }
+
+  /* Main container adjustments */
+  .main-container,
+  main {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0.5rem !important;
+    box-shadow: none !important;
+    background: #1f2937 !important;
+    border: none !important;
+  }
+
+  /* Section cards */
+  .section-card,
+  .form-section {
+    background: #374151 !important;
+    border: 1px solid #4b5563 !important;
+    margin-bottom: 1rem !important;
+    page-break-inside: avoid;
+  }
+
+  /* Typography adjustments */
+  .heading-1,
+  h1 {
+    font-size: 18pt !important;
+    color: #f9fafb !important;
+    margin-bottom: 0.5rem !important;
+    page-break-after: avoid;
+  }
+
+  .heading-2,
+  h2 {
+    font-size: 16pt !important;
+    color: #f9fafb !important;
+    margin-bottom: 0.75rem !important;
+    page-break-after: avoid;
+  }
+
+  .heading-3,
+  h3 {
+    font-size: 14pt !important;
+    color: #f9fafb !important;
+    margin-bottom: 0.5rem !important;
+    page-break-after: avoid;
+  }
+
+  /* Results and calculation sections */
+  #results,
+  .results-section {
+    background: #1f2937 !important;
+    border: 1px solid #374151 !important;
+    padding: 1rem !important;
+    margin-top: 1rem !important;
+    page-break-inside: avoid;
+  }
+
+  /* Mathematical content */
+  .MathJax,
+  .MathJax_Display {
+    color: #f9fafb !important;
+    background: transparent !important;
+  }
+
+  /* Charts and images */
+  canvas,
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+  }
+
+  /* Tables */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 1rem !important;
+    background: #374151 !important;
+  }
+
+  th,
+  td {
+    padding: 0.5rem !important;
+    border: 1px solid #4b5563 !important;
+    color: #f9fafb !important;
+    text-align: left !important;
+  }
+
+  th {
+    background: #4b5563 !important;
+    font-weight: 600 !important;
+  }
+
+  /* Grid layouts for print */
+  .grid-2,
+  .form-grid,
+  .md\\:grid-cols-2,
+  [class*="md:grid-cols-2"] {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+  }
+
+  .grid-2 > *,
+  .form-grid > * {
+    margin-bottom: 0.5rem !important;
+  }
+
+  /* Ensure form sections use optimal width for print */
+  .form-section,
+  .bg-gray-700,
+  .rounded-lg {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Make input field containers more compact for print */
+  .flex.items-center.gap-4,
+  [class*="flex items-center gap-4"] {
+    gap: 0.5rem !important;
+    margin-bottom: 0.3rem !important;
+  }
+
+  /* Compact input labels */
+  .text-sm.font-medium,
+  [class*="text-sm font-medium"] {
+    min-width: 80px !important;
+    font-size: 10pt !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Make the overall form sections take up less horizontal space */
+  .md\\:col-span-2,
+  [class*="md:col-span-2"] {
+    grid-column: span 2 !important;
+    max-width: 70% !important;
+    margin: 0 auto 1rem auto !important;
+  }
+
+  /* Specific adjustment for input sections */
+  .bg-gray-700.rounded-lg.p-6:not(.calc-box) {
+    padding: 0.75rem !important;
+    max-width: 60% !important;
+    margin: 0 auto 1rem auto !important;
+  }
+
+  /* Input groups in print - show values */
+  .input-group {
+    display: flex !important;
+    align-items: center !important;
+    margin-bottom: 0.5rem !important;
+    padding: 0.25rem 0 !important;
+  }
+
+  .input-label {
+    color: #d1d5db !important;
+    margin-right: 1rem !important;
+    min-width: 120px !important;
+  }
+
+  /* Print-specific value display */
+  .print-value {
+    color: #f9fafb !important;
+    font-weight: 600 !important;
+    font-family: 'Courier New', monospace !important;
+  }
+
+  /* Make input value boxes much narrower */
+  .flex-1,
+  [class*="flex-1"],
+  input.flex-1,
+  [class*="px-3 py-2"] {
+    max-width: 80px !important;
+    width: 80px !important;
+    flex: none !important;
+    padding: 0.25rem 0.5rem !important;
+    font-size: 10pt !important;
+  }
+
+  /* Target specific input styling classes */
+  .bg-gray-600,
+  [class*="bg-gray-600"] {
+    max-width: 80px !important;
+    width: 80px !important;
+    background: #4b5563 !important;
+    border: 1px solid #6b7280 !important;
+    color: #f9fafb !important;
+    text-align: center !important;
+    font-family: 'Courier New', monospace !important;
+    font-weight: 600 !important;
+  }
+
+  /* Page breaks */
+  .page-break-before {
+    page-break-before: always !important;
+  }
+
+  .page-break-after {
+    page-break-after: always !important;
+  }
+
+  .page-break-inside-avoid {
+    page-break-inside: avoid !important;
+  }
+
+  /* Header and footer areas */
+  @page {
+    margin: 1cm;
+    size: A4;
+    
+    @top-center {
+      content: "Structural Engineering Calculator";
+      color: #9ca3af;
+      font-size: 10pt;
+    }
+    
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      color: #9ca3af;
+      font-size: 10pt;
+    }
+  }
+
+  /* Ensure consistent spacing */
+  * {
+    box-sizing: border-box !important;
+  }
+
+  /* Override any max-width constraints */
+  .max-w-6xl,
+  .max-w-4xl,
+  .max-w-3xl,
+  .max-w-2xl,
+  .max-w-xl,
+  .max-w-lg,
+  .max-w-md,
+  .max-w-sm,
+  [class*="max-w-"] {
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  /* Ensure containers use full width */
+  .container,
+  .w-full,
+  [class*="w-full"] {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Fix any remaining light backgrounds */
+  .bg-white,
+  [class*="bg-white"] {
+    background: #374151 !important;
+    color: #f9fafb !important;
+  }
+
+  .bg-gray-50,
+  .bg-gray-100,
+  [class*="bg-gray-50"],
+  [class*="bg-gray-100"] {
+    background: #4b5563 !important;
+    color: #f9fafb !important;
+  }
+
+  /* Calculation Box Print Styles */
+  .calc-box {
+    background: #374151 !important;
+    border: 1px solid #4b5563 !important;
+    margin-bottom: 1rem !important;
+    page-break-inside: avoid !important;
+    box-shadow: none !important;
+  }
+
+  .calc-header {
+    background: #4b5563 !important;
+    color: #f9fafb !important;
+    padding: 0.75rem 1rem !important;
+    border-bottom: 1px solid #6b7280 !important;
+    page-break-after: avoid !important;
+  }
+
+  .calc-content {
+    padding: 1rem !important;
+  }
+
+  .calc-row {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    margin-bottom: 0.5rem !important;
+    padding: 0.25rem 0 !important;
+    gap: 0.3rem !important;
+    page-break-inside: avoid !important;
+    width: 100% !important;
+  }
+
+  .calc-label {
+    color: #e5e7eb !important;
+    font-family: 'Courier New', monospace !important;
+    font-weight: 600 !important;
+    font-size: 11pt !important;
+    min-width: auto !important;
+  }
+
+  .calc-equals {
+    color: #9ca3af !important;
+    margin: 0 0.25rem !important;
+  }
+
+  .calc-expression {
+    color: #d1d5db !important;
+    font-family: 'Courier New', monospace !important;
+    font-size: 9pt !important;
+    background: #4b5563 !important;
+    padding: 0.15rem 0.3rem !important;
+    border-radius: 3px !important;
+    border: 1px solid #6b7280 !important;
+    max-width: none !important;
+    word-break: break-word !important;
+    white-space: normal !important;
+    flex-shrink: 1 !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .calc-value {
+    color: #3b82f6 !important;
+    font-family: 'Courier New', monospace !important;
+    font-weight: 700 !important;
+    font-size: 11pt !important;
+    background: rgba(59, 130, 246, 0.1) !important;
+    padding: 0.2rem 0.5rem !important;
+    border-radius: 4px !important;
+    border: 1px solid rgba(59, 130, 246, 0.3) !important;
+  }
+
+  .calc-separator {
+    height: 1px !important;
+    background: #6b7280 !important;
+    margin: 0.75rem 0 !important;
+    width: 100% !important;
+  }
+
+  .calc-note {
+    color: #9ca3af !important;
+    font-style: italic !important;
+    font-size: 9pt !important;
+  }
+
+  /* Form section print styles */
+  .form-section,
+  .bg-gray-700 {
+    background: #374151 !important;
+    border: 1px solid #4b5563 !important;
+    color: #f9fafb !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 1rem !important;
+  }
+
+  /* Input values display for print */
+  .input-display {
+    display: flex !important;
+    align-items: center !important;
+    margin-bottom: 0.5rem !important;
+    padding: 0.25rem 0 !important;
+  }
+
+  .input-display label {
+    color: #d1d5db !important;
+    margin-right: 1rem !important;
+    min-width: 100px !important;
+  }
+
+  .input-display::after {
+    content: attr(data-value) !important;
+    color: #f9fafb !important;
+    font-weight: 600 !important;
+    font-family: 'Courier New', monospace !important;
+  }
+
+  /* Summary section print styles */
+  .summary-card,
+  .border-l-4 {
+    background: #374151 !important;
+    border-left: 4px solid #3b82f6 !important;
+    border-radius: 0.375rem !important;
+    padding: 1rem !important;
+    margin-top: 1rem !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Status color preservation - Override calc-value blue */
+  .calc-value.text-green-400,
+  span.calc-value.text-green-400,
+  .text-green-400,
+  [class*="text-green-400"],
+  span.text-green-400,
+  div.text-green-400,
+  .calc-content .text-green-400 {
+    color: #22c55e !important;
+    background: rgba(34, 197, 94, 0.1) !important;
+    border-color: rgba(34, 197, 94, 0.3) !important;
+  }
+
+  .calc-value.text-red-400,
+  span.calc-value.text-red-400,
+  .text-red-400,
+  [class*="text-red-400"],
+  span.text-red-400,
+  div.text-red-400,
+  .calc-content .text-red-400 {
+    color: #dc2626 !important;
+    background: rgba(220, 38, 38, 0.1) !important;
+    border-color: rgba(220, 38, 38, 0.3) !important;
+  }
+
+  .calc-value.text-yellow-400,
+  span.calc-value.text-yellow-400,
+  .text-yellow-400,
+  [class*="text-yellow-400"],
+  span.text-yellow-400,
+  div.text-yellow-400,
+  .calc-content .text-yellow-400 {
+    color: #ca8a04 !important;
+    background: rgba(202, 138, 4, 0.1) !important;
+    border-color: rgba(202, 138, 4, 0.3) !important;
+  }
+
+  /* Override the default calc-value blue color when it has other color classes */
+  .calc-value:not(.text-green-400):not(.text-red-400):not(.text-yellow-400) {
+    color: #3b82f6 !important;
+    background: rgba(59, 130, 246, 0.1) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+  }
+
+  .text-blue-400,
+  [class*="text-blue-400"],
+  span.text-blue-400,
+  div.text-blue-400,
+  .calc-content .text-blue-400 {
+    color: #2563eb !important;
+  }
+
+  .text-purple-400,
+  [class*="text-purple-400"],
+  span.text-purple-400,
+  div.text-purple-400,
+  .calc-content .text-purple-400 {
+    color: #9333ea !important;
+  }
+
+  /* Border color variants */
+  .border-green-500,
+  [class*="border-green-500"] {
+    border-color: #22c55e !important;
+  }
+
+  .border-red-500,
+  [class*="border-red-500"] {
+    border-color: #ef4444 !important;
+  }
+
+  .border-yellow-500,
+  [class*="border-yellow-500"] {
+    border-color: #eab308 !important;
+  }
+
+  /* Background color variants for status */
+  .bg-green-900\/20,
+  [class*="bg-green-900"] {
+    background: rgba(20, 83, 45, 0.3) !important;
+  }
+
+  .bg-red-900\/20,
+  [class*="bg-red-900"] {
+    background: rgba(127, 29, 29, 0.3) !important;
+  }
+
+  .bg-yellow-900\/20,
+  [class*="bg-yellow-900"] {
+    background: rgba(120, 113, 23, 0.3) !important;
+  }
+
+  /* Force high contrast text colors for better print readability */
+  .text-gray-300,
+  [class*="text-gray-300"] {
+    color: #d1d5db !important;
+  }
+
+  .text-gray-400,
+  [class*="text-gray-400"] {
+    color: #9ca3af !important;
+  }
+
+  .text-white,
+  [class*="text-white"] {
+    color: #ffffff !important;
+  }
+
+  /* Ensure heading colors are preserved */
+  .text-blue-300,
+  [class*="text-blue-300"] {
+    color: #93c5fd !important;
+  }
+
+  .text-purple-300,
+  [class*="text-purple-300"] {
+    color: #d8b4fe !important;
+  }
+
+  .text-green-300,
+  [class*="text-green-300"] {
+    color: #86efac !important;
+  }
+
+  .text-yellow-300,
+  [class*="text-yellow-300"] {
+    color: #fde047 !important;
+  }
+
+  .text-red-300,
+  [class*="text-red-300"] {
+    color: #fca5a5 !important;
+  }
+}
+
+/* Anchorage Length Calculator - Print Specific Styles */
+@media print {
+  /* Show only the detailed report when printing */
+  body > main > form,
+  body > main > #results > div:not(:has(#detailed-report)) {
+    display: none !important;
+  }
+
+  #detailed-report {
+    display: block !important;
+    background: white !important;
+  }
+
+  .report-content {
+    background: white !important;
+    color: black !important;
+    padding: 20px;
+  }
+
+  .report-content * {
+    color: black !important;
+  }
+
+  .report-content .text-gray-600 {
+    color: #4b5563 !important;
+  }
+
+  /* Page breaks */
+  .page-break-before {
+    page-break-before: always;
+  }
+
+  /* Table styling */
+  .report-content table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  .report-content table td {
+    padding: 4px 8px;
+  }
+}

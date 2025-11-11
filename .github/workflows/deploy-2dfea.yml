@@ -1,0 +1,100 @@
+name: Deploy 2D FEM to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 2dfeauserinteractivity
+    paths:
+      - '2dfea/**'
+      - '.github/workflows/deploy-2dfea.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy 2D FEM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        working-directory: 2dfea
+        run: npm ci
+        env:
+          CI: true
+
+      - name: Run type check
+        working-directory: 2dfea
+        run: npm run type-check
+
+      - name: Build application
+        working-directory: 2dfea
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Regenerate module registry
+        run: npm run update-registry
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 2dfea-build
+          path: 2dfea/dist/
+          retention-days: 1
+
+      - name: Create .nojekyll file for GitHub Pages
+        run: echo "" > ./2dfea/dist/.nojekyll
+
+      - name: Verify build output
+        run: |
+          echo "=== Verifying 2dfea/dist/ build output ==="
+          ls -lah ./2dfea/dist/
+          echo ""
+          echo "=== Checking index.html content ==="
+          head -30 ./2dfea/dist/index.html
+          echo ""
+          echo "=== Checking assets folder ==="
+          ls -lah ./2dfea/dist/assets/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./2dfea/dist
+          destination_dir: 2dfea
+          clean: true
+          commit_message: 'Deploy 2D FEM build from ${{ github.sha }}'
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Output deployment URL
+        run: |
+          echo "## ✅ Deployment Successful"
+          echo ""
+          echo "### 2D FEM - Interactive GUI"
+          echo "📱 URL: https://magnusfjeldolsen.github.io/structural_tools/2dfea/"
+          echo ""
+          echo "### Build Details"
+          echo "- **Commit**: \`${{ github.sha }}\`"
+          echo "- **Branch**: \`${{ github.ref }}\`"
+          echo "- **Workflow**: [\`${{ github.workflow }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"

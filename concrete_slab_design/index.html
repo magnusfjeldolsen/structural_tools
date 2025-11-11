@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Primary Meta Tags -->
+  <title>Concrete Slab Design Calculator | Free Structural Engineering Tool</title>
+  <meta name="title" content="Concrete Slab Design Calculator | Free Structural Engineering Tool">
+  <meta name="description" content="Ultimate Limit State (ULS) moment resistance calculator for concrete slabs. Calculate MRd with detailed step-by-step mathematical derivations and visual aids according to Eurocode 2.">
+  <meta name="keywords" content="concrete slab, ULS design, moment resistance, MRd, reinforcement, eurocode 2, free engineering tool, structural calculator">
+  <meta name="author" content="Magnus Fjeld Olsen">
+  <meta name="robots" content="index, follow">
+
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://magnusfjeldolsen.github.io/structural_tools/concrete_slab_design/">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_slab_design/">
+  <meta property="og:title" content="Concrete Slab Design Calculator">
+  <meta property="og:description" content="Ultimate Limit State (ULS) moment resistance calculator for concrete slabs. Calculate MRd with detailed step-by-step mathematical derivations.">
+  <meta property="og:site_name" content="Structural Engineering Tools">
+  
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_slab_design/">
+  <meta property="twitter:title" content="Concrete Slab Design Calculator">
+  <meta property="twitter:description" content="Ultimate Limit State (ULS) moment resistance calculator for concrete slabs with detailed step-by-step mathematical derivations.">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+  <!-- Report print styles for detailed calculation reports -->
+  <link rel="stylesheet" href="../assets/css/report-print.css">
+  
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <script src="script.js"></script>
+
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+  <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <!-- Header -->
+    <div class="flex justify-end mb-4">
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+        ← Back to Tools
+      </a>
+    </div>
+
+    <h2 class="text-2xl font-semibold text-center text-white">Concrete Slab ULS Design Calculator</h2>
+    <p class="text-center text-gray-300 text-sm">Calculate Ultimate Limit State moment resistance (M<sub>Rd</sub>) for reinforced concrete slabs</p>
+
+    <!-- Input Form -->
+    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="space-y-6">
+
+      <!-- Calculation Title -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-cyan-400 mb-4">Calculation Description (Optional)</h3>
+        <div class="space-y-2">
+          <label for="calc_title" class="text-sm text-gray-300">Describe this calculation (e.g., project name, location, slab reference):</label>
+          <textarea id="calc_title" rows="3" placeholder="Example: Office Building - Floor Slab Level 2, Zone A..." class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-cyan-400 resize-y"></textarea>
+          <span class="text-xs text-gray-400">This description will appear at the top of the detailed report</span>
+        </div>
+      </div>
+
+      <!-- Geometry Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Geometry</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="MEd" class="text-sm font-medium min-w-[120px] text-right">M<sub>Ed</sub> (kNm):</label>
+            <input type="text" id="MEd" value="20" placeholder="Example: 20*5^2/8" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="NEd" class="text-sm font-medium min-w-[120px] text-right">N<sub>Ed</sub> (kN):</label>
+            <input type="number" id="NEd" value="0" step="any" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span class="text-xs text-gray-400 min-w-[80px]">(+ compression)</span>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="t" class="text-sm font-medium min-w-[120px] text-right">Thickness t (mm):</label>
+            <input type="number" id="t" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="c" class="text-sm font-medium min-w-[120px] text-right">Cover c (mm):</label>
+            <input type="number" id="c" value="35" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+      <!-- Concrete Material Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-yellow-400 mb-4">Concrete Material</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="concrete_grade" class="text-sm font-medium min-w-[120px] text-right">Grade:</label>
+            <select id="concrete_grade" onchange="updateConcreteProperties()" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="B25">B25 (fck = 25 MPa)</option>
+              <option value="B30">B30 (fck = 30 MPa)</option>
+              <option value="B35" selected>B35 (fck = 35 MPa)</option>
+              <option value="B40">B40 (fck = 40 MPa)</option>
+              <option value="B45">B45 (fck = 45 MPa)</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="fck" class="text-sm font-medium min-w-[120px] text-right">f<sub>ck</sub> (MPa):</label>
+            <input type="number" id="fck" value="35" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="alpha_cc" class="text-sm font-medium min-w-[120px] text-right">α<sub>cc</sub>:</label>
+            <input type="number" id="alpha_cc" value="0.85" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="gamma_c" class="text-sm font-medium min-w-[120px] text-right">γ<sub>c</sub>:</label>
+            <input type="number" id="gamma_c" value="1.5" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="k1" class="text-sm font-medium min-w-[120px] text-right">k<sub>1</sub>:</label>
+            <input type="number" id="k1" value="0.15" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <span class="text-xs text-gray-400 min-w-[100px]">(aggregate factor)</span>
+          </div>
+          
+          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
+            <label for="fcd_display" class="text-sm font-medium min-w-[120px] text-right text-gray-300">f<sub>cd</sub> (MPa):</label>
+            <span id="fcd_display" class="flex-1 text-green-400 font-semibold">19.83</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Steel Material Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-red-400 mb-4">Steel Material</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="fyk" class="text-sm font-medium min-w-[120px] text-right">f<sub>yk</sub> (MPa):</label>
+            <input type="number" id="fyk" value="500" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="gamma_s" class="text-sm font-medium min-w-[120px] text-right">γ<sub>s</sub>:</label>
+            <input type="number" id="gamma_s" value="1.15" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
+            <label for="fyd_display" class="text-sm font-medium min-w-[120px] text-right text-gray-300">f<sub>yd</sub> (MPa):</label>
+            <span id="fyd_display" class="flex-1 text-green-400 font-semibold">434.78</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reinforcement Section -->
+      <div class="bg-gray-700 rounded-lg p-6 md:col-span-2">
+        <h3 class="text-xl font-semibold text-green-400 mb-4">Reinforcement</h3>
+        
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="flex items-center gap-4">
+            <label for="phi_l" class="text-sm font-medium min-w-[100px] text-right">φ<sub>l</sub> (mm):</label>
+            <input type="number" id="phi_l" value="12" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="cc_l" class="text-sm font-medium min-w-[100px] text-right">cc<sub>l</sub> (mm):</label>
+            <input type="number" id="cc_l" value="200" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-4 bg-gray-600 rounded p-2 mt-4">
+          <label for="rebar_area_display" class="text-sm font-medium min-w-[100px] text-right text-gray-300">A<sub>s</sub> (mm²/m):</label>
+          <span id="rebar_area_display" class="flex-1 text-green-400 font-semibold">565.49</span>
+        </div>
+      </div>
+
+    </form>
+
+    <!-- Calculate Button -->
+    <div class="space-y-2 print:hidden">
+      <button onclick="calculateAndShow()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+        Calculate M<sub>Rd</sub>
+      </button>
+    </div>
+
+    <!-- Results Section -->
+    <div id="results" style="display:none;" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50">
+      <div id="calc-steps" class="text-white">
+        <!-- Calculation boxes will be inserted here -->
+      </div>
+
+      <!-- Detailed Report (Collapsible & Printable) -->
+      <div class="bg-gray-700 rounded-lg p-6 mt-6">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-lg font-semibold text-white cursor-pointer" onclick="toggleReport()">
+            ▼ Detailed Calculation Report
+          </h3>
+          <button type="button" onclick="printReport()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-lg transition print:hidden">
+            🖨️ Print Report
+          </button>
+        </div>
+        <div id="detailed-report" class="hidden mt-4">
+          <!-- Report content will be generated here -->
+        </div>
+      </div>
+    </div>
+
+
+    <!-- Footer Info -->
+    <div class="text-center text-sm text-gray-400 pt-6 border-t border-gray-600">
+      <p>Free structural engineering calculator by <span class="text-blue-400 font-semibold">Magnus Fjeld Olsen</span></p>
+      <p class="mt-1">Based on Eurocode 2 (EC2) standards</p>
+    </div>
+  </main>
+
+  <!-- All JavaScript moved to script.js -->
+
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+  
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+
+  <!-- Cookie Consent Scripts -->
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/cookie-consent.js"></script>
+
+</body>
+</html>

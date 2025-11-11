@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Free concrete beam ULS design calculator. Calculate moment and shear capacity with detailed step-by-step derivations.">
+  <meta name="keywords" content="concrete beam design, ULS, moment capacity, shear capacity, structural engineering">
+  <title>Concrete Beam Calculator - ULS Design Tool</title>
+  
+  <!-- Open Graph tags -->
+  <meta property="og:title" content="Concrete Beam Calculator - ULS Design Tool">
+  <meta property="og:description" content="Calculate moment and shear capacity of concrete beams with detailed mathematical derivations">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_beam_design">
+  
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/report-print.css">
+  
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <script src="concrete_beam_api.js"></script>
+
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+
+  <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+    <!-- Header -->
+    <div class="flex justify-end mb-4">
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+        ← Back to Tools
+      </a>
+    </div>
+
+    <div class="text-center mb-6">
+      <h1 class="text-3xl font-bold text-white mb-2">Concrete Beam ULS Design Calculator</h1>
+      <p class="text-gray-300">Calculate moment and shear capacity with detailed step-by-step derivations</p>
+    </div>
+
+    <!-- Calculation Description -->
+    <div class="bg-gray-700 rounded-lg p-6">
+      <h3 class="text-xl font-semibold text-cyan-400 mb-4">Calculation Description (Optional)</h3>
+      <div class="space-y-2">
+        <label for="calc_description" class="text-sm text-gray-300">Describe this calculation:</label>
+        <textarea id="calc_description" rows="3"
+                  placeholder="Example: Project ABC - Main beam B1..."
+                  class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md resize-y">
+        </textarea>
+        <span class="text-xs text-gray-400">This description will appear at the top of the detailed report</span>
+      </div>
+    </div>
+
+    <!-- Input Form -->
+    <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="grid md:grid-cols-2 gap-6">
+
+      <!-- Geometry Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Geometry</h3>
+        
+        <div class="space-y-4">
+          <div>
+            <div class="flex items-center gap-4">
+              <label for="b" class="text-sm font-medium min-w-[100px] text-right">b (mm):</label>
+              <input type="text" id="b" value="250" placeholder="Example: 200+50" required onblur="updateCalculatedValue('b')" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            <div id="b_calc" class="ml-[116px] mt-1 text-xs text-cyan-400 hidden"></div>
+          </div>
+
+          <div>
+            <div class="flex items-center gap-4">
+              <label for="h" class="text-sm font-medium min-w-[100px] text-right">h (mm):</label>
+              <input type="text" id="h" value="500" placeholder="Example: 400+100" required onblur="updateCalculatedValue('h')" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            <div id="h_calc" class="ml-[116px] mt-1 text-xs text-cyan-400 hidden"></div>
+          </div>
+
+          <div>
+            <div class="flex items-center gap-4">
+              <label for="c" class="text-sm font-medium min-w-[100px] text-right">c (mm):</label>
+              <input type="text" id="c" value="25" placeholder="Example: 20+5" required onblur="updateCalculatedValue('c')" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            <div id="c_calc" class="ml-[116px] mt-1 text-xs text-cyan-400 hidden"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loads Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-red-400 mb-4">Applied Loads</h3>
+
+        <div class="space-y-4">
+          <div>
+            <div class="flex items-center gap-4">
+              <label for="MEd" class="text-sm font-medium min-w-[100px] text-right">M<sub>Ed</sub> (kNm):</label>
+              <input type="text" id="MEd" value="39" placeholder="Example: 20*5^2/8 (leave empty for 0)" onblur="updateCalculatedValue('MEd')" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            <div id="MEd_calc" class="ml-[116px] mt-1 text-xs text-cyan-400 hidden"></div>
+          </div>
+
+          <div>
+            <div class="flex items-center gap-4">
+              <label for="VEd" class="text-sm font-medium min-w-[100px] text-right">V<sub>Ed</sub> (kN):</label>
+              <input type="text" id="VEd" value="260" placeholder="Example: 20*5/2 (leave empty for 0)" onblur="updateCalculatedValue('VEd')" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+            <div id="VEd_calc" class="ml-[116px] mt-1 text-xs text-cyan-400 hidden"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Longitudinal Reinforcement Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-green-400 mb-4">Longitudinal Reinforcement</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="phi_l" class="text-sm font-medium min-w-[100px] text-right">φ<sub>l</sub> (mm):</label>
+            <input type="number" id="phi_l" value="20" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="n_l" class="text-sm font-medium min-w-[100px] text-right">n<sub>l</sub>:</label>
+            <input type="number" id="n_l" value="2" step="1" min="1" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+      <!-- Shear Reinforcement Section -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-purple-400 mb-4">Shear Reinforcement</h3>
+        
+        <div class="space-y-4">
+          <div class="flex items-center gap-4">
+            <label for="phi_b" class="text-sm font-medium min-w-[100px] text-right">φ<sub>b</sub> (mm):</label>
+            <input type="number" id="phi_b" value="12" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="cc_b" class="text-sm font-medium min-w-[100px] text-right">cc<sub>b</sub> (mm):</label>
+            <input type="number" id="cc_b" value="185" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="n_snitt" class="text-sm font-medium min-w-[100px] text-right">n<sub>snitt</sub>:</label>
+            <input type="number" id="n_snitt" value="2" step="1" min="1" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+      <!-- Material Properties Section -->
+      <div class="bg-gray-700 rounded-lg p-6 md:col-span-2">
+        <h3 class="text-xl font-semibold text-yellow-400 mb-4">Material Properties</h3>
+        
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="flex items-center gap-4">
+            <label for="fck" class="text-sm font-medium min-w-[100px] text-right">f<sub>ck</sub> (MPa):</label>
+            <input type="number" id="fck" value="35" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="fyk" class="text-sm font-medium min-w-[100px] text-right">f<sub>yk</sub> (MPa):</label>
+            <input type="number" id="fyk" value="500" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="alpha_cc" class="text-sm font-medium min-w-[100px] text-right">α<sub>cc</sub>:</label>
+            <input type="number" id="alpha_cc" value="0.85" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="gamma_s" class="text-sm font-medium min-w-[100px] text-right">γ<sub>s</sub>:</label>
+            <input type="number" id="gamma_s" value="1.15" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <label for="gamma_c" class="text-sm font-medium min-w-[100px] text-right">γ<sub>c</sub>:</label>
+            <input type="number" id="gamma_c" value="1.5" step="any" required class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+        </div>
+      </div>
+
+    </form>
+
+    <!-- Calculate Button -->
+    <div class="space-y-2 print:hidden">
+      <button onclick="calculateAndShow()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+        Calculate
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50 hidden">
+      <div id="calc-steps" class="text-white"></div>
+    </div>
+
+    <!-- Detailed Report Section -->
+    <div id="report-section" class="bg-gray-700 rounded-lg p-6 mt-6 hidden">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-lg font-semibold text-white cursor-pointer" onclick="toggleReport()">
+          ▼ Detailed Calculation Report
+        </h3>
+        <button type="button" onclick="printReport()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-lg transition print:hidden">
+          🖨️ Print Report
+        </button>
+      </div>
+      <div id="detailed-report" class="hidden mt-4">
+        <!-- Report content will be generated here -->
+      </div>
+    </div>
+
+
+  </main>
+
+  <script>
+
+    function toFixedIfNeeded(num, digits=2) {
+      return num.toFixed(digits);
+    }
+
+    // Update calculated value display for expression inputs
+    function updateCalculatedValue(fieldId) {
+      const input = document.getElementById(fieldId);
+      const calcDisplay = document.getElementById(fieldId + '_calc');
+      const value = input.value.trim();
+
+      // Check if the value contains any operators (is an expression)
+      if (value && /[+\-*/^()]/.test(value)) {
+        try {
+          // Use the API's evaluateExpression function
+          const result = window.ConcreteBeamAPI.evaluateExpression(value);
+          calcDisplay.textContent = `= ${toFixedIfNeeded(result, 2)}`;
+          calcDisplay.classList.remove('hidden');
+        } catch (error) {
+          calcDisplay.textContent = 'Invalid expression';
+          calcDisplay.classList.remove('hidden');
+          calcDisplay.classList.add('text-red-400');
+          setTimeout(() => {
+            calcDisplay.classList.remove('text-red-400');
+            calcDisplay.classList.add('text-cyan-400');
+          }, 2000);
+        }
+      } else {
+        // Hide if it's just a simple number or empty
+        calcDisplay.classList.add('hidden');
+      }
+    }
+
+    // Helper function for utilization color coding
+    function getUtilizationColor(utilization) {
+      if (utilization <= 85) return 'text-green-900';
+      if (utilization <= 100) return 'text-yellow-900';
+      return 'text-red-900';
+    }
+
+    // Toggle report visibility
+    function toggleReport() {
+      const report = document.getElementById('detailed-report');
+      const header = event.currentTarget;
+      report.classList.toggle('hidden');
+      header.textContent = report.classList.contains('hidden') ? '▼ Detailed Calculation Report' : '▲ Detailed Calculation Report';
+    }
+
+    // Print report
+    function printReport() {
+      window.print();
+    }
+
+    // Create beam cross-section SVG visualization
+    function createBeamVisualization(b, h, c, phi_l, n_l) {
+      const svgWidth = 400;
+      const svgHeight = 500;
+      const scale = Math.min(300 / h, 250 / b);
+
+      const beamWidth = b * scale;
+      const beamHeight = h * scale;
+      const centerX = svgWidth / 2;
+      const centerY = svgHeight / 2;
+
+      // Calculate bar positions
+      const barCenterY = centerY + beamHeight/2 - c*scale - phi_l*scale/2;
+      const barSpacing = n_l > 1 ? (beamWidth - 2*c*scale) / (n_l - 1) : 0;
+      const barStartX = n_l > 1 ? centerX - beamWidth/2 + c*scale : centerX;
+
+      let svg = `<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">`;
+
+      // Concrete beam rectangle (grey)
+      svg += `<rect x="${centerX - beamWidth/2}" y="${centerY - beamHeight/2}"
+                    width="${beamWidth}" height="${beamHeight}"
+                    fill="#9ca3af" stroke="#374151" stroke-width="2"/>`;
+
+      // Dimension lines and labels
+      // Width dimension (top)
+      const dimY = centerY - beamHeight/2 - 30;
+      svg += `<line x1="${centerX - beamWidth/2}" y1="${dimY}" x2="${centerX + beamWidth/2}" y2="${dimY}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<line x1="${centerX - beamWidth/2}" y1="${dimY-5}" x2="${centerX - beamWidth/2}" y2="${dimY+5}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<line x1="${centerX + beamWidth/2}" y1="${dimY-5}" x2="${centerX + beamWidth/2}" y2="${dimY+5}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<text x="${centerX}" y="${dimY-10}" text-anchor="middle" fill="#1f2937" font-size="14" font-weight="bold">b = ${b} mm</text>`;
+
+      // Height dimension (right side)
+      const dimX = centerX + beamWidth/2 + 30;
+      svg += `<line x1="${dimX}" y1="${centerY - beamHeight/2}" x2="${dimX}" y2="${centerY + beamHeight/2}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<line x1="${dimX-5}" y1="${centerY - beamHeight/2}" x2="${dimX+5}" y2="${centerY - beamHeight/2}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<line x1="${dimX-5}" y1="${centerY + beamHeight/2}" x2="${dimX+5}" y2="${centerY + beamHeight/2}"
+                    stroke="#6b7280" stroke-width="1"/>`;
+      svg += `<text x="${dimX+10}" y="${centerY}" text-anchor="start" fill="#1f2937" font-size="14" font-weight="bold" transform="rotate(90 ${dimX+10} ${centerY})">h = ${h} mm</text>`;
+
+      // Cover dimension (left side)
+      const coverDimX = centerX - beamWidth/2 - 25;
+      const coverY1 = centerY + beamHeight/2;
+      const coverY2 = barCenterY;
+      svg += `<line x1="${coverDimX}" y1="${coverY1}" x2="${coverDimX}" y2="${coverY2}"
+                    stroke="#ef4444" stroke-width="1" stroke-dasharray="3,3"/>`;
+      svg += `<text x="${coverDimX-5}" y="${(coverY1+coverY2)/2}" text-anchor="end" fill="#dc2626" font-size="12">c = ${c}</text>`;
+
+      // Reinforcement bars
+      const barRadius = (phi_l * scale) / 2;
+      for (let i = 0; i < n_l; i++) {
+        const barX = n_l > 1 ? barStartX + i * barSpacing : barStartX;
+        svg += `<circle cx="${barX}" cy="${barCenterY}" r="${barRadius}"
+                        fill="#1f2937" stroke="#000" stroke-width="1.5"/>`;
+      }
+
+      // Bar label
+      svg += `<text x="${centerX}" y="${centerY + beamHeight/2 + 50}" text-anchor="middle" fill="#1f2937" font-size="12">
+                ${n_l} × φ${phi_l} mm
+              </text>`;
+
+      svg += '</svg>';
+      return svg;
+    }
+
+    // Generate detailed report
+    function generateDetailedReport(result) {
+      const description = document.getElementById('calc_description').value.trim();
+      const timestamp = new Date().toLocaleString();
+
+      // Extract values
+      const b = result.inputs.geometry.b;
+      const h = result.inputs.geometry.h;
+      const c = result.inputs.geometry.c;
+      const MEd = result.inputs.loads.MEd;
+      const VEd = result.inputs.loads.VEd;
+      const phi_l = result.inputs.longitudinal_reinforcement.phi_l;
+      const n_l = result.inputs.longitudinal_reinforcement.n_l;
+      const phi_b = result.inputs.shear_reinforcement.phi_b;
+      const cc_b = result.inputs.shear_reinforcement.cc_b;
+      const n_snitt = result.inputs.shear_reinforcement.n_snitt;
+      const fck = result.inputs.material.fck;
+      const fyk = result.inputs.material.fyk;
+      const alpha_cc = result.inputs.material.alpha_cc;
+      const gamma_c = result.inputs.material.gamma_c;
+      const gamma_s = result.inputs.material.gamma_s;
+
+      const d = result.intermediate_calculations.geometry.d;
+      const Asl = result.intermediate_calculations.geometry.Asl;
+      const z = result.intermediate_calculations.geometry.z;
+      const fcd = result.intermediate_calculations.material.fcd;
+      const fyd = result.intermediate_calculations.material.fyd;
+      const Asw = result.intermediate_calculations.shear.Asw;
+      const z_v = result.intermediate_calculations.shear.z_v;
+      const cot_theta_final = result.intermediate_calculations.shear.cot_theta_final;
+      const theta_final = result.intermediate_calculations.shear.theta_final;
+
+      const MRd = result.results.moment_capacity.MRd;
+      const VRd = result.results.shear_capacity.VRd_s;
+      const moment_util = result.status.utilizations.moment;
+      const shear_util = result.status.utilizations.shear;
+      const tensile_util = result.status.utilizations.tensile;
+      const rho = (Asl / (b * d) * 100).toFixed(3);
+
+      // Create beam visualization
+      const beamSVG = createBeamVisualization(b, h, c, phi_l, n_l);
+
+      let reportHTML = `
+        <div class="report-content bg-white text-gray-900 p-8 rounded-lg">
+      `;
+
+      // Description section (if provided)
+      if (description) {
+        reportHTML += `
+          <div class="mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
+            <p class="text-gray-800 whitespace-pre-wrap">${description}</p>
+          </div>
+        `;
+      }
+
+      // Title
+      reportHTML += `
+        <div class="text-center mb-8">
+          <h1 class="text-3xl font-bold text-gray-900 mb-2">Concrete Beam ULS Design Calculation</h1>
+          <p class="text-gray-600">Calculate moment and shear capacity with detailed step-by-step derivations</p>
+          <p class="text-sm text-gray-500 mt-2">Calculation Date: ${timestamp}</p>
+        </div>
+      `;
+
+      // INPUT PARAMETERS (Blue heading, 2-column grid)
+      reportHTML += `
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #1d4ed8;">INPUT PARAMETERS</h2>
+          <div class="grid grid-cols-2 gap-6">
+            <div>
+              <h3 class="font-semibold text-gray-800 mb-3">Geometry & Reinforcement</h3>
+              <div class="space-y-2 text-sm">
+                <div><span class="text-gray-600">Width b =</span> <span class="font-semibold">${b} mm</span></div>
+                <div><span class="text-gray-600">Overall height h =</span> <span class="font-semibold">${h} mm</span></div>
+                <div><span class="text-gray-600">Concrete cover c =</span> <span class="font-semibold">${c} mm</span></div>
+                <div><span class="text-gray-600">Effective depth d =</span> <span class="font-semibold">${d} mm</span></div>
+                <div><span class="text-gray-600">Tension reinforcement A<sub>s</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(Asl)} mm²</span> <span class="text-gray-500">(${n_l} × φ${phi_l})</span></div>
+                <div><span class="text-gray-600">Stirrup area A<sub>sw</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(Asw)} mm²</span> <span class="text-gray-500">(${n_snitt} × φ${phi_b})</span></div>
+                <div><span class="text-gray-600">Stirrup spacing s =</span> <span class="font-semibold">${cc_b} mm</span></div>
+              </div>
+            </div>
+            <div>
+              <h3 class="font-semibold text-gray-800 mb-3">Material Properties & Loading</h3>
+              <div class="space-y-2 text-sm">
+                <div><span class="text-gray-600">f<sub>ck</sub> =</span> <span class="font-semibold">${fck} MPa</span></div>
+                <div><span class="text-gray-600">f<sub>yk</sub> =</span> <span class="font-semibold">${fyk} MPa</span></div>
+                <div><span class="text-gray-600">α<sub>cc</sub> =</span> <span class="font-semibold">${alpha_cc}</span></div>
+                <div><span class="text-gray-600">γ<sub>c</sub> =</span> <span class="font-semibold">${gamma_c}</span></div>
+                <div><span class="text-gray-600">γ<sub>s</sub> =</span> <span class="font-semibold">${gamma_s}</span></div>
+                <div class="pt-2 border-t border-gray-300"><span class="text-gray-600">f<sub>cd</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(fcd)} MPa</span></div>
+                <div><span class="text-gray-600">f<sub>yd</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(fyd)} MPa</span></div>
+                <div class="pt-2 border-t border-gray-300"><span class="text-gray-600">Applied moment M<sub>Ed</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(MEd)} kNm</span></div>
+                <div><span class="text-gray-600">Applied shear V<sub>Ed</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(VEd)} kN</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // PLOT (Yellow heading)
+      reportHTML += `
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #a16207;">PLOT</h2>
+          <div class="flex justify-center bg-gray-50 p-6 rounded-lg">
+            ${beamSVG}
+          </div>
+        </div>
+      `;
+
+      // RESULTS SUMMARY (Green heading)
+      reportHTML += `
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #15803d;">RESULTS SUMMARY</h2>
+
+          <div class="bg-blue-100 border-2 border-blue-400 rounded-lg p-6 mb-6 text-center">
+            <div class="text-4xl font-bold text-blue-900 mb-2">${toFixedIfNeeded(MRd)} kNm</div>
+            <div class="text-lg text-blue-800">Moment Capacity of Beam Section</div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4">
+            <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
+              <div class="text-sm text-gray-600 mb-2">Moment Utilization</div>
+              <div class="text-2xl font-bold ${getUtilizationColor(moment_util)}">${moment_util}%</div>
+              <div class="text-xs text-gray-500 mt-1">M<sub>Ed</sub> / M<sub>Rd</sub></div>
+            </div>
+            <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
+              <div class="text-sm text-gray-600 mb-2">Shear Utilization</div>
+              <div class="text-2xl font-bold ${getUtilizationColor(shear_util)}">${shear_util}%</div>
+              <div class="text-xs text-gray-500 mt-1">V<sub>Ed</sub> / V<sub>Rd</sub></div>
+            </div>
+            <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
+              <div class="text-sm text-gray-600 mb-2">Tensile Force Utilization</div>
+              <div class="text-2xl font-bold ${getUtilizationColor(tensile_util)}">${tensile_util}%</div>
+              <div class="text-xs text-gray-500 mt-1">F<sub>Ed</sub> / F<sub>Rd</sub></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // DETAILED CALCULATIONS (Purple heading, page break)
+      reportHTML += `
+        <div class="page-break-before">
+          <h2 class="text-2xl font-bold mb-6 pb-2 border-b-2" style="color: #6b21a8;">DETAILED CALCULATIONS</h2>
+
+          <!-- Material Properties -->
+          <div class="bg-gray-50 rounded-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Design Strengths</h3>
+            <div class="space-y-2 text-sm">
+              <div>f<sub>cd</sub> = (α<sub>cc</sub> × f<sub>ck</sub>) / γ<sub>c</sub> = (${alpha_cc} × ${fck}) / ${gamma_c} = <span class="font-semibold">${toFixedIfNeeded(fcd)} MPa</span></div>
+              <div>f<sub>yd</sub> = f<sub>yk</sub> / γ<sub>s</sub> = ${fyk} / ${gamma_s} = <span class="font-semibold">${toFixedIfNeeded(fyd)} MPa</span></div>
+            </div>
+          </div>
+
+          <!-- Moment Capacity -->
+          <div class="bg-gray-50 rounded-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Ultimate Moment Capacity</h3>
+            <div class="space-y-3 text-sm">
+              <div>
+                <div class="font-medium text-gray-700 mb-1">Step 1: Lever Arm</div>
+                <div>z = min(0.95d, z<sub>bal</sub>) = <span class="font-semibold">${toFixedIfNeeded(z)} mm</span></div>
+              </div>
+              <div>
+                <div class="font-medium text-gray-700 mb-1">Step 2: Moment Capacity</div>
+                <div>M<sub>Rd</sub> = A<sub>s</sub> × f<sub>yd</sub> × z</div>
+                <div>M<sub>Rd</sub> = ${toFixedIfNeeded(Asl)} × ${toFixedIfNeeded(fyd)} × ${toFixedIfNeeded(z)} / 10⁶ = <span class="font-semibold">${toFixedIfNeeded(MRd)} kNm</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shear Capacity -->
+          <div class="bg-gray-50 rounded-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Shear Resistance</h3>
+            <div class="space-y-3 text-sm">
+              <div>
+                <div class="font-medium text-gray-700 mb-1">Shear Reinforcement Capacity</div>
+                <div>V<sub>Rd,s</sub> = (A<sub>sw</sub>/s) × z<sub>v</sub> × f<sub>yd</sub> × cot θ</div>
+                <div>θ<sub>final</sub> = ${toFixedIfNeeded(theta_final)}° (cot θ = ${toFixedIfNeeded(cot_theta_final)})</div>
+                <div>z<sub>v</sub> = 0.9 × d = ${toFixedIfNeeded(z_v)} mm</div>
+                <div>V<sub>Rd,s</sub> = (${toFixedIfNeeded(Asw)} / ${cc_b}) × ${toFixedIfNeeded(z_v)} × ${toFixedIfNeeded(fyd)} × ${toFixedIfNeeded(cot_theta_final)} / 1000</div>
+                <div>V<sub>Rd,s</sub> = <span class="font-semibold">${toFixedIfNeeded(VRd)} kN</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Utilization Checks -->
+          <div class="bg-gray-50 rounded-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Capacity Verification</h3>
+            <div class="space-y-2 text-sm">
+              <div>Moment utilization = M<sub>Ed</sub> / M<sub>Rd</sub> = ${toFixedIfNeeded(MEd)} / ${toFixedIfNeeded(MRd)} = <span class="font-semibold ${getUtilizationColor(moment_util)}">${moment_util}%</span></div>
+              <div>Shear utilization = V<sub>Ed</sub> / V<sub>Rd</sub> = ${toFixedIfNeeded(VEd)} / ${toFixedIfNeeded(VRd)} = <span class="font-semibold ${getUtilizationColor(shear_util)}">${shear_util}%</span></div>
+              <div>Reinforcement ratio ρ = A<sub>s</sub> / (b × d) = ${toFixedIfNeeded(Asl)} / (${b} × ${d}) = <span class="font-semibold">${rho}%</span></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      reportHTML += `</div>`;
+
+      document.getElementById('detailed-report').innerHTML = reportHTML;
+    }
+
+    // Utility function to copy text to clipboard
+    function copyToClipboard(elementId) {
+      const element = document.getElementById(elementId);
+      const text = element.textContent || element.innerText;
+      
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(function() {
+          // Show temporary feedback
+          const button = event.target;
+          const originalText = button.textContent;
+          button.textContent = 'Copied!';
+          button.style.backgroundColor = '#10b981';
+          
+          setTimeout(function() {
+            button.textContent = originalText;
+            button.style.backgroundColor = '';
+          }, 2000);
+        }).catch(function(err) {
+          console.error('Failed to copy text: ', err);
+          fallbackCopyTextToClipboard(text);
+        });
+      } else {
+        fallbackCopyTextToClipboard(text);
+      }
+    }
+
+    // Fallback copy function for older browsers
+    function fallbackCopyTextToClipboard(text) {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.top = "-999px";
+      textArea.style.left = "-999px";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      try {
+        const successful = document.execCommand('copy');
+        const msg = successful ? 'successful' : 'unsuccessful';
+        console.log('Fallback: Copying text command was ' + msg);
+      } catch (err) {
+        console.error('Fallback: Oops, unable to copy', err);
+      }
+      
+      document.body.removeChild(textArea);
+    }
+
+    function calculateAndShow() {
+      // Helper function to evaluate expression or return 0 if empty
+      function evaluateOrZero(value) {
+        const trimmed = value.trim();
+        if (trimmed === '') return '0';
+        return trimmed;
+      }
+
+      // Collect inputs in API format
+      const inputs = {
+        geometry: {
+          b: document.getElementById('b').value.trim(),
+          h: document.getElementById('h').value.trim(),
+          c: document.getElementById('c').value.trim()
+        },
+        loads: {
+          MEd: evaluateOrZero(document.getElementById('MEd').value),
+          VEd: evaluateOrZero(document.getElementById('VEd').value)
+        },
+        longitudinal_reinforcement: {
+          phi_l: parseFloat(document.getElementById('phi_l').value),
+          n_l: parseFloat(document.getElementById('n_l').value)
+        },
+        shear_reinforcement: {
+          phi_b: parseFloat(document.getElementById('phi_b').value),
+          cc_b: parseFloat(document.getElementById('cc_b').value),
+          n_snitt: parseFloat(document.getElementById('n_snitt').value)
+        },
+        material: {
+          fck: parseFloat(document.getElementById('fck').value),
+          fyk: parseFloat(document.getElementById('fyk').value),
+          alpha_cc: parseFloat(document.getElementById('alpha_cc').value),
+          gamma_c: parseFloat(document.getElementById('gamma_c').value),
+          gamma_s: parseFloat(document.getElementById('gamma_s').value)
+        }
+      };
+
+      // Use the API function
+      const result = window.ConcreteBeamAPI.calculateConcreteBeam(inputs);
+
+      // Store results for workflow access
+      window.lastCalculationResults = result;
+      window.lastCalculationInputs = inputs;
+
+      if (!result.success) {
+        alert('Calculation failed: ' + (result.errors ? result.errors.join('\n') : result.message));
+        return;
+      }
+
+      // Extract values from API result
+      const b = result.inputs.geometry.b;
+      const h = result.inputs.geometry.h;
+    const c = result.inputs.geometry.c;
+      const MEd = result.inputs.loads.MEd;
+      const VEd = result.inputs.loads.VEd;
+      const phi_l = result.inputs.longitudinal_reinforcement.phi_l;
+      const n_l = result.inputs.longitudinal_reinforcement.n_l;
+      const phi_b = result.inputs.shear_reinforcement.phi_b;
+      const cc_b = result.inputs.shear_reinforcement.cc_b;
+      const n_snitt = result.inputs.shear_reinforcement.n_snitt;
+      const fck = result.inputs.material.fck;
+      const fyk = result.inputs.material.fyk;
+      const alpha_cc = result.inputs.material.alpha_cc;
+      const gamma_c = result.inputs.material.gamma_c;
+      const gamma_s = result.inputs.material.gamma_s;
+
+      const fcd = result.intermediate_calculations.material.fcd;
+      const fyd = result.intermediate_calculations.material.fyd;
+      const d = result.intermediate_calculations.geometry.d;
+      const Asl = result.intermediate_calculations.geometry.Asl;
+      const z = result.intermediate_calculations.geometry.z;
+      const z_95d = result.intermediate_calculations.geometry.z_95d;
+      const z_bal = result.intermediate_calculations.geometry.z_bal;
+
+      const Asw = result.intermediate_calculations.shear.Asw;
+      const z_skjaer = result.intermediate_calculations.shear.z_v;
+      const cot_theta_initial = result.intermediate_calculations.shear.cot_theta_initial;
+      const theta_initial = result.intermediate_calculations.shear.theta_initial;
+      const cot_theta_red = result.intermediate_calculations.shear.cot_theta_red;
+      const theta_red = result.intermediate_calculations.shear.theta_red;
+      const cot_theta_final = result.intermediate_calculations.shear.cot_theta_final;
+      const theta_final = result.intermediate_calculations.shear.theta_final;
+      const angle_status = result.intermediate_calculations.shear.angle_status;
+
+      const MRd_c = result.results.moment_capacity.MRd_c;
+      const MRd_s = result.results.moment_capacity.MRd_s;
+      const VRd_s_initial = result.results.shear_capacity.VRd_s_initial;
+      const VRd_s_final = result.results.shear_capacity.VRd_s;
+      const DeltaF_td = result.results.tensile_force.DeltaF_td;
+      const F_tM = result.results.tensile_force.F_tM;
+      const F_Ed = result.results.tensile_force.F_Ed;
+      const F_Rd = result.results.tensile_force.F_Rd;
+
+      // Create organized calculation boxes
+      const stepsLatex = `
+      <div class="mt-8 p-6 bg-gray-800 rounded-lg border-l-4 border-blue-500 mb-6">
+        <h3 class="text-xl font-bold text-white mb-4">Summary of Results</h3>
+        <div class="grid md:grid-cols-3 gap-6 text-sm">
+          <div>
+            <h4 class="font-semibold text-blue-400 mb-2">Moment Capacity</h4>
+            <p><span class="text-gray-300">M<sub>Rd,c</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_c)} kNm</span></p>
+            <p><span class="text-gray-300">M<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MRd_s)} kNm</span></p>
+            <p><span class="text-gray-300">M<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(MEd)} kNm</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.moment > 100 ? 'text-red-400' : result.status.utilizations.moment > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.moment}%</span></p>
+          </div>
+          <div>
+            <h4 class="font-semibold text-purple-400 mb-2">Shear Capacity</h4>
+            <p><span class="text-gray-300">V<sub>Rd,s</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(VRd_s_final)} kN</span></p>
+            <p><span class="text-gray-300">V<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(VEd)} kN</span></p>
+            <p><span class="text-gray-300">θ<sub>final</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(theta_final)}°</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.shear > 100 ? 'text-red-400' : result.status.utilizations.shear > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.shear}%</span></p>
+          </div>
+          <div>
+            <h4 class="font-semibold text-green-400 mb-2">Tensile Force Check</h4>
+            <p><span class="text-gray-300">F<sub>Ed</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(F_Ed)} kN</span></p>
+            <p><span class="text-gray-300">F<sub>Rd</sub> =</span> <span class="font-mono text-white">${toFixedIfNeeded(F_Rd)} kN</span></p>
+            <p class="mt-2"><span class="text-gray-300">Utilization:</span> <span class="font-mono ${result.status.utilizations.tensile > 100 ? 'text-red-400' : result.status.utilizations.tensile > 85 ? 'text-yellow-400' : 'text-green-400'}">${result.status.utilizations.tensile}%</span></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Beam Cross-Section Plot -->
+      <div class="bg-gray-800 rounded-lg p-6 mb-6">
+        <h3 class="text-xl font-bold text-yellow-400 mb-4">Beam Cross-Section</h3>
+        <div class="flex justify-center bg-white rounded-lg p-4">
+          ${createBeamVisualization(b, h, c, phi_l, n_l)}
+        </div>
+      </div>
+
+      <div class="mb-6">
+        <h2 class="text-2xl font-bold text-blue-400 mb-4">ULS Calculation Results</h2>
+      </div>
+
+      <!-- Geometry Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-blue-300">Geometry</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">b</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(b)} mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">h</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(h)} mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">c</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(c)} mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">d</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">h - c - φ<sub>l</sub>/2 = ${toFixedIfNeeded(h)} - ${toFixedIfNeeded(c)} - ${toFixedIfNeeded(phi_l)}/2</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(d)} mm</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Material Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-yellow-300">Material</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">f<sub>ck</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(fck)} MPa</span>
+            <span class="calc-label ml-6">α<sub>cc</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(alpha_cc)}</span>
+            <span class="calc-label ml-6">γ<sub>c</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(gamma_c)}</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">f<sub>yk</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(fyk)} MPa</span>
+            <span class="calc-label ml-6">γ<sub>s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(gamma_s)}</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">f<sub>cd</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">α<sub>cc</sub> × f<sub>ck</sub> / γ<sub>c</sub> = ${toFixedIfNeeded(alpha_cc)} × ${toFixedIfNeeded(fck)} / ${toFixedIfNeeded(gamma_c)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(fcd)} MPa</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">f<sub>yd</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">f<sub>yk</sub> / γ<sub>s</sub> = ${toFixedIfNeeded(fyk)} / ${toFixedIfNeeded(gamma_s)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(fyd)} MPa</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Longitudinal Reinforcement Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-green-300">Longitudinal Reinforcement</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">φ<sub>l</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(phi_l)} mm</span>
+            <span class="calc-label ml-6">n<sub>l</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${n_l}</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">A<sub>sl</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">n<sub>l</sub> × π × φ<sub>l</sub>² / 4 = ${n_l} × π × (${toFixedIfNeeded(phi_l)})² / 4</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(Asl)} mm²</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stirrups Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-purple-300">Stirrups</h3>
+        </div>
+        <div class="calc-content">
+          <div class="calc-row">
+            <span class="calc-label">φ<sub>b</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(phi_b)} mm</span>
+            <span class="calc-label ml-6">cc<sub>b</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(cc_b)} mm</span>
+            <span class="calc-label ml-6">n<sub>snitt</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${n_snitt}</span>
+          </div>
+          <div class="calc-separator"></div>
+          <div class="calc-row">
+            <span class="calc-label">A<sub>sw</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">n<sub>snitt</sub> × π × φ<sub>b</sub>² / 4 = ${n_snitt} × π × (${toFixedIfNeeded(phi_b)})² / 4</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(Asw)} mm²</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">z<sub>v</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">0.9 × d = 0.9 × ${toFixedIfNeeded(d)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(z_skjaer)} mm</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ULS Capacities Box -->
+      <div class="calc-box mb-6">
+        <div class="calc-header">
+          <h3 class="text-lg font-semibold text-red-300">ULS - Capacities</h3>
+        </div>
+        <div class="calc-content">
+          <h4 class="text-md font-medium text-blue-200 mb-3 border-b border-gray-600 pb-1">Moment Capacity</h4>
+          <div class="calc-row">
+            <span class="calc-label">M<sub>Rd,c</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">0.275 × b × d² × f<sub>cd</sub> = 0.275 × ${toFixedIfNeeded(b)} × (${toFixedIfNeeded(d)})² × ${toFixedIfNeeded(fcd)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(MRd_c)} kNm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">z</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">min(0.95d, z<sub>bal</sub>) = min(${toFixedIfNeeded(z_95d)}, ${toFixedIfNeeded(z_bal)})</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(z)} mm</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">M<sub>Rd,s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">A<sub>sl</sub> × f<sub>yd</sub> × z = ${toFixedIfNeeded(Asl)} × ${toFixedIfNeeded(fyd)} × ${toFixedIfNeeded(z)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(MRd_s)} kNm</span>
+          </div>
+          
+          <h4 class="text-md font-medium text-purple-200 mb-3 mt-6 border-b border-gray-600 pb-1">Shear Capacity</h4>
+          <div class="calc-row">
+            <span class="calc-label">V<sub>Ed</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(VEd)} kN</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">cot θ</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(cot_theta_initial)}</span>
+            <span class="calc-label ml-6">θ</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(theta_initial)}°</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">V<sub>Rd,s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">(A<sub>sw</sub> / cc<sub>b</sub>) × z<sub>v</sub> × f<sub>yd</sub> × cot θ = (${toFixedIfNeeded(Asw)} / ${toFixedIfNeeded(cc_b)}) × ${toFixedIfNeeded(z_skjaer)} × ${toFixedIfNeeded(fyd)} × ${toFixedIfNeeded(cot_theta_initial)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(VRd_s_initial)} kN</span>
+          </div>
+          
+          <div class="calc-separator mt-4"></div>
+          <div class="calc-row">
+            <span class="calc-label">cot θ<sub>red</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">V<sub>Ed</sub> / (A<sub>sw</sub>/cc<sub>b</sub> × z<sub>v</sub> × f<sub>yd</sub>) = ${toFixedIfNeeded(VEd)} / (${toFixedIfNeeded(Asw/cc_b)} × ${toFixedIfNeeded(z_skjaer)} × ${toFixedIfNeeded(fyd)})</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(cot_theta_red)}</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">θ<sub>red</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(theta_red)}°</span>
+            <span class="calc-note ml-4 text-sm text-gray-400">reduced angle</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-note text-sm">Limits: 1.0 ≤ cot θ ≤ 2.5</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-note text-sm">Status: <strong class="${angle_status === 'OK' ? 'text-green-400' : 'text-orange-400'}">${angle_status}</strong></span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">θ<sub>final</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(theta_final)}°</span>
+            <span class="calc-label ml-6">cot θ<sub>final</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(cot_theta_final)}</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">V<sub>Rd,s</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">(A<sub>sw</sub> / cc<sub>b</sub>) × z<sub>v</sub> × f<sub>yd</sub> × cot θ<sub>final</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(VRd_s_final)} kN</span>
+          </div>
+          
+          <h4 class="text-md font-medium text-orange-200 mb-3 mt-6 border-b border-gray-600 pb-1">Additional Tensile Force</h4>
+          <div class="calc-row">
+            <span class="calc-label">ΔF<sub>td</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">0.5 × V<sub>Ed</sub> × cot θ<sub>final</sub> = 0.5 × ${toFixedIfNeeded(VEd)} × ${toFixedIfNeeded(cot_theta_final)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(DeltaF_td)} kN</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">F<sub>tM</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">M<sub>Ed</sub> / z = ${toFixedIfNeeded(MEd)} × 1000 / ${toFixedIfNeeded(z)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(F_tM)} kN</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">F<sub>Ed</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">F<sub>tM</sub> + ΔF<sub>td</sub> = ${toFixedIfNeeded(F_tM)} + ${toFixedIfNeeded(DeltaF_td)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(F_Ed)} kN</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">F<sub>Rd</sub></span>
+            <span class="calc-equals">=</span>
+            <span class="calc-expression">A<sub>sl</sub> × f<sub>yd</sub> = ${toFixedIfNeeded(Asl)} × ${toFixedIfNeeded(fyd)}</span>
+            <span class="calc-equals">=</span>
+            <span class="calc-value">${toFixedIfNeeded(F_Rd)} kN</span>
+          </div>
+        </div>
+      </div>
+      `;
+
+      const container = document.getElementById('calc-steps');
+      container.innerHTML = stepsLatex;
+      document.getElementById('results').style.display = 'block';
+
+      // Generate detailed report
+      generateDetailedReport(result);
+      document.getElementById('report-section').classList.remove('hidden');
+
+      // Typeset math with MathJax
+      MathJax.typesetPromise();
+    }
+
+    // ============================================================================
+    // WORKFLOW INTEGRATION - MODULE CONFIGURATION AND API
+    // ============================================================================
+
+    /**
+     * MODULE_CONFIG - Complete metadata for all inputs and outputs
+     * Enables automatic workflow integration and self-documentation
+     */
+    const MODULE_CONFIG = {
+      module_id: "concrete_beam_design",
+      module_name: "Concrete Beam ULS Design Calculator",
+      version: "1.1.0",
+      standard: "Eurocode 2",
+      description: "Calculate moment and shear capacity with detailed step-by-step derivations",
+
+      inputs: {
+        // Geometry
+        b: {
+          label: "Beam width",
+          symbol: "b",
+          type: "expression",
+          unit: "mm",
+          required: true,
+          min: 100,
+          default: 250,
+          category: "geometry",
+          description: "Width of beam cross-section (accepts expressions like 200+50)"
+        },
+        h: {
+          label: "Beam height",
+          symbol: "h",
+          type: "expression",
+          unit: "mm",
+          required: true,
+          min: 200,
+          default: 500,
+          category: "geometry",
+          description: "Overall height of beam (accepts expressions)"
+        },
+        c: {
+          label: "Concrete cover",
+          symbol: "c",
+          type: "expression",
+          unit: "mm",
+          required: true,
+          min: 15,
+          default: 25,
+          category: "geometry",
+          description: "Concrete cover to reinforcement (accepts expressions)"
+        },
+
+        // Longitudinal reinforcement
+        phi_l: {
+          label: "Longitudinal bar diameter",
+          symbol: "φ_l",
+          type: "number",
+          unit: "mm",
+          required: true,
+          min: 6,
+          max: 40,
+          default: 20,
+          category: "longitudinal_reinforcement",
+          description: "Diameter of tension reinforcement bars"
+        },
+        n_l: {
+          label: "Number of longitudinal bars",
+          symbol: "n_l",
+          type: "number",
+          unit: "bars",
+          required: true,
+          min: 1,
+          max: 20,
+          default: 2,
+          category: "longitudinal_reinforcement",
+          description: "Number of tension reinforcement bars"
+        },
+
+        // Shear reinforcement
+        phi_b: {
+          label: "Stirrup diameter",
+          symbol: "φ_b",
+          type: "number",
+          unit: "mm",
+          required: true,
+          min: 6,
+          max: 16,
+          default: 12,
+          category: "shear_reinforcement",
+          description: "Diameter of stirrup bars"
+        },
+        cc_b: {
+          label: "Stirrup spacing",
+          symbol: "s",
+          type: "number",
+          unit: "mm",
+          required: true,
+          min: 50,
+          max: 1000,
+          default: 185,
+          category: "shear_reinforcement",
+          description: "Center-to-center spacing of stirrups"
+        },
+        n_snitt: {
+          label: "Number of stirrup legs",
+          symbol: "n_snitt",
+          type: "number",
+          unit: "legs",
+          required: true,
+          min: 2,
+          max: 8,
+          default: 2,
+          category: "shear_reinforcement",
+          description: "Number of stirrup legs in shear direction"
+        },
+
+        // Material properties
+        fck: {
+          label: "Concrete characteristic strength",
+          symbol: "f_ck",
+          type: "number",
+          unit: "MPa",
+          required: true,
+          min: 12,
+          max: 90,
+          default: 35,
+          category: "material",
+          description: "Characteristic compressive cylinder strength"
+        },
+        fyk: {
+          label: "Steel characteristic strength",
+          symbol: "f_yk",
+          type: "number",
+          unit: "MPa",
+          required: true,
+          min: 400,
+          max: 600,
+          default: 500,
+          category: "material",
+          description: "Characteristic yield strength of reinforcement"
+        },
+        alpha_cc: {
+          label: "Coefficient alpha cc",
+          symbol: "α_cc",
+          type: "number",
+          unit: "-",
+          required: true,
+          min: 0.5,
+          max: 1.0,
+          default: 0.85,
+          category: "material",
+          description: "Coefficient taking account of long term effects"
+        },
+        gamma_c: {
+          label: "Concrete partial factor",
+          symbol: "γ_c",
+          type: "number",
+          unit: "-",
+          required: true,
+          min: 1.0,
+          max: 2.0,
+          default: 1.5,
+          category: "material",
+          description: "Partial safety factor for concrete"
+        },
+        gamma_s: {
+          label: "Steel partial factor",
+          symbol: "γ_s",
+          type: "number",
+          unit: "-",
+          required: true,
+          min: 1.0,
+          max: 1.5,
+          default: 1.15,
+          category: "material",
+          description: "Partial safety factor for reinforcing steel"
+        },
+
+        // Loads
+        MEd: {
+          label: "Design bending moment",
+          symbol: "M_Ed",
+          type: "expression",
+          unit: "kNm",
+          required: false,
+          min: 0,
+          default: 0,
+          category: "loads",
+          description: "Applied design moment (accepts expressions, leave empty for 0)"
+        },
+        VEd: {
+          label: "Design shear force",
+          symbol: "V_Ed",
+          type: "expression",
+          unit: "kN",
+          required: false,
+          min: 0,
+          default: 0,
+          category: "loads",
+          description: "Applied design shear force (accepts expressions, leave empty for 0)"
+        },
+
+        // Optional description
+        calc_description: {
+          label: "Calculation description",
+          symbol: "",
+          type: "text",
+          unit: "",
+          required: false,
+          default: "",
+          category: "meta",
+          description: "Optional description for documentation"
+        }
+      },
+
+      outputs: {
+        // PRIMARY RESULTS
+        MRd: {
+          label: "Moment resistance",
+          symbol: "M_Rd",
+          type: "number",
+          unit: "kNm",
+          precision: 2,
+          category: "primary",
+          path: "results.moment_capacity.MRd"
+        },
+        VRd: {
+          label: "Shear resistance",
+          symbol: "V_Rd",
+          type: "number",
+          unit: "kN",
+          precision: 2,
+          category: "primary",
+          path: "results.shear_capacity.VRd"
+        },
+        moment_utilization: {
+          label: "Moment utilization",
+          symbol: "η_M",
+          type: "number",
+          unit: "%",
+          precision: 1,
+          category: "primary",
+          path: "status.utilizations.moment"
+        },
+        shear_utilization: {
+          label: "Shear utilization",
+          symbol: "η_V",
+          type: "number",
+          unit: "%",
+          precision: 1,
+          category: "primary",
+          path: "status.utilizations.shear"
+        },
+        tensile_utilization: {
+          label: "Tensile force utilization",
+          symbol: "η_F",
+          type: "number",
+          unit: "%",
+          precision: 1,
+          category: "primary",
+          path: "status.utilizations.tensile"
+        },
+
+        // INTERMEDIATE - Material
+        fcd: {
+          label: "Design concrete strength",
+          symbol: "f_cd",
+          type: "number",
+          unit: "MPa",
+          precision: 3,
+          category: "intermediate",
+          path: "intermediate_calculations.material.fcd"
+        },
+        fyd: {
+          label: "Design steel strength",
+          symbol: "f_yd",
+          type: "number",
+          unit: "MPa",
+          precision: 3,
+          category: "intermediate",
+          path: "intermediate_calculations.material.fyd"
+        },
+
+        // INTERMEDIATE - Geometry
+        d: {
+          label: "Effective depth",
+          symbol: "d",
+          type: "number",
+          unit: "mm",
+          precision: 2,
+          category: "intermediate",
+          path: "intermediate_calculations.geometry.d"
+        },
+        Asl: {
+          label: "Longitudinal reinforcement area",
+          symbol: "A_sl",
+          type: "number",
+          unit: "mm²",
+          precision: 2,
+          category: "intermediate",
+          path: "intermediate_calculations.geometry.Asl"
+        },
+        z: {
+          label: "Lever arm",
+          symbol: "z",
+          type: "number",
+          unit: "mm",
+          precision: 2,
+          category: "intermediate",
+          path: "intermediate_calculations.geometry.z"
+        },
+
+        // INTERMEDIATE - Shear
+        Asw: {
+          label: "Shear reinforcement area",
+          symbol: "A_sw",
+          type: "number",
+          unit: "mm²",
+          precision: 2,
+          category: "intermediate",
+          path: "intermediate_calculations.shear.Asw"
+        },
+        cot_theta_final: {
+          label: "Cotangent of strut angle",
+          symbol: "cot θ",
+          type: "number",
+          unit: "-",
+          precision: 3,
+          category: "intermediate",
+          path: "intermediate_calculations.shear.cot_theta_final"
+        },
+        theta_final: {
+          label: "Strut angle",
+          symbol: "θ",
+          type: "number",
+          unit: "°",
+          precision: 2,
+          category: "intermediate",
+          path: "intermediate_calculations.shear.theta_final"
+        },
+
+        // STATUS
+        overall_status: {
+          label: "Overall status",
+          symbol: "",
+          type: "string",
+          unit: "",
+          precision: 0,
+          category: "status",
+          path: "status.overall"
+        },
+        all_checks_ok: {
+          label: "All checks passed",
+          symbol: "",
+          type: "boolean",
+          unit: "",
+          precision: 0,
+          category: "status",
+          path: "status.checks.all_ok"
+        }
+      },
+
+      categories: {
+        geometry: { label: "Geometry", order: 1 },
+        longitudinal_reinforcement: { label: "Longitudinal Reinforcement", order: 2 },
+        shear_reinforcement: { label: "Shear Reinforcement", order: 3 },
+        material: { label: "Material Properties", order: 4 },
+        loads: { label: "Applied Loads", order: 5 },
+        meta: { label: "Documentation", order: 6 },
+        primary: { label: "Primary Results", order: 1 },
+        intermediate: { label: "Intermediate Calculations", order: 2 },
+        status: { label: "Status & Checks", order: 3 }
+      }
+    };
+
+    /**
+     * Gather inputs from DOM based on MODULE_CONFIG
+     * @returns {Object} Structured inputs matching ConcreteBeamAPI format
+     */
+    function gatherInputs() {
+      const inputs = {};
+
+      // Helper function for empty MEd/VEd fields
+      function evaluateOrZero(value) {
+        const trimmed = value.trim();
+        if (trimmed === '') return '0';
+        return trimmed;
+      }
+
+      // Build structured input object
+      inputs.geometry = {
+        b: document.getElementById('b')?.value.trim() || MODULE_CONFIG.inputs.b.default.toString(),
+        h: document.getElementById('h')?.value.trim() || MODULE_CONFIG.inputs.h.default.toString(),
+        c: document.getElementById('c')?.value.trim() || MODULE_CONFIG.inputs.c.default.toString()
+      };
+
+      inputs.loads = {
+        MEd: evaluateOrZero(document.getElementById('MEd')?.value || '0'),
+        VEd: evaluateOrZero(document.getElementById('VEd')?.value || '0')
+      };
+
+      inputs.longitudinal_reinforcement = {
+        phi_l: parseFloat(document.getElementById('phi_l')?.value || MODULE_CONFIG.inputs.phi_l.default),
+        n_l: parseFloat(document.getElementById('n_l')?.value || MODULE_CONFIG.inputs.n_l.default)
+      };
+
+      inputs.shear_reinforcement = {
+        phi_b: parseFloat(document.getElementById('phi_b')?.value || MODULE_CONFIG.inputs.phi_b.default),
+        cc_b: parseFloat(document.getElementById('cc_b')?.value || MODULE_CONFIG.inputs.cc_b.default),
+        n_snitt: parseFloat(document.getElementById('n_snitt')?.value || MODULE_CONFIG.inputs.n_snitt.default)
+      };
+
+      inputs.material = {
+        fck: parseFloat(document.getElementById('fck')?.value || MODULE_CONFIG.inputs.fck.default),
+        fyk: parseFloat(document.getElementById('fyk')?.value || MODULE_CONFIG.inputs.fyk.default),
+        alpha_cc: parseFloat(document.getElementById('alpha_cc')?.value || MODULE_CONFIG.inputs.alpha_cc.default),
+        gamma_c: parseFloat(document.getElementById('gamma_c')?.value || MODULE_CONFIG.inputs.gamma_c.default),
+        gamma_s: parseFloat(document.getElementById('gamma_s')?.value || MODULE_CONFIG.inputs.gamma_s.default)
+      };
+
+      // Optional description
+      inputs.calc_description = document.getElementById('calc_description')?.value || '';
+
+      return inputs;
+    }
+
+    /**
+     * Set inputs programmatically (for workflow integration)
+     * @param {Object} inputs - Structured input object
+     */
+    function setInputs(inputs) {
+      if (inputs.geometry) {
+        if (inputs.geometry.b !== undefined) document.getElementById('b').value = inputs.geometry.b;
+        if (inputs.geometry.h !== undefined) document.getElementById('h').value = inputs.geometry.h;
+        if (inputs.geometry.c !== undefined) document.getElementById('c').value = inputs.geometry.c;
+      }
+
+      if (inputs.loads) {
+        if (inputs.loads.MEd !== undefined) document.getElementById('MEd').value = inputs.loads.MEd;
+        if (inputs.loads.VEd !== undefined) document.getElementById('VEd').value = inputs.loads.VEd;
+      }
+
+      if (inputs.longitudinal_reinforcement) {
+        if (inputs.longitudinal_reinforcement.phi_l !== undefined)
+          document.getElementById('phi_l').value = inputs.longitudinal_reinforcement.phi_l;
+        if (inputs.longitudinal_reinforcement.n_l !== undefined)
+          document.getElementById('n_l').value = inputs.longitudinal_reinforcement.n_l;
+      }
+
+      if (inputs.shear_reinforcement) {
+        if (inputs.shear_reinforcement.phi_b !== undefined)
+          document.getElementById('phi_b').value = inputs.shear_reinforcement.phi_b;
+        if (inputs.shear_reinforcement.cc_b !== undefined)
+          document.getElementById('cc_b').value = inputs.shear_reinforcement.cc_b;
+        if (inputs.shear_reinforcement.n_snitt !== undefined)
+          document.getElementById('n_snitt').value = inputs.shear_reinforcement.n_snitt;
+      }
+
+      if (inputs.material) {
+        if (inputs.material.fck !== undefined) document.getElementById('fck').value = inputs.material.fck;
+        if (inputs.material.fyk !== undefined) document.getElementById('fyk').value = inputs.material.fyk;
+        if (inputs.material.alpha_cc !== undefined) document.getElementById('alpha_cc').value = inputs.material.alpha_cc;
+        if (inputs.material.gamma_c !== undefined) document.getElementById('gamma_c').value = inputs.material.gamma_c;
+        if (inputs.material.gamma_s !== undefined) document.getElementById('gamma_s').value = inputs.material.gamma_s;
+      }
+
+      if (inputs.calc_description !== undefined) {
+        document.getElementById('calc_description').value = inputs.calc_description;
+      }
+    }
+
+    /**
+     * Get output value by path from results object
+     * @param {string} path - Dot-notation path (e.g., "results.moment_capacity.MRd")
+     * @param {Object} results - Results object from calculation
+     * @returns {*} Value at path, or undefined if not found
+     */
+    function getOutputByPath(path, results) {
+      if (!results) return undefined;
+      return path.split('.').reduce((obj, key) => obj?.[key], results);
+    }
+
+    /**
+     * Module API - Standardized interface for workflow integration
+     * Exposes module capabilities in machine-readable format
+     */
+    window.ModuleAPI = {
+      /**
+       * Get module configuration metadata
+       * @returns {Object} MODULE_CONFIG
+       */
+      getConfig: () => MODULE_CONFIG,
+
+      /**
+       * Get current input values from DOM
+       * @returns {Object} Structured inputs
+       */
+      getInputs: () => gatherInputs(),
+
+      /**
+       * Set input values programmatically
+       * @param {Object} inputs - Structured input object
+       */
+      setInputs: (inputs) => setInputs(inputs),
+
+      /**
+       * Perform calculation with given inputs
+       * @param {Object} inputs - Structured input object
+       * @returns {Object} Calculation results
+       */
+      calculate: (inputs) => {
+        return window.ConcreteBeamAPI.calculateConcreteBeam(inputs);
+      },
+
+      /**
+       * Get last calculation results
+       * @returns {Object|null} Last results or null
+       */
+      getLastResults: () => window.lastCalculationResults || null,
+
+      /**
+       * Get last calculation inputs
+       * @returns {Object|null} Last inputs or null
+       */
+      getLastInputs: () => window.lastCalculationInputs || null,
+
+      /**
+       * Get specific output value by key
+       * Uses path from MODULE_CONFIG.outputs to navigate result structure
+       * @param {string} key - Output key from MODULE_CONFIG.outputs
+       * @returns {*} Output value or undefined
+       */
+      getOutput: (key) => {
+        const results = window.lastCalculationResults;
+        if (!results) return undefined;
+
+        const outputConfig = MODULE_CONFIG.outputs[key];
+        if (!outputConfig || !outputConfig.path) return undefined;
+
+        return getOutputByPath(outputConfig.path, results);
+      },
+
+      /**
+       * Check if calculation results are available
+       * @returns {boolean} True if results exist
+       */
+      hasResults: () => window.lastCalculationResults !== null &&
+                        window.lastCalculationResults !== undefined,
+
+      /**
+       * Get all outputs as flat object with keys from MODULE_CONFIG
+       * @returns {Object} All outputs with their config keys
+       */
+      getAllOutputs: () => {
+        const results = window.lastCalculationResults;
+        if (!results) return null;
+
+        const outputs = {};
+        for (const [key, config] of Object.entries(MODULE_CONFIG.outputs)) {
+          if (config.path) {
+            outputs[key] = getOutputByPath(config.path, results);
+          }
+        }
+        return outputs;
+      }
+    };
+
+    // Log API availability
+    console.log('Concrete Beam Design Module - Workflow API ready');
+    console.log('Access via: window.ModuleAPI');
+    console.log('Configuration:', MODULE_CONFIG);
+  </script>
+
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+
+  <!-- Cookie Consent Scripts -->
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/cookie-consent.js"></script>
+
+</body>
+</html>

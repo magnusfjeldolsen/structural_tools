@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Steel profile comparison calculator. Compare IPE, HEA, and HEB steel profiles for optimal weight and structural performance.">
+    <meta name="keywords" content="steel profiles, IPE, HEA, HEB, structural engineering, beam design">
+    <title>Steel Profile Calculator - Free Engineering Tool</title>
+    
+    <!-- Open Graph tags -->
+    <meta property="og:title" content="Steel Profile Calculator - Free Engineering Tool">
+    <meta property="og:description" content="Compare IPE, HEA, and HEB steel profiles for optimal weight and structural performance">
+    <meta property="og:type" content="website">
+    
+    <!-- Twitter Card tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Steel Profile Calculator - Free Engineering Tool">
+    <meta name="twitter:description" content="Compare IPE, HEA, and HEB steel profiles for optimal weight and structural performance">
+    
+    <!-- Centralized CSS -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+    <link rel="stylesheet" href="../assets/css/forms.css">
+    <link rel="stylesheet" href="../assets/css/components.css">
+    <link rel="stylesheet" href="../assets/css/print.css">
+
+    <!-- Tailwind CSS -->
+    <script>
+      tailwind.config = { darkMode: 'class' };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .pulse-glow {
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-glow {
+            0%, 100% {
+                box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+            }
+            50% {
+                box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+            }
+        }
+        
+        .status-icon {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 4px;
+        }
+        .status-ok {
+            background-color: #10b981;
+        }
+        .status-fail {
+            background-color: #ef4444;
+        }
+        .selected-profile {
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        .profile-item {
+            transition: all 0.2s ease;
+        }
+        .profile-item:hover {
+            transform: scale(1.02);
+        }
+        .input-invalid {
+            border-color: #ef4444 !important;
+            background-color: rgba(239, 68, 68, 0.1) !important;
+        }
+        .input-valid {
+            border-color: #10b981 !important;
+        }
+        .grid-1-full {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .calculation-mode-coming-soon {
+            background-color: rgba(251, 146, 60, 0.1) !important;
+            border-color: #f97316 !important;
+            color: #fed7aa !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+    <main class="main-container">
+        <!-- Header -->
+        <div class="flex justify-end mb-4">
+            <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+                ← Back to Tools
+            </a>
+        </div>
+        
+        <h1 class="heading-1 text-center mb-6">Steel Profile Calculator</h1>
+        <p class="text-description text-center mb-4">Compare IPE, HEA, and HEB profiles for optimal structural performance</p>
+        
+        <!-- Methodology Note -->
+        <div class="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mb-8">
+            <p class="text-blue-200 text-sm text-center">
+                <strong>Note:</strong> This calculator compares steel profiles based on moment capacity and deflection requirements.
+                For preliminary design only - consult a structural engineer for final design.
+            </p>
+        </div>
+
+        <!-- Input Section -->
+        <div class="section-card">
+            <h2 class="heading-3">Design Parameters</h2>
+            
+            <!-- ULS Design Category -->
+            <div class="mb-8">
+                <h3 class="text-lg font-semibold text-blue-300 mb-4 border-b border-blue-700 pb-2">ULS Design</h3>
+                
+                <!-- Design Moment (ULS) and Yield Stress -->
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="input-group">
+                        <label for="actingMoment" class="input-label text-left">Design Moment (ULS) M<sub>Ed</sub>:</label>
+                        <div class="input-with-unit" style="max-width: 350px;">
+                            <input type="text" id="actingMoment" class="input-field" value="" placeholder="e.g. 3*(1.2*5+1.5*3)*5^2/8">
+                            <span class="unit-label">kNm</span>
+                        </div>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="yieldLimit" class="input-label text-left">Yield Stress f<sub>y</sub>:</label>
+                        <div class="input-with-unit" style="max-width: 250px;">
+                            <input type="number" id="yieldLimit" class="input-field" value="355" min="200" max="1000">
+                            <span class="unit-label">MPa</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Formula result row for MEd (hidden by default) -->
+                <div class="grid grid-cols-2 gap-4 mb-4" id="actingMomentResultRow" style="display: none;">
+                    <div class="text-sm text-blue-300 pl-4">
+                        M<sub>Ed</sub> = <span id="actingMomentValue">0</span> kNm
+                    </div>
+                    <div></div> <!-- Empty column -->
+                </div>
+
+                <!-- Material Factor -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div></div> <!-- Empty div for alignment -->
+                    <div class="input-group">
+                        <label for="gammaM0" class="input-label">Material Factor γ<sub>M0</sub>:</label>
+                        <div class="input-with-unit" style="max-width: 250px;">
+                            <input type="number" id="gammaM0" class="input-field" value="1.05" min="1.0" max="2.0" step="0.01">
+                            <span class="unit-label">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SLS Design Category -->
+            <div class="mb-8">
+                <h3 class="text-lg font-semibold text-green-300 mb-4 border-b border-green-700 pb-2">SLS Design</h3>
+                
+                <!-- Profile Selection Row -->
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="input-group">
+                        <label for="profileType" class="input-label text-left">Profile Type:</label>
+                        <select id="profileType" class="select-field" style="max-width: 350px;">
+                            <option value="">Select profile type...</option>
+                            <option value="IPE">IPE</option>
+                            <option value="HEA">HEA</option>
+                            <option value="HEB">HEB</option>
+                        </select>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="selectedProfile" class="input-label text-left">Selected Profile:</label>
+                        <select id="selectedProfile" class="select-field" style="max-width: 350px;">
+                            <option value="">Select a profile...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Calculation Mode Row -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="input-group">
+                        <label for="calculationMode" class="input-label text-left">Calculation Mode:</label>
+                        <select id="calculationMode" class="select-field" style="max-width: 350px;">
+                            <option value="loading">Load Models</option>
+                            <option value="utilization" selected>Utilization Ratios</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Stiffness Utilization Ratio (shown only in utilization mode) -->
+                    <div class="input-group" id="stiffnessUtilizationGroup">
+                        <label for="stiffnessUtilization" class="input-label text-left">Stiffness Utilization Ratio:</label>
+                        <div class="input-with-unit" style="max-width: 250px;">
+                            <input type="number" id="stiffnessUtilization" class="input-field" value="0.0" min="0" step="0.01">
+                            <span class="unit-label">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Loading Model Group (shown when Loading Model is selected) -->
+                <div id="loadingModelGroup" style="display: none;">
+                    <!-- Static Model Selection -->
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="input-group">
+                            <label for="staticModel" class="input-label text-left">Static Model:</label>
+                            <select id="staticModel" class="select-field" style="max-width: 350px;">
+                                <option value="">Select static model...</option>
+                                <option value="simply_supported">Simply Supported</option>
+                                <option value="cantilever">Cantilever</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="loadModel" class="input-label text-left">Load Model:</label>
+                            <select id="loadModel" class="select-field" style="max-width: 250px;">
+                                <option value="">Select load model...</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Beam Length -->
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="input-group">
+                            <label for="beamLength" class="input-label text-left">Beam Length L:</label>
+                            <div class="input-with-unit" style="max-width: 350px;">
+                                <input type="number" id="beamLength" class="input-field" value="6.0" min="0.1" max="50" step="0.1">
+                                <span class="unit-label">m</span>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label for="deflectionLimit" class="input-label text-left">Deflection Limit L/:</label>
+                            <div class="input-with-unit" style="max-width: 250px;">
+                                <input type="number" id="deflectionLimit" class="input-field" value="300" min="150" max="1000">
+                                <span class="unit-label">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Characteristic Moment Mch -->
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="input-group">
+                            <label for="characteristicMoment" class="input-label text-left">Characteristic Moment M<sub>ch</sub>:</label>
+                            <div class="input-with-unit" style="max-width: 350px;">
+                                <input type="text" id="characteristicMoment" class="input-field" value="" placeholder="e.g. 2*5*6^2/8 or enter value">
+                                <span class="unit-label">kNm</span>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label for="youngModulus" class="input-label text-left">Young's Modulus E:</label>
+                            <div class="input-with-unit" style="max-width: 250px;">
+                                <input type="number" id="youngModulus" class="input-field" value="210000" min="100000" max="300000">
+                                <span class="unit-label">MPa</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Formula result row for Mch (hidden by default) -->
+                    <div class="grid grid-cols-2 gap-4 mb-4" id="characteristicMomentResultRow" style="display: none;">
+                        <div class="text-sm text-blue-300 pl-4">
+                            M<sub>ch</sub> = <span id="characteristicMomentValue">0</span> kNm
+                        </div>
+                        <div></div> <!-- Empty column -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Selected Profile Analysis -->
+            <div style="margin-top: 2rem;" id="selectedProfileAnalysis">
+                <h3 class="heading-3">Selected Profile Analysis</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-4">
+                        <div class="input-group">
+                            <label class="input-label text-left">ULS Utilization (M<sub>Ed</sub>/M<sub>Rd</sub>):</label>
+                            <div class="input-with-unit">
+                                <input id="ulsUtilization" class="input-field" readonly value="0.0" />
+                                <span class="unit-label">-</span>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label class="input-label text-left">SLS Utilization (Stiffness):</label>
+                            <div class="input-with-unit">
+                                <input id="slsUtilization" class="input-field" readonly value="0.0" />
+                                <span class="unit-label">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div></div> <!-- Empty column for spacing -->
+                </div>
+            </div>
+
+            <!-- Requirements Display -->
+            <div style="margin-top: 2rem;">
+                <h3 class="heading-3">Derived Requirements</h3>
+                <div class="grid-2-dropdown">
+                    <div class="input-group">
+                        <label class="input-label text-left">Required W<sub>el,y</sub>:</label>
+                        <div class="input-with-unit">
+                            <input id="welRequired" class="input-field" readonly value="0.0" />
+                            <span class="unit-label">10³ mm³</span>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label class="input-label text-left">Required I<sub>y</sub>:</label>
+                        <div class="input-with-unit">
+                            <input id="iyRequired" class="input-field" readonly value="0.0" />
+                            <span class="unit-label">10⁶ mm⁴</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Suggest Sections Button -->
+            <div style="margin-top: 2rem; text-align: center;">
+                <button id="suggestSectionsBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors duration-200">
+                    🔍 Suggest Sections
+                </button>
+            </div>
+        </div>
+
+        <!-- ✅ Results Section directly below input card -->
+        <div class="grid lg:grid-cols-3 gap-6 mt-6" id="resultsSection">
+            <!-- Profile cards will be generated here -->
+        </div>
+
+        <!-- Weight Comparison Section -->
+        <div class="section-card" id="comparisonSection" style="display: none;">
+            <h2 class="heading-3">Weight Comparison</h2>
+            <div class="mb-4" id="comparisonDescription"></div>
+            <div class="grid md:grid-cols-2 gap-4" id="comparisonGrid"></div>
+            <div class="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mt-6">
+                <h4 class="font-semibold text-blue-200 mb-2">💡 Design Insights</h4>
+                <ul class="text-sm text-blue-200 space-y-1">
+                    <li>• HEB profiles generally provide higher stiffness but are heavier</li>
+                    <li>• IPE profiles are typically the most weight-efficient for flexural applications</li>
+                    <li>• HEA profiles offer a balance between weight and stiffness</li>
+                    <li>• Consider construction constraints and connection details when selecting</li>
+                </ul>
+            </div>
+        </div>
+        
+    </main>
+
+    <!-- Centralized JavaScript -->
+    <script src="../assets/js/common.js"></script>
+    <script src="script.js"></script>
+
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+      }
+    }
+
+    /* Ensure button doesn't interfere with content */
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+
+  <!-- Cookie Consent Scripts -->
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/cookie-consent.js"></script>
+
+</body>
+</html>

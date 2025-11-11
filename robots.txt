@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Disallow test and development files
+Disallow: /localtesting/
+Disallow: /__pycache__/
+Disallow: /.claude/
+
+Sitemap: https://magnusfjeldolsen.github.io/structural_tools/sitemap.xml
