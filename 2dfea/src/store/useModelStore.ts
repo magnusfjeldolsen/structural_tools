@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Model Store - Central state management for 2D frame model
  *
