@@ -44,7 +44,7 @@ async function initializePyodide() {
 
         console.log("[Worker] Setting up package mocking for PyNite...");
         // Fetch and run the package mocking setup
-        const setupResponse = await fetch('/public/python/setup_pynite_env.py');
+        const setupResponse = await fetch(new URL('../python/setup_pynite_env.py', import.meta.url).href);
         if (!setupResponse.ok) {
             throw new Error(`Failed to fetch setup_pynite_env.py: ${setupResponse.status}`);
         }
@@ -60,7 +60,7 @@ async function initializePyodide() {
 
         console.log("[Worker] Loading PyNite analyzer module...");
         // Fetch and load the main analysis module
-        const analyzerResponse = await fetch('/public/python/pynite_analyzer.py');
+        const analyzerResponse = await fetch(new URL('../python/pynite_analyzer.py', import.meta.url).href);
         if (!analyzerResponse.ok) {
             throw new Error(`Failed to fetch pynite_analyzer.py: ${analyzerResponse.status}`);
         }
