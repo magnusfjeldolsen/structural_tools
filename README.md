@@ -37,3 +37,4 @@ All tools are available online with no installation required. Professional resul
 - **Code Development** - Integration into larger structural analysis workflows
 - **Verification** - Independent verification of commercial software results
 
+# Option C: Hybrid Deployment Activated
