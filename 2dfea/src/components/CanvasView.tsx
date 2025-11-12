@@ -749,8 +749,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       loads,
       activeLoadCase
     );
+    // Manual scale is a multiplier of automatic scale
     const loadScale = useManualLoadArrowScale
-      ? loadArrowScaleManual
+      ? loadArrowScaleAuto * loadArrowScaleManual
       : loadArrowScaleAuto;
 
     const [screenX, screenY] = toScreen(worldX, worldY);
@@ -1057,8 +1058,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         loads,
         activeLoadCase
       );
+      // Manual scale is a multiplier of automatic scale
       const loadScale = useManualLoadArrowScale
-        ? loadArrowScaleManual
+        ? loadArrowScaleAuto * loadArrowScaleManual
         : loadArrowScaleAuto;
       const screenTolerance = snapTolerance;
 
@@ -1973,9 +1975,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       activeLoadCase
     );
 
-    // Use manual scale if enabled, otherwise automatic
+    // Manual scale is a multiplier (1.0 = automatic, 2.0 = double size, etc.)
+    // Apply multiplier to automatic scale
     const loadScale = useManualLoadArrowScale
-      ? loadArrowScaleManual
+      ? loadArrowScaleAuto * loadArrowScaleManual
       : loadArrowScaleAuto;
 
     // Render nodal loads

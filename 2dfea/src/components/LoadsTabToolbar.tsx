@@ -21,7 +21,6 @@ export function LoadsTabToolbar({ expandedForm, onToggleForm }: LoadsTabToolbarP
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const setActiveLoadCase = useModelStore((state) => state.setActiveLoadCase);
 
-  const loadArrowScale = useUIStore((state) => state.loadArrowScale);
   const loadArrowScaleManual = useUIStore((state) => state.loadArrowScaleManual);
   const useManualLoadArrowScale = useUIStore((state) => state.useManualLoadArrowScale);
   const setLoadArrowScaleManual = useUIStore((state) => state.setLoadArrowScaleManual);
@@ -102,7 +101,7 @@ export function LoadsTabToolbar({ expandedForm, onToggleForm }: LoadsTabToolbarP
         {/* Load Arrow Scale Control */}
         <ScaleControl
           label="Load Arrow Scale"
-          value={useManualLoadArrowScale ? loadArrowScaleManual : loadArrowScale}
+          value={useManualLoadArrowScale ? loadArrowScaleManual : 1.0}
           onChange={setLoadArrowScaleManual}
           onReset={resetLoadArrowScale}
         />
