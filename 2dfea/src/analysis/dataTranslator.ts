@@ -69,7 +69,7 @@ function translateNodes(nodes: Node[]): Node[] {
  * Translate elements (currently pass-through, but allows future transforms)
  */
 function translateElements(elements: Element[]): Element[] {
-  return elements.map((element) => ({
+  const translated = elements.map((element) => ({
     name: element.name,
     nodeI: element.nodeI,
     nodeJ: element.nodeJ,
@@ -77,6 +77,14 @@ function translateElements(elements: Element[]): Element[] {
     I: element.I,   // m⁴
     A: element.A,   // m²
   }));
+
+  // Log element properties being sent to analysis (helps verify fresh values are used)
+  console.log('[DataTranslator] Element properties collected for analysis:');
+  translated.forEach((el) => {
+    console.log(`  ${el.name}: E=${el.E.toFixed(1)} GPa, I=${el.I.toExponential(2)} m⁴, A=${el.A.toExponential(2)} m²`);
+  });
+
+  return translated;
 }
 
 /**

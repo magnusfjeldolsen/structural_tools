@@ -255,6 +255,27 @@ export const useModelStore = create<ModelState>()(
             const element = state.elements.find((e) => e.name === name);
             if (element) {
               Object.assign(element, updates);
+
+              // Clear analysis cache if structural properties (E, I, A) are changed
+              // This invalidates results and clears all diagrams until user re-runs analysis
+              if ('E' in updates || 'I' in updates || 'A' in updates) {
+                console.log(`[ModelStore] Element ${name} properties updated (E/I/A) - invalidating analysis cache`);
+                state.analysisResults = null;
+                state.analysisError = null;
+                state.resultsCache = {
+                  caseResults: {},
+                  combinationResults: {},
+                  lastUpdated: 0,
+                  analysisStatus: {
+                    totalCases: 0,
+                    totalCombinations: 0,
+                    successfulCases: 0,
+                    successfulCombinations: 0,
+                    failedCases: [],
+                    failedCombinations: [],
+                  },
+                };
+              }
             }
           });
         },
