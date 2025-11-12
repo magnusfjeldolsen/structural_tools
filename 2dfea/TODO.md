@@ -1,10 +1,23 @@
 
 1
-# Load visibility scaling
-Load scaling (how large the loads look) are now relative to the size of the load.
-They should be relative to each other. The largest visible load arrow (point loads) should be 1/20 of the longest visible element (from element lengths.)
-The largest visible line load should also be 1/20 of the longest visible element. 
-Create a strategy to change the rendering strategy of loads. The load size should be independent of zoom level. In the loads panel, the user should have some manual scaling controls of loads, allowing the user to make loads look larger or smaller, but standard scaling is 1/20 of max element length.
+# Displacement shape scaling (SAME AS LOAD SCALING)
+Displacement shape scaling should follow the EXACT same logic as load visibility scaling:
+
+1. **Zoom Independence**: Displacement shapes should be rendered in world coordinates (multiplied by view.scale), so they maintain constant size relative to elements at any zoom level
+2. **1.00x = 1/20 automatic scaling**: The scale control should show 1.00x when using automatic scaling (which sets max displacement = 1/20 of max element length)
+3. **Manual scale as multiplier**: User's manual scale should be a MULTIPLIER of the automatic scale (2.0x = double size, 0.5x = half size)
+4. **Normalization**: The UI should always display 1.00x for automatic mode, not the raw calculation value
+
+Current issues:
+- Displacement shapes likely scale with zoom (not zoom-independent)
+- Scale control probably shows raw value like 0.05x instead of normalized 1.00x
+- Manual scale is probably absolute instead of a multiplier
+
+Fix needed:
+- Apply `* view.scale` to displacement arrow lengths (similar to loads)
+- Change manual scale to be a multiplier: `displacementScale = displacementScaleAuto * displacementScaleManual`
+- Show 1.0 in UI when in automatic mode instead of raw auto scale value
+- Update Toolbar.tsx displacement scale control to show normalized value
 
 
 2
