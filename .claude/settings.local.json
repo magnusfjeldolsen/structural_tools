@@ -34,7 +34,8 @@
       "Bash(sed:*)",
       "Bash(test:*)",
       "Bash(npm run type-check:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)"
     ],
     "deny": [],
     "ask": [],

@@ -5,10 +5,11 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useModelStore } from '../store';
+import { useModelStore, useUIStore } from '../store';
 import { theme } from '../styles/theme';
 import { LoadCasesManager } from './LoadCasesManager';
 import { LoadCombinationsManager } from './LoadCombinationsManager';
+import { ScaleControl } from './ScaleControl';
 
 interface LoadsTabToolbarProps {
   expandedForm: 'nodal' | 'point' | 'distributed' | 'lineLoad' | null;
@@ -19,6 +20,12 @@ export function LoadsTabToolbar({ expandedForm, onToggleForm }: LoadsTabToolbarP
   const loadCases = useModelStore((state) => state.loadCases);
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const setActiveLoadCase = useModelStore((state) => state.setActiveLoadCase);
+
+  const loadArrowScale = useUIStore((state) => state.loadArrowScale);
+  const loadArrowScaleManual = useUIStore((state) => state.loadArrowScaleManual);
+  const useManualLoadArrowScale = useUIStore((state) => state.useManualLoadArrowScale);
+  const setLoadArrowScaleManual = useUIStore((state) => state.setLoadArrowScaleManual);
+  const resetLoadArrowScale = useUIStore((state) => state.resetLoadArrowScale);
 
   const [loadCasesModalOpen, setLoadCasesModalOpen] = useState(false);
   const [loadCombinationsModalOpen, setLoadCombinationsModalOpen] = useState(false);
@@ -88,6 +95,17 @@ export function LoadsTabToolbar({ expandedForm, onToggleForm }: LoadsTabToolbarP
             {btn.label} {expandedForm === btn.type ? '▼' : '▶'}
           </button>
         ))}
+
+        {/* Separator */}
+        <div style={separatorStyle} />
+
+        {/* Load Arrow Scale Control */}
+        <ScaleControl
+          label="Load Arrow Scale"
+          value={useManualLoadArrowScale ? loadArrowScaleManual : loadArrowScale}
+          onChange={setLoadArrowScaleManual}
+          onReset={resetLoadArrowScale}
+        />
       </div>
 
       {/* Modals */}

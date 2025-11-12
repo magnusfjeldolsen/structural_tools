@@ -32,6 +32,7 @@ import {
   calculateLabelWorldPos,
   shouldLabelBeAbove,
 } from '../utils/labelPositioning';
+import { calculateLoadArrowScale } from '../utils/scalingUtils';
 
 interface CanvasViewProps {
   width: number;
@@ -105,6 +106,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const axialDiagramScale = useUIStore((state) => state.axialDiagramScale);
   const axialDiagramScaleManual = useUIStore((state) => state.axialDiagramScaleManual);
   const useManualAxialDiagramScale = useUIStore((state) => state.useManualAxialDiagramScale);
+  const loadArrowScaleManual = useUIStore((state) => state.loadArrowScaleManual);
+  const useManualLoadArrowScale = useUIStore((state) => state.useManualLoadArrowScale);
+  const setLoadArrowScale = useUIStore((state) => state.setLoadArrowScale);
 
   // Results query state
   const selectedResultType = useUIStore((state) => state.selectedResultType);
@@ -202,6 +206,19 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     if (!node) return null;
     return toScreen(node.x, node.y);
   };
+
+  // === LOAD ARROW SCALE AUTO-UPDATE ===
+
+  // Update automatic load arrow scale in store when model changes
+  useEffect(() => {
+    const loadArrowScaleAuto = calculateLoadArrowScale(
+      nodes,
+      elements,
+      loads,
+      activeLoadCase
+    );
+    setLoadArrowScale(loadArrowScaleAuto);
+  }, [nodes, elements, loads, activeLoadCase, setLoadArrowScale]);
 
   // === UTILITY FUNCTIONS ===
 
@@ -725,7 +742,17 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
   // Check for hovered loads in Loads tab
   const checkLoadHover = (worldX: number, worldY: number) => {
-    const loadScale = 5;
+    // Calculate load scale dynamically
+    const loadArrowScaleAuto = calculateLoadArrowScale(
+      nodes,
+      elements,
+      loads,
+      activeLoadCase
+    );
+    const loadScale = useManualLoadArrowScale
+      ? loadArrowScaleManual
+      : loadArrowScaleAuto;
+
     const [screenX, screenY] = toScreen(worldX, worldY);
     const screenTolerance = snapTolerance; // Use same pixel tolerance as nodes
 
@@ -826,8 +853,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const offsetDir = load.w1 > 0 ? 1 : -1;
       const offsetMult = isFx ? perpY : -perpX;
 
-      const w1Scale = Math.abs(load.w1) * loadScale;
-      const w2Scale = Math.abs(load.w2) * loadScale;
+      const w1ScaleWorld = Math.abs(load.w1) * loadScale; // World units
+      const w2ScaleWorld = Math.abs(load.w2) * loadScale; // World units
+      const w1Scale = w1ScaleWorld * view.scale; // Convert to screen pixels
+      const w2Scale = w2ScaleWorld * view.scale; // Convert to screen pixels
 
       // Arrow start points
       const w1_offset_x = x1_pos + offsetMult * offsetDir * w1Scale;
@@ -1021,7 +1050,16 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const clientY = (e.evt as PointerEvent).clientY;
 
       // Check for loads at this position (same logic as hover detection)
-      const loadScale = 5;
+      // Calculate load scale dynamically
+      const loadArrowScaleAuto = calculateLoadArrowScale(
+        nodes,
+        elements,
+        loads,
+        activeLoadCase
+      );
+      const loadScale = useManualLoadArrowScale
+        ? loadArrowScaleManual
+        : loadArrowScaleAuto;
       const screenTolerance = snapTolerance;
 
       // Check nodal loads
@@ -1111,8 +1149,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         const offsetDir = load.w1 > 0 ? 1 : -1;
         const offsetMult = isFx ? perpY : -perpX;
 
-        const w1Scale = Math.abs(load.w1) * loadScale;
-        const w2Scale = Math.abs(load.w2) * loadScale;
+        const w1ScaleWorld = Math.abs(load.w1) * loadScale; // World units
+        const w2ScaleWorld = Math.abs(load.w2) * loadScale; // World units
+        const w1Scale = w1ScaleWorld * view.scale; // Convert to screen pixels
+        const w2Scale = w2ScaleWorld * view.scale; // Convert to screen pixels
 
         const w1_offset_x = x1_pos + offsetMult * offsetDir * w1Scale;
         const w1_offset_y = y1_pos + (isFx ? perpX : -perpY) * offsetDir * w1Scale;
@@ -1924,7 +1964,19 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     if (!showLoads || activeTab !== 'loads') return null;
 
     const allElements: JSX.Element[] = [];
-    const loadScale = 5;
+
+    // Calculate automatic load arrow scale (1/20 of longest element)
+    const loadArrowScaleAuto = calculateLoadArrowScale(
+      nodes,
+      elements,
+      loads,
+      activeLoadCase
+    );
+
+    // Use manual scale if enabled, otherwise automatic
+    const loadScale = useManualLoadArrowScale
+      ? loadArrowScaleManual
+      : loadArrowScaleAuto;
 
     // Render nodal loads
     visibleLoads.forEach((load, index) => {
@@ -1935,7 +1987,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const arrowColor = getLoadColor('nodal', index);
 
       if (Math.abs(load.fx) > 0.01) {
-        const length = Math.abs(load.fx) * loadScale;
+        const lengthWorld = Math.abs(load.fx) * loadScale; // World units (meters)
+        const length = lengthWorld * view.scale; // Convert to screen pixels
         const dir = load.fx > 0 ? 1 : -1;
         const arrowStartX = sx - dir * length;
         const labelX = (sx + arrowStartX) / 2;
@@ -1968,7 +2021,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       }
 
       if (Math.abs(load.fy) > 0.01) {
-        const length = Math.abs(load.fy) * loadScale;
+        const lengthWorld = Math.abs(load.fy) * loadScale; // World units (meters)
+        const length = lengthWorld * view.scale; // Convert to screen pixels
         const dir = load.fy > 0 ? -1 : 1;
         const arrowStartY = sy - dir * length;
         const labelY = (sy + arrowStartY) / 2;
@@ -2075,8 +2129,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const offsetX = arrowDirX;
       const offsetY = arrowDirY;
 
-      const w1Scale = Math.abs(load.w1) * loadScale;
-      const w2Scale = Math.abs(load.w2) * loadScale;
+      const w1ScaleWorld = Math.abs(load.w1) * loadScale; // World units (meters)
+      const w2ScaleWorld = Math.abs(load.w2) * loadScale; // World units (meters)
+      const w1Scale = w1ScaleWorld * view.scale; // Convert to screen pixels
+      const w2Scale = w2ScaleWorld * view.scale; // Convert to screen pixels
 
       // Arrow start points (offset from element in direction perpendicular to load)
       const w1_offset_x = x1_pos + offsetX * offsetDir * w1Scale;
@@ -2110,7 +2166,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       if (Math.abs(load.w1) > 0.01) {
         // Arrow points in the load direction (arrowDirX/Y), magnitude determines length
         const dir = load.w1 > 0 ? 1 : -1;
-        const arrowScale = Math.abs(load.w1) * loadScale;
+        const arrowScaleWorld = Math.abs(load.w1) * loadScale; // World units (meters)
+        const arrowScale = arrowScaleWorld * view.scale; // Convert to screen pixels
         const w1_arrow_x = x1_pos + arrowDirX * dir * arrowScale;
         const w1_arrow_y = y1_pos + arrowDirY * dir * arrowScale;
 
@@ -2216,7 +2273,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const perpY = dx / elementScreenLength;
 
       const arrowColor = getLoadColor('elementPoint', index);
-      const length = Math.abs(load.magnitude) * loadScale;
+      const lengthWorld = Math.abs(load.magnitude) * loadScale; // World units (meters)
+      const length = lengthWorld * view.scale; // Convert to screen pixels
       const dir = load.magnitude > 0 ? 1 : -1;
 
       // Determine load direction and coordinate system

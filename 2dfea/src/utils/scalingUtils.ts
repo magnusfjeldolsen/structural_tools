@@ -4,7 +4,7 @@
  * Based on max element length to ensure consistent visualization
  */
 
-import { Node, Element, AnalysisResults } from '../analysis/types';
+import { Node, Element, AnalysisResults, Loads } from '../analysis/types';
 
 /**
  * Get maximum element length in the structure
@@ -140,4 +140,65 @@ export function findDiagramExtremeIndices(values: number[]): { minIndex: number;
   }
 
   return { minIndex, maxIndex };
+}
+
+/**
+ * Calculate maximum load magnitude across all visible loads
+ * Filters by activeLoadCase if provided
+ */
+export function calculateMaxLoadMagnitude(
+  loads: Loads,
+  activeLoadCase: string | null
+): number {
+  let maxMagnitude = 0;
+
+  // Check nodal loads
+  for (const load of loads.nodal) {
+    if (!activeLoadCase || load.case === activeLoadCase) {
+      const fxMag = Math.abs(load.fx);
+      const fyMag = Math.abs(load.fy);
+      const totalForce = Math.sqrt(fxMag * fxMag + fyMag * fyMag);
+      maxMagnitude = Math.max(maxMagnitude, totalForce);
+      maxMagnitude = Math.max(maxMagnitude, Math.abs(load.mz));
+    }
+  }
+
+  // Check distributed loads
+  for (const load of loads.distributed) {
+    if (!activeLoadCase || load.case === activeLoadCase) {
+      maxMagnitude = Math.max(maxMagnitude, Math.abs(load.w1));
+      maxMagnitude = Math.max(maxMagnitude, Math.abs(load.w2));
+    }
+  }
+
+  // Check element point loads
+  for (const load of loads.elementPoint) {
+    if (!activeLoadCase || load.case === activeLoadCase) {
+      maxMagnitude = Math.max(maxMagnitude, Math.abs(load.magnitude));
+    }
+  }
+
+  return maxMagnitude > 0 ? maxMagnitude : 1;
+}
+
+/**
+ * Calculate load arrow scale factor
+ * Target: largest load arrow = 1/20 of longest element
+ *
+ * scale = (maxElementLength / 20) / maxLoadMagnitude
+ */
+export function calculateLoadArrowScale(
+  nodes: Node[],
+  elements: Element[],
+  loads: Loads,
+  activeLoadCase: string | null
+): number {
+  const maxElementLength = calculateMaxElementLength(nodes, elements);
+  const maxLoadMagnitude = calculateMaxLoadMagnitude(loads, activeLoadCase);
+
+  if (maxLoadMagnitude === 0) return 1;
+
+  // Target: largest load arrow = 1/20 of longest element
+  const targetSize = maxElementLength / 20;
+  return targetSize / maxLoadMagnitude;
 }

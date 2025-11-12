@@ -167,6 +167,9 @@ export interface UIState {
   axialDiagramScale: number;  // Automatic multiplier for axial diagram
   axialDiagramScaleManual: number;  // User-set multiplier
   useManualAxialDiagramScale: boolean;  // Whether to use manual or automatic scale
+  loadArrowScale: number;  // Automatic multiplier for load arrows
+  loadArrowScaleManual: number;  // User-set multiplier
+  useManualLoadArrowScale: boolean;  // Whether to use manual or automatic scale
 
   // Scale setters
   setDisplacementScale: (scale: number) => void;  // Sets automatic scale
@@ -181,6 +184,9 @@ export interface UIState {
   setAxialDiagramScale: (scale: number) => void;  // Sets automatic scale
   setAxialDiagramScaleManual: (scale: number) => void;  // Sets manual scale
   resetAxialDiagramScale: () => void;  // Resets to automatic mode
+  setLoadArrowScale: (scale: number) => void;  // Sets automatic scale
+  setLoadArrowScaleManual: (scale: number) => void;  // Sets manual scale
+  resetLoadArrowScale: () => void;  // Resets to automatic mode
 
   // Coordinate input
   coordinateInput: string;
@@ -316,6 +322,9 @@ const initialState = {
   axialDiagramScale: 1,  // Auto-calculated value
   axialDiagramScaleManual: 1,  // User-set value
   useManualAxialDiagramScale: false,  // Start with automatic
+  loadArrowScale: 1,  // Auto-calculated value
+  loadArrowScaleManual: 1,  // User-set value
+  useManualLoadArrowScale: false,  // Start with automatic
   coordinateInput: '',
   showPropertiesPanel: true,
   showResultsPanel: false,
@@ -665,6 +674,18 @@ export const useUIStore = create<UIState>()(
 
       resetAxialDiagramScale: () => {
         set({ useManualAxialDiagramScale: false });
+      },
+
+      setLoadArrowScale: (scale: number) => {
+        set({ loadArrowScale: scale });
+      },
+
+      setLoadArrowScaleManual: (scale: number) => {
+        set({ loadArrowScaleManual: scale, useManualLoadArrowScale: true });
+      },
+
+      resetLoadArrowScale: () => {
+        set({ useManualLoadArrowScale: false });
       },
 
       // Coordinate input
