@@ -44,9 +44,12 @@ async function initializePyodide() {
 
         console.log("[Worker] Setting up package mocking for PyNite...");
         // Fetch and run the package mocking setup
-        const setupResponse = await fetch(new URL('../python/setup_pynite_env.py', import.meta.url).href);
+        // Use self.location to construct path (classic workers don't support import.meta)
+        const workerDir = self.location.pathname.substring(0, self.location.pathname.lastIndexOf('/'));
+        const setupPath = workerDir + '/../python/setup_pynite_env.py';
+        const setupResponse = await fetch(setupPath);
         if (!setupResponse.ok) {
-            throw new Error(`Failed to fetch setup_pynite_env.py: ${setupResponse.status}`);
+            throw new Error(`Failed to fetch setup_pynite_env.py: ${setupResponse.status} (path: ${setupPath})`);
         }
         const setupCode = await setupResponse.text();
         await pyodide.runPythonAsync(setupCode);
@@ -60,9 +63,10 @@ async function initializePyodide() {
 
         console.log("[Worker] Loading PyNite analyzer module...");
         // Fetch and load the main analysis module
-        const analyzerResponse = await fetch(new URL('../python/pynite_analyzer.py', import.meta.url).href);
+        const analyzerPath = workerDir + '/../python/pynite_analyzer.py';
+        const analyzerResponse = await fetch(analyzerPath);
         if (!analyzerResponse.ok) {
-            throw new Error(`Failed to fetch pynite_analyzer.py: ${analyzerResponse.status}`);
+            throw new Error(`Failed to fetch pynite_analyzer.py: ${analyzerResponse.status} (path: ${analyzerPath})`);
         }
         const analyzerCode = await analyzerResponse.text();
         await pyodide.runPythonAsync(analyzerCode);

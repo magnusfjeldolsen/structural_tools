@@ -45,19 +45,12 @@ class PyNiteWebAnalyzer:
             self.model.add_node(node['name'], float(node['x']), float(node['y']), 0.0)
             print(f"  Added node: {node['name']} at ({node['x']}, {node['y']})")
 
-        # Define a default material (Steel)
-        E = 210e9  # 200 GPa in Pa
-        G = 80e9   # 80 GPa in Pa
-        nu = 0.3   # Poisson's ratio
-        rho = 7850 # Density kg/m³
-        self.model.add_material('Steel', E, G, nu, rho)
-
         # Add supports BEFORE elements (PyNite requirement!)
         print(f"\nAdding supports:")
         for node in nodes:
             self._add_support(node['name'], node['support'])
 
-        # Add elements with material and section properties
+        # Add elements with unique material and section properties per element
         print(f"\nAdding {len(elements)} elements:")
         for element in elements:
             E_element = float(element['E']) * 1e9  # Convert GPa to Pa
@@ -65,16 +58,24 @@ class PyNiteWebAnalyzer:
             A = float(element['A'])
             J = I  # Torsional constant approximation
 
+            # Create unique material for each element (uses element-specific E)
+            material_name = f"Material_{element['name']}"
+            nu = 0.3   # Poisson's ratio (typical for steel)
+            rho = 7850 # Density kg/m³ (typical for steel)
+            G = E_element / (2 * (1 + nu))  # Calculate shear modulus from E
+            self.model.add_material(material_name, E_element, G, nu, rho)
+            print(f"    Material {material_name}: E={E_element/1e9:.1f} GPa, G={G/1e9:.1f} GPa")
+
             # Create unique section for each element
             section_name = f"Section_{element['name']}"
             self.model.add_section(section_name, A, I, I, J)
 
-            # Add member with material and section
+            # Add member with unique material and section
             self.model.add_member(
                 element['name'],
                 element['nodeI'],
                 element['nodeJ'],
-                'Steel',
+                material_name,
                 section_name
             )
             print(f"  Added element: {element['name']} from {element['nodeI']} to {element['nodeJ']}")
