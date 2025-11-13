@@ -125,43 +125,72 @@ export function NodesTab() {
   // ===== EVENT HANDLERS =====
 
   const handleRowsChange = (updatedRows: NodeRow[]) => {
-    // Find the changed row by comparing with current rows
-    let changedRow: NodeRow | undefined;
-    let originalRow: NodeRow | undefined;
+    console.log('[NodesTab] handleRowsChange called with:', updatedRows);
 
-    for (let i = 0; i < updatedRows.length; i++) {
-      if (
-        updatedRows[i].name !== rows[i]?.name ||
-        updatedRows[i].x !== rows[i]?.x ||
-        updatedRows[i].y !== rows[i]?.y ||
-        updatedRows[i].support !== rows[i]?.support
-      ) {
-        changedRow = updatedRows[i];
-        originalRow = rows[i];
+    // Find the changed row by comparing with current nodes from store
+    let changedRow: NodeRow | undefined;
+    let originalNode: (typeof nodes)[0] | undefined;
+
+    for (const updatedRow of updatedRows) {
+      // Find the corresponding original node in the store
+      const origNode = nodes.find((n) => n.name === updatedRow.id);
+
+      if (!origNode) continue;
+
+      // Check if this row has changed
+      const hasChanged =
+        updatedRow.name !== origNode.name ||
+        updatedRow.x !== origNode.x ||
+        updatedRow.y !== origNode.y ||
+        updatedRow.support !== origNode.support;
+
+      if (hasChanged) {
+        changedRow = updatedRow;
+        originalNode = origNode;
+        console.log('[NodesTab] Change detected:', {
+          original: origNode,
+          changed: changedRow,
+        });
         break;
       }
     }
 
-    if (!changedRow || !originalRow) return;
+    if (!changedRow || !originalNode) {
+      console.log('[NodesTab] No change detected');
+      return;
+    }
+
+    // Build validation row for comparison
+    const originalRow: NodeRow = {
+      id: originalNode.name,
+      name: originalNode.name,
+      x: originalNode.x,
+      y: originalNode.y,
+      support: originalNode.support,
+    };
 
     // Validate the change
     const validation = validateNodeUpdate(changedRow, originalRow);
     if (!validation.valid) {
+      console.warn('[NodesTab] Validation failed:', validation.error);
       setValidationError(validation.error || 'Validation failed');
       return; // Don't update if invalid
     }
 
     // Update the node in the store
-    // Note: If name changed, updateNode handles the rename internally
     const updates: any = {
       x: changedRow.x,
       y: changedRow.y,
       support: changedRow.support,
     };
-    if (changedRow.name !== originalRow.name) {
+    if (changedRow.name !== originalNode.name) {
       updates.name = changedRow.name;
     }
-    updateNode(originalRow.name, updates);
+    console.log('[NodesTab] Calling updateNode:', {
+      nodeName: originalNode.name,
+      updates,
+    });
+    updateNode(originalNode.name, updates);
 
     setValidationError(null);
   };
@@ -238,6 +267,7 @@ export function NodesTab() {
         formatter: ({ row }: { row: NodeRow }) => SupportTypeLabels[row.support],
         renderEditCell: (props: RenderEditCellProps<NodeRow>) => {
           const selectRef = React.useRef<HTMLSelectElement>(null);
+          const [selectedValue, setSelectedValue] = React.useState(props.row.support);
 
           React.useEffect(() => {
             // Automatically open the dropdown when entering edit mode
@@ -254,17 +284,28 @@ export function NodesTab() {
             }
           }, []);
 
+          const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+            const newValue = e.target.value as SupportType;
+            console.log('[Support Dropdown] onChange triggered:', {
+              oldValue: props.row.support,
+              newValue: newValue,
+              timestamp: new Date().toISOString(),
+            });
+            setSelectedValue(newValue);
+            // Update the row data
+            const updatedRow = { ...props.row, support: newValue };
+            console.log('[Support Dropdown] Calling onRowChange with:', updatedRow);
+            props.onRowChange(updatedRow);
+            // Do NOT close immediately - this might be preventing the update
+            console.log('[Support Dropdown] Change submitted, waiting for parent update...');
+          };
+
           return (
             <select
               ref={selectRef}
               autoFocus
-              value={props.row.support}
-              onChange={(e) => {
-                const newValue = e.target.value as SupportType;
-                props.onRowChange({ ...props.row, support: newValue });
-                // Delay close slightly to ensure value change is processed
-                setTimeout(() => props.onClose(true), 0);
-              }}
+              value={selectedValue}
+              onChange={handleChange}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   props.onClose(true); // Close editor and commit on Enter
@@ -272,7 +313,12 @@ export function NodesTab() {
                   props.onClose(false); // Cancel on Escape
                 }
               }}
-              onBlur={() => props.onClose(true)}
+              onBlur={() => {
+                console.log('[Support Dropdown] onBlur triggered, closing with selectedValue:', selectedValue);
+                // Ensure final value is committed before closing
+                props.onRowChange({ ...props.row, support: selectedValue });
+                setTimeout(() => props.onClose(true), 0);
+              }}
             >
               {supportTypes.map((type) => (
                 <option key={type} value={type}>
