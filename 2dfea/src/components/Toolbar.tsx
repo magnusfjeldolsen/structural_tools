@@ -31,7 +31,6 @@ export function Toolbar() {
   const toggleAxialDiagram = useUIStore((state) => state.toggleAxialDiagram);
 
   // Scale states and setters
-  const displacementScale = useUIStore((state) => state.displacementScale);
   const displacementScaleManual = useUIStore((state) => state.displacementScaleManual);
   const useManualDisplacementScale = useUIStore((state) => state.useManualDisplacementScale);
   const momentDiagramScale = useUIStore((state) => state.momentDiagramScale);
@@ -329,7 +328,7 @@ export function Toolbar() {
               {showDisplacedShape && (
                 <ScaleControl
                   label="Displaced Shape Scale"
-                  value={useManualDisplacementScale ? displacementScaleManual : displacementScale}
+                  value={useManualDisplacementScale ? displacementScaleManual : 1.0}
                   onChange={setDisplacementScaleManual}
                   onReset={resetDisplacementScale}
                 />

@@ -1,23 +1,25 @@
 
 1
-# Displacement shape scaling (SAME AS LOAD SCALING)
-Displacement shape scaling should follow the EXACT same logic as load visibility scaling:
+# ✅ COMPLETED: Displacement shape scaling
+Displacement shape scaling now follows the same logic as load visibility scaling:
 
-1. **Zoom Independence**: Displacement shapes should be rendered in world coordinates (multiplied by view.scale), so they maintain constant size relative to elements at any zoom level
-2. **1.00x = 1/20 automatic scaling**: The scale control should show 1.00x when using automatic scaling (which sets max displacement = 1/20 of max element length)
-3. **Manual scale as multiplier**: User's manual scale should be a MULTIPLIER of the automatic scale (2.0x = double size, 0.5x = half size)
-4. **Normalization**: The UI should always display 1.00x for automatic mode, not the raw calculation value
+**Implemented:**
+1. ✅ **Zoom Independence**: Displacement shapes rendered in world coordinates (meters), converted to screen via `toScreen()` which multiplies by `view.scale`
+2. ✅ **Automatic scaling = 1/10 element length**: Scale calculation sets max displacement = maxElementLength / 10 (changed from /20 for better visibility)
+3. ✅ **Manual scale as multiplier**: Manual scale multiplies automatic scale (2.0x = double, 0.5x = half)
+4. ✅ **Normalization**: UI shows 1.00x for automatic mode, not raw calculation value
+5. ✅ **Auto-update on changes**: useEffect hook recalculates scale when nodes, elements, or analysis results change
 
-Current issues:
-- Displacement shapes likely scale with zoom (not zoom-independent)
-- Scale control probably shows raw value like 0.05x instead of normalized 1.00x
-- Manual scale is probably absolute instead of a multiplier
+**How it works:**
+- `calculateMaxDisplacement()` in `scalingUtils.ts`: Loops through ALL element deflection points (not just nodal displacements) to find global max: `sqrt(dx² + dy²)` converted from mm to meters
+- `calculateDisplacementScale()`: Returns `(maxElementLength / 10) / maxDisplacement`
+- Scale applied in model coordinates (meters) in `deformationUtils.ts`, then converted to screen pixels via `toScreen()`
+- Example: 4m cantilever with 10mm actual displacement → target = 0.4m → scale = 40 → displays as 0.4m at 1.00x
 
-Fix needed:
-- Apply `* view.scale` to displacement arrow lengths (similar to loads)
-- Change manual scale to be a multiplier: `displacementScale = displacementScaleAuto * displacementScaleManual`
-- Show 1.0 in UI when in automatic mode instead of raw auto scale value
-- Update Toolbar.tsx displacement scale control to show normalized value
+**Files modified:**
+- `2dfea/src/utils/scalingUtils.ts`: Added/fixed `calculateMaxDisplacement()` and `calculateDisplacementScale()`
+- `2dfea/src/components/CanvasView.tsx`: Added useEffect to auto-calculate and update displacement scale
+- `2dfea/src/components/Toolbar.tsx`: Scale control shows normalized 1.00x value
 
 
 2

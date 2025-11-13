@@ -32,7 +32,7 @@ import {
   calculateLabelWorldPos,
   shouldLabelBeAbove,
 } from '../utils/labelPositioning';
-import { calculateLoadArrowScale } from '../utils/scalingUtils';
+import { calculateLoadArrowScale, calculateDisplacementScale } from '../utils/scalingUtils';
 
 interface CanvasViewProps {
   width: number;
@@ -109,6 +109,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const loadArrowScaleManual = useUIStore((state) => state.loadArrowScaleManual);
   const useManualLoadArrowScale = useUIStore((state) => state.useManualLoadArrowScale);
   const setLoadArrowScale = useUIStore((state) => state.setLoadArrowScale);
+  const setDisplacementScale = useUIStore((state) => state.setDisplacementScale);
 
   // Results query state
   const selectedResultType = useUIStore((state) => state.selectedResultType);
@@ -219,6 +220,19 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     );
     setLoadArrowScale(loadArrowScaleAuto);
   }, [nodes, elements, loads, activeLoadCase, setLoadArrowScale]);
+
+  // === DISPLACEMENT SCALE AUTO-UPDATE ===
+
+  // Update automatic displacement scale in store when model or results change
+  useEffect(() => {
+    const results = getActiveResults();
+    const displacementScaleAuto = calculateDisplacementScale(
+      nodes,
+      elements,
+      results
+    );
+    setDisplacementScale(displacementScaleAuto);
+  }, [nodes, elements, analysisResults, selectedResultType, selectedResultName, setDisplacementScale]);
 
   // === UTILITY FUNCTIONS ===
 
@@ -1300,8 +1314,11 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     const results = getActiveResults();
     if (!results || !results.diagrams || !showDisplacedShape) return null;
 
-    // Use manual displacement scale if set, otherwise use automatic
-    const effectiveDisplacementScale = useManualDisplacementScale ? displacementScaleManual : displacementScale;
+    // Manual scale is a multiplier (1.0 = automatic, 2.0 = double size, etc.)
+    // Apply multiplier to automatic scale
+    const effectiveDisplacementScale = useManualDisplacementScale
+      ? displacementScale * displacementScaleManual
+      : displacementScale;
 
     return elements.map((element) => {
       const diagram = results.diagrams[element.name];

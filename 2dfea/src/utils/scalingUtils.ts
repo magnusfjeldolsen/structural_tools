@@ -42,36 +42,83 @@ export function calculateMaxElementLength(nodes: Node[], elements: Element[]): n
 
 /**
  * Calculate max displacement magnitude from analysis results
+ * Returns displacement in METERS (converts from mm for consistent scaling)
+ *
+ * This looks at element deflections (not nodal displacements) because those are
+ * what get visualized in the deformed shape. Each element has deflections_dx and
+ * deflections_dy arrays representing local deflections along the element.
+ *
+ * Note: PyNite returns m, Python converts to mm for display,
+ * but scaling calculations must be in meters (model space units)
  */
 export function calculateMaxDisplacement(analysisResults: AnalysisResults | null): number {
-  if (!analysisResults || !analysisResults.nodes) return 1;
+  if (!analysisResults || !analysisResults.diagrams) return 0.001; // 1mm default in meters
 
   let maxDisp = 0;
-  for (const nodeName in analysisResults.nodes) {
-    const nodeResult = analysisResults.nodes[nodeName];
-    const magnitude = Math.sqrt(nodeResult.DX * nodeResult.DX + nodeResult.DY * nodeResult.DY);
-    maxDisp = Math.max(maxDisp, magnitude);
+  let maxElement = '';
+  let maxDx = 0;
+  let maxDy = 0;
+
+  // Loop through all element diagrams
+  for (const elementName in analysisResults.diagrams) {
+    const diagram = analysisResults.diagrams[elementName];
+
+    // Check all deflection points along this element
+    for (let i = 0; i < diagram.deflections_dx.length; i++) {
+      const dx = diagram.deflections_dx[i]; // mm
+      const dy = diagram.deflections_dy[i]; // mm
+      const magnitude = Math.sqrt(dx * dx + dy * dy) / 1000; // Convert to meters
+      if (magnitude > maxDisp) {
+        maxDisp = magnitude;
+        maxElement = elementName;
+        maxDx = dx;
+        maxDy = dy;
+      }
+    }
   }
 
-  return maxDisp > 0 ? maxDisp : 1;
+  console.log('[MaxDisplacement] Found:', {
+    maxDisplacement_m: maxDisp,
+    maxDisplacement_mm: maxDisp * 1000,
+    element: maxElement,
+    dx_mm: maxDx,
+    dy_mm: maxDy
+  });
+
+  return maxDisp > 0 ? maxDisp : 0.001; // Return in meters
 }
 
 /**
  * Calculate automatic displacement scale factor
- * Max displacement shown = maxElementLength / 20
+ * Max displacement shown = maxElementLength / 10
  *
- * scale = (maxElementLength / 20) / maxDisplacement
+ * scale = (maxElementLength / 10) / maxDisplacement
+ *
+ * Units:
+ * - maxElementLength is in meters (model space)
+ * - maxDisplacement is in meters (model space)
+ * - targetSize = maxElementLength / 10 (meters)
+ * - scale = targetSize / maxDisplacement (dimensionless, m/m)
  */
 export function calculateDisplacementScale(
   nodes: Node[],
   elements: Element[],
   analysisResults: AnalysisResults | null
 ): number {
-  const maxElementLength = calculateMaxElementLength(nodes, elements);
-  const maxDisplacement = calculateMaxDisplacement(analysisResults);
+  const maxElementLength = calculateMaxElementLength(nodes, elements); // meters
+  const maxDisplacement = calculateMaxDisplacement(analysisResults); // meters (converted from mm)
 
-  const targetSize = maxElementLength / 20;
-  return targetSize / maxDisplacement;
+  const targetSize = maxElementLength / 10; // meters (changed from /20 to /10)
+  const scale = targetSize / maxDisplacement; // dimensionless scale factor (m/m)
+
+  console.log('[DisplacementScale] Calculation:', {
+    maxElementLength_m: maxElementLength,
+    maxDisplacement_m: maxDisplacement,
+    targetSize_m: targetSize,
+    scale: scale
+  });
+
+  return scale;
 }
 
 /**
