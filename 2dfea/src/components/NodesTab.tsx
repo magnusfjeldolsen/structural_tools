@@ -172,6 +172,10 @@ export function NodesTab() {
   };
 
   const handleTableKeyDown = (e: React.KeyboardEvent, nodeName: string, field: string) => {
+    const fields = ['name', 'x', 'y', 'support'];
+    const nodeIndex = nodes.findIndex((n) => n.name === nodeName);
+    const fieldIndex = fields.indexOf(field);
+
     // F2 to activate edit mode - only allow if this cell is currently selected
     if (e.key === 'F2' && !editingCell && selectedCell?.nodeName === nodeName && selectedCell?.field === field) {
       e.preventDefault();
@@ -195,33 +199,36 @@ export function NodesTab() {
           setEditValue(node.support);
           break;
       }
+      return;
     }
 
     // Arrow key navigation (only when not editing)
     if (!editingCell) {
-      const fields = ['name', 'x', 'y', 'support'];
-      const nodeIndex = nodes.findIndex((n) => n.name === nodeName);
-      const fieldIndex = fields.indexOf(field);
-
       // Up/Down arrows navigate between rows (nodes)
       if (e.key === 'ArrowUp' && nodeIndex > 0) {
         e.preventDefault();
         const prevNode = nodes[nodeIndex - 1];
         setSelectedCell({ nodeName: prevNode.name, field });
-      } else if (e.key === 'ArrowDown' && nodeIndex < nodes.length - 1) {
+        return;
+      }
+      if (e.key === 'ArrowDown' && nodeIndex < nodes.length - 1) {
         e.preventDefault();
         const nextNode = nodes[nodeIndex + 1];
         setSelectedCell({ nodeName: nextNode.name, field });
+        return;
       }
       // Left/Right arrows navigate between fields (columns)
-      else if (e.key === 'ArrowLeft' && fieldIndex > 0) {
+      if (e.key === 'ArrowLeft' && fieldIndex > 0) {
         e.preventDefault();
         const prevField = fields[fieldIndex - 1];
         setSelectedCell({ nodeName, field: prevField });
-      } else if (e.key === 'ArrowRight' && fieldIndex < fields.length - 1) {
+        return;
+      }
+      if (e.key === 'ArrowRight' && fieldIndex < fields.length - 1) {
         e.preventDefault();
         const nextField = fields[fieldIndex + 1];
         setSelectedCell({ nodeName, field: nextField });
+        return;
       }
     }
   };
@@ -288,7 +295,11 @@ export function NodesTab() {
           No nodes yet. Create nodes in the Structure tab.
         </p>
       ) : (
-        <table style={tableStyle}>
+        <table style={tableStyle} onKeyDown={(e) => {
+          if (selectedCell) {
+            handleTableKeyDown(e, selectedCell.nodeName, selectedCell.field);
+          }
+        }}>
           <thead>
             <tr>
               <th style={headerStyle}>Name</th>
@@ -309,7 +320,6 @@ export function NodesTab() {
                     )}
                     onClick={(e) => handleCellClick(node.name, 'name', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'name', node.name)}
-                    onKeyDown={(e) => handleTableKeyDown(e, node.name, 'name')}
                     tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'name' ? 0 : -1}
                   >
                     {editingCell?.nodeName === node.name && editingCell.field === 'name' ? (
@@ -342,7 +352,6 @@ export function NodesTab() {
                     )}
                     onClick={(e) => handleCellClick(node.name, 'x', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'x', node.x.toString())}
-                    onKeyDown={(e) => handleTableKeyDown(e, node.name, 'x')}
                     tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'x' ? 0 : -1}
                   >
                     {editingCell?.nodeName === node.name && editingCell.field === 'x' ? (
@@ -376,7 +385,6 @@ export function NodesTab() {
                     )}
                     onClick={(e) => handleCellClick(node.name, 'y', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'y', node.y.toString())}
-                    onKeyDown={(e) => handleTableKeyDown(e, node.name, 'y')}
                     tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'y' ? 0 : -1}
                   >
                     {editingCell?.nodeName === node.name && editingCell.field === 'y' ? (
@@ -410,7 +418,6 @@ export function NodesTab() {
                     )}
                     onClick={(e) => handleCellClick(node.name, 'support', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'support', node.support)}
-                    onKeyDown={(e) => handleTableKeyDown(e, node.name, 'support')}
                     tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'support' ? 0 : -1}
                   >
                     {editingCell?.nodeName === node.name && editingCell.field === 'support' ? (
@@ -418,17 +425,29 @@ export function NodesTab() {
                         autoFocus
                         value={editValue}
                         onChange={(e) => {
-                          handleCellChange(e);
-                          // Auto-save on dropdown change
-                          setTimeout(() => validateAndSave(node.name, 'support'), 0);
+                          setEditValue(e.target.value);
+                          // Save immediately on change, don't wait for blur
+                          const newValue = e.target.value as SupportType;
+                          if (supportTypes.includes(newValue)) {
+                            updateNode(node.name, { support: newValue });
+                            setEditingCell(null);
+                            setSelectedCell(null);
+                          }
                         }}
                         onBlur={() => {
-                          // Only save if not already saved by onChange
+                          // Only save if still in editing mode (in case onChange didn't fire)
                           if (editingCell?.nodeName === node.name && editingCell.field === 'support') {
                             validateAndSave(node.name, 'support');
                           }
                         }}
-                        onKeyDown={handleKeyDown}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setEditingCell(null);
+                            setValidationError(null);
+                          } else if (e.key === 'Enter') {
+                            validateAndSave(node.name, 'support');
+                          }
+                        }}
                         onFocus={(e) => {
                           // Auto-open dropdown on focus
                           setTimeout(() => {
