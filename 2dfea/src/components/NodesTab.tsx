@@ -1,28 +1,36 @@
 /**
- * NodesTab Component
+ * NodesTab Component with react-data-grid
  *
- * Editable table view of all nodes in the model
+ * Excel-like editable table view of all nodes in the model
  * Displays: Name, X (m), Y (m), Support Type
- * All fields are editable with validation
+ * Features: Arrow key navigation, Tab navigation, F2 edit, double-click edit
  */
 
-import { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import DataGrid, { Column, RenderEditCellProps, textEditor } from 'react-data-grid';
+import 'react-data-grid/lib/styles.css';
 import { useModelStore } from '../store/useModelStore';
 import { useUIStore } from '../store/useUIStore';
 import { theme } from '../styles/theme';
 import { SupportTypeLabels } from '../analysis/dataTranslator';
 import type { SupportType } from '../analysis/types';
 
+interface NodeRow {
+  id: string; // react-data-grid requires unique 'id'
+  name: string;
+  x: number;
+  y: number;
+  support: SupportType;
+}
+
 export function NodesTab() {
   const nodes = useModelStore((state) => state.nodes);
+  const updateNode = useModelStore((state) => state.updateNode);
   const selectedNodes = useModelStore((state) => state.selectedNodes);
   const selectNode = useModelStore((state) => state.selectNode);
   const clearSelection = useModelStore((state) => state.clearSelection);
-  const updateNode = useModelStore((state) => state.updateNode);
   const activeTab = useUIStore((state) => state.activeTab);
 
-  const [editingCell, setEditingCell] = useState<{ nodeName: string; field: string } | null>(null);
-  const [editValue, setEditValue] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Only show nodes tab in loads or structure tabs
@@ -30,171 +38,259 @@ export function NodesTab() {
     return null;
   }
 
+  const isEditable = activeTab === 'structure';
   const supportTypes = Object.keys(SupportTypeLabels) as SupportType[];
 
-  const handleNodeClick = (nodeName: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    if (editingCell) return; // Don't select while editing
+  // ===== DATA ADAPTER LAYER =====
 
-    // Multi-select with shift
-    if (e.shiftKey) {
-      selectNode(nodeName, true); // additive mode to toggle
-    } else {
-      // Single select (clear others)
-      clearSelection();
-      selectNode(nodeName, false); // Replace selection
-    }
-  };
+  // Convert nodes to DataGrid rows
+  const rows: NodeRow[] = useMemo(
+    () =>
+      nodes.map((node) => ({
+        id: node.name,
+        name: node.name,
+        x: node.x,
+        y: node.y,
+        support: node.support,
+      })),
+    [nodes]
+  );
 
-  const handleCellDoubleClick = (nodeName: string, field: string, value: string) => {
-    setValidationError(null);
-    setEditingCell({ nodeName, field });
-    setEditValue(value);
-  };
+  // ===== VALIDATION FUNCTIONS =====
 
-  const handleCellChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setEditValue(e.target.value);
-  };
-
-  const validateAndSave = (nodeName: string, field: string) => {
-    const node = nodes.find((n) => n.name === nodeName);
-    if (!node) return;
-
-    try {
-      const updates: any = {};
-
-      switch (field) {
-        case 'name': {
-          const newName = editValue.trim();
-          if (!newName) {
-            setValidationError('Node name cannot be empty');
-            return;
-          }
-          // Check for duplicate names (allow intermediate temporary names)
-          const isDuplicate = nodes.some(
-            (n) => n.name !== nodeName && n.name === newName && !newName.endsWith('_temp')
-          );
-          if (isDuplicate) {
-            setValidationError(
-              `Node name "${newName}" already exists. ` +
-              `To rename multiple nodes, you can:\n` +
-              `1. Use temporary names (e.g., "${newName}_temp")\n` +
-              `2. Or use "Renumber Nodes" button to auto-renumber all nodes`
-            );
-            return;
-          }
-          updates.name = newName;
-          // Note: This is a special case - we need to update using the old name
-          updateNode(nodeName, updates);
-          setEditingCell(null);
-          return;
-        }
-
-        case 'x': {
-          const x = parseFloat(editValue);
-          if (isNaN(x)) {
-            setValidationError('X must be a valid number');
-            return;
-          }
-          // Check for duplicate coordinates
-          const isDuplicate = nodes.some(
-            (n) =>
-              n.name !== nodeName &&
-              n.x === x &&
-              n.y === node.y
-          );
-          if (isDuplicate) {
-            setValidationError(
-              `Node coordinates (${x}, ${node.y}) already exist at another node`
-            );
-            return;
-          }
-          updates.x = x;
-          break;
-        }
-
-        case 'y': {
-          const y = parseFloat(editValue);
-          if (isNaN(y)) {
-            setValidationError('Y must be a valid number');
-            return;
-          }
-          // Check for duplicate coordinates
-          const isDuplicate = nodes.some(
-            (n) =>
-              n.name !== nodeName &&
-              n.x === node.x &&
-              n.y === y
-          );
-          if (isDuplicate) {
-            setValidationError(
-              `Node coordinates (${node.x}, ${y}) already exist at another node`
-            );
-            return;
-          }
-          updates.y = y;
-          break;
-        }
-
-        case 'support': {
-          const supportType = editValue as SupportType;
-          if (!supportTypes.includes(supportType)) {
-            setValidationError('Invalid support type');
-            return;
-          }
-          updates.support = supportType;
-          break;
-        }
+  const validateNodeUpdate = (
+    updatedRow: NodeRow,
+    originalRow: NodeRow | undefined
+  ): { valid: boolean; error?: string } => {
+    // Name validation
+    if (updatedRow.name !== originalRow?.name) {
+      const newName = updatedRow.name.trim();
+      if (!newName) {
+        return { valid: false, error: 'Node name cannot be empty' };
       }
 
-      updateNode(nodeName, updates);
-      setValidationError(null);
-    } catch (error) {
-      setValidationError(
-        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      const isDuplicate = nodes.some(
+        (n) => n.name !== originalRow?.name && n.name === newName && !newName.endsWith('_temp')
       );
-      return;
-    }
-
-    setEditingCell(null);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      if (editingCell) {
-        validateAndSave(editingCell.nodeName, editingCell.field);
+      if (isDuplicate) {
+        return {
+          valid: false,
+          error: `Node name "${newName}" already exists`,
+        };
       }
-    } else if (e.key === 'Escape') {
-      setEditingCell(null);
-      setValidationError(null);
+    }
+
+    // X coordinate validation
+    if (updatedRow.x !== originalRow?.x) {
+      if (isNaN(updatedRow.x)) {
+        return { valid: false, error: 'X must be a valid number' };
+      }
+
+      const isDuplicate = nodes.some(
+        (n) => n.name !== originalRow?.name && n.x === updatedRow.x && n.y === updatedRow.y
+      );
+      if (isDuplicate) {
+        return {
+          valid: false,
+          error: `Node coordinates (${updatedRow.x.toFixed(2)}, ${updatedRow.y.toFixed(2)}) already exist`,
+        };
+      }
+    }
+
+    // Y coordinate validation
+    if (updatedRow.y !== originalRow?.y) {
+      if (isNaN(updatedRow.y)) {
+        return { valid: false, error: 'Y must be a valid number' };
+      }
+
+      const isDuplicate = nodes.some(
+        (n) => n.name !== originalRow?.name && n.x === updatedRow.x && n.y === updatedRow.y
+      );
+      if (isDuplicate) {
+        return {
+          valid: false,
+          error: `Node coordinates (${updatedRow.x.toFixed(2)}, ${updatedRow.y.toFixed(2)}) already exist`,
+        };
+      }
+    }
+
+    // Support type validation
+    if (!supportTypes.includes(updatedRow.support)) {
+      return { valid: false, error: 'Invalid support type' };
+    }
+
+    return { valid: true };
+  };
+
+  // ===== EVENT HANDLERS =====
+
+  const handleRowsChange = (updatedRows: NodeRow[]) => {
+    // Find the changed row by comparing with current rows
+    let changedRow: NodeRow | undefined;
+    let originalRow: NodeRow | undefined;
+
+    for (let i = 0; i < updatedRows.length; i++) {
+      if (
+        updatedRows[i].name !== rows[i]?.name ||
+        updatedRows[i].x !== rows[i]?.x ||
+        updatedRows[i].y !== rows[i]?.y ||
+        updatedRows[i].support !== rows[i]?.support
+      ) {
+        changedRow = updatedRows[i];
+        originalRow = rows[i];
+        break;
+      }
+    }
+
+    if (!changedRow || !originalRow) return;
+
+    // Validate the change
+    const validation = validateNodeUpdate(changedRow, originalRow);
+    if (!validation.valid) {
+      setValidationError(validation.error || 'Validation failed');
+      return; // Don't update if invalid
+    }
+
+    // Update the node in the store
+    // Note: If name changed, updateNode handles the rename internally
+    const updates: any = {
+      x: changedRow.x,
+      y: changedRow.y,
+      support: changedRow.support,
+    };
+    if (changedRow.name !== originalRow.name) {
+      updates.name = changedRow.name;
+    }
+    updateNode(originalRow.name, updates);
+
+    setValidationError(null);
+  };
+
+  // Handle row selection (sync with canvas)
+  const selectedRowsSet = useMemo(() => new Set(selectedNodes), [selectedNodes]);
+
+  const handleSelectedRowsChange = (newSelectedRows: Set<string>) => {
+    // Convert Set to array
+    const newSelection = Array.from(newSelectedRows);
+
+    // If adding to selection
+    if (newSelection.length > selectedNodes.length) {
+      const addedNode = newSelection.find((name) => !selectedNodes.includes(name));
+      if (addedNode) {
+        selectNode(addedNode, true); // Additive mode
+      }
+    } else if (newSelection.length < selectedNodes.length) {
+      // If removing from selection
+      clearSelection();
+      newSelection.forEach((name) => selectNode(name, true));
+    } else if (newSelection.length === 1 && selectedNodes.length === 0) {
+      // Single selection
+      selectNode(newSelection[0], false);
     }
   };
 
-  const tableStyle = {
-    width: '100%',
-    borderCollapse: 'collapse' as const,
-    fontSize: '13px',
-  };
+  // ===== COLUMN DEFINITIONS =====
 
-  const headerStyle = {
-    backgroundColor: theme.colors.bgLight,
-    padding: '8px 12px',
-    textAlign: 'left' as const,
-    fontWeight: 'bold',
-    borderBottom: `2px solid ${theme.colors.border}`,
-    color: theme.colors.textPrimary,
-  };
+  const columns: Column<NodeRow>[] = useMemo(
+    () => [
+      {
+        key: 'name',
+        name: 'Name',
+        editable: isEditable,
+        renderEditCell: textEditor,
+      },
+      {
+        key: 'x',
+        name: 'X (m)',
+        editable: isEditable,
+        formatter: ({ row }: { row: NodeRow }) => row.x.toFixed(2),
+        renderEditCell: (props: RenderEditCellProps<NodeRow>) => (
+          <input
+            autoFocus
+            type="number"
+            step="0.01"
+            value={props.row.x}
+            onChange={(e) => props.onRowChange({ ...props.row, x: parseFloat(e.target.value) || 0 })}
+            onFocus={(e) => e.target.select()}
+          />
+        ),
+      },
+      {
+        key: 'y',
+        name: 'Y (m)',
+        editable: isEditable,
+        formatter: ({ row }: { row: NodeRow }) => row.y.toFixed(2),
+        renderEditCell: (props: RenderEditCellProps<NodeRow>) => (
+          <input
+            autoFocus
+            type="number"
+            step="0.01"
+            value={props.row.y}
+            onChange={(e) => props.onRowChange({ ...props.row, y: parseFloat(e.target.value) || 0 })}
+            onFocus={(e) => e.target.select()}
+          />
+        ),
+      },
+      {
+        key: 'support',
+        name: 'Support',
+        editable: isEditable,
+        formatter: ({ row }: { row: NodeRow }) => SupportTypeLabels[row.support],
+        renderEditCell: (props: RenderEditCellProps<NodeRow>) => {
+          const selectRef = React.useRef<HTMLSelectElement>(null);
 
-  const getCellStyle = (isSelected: boolean, isEditing: boolean) => ({
-    padding: '8px 12px',
-    borderBottom: `1px solid ${theme.colors.border}`,
-    backgroundColor: isEditing ? '#FFF9C4' : isSelected ? '#E3F2FD' : theme.colors.bgWhite,
-    cursor: isEditing ? 'text' : 'pointer',
-    color: theme.colors.textPrimary,
-  });
+          React.useEffect(() => {
+            // Automatically open the dropdown when entering edit mode
+            if (selectRef.current) {
+              selectRef.current.focus();
+              // Use showPicker if available (modern browsers)
+              if ('showPicker' in selectRef.current) {
+                try {
+                  (selectRef.current as any).showPicker();
+                } catch (e) {
+                  // showPicker may fail in some contexts, ignore
+                }
+              }
+            }
+          }, []);
+
+          return (
+            <select
+              ref={selectRef}
+              autoFocus
+              value={props.row.support}
+              onChange={(e) => {
+                const newValue = e.target.value as SupportType;
+                props.onRowChange({ ...props.row, support: newValue });
+                // Delay close slightly to ensure value change is processed
+                setTimeout(() => props.onClose(true), 0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  props.onClose(true); // Close editor and commit on Enter
+                } else if (e.key === 'Escape') {
+                  props.onClose(false); // Cancel on Escape
+                }
+              }}
+              onBlur={() => props.onClose(true)}
+            >
+              {supportTypes.map((type) => (
+                <option key={type} value={type}>
+                  {SupportTypeLabels[type]}
+                </option>
+              ))}
+            </select>
+          );
+        },
+      },
+    ],
+    [isEditable, supportTypes]
+  );
+
+  // ===== RENDER =====
 
   return (
-    <div style={{ padding: '12px', overflow: 'auto', display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Validation Error Alert */}
       {validationError && (
         <div
@@ -212,160 +308,28 @@ export function NodesTab() {
         </div>
       )}
 
+      {/* DataGrid */}
       {nodes.length === 0 ? (
         <p style={{ color: theme.colors.textSecondary, textAlign: 'center', padding: '20px' }}>
           No nodes yet. Create nodes in the Structure tab.
         </p>
       ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={headerStyle}>Name</th>
-              <th style={headerStyle}>X (m)</th>
-              <th style={headerStyle}>Y (m)</th>
-              <th style={headerStyle}>Support</th>
-            </tr>
-          </thead>
-          <tbody>
-            {nodes.map((node) => {
-              const isSelected = selectedNodes.includes(node.name);
-              return (
-                <tr
-                  key={node.name}
-                  onClick={(e) => handleNodeClick(node.name, e)}
-                  style={{
-                    backgroundColor: isSelected ? '#E3F2FD' : theme.colors.bgWhite,
-                    cursor: 'pointer',
-                    transition: 'background-color 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!editingCell) {
-                      (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isSelected
-                        ? '#BBDEFB'
-                        : '#F5F5F5';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isSelected
-                      ? '#E3F2FD'
-                      : theme.colors.bgWhite;
-                  }}
-                >
-                  {/* Name */}
-                  <td
-                    style={getCellStyle(isSelected, editingCell?.nodeName === node.name && editingCell.field === 'name')}
-                    onDoubleClick={() => handleCellDoubleClick(node.name, 'name', node.name)}
-                  >
-                    {editingCell?.nodeName === node.name && editingCell.field === 'name' ? (
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(node.name, 'name')}
-                        onKeyDown={handleKeyDown}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ) : (
-                      node.name
-                    )}
-                  </td>
-
-                  {/* X Coordinate */}
-                  <td
-                    style={getCellStyle(isSelected, editingCell?.nodeName === node.name && editingCell.field === 'x')}
-                    onDoubleClick={() => handleCellDoubleClick(node.name, 'x', node.x.toString())}
-                  >
-                    {editingCell?.nodeName === node.name && editingCell.field === 'x' ? (
-                      <input
-                        autoFocus
-                        type="number"
-                        step="0.01"
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(node.name, 'x')}
-                        onKeyDown={handleKeyDown}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ) : (
-                      node.x.toFixed(2)
-                    )}
-                  </td>
-
-                  {/* Y Coordinate */}
-                  <td
-                    style={getCellStyle(isSelected, editingCell?.nodeName === node.name && editingCell.field === 'y')}
-                    onDoubleClick={() => handleCellDoubleClick(node.name, 'y', node.y.toString())}
-                  >
-                    {editingCell?.nodeName === node.name && editingCell.field === 'y' ? (
-                      <input
-                        autoFocus
-                        type="number"
-                        step="0.01"
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(node.name, 'y')}
-                        onKeyDown={handleKeyDown}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ) : (
-                      node.y.toFixed(2)
-                    )}
-                  </td>
-
-                  {/* Support Type */}
-                  <td
-                    style={getCellStyle(isSelected, editingCell?.nodeName === node.name && editingCell.field === 'support')}
-                    onDoubleClick={() => handleCellDoubleClick(node.name, 'support', node.support)}
-                  >
-                    {editingCell?.nodeName === node.name && editingCell.field === 'support' ? (
-                      <select
-                        autoFocus
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(node.name, 'support')}
-                        onKeyDown={handleKeyDown}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                        }}
-                      >
-                        <option value="">Select support</option>
-                        {supportTypes.map((type) => (
-                          <option key={type} value={type}>
-                            {SupportTypeLabels[type]}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      SupportTypeLabels[node.support]
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <DataGrid
+          columns={columns}
+          rows={rows}
+          onRowsChange={handleRowsChange}
+          selectedRows={selectedRowsSet}
+          onSelectedRowsChange={handleSelectedRowsChange}
+          rowKeyGetter={(row) => row.id}
+          className="nodes-data-grid"
+          style={{
+            height: '100%',
+            fontSize: '13px',
+            '--rdg-selection-color': '#E3F2FD',
+            '--rdg-header-background-color': theme.colors.bgLight,
+            '--rdg-border-color': theme.colors.border,
+          } as React.CSSProperties}
+        />
       )}
     </div>
   );

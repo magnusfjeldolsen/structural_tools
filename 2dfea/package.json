@@ -9,12 +9,13 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "immer": "^10.0.3",
+    "konva": "^9.2.0",
     "react": "^18.2.0",
+    "react-data-grid": "^7.0.0-beta.46",
     "react-dom": "^18.2.0",
     "react-konva": "^18.2.10",
-    "konva": "^9.2.0",
-    "zustand": "^4.4.7",
-    "immer": "^10.0.3"
+    "zustand": "^4.4.7"
   },
   "devDependencies": {
     "@types/react": "^18.2.45",
