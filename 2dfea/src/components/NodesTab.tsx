@@ -170,6 +170,56 @@ export function NodesTab() {
     }
   };
 
+  const handleTableKeyDown = (e: React.KeyboardEvent, nodeName: string, field: string) => {
+    // F2 to activate edit mode
+    if (e.key === 'F2' && !editingCell) {
+      e.preventDefault();
+      setValidationError(null);
+      setEditingCell({ nodeName, field });
+      const node = nodes.find((n) => n.name === nodeName);
+      if (!node) return;
+
+      // Set edit value based on field
+      switch (field) {
+        case 'name':
+          setEditValue(node.name);
+          break;
+        case 'x':
+          setEditValue(node.x.toString());
+          break;
+        case 'y':
+          setEditValue(node.y.toString());
+          break;
+        case 'support':
+          setEditValue(node.support);
+          break;
+      }
+    }
+
+    // Arrow key navigation
+    if (!editingCell) {
+      const nodeIndex = nodes.findIndex((n) => n.name === nodeName);
+      const fields = ['name', 'x', 'y', 'support'];
+      const fieldIndex = fields.indexOf(field);
+
+      if (e.key === 'ArrowUp' && nodeIndex > 0) {
+        e.preventDefault();
+        const prevNode = nodes[nodeIndex - 1];
+        selectNode(prevNode.name, false);
+      } else if (e.key === 'ArrowDown' && nodeIndex < nodes.length - 1) {
+        e.preventDefault();
+        const nextNode = nodes[nodeIndex + 1];
+        selectNode(nextNode.name, false);
+      } else if (e.key === 'ArrowLeft' && fieldIndex > 0) {
+        e.preventDefault();
+        // Focus previous field - this would require more refactoring to implement properly
+      } else if (e.key === 'ArrowRight' && fieldIndex < fields.length - 1) {
+        e.preventDefault();
+        // Focus next field - this would require more refactoring to implement properly
+      }
+    }
+  };
+
   const tableStyle = {
     width: '100%',
     borderCollapse: 'collapse' as const,
@@ -233,10 +283,20 @@ export function NodesTab() {
                 <tr
                   key={node.name}
                   onClick={(e) => handleNodeClick(node.name, e)}
+                  onKeyDown={(e) => {
+                    // Determine which field is being focused based on column
+                    const target = e.target as HTMLElement;
+                    const cellIndex = Array.from((target as HTMLTableCellElement).parentElement?.children || []).indexOf(target);
+                    const fields = ['name', 'x', 'y', 'support'];
+                    const field = fields[cellIndex] || 'name';
+                    handleTableKeyDown(e, node.name, field);
+                  }}
+                  tabIndex={isSelected ? 0 : -1}
                   style={{
                     backgroundColor: isSelected ? '#E3F2FD' : theme.colors.bgWhite,
                     cursor: 'pointer',
                     transition: 'background-color 0.2s',
+                    outline: isSelected ? '2px solid #1976D2' : 'none',
                   }}
                   onMouseEnter={(e) => {
                     if (!editingCell) {
@@ -264,6 +324,7 @@ export function NodesTab() {
                         onChange={handleCellChange}
                         onBlur={() => validateAndSave(node.name, 'name')}
                         onKeyDown={handleKeyDown}
+                        onFocus={(e) => e.currentTarget.select()}
                         style={{
                           width: '100%',
                           padding: '4px',
@@ -291,6 +352,7 @@ export function NodesTab() {
                         onChange={handleCellChange}
                         onBlur={() => validateAndSave(node.name, 'x')}
                         onKeyDown={handleKeyDown}
+                        onFocus={(e) => e.currentTarget.select()}
                         style={{
                           width: '100%',
                           padding: '4px',
@@ -318,6 +380,7 @@ export function NodesTab() {
                         onChange={handleCellChange}
                         onBlur={() => validateAndSave(node.name, 'y')}
                         onKeyDown={handleKeyDown}
+                        onFocus={(e) => e.currentTarget.select()}
                         style={{
                           width: '100%',
                           padding: '4px',
@@ -340,9 +403,24 @@ export function NodesTab() {
                       <select
                         autoFocus
                         value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(node.name, 'support')}
+                        onChange={(e) => {
+                          handleCellChange(e);
+                          // Auto-save on dropdown change
+                          setTimeout(() => validateAndSave(node.name, 'support'), 0);
+                        }}
+                        onBlur={() => {
+                          // Only save if not already saved by onChange
+                          if (editingCell?.nodeName === node.name && editingCell.field === 'support') {
+                            validateAndSave(node.name, 'support');
+                          }
+                        }}
                         onKeyDown={handleKeyDown}
+                        onFocus={(e) => {
+                          // Auto-open dropdown on focus
+                          setTimeout(() => {
+                            e.currentTarget.click();
+                          }, 0);
+                        }}
                         style={{
                           width: '100%',
                           padding: '4px',
