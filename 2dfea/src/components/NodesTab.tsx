@@ -15,12 +15,10 @@ import type { SupportType } from '../analysis/types';
 
 export function NodesTab() {
   const nodes = useModelStore((state) => state.nodes);
-  const selectedNodes = useModelStore((state) => state.selectedNodes);
-  const selectNode = useModelStore((state) => state.selectNode);
-  const clearSelection = useModelStore((state) => state.clearSelection);
   const updateNode = useModelStore((state) => state.updateNode);
   const activeTab = useUIStore((state) => state.activeTab);
 
+  const [selectedCell, setSelectedCell] = useState<{ nodeName: string; field: string } | null>(null);
   const [editingCell, setEditingCell] = useState<{ nodeName: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -32,18 +30,10 @@ export function NodesTab() {
 
   const supportTypes = Object.keys(SupportTypeLabels) as SupportType[];
 
-  const handleNodeClick = (nodeName: string, e: React.MouseEvent) => {
+  const handleCellClick = (nodeName: string, field: string, e: React.MouseEvent) => {
     e.preventDefault();
     if (editingCell) return; // Don't select while editing
-
-    // Multi-select with shift
-    if (e.shiftKey) {
-      selectNode(nodeName, true); // additive mode to toggle
-    } else {
-      // Single select (clear others)
-      clearSelection();
-      selectNode(nodeName, false); // Replace selection
-    }
+    setSelectedCell({ nodeName, field });
   };
 
   const handleCellDoubleClick = (nodeName: string, field: string, value: string) => {
@@ -196,26 +186,31 @@ export function NodesTab() {
       }
     }
 
-    // Arrow key navigation
+    // Arrow key navigation (only when not editing)
     if (!editingCell) {
-      const nodeIndex = nodes.findIndex((n) => n.name === nodeName);
       const fields = ['name', 'x', 'y', 'support'];
+      const nodeIndex = nodes.findIndex((n) => n.name === nodeName);
       const fieldIndex = fields.indexOf(field);
 
+      // Up/Down arrows navigate between rows (nodes)
       if (e.key === 'ArrowUp' && nodeIndex > 0) {
         e.preventDefault();
         const prevNode = nodes[nodeIndex - 1];
-        selectNode(prevNode.name, false);
+        setSelectedCell({ nodeName: prevNode.name, field });
       } else if (e.key === 'ArrowDown' && nodeIndex < nodes.length - 1) {
         e.preventDefault();
         const nextNode = nodes[nodeIndex + 1];
-        selectNode(nextNode.name, false);
-      } else if (e.key === 'ArrowLeft' && fieldIndex > 0) {
+        setSelectedCell({ nodeName: nextNode.name, field });
+      }
+      // Left/Right arrows navigate between fields (columns)
+      else if (e.key === 'ArrowLeft' && fieldIndex > 0) {
         e.preventDefault();
-        // Focus previous field - this would require more refactoring to implement properly
+        const prevField = fields[fieldIndex - 1];
+        setSelectedCell({ nodeName, field: prevField });
       } else if (e.key === 'ArrowRight' && fieldIndex < fields.length - 1) {
         e.preventDefault();
-        // Focus next field - this would require more refactoring to implement properly
+        const nextField = fields[fieldIndex + 1];
+        setSelectedCell({ nodeName, field: nextField });
       }
     }
   };
@@ -235,12 +230,13 @@ export function NodesTab() {
     color: theme.colors.textPrimary,
   };
 
-  const getCellStyle = (isSelected: boolean, isEditing: boolean) => ({
+  const getCellStyle = (isCellSelected: boolean, isEditing: boolean) => ({
     padding: '8px 12px',
     borderBottom: `1px solid ${theme.colors.border}`,
-    backgroundColor: isEditing ? '#FFF9C4' : isSelected ? '#E3F2FD' : theme.colors.bgWhite,
+    backgroundColor: isEditing ? '#FFF9C4' : isCellSelected ? '#E3F2FD' : theme.colors.bgWhite,
     cursor: isEditing ? 'text' : 'pointer',
     color: theme.colors.textPrimary,
+    outline: isCellSelected && !isEditing ? '2px solid #1976D2' : 'none',
   });
 
   return (
@@ -278,43 +274,18 @@ export function NodesTab() {
           </thead>
           <tbody>
             {nodes.map((node) => {
-              const isSelected = selectedNodes.includes(node.name);
               return (
-                <tr
-                  key={node.name}
-                  onClick={(e) => handleNodeClick(node.name, e)}
-                  onKeyDown={(e) => {
-                    // Determine which field is being focused based on column
-                    const target = e.target as HTMLElement;
-                    const cellIndex = Array.from((target as HTMLTableCellElement).parentElement?.children || []).indexOf(target);
-                    const fields = ['name', 'x', 'y', 'support'];
-                    const field = fields[cellIndex] || 'name';
-                    handleTableKeyDown(e, node.name, field);
-                  }}
-                  tabIndex={isSelected ? 0 : -1}
-                  style={{
-                    backgroundColor: isSelected ? '#E3F2FD' : theme.colors.bgWhite,
-                    cursor: 'pointer',
-                    transition: 'background-color 0.2s',
-                    outline: isSelected ? '2px solid #1976D2' : 'none',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!editingCell) {
-                      (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isSelected
-                        ? '#BBDEFB'
-                        : '#F5F5F5';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isSelected
-                      ? '#E3F2FD'
-                      : theme.colors.bgWhite;
-                  }}
-                >
+                <tr key={node.name}>
                   {/* Name */}
                   <td
-                    style={getCellStyle(isSelected, editingCell?.nodeName === node.name && editingCell.field === 'name')}
+                    style={getCellStyle(
+                      selectedCell?.nodeName === node.name && selectedCell.field === 'name',
+                      editingCell?.nodeName === node.name && editingCell.field === 'name'
+                    )}
+                    onClick={(e) => handleCellClick(node.name, 'name', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'name', node.name)}
+                    onKeyDown={(e) => handleTableKeyDown(e, node.name, 'name')}
+                    tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'name' ? 0 : -1}
                   >
                     {editingCell?.nodeName === node.name && editingCell.field === 'name' ? (
                       <input
@@ -340,8 +311,14 @@ export function NodesTab() {
 
                   {/* X Coordinate */}
                   <td
-                    style={getCellStyle(isSelected, editingCell?.nodeName === node.name && editingCell.field === 'x')}
+                    style={getCellStyle(
+                      selectedCell?.nodeName === node.name && selectedCell.field === 'x',
+                      editingCell?.nodeName === node.name && editingCell.field === 'x'
+                    )}
+                    onClick={(e) => handleCellClick(node.name, 'x', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'x', node.x.toString())}
+                    onKeyDown={(e) => handleTableKeyDown(e, node.name, 'x')}
+                    tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'x' ? 0 : -1}
                   >
                     {editingCell?.nodeName === node.name && editingCell.field === 'x' ? (
                       <input
@@ -368,8 +345,14 @@ export function NodesTab() {
 
                   {/* Y Coordinate */}
                   <td
-                    style={getCellStyle(isSelected, editingCell?.nodeName === node.name && editingCell.field === 'y')}
+                    style={getCellStyle(
+                      selectedCell?.nodeName === node.name && selectedCell.field === 'y',
+                      editingCell?.nodeName === node.name && editingCell.field === 'y'
+                    )}
+                    onClick={(e) => handleCellClick(node.name, 'y', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'y', node.y.toString())}
+                    onKeyDown={(e) => handleTableKeyDown(e, node.name, 'y')}
+                    tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'y' ? 0 : -1}
                   >
                     {editingCell?.nodeName === node.name && editingCell.field === 'y' ? (
                       <input
@@ -396,8 +379,14 @@ export function NodesTab() {
 
                   {/* Support Type */}
                   <td
-                    style={getCellStyle(isSelected, editingCell?.nodeName === node.name && editingCell.field === 'support')}
+                    style={getCellStyle(
+                      selectedCell?.nodeName === node.name && selectedCell.field === 'support',
+                      editingCell?.nodeName === node.name && editingCell.field === 'support'
+                    )}
+                    onClick={(e) => handleCellClick(node.name, 'support', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'support', node.support)}
+                    onKeyDown={(e) => handleTableKeyDown(e, node.name, 'support')}
+                    tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'support' ? 0 : -1}
                   >
                     {editingCell?.nodeName === node.name && editingCell.field === 'support' ? (
                       <select
