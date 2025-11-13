@@ -23,6 +23,7 @@ export function NodesTab() {
   const [editValue, setEditValue] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLSelectElement>(null);
 
   // Reset cell state when activeTab changes
   useEffect(() => {
@@ -32,6 +33,15 @@ export function NodesTab() {
       setValidationError(null);
     }
   }, [activeTab]);
+
+  // Focus and open dropdown when support cell enters edit mode
+  useEffect(() => {
+    if (editingCell?.field === 'support' && dropdownRef.current) {
+      dropdownRef.current.focus();
+      // Show the dropdown options
+      dropdownRef.current.click();
+    }
+  }, [editingCell]);
 
   // Only show nodes tab in loads or structure tabs
   if (activeTab !== 'loads' && activeTab !== 'structure') {
@@ -157,7 +167,9 @@ export function NodesTab() {
       return;
     }
 
+    // Exit edit mode but keep the cell selected so user can navigate with arrow keys
     setEditingCell(null);
+    setSelectedCell({ nodeName, field });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -422,37 +434,32 @@ export function NodesTab() {
                   >
                     {editingCell?.nodeName === node.name && editingCell.field === 'support' ? (
                       <select
+                        ref={dropdownRef}
                         autoFocus
                         value={editValue}
                         onChange={(e) => {
+                          // Just update the value, don't save yet - wait for Enter key
                           setEditValue(e.target.value);
-                          // Save immediately on change, don't wait for blur
-                          const newValue = e.target.value as SupportType;
-                          if (supportTypes.includes(newValue)) {
-                            updateNode(node.name, { support: newValue });
-                            setEditingCell(null);
-                            setSelectedCell(null);
-                          }
                         }}
                         onBlur={() => {
-                          // Only save if still in editing mode (in case onChange didn't fire)
+                          // Only save if still in editing mode and blur is from outside dropdown
                           if (editingCell?.nodeName === node.name && editingCell.field === 'support') {
-                            validateAndSave(node.name, 'support');
+                            // Don't auto-save on blur, require explicit Enter or Escape
+                            setEditingCell(null);
                           }
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Escape') {
+                            // Cancel edit without saving
                             setEditingCell(null);
+                            setSelectedCell({ nodeName: node.name, field: 'support' });
                             setValidationError(null);
                           } else if (e.key === 'Enter') {
+                            // Save and return to navigation mode
+                            e.preventDefault();
                             validateAndSave(node.name, 'support');
                           }
-                        }}
-                        onFocus={(e) => {
-                          // Auto-open dropdown on focus
-                          setTimeout(() => {
-                            e.currentTarget.click();
-                          }, 0);
+                          // Arrow keys will naturally navigate through options in the dropdown
                         }}
                         style={{
                           width: '100%',
