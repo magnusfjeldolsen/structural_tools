@@ -37,11 +37,29 @@ export function NodesTab() {
   // Focus and open dropdown when support cell enters edit mode
   useEffect(() => {
     if (editingCell?.field === 'support' && dropdownRef.current) {
-      dropdownRef.current.focus();
-      // Show the dropdown options
-      dropdownRef.current.click();
+      // Use a small timeout to ensure the select is fully rendered before focusing
+      setTimeout(() => {
+        if (dropdownRef.current) {
+          dropdownRef.current.focus();
+          // Try to open dropdown using showPicker() API (modern browsers)
+          if (typeof dropdownRef.current.showPicker === 'function') {
+            dropdownRef.current.showPicker();
+          } else {
+            // Fallback: click to try to open dropdown
+            dropdownRef.current.click();
+          }
+        }
+      }, 50);
     }
   }, [editingCell]);
+
+  // Focus table after saving to enable arrow key navigation
+  useEffect(() => {
+    if (!editingCell && selectedCell && tableContainerRef.current) {
+      // Transfer focus back to the table so keyboard events are captured
+      tableContainerRef.current.focus();
+    }
+  }, [editingCell, selectedCell]);
 
   // Only show nodes tab in loads or structure tabs
   if (activeTab !== 'loads' && activeTab !== 'structure') {
@@ -307,11 +325,15 @@ export function NodesTab() {
           No nodes yet. Create nodes in the Structure tab.
         </p>
       ) : (
-        <table style={tableStyle} onKeyDown={(e) => {
-          if (selectedCell) {
-            handleTableKeyDown(e, selectedCell.nodeName, selectedCell.field);
-          }
-        }}>
+        <table
+          style={tableStyle}
+          tabIndex={-1}
+          onKeyDown={(e) => {
+            if (selectedCell) {
+              handleTableKeyDown(e, selectedCell.nodeName, selectedCell.field);
+            }
+          }}
+        >
           <thead>
             <tr>
               <th style={headerStyle}>Name</th>
@@ -461,6 +483,7 @@ export function NodesTab() {
                           }
                           // Arrow keys will naturally navigate through options in the dropdown
                         }}
+                        size={Math.min(5, supportTypes.length + 1)}
                         style={{
                           width: '100%',
                           padding: '4px',
