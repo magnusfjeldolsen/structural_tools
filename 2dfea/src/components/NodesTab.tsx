@@ -6,7 +6,7 @@
  * All fields are editable with validation
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useModelStore } from '../store/useModelStore';
 import { useUIStore } from '../store/useUIStore';
 import { theme } from '../styles/theme';
@@ -22,6 +22,16 @@ export function NodesTab() {
   const [editingCell, setEditingCell] = useState<{ nodeName: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // Reset cell state when activeTab changes
+  useEffect(() => {
+    if (activeTab !== 'loads' && activeTab !== 'structure') {
+      setSelectedCell(null);
+      setEditingCell(null);
+      setValidationError(null);
+    }
+  }, [activeTab]);
 
   // Only show nodes tab in loads or structure tabs
   if (activeTab !== 'loads' && activeTab !== 'structure') {
@@ -38,6 +48,7 @@ export function NodesTab() {
 
   const handleCellDoubleClick = (nodeName: string, field: string, value: string) => {
     setValidationError(null);
+    setSelectedCell({ nodeName, field });
     setEditingCell({ nodeName, field });
     setEditValue(value);
   };
@@ -161,8 +172,8 @@ export function NodesTab() {
   };
 
   const handleTableKeyDown = (e: React.KeyboardEvent, nodeName: string, field: string) => {
-    // F2 to activate edit mode
-    if (e.key === 'F2' && !editingCell) {
+    // F2 to activate edit mode - only allow if this cell is currently selected
+    if (e.key === 'F2' && !editingCell && selectedCell?.nodeName === nodeName && selectedCell?.field === field) {
       e.preventDefault();
       setValidationError(null);
       setEditingCell({ nodeName, field });
@@ -239,8 +250,22 @@ export function NodesTab() {
     outline: isCellSelected && !isEditing ? '2px solid #1976D2' : 'none',
   });
 
+  const handleContainerBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    // Only reset if focus is leaving the table container entirely
+    if (!tableContainerRef.current?.contains(e.relatedTarget as Node)) {
+      // Don't reset if we're in the process of editing (blur from input field)
+      if (!editingCell) {
+        setSelectedCell(null);
+      }
+    }
+  };
+
   return (
-    <div style={{ padding: '12px', overflow: 'auto', display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div
+      ref={tableContainerRef}
+      style={{ padding: '12px', overflow: 'auto', display: 'flex', flexDirection: 'column', height: '100%' }}
+      onBlur={handleContainerBlur}
+    >
       {/* Validation Error Alert */}
       {validationError && (
         <div
