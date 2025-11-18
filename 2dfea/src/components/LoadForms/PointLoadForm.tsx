@@ -2,6 +2,7 @@
  * Point Load Form - Compact form content for element point loads
  */
 
+import { useEffect } from 'react';
 import { useModelStore, useUIStore } from '../../store';
 import { theme } from '../../styles/theme';
 
@@ -13,12 +14,34 @@ interface PointLoadFormProps {
 export function PointLoadForm({ isExpanded }: PointLoadFormProps) {
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const loadParameters = useUIStore((state) => state.loadParameters) || {};
+  const loadTypeDefaults = useUIStore((state) => state.loadTypeDefaults);
   const setLoadCreationMode = useUIStore((state) => state.setLoadCreationMode);
+  const setLoadTypeDefaults = useUIStore((state) => state.setLoadTypeDefaults);
+
+  // Initialize form with saved defaults on first render
+  useEffect(() => {
+    if (!isExpanded || !loadTypeDefaults.point) {
+      return;
+    }
+
+    const defaults = loadTypeDefaults.point;
+    const currentParams = {
+      distance: loadParameters.distance ?? defaults.distance ?? 0,
+      magnitude: loadParameters.magnitude ?? defaults.magnitude ?? 0,
+      direction: loadParameters.direction ?? defaults.direction ?? 'Fx',
+    };
+
+    if ((defaults.distance !== undefined || defaults.magnitude !== undefined || defaults.direction !== undefined) &&
+        loadParameters.distance === undefined && loadParameters.magnitude === undefined && loadParameters.direction === undefined) {
+      setLoadCreationMode('point', currentParams);
+    }
+  }, [isExpanded]);
 
   const isLocal = (loadParameters.direction as string)?.toLowerCase() === loadParameters.direction;
 
   const handleParameterChange = (key: string, value: string | number) => {
     setLoadCreationMode('point', { ...loadParameters, [key]: value });
+    setLoadTypeDefaults('point', { [key]: value });
   };
 
   const toggleCoordinateSystem = () => {

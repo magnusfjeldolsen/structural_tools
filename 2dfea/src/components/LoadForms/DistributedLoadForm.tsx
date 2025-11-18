@@ -2,6 +2,7 @@
  * Distributed Load Form - Compact form content for distributed loads
  */
 
+import { useEffect } from 'react';
 import { useModelStore, useUIStore } from '../../store';
 import { theme } from '../../styles/theme';
 
@@ -13,12 +14,39 @@ interface DistributedLoadFormProps {
 export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const loadParameters = useUIStore((state) => state.loadParameters) || {};
+  const loadTypeDefaults = useUIStore((state) => state.loadTypeDefaults);
   const setLoadCreationMode = useUIStore((state) => state.setLoadCreationMode);
+  const setLoadTypeDefaults = useUIStore((state) => state.setLoadTypeDefaults);
+
+  // Initialize form with saved defaults on first render
+  useEffect(() => {
+    if (!isExpanded || !loadTypeDefaults.distributed) {
+      return;
+    }
+
+    const defaults = loadTypeDefaults.distributed;
+    const currentParams = {
+      x1: loadParameters.x1 ?? defaults.x1 ?? 0,
+      x2: loadParameters.x2 ?? defaults.x2 ?? 0,
+      w1: loadParameters.w1 ?? defaults.w1 ?? 0,
+      w2: loadParameters.w2 ?? defaults.w2 ?? 0,
+      direction: loadParameters.direction ?? defaults.direction ?? 'Fx',
+    };
+
+    if ((defaults.x1 !== undefined || defaults.x2 !== undefined || defaults.w1 !== undefined ||
+         defaults.w2 !== undefined || defaults.direction !== undefined) &&
+        loadParameters.x1 === undefined && loadParameters.x2 === undefined &&
+        loadParameters.w1 === undefined && loadParameters.w2 === undefined &&
+        loadParameters.direction === undefined) {
+      setLoadCreationMode('distributed', currentParams);
+    }
+  }, [isExpanded]);
 
   const isLocal = (loadParameters.direction as string)?.toLowerCase() === loadParameters.direction;
 
   const handleParameterChange = (key: string, value: string | number) => {
     setLoadCreationMode('distributed', { ...loadParameters, [key]: value });
+    setLoadTypeDefaults('distributed', { [key]: value });
   };
 
   const toggleCoordinateSystem = () => {

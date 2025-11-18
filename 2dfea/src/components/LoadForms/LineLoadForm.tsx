@@ -2,6 +2,7 @@
  * Line Load Form - Compact form content for line loads
  */
 
+import { useEffect } from 'react';
 import { useModelStore, useUIStore } from '../../store';
 import { theme } from '../../styles/theme';
 
@@ -13,14 +14,37 @@ interface LineLoadFormProps {
 export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const formParameters = useUIStore((state) => state.formParameters) || {};
+  const loadTypeDefaults = useUIStore((state) => state.loadTypeDefaults);
   const setFormParameters = useUIStore((state) => state.setFormParameters);
   const setLoadCreationMode = useUIStore((state) => state.setLoadCreationMode);
   const resetFormParameters = useUIStore((state) => state.resetFormParameters);
+  const setLoadTypeDefaults = useUIStore((state) => state.setLoadTypeDefaults);
+
+  // Initialize form with saved defaults on first render
+  useEffect(() => {
+    if (!isExpanded || !loadTypeDefaults.lineLoad) {
+      return;
+    }
+
+    const defaults = loadTypeDefaults.lineLoad;
+    const currentParams = {
+      w1: formParameters.w1 ?? defaults.w1 ?? 0,
+      w2: formParameters.w2 ?? defaults.w2 ?? 0,
+      direction: formParameters.direction ?? defaults.direction ?? 'Fx',
+    };
+
+    if ((defaults.w1 !== undefined || defaults.w2 !== undefined || defaults.direction !== undefined) &&
+        formParameters.w1 === undefined && formParameters.w2 === undefined &&
+        formParameters.direction === undefined) {
+      setFormParameters(currentParams);
+    }
+  }, [isExpanded]);
 
   const isLocal = (formParameters.direction as string)?.toLowerCase() === formParameters.direction;
 
   const handleParameterChange = (key: string, value: string | number) => {
     setFormParameters({ ...formParameters, [key]: value });
+    setLoadTypeDefaults('lineLoad', { [key]: value });
   };
 
   const toggleCoordinateSystem = () => {
