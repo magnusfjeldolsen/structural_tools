@@ -23,6 +23,7 @@ export function NodesTab() {
   const [editValue, setEditValue] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
   const dropdownRef = useRef<HTMLSelectElement>(null);
 
   // Reset cell state when activeTab changes
@@ -53,11 +54,27 @@ export function NodesTab() {
     }
   }, [editingCell]);
 
-  // Focus table after saving to enable arrow key navigation
+  // Focus the selected cell after saving to enable arrow key navigation
   useEffect(() => {
-    if (!editingCell && selectedCell && tableContainerRef.current) {
-      // Transfer focus back to the table so keyboard events are captured
-      tableContainerRef.current.focus();
+    if (!editingCell && selectedCell && tableRef.current) {
+      // Use setTimeout to ensure DOM has updated before focusing
+      setTimeout(() => {
+        if (tableRef.current) {
+          // Find and focus the cell that has tabIndex={0} (the selected cell)
+          const rows = tableRef.current.querySelectorAll('tbody tr');
+          for (const row of rows) {
+            const cells = row.querySelectorAll('td');
+            for (let i = 0; i < cells.length; i++) {
+              const cell = cells[i];
+              // Focus the cell that is marked as selected (tabIndex={0})
+              if (cell.tabIndex === 0) {
+                (cell as HTMLTableCellElement).focus();
+                return;
+              }
+            }
+          }
+        }
+      }, 0);
     }
   }, [editingCell, selectedCell]);
 
@@ -72,6 +89,8 @@ export function NodesTab() {
     e.preventDefault();
     if (editingCell) return; // Don't select while editing
     setSelectedCell({ nodeName, field });
+    // Focus the clicked cell element to enable keyboard events
+    (e.currentTarget as HTMLTableCellElement).focus();
   };
 
   const handleCellDoubleClick = (nodeName: string, field: string, value: string) => {
@@ -326,6 +345,7 @@ export function NodesTab() {
         </p>
       ) : (
         <table
+          ref={tableRef}
           style={tableStyle}
           tabIndex={-1}
           onKeyDown={(e) => {
