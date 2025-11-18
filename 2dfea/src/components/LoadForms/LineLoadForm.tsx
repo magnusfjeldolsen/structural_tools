@@ -2,7 +2,7 @@
  * Line Load Form - Compact form content for line loads
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useModelStore, useUIStore } from '../../store';
 import { theme } from '../../styles/theme';
 
@@ -20,28 +20,61 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
   const resetFormParameters = useUIStore((state) => state.resetFormParameters);
   const setLoadTypeDefaults = useUIStore((state) => state.setLoadTypeDefaults);
 
+  // Local state for w1/w2 - kept separate from global state to avoid affecting model
+  const [w1Local, setW1Local] = useState<number | ''>(formParameters.w1 ?? '');
+  const [w2Local, setW2Local] = useState<number | ''>(formParameters.w2 ?? '');
+  const [w2IndependentlyEdited, setW2IndependentlyEdited] = useState(false);
+
   // Initialize form with saved defaults on first render
   useEffect(() => {
-    if (!isExpanded || !loadTypeDefaults.lineLoad) {
+    if (!isExpanded) {
       return;
     }
 
-    const defaults = loadTypeDefaults.lineLoad;
-    const currentParams = {
-      w1: formParameters.w1 ?? defaults.w1 ?? 0,
-      w2: formParameters.w2 ?? defaults.w2 ?? 0,
-      direction: formParameters.direction ?? defaults.direction ?? 'Fx',
-    };
+    // Initialize direction and other fields from formParameters/defaults
+    if (!formParameters.direction && loadTypeDefaults.lineLoad?.direction) {
+      setFormParameters({
+        ...formParameters,
+        direction: loadTypeDefaults.lineLoad.direction,
+      });
+    }
 
-    if ((defaults.w1 !== undefined || defaults.w2 !== undefined || defaults.direction !== undefined) &&
-        formParameters.w1 === undefined && formParameters.w2 === undefined &&
-        formParameters.direction === undefined) {
-      setFormParameters(currentParams);
+    // Initialize w1/w2 local state from defaults
+    if (loadTypeDefaults.lineLoad) {
+      setW1Local(loadTypeDefaults.lineLoad.w1 ?? '');
+      setW2Local(loadTypeDefaults.lineLoad.w2 ?? '');
+      // Reset w2 independence flag when form expands
+      setW2IndependentlyEdited(false);
     }
   }, [isExpanded]);
 
   const isLocal = (formParameters.direction as string)?.toLowerCase() === formParameters.direction;
 
+  // Handle w1 input - local only
+  const handleW1Change = (value: string) => {
+    const numValue = value === '' ? '' : parseFloat(value);
+    setW1Local(numValue);
+
+    // One-way tunnel: if w2 hasn't been independently edited, make it match w1
+    if (!w2IndependentlyEdited && numValue !== '') {
+      setW2Local(numValue);
+      setLoadTypeDefaults('lineLoad', { w1: numValue as number, w2: numValue as number });
+    } else if (numValue !== '') {
+      setLoadTypeDefaults('lineLoad', { w1: numValue as number });
+    }
+  };
+
+  // Handle w2 input - local only
+  const handleW2Change = (value: string) => {
+    const numValue = value === '' ? '' : parseFloat(value);
+    setW2Local(numValue);
+    setW2IndependentlyEdited(true); // Mark as independently edited
+    if (numValue !== '') {
+      setLoadTypeDefaults('lineLoad', { w2: numValue as number });
+    }
+  };
+
+  // Handle direction - global state
   const handleParameterChange = (key: string, value: string | number) => {
     setFormParameters({ ...formParameters, [key]: value });
     setLoadTypeDefaults('lineLoad', { [key]: value });
@@ -66,8 +99,9 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
       return;
     }
 
-    const w1 = parseFloat((formParameters.w1 as any) || '0');
-    const w2 = parseFloat((formParameters.w2 as any) || '0');
+    // Use local state for w1/w2
+    const w1 = typeof w1Local === 'number' ? w1Local : 0;
+    const w2 = typeof w2Local === 'number' ? w2Local : 0;
 
     if (w1 === 0 && w2 === 0) {
       alert('Please enter at least one magnitude value');
@@ -121,8 +155,8 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
         <input
           type="number"
           step="0.1"
-          value={formParameters.w1 || ''}
-          onChange={(e) => handleParameterChange('w1', e.target.value ? parseFloat(e.target.value) : 0)}
+          value={w1Local === '' ? '' : w1Local}
+          onChange={(e) => handleW1Change(e.target.value)}
           placeholder="w1"
           style={inputStyle}
         />
@@ -133,8 +167,8 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
         <input
           type="number"
           step="0.1"
-          value={formParameters.w2 || ''}
-          onChange={(e) => handleParameterChange('w2', e.target.value ? parseFloat(e.target.value) : 0)}
+          value={w2Local === '' ? '' : w2Local}
+          onChange={(e) => handleW2Change(e.target.value)}
           placeholder="w2"
           style={inputStyle}
         />

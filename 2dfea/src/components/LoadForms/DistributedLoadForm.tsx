@@ -2,7 +2,7 @@
  * Distributed Load Form - Compact form content for distributed loads
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useModelStore, useUIStore } from '../../store';
 import { theme } from '../../styles/theme';
 
@@ -18,35 +18,66 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
   const setLoadCreationMode = useUIStore((state) => state.setLoadCreationMode);
   const setLoadTypeDefaults = useUIStore((state) => state.setLoadTypeDefaults);
 
+  // Local state for w1/w2 - kept separate from global state to avoid affecting model
+  const [w1Local, setW1Local] = useState<number | ''>(loadParameters.w1 ?? '');
+  const [w2Local, setW2Local] = useState<number | ''>(loadParameters.w2 ?? '');
+  const [w2IndependentlyEdited, setW2IndependentlyEdited] = useState(false);
+
   // Initialize form with saved defaults on first render
   useEffect(() => {
-    if (!isExpanded || !loadTypeDefaults.distributed) {
+    if (!isExpanded) {
       return;
     }
 
+    // Initialize direction and x1/x2 from loadParameters/defaults
     const defaults = loadTypeDefaults.distributed;
-    const currentParams = {
-      x1: loadParameters.x1 ?? defaults.x1 ?? 0,
-      x2: loadParameters.x2 ?? defaults.x2 ?? 0,
-      w1: loadParameters.w1 ?? defaults.w1 ?? 0,
-      w2: loadParameters.w2 ?? defaults.w2 ?? 0,
-      direction: loadParameters.direction ?? defaults.direction ?? 'Fx',
-    };
+    if (!loadParameters.direction && defaults?.direction) {
+      setLoadCreationMode('distributed', {
+        ...loadParameters,
+        direction: defaults.direction,
+      });
+    }
 
-    if ((defaults.x1 !== undefined || defaults.x2 !== undefined || defaults.w1 !== undefined ||
-         defaults.w2 !== undefined || defaults.direction !== undefined) &&
-        loadParameters.x1 === undefined && loadParameters.x2 === undefined &&
-        loadParameters.w1 === undefined && loadParameters.w2 === undefined &&
-        loadParameters.direction === undefined) {
-      setLoadCreationMode('distributed', currentParams);
+    // Initialize w1/w2 local state from defaults
+    if (defaults) {
+      setW1Local(defaults.w1 ?? '');
+      setW2Local(defaults.w2 ?? '');
+      // Reset w2 independence flag when form expands
+      setW2IndependentlyEdited(false);
     }
   }, [isExpanded]);
 
   const isLocal = (loadParameters.direction as string)?.toLowerCase() === loadParameters.direction;
 
+  // Handle w1 input - local only
+  const handleW1Change = (value: string) => {
+    const numValue = value === '' ? '' : parseFloat(value);
+    setW1Local(numValue);
+
+    // One-way tunnel: if w2 hasn't been independently edited, make it match w1
+    if (!w2IndependentlyEdited && numValue !== '') {
+      setW2Local(numValue);
+      setLoadTypeDefaults('distributed', { w1: numValue as number, w2: numValue as number });
+    } else if (numValue !== '') {
+      setLoadTypeDefaults('distributed', { w1: numValue as number });
+    }
+  };
+
+  // Handle w2 input - local only
+  const handleW2Change = (value: string) => {
+    const numValue = value === '' ? '' : parseFloat(value);
+    setW2Local(numValue);
+    setW2IndependentlyEdited(true); // Mark as independently edited
+    if (numValue !== '') {
+      setLoadTypeDefaults('distributed', { w2: numValue as number });
+    }
+  };
+
+  // Handle other parameters (x1, x2, direction) - global state
   const handleParameterChange = (key: string, value: string | number) => {
-    setLoadCreationMode('distributed', { ...loadParameters, [key]: value });
-    setLoadTypeDefaults('distributed', { [key]: value });
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    setLoadCreationMode('distributed', { ...loadParameters, [key]: numValue });
+    setLoadTypeDefaults('distributed', { [key]: numValue });
   };
 
   const toggleCoordinateSystem = () => {
@@ -69,9 +100,10 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
       return;
     }
 
-    const w1 = parseFloat(loadParameters.w1 as any);
-    const w2 = parseFloat(loadParameters.w2 as any);
-    if (isNaN(w1) || isNaN(w2) || (w1 === 0 && w2 === 0)) {
+    // Use local state for w1/w2
+    const w1 = typeof w1Local === 'number' ? w1Local : 0;
+    const w2 = typeof w2Local === 'number' ? w2Local : 0;
+    if (w1 === 0 && w2 === 0) {
       alert('At least one load intensity must be non-zero');
       return;
     }
@@ -128,8 +160,8 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
         <label style={labelStyle}>w1 (kN/m)</label>
         <input
           type="number"
-          value={loadParameters.w1 || ''}
-          onChange={(e) => handleParameterChange('w1', parseFloat(e.target.value) || 0)}
+          value={w1Local === '' ? '' : w1Local}
+          onChange={(e) => handleW1Change(e.target.value)}
           placeholder="0"
           style={inputStyle}
           step="0.1"
@@ -140,8 +172,8 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
         <label style={labelStyle}>w2 (kN/m)</label>
         <input
           type="number"
-          value={loadParameters.w2 || ''}
-          onChange={(e) => handleParameterChange('w2', parseFloat(e.target.value) || 0)}
+          value={w2Local === '' ? '' : w2Local}
+          onChange={(e) => handleW2Change(e.target.value)}
           placeholder="0"
           style={inputStyle}
           step="0.1"
