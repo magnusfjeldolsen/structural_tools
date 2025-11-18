@@ -218,6 +218,7 @@ export function NodesTab() {
     } else if (e.key === 'Escape') {
       setEditingCell(null);
       setValidationError(null);
+      setClipboard(null);
     }
   };
 
@@ -225,6 +226,13 @@ export function NodesTab() {
     const fields = ['name', 'x', 'y', 'support'];
     const nodeIndex = nodes.findIndex((n) => n.name === nodeName);
     const fieldIndex = fields.indexOf(field);
+
+    // Escape key - clear clipboard and deselect when not editing
+    if (e.key === 'Escape' && !editingCell && clipboard) {
+      setClipboard(null);
+      e.preventDefault();
+      return;
+    }
 
     // F2 to activate edit mode - only allow if this cell is currently selected
     if (e.key === 'F2' && !editingCell && selectedCell?.nodeName === nodeName && selectedCell?.field === field) {
@@ -297,15 +305,15 @@ export function NodesTab() {
 
     // Paste coordinate value from clipboard (Ctrl+V)
     if (e.ctrlKey && e.key === 'v' && !editingCell && clipboard) {
-      // Only paste to coordinate columns and only if field type matches
-      if ((field === 'x' || field === 'y') && field === clipboard.fieldType) {
+      // Allow paste to any coordinate column (x or y), regardless of source field type
+      if (field === 'x' || field === 'y') {
         const node = nodes.find((n) => n.name === nodeName);
         if (node) {
           updateNode(nodeName, { [field]: clipboard.value });
           e.preventDefault();
         }
       }
-      // Silent fail for Name, Support, or mismatched field types
+      // Silent fail for Name, Support columns
       return;
     }
   };
@@ -328,9 +336,9 @@ export function NodesTab() {
   const getCellStyle = (isCellSelected: boolean, isEditing: boolean, fieldType?: 'name' | 'x' | 'y' | 'support') => {
     let backgroundColor = isEditing ? '#FFF9C4' : isCellSelected ? '#E3F2FD' : theme.colors.bgWhite;
 
-    // Show light green highlight on coordinate columns when clipboard has a value
-    if (clipboard && fieldType === clipboard.fieldType && !isEditing && !isCellSelected) {
-      backgroundColor = '#C8E6C9'; // Light green tint
+    // Show light green highlight on coordinate columns (x or y) when clipboard has any coordinate value
+    if (clipboard && (fieldType === 'x' || fieldType === 'y') && !isEditing && !isCellSelected) {
+      backgroundColor = '#C8E6C9'; // Light green tint - indicates paste is possible
     }
 
     return {
