@@ -22,6 +22,7 @@ export function NodesTab() {
   const [editingCell, setEditingCell] = useState<{ nodeName: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [clipboard, setClipboard] = useState<{ value: number; fieldType: 'x' | 'y' } | null>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const dropdownRef = useRef<HTMLSelectElement>(null);
@@ -280,6 +281,33 @@ export function NodesTab() {
         return;
       }
     }
+
+    // Copy coordinate value to clipboard (Ctrl+C)
+    if (e.ctrlKey && e.key === 'c' && !editingCell) {
+      if (field === 'x' || field === 'y') {
+        const node = nodes.find((n) => n.name === nodeName);
+        if (node) {
+          const value = field === 'x' ? node.x : node.y;
+          setClipboard({ value, fieldType: field });
+          e.preventDefault();
+        }
+      }
+      return;
+    }
+
+    // Paste coordinate value from clipboard (Ctrl+V)
+    if (e.ctrlKey && e.key === 'v' && !editingCell && clipboard) {
+      // Only paste to coordinate columns and only if field type matches
+      if ((field === 'x' || field === 'y') && field === clipboard.fieldType) {
+        const node = nodes.find((n) => n.name === nodeName);
+        if (node) {
+          updateNode(nodeName, { [field]: clipboard.value });
+          e.preventDefault();
+        }
+      }
+      // Silent fail for Name, Support, or mismatched field types
+      return;
+    }
   };
 
   const tableStyle = {
@@ -297,14 +325,23 @@ export function NodesTab() {
     color: theme.colors.textPrimary,
   };
 
-  const getCellStyle = (isCellSelected: boolean, isEditing: boolean) => ({
-    padding: '8px 12px',
-    borderBottom: `1px solid ${theme.colors.border}`,
-    backgroundColor: isEditing ? '#FFF9C4' : isCellSelected ? '#E3F2FD' : theme.colors.bgWhite,
-    cursor: isEditing ? 'text' : 'pointer',
-    color: theme.colors.textPrimary,
-    outline: isCellSelected && !isEditing ? '2px solid #1976D2' : 'none',
-  });
+  const getCellStyle = (isCellSelected: boolean, isEditing: boolean, fieldType?: 'name' | 'x' | 'y' | 'support') => {
+    let backgroundColor = isEditing ? '#FFF9C4' : isCellSelected ? '#E3F2FD' : theme.colors.bgWhite;
+
+    // Show light green highlight on coordinate columns when clipboard has a value
+    if (clipboard && fieldType === clipboard.fieldType && !isEditing && !isCellSelected) {
+      backgroundColor = '#C8E6C9'; // Light green tint
+    }
+
+    return {
+      padding: '8px 12px',
+      borderBottom: `1px solid ${theme.colors.border}`,
+      backgroundColor,
+      cursor: isEditing ? 'text' : 'pointer',
+      color: theme.colors.textPrimary,
+      outline: isCellSelected && !isEditing ? '2px solid #1976D2' : 'none',
+    };
+  };
 
   const handleContainerBlur = (e: React.FocusEvent<HTMLDivElement>) => {
     // Only reset if focus is leaving the table container entirely
@@ -370,7 +407,8 @@ export function NodesTab() {
                   <td
                     style={getCellStyle(
                       selectedCell?.nodeName === node.name && selectedCell.field === 'name',
-                      editingCell?.nodeName === node.name && editingCell.field === 'name'
+                      editingCell?.nodeName === node.name && editingCell.field === 'name',
+                      'name'
                     )}
                     onClick={(e) => handleCellClick(node.name, 'name', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'name', node.name)}
@@ -402,7 +440,8 @@ export function NodesTab() {
                   <td
                     style={getCellStyle(
                       selectedCell?.nodeName === node.name && selectedCell.field === 'x',
-                      editingCell?.nodeName === node.name && editingCell.field === 'x'
+                      editingCell?.nodeName === node.name && editingCell.field === 'x',
+                      'x'
                     )}
                     onClick={(e) => handleCellClick(node.name, 'x', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'x', node.x.toString())}
@@ -435,7 +474,8 @@ export function NodesTab() {
                   <td
                     style={getCellStyle(
                       selectedCell?.nodeName === node.name && selectedCell.field === 'y',
-                      editingCell?.nodeName === node.name && editingCell.field === 'y'
+                      editingCell?.nodeName === node.name && editingCell.field === 'y',
+                      'y'
                     )}
                     onClick={(e) => handleCellClick(node.name, 'y', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'y', node.y.toString())}
@@ -468,7 +508,8 @@ export function NodesTab() {
                   <td
                     style={getCellStyle(
                       selectedCell?.nodeName === node.name && selectedCell.field === 'support',
-                      editingCell?.nodeName === node.name && editingCell.field === 'support'
+                      editingCell?.nodeName === node.name && editingCell.field === 'support',
+                      'support'
                     )}
                     onClick={(e) => handleCellClick(node.name, 'support', e)}
                     onDoubleClick={() => handleCellDoubleClick(node.name, 'support', node.support)}
