@@ -21,165 +21,211 @@ interface LoadInputDialogProps {
 export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: LoadInputDialogProps) {
   const loadCases = useModelStore((state) => state.loadCases);
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
+  const loadTypeDefaults = useUIStore((state) => state.loadTypeDefaults);
+  const setLoadTypeDefaults = useUIStore((state) => state.setLoadTypeDefaults);
   const updateNodalLoad = useModelStore((state) => state.updateNodalLoad);
   const updateElementPointLoad = useModelStore((state) => state.updateElementPointLoad);
   const updateDistributedLoad = useModelStore((state) => state.updateDistributedLoad);
   const setLoadCreationMode = useUIStore((state) => state.setLoadCreationMode);
   const closeLoadDialog = useUIStore((state) => state.closeLoadDialog);
 
-  // Form state - nodal load parameters
-  const [fx, setFx] = useState<number>(0);
-  const [fy, setFy] = useState<number>(0);
-  const [mz, setMz] = useState<number>(0);
+  // LOCAL STATE - completely independent until user confirms
+  // Nodal load parameters
+  const [fx, setFx] = useState<number | ''>(0);
+  const [fy, setFy] = useState<number | ''>(0);
+  const [mz, setMz] = useState<number | ''>(0);
 
-  // Form state - point load parameters (direction can be local 'Fx'/'Fy'/'Mz' or global 'FX'/'FY'/'MZ')
-  const [distance, setDistance] = useState<number>(0);
+  // Point load parameters
+  const [distance, setDistance] = useState<number | ''>(0);
   const [pointDirection, setPointDirection] = useState<'Fx' | 'Fy' | 'Mz' | 'FX' | 'FY' | 'MZ'>('Fy');
-  const [magnitude, setMagnitude] = useState<number>(0);
+  const [magnitude, setMagnitude] = useState<number | ''>(0);
 
-  // Form state - distributed load parameters (direction can be local 'Fx'/'Fy' or global 'FX'/'FY')
+  // Distributed load parameters
   const [distributedDirection, setDistributedDirection] = useState<'Fx' | 'Fy' | 'FX' | 'FY'>('Fy');
-  const [w1, setW1] = useState<number>(0);
-  const [w2, setW2] = useState<number>(0);
-  const [x1, setX1] = useState<number>(0);
-  const [x2, setX2] = useState<number>(0);
+  const [w1Local, setW1Local] = useState<number | ''>(0);
+  const [w2Local, setW2Local] = useState<number | ''>(0);
+  const [x1, setX1] = useState<number | ''>(0);
+  const [x2, setX2] = useState<number | ''>(0);
+  const [w2IndependentlyEdited, setW2IndependentlyEdited] = useState(false);
 
-  // Form state - line load parameters (simplified - applied across entire element)
+  // Line load parameters
   const [lineLoadDirection, setLineLoadDirection] = useState<'Fx' | 'Fy' | 'FX' | 'FY'>('Fy');
-  const [lineLoadW1, setLineLoadW1] = useState<number>(0);  // Start intensity
-  const [lineLoadW2, setLineLoadW2] = useState<number>(0);  // End intensity
+  const [lineLoadW1Local, setLineLoadW1Local] = useState<number | ''>(0);
+  const [lineLoadW2Local, setLineLoadW2Local] = useState<number | ''>(0);
+  const [lineLoadW2IndependentlyEdited, setLineLoadW2IndependentlyEdited] = useState(false);
 
   // Common
   const [selectedCase, setSelectedCase] = useState<string | undefined>(activeLoadCase || undefined);
   const [error, setError] = useState<string>('');
   const [coordinateSystem, setCoordinateSystem] = useState<'global' | 'local'>('global');
 
-  // Initialize form with editing data
+  // Initialize form with editing data or defaults
   useEffect(() => {
-    if (editingLoad && isOpen) {
-      setError('');
+    if (!isOpen) return;
+
+    setError('');
+    const caseToUse = activeLoadCase || undefined;
+    setSelectedCase(caseToUse);
+
+    if (editingLoad) {
+      // Editing existing load - populate from load data
+      const load = editingLoad.data;
 
       if (editingLoad.type === 'nodal') {
-        const load = editingLoad.data;
-        setFx(load.fx);
-        setFy(load.fy);
-        setMz(load.mz);
-        setSelectedCase(load.case || activeLoadCase || undefined);
+        setFx(load.fx ?? 0);
+        setFy(load.fy ?? 0);
+        setMz(load.mz ?? 0);
       } else if (editingLoad.type === 'point') {
-        const load = editingLoad.data;
-        setDistance(load.distance);
-        setPointDirection(load.direction);
-        // Determine coordinate system from direction case
+        setDistance(load.distance ?? 0);
+        setPointDirection(load.direction ?? 'Fy');
         setCoordinateSystem(load.direction && load.direction[0] === load.direction[0].toLowerCase() ? 'local' : 'global');
-        setMagnitude(load.magnitude);
-        setSelectedCase(load.case || activeLoadCase || undefined);
+        setMagnitude(load.magnitude ?? 0);
       } else if (editingLoad.type === 'distributed') {
-        const load = editingLoad.data;
-        setDistributedDirection(load.direction);
-        // Determine coordinate system from direction case
+        setDistributedDirection(load.direction ?? 'Fy');
         setCoordinateSystem(load.direction && load.direction[0] === load.direction[0].toLowerCase() ? 'local' : 'global');
-        setW1(load.w1);
-        setW2(load.w2);
-        setX1(load.x1);
-        setX2(load.x2);
-        setSelectedCase(load.case || activeLoadCase || undefined);
+        setW1Local(load.w1 ?? 0);
+        setW2Local(load.w2 ?? 0);
+        setX1(load.x1 ?? 0);
+        setX2(load.x2 ?? 0);
+        setW2IndependentlyEdited(false);
       }
-    } else if (isOpen && !editingLoad) {
-      // Reset form for new load
-      setFx(0);
-      setFy(0);
-      setMz(0);
-      setDistance(0);
-      setPointDirection('Fy');
-      setDistributedDirection('Fy');
-      setMagnitude(0);
-      setW1(0);
-      setW2(0);
-      setX1(0);
-      setX2(0);
-      setLineLoadDirection('Fy');
-      setLineLoadW1(0);
-      setLineLoadW2(0);
-      setSelectedCase(activeLoadCase || undefined);
-      setError('');
+    } else {
+      // Creating new load - populate from defaults if available
+      const defaults = loadTypeDefaults[loadType as keyof typeof loadTypeDefaults];
+
+      if (loadType === 'nodal' && defaults) {
+        const nodalDefaults = defaults as any;
+        setFx(nodalDefaults.fx ?? 0);
+        setFy(nodalDefaults.fy ?? 0);
+        setMz(nodalDefaults.mz ?? 0);
+      } else if (loadType === 'point' && defaults) {
+        const pointDefaults = defaults as any;
+        setDistance(pointDefaults.distance ?? 0);
+        setPointDirection(pointDefaults.direction ?? 'Fy');
+        setCoordinateSystem(pointDefaults.direction && (pointDefaults.direction as string)[0] === (pointDefaults.direction as string)[0].toLowerCase() ? 'local' : 'global');
+        setMagnitude(pointDefaults.magnitude ?? 0);
+      } else if (loadType === 'distributed' && defaults) {
+        const distDefaults = defaults as any;
+        setDistributedDirection(distDefaults.direction ?? 'Fy');
+        setCoordinateSystem(distDefaults.direction && (distDefaults.direction as string)[0] === (distDefaults.direction as string)[0].toLowerCase() ? 'local' : 'global');
+        setW1Local(distDefaults.w1 ?? 0);
+        setW2Local(distDefaults.w2 ?? 0);
+        setX1(0);
+        setX2(0);
+        setW2IndependentlyEdited(false);
+      } else if (loadType === 'lineLoad' && defaults) {
+        const lineDefaults = defaults as any;
+        setLineLoadDirection(lineDefaults.direction ?? 'Fy');
+        setCoordinateSystem(lineDefaults.direction && (lineDefaults.direction as string)[0] === (lineDefaults.direction as string)[0].toLowerCase() ? 'local' : 'global');
+        setLineLoadW1Local(lineDefaults.w1 ?? 0);
+        setLineLoadW2Local(lineDefaults.w2 ?? 0);
+        setLineLoadW2IndependentlyEdited(false);
+      }
     }
-  }, [isOpen, editingLoad, loadType, activeLoadCase]);
+  }, [isOpen, editingLoad, loadType, activeLoadCase, loadTypeDefaults]);
 
   const handleConfirm = () => {
     setError('');
 
     try {
       if (loadType === 'nodal') {
+        const fxNum = typeof fx === 'number' ? fx : 0;
+        const fyNum = typeof fy === 'number' ? fy : 0;
+        const mzNum = typeof mz === 'number' ? mz : 0;
+
+        // Save to defaults
+        setLoadTypeDefaults('nodal', { fx: fxNum, fy: fyNum, mz: mzNum });
+
         if (editingLoad) {
           updateNodalLoad(editingLoad.index, {
-            fx,
-            fy,
-            mz,
+            fx: fxNum,
+            fy: fyNum,
+            mz: mzNum,
             case: selectedCase,
           });
-          closeLoadDialog();
         } else {
-          // Store parameters and enter selection mode
-          setLoadCreationMode('nodal', { fx, fy, mz, case: selectedCase });
-          closeLoadDialog();
+          setLoadCreationMode('nodal', { fx: fxNum, fy: fyNum, mz: mzNum, case: selectedCase });
         }
+        closeLoadDialog();
       } else if (loadType === 'point') {
-        if (distance < 0) {
+        const distNum = typeof distance === 'number' ? distance : 0;
+        const magNum = typeof magnitude === 'number' ? magnitude : 0;
+
+        if (distNum < 0) {
           setError('Distance must be non-negative');
           return;
         }
+
+        // Save to defaults
+        setLoadTypeDefaults('point', { distance: distNum, direction: pointDirection, magnitude: magNum });
+
         if (editingLoad) {
           updateElementPointLoad(editingLoad.index, {
-            distance,
+            distance: distNum,
             direction: pointDirection,
-            magnitude,
+            magnitude: magNum,
             case: selectedCase,
           });
-          closeLoadDialog();
         } else {
-          // Store parameters and enter selection mode
           setLoadCreationMode('point', {
-            distance,
+            distance: distNum,
             direction: pointDirection,
-            magnitude,
+            magnitude: magNum,
             case: selectedCase,
           });
-          closeLoadDialog();
         }
+        closeLoadDialog();
       } else if (loadType === 'distributed') {
-        if (x1 < 0 || x2 < 0 || x1 > x2) {
+        const w1Num = typeof w1Local === 'number' ? w1Local : 0;
+        const w2Num = typeof w2Local === 'number' ? w2Local : 0;
+        const x1Num = typeof x1 === 'number' ? x1 : 0;
+        const x2Num = typeof x2 === 'number' ? x2 : 0;
+
+        if (x1Num < 0 || x2Num < 0 || x1Num > x2Num) {
           setError('Invalid distribution range');
           return;
         }
+
+        // Save to defaults
+        setLoadTypeDefaults('distributed', {
+          w1: w1Num,
+          w2: w2Num,
+          x1: x1Num,
+          x2: x2Num,
+          direction: distributedDirection,
+        });
+
         if (editingLoad) {
           updateDistributedLoad(editingLoad.index, {
             direction: distributedDirection,
-            w1,
-            w2,
-            x1,
-            x2,
+            w1: w1Num,
+            w2: w2Num,
+            x1: x1Num,
+            x2: x2Num,
             case: selectedCase,
           });
-          closeLoadDialog();
         } else {
-          // Store parameters and enter selection mode
           setLoadCreationMode('distributed', {
             direction: distributedDirection,
-            w1,
-            w2,
-            x1,
-            x2,
+            w1: w1Num,
+            w2: w2Num,
+            x1: x1Num,
+            x2: x2Num,
             case: selectedCase,
           });
-          closeLoadDialog();
         }
+        closeLoadDialog();
       } else if (loadType === 'lineLoad') {
-        // Line load is simplified: applied across entire element with optional gradient
-        // Store parameters and enter element selection mode
+        const w1Num = typeof lineLoadW1Local === 'number' ? lineLoadW1Local : 0;
+        const w2Num = typeof lineLoadW2Local === 'number' ? lineLoadW2Local : 0;
+
+        // Save to defaults
+        setLoadTypeDefaults('lineLoad', { w1: w1Num, w2: w2Num, direction: lineLoadDirection });
+
         setLoadCreationMode('lineLoad', {
           direction: lineLoadDirection,
-          w1: lineLoadW1,
-          w2: lineLoadW2,
+          w1: w1Num,
+          w2: w2Num,
           case: selectedCase,
         });
         closeLoadDialog();
@@ -187,6 +233,49 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     }
+  };
+
+  // Helper to safely parse numbers from input without fallback
+  const parseNum = (value: string): number | '' => {
+    if (value === '') return '';
+    // Allow minus sign to be typed
+    if (value === '-') return 0; // Treat bare minus as 0 for now
+    const num = parseFloat(value);
+    return isNaN(num) ? '' : num;
+  };
+
+  // Handlers for distributed load w1/w2 with one-way tunnel
+  const handleDistributedW1Change = (value: string) => {
+    const numValue = parseNum(value);
+    setW1Local(numValue);
+
+    // One-way tunnel: if w2 hasn't been independently edited, make it match w1
+    if (!w2IndependentlyEdited && numValue !== '') {
+      setW2Local(numValue);
+    }
+  };
+
+  const handleDistributedW2Change = (value: string) => {
+    const numValue = parseNum(value);
+    setW2Local(numValue);
+    setW2IndependentlyEdited(true);
+  };
+
+  // Handlers for line load w1/w2 with one-way tunnel
+  const handleLineLoadW1Change = (value: string) => {
+    const numValue = parseNum(value);
+    setLineLoadW1Local(numValue);
+
+    // One-way tunnel: if w2 hasn't been independently edited, make it match w1
+    if (!lineLoadW2IndependentlyEdited && numValue !== '') {
+      setLineLoadW2Local(numValue);
+    }
+  };
+
+  const handleLineLoadW2Change = (value: string) => {
+    const numValue = parseNum(value);
+    setLineLoadW2Local(numValue);
+    setLineLoadW2IndependentlyEdited(true);
   };
 
   if (!isOpen || !loadType) return null;
@@ -368,8 +457,8 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>Fx (kN)</label>
               <input
                 type="number"
-                value={fx}
-                onChange={(e) => setFx(parseFloat(e.target.value) || 0)}
+                value={fx === '' ? '' : fx}
+                onChange={(e) => setFx(parseNum(e.target.value))}
                 step="0.1"
                 style={inputStyle}
               />
@@ -379,8 +468,8 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>Fy (kN)</label>
               <input
                 type="number"
-                value={fy}
-                onChange={(e) => setFy(parseFloat(e.target.value) || 0)}
+                value={fy === '' ? '' : fy}
+                onChange={(e) => setFy(parseNum(e.target.value))}
                 step="0.1"
                 style={inputStyle}
               />
@@ -390,8 +479,8 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>Mz (kNm)</label>
               <input
                 type="number"
-                value={mz}
-                onChange={(e) => setMz(parseFloat(e.target.value) || 0)}
+                value={mz === '' ? '' : mz}
+                onChange={(e) => setMz(parseNum(e.target.value))}
                 step="0.1"
                 style={inputStyle}
               />
@@ -406,8 +495,8 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>Distance from start (m)</label>
               <input
                 type="number"
-                value={distance}
-                onChange={(e) => setDistance(parseFloat(e.target.value) || 0)}
+                value={distance === '' ? '' : distance}
+                onChange={(e) => setDistance(parseNum(e.target.value))}
                 step="0.1"
                 min="0"
                 style={inputStyle}
@@ -441,8 +530,8 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>Magnitude (kN or kNm)</label>
               <input
                 type="number"
-                value={magnitude}
-                onChange={(e) => setMagnitude(parseFloat(e.target.value) || 0)}
+                value={magnitude === '' ? '' : magnitude}
+                onChange={(e) => setMagnitude(parseNum(e.target.value))}
                 step="0.1"
                 style={inputStyle}
               />
@@ -478,8 +567,8 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>Start intensity w1 (kN/m)</label>
               <input
                 type="number"
-                value={w1}
-                onChange={(e) => setW1(parseFloat(e.target.value) || 0)}
+                value={w1Local === '' ? '' : w1Local}
+                onChange={(e) => handleDistributedW1Change(e.target.value)}
                 step="0.1"
                 style={inputStyle}
               />
@@ -489,8 +578,8 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>End intensity w2 (kN/m)</label>
               <input
                 type="number"
-                value={w2}
-                onChange={(e) => setW2(parseFloat(e.target.value) || 0)}
+                value={w2Local === '' ? '' : w2Local}
+                onChange={(e) => handleDistributedW2Change(e.target.value)}
                 step="0.1"
                 style={inputStyle}
               />
@@ -500,8 +589,8 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>Start position x1 (m)</label>
               <input
                 type="number"
-                value={x1}
-                onChange={(e) => setX1(parseFloat(e.target.value) || 0)}
+                value={x1 === '' ? '' : x1}
+                onChange={(e) => setX1(parseNum(e.target.value))}
                 step="0.1"
                 min="0"
                 style={inputStyle}
@@ -512,8 +601,8 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>End position x2 (m)</label>
               <input
                 type="number"
-                value={x2}
-                onChange={(e) => setX2(parseFloat(e.target.value) || 0)}
+                value={x2 === '' ? '' : x2}
+                onChange={(e) => setX2(parseNum(e.target.value))}
                 step="0.1"
                 min="0"
                 style={inputStyle}
@@ -550,8 +639,8 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>Start intensity w1 (kN/m)</label>
               <input
                 type="number"
-                value={lineLoadW1}
-                onChange={(e) => setLineLoadW1(parseFloat(e.target.value) || 0)}
+                value={lineLoadW1Local === '' ? '' : lineLoadW1Local}
+                onChange={(e) => handleLineLoadW1Change(e.target.value)}
                 step="0.1"
                 style={inputStyle}
               />
@@ -561,8 +650,8 @@ export function LoadInputDialog({ isOpen, onClose, loadType, editingLoad }: Load
               <label style={labelStyle}>End intensity w2 (kN/m)</label>
               <input
                 type="number"
-                value={lineLoadW2}
-                onChange={(e) => setLineLoadW2(parseFloat(e.target.value) || 0)}
+                value={lineLoadW2Local === '' ? '' : lineLoadW2Local}
+                onChange={(e) => handleLineLoadW2Change(e.target.value)}
                 step="0.1"
                 style={inputStyle}
               />
