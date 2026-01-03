@@ -32,6 +32,7 @@
   <link rel="stylesheet" href="../assets/css/forms.css">
   <link rel="stylesheet" href="../assets/css/components.css">
   <link rel="stylesheet" href="../assets/css/print.css">
+  <link rel="stylesheet" href="../assets/css/report-print.css">
 
   <!-- Tailwind CSS -->
   <script>
@@ -43,7 +44,7 @@
     .pulse-glow {
       animation: pulse-glow 3s ease-in-out infinite;
     }
-    
+
     @keyframes pulse-glow {
       0%, 100% {
         box-shadow: 0 0 20px rgba(249, 115, 22, 0.3);
@@ -51,6 +52,12 @@
       50% {
         box-shadow: 0 0 30px rgba(249, 115, 22, 0.5);
       }
+    }
+
+    /* Fix dropdown option colors */
+    .select-field option {
+      background-color: #374151;
+      color: #f9fafb;
     }
   </style>
 </head>
@@ -66,12 +73,32 @@
 
     <h1 class="heading-1 text-center mb-6">Weld Capacity Calculator</h1>
     <p class="text-description text-center mb-4">Professional weld capacity analysis for steel welded connections</p>
-    
+
+    <!-- Method Selection Tabs -->
+    <div class="flex justify-center mb-6">
+      <div class="inline-flex rounded-lg bg-gray-700 p-1" role="group">
+        <button type="button" id="tab-directional" onclick="switchMethod('directional')"
+                class="px-6 py-2 text-sm font-medium rounded-md transition-colors bg-orange-600 text-white">
+          Directional Method
+        </button>
+        <button type="button" id="tab-simplified" onclick="switchMethod('simplified')"
+                class="px-6 py-2 text-sm font-medium rounded-md transition-colors text-gray-300 hover:text-white">
+          Simplified Method (EC3)
+        </button>
+      </div>
+    </div>
+
     <!-- Methodology Note -->
-    <div class="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mb-8">
+    <div id="methodology-directional" class="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mb-8">
       <p class="text-blue-200 text-sm text-center">
-        <strong>Note:</strong> The methodology used in this calculator is adapted from 
+        <strong>Directional Method:</strong> Adapted from
         <em>"Ståkonstruksjoner - Profiler og formler - 3. utgave - Tapir akademisk forlag"</em>
+      </p>
+    </div>
+
+    <div id="methodology-simplified" class="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mb-8 hidden">
+      <p class="text-blue-200 text-sm text-center">
+        <strong>Simplified Method:</strong> According to Eurocode 3-1-8 Section 4.5.3.3
       </p>
     </div>
 
@@ -159,10 +186,10 @@
       </div>
     </div>
 
-    <!-- Applied Forces -->
-    <div class="section-card">
+    <!-- Applied Forces - Directional Method -->
+    <div id="forces-directional" class="section-card">
       <h2 class="heading-3">Applied Forces and Moment</h2>
-      
+
       <div class="grid-1">
         <div class="input-group">
           <label for="normalForce" class="input-label">Normal Force (N) - tensile force orthogonal to weld:</label>
@@ -172,7 +199,7 @@
           </div>
           <div class="math-result" id="normalForceResult"></div>
         </div>
-        
+
         <div class="input-group">
           <label for="shearForce" class="input-label">Shear Force (V) - shear force parallel to weld:</label>
           <div class="input-with-unit">
@@ -181,7 +208,7 @@
           </div>
           <div class="math-result" id="shearForceResult"></div>
         </div>
-        
+
         <div class="input-group">
           <label for="moment" class="input-label">Moment (M) - moment about middle of weld:</label>
           <div class="input-with-unit">
@@ -193,6 +220,22 @@
       </div>
     </div>
 
+    <!-- Applied Forces - Simplified Method -->
+    <div id="forces-simplified" class="section-card hidden">
+      <h2 class="heading-3">Applied Design Force</h2>
+
+      <div class="grid-1">
+        <div class="input-group">
+          <label for="appliedForce" class="input-label">Applied Design Force (F<sub>Ed</sub>):</label>
+          <div class="input-with-unit">
+            <input type="text" id="appliedForce" class="input-field math-input" placeholder="100" data-variable="FEd">
+            <span class="unit-label">kN</span>
+          </div>
+          <div class="math-result" id="appliedForceResult"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Calculate Button -->
     <div class="space-y-2 print:hidden">
       <button onclick="calculateWeldCapacity()" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg transition">
@@ -200,8 +243,8 @@
       </button>
     </div>
 
-    <!-- Quick Results -->
-    <div id="quickResults" class="section-card quick-results hidden">
+    <!-- Quick Results - Directional Method -->
+    <div id="quickResults-directional" class="section-card quick-results hidden">
       <h2 class="heading-3">Quick Results</h2>
       <div class="results-grid">
         <div class="result-item">
@@ -217,6 +260,28 @@
         <div class="result-item utilization">
           <span class="result-label">Utilization Ratio:</span>
           <span class="result-value" id="utilizationRatio">-</span>
+          <span class="result-unit">-</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Results - Simplified Method -->
+    <div id="quickResults-simplified" class="section-card quick-results hidden">
+      <h2 class="heading-3">Quick Results</h2>
+      <div class="results-grid">
+        <div class="result-item">
+          <span class="result-label">Design Weld Shear Strength (f<sub>vw,d</sub>):</span>
+          <span class="result-value" id="fvwd">-</span>
+          <span class="result-unit">MPa</span>
+        </div>
+        <div class="result-item">
+          <span class="result-label">Design Weld Resistance (F<sub>w,Rd</sub>):</span>
+          <span class="result-value" id="FwRd">-</span>
+          <span class="result-unit">kN</span>
+        </div>
+        <div class="result-item utilization">
+          <span class="result-label">Utilization Ratio (η):</span>
+          <span class="result-value" id="utilizationRatio-simplified">-</span>
           <span class="result-unit">-</span>
         </div>
       </div>
@@ -259,6 +324,21 @@
       <div class="calculation-section">
         <h3 class="calculation-title">von Mises Stress and Utilization</h3>
         <div class="calculation-content" id="vonMisesCalcs"></div>
+      </div>
+    </div>
+
+    <!-- Detailed Report Section -->
+    <div id="report-section" class="bg-gray-700 rounded-lg p-6 mt-6 hidden">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-lg font-semibold text-white cursor-pointer" onclick="toggleReport()">
+          ▼ Detailed Calculation Report
+        </h3>
+        <button type="button" onclick="printReport()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-lg transition print:hidden">
+          🖨️ Print Report
+        </button>
+      </div>
+      <div id="detailed-report" class="hidden mt-4">
+        <!-- Report content will be generated here -->
       </div>
     </div>
 

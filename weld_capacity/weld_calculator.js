@@ -12,6 +12,7 @@ const default_gamma_M2 = 1.25;
 
 // Global variables to store calculated values
 let calculationData = {};
+let currentMethod = 'directional'; // 'directional' or 'simplified'
 
 // Math expression evaluator
 function evaluateExpression(expr) {
@@ -67,16 +68,58 @@ function updateGammaM2() {
     }
 }
 
+// Switch between directional and simplified methods
+function switchMethod(method) {
+    currentMethod = method;
+
+    // Update tab styling
+    const tabDirectional = document.getElementById('tab-directional');
+    const tabSimplified = document.getElementById('tab-simplified');
+
+    if (method === 'directional') {
+        tabDirectional.className = 'px-6 py-2 text-sm font-medium rounded-md transition-colors bg-orange-600 text-white';
+        tabSimplified.className = 'px-6 py-2 text-sm font-medium rounded-md transition-colors text-gray-300 hover:text-white';
+
+        // Show/hide sections
+        document.getElementById('methodology-directional').classList.remove('hidden');
+        document.getElementById('methodology-simplified').classList.add('hidden');
+        document.getElementById('forces-directional').classList.remove('hidden');
+        document.getElementById('forces-simplified').classList.add('hidden');
+
+        // Hide results
+        document.getElementById('quickResults-directional').classList.add('hidden');
+        document.getElementById('quickResults-simplified').classList.add('hidden');
+        document.getElementById('detailedCalculations').classList.add('hidden');
+        document.getElementById('report-section').classList.add('hidden');
+    } else {
+        tabDirectional.className = 'px-6 py-2 text-sm font-medium rounded-md transition-colors text-gray-300 hover:text-white';
+        tabSimplified.className = 'px-6 py-2 text-sm font-medium rounded-md transition-colors bg-orange-600 text-white';
+
+        // Show/hide sections
+        document.getElementById('methodology-directional').classList.add('hidden');
+        document.getElementById('methodology-simplified').classList.remove('hidden');
+        document.getElementById('forces-directional').classList.add('hidden');
+        document.getElementById('forces-simplified').classList.remove('hidden');
+
+        // Hide results
+        document.getElementById('quickResults-directional').classList.add('hidden');
+        document.getElementById('quickResults-simplified').classList.add('hidden');
+        document.getElementById('detailedCalculations').classList.add('hidden');
+        document.getElementById('report-section').classList.add('hidden');
+    }
+}
+
 // Add event listener for gamma_M2 input
 document.addEventListener('DOMContentLoaded', function() {
     const gammaM2Input = document.getElementById('gammaM2');
     if (gammaM2Input) {
         gammaM2Input.addEventListener('input', updateGammaM2);
     }
-    
+
     const mathInputs = document.querySelectorAll('.math-input');
     mathInputs.forEach(input => {
         input.addEventListener('input', updateMathInputs);
+    });
 
     // ✅ Preselect S355 on load
     const steelSelect = document.getElementById('steelGrade');
@@ -84,7 +127,6 @@ document.addEventListener('DOMContentLoaded', function() {
         steelSelect.value = "S355";       // set dropdown to S355
         updateSteelProperties();          // trigger the property update immediately
     }
-    });
 });
 
 // Update math input displays
@@ -130,8 +172,17 @@ function getInputValue(inputId) {
     }
 }
 
-// Calculate weld capacity
+// Calculate weld capacity - dispatcher
 function calculateWeldCapacity() {
+    if (currentMethod === 'directional') {
+        calculateDirectionalMethod();
+    } else {
+        calculateSimplifiedMethod();
+    }
+}
+
+// Calculate weld capacity - Directional Method
+function calculateDirectionalMethod() {
     try {
         // Get input values
         const steelGrade = document.getElementById('steelGrade').value;
@@ -214,16 +265,112 @@ function calculateWeldCapacity() {
         
         // Display quick results
         displayQuickResults();
-        
+
         // Display detailed calculations
         displayDetailedCalculations();
-        
+
+        // Generate detailed report
+        generateDirectionalReport();
+
         // Show results sections
-        document.getElementById('quickResults').classList.remove('hidden');
+        document.getElementById('quickResults-directional').classList.remove('hidden');
         document.getElementById('detailedCalculations').classList.remove('hidden');
+        document.getElementById('report-section').classList.remove('hidden');
         
     } catch (error) {
         alert('Error: ' + error.message);
+    }
+}
+
+// Calculate weld capacity - Simplified Method (EC3-1-8 4.5.3.3)
+function calculateSimplifiedMethod() {
+    try {
+        // Get input values
+        const steelGrade = document.getElementById('steelGrade').value;
+        const gammaM2 = parseFloat(document.getElementById('gammaM2').value) || default_gamma_M2;
+        const a = parseFloat(document.getElementById('throatThickness').value) || 0;
+        const l_weld = parseFloat(document.getElementById('weldLength').value) || 0;
+
+        // F_Ed can be zero or a calculated value
+        const appliedForceInput = document.getElementById('appliedForce').value.trim();
+        let F_Ed = 0;
+        let F_Ed_display = 0;
+
+        if (appliedForceInput) {
+            F_Ed = getInputValue('appliedForce');
+            F_Ed_display = evaluateExpression(appliedForceInput);
+        }
+
+        // Validation
+        if (!steelGrade) {
+            throw new Error('Please select a steel grade');
+        }
+        if (a <= 0) {
+            throw new Error('Throat thickness must be greater than 0');
+        }
+        if (l_weld <= 0) {
+            throw new Error('Weld length must be greater than 0');
+        }
+        if (F_Ed < 0) {
+            throw new Error('Applied force cannot be negative');
+        }
+
+        // Get steel properties
+        const steelData = steelWeldData[steelGrade];
+
+        // Calculate design weld shear strength
+        // f_vw,d = f_u / (β_w × γ_M2 × √3)
+        const f_vw_d = steelData.f_u / (steelData.beta_w * gammaM2 * Math.sqrt(3));
+
+        // Calculate design weld resistance
+        // F_w,Rd = a × l_s × f_vw,d (result in N, convert to kN)
+        const F_w_Rd_N = a * l_weld * f_vw_d; // in N
+        const F_w_Rd = F_w_Rd_N / 1000; // convert to kN
+
+        // Calculate utilization ratio
+        const eta = F_Ed / F_w_Rd_N;
+
+        // Store calculation data for display
+        calculationData = {
+            inputs: { steelGrade, gammaM2, a, l_weld, F_Ed, F_Ed_display },
+            steelData: steelData,
+            f_vw_d: f_vw_d,
+            F_w_Rd: F_w_Rd,
+            F_w_Rd_N: F_w_Rd_N,
+            eta: eta
+        };
+
+        // Display quick results for simplified method
+        displayQuickResultsSimplified();
+
+        // Generate detailed report
+        generateSimplifiedReport();
+
+        // Show results sections
+        document.getElementById('quickResults-simplified').classList.remove('hidden');
+        document.getElementById('report-section').classList.remove('hidden');
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Display quick results for simplified method
+function displayQuickResultsSimplified() {
+    const data = calculationData;
+
+    document.getElementById('fvwd').textContent = data.f_vw_d.toFixed(2);
+    document.getElementById('FwRd').textContent = data.F_w_Rd.toFixed(2);
+    document.getElementById('utilizationRatio-simplified').textContent = data.eta.toFixed(3);
+
+    // Color code utilization ratio
+    const utilizationElement = document.getElementById('utilizationRatio-simplified');
+    if (data.eta > 1.0) {
+        utilizationElement.style.color = 'var(--accent-red)';
+    } else if (data.eta > 0.8) {
+        utilizationElement.style.color = 'orange';
+    } else {
+        utilizationElement.style.color = 'var(--accent-green)';
     }
 }
 
@@ -430,4 +577,327 @@ function displayDetailedCalculations() {
             <span class="text-gray-400">${data.eta > 1.0 ? '⚠️ EXCEEDS CAPACITY' : '✓ OK'}</span>
         </div>
     `;
+}
+
+// Generate detailed report for simplified method (matching concrete beam design style)
+function generateSimplifiedReport() {
+    const data = calculationData;
+    const timestamp = new Date().toLocaleString();
+
+    let reportHTML = `
+        <div class="report-content bg-white text-gray-900 p-8 rounded-lg">
+
+          <!-- Title -->
+          <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Weld Capacity Calculation Report</h1>
+            <p class="text-gray-600">Simplified Method (EC3-1-8 Section 4.5.3.3)</p>
+            <p class="text-sm text-gray-500 mt-2">Calculation Date: ${timestamp}</p>
+          </div>
+
+          <!-- INPUT PARAMETERS (Blue heading) -->
+          <div class="mb-8">
+            <h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #1d4ed8;">INPUT PARAMETERS</h2>
+            <div class="grid grid-cols-2 gap-6">
+              <div>
+                <h3 class="font-semibold text-gray-800 mb-3">Material Properties</h3>
+                <div class="space-y-2 text-sm">
+                  <div><span class="text-gray-600">Steel Grade =</span> <span class="font-semibold">${data.inputs.steelGrade}</span></div>
+                  <div><span class="text-gray-600">Ultimate Strength f<sub>u</sub> =</span> <span class="font-semibold">${data.steelData.f_u} MPa</span></div>
+                  <div><span class="text-gray-600">Correlation Factor β<sub>w</sub> =</span> <span class="font-semibold">${data.steelData.beta_w}</span></div>
+                  <div><span class="text-gray-600">Safety Factor γ<sub>M2</sub> =</span> <span class="font-semibold">${data.inputs.gammaM2}</span></div>
+                  <div class="pt-2 border-t border-gray-300"><span class="text-gray-600">Design Weld Shear Strength f<sub>vw,d</sub> =</span> <span class="font-semibold">${data.f_vw_d.toFixed(2)} MPa</span></div>
+                </div>
+              </div>
+              <div>
+                <h3 class="font-semibold text-gray-800 mb-3">Weld Geometry & Loading</h3>
+                <div class="space-y-2 text-sm">
+                  <div><span class="text-gray-600">Throat Thickness a =</span> <span class="font-semibold">${data.inputs.a} mm</span></div>
+                  <div><span class="text-gray-600">Weld Length l<sub>s</sub> =</span> <span class="font-semibold">${data.inputs.l_weld} mm</span></div>
+                  <div class="pt-2 border-t border-gray-300"><span class="text-gray-600">Applied Force F<sub>Ed</sub> =</span> <span class="font-semibold">${data.inputs.F_Ed_display.toLocaleString()} kN</span></div>
+                  <div class="pt-2 border-t border-gray-300"><span class="text-gray-600">Design Resistance F<sub>w,Rd</sub> =</span> <span class="font-semibold">${data.F_w_Rd.toFixed(2)} kN</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RESULTS SUMMARY (Green heading) -->
+          <div class="mb-8">
+            <h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #15803d;">RESULTS SUMMARY</h2>
+
+            <div class="bg-blue-100 border-2 border-blue-400 rounded-lg p-6 mb-6 text-center">
+              <div class="text-4xl font-bold text-blue-900 mb-2">${data.F_w_Rd.toFixed(2)} kN</div>
+              <div class="text-lg text-blue-800">Design Weld Resistance (F<sub>w,Rd</sub>)</div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
+                <div class="text-sm text-gray-600 mb-2">Utilization Ratio</div>
+                <div class="text-2xl font-bold ${data.eta > 1.0 ? 'text-red-600' : data.eta > 0.8 ? 'text-orange-500' : 'text-green-600'}">${(data.eta * 100).toFixed(1)}%</div>
+                <div class="text-xs text-gray-500 mt-1">F<sub>Ed</sub> / F<sub>w,Rd</sub></div>
+              </div>
+              <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
+                <div class="text-sm text-gray-600 mb-2">Status</div>
+                <div class="text-2xl font-bold ${data.eta > 1.0 ? 'text-red-600' : 'text-green-600'}">${data.eta > 1.0 ? '⚠️ FAILS' : '✓ PASSES'}</div>
+                <div class="text-xs text-gray-500 mt-1">Capacity Check</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DETAILED CALCULATIONS (Purple heading) -->
+          <div class="page-break-before">
+            <h2 class="text-2xl font-bold mb-6 pb-2 border-b-2" style="color: #6b21a8;">DETAILED CALCULATIONS</h2>
+
+            <!-- Design Weld Shear Strength -->
+            <div class="bg-gray-50 rounded-lg p-6 mb-6">
+              <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Design Weld Shear Strength</h3>
+              <div class="space-y-3 text-sm">
+                <div>
+                  <div class="font-medium text-gray-700 mb-1">According to EC3-1-8 Section 4.5.3.3:</div>
+                  <div>f<sub>vw,d</sub> = f<sub>u</sub> / (β<sub>w</sub> × γ<sub>M2</sub> × √3)</div>
+                  <div>f<sub>vw,d</sub> = ${data.steelData.f_u} / (${data.steelData.beta_w} × ${data.inputs.gammaM2} × √3)</div>
+                  <div>f<sub>vw,d</sub> = ${data.steelData.f_u} / ${(data.steelData.beta_w * data.inputs.gammaM2 * Math.sqrt(3)).toFixed(4)}</div>
+                  <div>f<sub>vw,d</sub> = <span class="font-semibold">${data.f_vw_d.toFixed(2)} MPa</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Design Weld Resistance -->
+            <div class="bg-gray-50 rounded-lg p-6 mb-6">
+              <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Design Weld Resistance</h3>
+              <div class="space-y-3 text-sm">
+                <div>
+                  <div class="font-medium text-gray-700 mb-1">Resistance Calculation:</div>
+                  <div>F<sub>w,Rd</sub> = a × l<sub>s</sub> × f<sub>vw,d</sub></div>
+                  <div>F<sub>w,Rd</sub> = ${data.inputs.a} × ${data.inputs.l_weld} × ${data.f_vw_d.toFixed(2)}</div>
+                  <div>F<sub>w,Rd</sub> = ${data.F_w_Rd_N.toFixed(0)} N</div>
+                  <div>F<sub>w,Rd</sub> = <span class="font-semibold">${data.F_w_Rd.toFixed(2)} kN</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Capacity Verification -->
+            <div class="bg-gray-50 rounded-lg p-6 mb-6">
+              <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Capacity Verification</h3>
+              <div class="space-y-2 text-sm">
+                <div>Applied force F<sub>Ed</sub> = ${(data.inputs.F_Ed / 1000).toFixed(2)} kN</div>
+                <div>Design resistance F<sub>w,Rd</sub> = ${data.F_w_Rd.toFixed(2)} kN</div>
+                <div>Utilization η = F<sub>Ed</sub> / F<sub>w,Rd</sub> = ${(data.inputs.F_Ed / 1000).toFixed(2)} / ${data.F_w_Rd.toFixed(2)} = <span class="font-semibold ${data.eta > 1.0 ? 'text-red-600' : data.eta > 0.8 ? 'text-orange-500' : 'text-green-600'}">${(data.eta * 100).toFixed(1)}%</span></div>
+                <div class="mt-3 p-3 rounded ${data.eta > 1.0 ? 'bg-red-100 border border-red-400' : 'bg-green-100 border border-green-400'}">
+                  <span class="font-semibold ${data.eta > 1.0 ? 'text-red-800' : 'text-green-800'}">${data.eta > 1.0 ? '⚠️ CAPACITY EXCEEDED - WELD FAILS' : '✓ CAPACITY OK - WELD PASSES'}</span>
+                </div>
+              </div>
+            </div>
+
+            ${data.eta > 1.0 ? `
+            <!-- Recommendations (if failed) -->
+            <div class="bg-red-50 border-2 border-red-400 rounded-lg p-6">
+              <h3 class="text-lg font-semibold text-red-900 mb-4">⚠️ Recommendations</h3>
+              <div class="space-y-2 text-sm text-red-800">
+                <p class="font-medium">The weld does not have sufficient capacity. Consider:</p>
+                <ul class="list-disc list-inside space-y-1 ml-4">
+                  <li>Increase throat thickness (a)</li>
+                  <li>Increase weld length (l<sub>s</sub>)</li>
+                  <li>Use higher grade steel</li>
+                  <li>Reduce applied force</li>
+                </ul>
+              </div>
+            </div>
+            ` : ''}
+          </div>
+
+        </div>
+    `;
+
+    document.getElementById('detailed-report').innerHTML = reportHTML;
+}
+
+// Generate detailed report for directional method (matching concrete beam design style)
+function generateDirectionalReport() {
+    const data = calculationData;
+    const timestamp = new Date().toLocaleString();
+
+    let reportHTML = `
+        <div class="report-content bg-white text-gray-900 p-8 rounded-lg">
+
+          <!-- Title -->
+          <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Weld Capacity Calculation Report</h1>
+            <p class="text-gray-600">Directional Method (von Mises Stress Analysis)</p>
+            <p class="text-sm text-gray-500 mt-2">Calculation Date: ${timestamp}</p>
+          </div>
+
+          <!-- INPUT PARAMETERS (Blue heading) -->
+          <div class="mb-8">
+            <h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #1d4ed8;">INPUT PARAMETERS</h2>
+            <div class="grid grid-cols-2 gap-6">
+              <div>
+                <h3 class="font-semibold text-gray-800 mb-3">Material Properties</h3>
+                <div class="space-y-2 text-sm">
+                  <div><span class="text-gray-600">Steel Grade =</span> <span class="font-semibold">${data.inputs.steelGrade}</span></div>
+                  <div><span class="text-gray-600">Yield Strength f<sub>y</sub> =</span> <span class="font-semibold">${data.steelData.f_y} MPa</span></div>
+                  <div><span class="text-gray-600">Ultimate Strength f<sub>u</sub> =</span> <span class="font-semibold">${data.steelData.f_u} MPa</span></div>
+                  <div><span class="text-gray-600">Correlation Factor β<sub>w</sub> =</span> <span class="font-semibold">${data.steelData.beta_w}</span></div>
+                  <div><span class="text-gray-600">Safety Factor γ<sub>M2</sub> =</span> <span class="font-semibold">${data.inputs.gammaM2}</span></div>
+                  <div class="pt-2 border-t border-gray-300"><span class="text-gray-600">Design Capacity σ<sub>cr</sub> =</span> <span class="font-semibold">${data.sigma_cr.toFixed(2)} MPa</span></div>
+                </div>
+              </div>
+              <div>
+                <h3 class="font-semibold text-gray-800 mb-3">Weld Geometry & Loading</h3>
+                <div class="space-y-2 text-sm">
+                  <div><span class="text-gray-600">Throat Thickness a =</span> <span class="font-semibold">${data.inputs.a} mm</span></div>
+                  <div><span class="text-gray-600">Weld Length l<sub>weld</sub> =</span> <span class="font-semibold">${data.inputs.l_weld} mm</span></div>
+                  <div><span class="text-gray-600">Effective Area A =</span> <span class="font-semibold">${data.geometry.A.toFixed(0)} mm²</span></div>
+                  <div class="pt-2 border-t border-gray-300"><span class="text-gray-600">Normal Force N =</span> <span class="font-semibold">${data.inputs.N_display.toLocaleString()} kN</span></div>
+                  <div><span class="text-gray-600">Shear Force V =</span> <span class="font-semibold">${data.inputs.V_display.toLocaleString()} kN</span></div>
+                  <div><span class="text-gray-600">Moment M =</span> <span class="font-semibold">${data.inputs.M_display.toLocaleString()} kNm</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RESULTS SUMMARY (Green heading) -->
+          <div class="mb-8">
+            <h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #15803d;">RESULTS SUMMARY</h2>
+
+            <div class="bg-blue-100 border-2 border-blue-400 rounded-lg p-6 mb-6 text-center">
+              <div class="text-4xl font-bold text-blue-900 mb-2">${data.sigma_cr.toFixed(2)} MPa</div>
+              <div class="text-lg text-blue-800">Weld Design Capacity (σ<sub>cr</sub>)</div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-4">
+              <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
+                <div class="text-sm text-gray-600 mb-2">Applied Stress</div>
+                <div class="text-2xl font-bold text-gray-900">${data.sigma_von_mises.toFixed(2)} MPa</div>
+                <div class="text-xs text-gray-500 mt-1">von Mises σ<sub>j</sub></div>
+              </div>
+              <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
+                <div class="text-sm text-gray-600 mb-2">Utilization Ratio</div>
+                <div class="text-2xl font-bold ${data.eta > 1.0 ? 'text-red-600' : data.eta > 0.8 ? 'text-orange-500' : 'text-green-600'}">${(data.eta * 100).toFixed(1)}%</div>
+                <div class="text-xs text-gray-500 mt-1">σ<sub>j</sub> / σ<sub>cr</sub></div>
+              </div>
+              <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 text-center">
+                <div class="text-sm text-gray-600 mb-2">Status</div>
+                <div class="text-2xl font-bold ${data.eta > 1.0 ? 'text-red-600' : 'text-green-600'}">${data.eta > 1.0 ? '⚠️ FAILS' : '✓ PASSES'}</div>
+                <div class="text-xs text-gray-500 mt-1">Capacity Check</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DETAILED CALCULATIONS (Purple heading) -->
+          <div class="page-break-before">
+            <h2 class="text-2xl font-bold mb-6 pb-2 border-b-2" style="color: #6b21a8;">DETAILED CALCULATIONS</h2>
+
+            <!-- Design Capacity -->
+            <div class="bg-gray-50 rounded-lg p-6 mb-6">
+              <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Design Capacity</h3>
+              <div class="space-y-2 text-sm">
+                <div>σ<sub>cr</sub> = f<sub>u</sub> / (β<sub>w</sub> × γ<sub>M2</sub>)</div>
+                <div>σ<sub>cr</sub> = ${data.steelData.f_u} / (${data.steelData.beta_w} × ${data.inputs.gammaM2})</div>
+                <div>σ<sub>cr</sub> = <span class="font-semibold">${data.sigma_cr.toFixed(2)} MPa</span></div>
+              </div>
+            </div>
+
+            <!-- Weld Geometry -->
+            <div class="bg-gray-50 rounded-lg p-6 mb-6">
+              <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Weld Geometry</h3>
+              <div class="space-y-2 text-sm">
+                <div>Effective Area: A = a × l<sub>weld</sub> = ${data.inputs.a} × ${data.inputs.l_weld} = <span class="font-semibold">${data.geometry.A.toFixed(0)} mm²</span></div>
+                <div>Moment of Inertia: I<sub>s</sub> = a × l<sub>weld</sub>³ / 12 = ${data.inputs.a} × ${data.inputs.l_weld}³ / 12 = <span class="font-semibold">${data.geometry.I_weld.toFixed(0)} mm⁴</span></div>
+              </div>
+            </div>
+
+            <!-- Stress Components from Normal Force -->
+            <div class="bg-gray-50 rounded-lg p-6 mb-6">
+              <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Stress from Normal Force (N = ${data.inputs.N_display.toLocaleString()} kN)</h3>
+              <div class="space-y-2 text-sm">
+                <div>σ<sub>⊥,N</sub> = N / (√2 × A) = ${data.inputs.N.toLocaleString()} / (√2 × ${data.geometry.A}) = <span class="font-semibold">${data.stresses.N.sigma_orthogonal_N.toFixed(2)} MPa</span></div>
+                <div>τ<sub>⊥,N</sub> = N / (√2 × A) = ${data.inputs.N.toLocaleString()} / (√2 × ${data.geometry.A}) = <span class="font-semibold">${data.stresses.N.tau_orthogonal_N.toFixed(2)} MPa</span></div>
+                <div>τ<sub>∥,N</sub> = <span class="font-semibold">0 MPa</span></div>
+              </div>
+            </div>
+
+            <!-- Stress Components from Shear Force -->
+            <div class="bg-gray-50 rounded-lg p-6 mb-6">
+              <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Stress from Shear Force (V = ${data.inputs.V_display.toLocaleString()} kN)</h3>
+              <div class="space-y-2 text-sm">
+                <div>σ<sub>⊥,V</sub> = <span class="font-semibold">0 MPa</span></div>
+                <div>τ<sub>⊥,V</sub> = <span class="font-semibold">0 MPa</span></div>
+                <div>τ<sub>∥,V</sub> = V / A = ${data.inputs.V.toLocaleString()} / ${data.geometry.A} = <span class="font-semibold">${data.stresses.V.tau_parallel_V.toFixed(2)} MPa</span></div>
+              </div>
+            </div>
+
+            <!-- Stress Components from Moment -->
+            <div class="bg-gray-50 rounded-lg p-6 mb-6">
+              <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Stress from Moment (M = ${data.inputs.M_display.toLocaleString()} kNm)</h3>
+              <div class="space-y-2 text-sm">
+                <div>σ<sub>⊥,M</sub> = M / (√2 × I<sub>s</sub>) × l<sub>weld</sub>/2 = ${data.inputs.M.toLocaleString()} / (√2 × ${data.geometry.I_weld.toFixed(0)}) × ${data.inputs.l_weld}/2 = <span class="font-semibold">${data.stresses.M.sigma_orthogonal_M.toFixed(2)} MPa</span></div>
+                <div>τ<sub>⊥,M</sub> = M / (√2 × I<sub>s</sub>) × l<sub>weld</sub>/2 = ${data.inputs.M.toLocaleString()} / (√2 × ${data.geometry.I_weld.toFixed(0)}) × ${data.inputs.l_weld}/2 = <span class="font-semibold">${data.stresses.M.tau_orthogonal_M.toFixed(2)} MPa</span></div>
+                <div>τ<sub>∥,M</sub> = <span class="font-semibold">0 MPa</span></div>
+              </div>
+            </div>
+
+            <!-- Combined Stresses -->
+            <div class="bg-gray-50 rounded-lg p-6 mb-6">
+              <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Combined Stresses</h3>
+              <div class="space-y-2 text-sm">
+                <div>σ<sub>⊥</sub> = σ<sub>⊥,N</sub> + σ<sub>⊥,V</sub> + σ<sub>⊥,M</sub> = ${data.stresses.N.sigma_orthogonal_N.toFixed(2)} + ${data.stresses.V.sigma_orthogonal_V.toFixed(2)} + ${data.stresses.M.sigma_orthogonal_M.toFixed(2)} = <span class="font-semibold">${data.stresses.combined.sigma_orthogonal.toFixed(2)} MPa</span></div>
+                <div>τ<sub>⊥</sub> = τ<sub>⊥,N</sub> + τ<sub>⊥,V</sub> + τ<sub>⊥,M</sub> = ${data.stresses.N.tau_orthogonal_N.toFixed(2)} + ${data.stresses.V.tau_orthogonal_V.toFixed(2)} + ${data.stresses.M.tau_orthogonal_M.toFixed(2)} = <span class="font-semibold">${data.stresses.combined.tau_orthogonal.toFixed(2)} MPa</span></div>
+                <div>τ<sub>∥</sub> = τ<sub>∥,N</sub> + τ<sub>∥,V</sub> + τ<sub>∥,M</sub> = ${data.stresses.N.tau_parallel_N.toFixed(2)} + ${data.stresses.V.tau_parallel_V.toFixed(2)} + ${data.stresses.M.tau_parallel_M.toFixed(2)} = <span class="font-semibold">${data.stresses.combined.tau_parallel.toFixed(2)} MPa</span></div>
+              </div>
+            </div>
+
+            <!-- von Mises Stress and Capacity Verification -->
+            <div class="bg-gray-50 rounded-lg p-6 mb-6">
+              <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">von Mises Stress & Capacity Verification</h3>
+              <div class="space-y-3 text-sm">
+                <div>
+                  <div class="font-medium text-gray-700 mb-1">von Mises Stress:</div>
+                  <div>σ<sub>j</sub> = √(σ<sub>⊥</sub>² + 3×τ<sub>⊥</sub>² + 3×τ<sub>∥</sub>²)</div>
+                  <div>σ<sub>j</sub> = √(${data.stresses.combined.sigma_orthogonal.toFixed(2)}² + 3×${data.stresses.combined.tau_orthogonal.toFixed(2)}² + 3×${data.stresses.combined.tau_parallel.toFixed(2)}²)</div>
+                  <div>σ<sub>j</sub> = <span class="font-semibold">${data.sigma_von_mises.toFixed(2)} MPa</span></div>
+                </div>
+                <div class="pt-2 border-t border-gray-300">
+                  <div class="font-medium text-gray-700 mb-1">Utilization:</div>
+                  <div>η = σ<sub>j</sub> / σ<sub>cr</sub> = ${data.sigma_von_mises.toFixed(2)} / ${data.sigma_cr.toFixed(2)} = <span class="font-semibold ${data.eta > 1.0 ? 'text-red-600' : data.eta > 0.8 ? 'text-orange-500' : 'text-green-600'}">${(data.eta * 100).toFixed(1)}%</span></div>
+                </div>
+                <div class="mt-3 p-3 rounded ${data.eta > 1.0 ? 'bg-red-100 border border-red-400' : 'bg-green-100 border border-green-400'}">
+                  <span class="font-semibold ${data.eta > 1.0 ? 'text-red-800' : 'text-green-800'}">${data.eta > 1.0 ? '⚠️ CAPACITY EXCEEDED - WELD FAILS' : '✓ CAPACITY OK - WELD PASSES'}</span>
+                </div>
+              </div>
+            </div>
+
+            ${data.eta > 1.0 ? `
+            <!-- Recommendations (if failed) -->
+            <div class="bg-red-50 border-2 border-red-400 rounded-lg p-6">
+              <h3 class="text-lg font-semibold text-red-900 mb-4">⚠️ Recommendations</h3>
+              <div class="space-y-2 text-sm text-red-800">
+                <p class="font-medium">The weld does not have sufficient capacity. Consider:</p>
+                <ul class="list-disc list-inside space-y-1 ml-4">
+                  <li>Increase throat thickness (a)</li>
+                  <li>Increase weld length</li>
+                  <li>Use higher grade steel</li>
+                  <li>Reduce applied forces/moments</li>
+                </ul>
+              </div>
+            </div>
+            ` : ''}
+          </div>
+
+        </div>
+    `;
+
+    document.getElementById('detailed-report').innerHTML = reportHTML;
+}
+
+// Toggle report visibility
+function toggleReport() {
+    const report = document.getElementById('detailed-report');
+    const header = event.currentTarget;
+    report.classList.toggle('hidden');
+    header.textContent = report.classList.contains('hidden') ? '▼ Detailed Calculation Report' : '▲ Detailed Calculation Report';
+}
+
+// Print report
+function printReport() {
+    window.print();
 }
