@@ -327,8 +327,8 @@ function calculateSimplifiedMethod() {
         const F_w_Rd_N = a * l_weld * f_vw_d; // in N
         const F_w_Rd = F_w_Rd_N / 1000; // convert to kN
 
-        // Calculate utilization ratio
-        const eta = F_Ed / F_w_Rd_N;
+        // Calculate utilization ratio (both in kN)
+        const eta = F_Ed / F_w_Rd;
 
         // Store calculation data for display
         calculationData = {
