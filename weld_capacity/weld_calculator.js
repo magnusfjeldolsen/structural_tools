@@ -669,7 +669,6 @@ function generateSimplifiedReport() {
                   <div class="font-medium text-gray-700 mb-1">Resistance Calculation:</div>
                   <div>F<sub>w,Rd</sub> = a × l<sub>s</sub> × f<sub>vw,d</sub></div>
                   <div>F<sub>w,Rd</sub> = ${data.inputs.a} × ${data.inputs.l_weld} × ${data.f_vw_d.toFixed(2)}</div>
-                  <div>F<sub>w,Rd</sub> = ${data.F_w_Rd_N.toFixed(0)} N</div>
                   <div>F<sub>w,Rd</sub> = <span class="font-semibold">${data.F_w_Rd.toFixed(2)} kN</span></div>
                 </div>
               </div>
@@ -679,9 +678,9 @@ function generateSimplifiedReport() {
             <div class="bg-gray-50 rounded-lg p-6 mb-6">
               <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Capacity Verification</h3>
               <div class="space-y-2 text-sm">
-                <div>Applied force F<sub>Ed</sub> = ${(data.inputs.F_Ed / 1000).toFixed(2)} kN</div>
+                <div>Applied force F<sub>Ed</sub> = ${data.inputs.F_Ed.toFixed(2)} kN</div>
                 <div>Design resistance F<sub>w,Rd</sub> = ${data.F_w_Rd.toFixed(2)} kN</div>
-                <div>Utilization η = F<sub>Ed</sub> / F<sub>w,Rd</sub> = ${(data.inputs.F_Ed / 1000).toFixed(2)} / ${data.F_w_Rd.toFixed(2)} = <span class="font-semibold ${data.eta > 1.0 ? 'text-red-600' : data.eta > 0.8 ? 'text-orange-500' : 'text-green-600'}">${(data.eta * 100).toFixed(1)}%</span></div>
+                <div>Utilization η = F<sub>Ed</sub> / F<sub>w,Rd</sub> = ${data.inputs.F_Ed.toFixed(2)} / ${data.F_w_Rd.toFixed(2)} = <span class="font-semibold ${data.eta > 1.0 ? 'text-red-600' : data.eta > 0.8 ? 'text-orange-500' : 'text-green-600'}">${(data.eta * 100).toFixed(1)}%</span></div>
                 <div class="mt-3 p-3 rounded ${data.eta > 1.0 ? 'bg-red-100 border border-red-400' : 'bg-green-100 border border-green-400'}">
                   <span class="font-semibold ${data.eta > 1.0 ? 'text-red-800' : 'text-green-800'}">${data.eta > 1.0 ? '⚠️ CAPACITY EXCEEDED - WELD FAILS' : '✓ CAPACITY OK - WELD PASSES'}</span>
                 </div>
