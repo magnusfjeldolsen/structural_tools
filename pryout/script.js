@@ -105,6 +105,23 @@ function addStud() {
     refreshCanvas();
 }
 
+function deleteAllStuds() {
+    if (!confirm('Delete all studs? This will create two default studs at (-100, 0) and (100, 0).')) {
+        return;
+    }
+
+    // Clear all studs
+    state.studs = [];
+
+    // Add two default studs
+    state.studs.push({id: state.nextStudId++, x: -100, y: 0});
+    state.studs.push({id: state.nextStudId++, x: 100, y: 0});
+
+    updateStudTable();
+    checkSpacingWarnings();
+    refreshCanvas();
+}
+
 function removeStud(id) {
     if (state.studs.length === 1) {
         alert('Cannot remove the last stud');
