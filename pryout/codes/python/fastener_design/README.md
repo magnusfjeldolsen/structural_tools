@@ -36,8 +36,17 @@ Python implementation for calculating fastener capacities according to Eurocode 
 - ✅ All failure modes selectable through UI interface
 - ✅ Comprehensive testing (25 tests total, all passing)
 
+### Phase 4: Combined Loading & Integration ✅ COMPLETE
+
+**Implemented:**
+- ✅ N-V interaction check with configurable exponents (α=β=1.5 default)
+- ✅ Automatic interaction check when both tension and shear loads present
+- ✅ Integration with FastenerDesign class
+- ✅ Detailed interaction results with governing modes
+- ✅ Comprehensive testing (14 tests total, all passing)
+- ✅ Example usage demonstrating interaction checks
+
 **Next Phases:**
-- Phase 4: Combined Loading & Integration (N-V interaction)
 - Phase 5: Validation & Documentation
 
 ## Installation
@@ -383,13 +392,13 @@ fastener_design/
 - Blow-out failure
 - All ψ factors
 
-### 🔄 Phase 4: Integration (Next)
+### ✅ Phase 4: Integration (COMPLETE)
 - Combined loading (N-V interaction)
-- Main FastenerDesign class
-- Supplementary reinforcement
+- Automatic interaction checks
+- Integrated with FastenerDesign class
 - Integration tests
 
-### 📅 Phase 5: Validation
+### 🔄 Phase 5: Validation (Next)
 - Worked examples from standards
 - Validation against commercial software
 - Comprehensive documentation

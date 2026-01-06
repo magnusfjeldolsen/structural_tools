@@ -2,6 +2,7 @@
 
 from .psi_factors import *
 from .geometry import *
+from .interaction import check_nv_interaction, check_combined_loading, get_interaction_summary
 
 __all__ = [
     'calculate_psi_s_N',
@@ -13,4 +14,7 @@ __all__ = [
     'calculate_psi_alpha_V',
     'calculate_area_ratio_cone',
     'calculate_area_ratio_edge',
+    'check_nv_interaction',
+    'check_combined_loading',
+    'get_interaction_summary',
 ]

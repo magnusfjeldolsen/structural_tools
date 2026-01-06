@@ -24,6 +24,9 @@ from failure_modes.shear.steel_failure import steel_failure_shear, get_shear_ste
 from failure_modes.shear.concrete_edge import concrete_edge_failure, get_concrete_edge_capacity_info
 from failure_modes.shear.pryout import pryout_failure, get_pryout_capacity_info
 
+# Import interaction functions
+from calculations.interaction import check_combined_loading, get_interaction_summary
+
 
 class FastenerDesign:
     """
@@ -384,12 +387,25 @@ class FastenerDesign:
         else:
             results['shear'] = None
 
-        # Overall status
+        # Check combined loading interaction (N-V) if both loads present
+        if results['tension'] and results['shear']:
+            results['interaction'] = check_combined_loading(
+                results['tension'],
+                results['shear'],
+                self.NEd,
+                self.VEd
+            )
+        else:
+            results['interaction'] = None
+
+        # Overall status includes interaction check
         statuses = []
         if results['tension']:
             statuses.append(results['tension']['status'])
         if results['shear']:
             statuses.append(results['shear']['status'])
+        if results['interaction']:
+            statuses.append(results['interaction']['status'])
 
         results['overall_status'] = 'OK' if all(s == 'OK' for s in statuses) else 'FAIL'
 
@@ -443,6 +459,14 @@ class FastenerDesign:
                         f"Util = {util:5.2f} [{status}]"
                     )
             lines.append(f"  Governing: {results['shear']['governing']} - {results['shear']['status']}")
+
+        # Interaction check (combined loading)
+        if results.get('interaction'):
+            interaction = results['interaction']
+            lines.append("\nCOMBINED LOADING (N-V INTERACTION):")
+            lines.append(f"  Formula: (NEd/NRd)^{interaction['alpha']:.1f} + (VEd/VRd)^{interaction['beta']:.1f} ≤ 1.0")
+            lines.append(f"  Ratio:   {interaction['interaction_ratio']:.3f}")
+            lines.append(f"  Status:  {interaction['status']}")
 
         # Overall
         lines.append(f"\nOVERALL STATUS: {results['overall_status']}")

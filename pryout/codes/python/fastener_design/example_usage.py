@@ -263,6 +263,46 @@ def example_7_all_failure_modes():
     return results
 
 
+def example_8_combined_loading_interaction():
+    """Example 8: N-V interaction check (Phase 4)"""
+    print("\n" + "="*70)
+    print("EXAMPLE 8: Combined Loading with N-V Interaction (Phase 4)")
+    print("="*70)
+
+    fastener = Fastener(16, 100, 500, area=157)
+    concrete = ConcreteProperties(strength_class='C25/30', thickness=200, cracked=True)
+
+    # Design with both tension and shear
+    design = FastenerDesign(
+        fastener=fastener,
+        concrete=concrete,
+        loading={'tension': 30000, 'shear': 20000},  # 30 kN, 20 kN
+        edge_distances={'c1': 150, 'c2': 150}
+    )
+
+    results = design.check_all_modes()
+    print(results['summary'])
+
+    # Show detailed interaction check
+    if results['interaction']:
+        print("\nDETAILED INTERACTION CHECK:")
+        interaction = results['interaction']
+        print(f"  Governing tension mode: {interaction['governing_tension_mode']}")
+        print(f"  NRd = {interaction['NRd_kN']:.1f} kN")
+        print(f"  Governing shear mode: {interaction['governing_shear_mode']}")
+        print(f"  VRd = {interaction['VRd_kN']:.1f} kN")
+        print(f"\n  Interaction formula:")
+        print(f"    (NEd/NRd)^{interaction['alpha']} + (VEd/VRd)^{interaction['beta']} ≤ 1.0")
+        print(f"    ({interaction['NEd_kN']:.1f}/{interaction['NRd_kN']:.1f})^{interaction['alpha']} + "
+              f"({interaction['VEd_kN']:.1f}/{interaction['VRd_kN']:.1f})^{interaction['beta']} = {interaction['interaction_ratio']:.3f}")
+        print(f"\n  Individual utilizations:")
+        print(f"    Tension: {interaction['tension_utilization']:.3f}")
+        print(f"    Shear:   {interaction['shear_utilization']:.3f}")
+        print(f"\n  Status: {interaction['status']}")
+
+    return results
+
+
 def compare_cracked_vs_noncracked():
     """Bonus: Compare cracked vs non-cracked concrete"""
     print("\n" + "="*70)
@@ -312,6 +352,7 @@ def main():
     example_5_seismic_loading()
     example_6_edge_effects()
     example_7_all_failure_modes()  # NEW: Phase 3 modes
+    example_8_combined_loading_interaction()  # NEW: Phase 4 N-V interaction
     compare_cracked_vs_noncracked()
 
     print("\n" + "#"*70)
