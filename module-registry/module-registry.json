@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2025-11-05T13:29:34.699Z",
-    "total_modules": 20,
+    "generated": "2026-01-06T00:00:00.000Z",
+    "total_modules": 21,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 3
@@ -110,6 +110,27 @@
         "structural calculator"
       ],
       "url": "./concrete_minimum_reinforcement/index.html",
+      "category": "concrete"
+    },
+    {
+      "id": "pryout",
+      "title": "EC2-1-4 Pry-Out Shear Stud Analyzer - Free Engineering Tool",
+      "description": "Calculate pry-out resistance for shear stud groups with elastic force distribution and torsion. Features multiple load cases, envelope analysis, and interactive visualization according to Eurocode 2-1-4.",
+      "keywords": [
+        "pry-out resistance",
+        "shear studs",
+        "ec2-1-4",
+        "stud connection",
+        "eurocode 2",
+        "elastic force distribution",
+        "torsion analysis",
+        "load cases",
+        "envelope analysis",
+        "structural engineering",
+        "free engineering tool",
+        "structural calculator"
+      ],
+      "url": "./pryout/index.html",
       "category": "concrete"
     },
     {
