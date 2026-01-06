@@ -1,6 +1,15 @@
 // ============================================================
 // EC2-1-4 Pry-Out Resistance of Shear Stud Groups
 // JavaScript implementation based on pryout4.py
+//
+// NOTE: This module provides accurate elastic force distribution
+// calculations for shear stud groups, which can be useful for other
+// structural calculations beyond pry-out resistance. The force
+// distribution accounts for both direct shear and torsional effects
+// with user-defined load application points.
+//
+// Development Status: Elastic force distribution is validated and accurate.
+// EC2-1-4 pry-out resistance calculations are under validation.
 // ============================================================
 
 // Global State
@@ -12,7 +21,9 @@ const state = {
     envelope: null,
     ui: {
         activeTab: 'model',
-        resultsView: 'active'
+        resultsView: 'active',
+        showAppliedLoads: true,
+        showResultingForces: true
     },
     nextStudId: 1,
     nextLoadCaseId: 1,
@@ -927,13 +938,17 @@ function drawResultsView(ctx, canvas) {
 
     // Overlay force vectors
     const lc = state.loadCases.find(l => l.id === state.activeLoadCaseId);
-    document.getElementById('canvas-info').textContent = `Results for ${lc.name} - Orange arrows show stud forces`;
+
+    let infoText = `Results for ${lc.name}`;
+    if (state.ui.showAppliedLoads) infoText += ' - Red: applied loads';
+    if (state.ui.showResultingForces) infoText += ' - Orange: stud forces';
+    document.getElementById('canvas-info').textContent = infoText;
 
     // Draw force arrows for each stud
-    drawForceArrows(ctx, canvas, results);
+    drawForceArrows(ctx, canvas, results, lc);
 }
 
-function drawForceArrows(ctx, canvas, resultsData) {
+function drawForceArrows(ctx, canvas, resultsData, loadCase = null) {
     const edgeDist = parseFloat(document.getElementById('edge_dist').value) || 100;
 
     // Calculate bounds and scale (same as drawModelView)
@@ -967,34 +982,89 @@ function drawForceArrows(ctx, canvas, resultsData) {
     const maxForce = Math.max(...resultArray.map(r => r.Vres_kN));
     const maxArrowLength = plotRegionSize / 20;
 
-    // Draw arrows for each stud
-    resultArray.forEach((r, index) => {
-        // Get stud by index (stud number - 1)
-        const stud = state.studs[index];
-        if (!stud) return;
+    // Draw arrows for each stud (orange) - only if enabled
+    if (state.ui.showResultingForces) {
+        resultArray.forEach((r, index) => {
+            // Get stud by index (stud number - 1)
+            const stud = state.studs[index];
+            if (!stud) return;
 
-        const cx = toCanvasX(stud.x);
-        const cy = toCanvasY(stud.y);
+            const cx = toCanvasX(stud.x);
+            const cy = toCanvasY(stud.y);
 
-        // Calculate arrow length - proportional to force, max force gets maxArrowLength
-        const forceRatio = r.Vres_kN / maxForce;
-        const arrowLength = forceRatio * maxArrowLength;
+            // Calculate arrow length - proportional to force, max force gets maxArrowLength
+            const forceRatio = r.Vres_kN / maxForce;
+            const arrowLength = forceRatio * maxArrowLength;
 
-        // Calculate angle from Vx and Vy (negate Vy for canvas Y-inversion)
-        const angle = Math.atan2(-r.Vy_kN, r.Vx_kN);
+            // Calculate angle from Vx and Vy (negate Vy for canvas Y-inversion)
+            const angle = Math.atan2(-r.Vy_kN, r.Vx_kN);
 
-        // Draw arrow
-        drawArrow(ctx, cx, cy, angle, arrowLength, '#ff8c00', r.Vres_kN);
-    });
+            // Draw arrow
+            drawArrow(ctx, cx, cy, angle, arrowLength, '#ff8c00', r.Vres_kN);
+        });
+    }
+
+    // Draw applied loads at application point (red forces, blue moment) - only if enabled
+    if (state.ui.showAppliedLoads && loadCase && resultsData.applicationPoint) {
+        const appPoint = resultsData.applicationPoint;
+        const appX = toCanvasX(appPoint.x);
+        const appY = toCanvasY(appPoint.y);
+
+        // Draw application point marker (small X)
+        ctx.save();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        const crossSize = 8;
+        ctx.beginPath();
+        ctx.moveTo(appX - crossSize, appY - crossSize);
+        ctx.lineTo(appX + crossSize, appY + crossSize);
+        ctx.moveTo(appX - crossSize, appY + crossSize);
+        ctx.lineTo(appX + crossSize, appY - crossSize);
+        ctx.stroke();
+        ctx.restore();
+
+        // Calculate applied force magnitude and angle
+        const Vx = loadCase.Vx;
+        const Vy = loadCase.Vy;
+        const Mz = loadCase.Mz;
+        const Vres = Math.sqrt(Vx * Vx + Vy * Vy);
+
+        // Draw applied force arrow (red) - scaled same as stud forces
+        if (Vres > 0.01) {
+            const forceRatio = Vres / maxForce;
+            const appliedArrowLength = forceRatio * maxArrowLength;
+            const appliedAngle = Math.atan2(-Vy, Vx); // Negate Vy for canvas Y-inversion
+
+            drawArrow(ctx, appX, appY, appliedAngle, appliedArrowLength, '#ef4444', Vres, true);
+        }
+
+        // Draw applied moment arrow (blue circular arrow)
+        if (Math.abs(Mz) > 0.01) {
+            // Scale moment: Convert moment (kNm) to equivalent force scale
+            // Moment arrow radius scales with moment magnitude relative to max force
+            // Use characteristic length of model for scaling
+            const characteristicLength = Math.sqrt(modelWidth * modelHeight);
+            const equivalentForce = Math.abs(Mz * 1000) / characteristicLength; // kNm -> Nmm, then divide by length
+            const momentRatio = equivalentForce / (maxForce * 1000); // maxForce is in kN
+            const momentRadius = Math.min(momentRatio * maxArrowLength, maxArrowLength * 0.8);
+
+            drawMomentArrow(ctx, appX, appY, momentRadius, Mz > 0, Math.abs(Mz));
+        }
+
+        // Label application point
+        ctx.fillStyle = '#000000';
+        ctx.font = '12px sans-serif';
+        ctx.fillText('P', appX + 12, appY - 12);
+    }
 }
 
-function drawArrow(ctx, x, y, angle, length, color, forceValue) {
+function drawArrow(ctx, x, y, angle, length, color, forceValue, isAppliedLoad = false) {
     ctx.save();
 
     // Draw arrow line
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = isAppliedLoad ? 3 : 2; // Thicker for applied loads
 
     const endX = x + length * Math.cos(angle);
     const endY = y + length * Math.sin(angle);
@@ -1006,7 +1076,7 @@ function drawArrow(ctx, x, y, angle, length, color, forceValue) {
     ctx.stroke();
 
     // Arrowhead
-    const headLength = 10;
+    const headLength = isAppliedLoad ? 12 : 10;
     const headAngle = Math.PI / 6;
 
     ctx.beginPath();
@@ -1024,10 +1094,60 @@ function drawArrow(ctx, x, y, angle, length, color, forceValue) {
 
     // Label with force value
     if (length > 15) {
-        ctx.font = '11px sans-serif';
+        ctx.font = isAppliedLoad ? '12px sans-serif bold' : '11px sans-serif';
         ctx.fillStyle = color;
         ctx.fillText(`${forceValue.toFixed(1)} kN`, endX + 5, endY - 5);
     }
+
+    ctx.restore();
+}
+
+function drawMomentArrow(ctx, x, y, radius, isCounterClockwise, momentValue) {
+    if (radius < 5) radius = 15; // Minimum visible size
+
+    ctx.save();
+    ctx.strokeStyle = '#3b82f6'; // Blue color
+    ctx.fillStyle = '#3b82f6';
+    ctx.lineWidth = 3;
+
+    // Draw circular arc (270 degrees)
+    const startAngle = isCounterClockwise ? 0 : Math.PI;
+    const endAngle = isCounterClockwise ? (3 * Math.PI / 2) : (-Math.PI / 2);
+
+    ctx.beginPath();
+    ctx.arc(x, y, radius, startAngle, endAngle, !isCounterClockwise);
+    ctx.stroke();
+
+    // Draw arrowhead at end of arc
+    const headLength = 12;
+    const headAngle = Math.PI / 6;
+
+    // Position at end of arc
+    const arrowX = x + radius * Math.cos(endAngle);
+    const arrowY = y + radius * Math.sin(endAngle);
+
+    // Tangent angle at end of arc
+    const tangentAngle = endAngle + (isCounterClockwise ? Math.PI / 2 : -Math.PI / 2);
+
+    ctx.beginPath();
+    ctx.moveTo(arrowX, arrowY);
+    ctx.lineTo(
+        arrowX - headLength * Math.cos(tangentAngle - headAngle),
+        arrowY - headLength * Math.sin(tangentAngle - headAngle)
+    );
+    ctx.moveTo(arrowX, arrowY);
+    ctx.lineTo(
+        arrowX - headLength * Math.cos(tangentAngle + headAngle),
+        arrowY - headLength * Math.sin(tangentAngle + headAngle)
+    );
+    ctx.stroke();
+
+    // Label with moment value
+    ctx.font = '12px sans-serif bold';
+    ctx.fillStyle = '#3b82f6';
+    const labelX = x + (isCounterClockwise ? radius + 5 : -radius - 35);
+    const labelY = y - radius - 5;
+    ctx.fillText(`${momentValue.toFixed(1)} kNm`, labelX, labelY);
 
     ctx.restore();
 }
@@ -1060,6 +1180,20 @@ function switchTab(tab) {
         viewSelector.value = tab;
     }
 
+    refreshCanvas();
+}
+
+// ============================================================
+// Visualization Controls
+// ============================================================
+
+function toggleAppliedLoads() {
+    state.ui.showAppliedLoads = document.getElementById('show-applied-loads').checked;
+    refreshCanvas();
+}
+
+function toggleResultingForces() {
+    state.ui.showResultingForces = document.getElementById('show-resulting-forces').checked;
     refreshCanvas();
 }
 

@@ -307,6 +307,18 @@
                     <div class="mt-2 text-sm text-gray-300" id="canvas-info">
                         Model view - Add studs to see geometry
                     </div>
+
+                    <!-- Visualization Controls -->
+                    <div class="mt-3 flex gap-4 text-sm">
+                        <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                            <input type="checkbox" id="show-applied-loads" checked onchange="toggleAppliedLoads()">
+                            <span>Show Applied Loads</span>
+                        </label>
+                        <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                            <input type="checkbox" id="show-resulting-forces" checked onchange="toggleResultingForces()">
+                            <span>Show Resulting Forces</span>
+                        </label>
+                    </div>
                 </div>
 
                 <!-- Results Table -->
