@@ -427,9 +427,12 @@ function applyActions(studs, Vx, Vy, Mz, applyAtCentroid, Px, Py) {
         Py = Yc;
     }
 
+    // Convert Mz from kNm to kNmm (distances are in mm)
+    const Mz_kNmm = Mz * 1000;
+
     // Torsion contribution due to offset
     const MOffset = Vx * (Py - Yc) - Vy * (Px - Xc);
-    const MTotal = Mz + MOffset;
+    const MTotal = Mz_kNmm + MOffset;
 
     // Polar moment
     const J = calculatePolarMoment(studs, Xc, Yc);
@@ -930,7 +933,7 @@ function drawResultsView(ctx, canvas) {
     drawForceArrows(ctx, canvas, results);
 }
 
-function drawForceArrows(ctx, canvas, results) {
+function drawForceArrows(ctx, canvas, resultsData) {
     const edgeDist = parseFloat(document.getElementById('edge_dist').value) || 100;
 
     // Calculate bounds and scale (same as drawModelView)
@@ -956,27 +959,31 @@ function drawForceArrows(ctx, canvas, results) {
     // Calculate plot region size (max of width and height in pixels)
     const plotRegionSize = Math.max(availWidth, availHeight);
 
+    // Handle both result structures (results.results or envelope array)
+    const resultArray = resultsData.results ? resultsData.results : resultsData;
+
     // Find max force for scaling arrows - largest force gets 1/20 of plot region
-    const maxForce = Math.max(...results.results.map(r => r.Vres));
+    const maxForce = Math.max(...resultArray.map(r => r.Vres_kN));
     const maxArrowLength = plotRegionSize / 20;
 
     // Draw arrows for each stud
-    results.results.forEach(r => {
-        const stud = state.studs.find(s => s.id === r.studId);
+    resultArray.forEach((r, index) => {
+        // Get stud by index (stud number - 1)
+        const stud = state.studs[index];
         if (!stud) return;
 
         const cx = toCanvasX(stud.x);
         const cy = toCanvasY(stud.y);
 
         // Calculate arrow length - proportional to force, max force gets maxArrowLength
-        const forceRatio = r.Vres / maxForce;
+        const forceRatio = r.Vres_kN / maxForce;
         const arrowLength = forceRatio * maxArrowLength;
 
         // Calculate angle from Vx and Vy
-        const angle = Math.atan2(r.Vy, r.Vx);
+        const angle = Math.atan2(r.Vy_kN, r.Vx_kN);
 
         // Draw arrow
-        drawArrow(ctx, cx, cy, angle, arrowLength, '#ff8c00', r.Vres);
+        drawArrow(ctx, cx, cy, angle, arrowLength, '#ff8c00', r.Vres_kN);
     });
 }
 
