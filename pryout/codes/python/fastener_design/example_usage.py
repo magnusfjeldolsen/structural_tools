@@ -99,7 +99,7 @@ def example_3_fastener_group():
     print("="*70)
 
     fastener = Fastener(16, 100, 500, area=157)
-    concrete = ConcreteProperties('C25/30', 250, cracked=True)
+    concrete = ConcreteProperties(strength_class='C25/30', thickness=250, cracked=True)
 
     design = FastenerDesign(
         fastener=fastener,
@@ -126,7 +126,7 @@ def example_4_selective_modes():
     print("="*70)
 
     fastener = Fastener(16, 100, 500, area=157)
-    concrete = ConcreteProperties('C30/37', 200, cracked=True)
+    concrete = ConcreteProperties(strength_class='C30/37', thickness=200, cracked=True)
 
     design = FastenerDesign(
         fastener=fastener,
@@ -161,7 +161,7 @@ def example_5_seismic_loading():
     fastener = Fastener(20, 150, 500, area=245)
 
     # Concrete always cracked for seismic!
-    concrete = ConcreteProperties('C30/37', 250, cracked=True)
+    concrete = ConcreteProperties(strength_class='C30/37', thickness=250, cracked=True)
 
     design = FastenerDesign(
         fastener=fastener,
@@ -188,7 +188,7 @@ def example_6_edge_effects():
     print("="*70)
 
     fastener = Fastener(16, 100, 500, area=157)
-    concrete = ConcreteProperties('C25/30', 200, cracked=True)
+    concrete = ConcreteProperties(strength_class='C25/30', thickness=200, cracked=True)
 
     # Small edge distance
     design = FastenerDesign(
@@ -210,6 +210,59 @@ def example_6_edge_effects():
     return results
 
 
+def example_7_all_failure_modes():
+    """Example 7: Check all failure modes including Phase 3 additions"""
+    print("\n" + "="*70)
+    print("EXAMPLE 7: All Failure Modes (Phase 1-3)")
+    print("="*70)
+
+    fastener = Fastener(16, 100, 500, area=157, d_head=28.8)
+    concrete = ConcreteProperties(strength_class='C25/30', thickness=200, cracked=True)
+
+    design = FastenerDesign(
+        fastener=fastener,
+        concrete=concrete,
+        loading={'tension': 40000, 'shear': 20000},  # 40 kN, 20 kN
+        edge_distances={'c1': 150, 'c2': 150}
+    )
+
+    # Check ALL failure modes (default behavior)
+    results = design.check_all_modes()
+    print(results['summary'])
+
+    print("\nDETAILED FAILURE MODE INFO:")
+
+    # Show pullout info
+    if 'pullout' in results['tension']:
+        print("\nPull-out failure:")
+        pullout_info = results['tension']['pullout']['info']
+        print(f"  Head bearing area: {pullout_info['Ah']:.1f} mm²")
+        print(f"  Capacity: {pullout_info['NRk_p_kN']:.1f} kN")
+
+    # Show splitting info
+    if 'splitting' in results['tension']:
+        print("\nSplitting failure:")
+        split_info = results['tension']['splitting']['info']
+        print(f"  Risk level: {split_info['risk_level']}")
+        print(f"  Prevented: {split_info['splitting_prevented']}")
+
+    # Show blowout info
+    if 'blowout' in results['tension']:
+        print("\nBlow-out failure:")
+        blowout_info = results['tension']['blowout']['info']
+        print(f"  Relevant: {blowout_info['relevance']['relevant']}")
+        print(f"  Threshold: {blowout_info['relevance']['c_threshold']:.1f} mm")
+
+    # Show pryout info
+    if 'pryout' in results['shear']:
+        print("\nPry-out failure:")
+        pryout_info = results['shear']['pryout']['info']
+        print(f"  k-factor: {pryout_info['k_factor']:.1f}")
+        print(f"  Capacity: {pryout_info['VRk_cp_kN']:.1f} kN")
+
+    return results
+
+
 def compare_cracked_vs_noncracked():
     """Bonus: Compare cracked vs non-cracked concrete"""
     print("\n" + "="*70)
@@ -219,7 +272,7 @@ def compare_cracked_vs_noncracked():
     fastener = Fastener(16, 100, 500, area=157)
 
     # Cracked
-    concrete_cr = ConcreteProperties('C25/30', 200, cracked=True)
+    concrete_cr = ConcreteProperties(strength_class='C25/30', thickness=200, cracked=True)
     design_cr = FastenerDesign(
         fastener=fastener,
         concrete=concrete_cr,
@@ -229,7 +282,7 @@ def compare_cracked_vs_noncracked():
     results_cr = design_cr.check_tension_modes(modes=['cone'])
 
     # Non-cracked
-    concrete_ncr = ConcreteProperties('C25/30', 200, cracked=False)
+    concrete_ncr = ConcreteProperties(strength_class='C25/30', thickness=200, cracked=False)
     design_ncr = FastenerDesign(
         fastener=fastener,
         concrete=concrete_ncr,
@@ -258,6 +311,7 @@ def main():
     example_4_selective_modes()
     example_5_seismic_loading()
     example_6_edge_effects()
+    example_7_all_failure_modes()  # NEW: Phase 3 modes
     compare_cracked_vs_noncracked()
 
     print("\n" + "#"*70)

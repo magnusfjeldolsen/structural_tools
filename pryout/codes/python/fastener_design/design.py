@@ -17,8 +17,12 @@ from core.factors import MaterialFactors
 # Import failure mode functions
 from failure_modes.tension.steel_failure import steel_failure_tension, get_steel_capacity_info
 from failure_modes.tension.concrete_cone import concrete_cone_failure, get_concrete_cone_capacity_info
+from failure_modes.tension.pullout import pullout_failure, get_pullout_capacity_info
+from failure_modes.tension.splitting import splitting_failure, get_splitting_capacity_info
+from failure_modes.tension.blowout import blowout_failure, get_blowout_capacity_info
 from failure_modes.shear.steel_failure import steel_failure_shear, get_shear_steel_capacity_info
 from failure_modes.shear.concrete_edge import concrete_edge_failure, get_concrete_edge_capacity_info
+from failure_modes.shear.pryout import pryout_failure, get_pryout_capacity_info
 
 
 class FastenerDesign:
@@ -117,9 +121,9 @@ class FastenerDesign:
             modes: List of modes to check. Options:
                    - 'steel': Steel failure
                    - 'cone': Concrete cone failure
-                   - 'pullout': Pull-out failure (not yet implemented)
-                   - 'splitting': Splitting failure (not yet implemented)
-                   - 'blowout': Blow-out failure (not yet implemented)
+                   - 'pullout': Pull-out failure
+                   - 'splitting': Splitting failure
+                   - 'blowout': Blow-out failure
                    If None, checks all implemented modes
 
         Returns:
@@ -134,7 +138,7 @@ class FastenerDesign:
         """
         if modes is None:
             # Check all implemented modes
-            modes = ['steel', 'cone']
+            modes = ['steel', 'cone', 'pullout', 'splitting', 'blowout']
 
         results = {}
 
@@ -181,6 +185,63 @@ class FastenerDesign:
                 )
             }
 
+        # Pull-out failure
+        if 'pullout' in modes:
+            n = self.group.n_fasteners if self.group else 1
+            NRk_p = pullout_failure(self.fastener, self.concrete, n)
+            NRd_p = NRk_p / self.gamma_Mc
+
+            results['pullout'] = {
+                'NRk': NRk_p,
+                'NRk_kN': NRk_p / 1000,
+                'NRd': NRd_p,
+                'NRd_kN': NRd_p / 1000,
+                'utilization': self.NEd / NRd_p if NRd_p > 0 else float('inf'),
+                'gamma_M': self.gamma_Mc,
+                'info': get_pullout_capacity_info(self.fastener, self.concrete)
+            }
+
+        # Splitting failure
+        if 'splitting' in modes:
+            spacing = self.group.get_max_spacing() if self.group else None
+            NRk_sp = splitting_failure(
+                self.fastener, self.concrete, self.group, edge_dist,
+                has_reinforcement=False
+            )
+            NRd_sp = NRk_sp / self.gamma_Mc
+
+            results['splitting'] = {
+                'NRk': NRk_sp,
+                'NRk_kN': NRk_sp / 1000,
+                'NRd': NRd_sp,
+                'NRd_kN': NRd_sp / 1000,
+                'utilization': self.NEd / NRd_sp if NRd_sp > 0 else float('inf'),
+                'gamma_M': self.gamma_Mc,
+                'info': get_splitting_capacity_info(
+                    self.fastener, self.concrete, self.group, edge_dist,
+                    has_reinforcement=False
+                )
+            }
+
+        # Blow-out failure
+        if 'blowout' in modes:
+            NRk_cb = blowout_failure(
+                self.fastener, self.concrete, edge_dist, self.group
+            )
+            NRd_cb = NRk_cb / self.gamma_Mc
+
+            results['blowout'] = {
+                'NRk': NRk_cb,
+                'NRk_kN': NRk_cb / 1000,
+                'NRd': NRd_cb,
+                'NRd_kN': NRd_cb / 1000,
+                'utilization': self.NEd / NRd_cb if NRd_cb > 0 else float('inf'),
+                'gamma_M': self.gamma_Mc,
+                'info': get_blowout_capacity_info(
+                    self.fastener, self.concrete, edge_dist, self.group
+                )
+            }
+
         # Find governing mode
         if results:
             governing = min(results.keys(), key=lambda k: results[k]['NRd'])
@@ -204,14 +265,14 @@ class FastenerDesign:
             modes: List of modes to check. Options:
                    - 'steel': Steel shear failure
                    - 'edge': Concrete edge failure
-                   - 'pryout': Pry-out failure (not yet implemented)
+                   - 'pryout': Pry-out failure
                    If None, checks all implemented modes
 
         Returns:
             Dictionary with results for each mode
         """
         if modes is None:
-            modes = ['steel', 'edge']
+            modes = ['steel', 'edge', 'pryout']
 
         results = {}
 
@@ -256,6 +317,25 @@ class FastenerDesign:
                 'info': get_concrete_edge_capacity_info(
                     self.fastener, self.concrete, edge_dist, self.group,
                     self.eccentricity.get('eV', 0.0), self.load_angle
+                )
+            }
+
+        # Pry-out failure
+        if 'pryout' in modes:
+            VRk_cp = pryout_failure(
+                self.fastener, self.concrete, self.group, edge_dist
+            )
+            VRd_cp = VRk_cp / self.gamma_Mc
+
+            results['pryout'] = {
+                'VRk': VRk_cp,
+                'VRk_kN': VRk_cp / 1000,
+                'VRd': VRd_cp,
+                'VRd_kN': VRd_cp / 1000,
+                'utilization': self.VEd / VRd_cp if VRd_cp > 0 else float('inf'),
+                'gamma_M': self.gamma_Mc,
+                'info': get_pryout_capacity_info(
+                    self.fastener, self.concrete, self.group, edge_dist
                 )
             }
 
@@ -385,12 +465,12 @@ class FastenerDesign:
         return {
             'tension': {
                 'all': self.TENSION_MODES,
-                'implemented': ['steel', 'cone'],
-                'not_implemented': ['pullout', 'splitting', 'blowout']
+                'implemented': ['steel', 'cone', 'pullout', 'splitting', 'blowout'],
+                'not_implemented': []
             },
             'shear': {
                 'all': self.SHEAR_MODES,
-                'implemented': ['steel', 'edge'],
-                'not_implemented': ['pryout']
+                'implemented': ['steel', 'edge', 'pryout'],
+                'not_implemented': []
             }
         }
