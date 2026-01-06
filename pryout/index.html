@@ -128,7 +128,7 @@
 
                     <div class="input-group">
                         <label class="input-label">Concrete Strength, f<sub>ck</sub> (MPa)</label>
-                        <input type="number" id="fck" class="input-field" value="30" min="0" step="1">
+                        <input type="number" id="fck" class="input-field" value="35" min="0" step="1">
                     </div>
 
                     <div class="input-group">
@@ -148,13 +148,13 @@
 
                     <div class="input-group">
                         <label class="input-label">Stud Spacing, s (mm)</label>
-                        <div class="flex items-center gap-2 mb-1">
-                            <input type="checkbox" id="manual-spacing" onchange="toggleManualSpacing()">
-                            <label for="manual-spacing" class="text-sm text-gray-300">Manual override</label>
-                        </div>
                         <input type="number" id="spacing" class="input-field" value="120" min="0" step="1" oninput="checkSpacingWarnings()">
                         <div id="spacing-info" class="text-xs text-cyan-400 mt-1 hidden">
                             Auto-calculated from stud positions
+                        </div>
+                        <div class="flex items-center gap-2 mt-1">
+                            <input type="checkbox" id="manual-spacing" onchange="toggleManualSpacing()">
+                            <label for="manual-spacing" class="text-sm text-gray-300">Manual override</label>
                         </div>
                     </div>
 

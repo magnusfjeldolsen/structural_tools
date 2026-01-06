@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Add default load case
     state.loadCases.push({
         id: state.nextLoadCaseId++,
-        name: 'Dead Load',
+        name: 'LC1',
         Vx: -50,
         Vy: -50,
         Mz: 0,
@@ -926,7 +926,99 @@ function drawResultsView(ctx, canvas) {
     const lc = state.loadCases.find(l => l.id === state.activeLoadCaseId);
     document.getElementById('canvas-info').textContent = `Results for ${lc.name} - Orange arrows show stud forces`;
 
-    // TODO: Add force vector drawing (will implement in next phase)
+    // Draw force arrows for each stud
+    drawForceArrows(ctx, canvas, results);
+}
+
+function drawForceArrows(ctx, canvas, results) {
+    const edgeDist = parseFloat(document.getElementById('edge_dist').value) || 100;
+
+    // Calculate bounds and scale (same as drawModelView)
+    const xs = state.studs.map(s => s.x);
+    const ys = state.studs.map(s => s.y);
+    const minX = Math.min(...xs) - edgeDist;
+    const maxX = Math.max(...xs) + edgeDist;
+    const minY = Math.min(...ys) - edgeDist;
+    const maxY = Math.max(...ys) + edgeDist;
+
+    const modelWidth = maxX - minX;
+    const modelHeight = maxY - minY;
+
+    const padding = 60;
+    const availWidth = canvas.width - 2 * padding;
+    const availHeight = canvas.height - 2 * padding;
+
+    const scale = Math.min(availWidth / modelWidth, availHeight / modelHeight);
+
+    const toCanvasX = (x) => padding + (x - minX) * scale;
+    const toCanvasY = (y) => padding + (y - minY) * scale;
+
+    // Find max force for scaling arrows
+    const maxForce = Math.max(...results.results.map(r => r.Vres));
+    const arrowScaleFactor = 50; // pixels for maximum force
+
+    // Draw arrows for each stud
+    results.results.forEach(r => {
+        const stud = state.studs.find(s => s.id === r.studId);
+        if (!stud) return;
+
+        const cx = toCanvasX(stud.x);
+        const cy = toCanvasY(stud.y);
+
+        // Calculate arrow length and direction
+        const forceRatio = r.Vres / maxForce;
+        const arrowLength = forceRatio * arrowScaleFactor;
+
+        // Calculate angle from Vx and Vy
+        const angle = Math.atan2(r.Vy, r.Vx);
+
+        // Draw arrow
+        drawArrow(ctx, cx, cy, angle, arrowLength, '#ff8c00', r.Vres);
+    });
+}
+
+function drawArrow(ctx, x, y, angle, length, color, forceValue) {
+    ctx.save();
+
+    // Draw arrow line
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2;
+
+    const endX = x + length * Math.cos(angle);
+    const endY = y + length * Math.sin(angle);
+
+    // Arrow shaft
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+
+    // Arrowhead
+    const headLength = 10;
+    const headAngle = Math.PI / 6;
+
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(
+        endX - headLength * Math.cos(angle - headAngle),
+        endY - headLength * Math.sin(angle - headAngle)
+    );
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(
+        endX - headLength * Math.cos(angle + headAngle),
+        endY - headLength * Math.sin(angle + headAngle)
+    );
+    ctx.stroke();
+
+    // Label with force value
+    if (length > 15) {
+        ctx.font = '11px sans-serif';
+        ctx.fillStyle = color;
+        ctx.fillText(`${forceValue.toFixed(1)} kN`, endX + 5, endY - 5);
+    }
+
+    ctx.restore();
 }
 
 function drawEnvelopeView(ctx, canvas) {
@@ -938,9 +1030,10 @@ function drawEnvelopeView(ctx, canvas) {
     drawModelView(ctx, canvas);
 
     // Overlay envelope force vectors
-    document.getElementById('canvas-info').textContent = 'Envelope view - Maximum forces across all load cases';
+    document.getElementById('canvas-info').textContent = 'Envelope view - Red arrows show maximum forces';
 
-    // TODO: Add envelope force vector drawing (will implement in next phase)
+    // Draw envelope force vectors
+    drawForceArrows(ctx, canvas, state.envelope);
 }
 
 // ============================================================
