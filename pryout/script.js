@@ -896,7 +896,9 @@ function drawModelView(ctx, canvas) {
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.rect(toCanvasX(minX), toCanvasY(minY), modelWidth * scale, modelHeight * scale);
+    // In Cartesian coordinates: draw from bottom-left (minX, minY) to top-right (maxX, maxY)
+    // toCanvasY(maxY) is the top in canvas (smaller Y), toCanvasY(minY) is bottom (larger Y)
+    ctx.rect(toCanvasX(minX), toCanvasY(maxY), modelWidth * scale, modelHeight * scale);
     ctx.stroke();
     ctx.setLineDash([]);
 
