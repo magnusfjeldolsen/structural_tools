@@ -997,7 +997,8 @@ function drawForceArrows(ctx, canvas, resultsData, loadCase = null) {
             const arrowLength = forceRatio * maxArrowLength;
 
             // Calculate angle from Vx and Vy (negate Vy for canvas Y-inversion)
-            const angle = Math.atan2(-r.Vy_kN, r.Vx_kN);
+            // Flip direction by adding PI - arrows show reaction forces (opposite to applied forces)
+            const angle = Math.atan2(-r.Vy_kN, r.Vx_kN) + Math.PI;
 
             // Draw arrow
             drawArrow(ctx, cx, cy, angle, arrowLength, '#ff8c00', r.Vres_kN);
