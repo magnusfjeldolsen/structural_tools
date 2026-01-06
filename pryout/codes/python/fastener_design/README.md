@@ -12,10 +12,22 @@ Python implementation for calculating fastener capacities according to Eurocode 
 - ✅ Unit tests (33 tests, all passing)
 - ✅ Comprehensive docstrings with standard references
 
+### Phase 2: Basic Failure Modes ✅ COMPLETE
+
+**Implemented:**
+- ✅ Steel failure (tension and shear)
+- ✅ Concrete cone failure with all ψ factors
+- ✅ Concrete edge failure with all ψ factors
+- ✅ Psi factor calculations module
+- ✅ Geometry calculations module
+- ✅ Main FastenerDesign class with UI-friendly interface
+- ✅ Selectable failure modes
+- ✅ Comprehensive testing (47 tests total, all passing)
+- ✅ Example usage script
+
 **Next Phases:**
-- Phase 2: Basic Failure Modes (Steel, Concrete Cone, Concrete Edge)
 - Phase 3: Additional Failure Modes (Pull-out, Pry-out, Splitting, Blow-out)
-- Phase 4: Combined Loading & Integration
+- Phase 4: Combined Loading & Integration (N-V interaction)
 - Phase 5: Validation & Documentation
 
 ## Installation
@@ -62,30 +74,68 @@ print(f"Characteristic spacing: {scr_N}mm")  # 300mm
 print(f"Characteristic edge distance: {ccr_N}mm")  # 150mm
 ```
 
-### Example 2: Fastener Group
+### Example 2: Complete Design Check (NEW in Phase 2!)
 
 ```python
-from fastener_design import Fastener, FastenerGroup
+from design import FastenerDesign
 
-# Create a fastener
-fastener = Fastener(16, 100, 500)
+# Create fastener and concrete
+fastener = Fastener(16, 100, 500, area=157)
+concrete = ConcreteProperties(strength_class='C25/30', thickness=200, cracked=True)
 
-# Create a 2x2 fastener group
-group = FastenerGroup(
-    fasteners=[fastener] * 4,  # 4 fasteners
-    spacings={'sx': 200, 'sy': 200},  # 200mm spacing
-    edge_distances={'c1': 150, 'c2': 150},  # 150mm to edges
-    layout='2x2'
+# Create design with loading
+design = FastenerDesign(
+    fastener=fastener,
+    concrete=concrete,
+    loading={'tension': 50000, 'shear': 20000},  # 50 kN tension, 20 kN shear
+    edge_distances={'c1': 150, 'c2': 150}
 )
 
-print(f"Layout: {group.layout}")
-print(f"Number of fasteners: {group.n_fasteners}")
-print(f"Max spacing: {group.get_max_spacing()}mm")
-print(f"Min edge distance: {group.get_min_edge_distance()}mm")
+# Check all failure modes
+results = design.check_all_modes()
 
-# Calculate projected area for concrete cone
-Ac_N, Ac_N0 = group.calculate_projected_area_cone()
-print(f"Projected area ratio: {Ac_N/Ac_N0:.2f}")
+# Print summary
+print(results['summary'])
+
+# Output:
+# ==============================================================
+# FASTENER DESIGN CHECK SUMMARY
+# ==============================================================
+#
+# Fastener: Headed Fastener: M16×100mm, fuk=500MPa
+# Concrete: Concrete: C25/30, h=200mm, Cracked
+#
+# Loading (static):
+#   Tension: NEd = 50.0 kN
+#   Shear:   VEd = 20.0 kN
+#
+# TENSION FAILURE MODES:
+#   Steel       : NRd =   65.4 kN, Util =  0.76 [OK]
+#   Cone        : NRd =   31.0 kN, Util =  1.61 [FAIL]
+#   Governing: cone - FAIL
+#
+# SHEAR FAILURE MODES:
+#   Steel       : NRd =   39.3 kN, Util =  0.51 [OK]
+#   Edge        : NRd =   45.2 kN, Util =  0.44 [OK]
+#   Governing: steel - OK
+#
+# OVERALL STATUS: FAIL
+# ==============================================================
+```
+
+### Example 3: Selective Failure Mode Checking
+
+```python
+# Check only specific modes (useful for UI checkboxes!)
+results = design.check_all_modes(
+    tension_modes=['steel', 'cone'],  # Only check these
+    shear_modes=['steel']              # Only steel shear
+)
+
+# Get available modes (for UI display)
+available = design.get_available_modes()
+print(available['tension']['implemented'])  # ['steel', 'cone']
+print(available['shear']['implemented'])    # ['steel', 'edge']
 ```
 
 ### Example 3: Using Strength Classes
