@@ -859,9 +859,9 @@ function drawModelView(ctx, canvas) {
 
     const scale = Math.min(availWidth / modelWidth, availHeight / modelHeight);
 
-    // Transform functions
+    // Transform functions - Cartesian coordinates (Y increases upward)
     const toCanvasX = (x) => padding + (x - minX) * scale;
-    const toCanvasY = (y) => padding + (y - minY) * scale;
+    const toCanvasY = (y) => canvas.height - padding - (y - minY) * scale;
 
     // Draw edge rectangle (dashed)
     ctx.strokeStyle = '#000000';
@@ -953,8 +953,9 @@ function drawForceArrows(ctx, canvas, resultsData) {
 
     const scale = Math.min(availWidth / modelWidth, availHeight / modelHeight);
 
+    // Transform functions - Cartesian coordinates (Y increases upward)
     const toCanvasX = (x) => padding + (x - minX) * scale;
-    const toCanvasY = (y) => padding + (y - minY) * scale;
+    const toCanvasY = (y) => canvas.height - padding - (y - minY) * scale;
 
     // Calculate plot region size (max of width and height in pixels)
     const plotRegionSize = Math.max(availWidth, availHeight);
@@ -979,8 +980,8 @@ function drawForceArrows(ctx, canvas, resultsData) {
         const forceRatio = r.Vres_kN / maxForce;
         const arrowLength = forceRatio * maxArrowLength;
 
-        // Calculate angle from Vx and Vy
-        const angle = Math.atan2(r.Vy_kN, r.Vx_kN);
+        // Calculate angle from Vx and Vy (negate Vy for canvas Y-inversion)
+        const angle = Math.atan2(-r.Vy_kN, r.Vx_kN);
 
         // Draw arrow
         drawArrow(ctx, cx, cy, angle, arrowLength, '#ff8c00', r.Vres_kN);
