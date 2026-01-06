@@ -150,10 +150,10 @@
                         <label class="input-label">Stud Spacing, s (mm)</label>
                         <div class="flex items-center gap-2 mb-1">
                             <input type="checkbox" id="manual-spacing" onchange="toggleManualSpacing()">
-                            <label for="manual-spacing" class="text-sm text-gray-600">Manual override</label>
+                            <label for="manual-spacing" class="text-sm text-gray-300">Manual override</label>
                         </div>
                         <input type="number" id="spacing" class="input-field" value="120" min="0" step="1" oninput="checkSpacingWarnings()">
-                        <div id="spacing-info" class="text-xs text-blue-600 mt-1 hidden">
+                        <div id="spacing-info" class="text-xs text-cyan-400 mt-1 hidden">
                             Auto-calculated from stud positions
                         </div>
                     </div>
@@ -168,14 +168,14 @@
                         <input type="number" id="k_cp" class="input-field" value="1.0" min="0" step="0.1">
                     </div>
 
-                    <div id="spacing-warning" class="hidden mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded text-sm text-yellow-800">
+                    <div id="spacing-warning" class="hidden mt-2 p-2 bg-yellow-900 bg-opacity-30 border border-yellow-400 rounded text-sm text-yellow-300">
                         ⚠️ <span id="spacing-warning-text"></span>
                     </div>
                 </div>
 
                 <!-- Studs Table -->
-                <div class="section-card">
-                    <h2 class="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Studs</h2>
+                <div class="bg-gray-700 rounded-lg p-6">
+                    <h3 class="text-xl font-semibold text-cyan-400 mb-4">Studs</h3>
 
                     <div class="flex gap-2 mb-3">
                         <input type="number" id="new-stud-x" class="input-field flex-1" placeholder="X (mm)" step="0.1">
@@ -199,14 +199,14 @@
                         </table>
                     </div>
 
-                    <div class="mt-2 text-sm text-gray-600">
+                    <div class="mt-2 text-sm text-gray-300">
                         Total studs: <span id="stud-count" class="font-semibold">0</span>
                     </div>
                 </div>
 
                 <!-- Load Cases -->
-                <div class="section-card">
-                    <h2 class="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Load Cases</h2>
+                <div class="bg-gray-700 rounded-lg p-6">
+                    <h3 class="text-xl font-semibold text-cyan-400 mb-4">Load Cases</h3>
 
                     <div class="flex gap-2 mb-3">
                         <select id="active-load-case" class="input-field flex-1" onchange="switchLoadCase()">
@@ -223,11 +223,11 @@
                             <div class="space-y-2">
                                 <label class="flex items-center">
                                     <input type="radio" name="force-application" value="centroid" checked onchange="toggleForceApplication()" class="mr-2">
-                                    <span class="text-sm">At centroid</span>
+                                    <span class="text-sm text-gray-300">At centroid</span>
                                 </label>
                                 <label class="flex items-center">
                                     <input type="radio" name="force-application" value="point" onchange="toggleForceApplication()" class="mr-2">
-                                    <span class="text-sm">At point</span>
+                                    <span class="text-sm text-gray-300">At point</span>
                                 </label>
                             </div>
                         </div>
@@ -270,28 +270,31 @@
             <!-- RIGHT PANEL -->
             <div class="lg:col-span-3 space-y-4">
 
-                <!-- Tabs -->
-                <div class="section-card">
-                    <div class="flex border-b border-gray-200">
-                        <button id="tab-model" class="tab-btn active" onclick="switchTab('model')">Model</button>
-                        <button id="tab-results" class="tab-btn" onclick="switchTab('results')">Results</button>
-                        <button id="tab-envelope" class="tab-btn" onclick="switchTab('envelope')">Envelope</button>
+                <!-- View Selector -->
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <div class="flex items-center gap-3">
+                        <label class="text-sm font-medium text-gray-300">View:</label>
+                        <select id="view-selector" class="input-field flex-1" onchange="switchTab(this.value)">
+                            <option value="model">Model</option>
+                            <option value="results">Results</option>
+                            <option value="envelope">Envelope</option>
+                        </select>
                     </div>
                 </div>
 
                 <!-- Canvas -->
-                <div class="section-card">
+                <div class="bg-gray-700 rounded-lg p-6">
                     <canvas id="main-canvas" width="800" height="600" class="w-full"></canvas>
 
-                    <div class="mt-2 text-sm text-gray-600" id="canvas-info">
+                    <div class="mt-2 text-sm text-gray-300" id="canvas-info">
                         Model view - Add studs to see geometry
                     </div>
                 </div>
 
                 <!-- Results Table -->
-                <div class="section-card">
+                <div class="bg-gray-700 rounded-lg p-6">
                     <div class="flex justify-between items-center mb-3">
-                        <h2 class="text-lg font-bold text-gray-800">Results</h2>
+                        <h3 class="text-xl font-semibold text-green-400">Results</h3>
                         <select id="results-view" class="input-field w-48" onchange="updateResultsView()">
                             <option value="active">Active Load Case</option>
                             <option value="envelope">Envelope</option>
@@ -299,13 +302,13 @@
                     </div>
 
                     <div id="results-container" class="overflow-auto max-h-96">
-                        <div class="text-gray-500 text-center py-8">
+                        <div class="text-gray-400 text-center py-8">
                             No results yet. Click Calculate to analyze.
                         </div>
                     </div>
 
-                    <div id="max-util" class="hidden mt-3 p-3 bg-blue-50 border border-blue-300 rounded">
-                        <span class="font-semibold">Max Utilization:</span>
+                    <div id="max-util" class="hidden mt-3 p-3 bg-blue-900 bg-opacity-30 border border-blue-400 rounded">
+                        <span class="font-semibold text-gray-100">Max Utilization:</span>
                         <span id="max-util-text"></span>
                     </div>
                 </div>
@@ -317,8 +320,8 @@
 
     <!-- Load Case Dialog (Hidden) -->
     <div id="load-case-dialog" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-            <h3 class="text-xl font-bold mb-4" id="dialog-title">Add Load Case</h3>
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold text-white mb-4" id="dialog-title">Add Load Case</h3>
 
             <div class="space-y-3">
                 <div class="input-group">

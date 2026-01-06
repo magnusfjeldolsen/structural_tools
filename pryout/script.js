@@ -74,8 +74,8 @@ function addStud() {
     const x = parseFloat(xInput.value);
     const y = parseFloat(yInput.value);
 
-    if (isNaN(x) || isNaN(y) || x < 0 || y < 0) {
-        alert('Please enter valid positive coordinates for X and Y');
+    if (isNaN(x) || isNaN(y)) {
+        alert('Please enter valid coordinates for X and Y');
         return;
     }
 
@@ -113,7 +113,7 @@ function updateStudFromTable(id, field, value) {
     if (!stud) return;
 
     const numValue = parseFloat(value);
-    if (isNaN(numValue) || numValue < 0) {
+    if (isNaN(numValue)) {
         alert('Invalid coordinate value');
         updateStudTable(); // Reset to previous value
         return;
@@ -613,6 +613,9 @@ function runAnalysis() {
         updateResultsView();
         refreshCanvas();
 
+        // Auto-switch to Results view
+        switchTab('results');
+
         console.log('Analysis complete for', lc.name);
     } catch (error) {
         alert('Calculation error: ' + error.message);
@@ -947,14 +950,26 @@ function drawEnvelopeView(ctx, canvas) {
 function switchTab(tab) {
     state.ui.activeTab = tab;
 
-    // Update tab buttons
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    document.getElementById(`tab-${tab}`).classList.add('active');
+    // Update dropdown selector
+    const viewSelector = document.getElementById('view-selector');
+    if (viewSelector) {
+        viewSelector.value = tab;
+    }
 
     refreshCanvas();
 }
+
+// ============================================================
+// Keyboard Shortcuts
+// ============================================================
+
+document.addEventListener('keydown', (e) => {
+    // Ctrl+Space to run analysis
+    if (e.ctrlKey && e.code === 'Space') {
+        e.preventDefault();
+        runAnalysis();
+    }
+});
 
 // ============================================================
 // Input Change Listeners
