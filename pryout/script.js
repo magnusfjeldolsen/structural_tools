@@ -953,9 +953,12 @@ function drawForceArrows(ctx, canvas, results) {
     const toCanvasX = (x) => padding + (x - minX) * scale;
     const toCanvasY = (y) => padding + (y - minY) * scale;
 
-    // Find max force for scaling arrows
+    // Calculate plot region size (max of width and height in pixels)
+    const plotRegionSize = Math.max(availWidth, availHeight);
+
+    // Find max force for scaling arrows - largest force gets 1/20 of plot region
     const maxForce = Math.max(...results.results.map(r => r.Vres));
-    const arrowScaleFactor = 50; // pixels for maximum force
+    const maxArrowLength = plotRegionSize / 20;
 
     // Draw arrows for each stud
     results.results.forEach(r => {
@@ -965,9 +968,9 @@ function drawForceArrows(ctx, canvas, results) {
         const cx = toCanvasX(stud.x);
         const cy = toCanvasY(stud.y);
 
-        // Calculate arrow length and direction
+        // Calculate arrow length - proportional to force, max force gets maxArrowLength
         const forceRatio = r.Vres / maxForce;
-        const arrowLength = forceRatio * arrowScaleFactor;
+        const arrowLength = forceRatio * maxArrowLength;
 
         // Calculate angle from Vx and Vy
         const angle = Math.atan2(r.Vy, r.Vx);

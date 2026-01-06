@@ -116,11 +116,11 @@
         <h2 class="text-2xl font-semibold text-center text-white">EC2-1-4 Pry-Out Shear Stud Analyzer</h2>
         <p class="text-center text-gray-300 text-sm">Elastic force distribution with torsion for shear stud groups according to Eurocode 2-1-4</p>
 
-        <!-- Main Layout: Left Panel (40%) | Right Panel (60%) -->
-        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <!-- Main Layout: Left Panel (50%) | Right Panel (50%) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
             <!-- LEFT PANEL -->
-            <div class="lg:col-span-2 space-y-4">
+            <div class="space-y-4">
 
                 <!-- Material Properties -->
                 <div class="bg-gray-700 rounded-lg p-6">
@@ -148,13 +148,15 @@
 
                     <div class="input-group">
                         <label class="input-label">Stud Spacing, s (mm)</label>
-                        <input type="number" id="spacing" class="input-field" value="120" min="0" step="1" oninput="checkSpacingWarnings()">
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="spacing" class="input-field w-1/2" value="120" min="0" step="1" oninput="checkSpacingWarnings()">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="manual-spacing" onchange="toggleManualSpacing()">
+                                <label for="manual-spacing" class="text-sm text-gray-300 whitespace-nowrap">Manual override</label>
+                            </div>
+                        </div>
                         <div id="spacing-info" class="text-xs text-cyan-400 mt-1 hidden">
                             Auto-calculated from stud positions
-                        </div>
-                        <div class="flex items-center gap-2 mt-1">
-                            <input type="checkbox" id="manual-spacing" onchange="toggleManualSpacing()">
-                            <label for="manual-spacing" class="text-sm text-gray-300">Manual override</label>
                         </div>
                     </div>
 
@@ -184,13 +186,13 @@
                     </div>
 
                     <div class="overflow-auto max-h-80">
-                        <table id="studs-table">
+                        <table id="studs-table" class="table-fixed w-full">
                             <thead>
                                 <tr>
-                                    <th class="w-12">#</th>
-                                    <th>X (mm)</th>
-                                    <th>Y (mm)</th>
-                                    <th class="w-20">Action</th>
+                                    <th class="w-10">#</th>
+                                    <th class="w-24">X (mm)</th>
+                                    <th class="w-24">Y (mm)</th>
+                                    <th class="w-16">Action</th>
                                 </tr>
                             </thead>
                             <tbody id="studs-tbody">
@@ -268,7 +270,7 @@
             </div>
 
             <!-- RIGHT PANEL -->
-            <div class="lg:col-span-3 space-y-4">
+            <div class="space-y-4">
 
                 <!-- View Selector -->
                 <div class="bg-gray-700 rounded-lg p-4">
