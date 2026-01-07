@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EC2 Part 4 Fastener Design Calculator</title>
+
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-BFVZQQ2LYN');
+    </script>
+
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>EC2 Part 4 Fastener Design Calculator</h1>
+            <p class="subtitle">CEN/TS 1992-4-1:2009 & 1992-4-2:2009</p>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Panel: Input -->
+            <div class="input-panel">
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="fasteners">Fasteners</button>
+                    <button class="tab-btn" data-tab="concrete">Concrete</button>
+                    <button class="tab-btn" data-tab="geometry">Geometry</button>
+                    <button class="tab-btn" data-tab="loading">Loading</button>
+                    <button class="tab-btn" data-tab="analysis">Analysis</button>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="tab-content">
+                    <!-- Fasteners Tab -->
+                    <div id="tab-fasteners" class="tab-pane active">
+                        <h3>Fastener Configuration</h3>
+
+                        <div class="form-group">
+                            <label>Fastener Type:</label>
+                            <select id="fastener-type">
+                                <option value="headed">Headed (bolt/stud)</option>
+                                <option value="hooked">Hooked</option>
+                                <option value="expansion">Expansion</option>
+                            </select>
+                        </div>
+
+                        <div class="fastener-table-container">
+                            <div class="table-controls">
+                                <button id="add-fastener" class="btn-primary">+ Add Fastener</button>
+                                <button id="delete-selected" class="btn-danger">Delete Selected</button>
+                                <button id="delete-all" class="btn-danger">Delete All</button>
+                            </div>
+
+                            <table id="fastener-table" class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="select-all"></th>
+                                        <th>ID</th>
+                                        <th>x (mm)</th>
+                                        <th>y (mm)</th>
+                                        <th>d (mm)</th>
+                                        <th>h<sub>ef</sub> (mm)</th>
+                                        <th>f<sub>uk</sub> (MPa)</th>
+                                        <th>A<sub>s</sub> (mm²)</th>
+                                        <th>d<sub>head</sub> (mm)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="fastener-tbody">
+                                    <!-- Rows added dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="info-box">
+                            <p><strong>Note:</strong> Area (A<sub>s</sub>) is auto-calculated based on diameter. Override by entering value manually.</p>
+                        </div>
+                    </div>
+
+                    <!-- Concrete Tab -->
+                    <div id="tab-concrete" class="tab-pane">
+                        <h3>Concrete Properties</h3>
+
+                        <div class="form-group">
+                            <label>Input Method:</label>
+                            <select id="concrete-input-method">
+                                <option value="strength_class">Strength Class</option>
+                                <option value="manual">Manual f<sub>ck</sub></option>
+                            </select>
+                        </div>
+
+                        <div id="concrete-strength-class" class="form-group">
+                            <label>Concrete Strength Class:</label>
+                            <select id="strength-class">
+                                <option value="C20/25">C20/25</option>
+                                <option value="C25/30" selected>C25/30</option>
+                                <option value="C30/37">C30/37</option>
+                                <option value="C35/45">C35/45</option>
+                                <option value="C40/50">C40/50</option>
+                                <option value="C45/55">C45/55</option>
+                                <option value="C50/60">C50/60</option>
+                            </select>
+                        </div>
+
+                        <div id="concrete-manual-fck" class="form-group" style="display: none;">
+                            <label>f<sub>ck</sub> (MPa):</label>
+                            <input type="number" id="fck" value="25" min="12" max="90" step="1">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Member Thickness (mm):</label>
+                            <input type="number" id="thickness" value="200" min="50" max="2000" step="10">
+                        </div>
+
+                        <div class="form-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="cracked">
+                                Cracked Concrete
+                            </label>
+                        </div>
+
+                        <div class="form-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="reinforced">
+                                Reinforced in Edge Region
+                            </label>
+                        </div>
+
+                        <div class="info-box">
+                            <p><strong>k-factor:</strong> <span id="k-factor-display">-</span></p>
+                            <p class="small-text">Cracked: k=10.5, Non-cracked: k=12.5 (reinforced) or 17.5 (unreinforced)</p>
+                        </div>
+                    </div>
+
+                    <!-- Geometry Tab -->
+                    <div id="tab-geometry" class="tab-pane">
+                        <h3>Edge Distances & Spacings</h3>
+
+                        <h4>Edge Distances</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>c<sub>1</sub> (mm):</label>
+                                <input type="number" id="c1" value="150" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label>c<sub>2</sub> (mm):</label>
+                                <input type="number" id="c2" value="150" min="0" step="1">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>c<sub>3</sub> (mm):</label>
+                                <input type="number" id="c3" value="" min="0" step="1" placeholder="Optional">
+                            </div>
+                            <div class="form-group">
+                                <label>c<sub>4</sub> (mm):</label>
+                                <input type="number" id="c4" value="" min="0" step="1" placeholder="Optional">
+                            </div>
+                        </div>
+
+                        <h4>Spacings</h4>
+                        <div class="form-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="auto-spacings" checked>
+                                Auto-calculate from positions
+                            </label>
+                        </div>
+
+                        <div id="manual-spacings" style="display: none;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>s<sub>x</sub> (mm):</label>
+                                    <input type="number" id="sx" value="200" min="0" step="1">
+                                </div>
+                                <div class="form-group">
+                                    <label>s<sub>y</sub> (mm):</label>
+                                    <input type="number" id="sy" value="200" min="0" step="1">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="info-box">
+                            <p><strong>Minimum Requirements (EC2):</strong></p>
+                            <p>• Edge distance: c ≥ max(c<sub>min</sub>, 1.2h<sub>ef</sub>)</p>
+                            <p>• Spacing: s ≥ max(s<sub>min</sub>, 3d)</p>
+                        </div>
+                    </div>
+
+                    <!-- Loading Tab -->
+                    <div id="tab-loading" class="tab-pane">
+                        <h3>Loading Conditions</h3>
+
+                        <div class="load-case-controls">
+                            <label>Active Load Case:</label>
+                            <select id="active-load-case">
+                                <option value="LC1">LC1: Dead Load</option>
+                            </select>
+                            <button id="add-load-case" class="btn-secondary">+ Add Load Case</button>
+                        </div>
+
+                        <div class="load-case-table-container">
+                            <table id="load-case-table" class="data-table wide-table">
+                                <thead>
+                                    <tr>
+                                        <th>Load Case</th>
+                                        <th>V<sub>x</sub> (kN)</th>
+                                        <th>V<sub>y</sub> (kN)</th>
+                                        <th>M<sub>z</sub> (kNm)</th>
+                                        <th>N (kN)</th>
+                                        <th>Application</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="load-case-tbody">
+                                    <!-- Rows added dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div id="load-application-controls" class="form-group">
+                            <h4>Load Application Point</h4>
+                            <div class="form-group">
+                                <label>Application Type:</label>
+                                <select id="application-type">
+                                    <option value="centroid" selected>At Centroid</option>
+                                    <option value="point">At Point</option>
+                                </select>
+                            </div>
+
+                            <div id="application-point-inputs" style="display: none;">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>x<sub>app</sub> (mm):</label>
+                                        <input type="number" id="app-x" value="0" step="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>y<sub>app</sub> (mm):</label>
+                                        <input type="number" id="app-y" value="0" step="1">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="info-box">
+                            <p><strong>Sign Convention:</strong></p>
+                            <p>• Positive V<sub>x</sub>: →</p>
+                            <p>• Positive V<sub>y</sub>: ↑</p>
+                            <p>• Positive M<sub>z</sub>: ⟲ (counter-clockwise)</p>
+                            <p>• Positive N: ↑ (tension)</p>
+                        </div>
+                    </div>
+
+                    <!-- Analysis Tab -->
+                    <div id="tab-analysis" class="tab-pane">
+                        <h3>Analysis Options</h3>
+
+                        <div class="form-group">
+                            <label>Loading Type:</label>
+                            <select id="loading-type">
+                                <option value="static" selected>Static</option>
+                                <option value="fatigue">Fatigue</option>
+                                <option value="seismic">Seismic</option>
+                            </select>
+                        </div>
+
+                        <div class="material-factors-display">
+                            <h4>Material Factors</h4>
+                            <p>γ<sub>Ms</sub> (Steel): <strong id="gamma-ms-display">1.25</strong></p>
+                            <p>γ<sub>Mc</sub> (Concrete): <strong id="gamma-mc-display">1.5</strong></p>
+                        </div>
+
+                        <h4>Failure Modes to Check</h4>
+                        <div class="failure-modes-checkboxes">
+                            <h5>Tension:</h5>
+                            <label><input type="checkbox" class="tension-mode" value="steel" checked> Steel Failure</label>
+                            <label><input type="checkbox" class="tension-mode" value="cone" checked> Concrete Cone</label>
+                            <label><input type="checkbox" class="tension-mode" value="pullout" checked> Pull-out</label>
+                            <label><input type="checkbox" class="tension-mode" value="splitting" checked> Splitting</label>
+                            <label><input type="checkbox" class="tension-mode" value="blowout" checked> Blow-out</label>
+
+                            <h5>Shear:</h5>
+                            <label><input type="checkbox" class="shear-mode" value="steel" checked> Steel Failure</label>
+                            <label><input type="checkbox" class="shear-mode" value="edge" checked> Concrete Edge</label>
+                            <label><input type="checkbox" class="shear-mode" value="pryout" checked> Pry-out</label>
+                        </div>
+
+                        <h4>N-V Interaction</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>α<sub>N</sub> (tension exponent):</label>
+                                <input type="number" id="alpha-n" value="1.5" min="1.0" max="2.0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label>β<sub>V</sub> (shear exponent):</label>
+                                <input type="number" id="beta-v" value="1.5" min="1.0" max="2.0" step="0.1">
+                            </div>
+                        </div>
+
+                        <div class="info-box">
+                            <p><strong>Interaction Formula:</strong></p>
+                            <p>(N<sub>Ed</sub>/N<sub>Rd</sub>)<sup>α<sub>N</sub></sup> + (V<sub>Ed</sub>/V<sub>Rd</sub>)<sup>β<sub>V</sub></sup> ≤ 1.0</p>
+                        </div>
+
+                        <button id="run-analysis" class="btn-primary btn-large">Run Analysis</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Visualization & Results -->
+            <div class="output-panel">
+                <!-- Visualization -->
+                <div class="visualization-section">
+                    <h3>Geometry & Load Distribution</h3>
+
+                    <div class="plot-controls">
+                        <label>Force Scale Factor:</label>
+                        <input type="number" id="force-scale" value="0.05" min="0.01" max="1.0" step="0.01">
+                        <button id="reset-view" class="btn-secondary">Reset View</button>
+                    </div>
+
+                    <canvas id="plot-canvas" width="600" height="600"></canvas>
+
+                    <div class="legend">
+                        <div class="legend-item"><span class="legend-color" style="background: #2196F3;"></span> Fasteners</div>
+                        <div class="legend-item"><span class="legend-color" style="background: #FF5722;"></span> Applied Forces</div>
+                        <div class="legend-item"><span class="legend-color" style="background: #4CAF50;"></span> Distributed Forces</div>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div class="results-section">
+                    <h3>Analysis Results</h3>
+                    <div id="results-container">
+                        <p class="no-results">Run analysis to see results</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>EC2 Part 4 Calculator | CEN/TS 1992-4-1:2009 & 1992-4-2:2009 | Python via Pyodide</p>
+        </footer>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+        <p>Loading Python environment...</p>
+    </div>
+
+    <!-- Pyodide -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+
+    <!-- Main application -->
+    <script src="script.js"></script>
+</body>
+</html>

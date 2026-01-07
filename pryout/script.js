@@ -1,0 +1,868 @@
+/**
+ * EC2 Part 4 Fastener Design Calculator
+ * Main JavaScript Application
+ *
+ * Author: Magnus Fjeld Olsen
+ * Date: 2026-01-07
+ */
+
+// ============================================================================
+// GLOBAL STATE
+// ============================================================================
+
+const state = {
+    pyodide: null,
+    pyodideReady: false,
+    fasteners: [],
+    loadCases: [
+        { name: 'LC1', description: 'Dead Load', Vx: 0, Vy: 0, Mz: 0, N: 0,
+          application_type: 'centroid', application_point: { x: 0, y: 0 } }
+    ],
+    activeLoadCase: 'LC1',
+    fastenerIdCounter: 1,
+    loadCaseIdCounter: 2,
+    lastResults: null
+};
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('Initializing EC2 Part 4 Calculator...');
+
+    // Initialize UI
+    initializeTabs();
+    initializeEventListeners();
+    addDefaultFastener();
+    updateLoadCaseTable();
+
+    // Initialize Pyodide
+    await initializePyodide();
+
+    console.log('Initialization complete');
+});
+
+// ============================================================================
+// PYODIDE INITIALIZATION
+// ============================================================================
+
+async function initializePyodide() {
+    const overlay = document.getElementById('loading-overlay');
+    overlay.style.display = 'flex';
+
+    try {
+        console.log('Loading Pyodide...');
+        state.pyodide = await loadPyodide();
+
+        console.log('Loading Python packages...');
+        await state.pyodide.loadPackage('micropip');
+
+        console.log('Installing fastener_design package...');
+        // Note: In production, this would load from the actual package
+        // For now, we'll use pyodide.runPythonAsync to define the module
+
+        // Mount the file system with our Python code
+        await mountPythonCode();
+
+        state.pyodideReady = true;
+        console.log('Pyodide ready!');
+
+        overlay.style.display = 'none';
+    } catch (error) {
+        console.error('Failed to initialize Pyodide:', error);
+        alert('Failed to load Python environment. Please refresh the page.');
+        overlay.style.display = 'none';
+    }
+}
+
+async function mountPythonCode() {
+    // In a real deployment, we would fetch the Python files from the server
+    // For now, we'll fetch from the codes/python/fastener_design directory
+
+    const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/')) +
+                    '/codes/python/fastener_design';
+
+    try {
+        // Fetch web_interface.py
+        const response = await fetch(`${baseUrl}/web_interface.py`);
+        const webInterfaceCode = await response.text();
+
+        // Create a simple wrapper to make it available
+        await state.pyodide.runPythonAsync(`
+import sys
+import io
+
+# Store the module code
+web_interface_code = """${webInterfaceCode.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"""
+
+# Execute the code to make run_analysis available
+exec(web_interface_code, globals())
+
+print("web_interface.py loaded successfully")
+        `);
+
+        console.log('Python modules loaded');
+    } catch (error) {
+        console.error('Error loading Python code:', error);
+        throw error;
+    }
+}
+
+// ============================================================================
+// TAB MANAGEMENT
+// ============================================================================
+
+function initializeTabs() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.dataset.tab;
+            switchTab(tabId);
+        });
+    });
+}
+
+function switchTab(tabId) {
+    // Update buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabId);
+    });
+
+    // Update panes
+    document.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.toggle('active', pane.id === `tab-${tabId}`);
+    });
+}
+
+// ============================================================================
+// EVENT LISTENERS
+// ============================================================================
+
+function initializeEventListeners() {
+    // Fasteners tab
+    document.getElementById('add-fastener').addEventListener('click', addFastener);
+    document.getElementById('delete-selected').addEventListener('click', deleteSelectedFasteners);
+    document.getElementById('delete-all').addEventListener('click', deleteAllFasteners);
+    document.getElementById('select-all').addEventListener('change', toggleSelectAll);
+
+    // Concrete tab
+    document.getElementById('concrete-input-method').addEventListener('change', updateConcreteInputMethod);
+    document.getElementById('strength-class').addEventListener('change', updateKFactor);
+    document.getElementById('cracked').addEventListener('change', updateKFactor);
+    document.getElementById('reinforced').addEventListener('change', updateKFactor);
+
+    // Geometry tab
+    document.getElementById('auto-spacings').addEventListener('change', toggleAutoSpacings);
+
+    // Loading tab
+    document.getElementById('add-load-case').addEventListener('click', addLoadCase);
+    document.getElementById('active-load-case').addEventListener('change', changeActiveLoadCase);
+    document.getElementById('application-type').addEventListener('change', updateApplicationTypeUI);
+
+    // Analysis tab
+    document.getElementById('loading-type').addEventListener('change', updateMaterialFactors);
+    document.getElementById('run-analysis').addEventListener('click', runAnalysis);
+
+    // Plot controls
+    document.getElementById('force-scale').addEventListener('input', updatePlot);
+    document.getElementById('reset-view').addEventListener('click', resetView);
+}
+
+// ============================================================================
+// FASTENER MANAGEMENT
+// ============================================================================
+
+function addDefaultFastener() {
+    state.fasteners.push({
+        id: state.fastenerIdCounter++,
+        x: 0,
+        y: 0,
+        diameter: 16,
+        embedment_depth: 100,
+        steel_grade: 500,
+        area: null,  // Auto-calculated
+        area_override: null,
+        d_head: 28.8
+    });
+    updateFastenerTable();
+    updatePlot();
+}
+
+function addFastener() {
+    state.fasteners.push({
+        id: state.fastenerIdCounter++,
+        x: 0,
+        y: 0,
+        diameter: 16,
+        embedment_depth: 100,
+        steel_grade: 500,
+        area: null,
+        area_override: null,
+        d_head: 28.8
+    });
+    updateFastenerTable();
+    updatePlot();
+}
+
+function deleteSelectedFasteners() {
+    const checkboxes = document.querySelectorAll('#fastener-tbody input[type="checkbox"]:checked');
+    const idsToDelete = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
+
+    state.fasteners = state.fasteners.filter(f => !idsToDelete.includes(f.id));
+
+    updateFastenerTable();
+    updatePlot();
+}
+
+function deleteAllFasteners() {
+    if (confirm('Delete all fasteners?')) {
+        state.fasteners = [];
+        updateFastenerTable();
+        updatePlot();
+    }
+}
+
+function toggleSelectAll(e) {
+    const checkboxes = document.querySelectorAll('#fastener-tbody input[type="checkbox"]');
+    checkboxes.forEach(cb => cb.checked = e.target.checked);
+}
+
+function updateFastenerTable() {
+    const tbody = document.getElementById('fastener-tbody');
+    tbody.innerHTML = '';
+
+    state.fasteners.forEach((f, idx) => {
+        const row = tbody.insertRow();
+
+        // Checkbox
+        const cellCheck = row.insertCell();
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.id = f.id;
+        cellCheck.appendChild(checkbox);
+
+        // ID
+        row.insertCell().textContent = f.id;
+
+        // Position
+        addEditableCell(row, f, 'x', 'number', () => updatePlot());
+        addEditableCell(row, f, 'y', 'number', () => updatePlot());
+
+        // Diameter
+        addEditableCell(row, f, 'diameter', 'number', () => {
+            f.area = null;  // Reset auto-calc
+            updatePlot();
+        });
+
+        // Embedment
+        addEditableCell(row, f, 'embedment_depth', 'number');
+
+        // Steel grade
+        addEditableCell(row, f, 'steel_grade', 'number');
+
+        // Area (with auto-calc indicator)
+        const cellArea = row.insertCell();
+        const inputArea = document.createElement('input');
+        inputArea.type = 'number';
+        inputArea.value = f.area_override || calculateFastenerArea(f.diameter);
+        inputArea.addEventListener('input', (e) => {
+            f.area_override = e.target.value ? parseFloat(e.target.value) : null;
+        });
+        cellArea.appendChild(inputArea);
+
+        // Head diameter
+        addEditableCell(row, f, 'd_head', 'number');
+    });
+}
+
+function addEditableCell(row, obj, prop, type, onChange) {
+    const cell = row.insertCell();
+    const input = document.createElement('input');
+    input.type = type;
+    input.value = obj[prop];
+    input.addEventListener('input', (e) => {
+        obj[prop] = type === 'number' ? parseFloat(e.target.value) : e.target.value;
+        if (onChange) onChange();
+    });
+    cell.appendChild(input);
+}
+
+function calculateFastenerArea(diameter) {
+    // Approximation for threaded area: 0.75 * gross area
+    const grossArea = Math.PI * (diameter / 2) ** 2;
+    return Math.round(grossArea * 0.75);
+}
+
+// ============================================================================
+// CONCRETE PROPERTIES
+// ============================================================================
+
+function updateConcreteInputMethod() {
+    const method = document.getElementById('concrete-input-method').value;
+    const strengthClassDiv = document.getElementById('concrete-strength-class');
+    const manualFckDiv = document.getElementById('concrete-manual-fck');
+
+    if (method === 'strength_class') {
+        strengthClassDiv.style.display = 'block';
+        manualFckDiv.style.display = 'none';
+    } else {
+        strengthClassDiv.style.display = 'none';
+        manualFckDiv.style.display = 'block';
+    }
+
+    updateKFactor();
+}
+
+function updateKFactor() {
+    const cracked = document.getElementById('cracked').checked;
+    const reinforced = document.getElementById('reinforced').checked;
+
+    let k;
+    if (cracked) {
+        k = 10.5;
+    } else {
+        k = reinforced ? 12.5 : 17.5;
+    }
+
+    document.getElementById('k-factor-display').textContent = k.toFixed(1);
+}
+
+// ============================================================================
+// GEOMETRY
+// ============================================================================
+
+function toggleAutoSpacings() {
+    const auto = document.getElementById('auto-spacings').checked;
+    const manualDiv = document.getElementById('manual-spacings');
+    manualDiv.style.display = auto ? 'none' : 'block';
+}
+
+// ============================================================================
+// LOAD CASES
+// ============================================================================
+
+function addLoadCase() {
+    const name = `LC${state.loadCaseIdCounter++}`;
+    state.loadCases.push({
+        name,
+        description: 'New Load Case',
+        Vx: 0,
+        Vy: 0,
+        Mz: 0,
+        N: 0,
+        application_type: 'centroid',
+        application_point: { x: 0, y: 0 }
+    });
+
+    updateLoadCaseTable();
+    updateActiveLoadCaseDropdown();
+}
+
+function updateLoadCaseTable() {
+    const tbody = document.getElementById('load-case-tbody');
+    tbody.innerHTML = '';
+
+    state.loadCases.forEach((lc, idx) => {
+        const row = tbody.insertRow();
+
+        // Name (editable)
+        const cellName = row.insertCell();
+        const inputName = document.createElement('input');
+        inputName.type = 'text';
+        inputName.value = lc.description;
+        inputName.addEventListener('input', (e) => {
+            lc.description = e.target.value;
+            updateActiveLoadCaseDropdown();
+        });
+        cellName.appendChild(inputName);
+
+        // Vx
+        addLoadEditableCell(row, lc, 'Vx');
+
+        // Vy
+        addLoadEditableCell(row, lc, 'Vy');
+
+        // Mz
+        addLoadEditableCell(row, lc, 'Mz');
+
+        // N
+        addLoadEditableCell(row, lc, 'N');
+
+        // Application
+        const cellApp = row.insertCell();
+        const select = document.createElement('select');
+        select.innerHTML = `
+            <option value="centroid">Centroid</option>
+            <option value="point">Point</option>
+        `;
+        select.value = lc.application_type;
+        select.addEventListener('change', (e) => {
+            lc.application_type = e.target.value;
+        });
+        cellApp.appendChild(select);
+
+        // Actions
+        const cellActions = row.insertCell();
+        const btnDelete = document.createElement('button');
+        btnDelete.textContent = 'Delete';
+        btnDelete.className = 'btn-danger';
+        btnDelete.style.padding = '0.25rem 0.5rem';
+        btnDelete.style.fontSize = '0.8rem';
+        btnDelete.addEventListener('click', () => deleteLoadCase(idx));
+        cellActions.appendChild(btnDelete);
+    });
+}
+
+function addLoadEditableCell(row, obj, prop) {
+    const cell = row.insertCell();
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.value = obj[prop];
+    input.step = '0.1';
+    input.addEventListener('input', (e) => {
+        obj[prop] = parseFloat(e.target.value) || 0;
+        if (obj.name === state.activeLoadCase) {
+            updatePlot();
+        }
+    });
+    cell.appendChild(input);
+}
+
+function deleteLoadCase(idx) {
+    if (state.loadCases.length === 1) {
+        alert('Cannot delete the last load case');
+        return;
+    }
+
+    const deletedName = state.loadCases[idx].name;
+    state.loadCases.splice(idx, 1);
+
+    // Update active if deleted
+    if (state.activeLoadCase === deletedName) {
+        state.activeLoadCase = state.loadCases[0].name;
+    }
+
+    updateLoadCaseTable();
+    updateActiveLoadCaseDropdown();
+    updatePlot();
+}
+
+function updateActiveLoadCaseDropdown() {
+    const select = document.getElementById('active-load-case');
+    select.innerHTML = '';
+
+    state.loadCases.forEach(lc => {
+        const option = document.createElement('option');
+        option.value = lc.name;
+        option.textContent = `${lc.name}: ${lc.description}`;
+        select.appendChild(option);
+    });
+
+    select.value = state.activeLoadCase;
+}
+
+function changeActiveLoadCase() {
+    state.activeLoadCase = document.getElementById('active-load-case').value;
+    updatePlot();
+}
+
+function updateApplicationTypeUI() {
+    const type = document.getElementById('application-type').value;
+    const pointInputs = document.getElementById('application-point-inputs');
+    pointInputs.style.display = type === 'point' ? 'block' : 'none';
+}
+
+// ============================================================================
+// ANALYSIS OPTIONS
+// ============================================================================
+
+function updateMaterialFactors() {
+    const loadingType = document.getElementById('loading-type').value;
+
+    let gammaMs, gammaMc;
+    switch (loadingType) {
+        case 'static':
+            gammaMs = 1.25;
+            gammaMc = 1.5;
+            break;
+        case 'fatigue':
+            gammaMs = 1.0;
+            gammaMc = 1.5;
+            break;
+        case 'seismic':
+            gammaMs = 1.0;
+            gammaMc = 1.2;
+            break;
+    }
+
+    document.getElementById('gamma-ms-display').textContent = gammaMs.toFixed(2);
+    document.getElementById('gamma-mc-display').textContent = gammaMc.toFixed(2);
+}
+
+// ============================================================================
+// ANALYSIS EXECUTION
+// ============================================================================
+
+async function runAnalysis() {
+    if (!state.pyodideReady) {
+        alert('Python environment not ready. Please wait...');
+        return;
+    }
+
+    if (state.fasteners.length === 0) {
+        alert('Please add at least one fastener');
+        return;
+    }
+
+    // Build input JSON
+    const inputData = buildInputJSON();
+
+    console.log('Running analysis with input:', inputData);
+
+    try {
+        // Show loading
+        document.getElementById('results-container').innerHTML =
+            '<p style="text-align: center; color: #757575;">Analyzing...</p>';
+
+        // Call Python
+        const inputJson = JSON.stringify(inputData);
+        const resultJson = await state.pyodide.runPythonAsync(`
+import json
+result = run_analysis('''${inputJson}''')
+result
+        `);
+
+        const results = JSON.parse(resultJson);
+        console.log('Analysis results:', results);
+
+        state.lastResults = results;
+
+        // Display results
+        displayResults(results);
+
+    } catch (error) {
+        console.error('Analysis error:', error);
+        document.getElementById('results-container').innerHTML =
+            `<div class="result-status fail">Error: ${error.message}</div>`;
+    }
+}
+
+function buildInputJSON() {
+    // Get concrete properties
+    const concreteMethod = document.getElementById('concrete-input-method').value;
+    const concrete = {
+        thickness: parseFloat(document.getElementById('thickness').value),
+        cracked: document.getElementById('cracked').checked,
+        reinforced: document.getElementById('reinforced').checked
+    };
+
+    if (concreteMethod === 'strength_class') {
+        concrete.strength_class = document.getElementById('strength-class').value;
+        concrete.fck = null;
+    } else {
+        concrete.strength_class = null;
+        concrete.fck = parseFloat(document.getElementById('fck').value);
+    }
+
+    // Get edge distances
+    const edge_distances = {
+        c1: parseFloat(document.getElementById('c1').value) || 0,
+        c2: parseFloat(document.getElementById('c2').value) || 0
+    };
+    const c3 = document.getElementById('c3').value;
+    const c4 = document.getElementById('c4').value;
+    if (c3) edge_distances.c3 = parseFloat(c3);
+    if (c4) edge_distances.c4 = parseFloat(c4);
+
+    // Get spacings
+    const autoSpacings = document.getElementById('auto-spacings').checked;
+    const spacings = {
+        auto_calculate: autoSpacings
+    };
+    if (!autoSpacings) {
+        spacings.sx = parseFloat(document.getElementById('sx').value) || 0;
+        spacings.sy = parseFloat(document.getElementById('sy').value) || 0;
+    }
+
+    // Get failure modes
+    const tensionModes = Array.from(document.querySelectorAll('.tension-mode:checked'))
+        .map(cb => cb.value);
+    const shearModes = Array.from(document.querySelectorAll('.shear-mode:checked'))
+        .map(cb => cb.value);
+
+    // Get interaction exponents
+    const alphaN = parseFloat(document.getElementById('alpha-n').value);
+    const betaV = parseFloat(document.getElementById('beta-v').value);
+
+    // Get fastener type
+    const fastenerType = document.getElementById('fastener-type').value;
+
+    // Build fasteners array with type
+    const fasteners = state.fasteners.map(f => ({
+        ...f,
+        fastener_type: fastenerType
+    }));
+
+    return {
+        fasteners,
+        concrete,
+        loading: {
+            load_cases: state.loadCases
+        },
+        edge_distances,
+        spacings,
+        analysis_options: {
+            loading_type: document.getElementById('loading-type').value,
+            failure_modes: {
+                tension: tensionModes,
+                shear: shearModes
+            },
+            interaction_exponents: {
+                alpha_N: alphaN,
+                beta_V: betaV
+            }
+        }
+    };
+}
+
+// ============================================================================
+// RESULTS DISPLAY
+// ============================================================================
+
+function displayResults(results) {
+    const container = document.getElementById('results-container');
+
+    if (results.status === 'error') {
+        container.innerHTML = `
+            <div class="result-status fail">
+                ERROR: ${results.error_message}
+            </div>
+        `;
+        return;
+    }
+
+    const status = results.overall_status;
+    const statusClass = status === 'PASS' ? 'pass' : 'fail';
+
+    let html = `
+        <div class="result-status ${statusClass}">
+            Overall Status: ${status}
+        </div>
+    `;
+
+    // Input summary
+    html += `
+        <div class="result-section">
+            <h4>Input Summary</h4>
+            <table class="result-table">
+                <tr><td>Number of Fasteners:</td><td>${results.input_summary.n_fasteners}</td></tr>
+                <tr><td>Centroid:</td><td>(${results.input_summary.centroid.x}, ${results.input_summary.centroid.y}) mm</td></tr>
+                <tr><td>k-factor:</td><td>${results.input_summary.concrete_k_factor}</td></tr>
+                <tr><td>γ<sub>Ms</sub>:</td><td>${results.input_summary.gamma_Ms}</td></tr>
+                <tr><td>γ<sub>Mc</sub>:</td><td>${results.input_summary.gamma_Mc}</td></tr>
+            </table>
+        </div>
+    `;
+
+    // Tension failure modes
+    if (results.failure_modes.tension) {
+        html += `<div class="result-section"><h4>Tension Failure Modes</h4>`;
+
+        for (const [mode, data] of Object.entries(results.failure_modes.tension)) {
+            const modeStatus = data.status === 'PASS' ? 'pass-text' : 'fail-text';
+            html += `
+                <p><strong>${mode.toUpperCase()}:</strong>
+                   N<sub>Rd</sub> = ${data.NRd_kN.toFixed(2)} kN |
+                   Utilization = ${data.utilization.toFixed(3)} |
+                   <span class="${modeStatus}">${data.status}</span>
+                </p>
+            `;
+        }
+
+        html += `</div>`;
+    }
+
+    // Shear failure modes
+    if (results.failure_modes.shear) {
+        html += `<div class="result-section"><h4>Shear Failure Modes</h4>`;
+
+        for (const [mode, data] of Object.entries(results.failure_modes.shear)) {
+            const modeStatus = data.status === 'PASS' ? 'pass-text' : 'fail-text';
+            html += `
+                <p><strong>${mode.toUpperCase()}:</strong>
+                   V<sub>Rd</sub> = ${data.VRd_kN.toFixed(2)} kN |
+                   Utilization = ${data.utilization.toFixed(3)} |
+                   <span class="${modeStatus}">${data.status}</span>
+                </p>
+            `;
+        }
+
+        html += `</div>`;
+    }
+
+    // Interaction
+    if (results.interaction) {
+        const int = results.interaction;
+        const intStatus = int.status === 'PASS' ? 'pass-text' : 'fail-text';
+
+        html += `
+            <div class="result-section">
+                <h4>N-V Interaction Check</h4>
+                <table class="result-table">
+                    <tr><td>Governing Tension:</td><td>${int.governing_tension_mode}</td></tr>
+                    <tr><td>N<sub>Rd</sub>:</td><td>${int.NRd_kN.toFixed(2)} kN</td></tr>
+                    <tr><td>Governing Shear:</td><td>${int.governing_shear_mode}</td></tr>
+                    <tr><td>V<sub>Rd</sub>:</td><td>${int.VRd_kN.toFixed(2)} kN</td></tr>
+                    <tr><td>Interaction Ratio:</td><td>${int.interaction_ratio.toFixed(3)}</td></tr>
+                    <tr><td>Status:</td><td><span class="${intStatus}">${int.status}</span></td></tr>
+                </table>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+// ============================================================================
+// VISUALIZATION
+// ============================================================================
+
+function updatePlot() {
+    const canvas = document.getElementById('plot-canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Clear
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (state.fasteners.length === 0) {
+        ctx.fillStyle = '#757575';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No fasteners to display', canvas.width / 2, canvas.height / 2);
+        return;
+    }
+
+    // Calculate bounds
+    const xs = state.fasteners.map(f => f.x);
+    const ys = state.fasteners.map(f => f.y);
+
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    const rangeX = maxX - minX || 200;
+    const rangeY = maxY - minY || 200;
+
+    const margin = 100;
+    const plotWidth = canvas.width - 2 * margin;
+    const plotHeight = canvas.height - 2 * margin;
+
+    const scale = Math.min(plotWidth / rangeX, plotHeight / rangeY) * 0.8;
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    // Transform functions
+    const toCanvasX = (x) => centerX + (x - (minX + maxX) / 2) * scale;
+    const toCanvasY = (y) => centerY - (y - (minY + maxY) / 2) * scale;
+
+    // Draw axes
+    ctx.strokeStyle = '#E0E0E0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(canvas.width, centerY);
+    ctx.moveTo(centerX, 0);
+    ctx.lineTo(centerX, canvas.height);
+    ctx.stroke();
+
+    // Draw fasteners
+    state.fasteners.forEach(f => {
+        const cx = toCanvasX(f.x);
+        const cy = toCanvasY(f.y);
+
+        // Circle
+        ctx.fillStyle = '#2196F3';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 8, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // ID label
+        ctx.fillStyle = '#212121';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(f.id.toString(), cx, cy - 15);
+    });
+
+    // Draw centroid
+    const Xc = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const Yc = ys.reduce((a, b) => a + b, 0) / ys.length;
+
+    ctx.fillStyle = '#FF9800';
+    ctx.beginPath();
+    ctx.arc(toCanvasX(Xc), toCanvasY(Yc), 5, 0, 2 * Math.PI);
+    ctx.fill();
+
+    ctx.fillStyle = '#FF9800';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('C', toCanvasX(Xc), toCanvasY(Yc) - 10);
+
+    // Draw forces if results available
+    if (state.lastResults && state.lastResults.load_distribution) {
+        const forceScale = parseFloat(document.getElementById('force-scale').value);
+
+        state.lastResults.load_distribution.forEach(dist => {
+            const fastener = state.fasteners.find(f => f.id === dist.fastener_id);
+            if (!fastener) return;
+
+            const cx = toCanvasX(fastener.x);
+            const cy = toCanvasY(fastener.y);
+
+            const Vx = dist.forces.Vx_total;
+            const Vy = dist.forces.Vy_total;
+
+            // Draw arrow
+            drawArrow(ctx, cx, cy, cx + Vx * forceScale * scale, cy - Vy * forceScale * scale, '#4CAF50');
+        });
+    }
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color) {
+    const headlen = 10;
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2;
+
+    // Line
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    // Arrow head
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(x2 - headlen * Math.cos(angle + Math.PI / 6), y2 - headlen * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
+}
+
+function resetView() {
+    document.getElementById('force-scale').value = 0.05;
+    updatePlot();
+}
+
+// ============================================================================
+// INITIALIZATION HELPERS
+// ============================================================================
+
+// Call these on load
+updateKFactor();
+updateMaterialFactors();
+updateApplicationTypeUI();
