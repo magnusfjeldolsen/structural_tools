@@ -736,7 +736,8 @@ function displayResults(results) {
         return;
     }
 
-    const status = results.overall_status;
+    // Map Python status ('OK'/'FAIL') to display status ('PASS'/'FAIL')
+    const status = results.overall_status === 'OK' ? 'PASS' : 'FAIL';
     const statusClass = status === 'PASS' ? 'pass' : 'fail';
 
     let html = `
@@ -764,14 +765,32 @@ function displayResults(results) {
         html += `<div class="result-section"><h4>Tension Failure Modes</h4>`;
 
         for (const [mode, data] of Object.entries(results.failure_modes.tension)) {
-            const modeStatus = data.status === 'PASS' ? 'pass-text' : 'fail-text';
+            // Skip metadata keys
+            if (['governing', 'min_capacity', 'min_capacity_kN', 'status'].includes(mode)) {
+                continue;
+            }
+
+            // Check if data has required fields
+            if (!data || typeof data.NRd_kN === 'undefined' || typeof data.utilization === 'undefined') {
+                continue;
+            }
+
+            // Map Python status to display (utilization > 1.0 means FAIL)
+            const modeStatus = data.utilization <= 1.0 ? 'pass-text' : 'fail-text';
+            const modeStatusText = data.utilization <= 1.0 ? 'OK' : 'FAIL';
+
             html += `
                 <p><strong>${mode.toUpperCase()}:</strong>
                    N<sub>Rd</sub> = ${data.NRd_kN.toFixed(2)} kN |
                    Utilization = ${data.utilization.toFixed(3)} |
-                   <span class="${modeStatus}">${data.status}</span>
+                   <span class="${modeStatus}">${modeStatusText}</span>
                 </p>
             `;
+        }
+
+        // Show governing mode
+        if (results.failure_modes.tension.governing) {
+            html += `<p><strong>Governing:</strong> ${results.failure_modes.tension.governing.toUpperCase()} - ${results.failure_modes.tension.status}</p>`;
         }
 
         html += `</div>`;
@@ -782,14 +801,32 @@ function displayResults(results) {
         html += `<div class="result-section"><h4>Shear Failure Modes</h4>`;
 
         for (const [mode, data] of Object.entries(results.failure_modes.shear)) {
-            const modeStatus = data.status === 'PASS' ? 'pass-text' : 'fail-text';
+            // Skip metadata keys
+            if (['governing', 'min_capacity', 'min_capacity_kN', 'status'].includes(mode)) {
+                continue;
+            }
+
+            // Check if data has required fields
+            if (!data || typeof data.VRd_kN === 'undefined' || typeof data.utilization === 'undefined') {
+                continue;
+            }
+
+            // Map Python status to display
+            const modeStatus = data.utilization <= 1.0 ? 'pass-text' : 'fail-text';
+            const modeStatusText = data.utilization <= 1.0 ? 'OK' : 'FAIL';
+
             html += `
                 <p><strong>${mode.toUpperCase()}:</strong>
                    V<sub>Rd</sub> = ${data.VRd_kN.toFixed(2)} kN |
                    Utilization = ${data.utilization.toFixed(3)} |
-                   <span class="${modeStatus}">${data.status}</span>
+                   <span class="${modeStatus}">${modeStatusText}</span>
                 </p>
             `;
+        }
+
+        // Show governing mode
+        if (results.failure_modes.shear.governing) {
+            html += `<p><strong>Governing:</strong> ${results.failure_modes.shear.governing.toUpperCase()} - ${results.failure_modes.shear.status}</p>`;
         }
 
         html += `</div>`;
@@ -798,17 +835,17 @@ function displayResults(results) {
     // Interaction
     if (results.interaction) {
         const int = results.interaction;
-        const intStatus = int.status === 'PASS' ? 'pass-text' : 'fail-text';
+        const intStatus = int.status === 'OK' ? 'pass-text' : 'fail-text';
 
         html += `
             <div class="result-section">
                 <h4>N-V Interaction Check</h4>
                 <table class="result-table">
-                    <tr><td>Governing Tension:</td><td>${int.governing_tension_mode}</td></tr>
-                    <tr><td>N<sub>Rd</sub>:</td><td>${int.NRd_kN.toFixed(2)} kN</td></tr>
-                    <tr><td>Governing Shear:</td><td>${int.governing_shear_mode}</td></tr>
-                    <tr><td>V<sub>Rd</sub>:</td><td>${int.VRd_kN.toFixed(2)} kN</td></tr>
-                    <tr><td>Interaction Ratio:</td><td>${int.interaction_ratio.toFixed(3)}</td></tr>
+                    <tr><td>Governing Tension:</td><td>${int.governing_tension_mode || 'N/A'}</td></tr>
+                    <tr><td>N<sub>Rd</sub>:</td><td>${int.NRd_kN?.toFixed(2) || 'N/A'} kN</td></tr>
+                    <tr><td>Governing Shear:</td><td>${int.governing_shear_mode || 'N/A'}</td></tr>
+                    <tr><td>V<sub>Rd</sub>:</td><td>${int.VRd_kN?.toFixed(2) || 'N/A'} kN</td></tr>
+                    <tr><td>Interaction Ratio:</td><td>${int.interaction_ratio?.toFixed(3) || 'N/A'}</td></tr>
                     <tr><td>Status:</td><td><span class="${intStatus}">${int.status}</span></td></tr>
                 </table>
             </div>
