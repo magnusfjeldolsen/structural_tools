@@ -120,6 +120,8 @@ files_to_fetch = [
     'failure_modes/shear/pryout.py',
     'calculations/__init__.py',
     'calculations/interaction.py',
+    'calculations/geometry.py',
+    'calculations/psi_factors.py',
 ]
 
 # Create directory structure in /home/pyodide
