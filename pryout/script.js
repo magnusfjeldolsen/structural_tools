@@ -77,32 +77,77 @@ async function initializePyodide() {
 }
 
 async function mountPythonCode() {
-    // In a real deployment, we would fetch the Python files from the server
-    // For now, we'll fetch from the codes/python/fastener_design directory
-
-    const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/')) +
-                    '/codes/python/fastener_design';
+    // Mount the codes/python/fastener_design directory to Pyodide's file system
+    const baseUrl = './codes/python/fastener_design';
 
     try {
-        // Fetch web_interface.py
-        const response = await fetch(`${baseUrl}/web_interface.py`);
-        const webInterfaceCode = await response.text();
+        console.log('Fetching Python files...');
 
-        // Create a simple wrapper to make it available
+        // List of Python files we need to load
+        const pythonFiles = [
+            'web_interface.py',
+            'core/__init__.py',
+            'core/fastener.py',
+            'core/fastener_group.py',
+            'core/concrete.py',
+            'core/factors.py',
+            'design.py',
+            'tension/__init__.py',
+            'tension/steel.py',
+            'tension/concrete_cone.py',
+            'tension/pullout.py',
+            'tension/splitting.py',
+            'tension/blowout.py',
+            'shear/__init__.py',
+            'shear/steel.py',
+            'shear/concrete_edge.py',
+            'shear/pryout.py',
+            'interaction.py'
+        ];
+
+        // Fetch all Python files
+        const fileContents = {};
+        for (const file of pythonFiles) {
+            try {
+                const response = await fetch(`${baseUrl}/${file}`);
+                if (response.ok) {
+                    fileContents[file] = await response.text();
+                    console.log(`Loaded ${file}`);
+                } else {
+                    console.warn(`Could not load ${file}: ${response.status}`);
+                }
+            } catch (err) {
+                console.warn(`Error fetching ${file}:`, err);
+            }
+        }
+
+        // Create directory structure in Pyodide
         await state.pyodide.runPythonAsync(`
-import sys
-import io
-
-# Store the module code
-web_interface_code = """${webInterfaceCode.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"""
-
-# Execute the code to make run_analysis available
-exec(web_interface_code, globals())
-
-print("web_interface.py loaded successfully")
+import os
+os.makedirs('/fastener_design/core', exist_ok=True)
+os.makedirs('/fastener_design/tension', exist_ok=True)
+os.makedirs('/fastener_design/shear', exist_ok=True)
         `);
 
-        console.log('Python modules loaded');
+        // Write files to Pyodide's file system
+        for (const [file, content] of Object.entries(fileContents)) {
+            const path = `/fastener_design/${file}`;
+            await state.pyodide.FS.writeFile(path, content);
+            console.log(`Wrote ${path}`);
+        }
+
+        // Add the directory to Python's path and import
+        await state.pyodide.runPythonAsync(`
+import sys
+sys.path.insert(0, '/fastener_design')
+
+# Import the web_interface module
+from web_interface import run_analysis
+
+print("Fastener design package loaded successfully")
+        `);
+
+        console.log('Python modules loaded successfully');
     } catch (error) {
         console.error('Error loading Python code:', error);
         throw error;
