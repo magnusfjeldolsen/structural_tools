@@ -9,23 +9,23 @@ from typing import List, Dict, Optional, Tuple
 import sys
 from pathlib import Path
 
-from core.fastener import Fastener
-from core.fastener_group import FastenerGroup
-from core.concrete import ConcreteProperties
-from core.factors import MaterialFactors
+from fastener_design.core.fastener import Fastener
+from fastener_design.core.fastener_group import FastenerGroup
+from fastener_design.core.concrete import ConcreteProperties
+from fastener_design.core.factors import MaterialFactors
 
 # Import failure mode functions
-from failure_modes.tension.steel_failure import steel_failure_tension, get_steel_capacity_info
-from failure_modes.tension.concrete_cone import concrete_cone_failure, get_concrete_cone_capacity_info
-from failure_modes.tension.pullout import pullout_failure, get_pullout_capacity_info
-from failure_modes.tension.splitting import splitting_failure, get_splitting_capacity_info
-from failure_modes.tension.blowout import blowout_failure, get_blowout_capacity_info
-from failure_modes.shear.steel_failure import steel_failure_shear, get_shear_steel_capacity_info
-from failure_modes.shear.concrete_edge import concrete_edge_failure, get_concrete_edge_capacity_info
-from failure_modes.shear.pryout import pryout_failure, get_pryout_capacity_info
+from fastener_design.failure_modes.tension.steel_failure import steel_failure_tension, get_steel_capacity_info
+from fastener_design.failure_modes.tension.concrete_cone import concrete_cone_failure, get_concrete_cone_capacity_info
+from fastener_design.failure_modes.tension.pullout import pullout_failure, get_pullout_capacity_info
+from fastener_design.failure_modes.tension.splitting import splitting_failure, get_splitting_capacity_info
+from fastener_design.failure_modes.tension.blowout import blowout_failure, get_blowout_capacity_info
+from fastener_design.failure_modes.shear.steel_failure import steel_failure_shear, get_shear_steel_capacity_info
+from fastener_design.failure_modes.shear.concrete_edge import concrete_edge_failure, get_concrete_edge_capacity_info
+from fastener_design.failure_modes.shear.pryout import pryout_failure, get_pryout_capacity_info
 
 # Import interaction functions
-from calculations.interaction import check_combined_loading, get_interaction_summary
+from fastener_design.calculations.interaction import check_combined_loading, get_interaction_summary
 
 
 class FastenerDesign:

@@ -13,11 +13,11 @@ from typing import Dict, List, Any, Optional
 import math
 
 # Import core classes
-from core.fastener import Fastener
-from core.fastener_group import FastenerGroup
-from core.concrete import ConcreteProperties
-from core.factors import MaterialFactors
-from design import FastenerDesign
+from fastener_design.core.fastener import Fastener
+from fastener_design.core.fastener_group import FastenerGroup
+from fastener_design.core.concrete import ConcreteProperties
+from fastener_design.core.factors import MaterialFactors
+from fastener_design.design import FastenerDesign
 
 
 def run_analysis(input_json: str) -> str:
