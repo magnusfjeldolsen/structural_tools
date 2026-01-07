@@ -494,6 +494,65 @@ button {
     font-weight: 600;
 }
 
+/* Utilization Display */
+.utilization-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+}
+
+.utilization-table th {
+    background: var(--bg-light);
+    padding: 0.5rem;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-dark);
+    border-bottom: 2px solid var(--border-color);
+}
+
+.utilization-table td {
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.util-bar-container {
+    position: relative;
+    width: 100%;
+    height: 24px;
+    background: #F5F5F5;
+    border-radius: 4px;
+    overflow: visible;
+}
+
+.util-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.util-bar-ok {
+    background: linear-gradient(90deg, #4CAF50, #66BB6A);
+}
+
+.util-bar-warning {
+    background: linear-gradient(90deg, #FF9800, #FFB74D);
+}
+
+.util-bar-fail {
+    background: linear-gradient(90deg, #F44336, #EF5350);
+}
+
+.util-text {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    white-space: nowrap;
+}
+
 /* Footer */
 .app-footer {
     background: var(--text-dark);

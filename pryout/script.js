@@ -762,7 +762,18 @@ function displayResults(results) {
 
     // Tension failure modes
     if (results.failure_modes.tension) {
-        html += `<div class="result-section"><h4>Tension Failure Modes</h4>`;
+        html += `<div class="result-section">
+            <h4>Tension Failure Modes</h4>
+            <table class="utilization-table">
+                <thead>
+                    <tr>
+                        <th>Mode</th>
+                        <th>N<sub>Rd</sub> (kN)</th>
+                        <th>Utilization</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>`;
 
         for (const [mode, data] of Object.entries(results.failure_modes.tension)) {
             // Skip metadata keys
@@ -779,18 +790,34 @@ function displayResults(results) {
             const modeStatusText = data.utilization <= 1.0 ? 'OK' : 'FAIL';
             const modeStatus = modeStatusText === 'OK' ? 'pass-text' : 'fail-text';
 
+            // Utilization bar color
+            const utilPercent = data.utilization * 100;
+            let barClass = 'util-bar-ok';
+            if (utilPercent > 100) barClass = 'util-bar-fail';
+            else if (utilPercent > 85) barClass = 'util-bar-warning';
+
             html += `
-                <p><strong>${mode.toUpperCase()}:</strong>
-                   N<sub>Rd</sub> = ${data.NRd_kN.toFixed(2)} kN |
-                   Utilization = ${data.utilization.toFixed(3)} |
-                   <span class="${modeStatus}">${modeStatusText}</span>
-                </p>
+                <tr>
+                    <td><strong>${mode.toUpperCase()}</strong></td>
+                    <td>${data.NRd_kN.toFixed(2)}</td>
+                    <td>
+                        <div class="util-bar-container">
+                            <div class="util-bar ${barClass}" style="width: ${Math.min(utilPercent, 100)}%"></div>
+                            <span class="util-text">${data.utilization.toFixed(3)} (${utilPercent.toFixed(0)}%)</span>
+                        </div>
+                    </td>
+                    <td><span class="${modeStatus}">${modeStatusText}</span></td>
+                </tr>
             `;
         }
 
+        html += `
+                </tbody>
+            </table>`;
+
         // Show governing mode
         if (results.failure_modes.tension.governing) {
-            html += `<p><strong>Governing:</strong> ${results.failure_modes.tension.governing.toUpperCase()} - ${results.failure_modes.tension.status}</p>`;
+            html += `<p style="margin-top: 0.5rem;"><strong>Governing:</strong> ${results.failure_modes.tension.governing.toUpperCase()} - ${results.failure_modes.tension.status}</p>`;
         }
 
         html += `</div>`;
@@ -798,7 +825,18 @@ function displayResults(results) {
 
     // Shear failure modes
     if (results.failure_modes.shear) {
-        html += `<div class="result-section"><h4>Shear Failure Modes</h4>`;
+        html += `<div class="result-section">
+            <h4>Shear Failure Modes</h4>
+            <table class="utilization-table">
+                <thead>
+                    <tr>
+                        <th>Mode</th>
+                        <th>V<sub>Rd</sub> (kN)</th>
+                        <th>Utilization</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>`;
 
         for (const [mode, data] of Object.entries(results.failure_modes.shear)) {
             // Skip metadata keys
@@ -815,18 +853,34 @@ function displayResults(results) {
             const modeStatusText = data.utilization <= 1.0 ? 'OK' : 'FAIL';
             const modeStatus = modeStatusText === 'OK' ? 'pass-text' : 'fail-text';
 
+            // Utilization bar color
+            const utilPercent = data.utilization * 100;
+            let barClass = 'util-bar-ok';
+            if (utilPercent > 100) barClass = 'util-bar-fail';
+            else if (utilPercent > 85) barClass = 'util-bar-warning';
+
             html += `
-                <p><strong>${mode.toUpperCase()}:</strong>
-                   V<sub>Rd</sub> = ${data.VRd_kN.toFixed(2)} kN |
-                   Utilization = ${data.utilization.toFixed(3)} |
-                   <span class="${modeStatus}">${modeStatusText}</span>
-                </p>
+                <tr>
+                    <td><strong>${mode.toUpperCase()}</strong></td>
+                    <td>${data.VRd_kN.toFixed(2)}</td>
+                    <td>
+                        <div class="util-bar-container">
+                            <div class="util-bar ${barClass}" style="width: ${Math.min(utilPercent, 100)}%"></div>
+                            <span class="util-text">${data.utilization.toFixed(3)} (${utilPercent.toFixed(0)}%)</span>
+                        </div>
+                    </td>
+                    <td><span class="${modeStatus}">${modeStatusText}</span></td>
+                </tr>
             `;
         }
 
+        html += `
+                </tbody>
+            </table>`;
+
         // Show governing mode
         if (results.failure_modes.shear.governing) {
-            html += `<p><strong>Governing:</strong> ${results.failure_modes.shear.governing.toUpperCase()} - ${results.failure_modes.shear.status}</p>`;
+            html += `<p style="margin-top: 0.5rem;"><strong>Governing:</strong> ${results.failure_modes.shear.governing.toUpperCase()} - ${results.failure_modes.shear.status}</p>`;
         }
 
         html += `</div>`;
