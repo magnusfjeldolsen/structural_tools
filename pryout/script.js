@@ -357,9 +357,9 @@ function addEditableCell(row, obj, prop, type, onChange) {
 }
 
 function calculateFastenerArea(diameter) {
-    // Approximation for threaded area: 0.75 * gross area
+    // Gross cross-sectional area: A = π × d² / 4
     const grossArea = Math.PI * (diameter / 2) ** 2;
-    return Math.round(grossArea * 0.75);
+    return Math.round(grossArea);
 }
 
 // ============================================================================
