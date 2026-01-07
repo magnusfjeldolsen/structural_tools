@@ -86,10 +86,6 @@ async function mountPythonCode() {
 import sys
 from js import fetch
 
-# Add the codes/python directory to Python path
-# This allows importing fastener_design package directly from source
-sys.path.insert(0, '/codes/python')
-
 # Mount the package directory to Pyodide's virtual filesystem
 import os
 base_url = './codes/python/fastener_design'
@@ -126,23 +122,26 @@ files_to_fetch = [
     'calculations/interaction.py',
 ]
 
-# Create directory structure
-os.makedirs('/codes/python/fastener_design/core', exist_ok=True)
-os.makedirs('/codes/python/fastener_design/failure_modes/tension', exist_ok=True)
-os.makedirs('/codes/python/fastener_design/failure_modes/shear', exist_ok=True)
-os.makedirs('/codes/python/fastener_design/calculations', exist_ok=True)
+# Create directory structure in /home/pyodide
+os.makedirs('/home/pyodide/fastener_design/core', exist_ok=True)
+os.makedirs('/home/pyodide/fastener_design/failure_modes/tension', exist_ok=True)
+os.makedirs('/home/pyodide/fastener_design/failure_modes/shear', exist_ok=True)
+os.makedirs('/home/pyodide/fastener_design/calculations', exist_ok=True)
 
 # Fetch and write files
 for file_path in files_to_fetch:
     url = f"{base_url}/{file_path}"
     content = await fetch_file(url)
     if content:
-        full_path = f"/codes/python/fastener_design/{file_path}"
+        full_path = f"/home/pyodide/fastener_design/{file_path}"
         with open(full_path, 'w') as f:
             f.write(content)
         print(f"Mounted: {file_path}")
     else:
         print(f"Warning: Could not fetch {file_path}")
+
+# Add the directory to Python path
+sys.path.insert(0, '/home/pyodide')
 
 # Import the package
 from fastener_design.web_interface import run_analysis
