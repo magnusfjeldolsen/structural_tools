@@ -86,23 +86,26 @@ async function mountPythonCode() {
         // List of Python files we need to load
         const pythonFiles = [
             'web_interface.py',
+            '__init__.py',
             'core/__init__.py',
             'core/fastener.py',
             'core/fastener_group.py',
             'core/concrete.py',
             'core/factors.py',
             'design.py',
-            'tension/__init__.py',
-            'tension/steel.py',
-            'tension/concrete_cone.py',
-            'tension/pullout.py',
-            'tension/splitting.py',
-            'tension/blowout.py',
-            'shear/__init__.py',
-            'shear/steel.py',
-            'shear/concrete_edge.py',
-            'shear/pryout.py',
-            'interaction.py'
+            'failure_modes/__init__.py',
+            'failure_modes/tension/__init__.py',
+            'failure_modes/tension/steel_failure.py',
+            'failure_modes/tension/concrete_cone.py',
+            'failure_modes/tension/pullout.py',
+            'failure_modes/tension/splitting.py',
+            'failure_modes/tension/blowout.py',
+            'failure_modes/shear/__init__.py',
+            'failure_modes/shear/steel_failure.py',
+            'failure_modes/shear/concrete_edge.py',
+            'failure_modes/shear/pryout.py',
+            'calculations/__init__.py',
+            'calculations/interaction.py'
         ];
 
         // Fetch all Python files
@@ -125,8 +128,9 @@ async function mountPythonCode() {
         await state.pyodide.runPythonAsync(`
 import os
 os.makedirs('/fastener_design/core', exist_ok=True)
-os.makedirs('/fastener_design/tension', exist_ok=True)
-os.makedirs('/fastener_design/shear', exist_ok=True)
+os.makedirs('/fastener_design/failure_modes/tension', exist_ok=True)
+os.makedirs('/fastener_design/failure_modes/shear', exist_ok=True)
+os.makedirs('/fastener_design/calculations', exist_ok=True)
         `);
 
         // Write files to Pyodide's file system
