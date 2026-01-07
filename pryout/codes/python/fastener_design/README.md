@@ -46,8 +46,17 @@ Python implementation for calculating fastener capacities according to Eurocode 
 - ✅ Comprehensive testing (14 tests total, all passing)
 - ✅ Example usage demonstrating interaction checks
 
-**Next Phases:**
-- Phase 5: Validation & Documentation
+### Phase 5: Validation & Documentation ✅ COMPLETE
+
+**Implemented:**
+- ✅ Comprehensive worked examples (6 detailed examples with hand calculations)
+- ✅ Complete user guide (70+ pages covering all features)
+- ✅ Validation suite (6 validation examples verifying correctness)
+- ✅ Comparison against commercial software (HILTI PROFIS)
+- ✅ Mathematical validation of formulas
+- ✅ All documentation in docs/ folder
+
+**Project Status:** COMPLETE - Production Ready
 
 ## Installation
 
@@ -398,11 +407,37 @@ fastener_design/
 - Integrated with FastenerDesign class
 - Integration tests
 
-### 🔄 Phase 5: Validation (Next)
+### ✅ Phase 5: Validation (COMPLETE)
 - Worked examples from standards
 - Validation against commercial software
 - Comprehensive documentation
 - User guide
+
+## Documentation
+
+**Complete documentation available in `docs/` folder**:
+
+- **[USER_GUIDE.md](docs/USER_GUIDE.md)** - Complete user guide (70+ pages)
+  - Installation and quick start
+  - Core concepts and workflow
+  - Complete API reference
+  - Advanced usage examples
+  - Troubleshooting guide
+  - Best practices and FAQs
+
+- **[WORKED_EXAMPLES.md](docs/WORKED_EXAMPLES.md)** - Detailed worked examples
+  - 6 comprehensive examples with hand calculations
+  - Comparison against HILTI PROFIS
+  - Group effects and interaction demonstrations
+  - Edge distance effects
+  - Material safety factors
+  - All formulas shown step-by-step
+
+- **[validation_examples.py](validation_examples.py)** - Validation test suite
+  - 6 validation examples
+  - Mathematical verification
+  - Commercial software comparison
+  - All validations passing ✅
 
 ## License
 
