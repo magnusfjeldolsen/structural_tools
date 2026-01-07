@@ -77,83 +77,82 @@ async function initializePyodide() {
 }
 
 async function mountPythonCode() {
-    // Mount the codes/python/fastener_design directory to Pyodide's file system
-    const baseUrl = './codes/python/fastener_design';
-
+    // Mount Python package directly from source (development mode)
+    // This ensures code changes are reflected immediately on page reload
     try {
-        console.log('Fetching Python files...');
+        console.log('Mounting fastener_design package from source...');
 
-        // List of Python files we need to load
-        const pythonFiles = [
-            'web_interface.py',
-            '__init__.py',
-            'core/__init__.py',
-            'core/fastener.py',
-            'core/fastener_group.py',
-            'core/concrete.py',
-            'core/factors.py',
-            'design.py',
-            'failure_modes/__init__.py',
-            'failure_modes/tension/__init__.py',
-            'failure_modes/tension/steel_failure.py',
-            'failure_modes/tension/concrete_cone.py',
-            'failure_modes/tension/pullout.py',
-            'failure_modes/tension/splitting.py',
-            'failure_modes/tension/blowout.py',
-            'failure_modes/shear/__init__.py',
-            'failure_modes/shear/steel_failure.py',
-            'failure_modes/shear/concrete_edge.py',
-            'failure_modes/shear/pryout.py',
-            'calculations/__init__.py',
-            'calculations/interaction.py'
-        ];
-
-        // Fetch all Python files
-        const fileContents = {};
-        for (const file of pythonFiles) {
-            try {
-                const response = await fetch(`${baseUrl}/${file}`);
-                if (response.ok) {
-                    fileContents[file] = await response.text();
-                    console.log(`Loaded ${file}`);
-                } else {
-                    console.warn(`Could not load ${file}: ${response.status}`);
-                }
-            } catch (err) {
-                console.warn(`Error fetching ${file}:`, err);
-            }
-        }
-
-        // Create directory structure in Pyodide
-        await state.pyodide.runPythonAsync(`
-import os
-os.makedirs('/fastener_design/core', exist_ok=True)
-os.makedirs('/fastener_design/failure_modes/tension', exist_ok=True)
-os.makedirs('/fastener_design/failure_modes/shear', exist_ok=True)
-os.makedirs('/fastener_design/calculations', exist_ok=True)
-        `);
-
-        // Write files to Pyodide's file system
-        for (const [file, content] of Object.entries(fileContents)) {
-            const path = `/fastener_design/${file}`;
-            await state.pyodide.FS.writeFile(path, content);
-            console.log(`Wrote ${path}`);
-        }
-
-        // Add the directory to Python's path and import
         await state.pyodide.runPythonAsync(`
 import sys
-sys.path.insert(0, '/fastener_design')
+from js import fetch
 
-# Import the web_interface module
-from web_interface import run_analysis
+# Add the codes/python directory to Python path
+# This allows importing fastener_design package directly from source
+sys.path.insert(0, '/codes/python')
 
-print("Fastener design package loaded successfully")
+# Mount the package directory to Pyodide's virtual filesystem
+import os
+base_url = './codes/python/fastener_design'
+
+async def fetch_file(url):
+    """Fetch a file from the HTTP server"""
+    response = await fetch(url)
+    if response.status == 200:
+        return await response.text()
+    return None
+
+# Fetch and mount all Python files recursively
+files_to_fetch = [
+    '__init__.py',
+    'web_interface.py',
+    'design.py',
+    'core/__init__.py',
+    'core/fastener.py',
+    'core/fastener_group.py',
+    'core/concrete.py',
+    'core/factors.py',
+    'failure_modes/__init__.py',
+    'failure_modes/tension/__init__.py',
+    'failure_modes/tension/steel_failure.py',
+    'failure_modes/tension/concrete_cone.py',
+    'failure_modes/tension/pullout.py',
+    'failure_modes/tension/splitting.py',
+    'failure_modes/tension/blowout.py',
+    'failure_modes/shear/__init__.py',
+    'failure_modes/shear/steel_failure.py',
+    'failure_modes/shear/concrete_edge.py',
+    'failure_modes/shear/pryout.py',
+    'calculations/__init__.py',
+    'calculations/interaction.py',
+]
+
+# Create directory structure
+os.makedirs('/codes/python/fastener_design/core', exist_ok=True)
+os.makedirs('/codes/python/fastener_design/failure_modes/tension', exist_ok=True)
+os.makedirs('/codes/python/fastener_design/failure_modes/shear', exist_ok=True)
+os.makedirs('/codes/python/fastener_design/calculations', exist_ok=True)
+
+# Fetch and write files
+for file_path in files_to_fetch:
+    url = f"{base_url}/{file_path}"
+    content = await fetch_file(url)
+    if content:
+        full_path = f"/codes/python/fastener_design/{file_path}"
+        with open(full_path, 'w') as f:
+            f.write(content)
+        print(f"Mounted: {file_path}")
+    else:
+        print(f"Warning: Could not fetch {file_path}")
+
+# Import the package
+from fastener_design.web_interface import run_analysis
+
+print("✓ Fastener design package mounted from source (development mode)")
         `);
 
-        console.log('Python modules loaded successfully');
+        console.log('✓ Python package mounted successfully');
     } catch (error) {
-        console.error('Error loading Python code:', error);
+        console.error('Error mounting Python package:', error);
         throw error;
     }
 }
