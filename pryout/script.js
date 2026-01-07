@@ -736,9 +736,9 @@ function displayResults(results) {
         return;
     }
 
-    // Map Python status ('OK'/'FAIL') to display status ('PASS'/'FAIL')
-    const status = results.overall_status === 'OK' ? 'PASS' : 'FAIL';
-    const statusClass = status === 'PASS' ? 'pass' : 'fail';
+    // Use Python nomenclature directly
+    const status = results.overall_status; // 'OK' or 'FAIL'
+    const statusClass = status === 'OK' ? 'pass' : 'fail';
 
     let html = `
         <div class="result-status ${statusClass}">
@@ -775,9 +775,9 @@ function displayResults(results) {
                 continue;
             }
 
-            // Map Python status to display (utilization > 1.0 means FAIL)
-            const modeStatus = data.utilization <= 1.0 ? 'pass-text' : 'fail-text';
+            // Determine status from utilization (Python nomenclature)
             const modeStatusText = data.utilization <= 1.0 ? 'OK' : 'FAIL';
+            const modeStatus = modeStatusText === 'OK' ? 'pass-text' : 'fail-text';
 
             html += `
                 <p><strong>${mode.toUpperCase()}:</strong>
@@ -811,9 +811,9 @@ function displayResults(results) {
                 continue;
             }
 
-            // Map Python status to display
-            const modeStatus = data.utilization <= 1.0 ? 'pass-text' : 'fail-text';
+            // Determine status from utilization (Python nomenclature)
             const modeStatusText = data.utilization <= 1.0 ? 'OK' : 'FAIL';
+            const modeStatus = modeStatusText === 'OK' ? 'pass-text' : 'fail-text';
 
             html += `
                 <p><strong>${mode.toUpperCase()}:</strong>
