@@ -214,7 +214,6 @@
                                         <th>V<sub>y</sub> (kN)</th>
                                         <th>M<sub>z</sub> (kNm)</th>
                                         <th>N (kN)</th>
-                                        <th>Application</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -225,7 +224,7 @@
                         </div>
 
                         <div id="load-application-controls" class="form-group">
-                            <h4>Load Application Point</h4>
+                            <h4>Load Application Point (for all load cases)</h4>
                             <div class="form-group">
                                 <label>Application Type:</label>
                                 <select id="application-type">
@@ -271,9 +270,23 @@
                         </div>
 
                         <div class="material-factors-display">
-                            <h4>Material Factors</h4>
-                            <p>γ<sub>Ms</sub> (Steel): <strong id="gamma-ms-display">1.25</strong></p>
-                            <p>γ<sub>Mc</sub> (Concrete): <strong id="gamma-mc-display">1.5</strong></p>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <h4 style="margin: 0;">Material Factors</h4>
+                                <label style="font-size: 0.9rem;">
+                                    <input type="checkbox" id="override-factors">
+                                    Override
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>γ<sub>Ms</sub> (Steel):</label>
+                                    <input type="number" id="gamma-ms-input" value="1.25" min="1.0" max="2.0" step="0.05" disabled>
+                                </div>
+                                <div class="form-group">
+                                    <label>γ<sub>Mc</sub> (Concrete):</label>
+                                    <input type="number" id="gamma-mc-input" value="1.5" min="1.0" max="2.0" step="0.1" disabled>
+                                </div>
+                            </div>
                         </div>
 
                         <h4>Failure Modes to Check</h4>

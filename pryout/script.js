@@ -159,9 +159,12 @@ function initializeEventListeners() {
     document.getElementById('add-load-case').addEventListener('click', addLoadCase);
     document.getElementById('active-load-case').addEventListener('change', changeActiveLoadCase);
     document.getElementById('application-type').addEventListener('change', updateApplicationTypeUI);
+    document.getElementById('app-x').addEventListener('input', updatePlot);
+    document.getElementById('app-y').addEventListener('input', updatePlot);
 
     // Analysis tab
     document.getElementById('loading-type').addEventListener('change', updateMaterialFactors);
+    document.getElementById('override-factors').addEventListener('change', toggleMaterialFactorOverride);
     document.getElementById('run-analysis').addEventListener('click', runAnalysis);
 
     // Plot controls
@@ -232,7 +235,7 @@ function updateFastenerTable() {
     const tbody = document.getElementById('fastener-tbody');
     tbody.innerHTML = '';
 
-    state.fasteners.forEach((f, idx) => {
+    state.fasteners.forEach((f) => {
         const row = tbody.insertRow();
 
         // Checkbox
@@ -249,9 +252,12 @@ function updateFastenerTable() {
         addEditableCell(row, f, 'x', 'number', () => updatePlot());
         addEditableCell(row, f, 'y', 'number', () => updatePlot());
 
-        // Diameter
+        // Diameter - auto-update area when changed
         addEditableCell(row, f, 'diameter', 'number', () => {
-            f.area = null;  // Reset auto-calc
+            if (!f.area_override) {
+                // Update area display in real-time
+                updateFastenerTable();
+            }
             updatePlot();
         });
 
@@ -265,9 +271,22 @@ function updateFastenerTable() {
         const cellArea = row.insertCell();
         const inputArea = document.createElement('input');
         inputArea.type = 'number';
-        inputArea.value = f.area_override || calculateFastenerArea(f.diameter);
+        const autoCalcArea = calculateFastenerArea(f.diameter);
+        inputArea.value = f.area_override || autoCalcArea;
+        inputArea.placeholder = `Auto: ${autoCalcArea}`;
+        inputArea.style.fontStyle = f.area_override ? 'normal' : 'italic';
+        inputArea.style.color = f.area_override ? '#212121' : '#757575';
         inputArea.addEventListener('input', (e) => {
-            f.area_override = e.target.value ? parseFloat(e.target.value) : null;
+            const val = e.target.value;
+            f.area_override = val ? parseFloat(val) : null;
+            inputArea.style.fontStyle = f.area_override ? 'normal' : 'italic';
+            inputArea.style.color = f.area_override ? '#212121' : '#757575';
+        });
+        inputArea.addEventListener('blur', () => {
+            // If cleared, show auto-calc value
+            if (!inputArea.value) {
+                inputArea.value = autoCalcArea;
+            }
         });
         cellArea.appendChild(inputArea);
 
@@ -389,19 +408,6 @@ function updateLoadCaseTable() {
         // N
         addLoadEditableCell(row, lc, 'N');
 
-        // Application
-        const cellApp = row.insertCell();
-        const select = document.createElement('select');
-        select.innerHTML = `
-            <option value="centroid">Centroid</option>
-            <option value="point">Point</option>
-        `;
-        select.value = lc.application_type;
-        select.addEventListener('change', (e) => {
-            lc.application_type = e.target.value;
-        });
-        cellApp.appendChild(select);
-
         // Actions
         const cellActions = row.insertCell();
         const btnDelete = document.createElement('button');
@@ -478,26 +484,44 @@ function updateApplicationTypeUI() {
 // ============================================================================
 
 function updateMaterialFactors() {
-    const loadingType = document.getElementById('loading-type').value;
+    const overrideChecked = document.getElementById('override-factors').checked;
 
-    let gammaMs, gammaMc;
-    switch (loadingType) {
-        case 'static':
-            gammaMs = 1.25;
-            gammaMc = 1.5;
-            break;
-        case 'fatigue':
-            gammaMs = 1.0;
-            gammaMc = 1.5;
-            break;
-        case 'seismic':
-            gammaMs = 1.0;
-            gammaMc = 1.2;
-            break;
+    if (!overrideChecked) {
+        const loadingType = document.getElementById('loading-type').value;
+
+        let gammaMs, gammaMc;
+        switch (loadingType) {
+            case 'static':
+                gammaMs = 1.25;
+                gammaMc = 1.5;
+                break;
+            case 'fatigue':
+                gammaMs = 1.0;
+                gammaMc = 1.5;
+                break;
+            case 'seismic':
+                gammaMs = 1.0;
+                gammaMc = 1.2;
+                break;
+        }
+
+        document.getElementById('gamma-ms-input').value = gammaMs.toFixed(2);
+        document.getElementById('gamma-mc-input').value = gammaMc.toFixed(2);
     }
+}
 
-    document.getElementById('gamma-ms-display').textContent = gammaMs.toFixed(2);
-    document.getElementById('gamma-mc-display').textContent = gammaMc.toFixed(2);
+function toggleMaterialFactorOverride() {
+    const overrideChecked = document.getElementById('override-factors').checked;
+    const gammaMsInput = document.getElementById('gamma-ms-input');
+    const gammaMcInput = document.getElementById('gamma-mc-input');
+
+    gammaMsInput.disabled = !overrideChecked;
+    gammaMcInput.disabled = !overrideChecked;
+
+    if (!overrideChecked) {
+        // Reset to default values when unchecking
+        updateMaterialFactors();
+    }
 }
 
 // ============================================================================
@@ -598,17 +622,37 @@ function buildInputJSON() {
     // Get fastener type
     const fastenerType = document.getElementById('fastener-type').value;
 
+    // Get global application point
+    const applicationType = document.getElementById('application-type').value;
+    const applicationPoint = applicationType === 'point' ? {
+        x: parseFloat(document.getElementById('app-x').value) || 0,
+        y: parseFloat(document.getElementById('app-y').value) || 0
+    } : null;
+
+    // Apply global application to all load cases
+    const loadCasesWithApplication = state.loadCases.map(lc => ({
+        ...lc,
+        application_type: applicationType,
+        application_point: applicationPoint
+    }));
+
     // Build fasteners array with type
     const fasteners = state.fasteners.map(f => ({
         ...f,
         fastener_type: fastenerType
     }));
 
+    // Get material factors (from inputs, whether overridden or not)
+    const gammaMaterials = {
+        gamma_Ms: parseFloat(document.getElementById('gamma-ms-input').value),
+        gamma_Mc: parseFloat(document.getElementById('gamma-mc-input').value)
+    };
+
     return {
         fasteners,
         concrete,
         loading: {
-            load_cases: state.loadCases
+            load_cases: loadCasesWithApplication
         },
         edge_distances,
         spacings,
@@ -621,7 +665,8 @@ function buildInputJSON() {
             interaction_exponents: {
                 alpha_N: alphaN,
                 beta_V: betaV
-            }
+            },
+            material_factors: gammaMaterials
         }
     };
 }
@@ -755,18 +800,49 @@ function updatePlot() {
     const rangeX = maxX - minX || 200;
     const rangeY = maxY - minY || 200;
 
-    const margin = 100;
+    // Smart edge distance plotting
+    const c1 = parseFloat(document.getElementById('c1').value) || 0;
+    const c2 = parseFloat(document.getElementById('c2').value) || 0;
+
+    // Calculate minimum edge distance based on largest fastener diameter
+    const maxDiameter = Math.max(...state.fasteners.map(f => f.diameter));
+    const minEdgeDistance = Math.max(40, 1.2 * maxDiameter); // EC2 minimum
+
+    // Only include edges if they're within 5x minimum
+    const includeC1 = c1 > 0 && c1 <= 5 * minEdgeDistance;
+    const includeC2 = c2 > 0 && c2 <= 5 * minEdgeDistance;
+
+    // Extend bounds to include relevant edges
+    let plotMinX = minX;
+    let plotMaxX = maxX;
+    let plotMinY = minY;
+    let plotMaxY = maxY;
+
+    if (includeC1) {
+        plotMinX = Math.min(plotMinX, minX - c1);
+    }
+    if (includeC2) {
+        plotMinY = Math.min(plotMinY, minY - c2);
+    }
+
+    const plotRangeX = plotMaxX - plotMinX + 0.2 * (plotMaxX - plotMinX);
+    const plotRangeY = plotMaxY - plotMinY + 0.2 * (plotMaxY - plotMinY);
+
+    const margin = 80;
     const plotWidth = canvas.width - 2 * margin;
     const plotHeight = canvas.height - 2 * margin;
 
-    const scale = Math.min(plotWidth / rangeX, plotHeight / rangeY) * 0.8;
+    const scale = Math.min(plotWidth / plotRangeX, plotHeight / plotRangeY);
 
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
 
+    const plotCenterX = (plotMinX + plotMaxX) / 2;
+    const plotCenterY = (plotMinY + plotMaxY) / 2;
+
     // Transform functions
-    const toCanvasX = (x) => centerX + (x - (minX + maxX) / 2) * scale;
-    const toCanvasY = (y) => centerY - (y - (minY + maxY) / 2) * scale;
+    const toCanvasX = (x) => centerX + (x - plotCenterX) * scale;
+    const toCanvasY = (y) => centerY - (y - plotCenterY) * scale;
 
     // Draw axes
     ctx.strokeStyle = '#E0E0E0';
@@ -777,6 +853,43 @@ function updatePlot() {
     ctx.moveTo(centerX, 0);
     ctx.lineTo(centerX, canvas.height);
     ctx.stroke();
+
+    // Draw edge lines (if within limits)
+    if (includeC1 || includeC2) {
+        ctx.strokeStyle = '#FF5722';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+
+        if (includeC1) {
+            const edgeX = minX - c1;
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(edgeX), toCanvasY(plotMinY));
+            ctx.lineTo(toCanvasX(edgeX), toCanvasY(plotMaxY));
+            ctx.stroke();
+
+            // Label
+            ctx.fillStyle = '#FF5722';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`c1=${c1}`, toCanvasX(edgeX), toCanvasY(plotMaxY) + 15);
+        }
+
+        if (includeC2) {
+            const edgeY = minY - c2;
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(plotMinX), toCanvasY(edgeY));
+            ctx.lineTo(toCanvasX(plotMaxX), toCanvasY(edgeY));
+            ctx.stroke();
+
+            // Label
+            ctx.fillStyle = '#FF5722';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`c2=${c2}`, toCanvasX(plotMaxX) + 25, toCanvasY(edgeY));
+        }
+
+        ctx.setLineDash([]);
+    }
 
     // Draw fasteners
     state.fasteners.forEach(f => {
@@ -809,6 +922,25 @@ function updatePlot() {
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('C', toCanvasX(Xc), toCanvasY(Yc) - 10);
+
+    // Draw load application point if different from centroid
+    const appType = document.getElementById('application-type').value;
+    if (appType === 'point') {
+        const appX = parseFloat(document.getElementById('app-x').value) || 0;
+        const appY = parseFloat(document.getElementById('app-y').value) || 0;
+
+        if (appX !== Xc || appY !== Yc) {
+            ctx.fillStyle = '#FF5722';
+            ctx.beginPath();
+            ctx.arc(toCanvasX(appX), toCanvasY(appY), 6, 0, 2 * Math.PI);
+            ctx.fill();
+
+            ctx.fillStyle = '#FF5722';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Load', toCanvasX(appX), toCanvasY(appY) - 12);
+        }
+    }
 
     // Draw forces if results available
     if (state.lastResults && state.lastResults.load_distribution) {
