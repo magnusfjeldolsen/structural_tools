@@ -98,15 +98,15 @@ def example_3_fastener_group():
     print("EXAMPLE 3: 2x2 Group of M16 Fasteners")
     print("="*70)
 
-    fastener = Fastener(16, 100, 500, area=157)
+    fastener = Fastener(16, 100, 500, area=None)
     concrete = ConcreteProperties(strength_class='C25/30', thickness=250, cracked=True)
 
     design = FastenerDesign(
         fastener=fastener,
         concrete=concrete,
         loading={
-            'tension': 150000,  # 150 kN total
-            'shear': 60000,     # 60 kN total
+            'tension': 0,  # 0 kN total
+            'shear': 50000,     # 50 kN total
             'n_fasteners': 4
         },
         spacings={'sx': 200, 'sy': 200},

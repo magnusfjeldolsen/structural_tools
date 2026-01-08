@@ -726,6 +726,8 @@ function buildInputJSON() {
 
 function displayResults(results) {
     const container = document.getElementById('results-container');
+    const selector = document.getElementById('results-load-case-selector');
+    const dropdown = document.getElementById('results-load-case-dropdown');
 
     if (results.status === 'error') {
         container.innerHTML = `
@@ -733,15 +735,78 @@ function displayResults(results) {
                 ERROR: ${results.error_message}
             </div>
         `;
+        selector.style.display = 'none';
         return;
     }
 
+    // Store results globally for dropdown switching
+    state.lastResults = results;
+
+    // Populate dropdown with load cases
+    dropdown.innerHTML = '<option value="max">Max of All Load Cases</option>';
+    if (results.load_cases && results.load_cases.length > 0) {
+        results.load_cases.forEach((lc, idx) => {
+            dropdown.innerHTML += `<option value="${idx}">${lc.load_case_name}</option>`;
+        });
+    }
+
+    // Show selector if multiple load cases
+    if (results.load_cases && results.load_cases.length > 1) {
+        selector.style.display = 'block';
+    } else {
+        selector.style.display = 'none';
+    }
+
+    // Set up dropdown change handler
+    dropdown.onchange = () => {
+        displaySelectedLoadCase(results, dropdown.value);
+    };
+
+    // Display default (max of all)
+    displaySelectedLoadCase(results, 'max');
+}
+
+function displaySelectedLoadCase(results, selectedCase) {
+    const container = document.getElementById('results-container');
+
+    // Get the data to display (either max or specific load case)
+    let displayData;
+    let headerText = '';
+
+    if (selectedCase === 'max') {
+        // Show max utilizations across all load cases
+        displayData = {
+            failure_modes: results.max_utilizations,
+            interaction: results.max_utilizations.interaction,
+            overall_status: results.max_utilizations.overall_status
+        };
+        headerText = 'Maximum Utilizations Across All Load Cases';
+    } else {
+        // Show specific load case
+        const caseIdx = parseInt(selectedCase);
+        const loadCase = results.load_cases[caseIdx];
+        displayData = {
+            failure_modes: loadCase.failure_modes,
+            interaction: loadCase.interaction,
+            overall_status: loadCase.overall_status,
+            load_distribution: loadCase.load_distribution
+        };
+        headerText = `Load Case: ${loadCase.load_case_name}`;
+
+        // Update plot with this load case's forces
+        if (loadCase.load_distribution) {
+            state.lastResults.load_distribution = loadCase.load_distribution;
+            updatePlot();
+        }
+    }
+
     // Use Python nomenclature directly
-    const status = results.overall_status; // 'OK' or 'FAIL'
+    const status = displayData.overall_status; // 'OK' or 'FAIL'
     const statusClass = status === 'OK' ? 'pass' : 'fail';
 
     let html = `
         <div class="result-status ${statusClass}">
+            ${headerText}<br>
             Overall Status: ${status}
         </div>
     `;
@@ -761,7 +826,9 @@ function displayResults(results) {
     `;
 
     // Tension failure modes
-    if (results.failure_modes.tension) {
+    if (displayData.failure_modes.tension) {
+        const isMaxView = selectedCase === 'max';
+
         html += `<div class="result-section">
             <h4>Tension Failure Modes</h4>
             <table class="utilization-table">
@@ -771,23 +838,29 @@ function displayResults(results) {
                         <th>N<sub>Rd</sub> (kN)</th>
                         <th>Utilization</th>
                         <th>Status</th>
+                        ${isMaxView ? '<th>Governing Case</th>' : ''}
                     </tr>
                 </thead>
                 <tbody>`;
 
-        for (const [mode, data] of Object.entries(results.failure_modes.tension)) {
+        for (const [mode, data] of Object.entries(displayData.failure_modes.tension)) {
             // Skip metadata keys
-            if (['governing', 'min_capacity', 'min_capacity_kN', 'status'].includes(mode)) {
+            if (['governing', 'min_capacity', 'min_capacity_kN', 'status', 'overall_status'].includes(mode)) {
                 continue;
             }
 
             // Check if data has required fields
-            if (!data || typeof data.NRd_kN === 'undefined' || typeof data.utilization === 'undefined') {
+            if (!data || typeof data.utilization === 'undefined') {
+                continue;
+            }
+
+            const capacityKey = isMaxView ? 'NRd_kN' : 'NRd_kN';
+            if (typeof data[capacityKey] === 'undefined') {
                 continue;
             }
 
             // Determine status from utilization (Python nomenclature)
-            const modeStatusText = data.utilization <= 1.0 ? 'OK' : 'FAIL';
+            const modeStatusText = data.status || (data.utilization <= 1.0 ? 'OK' : 'FAIL');
             const modeStatus = modeStatusText === 'OK' ? 'pass-text' : 'fail-text';
 
             // Utilization bar color
@@ -799,7 +872,7 @@ function displayResults(results) {
             html += `
                 <tr>
                     <td><strong>${mode.toUpperCase()}</strong></td>
-                    <td>${data.NRd_kN.toFixed(2)}</td>
+                    <td>${data[capacityKey].toFixed(2)}</td>
                     <td>
                         <div class="util-bar-container">
                             <div class="util-bar ${barClass}" style="width: ${Math.min(utilPercent, 100)}%"></div>
@@ -807,6 +880,7 @@ function displayResults(results) {
                         </div>
                     </td>
                     <td><span class="${modeStatus}">${modeStatusText}</span></td>
+                    ${isMaxView ? `<td>${data.governing_case || 'N/A'}</td>` : ''}
                 </tr>
             `;
         }
@@ -815,8 +889,8 @@ function displayResults(results) {
                 </tbody>
             </table>`;
 
-        // Show governing mode
-        if (results.failure_modes.tension.governing) {
+        // Show governing mode (for individual load case view)
+        if (!isMaxView && displayData.failure_modes.tension.governing) {
             html += `<p style="margin-top: 0.5rem;"><strong>Governing:</strong> ${results.failure_modes.tension.governing.toUpperCase()} - ${results.failure_modes.tension.status}</p>`;
         }
 
@@ -824,7 +898,9 @@ function displayResults(results) {
     }
 
     // Shear failure modes
-    if (results.failure_modes.shear) {
+    if (displayData.failure_modes.shear) {
+        const isMaxView = selectedCase === 'max';
+
         html += `<div class="result-section">
             <h4>Shear Failure Modes</h4>
             <table class="utilization-table">
@@ -834,23 +910,29 @@ function displayResults(results) {
                         <th>V<sub>Rd</sub> (kN)</th>
                         <th>Utilization</th>
                         <th>Status</th>
+                        ${isMaxView ? '<th>Governing Case</th>' : ''}
                     </tr>
                 </thead>
                 <tbody>`;
 
-        for (const [mode, data] of Object.entries(results.failure_modes.shear)) {
+        for (const [mode, data] of Object.entries(displayData.failure_modes.shear)) {
             // Skip metadata keys
-            if (['governing', 'min_capacity', 'min_capacity_kN', 'status'].includes(mode)) {
+            if (['governing', 'min_capacity', 'min_capacity_kN', 'status', 'overall_status'].includes(mode)) {
                 continue;
             }
 
             // Check if data has required fields
-            if (!data || typeof data.VRd_kN === 'undefined' || typeof data.utilization === 'undefined') {
+            if (!data || typeof data.utilization === 'undefined') {
+                continue;
+            }
+
+            const capacityKey = isMaxView ? 'VRd_kN' : 'VRd_kN';
+            if (typeof data[capacityKey] === 'undefined') {
                 continue;
             }
 
             // Determine status from utilization (Python nomenclature)
-            const modeStatusText = data.utilization <= 1.0 ? 'OK' : 'FAIL';
+            const modeStatusText = data.status || (data.utilization <= 1.0 ? 'OK' : 'FAIL');
             const modeStatus = modeStatusText === 'OK' ? 'pass-text' : 'fail-text';
 
             // Utilization bar color
@@ -862,7 +944,7 @@ function displayResults(results) {
             html += `
                 <tr>
                     <td><strong>${mode.toUpperCase()}</strong></td>
-                    <td>${data.VRd_kN.toFixed(2)}</td>
+                    <td>${data[capacityKey].toFixed(2)}</td>
                     <td>
                         <div class="util-bar-container">
                             <div class="util-bar ${barClass}" style="width: ${Math.min(utilPercent, 100)}%"></div>
@@ -870,6 +952,7 @@ function displayResults(results) {
                         </div>
                     </td>
                     <td><span class="${modeStatus}">${modeStatusText}</span></td>
+                    ${isMaxView ? `<td>${data.governing_case || 'N/A'}</td>` : ''}
                 </tr>
             `;
         }
@@ -878,18 +961,19 @@ function displayResults(results) {
                 </tbody>
             </table>`;
 
-        // Show governing mode
-        if (results.failure_modes.shear.governing) {
-            html += `<p style="margin-top: 0.5rem;"><strong>Governing:</strong> ${results.failure_modes.shear.governing.toUpperCase()} - ${results.failure_modes.shear.status}</p>`;
+        // Show governing mode (for individual load case view)
+        if (!isMaxView && displayData.failure_modes.shear.governing) {
+            html += `<p style="margin-top: 0.5rem;"><strong>Governing:</strong> ${displayData.failure_modes.shear.governing.toUpperCase()} - ${displayData.failure_modes.shear.status}</p>`;
         }
 
         html += `</div>`;
     }
 
     // Interaction
-    if (results.interaction) {
-        const int = results.interaction;
+    if (displayData.interaction) {
+        const int = displayData.interaction;
         const intStatus = int.status === 'OK' ? 'pass-text' : 'fail-text';
+        const isMaxView = selectedCase === 'max';
 
         html += `
             <div class="result-section">
@@ -901,6 +985,7 @@ function displayResults(results) {
                     <tr><td>V<sub>Rd</sub>:</td><td>${int.VRd_kN?.toFixed(2) || 'N/A'} kN</td></tr>
                     <tr><td>Interaction Ratio:</td><td>${int.interaction_ratio?.toFixed(3) || 'N/A'}</td></tr>
                     <tr><td>Status:</td><td><span class="${intStatus}">${int.status}</span></td></tr>
+                    ${isMaxView ? `<tr><td>Governing Case:</td><td>${int.governing_case || 'N/A'}</td></tr>` : ''}
                 </table>
             </div>
         `;

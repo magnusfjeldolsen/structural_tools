@@ -37,7 +37,11 @@
       "Bash(npm run build:*)",
       "Bash(npm run dev:*)",
       "Bash(git commit:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(git mv:*)",
+      "Bash(dir:*)",
+      "Bash(curl:*)",
+      "Bash(start:*)"
     ],
     "deny": [],
     "ask": [],

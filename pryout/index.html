@@ -350,6 +350,15 @@
                 <!-- Results -->
                 <div class="results-section">
                     <h3>Analysis Results</h3>
+
+                    <!-- Load Case Selector (hidden until results available) -->
+                    <div id="results-load-case-selector" style="display: none; margin-bottom: 1rem;">
+                        <label style="font-weight: 500; margin-right: 0.5rem;">View Results For:</label>
+                        <select id="results-load-case-dropdown" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; min-width: 200px;">
+                            <option value="max">Max of All Load Cases</option>
+                        </select>
+                    </div>
+
                     <div id="results-container">
                         <p class="no-results">Run analysis to see results</p>
                     </div>
