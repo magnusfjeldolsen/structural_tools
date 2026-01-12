@@ -15,7 +15,7 @@ const state = {
     pyodideReady: false,
     fasteners: [],
     loadCases: [
-        { name: 'LC1', description: 'Dead Load', Vx: 0, Vy: 0, Mz: 0, N: 0,
+        { name: 'LC1', description: 'Dead Load', Vx: 0, Vy: 0, Mx: 0, My: 0, Mz: 0, N: 0,
           application_type: 'centroid', application_point: { x: 0, y: 0 } }
     ],
     activeLoadCase: 'LC1',
@@ -37,6 +37,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     addDefaultFastener();
     updateLoadCaseTable();
 
+    // Add keyboard shortcut for running analysis (Ctrl+Space)
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.code === 'Space') {
+            e.preventDefault();
+            runAnalysis();
+        }
+    });
+
     // Initialize Pyodide
     await initializePyodide();
 
@@ -56,14 +64,15 @@ async function initializePyodide() {
         state.pyodide = await loadPyodide();
 
         console.log('Loading Python packages...');
-        await state.pyodide.loadPackage('micropip');
+        await state.pyodide.loadPackage(['micropip', 'numpy']);
 
         console.log('Installing fastener_design package...');
         // Note: In production, this would load from the actual package
         // For now, we'll use pyodide.runPythonAsync to define the module
 
         // Mount the file system with our Python code
-        await mountPythonCode();
+        const cacheBust = Date.now();
+        await mountPythonCode(cacheBust);
 
         state.pyodideReady = true;
         console.log('Pyodide ready!');
@@ -76,11 +85,14 @@ async function initializePyodide() {
     }
 }
 
-async function mountPythonCode() {
+async function mountPythonCode(cacheBust) {
     // Mount Python package directly from source (development mode)
     // This ensures code changes are reflected immediately on page reload
     try {
         console.log('Mounting fastener_design package from source...');
+
+        // Pass cacheBust to Python
+        state.pyodide.globals.set('js_cache_bust', cacheBust);
 
         await state.pyodide.runPythonAsync(`
 import sys
@@ -122,6 +134,7 @@ files_to_fetch = [
     'calculations/interaction.py',
     'calculations/geometry.py',
     'calculations/psi_factors.py',
+    'calculations/planar_bending.py',
 ]
 
 # Create directory structure in /home/pyodide
@@ -130,9 +143,10 @@ os.makedirs('/home/pyodide/fastener_design/failure_modes/tension', exist_ok=True
 os.makedirs('/home/pyodide/fastener_design/failure_modes/shear', exist_ok=True)
 os.makedirs('/home/pyodide/fastener_design/calculations', exist_ok=True)
 
-# Fetch and write files
+# Fetch and write files (with cache busting)
+cache_bust = str(int(js_cache_bust))
 for file_path in files_to_fetch:
-    url = f"{base_url}/{file_path}"
+    url = f"{base_url}/{file_path}?v={cache_bust}"
     content = await fetch_file(url)
     if content:
         full_path = f"/home/pyodide/fastener_design/{file_path}"
@@ -218,6 +232,8 @@ function initializeEventListeners() {
 
     // Plot controls
     document.getElementById('force-scale').addEventListener('input', updatePlot);
+    document.getElementById('show-applied-forces').addEventListener('change', updatePlot);
+    document.getElementById('show-distributed-forces').addEventListener('change', updatePlot);
     document.getElementById('reset-view').addEventListener('click', resetView);
 }
 
@@ -301,14 +317,27 @@ function updateFastenerTable() {
         addEditableCell(row, f, 'x', 'number', () => updatePlot());
         addEditableCell(row, f, 'y', 'number', () => updatePlot());
 
-        // Diameter - auto-update area when changed
-        addEditableCell(row, f, 'diameter', 'number', () => {
+        // Diameter - auto-update area when cell loses focus
+        const cellDiameter = row.insertCell();
+        const inputDiameter = document.createElement('input');
+        inputDiameter.type = 'number';
+        inputDiameter.value = f.diameter;
+
+        // Update value on every keystroke (maintains state)
+        inputDiameter.addEventListener('input', (e) => {
+            f.diameter = parseFloat(e.target.value);
+        });
+
+        // Recalculate area and update plot only when cell loses focus
+        inputDiameter.addEventListener('blur', () => {
             if (!f.area_override) {
-                // Update area display in real-time
+                // Update area display after user finishes entering diameter
                 updateFastenerTable();
             }
             updatePlot();
         });
+
+        cellDiameter.appendChild(inputDiameter);
 
         // Embedment
         addEditableCell(row, f, 'embedment_depth', 'number');
@@ -417,6 +446,8 @@ function addLoadCase() {
         description: 'New Load Case',
         Vx: 0,
         Vy: 0,
+        Mx: 0,
+        My: 0,
         Mz: 0,
         N: 0,
         application_type: 'centroid',
@@ -450,6 +481,12 @@ function updateLoadCaseTable() {
 
         // Vy
         addLoadEditableCell(row, lc, 'Vy');
+
+        // Mx
+        addLoadEditableCell(row, lc, 'Mx');
+
+        // My
+        addLoadEditableCell(row, lc, 'My');
 
         // Mz
         addLoadEditableCell(row, lc, 'Mz');
@@ -587,6 +624,9 @@ async function runAnalysis() {
         alert('Please add at least one fastener');
         return;
     }
+
+    // Switch to Analysis tab
+    switchTab('analysis');
 
     // Build input JSON
     const inputData = buildInputJSON();
@@ -728,6 +768,8 @@ function displayResults(results) {
     const container = document.getElementById('results-container');
     const selector = document.getElementById('results-load-case-selector');
     const dropdown = document.getElementById('results-load-case-dropdown');
+    const plotSelector = document.getElementById('plot-load-case-selector');
+    const plotDropdown = document.getElementById('plot-load-case-dropdown');
 
     if (results.status === 'error') {
         container.innerHTML = `
@@ -736,30 +778,43 @@ function displayResults(results) {
             </div>
         `;
         selector.style.display = 'none';
+        plotSelector.style.display = 'none';
         return;
     }
 
     // Store results globally for dropdown switching
     state.lastResults = results;
+    state.selectedResultCase = 'max'; // Track which result case is displayed
 
-    // Populate dropdown with load cases
-    dropdown.innerHTML = '<option value="max">Max of All Load Cases</option>';
-    if (results.load_cases && results.load_cases.length > 0) {
-        results.load_cases.forEach((lc, idx) => {
-            dropdown.innerHTML += `<option value="${idx}">${lc.load_case_name}</option>`;
-        });
-    }
+    // Populate both dropdowns with load cases
+    const optionsHTML = '<option value="max">Max of All Load Cases</option>' +
+        (results.load_cases || []).map((lc, idx) =>
+            `<option value="${idx}">${lc.load_case_name}</option>`
+        ).join('');
 
-    // Show selector if multiple load cases
+    dropdown.innerHTML = optionsHTML;
+    plotDropdown.innerHTML = optionsHTML;
+
+    // Show selectors if multiple load cases
     if (results.load_cases && results.load_cases.length > 1) {
         selector.style.display = 'block';
+        plotSelector.style.display = 'block';
     } else {
         selector.style.display = 'none';
+        plotSelector.style.display = 'block'; // Still show for single case
     }
 
-    // Set up dropdown change handler
+    // Set up dropdown change handlers
     dropdown.onchange = () => {
         displaySelectedLoadCase(results, dropdown.value);
+        // Sync plot dropdown
+        plotDropdown.value = dropdown.value;
+    };
+
+    plotDropdown.onchange = () => {
+        displaySelectedLoadCase(results, plotDropdown.value);
+        // Sync results dropdown
+        dropdown.value = plotDropdown.value;
     };
 
     // Display default (max of all)
@@ -768,6 +823,9 @@ function displayResults(results) {
 
 function displaySelectedLoadCase(results, selectedCase) {
     const container = document.getElementById('results-container');
+
+    // Store which case is being viewed
+    state.selectedResultCase = selectedCase;
 
     // Get the data to display (either max or specific load case)
     let displayData;
@@ -781,6 +839,14 @@ function displaySelectedLoadCase(results, selectedCase) {
             overall_status: results.max_utilizations.overall_status
         };
         headerText = 'Maximum Utilizations Across All Load Cases';
+
+        // Update plot with force distribution from first load case
+        // (so arrows are visible even in max view)
+        if (results.load_cases && results.load_cases.length > 0 && results.load_cases[0].load_distribution) {
+            state.lastResults.load_distribution = results.load_cases[0].load_distribution;
+            state.lastResults.activeLoadCaseForPlot = results.load_cases[0]; // Store load case for applied forces
+            updatePlot();
+        }
     } else {
         // Show specific load case
         const caseIdx = parseInt(selectedCase);
@@ -796,6 +862,7 @@ function displaySelectedLoadCase(results, selectedCase) {
         // Update plot with this load case's forces
         if (loadCase.load_distribution) {
             state.lastResults.load_distribution = loadCase.load_distribution;
+            state.lastResults.activeLoadCaseForPlot = loadCase; // Store load case for applied forces
             updatePlot();
         }
     }
@@ -824,6 +891,46 @@ function displaySelectedLoadCase(results, selectedCase) {
             </table>
         </div>
     `;
+
+    // Per-fastener force distribution (only for specific load cases, not max view)
+    if (selectedCase !== 'max' && displayData.load_distribution) {
+        html += `
+            <div class="result-section">
+                <h4>Force Distribution per Fastener</h4>
+                <table class="result-table" style="font-size: 0.9em;">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>V<sub>x</sub> (kN)</th>
+                            <th>V<sub>y</sub> (kN)</th>
+                            <th>V<sub>total</sub> (kN)</th>
+                            <th>N (kN)</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+        displayData.load_distribution.forEach(fastener => {
+            const Vx = fastener.forces.Vx_total;
+            const Vy = fastener.forces.Vy_total;
+            const Vtotal = fastener.resultants.V_resultant;
+            const N = fastener.forces.N;
+
+            html += `
+                        <tr>
+                            <td><strong>${fastener.fastener_id}</strong></td>
+                            <td>${Vx.toFixed(2)}</td>
+                            <td>${Vy.toFixed(2)}</td>
+                            <td><strong>${Vtotal.toFixed(2)}</strong></td>
+                            <td><strong>${N.toFixed(2)}</strong></td>
+                        </tr>`;
+        });
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
 
     // Tension failure modes
     if (displayData.failure_modes.tension) {
@@ -1148,13 +1255,18 @@ function updatePlot() {
     ctx.textAlign = 'center';
     ctx.fillText('C', toCanvasX(Xc), toCanvasY(Yc) - 10);
 
-    // Draw load application point if different from centroid
-    const appType = document.getElementById('application-type').value;
-    if (appType === 'point') {
-        const appX = parseFloat(document.getElementById('app-x').value) || 0;
-        const appY = parseFloat(document.getElementById('app-y').value) || 0;
+    // Check force display toggles
+    const showAppliedForces = document.getElementById('show-applied-forces').checked;
+    const showDistributedForces = document.getElementById('show-distributed-forces').checked;
 
-        if (appX !== Xc || appY !== Yc) {
+    // Draw applied forces if toggle is on
+    if (showAppliedForces) {
+        const appType = document.getElementById('application-type').value;
+        const appX = appType === 'point' ? (parseFloat(document.getElementById('app-x').value) || 0) : Xc;
+        const appY = appType === 'point' ? (parseFloat(document.getElementById('app-y').value) || 0) : Yc;
+
+        // Draw load application point marker if different from centroid
+        if (appType === 'point' && (appX !== Xc || appY !== Yc)) {
             ctx.fillStyle = '#FF5722';
             ctx.beginPath();
             ctx.arc(toCanvasX(appX), toCanvasY(appY), 6, 0, 2 * Math.PI);
@@ -1165,11 +1277,200 @@ function updatePlot() {
             ctx.textAlign = 'center';
             ctx.fillText('Load', toCanvasX(appX), toCanvasY(appY) - 12);
         }
+
+        // Draw applied force arrows (Vx, Vy, N)
+        // Use load case from results if available, otherwise use active input load case
+        let loadCaseToDisplay;
+        if (state.lastResults && state.lastResults.activeLoadCaseForPlot) {
+            // Use load case from results view
+            loadCaseToDisplay = state.lastResults.activeLoadCaseForPlot;
+        } else {
+            // Use active input load case
+            const activeLoadCaseId = document.getElementById('active-load-case').value;
+            loadCaseToDisplay = state.loadCases.find(lc => lc.id === activeLoadCaseId);
+        }
+
+        if (loadCaseToDisplay) {
+            const Vx = loadCaseToDisplay.Vx || 0; // kN
+            const Vy = loadCaseToDisplay.Vy || 0; // kN
+            const N = loadCaseToDisplay.N || 0;   // kN
+
+            const forceScaleInput = parseFloat(document.getElementById('force-scale').value);
+
+            // Find max applied force for scaling
+            const maxAppliedForce = Math.max(Math.abs(Vx), Math.abs(Vy), Math.abs(N));
+
+            if (maxAppliedForce > 0) {
+                // Calculate arrow length scale: max force should be 1/20 of plot size
+                const plotSize = Math.min(canvas.width, canvas.height);
+                const maxArrowLength = (plotSize / 20) * forceScaleInput / 0.05;
+                const arrowScale = maxArrowLength / maxAppliedForce;
+
+                const appCanvasX = toCanvasX(appX);
+                const appCanvasY = toCanvasY(appY);
+
+                // Draw Vx arrow (horizontal shear)
+                if (Math.abs(Vx) > 0.01) {
+                    const dx = Vx * arrowScale;
+                    drawArrow(ctx, appCanvasX, appCanvasY, appCanvasX + dx, appCanvasY, '#FF5722');
+                }
+
+                // Draw Vy arrow (vertical shear)
+                if (Math.abs(Vy) > 0.01) {
+                    const dy = -Vy * arrowScale; // Negative because canvas Y is inverted
+                    drawArrow(ctx, appCanvasX, appCanvasY, appCanvasX, appCanvasY + dy, '#FF5722');
+                }
+
+                // Draw N arrow (tension, pointing away from concrete)
+                if (Math.abs(N) > 0.01) {
+                    const dn = -N * arrowScale; // Negative because tension points up (away from concrete)
+                    drawArrow(ctx, appCanvasX, appCanvasY, appCanvasX, appCanvasY + dn, '#FF5722');
+                }
+
+                // Draw Mz as a circular rotation arrow
+                const Mz = loadCaseToDisplay.Mz || 0; // kNm
+                if (Math.abs(Mz) > 0.01) {
+                    const radius = 30; // pixels
+                    const startAngle = Mz > 0 ? 0.2 : -0.2; // CCW for positive Mz
+                    const endAngle = Mz > 0 ? 2 * Math.PI - 0.2 : -(2 * Math.PI - 0.2);
+
+                    ctx.strokeStyle = '#FF5722';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(appCanvasX, appCanvasY, radius, startAngle, endAngle, Mz < 0);
+                    ctx.stroke();
+
+                    // Draw arrowhead at end of arc
+                    const arrowAngle = endAngle;
+                    const arrowX = appCanvasX + radius * Math.cos(arrowAngle);
+                    const arrowY = appCanvasY + radius * Math.sin(arrowAngle);
+
+                    // Tangent direction (perpendicular to radius)
+                    const tangentAngle = arrowAngle + (Mz > 0 ? Math.PI / 2 : -Math.PI / 2);
+
+                    ctx.fillStyle = '#FF5722';
+                    ctx.beginPath();
+                    ctx.moveTo(arrowX, arrowY);
+                    ctx.lineTo(
+                        arrowX - 8 * Math.cos(tangentAngle - Math.PI / 6),
+                        arrowY - 8 * Math.sin(tangentAngle - Math.PI / 6)
+                    );
+                    ctx.lineTo(
+                        arrowX - 8 * Math.cos(tangentAngle + Math.PI / 6),
+                        arrowY - 8 * Math.sin(tangentAngle + Math.PI / 6)
+                    );
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Draw Mz label
+                    ctx.fillStyle = '#FF5722';
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`Mz=${Mz.toFixed(1)}`, appCanvasX, appCanvasY - radius - 10);
+                }
+
+                // Draw Mx as curved double-arrow (bending about x-axis)
+                const Mx = loadCaseToDisplay.Mx || 0; // kNm
+                if (Math.abs(Mx) > 0.01) {
+                    // Show at right edge of canvas
+                    const edgeX = canvas.width - 60;
+                    const centerY = canvas.height / 2;
+                    const arcHeight = 40;
+
+                    ctx.strokeStyle = '#9C27B0'; // Purple for Mx
+                    ctx.lineWidth = 2;
+
+                    if (Mx > 0) {
+                        // Positive Mx: tension on +y (top) side
+                        // Draw arc curving upward
+                        ctx.beginPath();
+                        ctx.moveTo(edgeX, centerY - arcHeight/2);
+                        ctx.quadraticCurveTo(edgeX + 20, centerY, edgeX, centerY + arcHeight/2);
+                        ctx.stroke();
+
+                        // Arrowheads
+                        drawArrowhead(ctx, edgeX, centerY - arcHeight/2, 0, -1, '#9C27B0');
+                        drawArrowhead(ctx, edgeX, centerY + arcHeight/2, 0, 1, '#9C27B0');
+                    } else {
+                        // Negative Mx: compression on +y (top) side
+                        ctx.beginPath();
+                        ctx.moveTo(edgeX, centerY - arcHeight/2);
+                        ctx.quadraticCurveTo(edgeX - 20, centerY, edgeX, centerY + arcHeight/2);
+                        ctx.stroke();
+
+                        // Arrowheads
+                        drawArrowhead(ctx, edgeX, centerY - arcHeight/2, 0, 1, '#9C27B0');
+                        drawArrowhead(ctx, edgeX, centerY + arcHeight/2, 0, -1, '#9C27B0');
+                    }
+
+                    // Label
+                    ctx.fillStyle = '#9C27B0';
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(`Mx=${Mx.toFixed(1)}`, edgeX + 5, centerY);
+                }
+
+                // Draw My as curved double-arrow (bending about y-axis)
+                const My = loadCaseToDisplay.My || 0; // kNm
+                if (Math.abs(My) > 0.01) {
+                    // Show at bottom edge of canvas
+                    const centerX = canvas.width / 2;
+                    const edgeY = canvas.height - 60;
+                    const arcWidth = 40;
+
+                    ctx.strokeStyle = '#FF9800'; // Orange for My
+                    ctx.lineWidth = 2;
+
+                    if (My > 0) {
+                        // Positive My: tension on +x (right) side
+                        // Draw arc curving rightward
+                        ctx.beginPath();
+                        ctx.moveTo(centerX - arcWidth/2, edgeY);
+                        ctx.quadraticCurveTo(centerX, edgeY + 20, centerX + arcWidth/2, edgeY);
+                        ctx.stroke();
+
+                        // Arrowheads
+                        drawArrowhead(ctx, centerX - arcWidth/2, edgeY, -1, 0, '#FF9800');
+                        drawArrowhead(ctx, centerX + arcWidth/2, edgeY, 1, 0, '#FF9800');
+                    } else {
+                        // Negative My: compression on +x (right) side
+                        ctx.beginPath();
+                        ctx.moveTo(centerX - arcWidth/2, edgeY);
+                        ctx.quadraticCurveTo(centerX, edgeY - 20, centerX + arcWidth/2, edgeY);
+                        ctx.stroke();
+
+                        // Arrowheads
+                        drawArrowhead(ctx, centerX - arcWidth/2, edgeY, 1, 0, '#FF9800');
+                        drawArrowhead(ctx, centerX + arcWidth/2, edgeY, -1, 0, '#FF9800');
+                    }
+
+                    // Label
+                    ctx.fillStyle = '#FF9800';
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`My=${My.toFixed(1)}`, centerX, edgeY + 15);
+                }
+            }
+        }
     }
 
-    // Draw forces if results available
-    if (state.lastResults && state.lastResults.load_distribution) {
-        const forceScale = parseFloat(document.getElementById('force-scale').value);
+    // Draw distributed forces if results available and toggle is on
+    if (showDistributedForces && state.lastResults && state.lastResults.load_distribution) {
+        const forceScaleInput = parseFloat(document.getElementById('force-scale').value);
+
+        // Find maximum force magnitude for scaling
+        let maxForce = 0;
+        state.lastResults.load_distribution.forEach(dist => {
+            const Vx = dist.forces.Vx_total;
+            const Vy = dist.forces.Vy_total;
+            const forceMag = Math.sqrt(Vx * Vx + Vy * Vy);
+            maxForce = Math.max(maxForce, forceMag);
+        });
+
+        // Calculate arrow length scale: max force should be 1/20 of plot size
+        const plotSize = Math.min(canvas.width, canvas.height);
+        const maxArrowLength = (plotSize / 20) * forceScaleInput / 0.05; // Normalize to default scale
+        const arrowScale = maxForce > 0 ? maxArrowLength / maxForce : 1;
 
         state.lastResults.load_distribution.forEach(dist => {
             const fastener = state.fasteners.find(f => f.id === dist.fastener_id);
@@ -1178,13 +1479,77 @@ function updatePlot() {
             const cx = toCanvasX(fastener.x);
             const cy = toCanvasY(fastener.y);
 
-            const Vx = dist.forces.Vx_total;
-            const Vy = dist.forces.Vy_total;
+            const Vx = dist.forces.Vx_total; // kN
+            const Vy = dist.forces.Vy_total; // kN
+
+            // Calculate arrow endpoint in canvas pixels
+            // IMPORTANT: Distributed forces are REACTIONS, so they point OPPOSITE to applied forces
+            const dx = -Vx * arrowScale; // Negative because reactions oppose applied forces
+            const dy = Vy * arrowScale; // Positive (canvas Y already inverted, so double negative = positive)
 
             // Draw arrow
-            drawArrow(ctx, cx, cy, cx + Vx * forceScale * scale, cy - Vy * forceScale * scale, '#4CAF50');
+            drawArrow(ctx, cx, cy, cx + dx, cy + dy, '#4CAF50');
         });
     }
+
+    // Update fastener forces display
+    updateFastenerForcesDisplay();
+}
+
+function updateFastenerForcesDisplay() {
+    const container = document.getElementById('fastener-forces-container');
+    const displayDiv = document.getElementById('fastener-forces-display');
+
+    // Only show if we have load distribution results
+    if (!state.lastResults || !state.lastResults.load_distribution) {
+        displayDiv.style.display = 'none';
+        return;
+    }
+
+    const loadDist = state.lastResults.load_distribution;
+    if (!loadDist || loadDist.length === 0) {
+        displayDiv.style.display = 'none';
+        return;
+    }
+
+    displayDiv.style.display = 'block';
+
+    // Build table
+    let html = `
+        <table class="data-table" style="width: 100%; font-size: 0.85rem;">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Vx (kN)</th>
+                    <th>Vy (kN)</th>
+                    <th>V_tot (kN)</th>
+                    <th>N (kN)</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    loadDist.forEach(fastener => {
+        const forces = fastener.forces;
+        const res = fastener.resultants;
+
+        html += `
+            <tr>
+                <td>${fastener.fastener_id}</td>
+                <td>${forces.Vx_total}</td>
+                <td>${forces.Vy_total}</td>
+                <td>${res.V_resultant}</td>
+                <td>${forces.N}</td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
 }
 
 function drawArrow(ctx, x1, y1, x2, y2, color) {
@@ -1206,6 +1571,17 @@ function drawArrow(ctx, x1, y1, x2, y2, color) {
     ctx.moveTo(x2, y2);
     ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
     ctx.lineTo(x2 - headlen * Math.cos(angle + Math.PI / 6), y2 - headlen * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
+}
+
+function drawArrowhead(ctx, x, y, dirX, dirY, color) {
+    const headlen = 8;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - headlen * dirX + 4 * dirY, y - headlen * dirY - 4 * dirX);
+    ctx.lineTo(x - headlen * dirX - 4 * dirY, y - headlen * dirY + 4 * dirX);
     ctx.closePath();
     ctx.fill();
 }

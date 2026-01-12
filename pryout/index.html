@@ -22,6 +22,9 @@
         <header class="app-header">
             <h1>EC2 Part 4 Fastener Design Calculator</h1>
             <p class="subtitle">CEN/TS 1992-4-1:2009 & 1992-4-2:2009</p>
+            <p class="warning-banner" style="background: #fff3cd; color: #856404; padding: 0.75rem; margin: 0.5rem 0; border-radius: 4px; border: 1px solid #ffeaa7;">
+                ⚠️ <strong>Under Development:</strong> This calculator is currently in development and may not produce correct results. Use at your own risk and verify all outputs independently.
+            </p>
         </header>
 
         <!-- Main Content -->
@@ -212,6 +215,8 @@
                                         <th>Load Case</th>
                                         <th>V<sub>x</sub> (kN)</th>
                                         <th>V<sub>y</sub> (kN)</th>
+                                        <th>M<sub>x</sub> (kNm)</th>
+                                        <th>M<sub>y</sub> (kNm)</th>
                                         <th>M<sub>z</sub> (kNm)</th>
                                         <th>N (kN)</th>
                                         <th>Actions</th>
@@ -249,9 +254,11 @@
 
                         <div class="info-box">
                             <p><strong>Sign Convention:</strong></p>
-                            <p>• Positive V<sub>x</sub>: →</p>
-                            <p>• Positive V<sub>y</sub>: ↑</p>
-                            <p>• Positive M<sub>z</sub>: ⟲ (counter-clockwise)</p>
+                            <p>• Positive V<sub>x</sub>: → (right)</p>
+                            <p>• Positive V<sub>y</sub>: ↑ (up)</p>
+                            <p>• Positive M<sub>x</sub>: Bending about x-axis (tension on +y side)</p>
+                            <p>• Positive M<sub>y</sub>: Bending about y-axis (tension on +x side)</p>
+                            <p>• Positive M<sub>z</sub>: ⟲ (counter-clockwise torsion)</p>
                             <p>• Positive N: ↑ (tension)</p>
                         </div>
                     </div>
@@ -322,6 +329,9 @@
                         </div>
 
                         <button id="run-analysis" class="btn-primary btn-large">Run Analysis</button>
+                        <p style="text-align: center; font-size: 0.85rem; color: #757575; margin-top: 0.5rem;">
+                            <em>Keyboard shortcut: Ctrl+Space</em>
+                        </p>
                     </div>
                 </div>
             </div>
@@ -332,18 +342,48 @@
                 <div class="visualization-section">
                     <h3>Geometry & Load Distribution</h3>
 
-                    <div class="plot-controls">
-                        <label>Force Scale Factor:</label>
-                        <input type="number" id="force-scale" value="0.05" min="0.01" max="1.0" step="0.01">
-                        <button id="reset-view" class="btn-secondary">Reset View</button>
+                    <!-- Load Case Selector for Plot (shown when results available) -->
+                    <div id="plot-load-case-selector" style="display: none; margin-bottom: 1rem;">
+                        <label style="font-weight: 500; margin-right: 0.5rem;">Display Forces For:</label>
+                        <select id="plot-load-case-dropdown" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; min-width: 200px;">
+                            <option value="max">Max of All Load Cases</option>
+                        </select>
                     </div>
 
-                    <canvas id="plot-canvas" width="600" height="600"></canvas>
+                    <div class="plot-controls">
+                        <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <label>Force Scale:</label>
+                                <input type="number" id="force-scale" value="0.05" min="0.01" max="1.0" step="0.01" style="width: 80px;">
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
+                                    <input type="checkbox" id="show-applied-forces" checked>
+                                    <span>Applied Forces</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
+                                    <input type="checkbox" id="show-distributed-forces" checked>
+                                    <span>Distributed Forces</span>
+                                </label>
+                            </div>
+                            <button id="reset-view" class="btn-secondary">Reset View</button>
+                        </div>
+                    </div>
+
+                    <canvas id="plot-canvas" width="380" height="380"></canvas>
 
                     <div class="legend">
                         <div class="legend-item"><span class="legend-color" style="background: #2196F3;"></span> Fasteners</div>
                         <div class="legend-item"><span class="legend-color" style="background: #FF5722;"></span> Applied Forces</div>
                         <div class="legend-item"><span class="legend-color" style="background: #4CAF50;"></span> Distributed Forces</div>
+                    </div>
+
+                    <!-- Fastener Forces Display -->
+                    <div id="fastener-forces-display" style="display: none; margin-top: 1rem;">
+                        <h4 style="margin-bottom: 0.5rem;">Fastener Forces (Active Load Case)</h4>
+                        <div id="fastener-forces-container" style="max-height: 200px; overflow-y: auto;">
+                            <!-- Forces table will be inserted here -->
+                        </div>
                     </div>
                 </div>
 

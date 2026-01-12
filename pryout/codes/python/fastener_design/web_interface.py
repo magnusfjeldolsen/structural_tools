@@ -19,6 +19,9 @@ from fastener_design.core.concrete import ConcreteProperties
 from fastener_design.core.factors import MaterialFactors
 from fastener_design.design import FastenerDesign
 
+# Import calculation modules
+from fastener_design.calculations import planar_bending
+
 
 def run_analysis(input_json: str) -> str:
     """
@@ -108,7 +111,14 @@ def run_analysis(input_json: str) -> str:
                     'shear': results.get('shear')
                 },
                 'interaction': results.get('interaction'),
-                'overall_status': results.get('overall_status', 'UNKNOWN')
+                'overall_status': results.get('overall_status', 'UNKNOWN'),
+                # Include original load case data for plotting
+                'Vx': lc.get('Vx', 0.0),
+                'Vy': lc.get('Vy', 0.0),
+                'Mx': lc.get('Mx', 0.0),
+                'My': lc.get('My', 0.0),
+                'Mz': lc.get('Mz', 0.0),
+                'N': lc.get('N', 0.0)
             })
 
         # Calculate maximum utilizations across all load cases
@@ -242,97 +252,82 @@ def _calculate_min_spacings(positions: List[tuple]) -> tuple:
 
 def _calculate_load_distribution(fasteners_data: List[Dict], load_case: Dict) -> List[Dict]:
     """
-    Calculate load distribution to fasteners
+    Calculate load distribution to fasteners including planar bending
 
-    Uses CORRECTED formulas (verified 2026-01-07)
+    Updated 2026-01-12: Now includes Mx and My (planar bending moments)
 
     Args:
-        fasteners_data: List of fastener dictionaries with {x, y, ...}
-        load_case: Load case dictionary with Vx, Vy, Mz, N, application_point
+        fasteners_data: List of fastener dictionaries with {x, y, d, ...}
+        load_case: Load case dictionary with Vx, Vy, Mx, My, Mz, N, application_point
 
     Returns:
         List of dictionaries with forces on each fastener
     """
-    # Extract positions
+    # Extract positions and calculate areas
     positions = [(f['x'], f['y']) for f in fasteners_data]
     n = len(positions)
 
     if n == 0:
         return []
 
-    # Calculate centroid
-    Xc = sum(p[0] for p in positions) / n
-    Yc = sum(p[1] for p in positions) / n
-
-    # Get load application point
-    if load_case.get('application_type') == 'point':
-        Px = load_case['application_point']['x']
-        Py = load_case['application_point']['y']
-    else:
-        Px, Py = Xc, Yc
+    # Calculate fastener areas (gross cross-sectional area)
+    import math as m
+    areas = [m.pi * (f.get('diameter', f.get('d', 16))/2)**2 for f in fasteners_data]
 
     # Get loads
     Vx = load_case.get('Vx', 0.0)  # kN
     Vy = load_case.get('Vy', 0.0)  # kN
+    Mx = load_case.get('Mx', 0.0)  # kNm
+    My = load_case.get('My', 0.0)  # kNm
     Mz = load_case.get('Mz', 0.0)  # kNm
-    N_total = load_case.get('N', 0.0)  # kN
+    N = load_case.get('N', 0.0)    # kN
 
-    # Calculate eccentricity
-    ex = Px - Xc  # mm
-    ey = Py - Yc  # mm
+    # Get load application point
+    if load_case.get('application_type') == 'point':
+        load_point = (
+            load_case['application_point']['x'],
+            load_case['application_point']['y']
+        )
+        application_type = 'point'
+    else:
+        load_point = None
+        application_type = 'centroid'
 
-    # Total moment (applied + eccentric)
-    M_offset = (Vx * ey - Vy * ex) / 1000.0  # kN*mm → kNm
-    M_total = Mz + M_offset  # kNm
-    M_total_mm = M_total * 1000.0  # kNmm for calculations
+    # Use planar_bending module for complete load distribution
+    distribution_data = planar_bending.distribute_loads_with_bending(
+        positions=positions,
+        areas=areas,
+        N=N,
+        Vx=Vx,
+        Vy=Vy,
+        Mx=Mx,
+        My=My,
+        Mz=Mz,
+        load_point=load_point,
+        application_type=application_type
+    )
 
-    # Polar moment of inertia
-    J = sum((p[0] - Xc)**2 + (p[1] - Yc)**2 for p in positions)
-
-    # Distribute forces
+    # Format for output (match expected structure)
     distribution = []
-    for i, (x, y) in enumerate(positions):
-        dx = x - Xc  # mm
-        dy = y - Yc  # mm
-
-        # Direct shear (equal distribution)
-        Vx_direct = Vx / n
-        Vy_direct = Vy / n
-
-        # Torsional shear (CORRECTED FORMULAS - verified 2026-01-07)
-        # NOTE: Positive sign for Vx_torsion (was negative in old code - BUG!)
-        if J > 0:
-            # Multiple fasteners - distribute torsion
-            Vx_torsion = M_total_mm * dy / J  # ✅ CORRECT (no negative sign)
-            Vy_torsion = M_total_mm * dx / J  # ✅ CORRECT
-        else:
-            # Single fastener (J=0) - no torsional distribution
-            # All moment is resisted by the single fastener
-            Vx_torsion = 0.0
-            Vy_torsion = 0.0
-
-        # Total forces
-        Vx_total = Vx_direct + Vx_torsion
-        Vy_total = Vy_direct + Vy_torsion
-
-        # Tension (equal distribution for now)
-        N_fastener = N_total / n
-
-        # Resultants
-        V_resultant = math.sqrt(Vx_total**2 + Vy_total**2)
-        total_resultant = math.sqrt(Vx_total**2 + Vy_total**2 + N_fastener**2)
+    for i, data in enumerate(distribution_data):
+        V_resultant = data['V_total']
+        N_total = data['N']
+        total_resultant = math.sqrt(V_resultant**2 + N_total**2)
 
         distribution.append({
             'fastener_id': fasteners_data[i]['id'],
-            'position': {'x': x, 'y': y},
+            'position': {'x': data['x'], 'y': data['y']},
             'forces': {
-                'Vx_direct': round(Vx_direct, 3),
-                'Vy_direct': round(Vy_direct, 3),
-                'Vx_torsion': round(Vx_torsion, 3),
-                'Vy_torsion': round(Vy_torsion, 3),
-                'Vx_total': round(Vx_total, 3),
-                'Vy_total': round(Vy_total, 3),
-                'N': round(N_fastener, 3)
+                'Vx_direct': round(data['Vx_direct'], 3),
+                'Vy_direct': round(data['Vy_direct'], 3),
+                'Vx_torsion': round(data['Vx_torsion'], 3),
+                'Vy_torsion': round(data['Vy_torsion'], 3),
+                'Vx_total': round(data['Vx'], 3),
+                'Vy_total': round(data['Vy'], 3),
+                'N': round(data['N'], 3),
+                'N_direct': round(data['N_direct'], 3),
+                'N_Mx': round(data['N_Mx'], 3),
+                'N_My': round(data['N_My'], 3)
             },
             'resultants': {
                 'V_resultant': round(V_resultant, 3),
