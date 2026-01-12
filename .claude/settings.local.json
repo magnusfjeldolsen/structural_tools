@@ -41,7 +41,8 @@
       "Bash(git mv:*)",
       "Bash(dir:*)",
       "Bash(curl:*)",
-      "Bash(start:*)"
+      "Bash(start:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": [],
