@@ -58,7 +58,8 @@ async function initializePyodide() {
         console.log("[Worker] Installing PyNite...");
         await pyodide.runPythonAsync(`
             import micropip
-            await micropip.install("PyniteFEA")
+            # Install PyNite 1.0.11 which is compatible with numpy 1.25.2
+            await micropip.install("PyniteFEA==1.0.11")
         `);
 
         console.log("[Worker] Loading PyNite analyzer module...");
