@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "generated": "2026-01-06T00:00:00.000Z",
+    "generated": "2026-01-13T08:31:22.292Z",
     "total_modules": 21,
     "version": "1.0.0",
     "duplicates_removed": 0,
@@ -113,27 +113,6 @@
       "category": "concrete"
     },
     {
-      "id": "pryout",
-      "title": "EC2-1-4 Pry-Out Shear Stud Analyzer - Free Engineering Tool",
-      "description": "Calculate pry-out resistance for shear stud groups with elastic force distribution and torsion. Features multiple load cases, envelope analysis, and interactive visualization according to Eurocode 2-1-4.",
-      "keywords": [
-        "pry-out resistance",
-        "shear studs",
-        "ec2-1-4",
-        "stud connection",
-        "eurocode 2",
-        "elastic force distribution",
-        "torsion analysis",
-        "load cases",
-        "envelope analysis",
-        "structural engineering",
-        "free engineering tool",
-        "structural calculator"
-      ],
-      "url": "./pryout/index.html",
-      "category": "concrete"
-    },
-    {
       "id": "concrete_slab_design",
       "title": "Concrete Slab Design Calculator | Free Structural Engineering Tool",
       "description": "Ultimate Limit State (ULS) moment resistance calculator for concrete slabs. Calculate MRd with detailed step-by-step mathematical derivations and visual aids according to Eurocode 2.",
@@ -187,6 +166,21 @@
       "keywords": [],
       "url": "./ec2concrete/index.html",
       "category": "concrete"
+    },
+    {
+      "id": "pryout",
+      "title": "EC2-1-4 Pry-Out Shear Stud Analyzer - Free Engineering Tool",
+      "description": "Free EC2-1-4 pry-out resistance calculator for shear stud groups. Elastic force distribution with torsion and multiple load cases.",
+      "keywords": [
+        "pry-out resistance",
+        "shear studs",
+        "ec2-1-4",
+        "structural engineering",
+        "stud connection",
+        "eurocode 2"
+      ],
+      "url": "./pryout/index.html",
+      "category": "structural-analysis"
     },
     {
       "id": "seismic_ec8",
