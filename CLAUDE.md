@@ -6,7 +6,14 @@ When prompted to create or modify a module, look inside global-devspecs. Conside
 - plan_IO-structure_for_modules.md
 - detailed-report-implementation-plan.md
 - README.md
+- **DEPLOYMENT.md** - Critical reference for deployment architecture and workflows
 - Other relevant documents according to the prompt
+
+**IMPORTANT**: Always review [DEPLOYMENT.md](DEPLOYMENT.md) before making changes to:
+- Deployment workflows (`.github/workflows/`)
+- Build configurations (`vite.config.ts`, `package.json`)
+- Module structure or file paths
+- Development/testing processes
 
 Always propose a plan on what you will do. If in auto-accept, present the plan and start coding.
 
@@ -32,7 +39,20 @@ Test at: https://magnusfjeldolsen.github.io/structural_tools/
 
 ## Deployment Workflow
 
-**READ DEPLOYMENT.md FOR FULL DETAILS.** This is a quick reference for common deployment tasks.
+**⚠️ ALWAYS READ [DEPLOYMENT.md](DEPLOYMENT.md) FOR FULL DETAILS** before modifying deployment workflows, build processes, or module structure.
+
+### Quick Start: Local Development
+
+For local testing before deployment:
+```bash
+npm run help          # Show all available commands
+npm run dev           # Start 2dfea hot reload (dev mode)
+npm run dev:serve     # Serve all modules (mimics GitHub Pages)
+npm run preview       # Build + serve locally for testing
+npm run test:deploy   # Test deployment staging locally
+```
+
+**Full documentation**: See [DEPLOYMENT.md](DEPLOYMENT.md) sections on "Quick Start: Local Development" and "Development Workflows".
 
 ### Architecture Overview
 
