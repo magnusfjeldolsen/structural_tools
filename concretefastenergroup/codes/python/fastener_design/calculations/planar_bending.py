@@ -175,7 +175,9 @@ def calculate_bending_forces(
     Mx_Nmm = Mx * 1e6  # kNm → Nmm
     My_Nmm = My * 1e6  # kNm → Nmm
 
-    M = np.array([Mx_Nmm, My_Nmm])
+    # Sign convention: positive My creates compression on +x side (not tension)
+    # So we need to negate My in the formulation
+    M = np.array([Mx_Nmm, -My_Nmm])
 
     # Calculate stress (N/mm²) and force (N) at each fastener
     forces = []
@@ -371,12 +373,24 @@ def distribute_loads_with_bending(
         Vx_direct = Vx / n
         Vy_direct = Vy / n
 
-        # Torsional shear from Mz
-        J = section_props['J']
-        if J > 0:
+        # Torsional shear from Mz (right-hand rule)
+        # For discrete fasteners: F_i = (Mz / Σ(r²)) × r_i
+        # NOT F_i = (Mz / J) × r_i, because J = Σ(r² × A) includes area
+        # We need Σ(r²) without area multiplier
+        # Positive Mz (CCW rotation looking down):
+        #   - Fastener at (+dx, 0): force in +y direction -> Vy = +Mz*dx/Σ(r²)
+        #   - Fastener at (0, +dy): force in -x direction -> Vx = -Mz*dy/Σ(r²)
+        sum_r_squared = sum([(positions[j][0] - centroid[0])**2 + (positions[j][1] - centroid[1])**2
+                             for j in range(len(positions))])
+        if sum_r_squared > 0:
             Mz_Nmm = Mz_total * 1e6  # kNm → Nmm
-            Vx_torsion = Mz_Nmm * dy / J / 1000.0  # N → kN
-            Vy_torsion = -Mz_Nmm * dx / J / 1000.0  # N → kN (note sign)
+            # IMPORTANT: These are RESISTING forces, opposite to applied moment direction
+            # Cross product: ω × r = (0,0,ωz) × (x,y,0) = (-ωz·y, ωz·x, 0)
+            # For applied CCW Mz (positive): v_applied = (-Mz·y, +Mz·x, 0)
+            # Resisting forces oppose applied: v_resist = -v_applied = (+Mz·y, -Mz·x, 0)
+            # Therefore: Vx_resist = +Mz×dy / Σr², Vy_resist = -Mz×dx / Σr²
+            Vx_torsion = Mz_Nmm * dy / sum_r_squared / 1000.0  # kN
+            Vy_torsion = -Mz_Nmm * dx / sum_r_squared / 1000.0  # kN
         else:
             Vx_torsion = 0.0
             Vy_torsion = 0.0
