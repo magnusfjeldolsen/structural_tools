@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-01-13T09:26:07.696Z",
-    "total_modules": 21,
+    "generated": "2026-01-13T13:35:53.623Z",
+    "total_modules": 22,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
@@ -93,6 +93,22 @@
         "betongelementboken"
       ],
       "url": "./concrete_dowels/index.html",
+      "category": "concrete"
+    },
+    {
+      "id": "concretefastenergroup",
+      "title": "Concrete Fastener Group Design - Free Engineering Tool",
+      "description": "Free concrete fastener group design calculator. Elastic force distribution with torsion and multiple load cases for shear stud groups per EC2-1-4.",
+      "keywords": [
+        "concrete fastener design",
+        "shear studs",
+        "ec2-1-4",
+        "structural engineering",
+        "stud connection",
+        "eurocode 2",
+        "pry-out resistance"
+      ],
+      "url": "./concretefastenergroup/index.html",
       "category": "concrete"
     },
     {
