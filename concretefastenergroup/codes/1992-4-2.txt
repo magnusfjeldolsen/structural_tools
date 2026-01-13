@@ -1,0 +1,1391 @@
+DD CEN/TS
+1992-4-2:2009
+ICS 21.060.10; 91.080.40
+NO COPYING WITHOUT BSI PERMISSION EXCEPT AS PERMITTED BY COPYRIGHT LAW
+DRAFT FOR DEVELOPMENT
+Design of fastenings
+for use in concrete
+Part 4-2: Headed Fasteners
+This Draft for Development
+was published under the
+authority of the Standards
+Policy and Strategy
+Committee on 30 June
+2009.
+© BSI 2009
+ISBN 978 0 580 62636 4
+Amendments/corrigenda issued since publication
+Date Comments
+DD CEN/TS 1992-4-2:2009
+National foreword
+This Draft for Development is the UK implementation of CEN/TS
+1992-4-2:2009.
+This publication is not to be regarded as a British Standard.
+It is being issued in the Draft for Development series of publications and
+is of a provisional nature. It should be applied on this provisional basis,
+so that information and experience of its practical application can be
+obtained.
+Comments arising from the use of this Draft for Development are
+requested so that UK experience can be reported to the international
+organization responsible for its conversion to an international standard.
+A review of this publication will be initiated not later than 3 years after
+its publication by the international organization so that a decision can be
+taken on its status. Notification of the start of the review period will be
+made in an announcement in the appropriate issue of Update Standards.
+According to the replies received by the end of the review period,
+the responsible BSI Committee will decide whether to support the
+conversion into an international Standard, to extend the life of the
+Technical Specification or to withdraw it. Comments should be sent to
+the Secretary of the responsible BSI Technical Committee at British
+Standards House, 389 Chiswick High Road, London W4 4AL.
+The UK participation in its preparation was entrusted to Technical
+Committee B/525/2, Structural use of concrete.
+A list of organizations represented on this committee can be obtained on
+request to its secretary.
+This publication does not purport to include all the necessary provisions
+of a contract. Users are responsible for its correct application.
+Compliance with a British Standard cannot confer immunity
+from legal obligations.
+DD CEN/TS 1992-4-2:2009
+TECHNICAL SPECIFICATION
+SPÉCIFICATION TECHNIQUE
+TECHNISCHE SPEZIFIKATION
+CEN/TS 1992-4-2
+May 2009
+ICS 21.060.10; 91.080.40
+English Version
+Design of fastenings for use in concrete - Part 4-2: Headed
+Fasteners
+Conception-calcul des éléments de fixation pour béton -
+Partie 4-2 : Eléments de fixation à tête
+Bemessung von Befestigungen in Beton - Teil 4-2:
+Kopfbolzen
+This Technical Specification (CEN/TS) was approved by CEN on 20 October 2008 for provisional application.
+The period of validity of this CEN/TS is limited initially to three years. After two years the members of CEN will be requested to submit their
+comments, particularly on the question whether the CEN/TS can be converted into a European Standard.
+CEN members are required to announce the existence of this CEN/TS in the same way as for an EN and to make the CEN/TS available
+promptly at national level in an appropriate form. It is permissible to keep conflicting national standards in force (in parallel to the CEN/TS)
+until the final decision about the possible conversion of the CEN/TS into an EN is reached.
+CEN members are the national standards bodies of Austria, Belgium, Bulgaria, Cyprus, Czech Republic, Denmark, Estonia, Finland,
+France, Germany, Greece, Hungary, Iceland, Ireland, Italy, Latvia, Lithuania, Luxembourg, Malta, Netherlands, Norway, Poland, Portugal,
+Romania, Slovakia, Slovenia, Spain, Sweden, Switzerland and United Kingdom.
+EUROPEAN COMMITTEE FOR STANDARDIZATION
+COMITÉ EUROPÉEN DE NORMALISATION
+EUROPÄISCHES KOMITEE FÜR NORMUNG
+Management Centre: Avenue Marnix 17, B-1000 Brussels
+© 2009 CEN All rights of exploitation in any form and by any means reserved
+worldwide for CEN national Members.
+Ref. No. CEN/TS 1992-4-2:2009: E
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+2 
+Contents Page
+Foreword ..............................................................................................................................................................3
+1 Scope ......................................................................................................................................................4
+1.1 General ....................................................................................................................................................4
+2 Normative references ............................................................................................................................4
+3 Definitions and symbols .......................................................................................................................4
+4 Basis of design ......................................................................................................................................4
+5 Determination of action effects ............................................................................................................5
+5.3 Tension forces in a supplementary reinforcement ............................................................................5
+5.3.1 General ....................................................................................................................................................5
+5.3.2 Fasteners loaded in tension .................................................................................................................5
+5.3.3 Fixtures loaded in shear .......................................................................................................................5
+6 Verification of ultimate limit state by elastic analysis .......................................................................6
+6.1 General ....................................................................................................................................................6
+6.2 Tension load ...........................................................................................................................................6
+6.2.1 Required verifications ...........................................................................................................................6
+6.2.2 Detailing of supplementary reinforcement .........................................................................................7
+6.2.3 Steel failure of fastener .........................................................................................................................8
+6.2.4 Pull-out failure of fastener ....................................................................................................................8
+6.2.5 Concrete cone failure ............................................................................................................................8
+6.2.6 Splitting failure .................................................................................................................................... 14
+6.2.7 Blow-out failure ................................................................................................................................... 15
+6.2.8 Steel failure of the supplementary reinforcement ........................................................................... 18
+6.2.9 Anchorage failure of the supplementary reinforcement in the concrete cone ............................ 18
+6.3 Shear load ............................................................................................................................................ 19
+6.3.1 Required verifications ........................................................................................................................ 19
+6.3.2 Detailing of supplementary reinforcement ...................................................................................... 19
+6.3.3 Steel failure of fastener ...................................................................................................................... 20
+6.3.4 Concrete pry-out failure ..................................................................................................................... 22
+6.3.5 Concrete edge failure ......................................................................................................................... 23
+6.4 Combined tension and shear load .................................................................................................... 30
+6.4.1 Fastenings without supplementary reinforcement ......................................................................... 30
+7 Fatigue ................................................................................................................................................. 31
+8 Seismic ................................................................................................................................................ 31
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+3 
+Foreword 
+This Technical Specification (CEN/TS 1992-4-2:2009) has been prepared by Technical Committee 
+CEN/TC 250 “Structural Eurocodes”, the secretariat of which is held by BSI. 
+Attention is drawn to the possibility that some of the elements of this document may be the subject of patent 
+rights. CEN [and/or CENELEC] shall not be held responsible for identifying any or all such patent rights. 
+The Technical Specification CEN/TS 1992-4–2 — Headed fasteners, describes the principles and 
+requirements for safety, serviceability and durability of headed fasteners for use in concrete. It is based on the 
+limit state concept used in conjunction with a partial factor method. 
+This Technical Specification does not provide information about the use of National Determined Parameters 
+(NDP). 
+CEN/TS 1992-4 'Design of fastenings for use in concrete' is subdivided into the following parts: 
+ Part 1: General 
+ Part 2: Headed fasteners 
+ Part 3: Anchor channels 
+ Part 4: Post-installed fasteners — Mechanical systems 
+ Part 5: Post-installed fasteners — Chemical systems 
+Relation to Part 1 of this Technical Specification TS 
+The principles and requirements of Part 2 of this CEN/TS are additional to those in Part 1, all the clauses and 
+subclauses of which also apply to Part 2 unless varied in this Part. Additional information is presented under 
+the relevant clauses/subclauses of Part 1 of the CEN/TS. The numbers for the clauses/sub-clauses of Part 2 
+continue from the number of the last relevant clauses/sub-clauses of Part 1. 
+The above principles also apply to Figures and Tables in Part 2. 
+According to the CEN/CENELEC Internal Regulations, the national standards organizations of the following 
+countries are bound to announce this Technical Specification: Austria, Belgium, Bulgaria, Cyprus, Czech 
+Republic, Denmark, Estonia, Finland, France, Germany, Greece, Hungary, Iceland, Ireland, Italy, Latvia, 
+Lithuania, Luxembourg, Malta, Netherlands, Norway, Poland, Portugal, Romania, Slovakia, Slovenia, Spain, 
+Sweden, Switzerland and the United Kingdom. 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+4 
+1 Scope 
+1.1 General 
+1.1.6 This document relies on characteristic resistances and distances which are stated in a European 
+Technical Specification. In minimum the following characteristics should be given in a European Technical 
+Specification as base for the design methods of this CEN/TS: 
+ NRk,p, NRk,s, VRk,s
+ 0 M Rk,s
+ ccr,N, scr,N
+ ccr,sp, scr,sp
+ cmin, smin, hmin
+ limitations on concrete strength classes of base material 
+ kcr, kucr, k2, k4, k6, k7
+ dh, dnom, hef, lf
+ γMi partial factors for material see also CEN/TS 1992-4-1:2009, clause 4. 
+2 Normative references 
+This European Standard incorporates by dated or undated reference, provisions from other publications. 
+These normative references are cited at the appropriate places in the text and the publications are listed 
+hereafter. For dated references, subsequent amendments to or revisions of any of these publications apply to 
+this European Standard only when incorporated in it by amendment or revision. For undated references the 
+latest edition of the publication referred to applies. 
+NOTE The following references to Eurocodes are references to European Standards and European Prestandards. 
+These are the only European documents available at the time of publication of this TS. National documents take 
+precedence until Eurocodes are published as European Standards. 
+EN 1992-1-1, Eurocode 2: Design of concrete structures — Part 1-1: General rules and rules for buildings 
+CEN/TS 1992-4-1:2009, Design of fastenings for use in concrete — Part 4-1: General
+EN 10080, Steel for the reinforcement of concrete — Weldable reinforcing steel — General 
+EN ISO 13918, Welding — Studs and ceramic ferrules for arc stud welding (ISO 13918:2008) 
+3 Definitions and symbols 
+Definitions and symbols are given in CEN/TS 1992-4-1. 
+4 Basis of design 
+4.5.4 Design of welding should be in accordance with EN 1993-1. 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+5 
+4.5.5 The following assumptions in respect to installation have been made in this CEN/TS. The installation 
+instructions should reflect them: 
+1) The fastener should be fixed to the formwork or auxiliary constructions in a way that no movement of the 
+fastener will occur during placing of reinforcement or during pouring and compacting of the concrete. 
+2) Requirements for 
+ adequate compaction particularly under the head of the stud or fastener and under the fixture, 
+ provisions for vent openings in fixtures larger than 400 mm × 400 mm. 
+3) Requirement for inspection and approval of the correct installation of the fasteners by qualified personnel. 
+4) The following conditions should be observed if the fasteners are vibrated (not just punched) into the wet 
+concrete immediately after pouring: 
+ The size of the fixture does not exceed 200 mm × 200 mm and the number of fastenings is limited to 
+4 fasteners, so that it can be placed simultaneously during vibrating by the available personnel. 
+ The installation is done according to a quality system. 
+ The fastenings should not be moved after vibrating has been finished. 
+ The concrete under the head of the headed stud or anchor as well as under the base plate should be 
+properly compacted. 
+5) The welding procedure for studs should be done in accordance with the provisions given in the relevant 
+European Technical Specification. 
+6) Inspection and approval of the correct installation of the fasteners is carried out by appropriately qualified 
+personnel. 
+5 Determination of action effects 
+5.3 Tension forces in a supplementary reinforcement 
+5.3.1 General 
+Where supplementary reinforcement is provided, the design tension forces in the supplementary 
+reinforcement should be established using an appropriate strut and tie model. The supplementary 
+reinforcement should be designed to resist the total external load on the fastening. 
+5.3.2 Fasteners loaded in tension 
+The design tension forces NEd, re in the supplementary reinforcement should be calculated using the design 
+load on the fastener. 
+5.3.3 Fixtures loaded in shear 
+The design tension force NEd, re in the supplementary reinforcement caused by the design shear force VEd
+acting on a fixture is given by Equation (1). 
+ed s Ed, re 1 V z
+e
+N ⋅ 
+
+
+
+
+
+
+ = + (1) 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+6 
+with (see Figure 1): 
+es = distance between reinforcement and shear force acting on a fixture 
+z = internal lever arm of the concrete member 
+≈ 0,85d 
+
+
+ ≤
+1
+ef
+2
+2
+min
+c
+h
+d
+If the supplementary reinforcement is not arranged in the direction of the shear force (see Figure 10c)) then 
+this must be taken into account in the calculation of the design tension force of the reinforcement. 
+In the case of different shear forces on the fasteners of a fixture, Equation (1) should be solved for the 
+shear load h
+Ed V of the most loaded fastener resulting in h
+Ed,re N . 
+Figure 1— Detailing of reinforcement to take up shear forces 
+6 Verification of ultimate limit state by elastic analysis 
+6.1 General 
+6.1.5 This section applies when forces on the fasteners have been calculated using elastic analysis. 
+Annex B of Part 1 should be used for plastic analysis. 
+6.1.6 The spacing between outer headed fasteners of adjoining groups or the distance to single fasteners 
+shall be a > scr,N . 
+6.2 Tension load 
+6.2.1 Required verifications 
+The required verifications are given in Table 1. 
+6.2.1.1 For fasteners without supplementary reinforcement the verifications of Table 1, lines 1 to 5 apply. 
+6.2.1.2 For fasteners with supplementary reinforcement the verifications of Table 1, lines 1, 2 and 4 to 7 
+apply. 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+7 
+6.2.2 Detailing of supplementary reinforcement 
+When the design relies on supplementary reinforcement, concrete cone failure according to Equation (4) 
+needs not to be verified but the supplementary reinforcement should be designed to resist the total load. 
+The supplementary reinforcement to take up tension loads should comply with the following requirements (see 
+also Figure 2): 
+a) In general, the same diameter of the reinforcement should be provided for all fasteners of a group. The 
+reinforcement should consist of ribbed reinforcing bars (fyk ≤ 500 N/mm2
+) with a diameter ds not larger 
+than 16 mm and should be detailed in form of stirrups or loops with a mandrel diameter according to 
+EN 1992-1-1. 
+Table 1 — Required verifications for headed fasteners loaded in tension 
+Single fastener 
+Fastener group
+most loaded fastener fastener group 
+1 Steel failure 
+of fastener Ms
+Rk, s
+Ed Rd, s γ
+N
+N ≤ N =
+Ms
+Rk, s
+Rd, s h
+Ed γ
+N
+N ≤ N =
+2 Pull-out failure 
+of fastener Mp
+Rk, p
+Ed Rd, p γ
+N
+N ≤ N =
+Mp
+Rk, p
+Rd, p
+h
+Ed γ
+N
+N ≤ N =
+3 Concrete 
+cone failure Mc
+Rk, c
+Ed Rd, c γ
+N
+N ≤ N =
+Mc
+Rk, c
+Rd, c g
+Ed γ
+N
+N ≤ N =
+4 Splitting failure 
+Msp
+Rk, sp
+Ed Rd, sp γ
+N
+N ≤ N =
+Msp
+Rk, sp
+Rd, sp
+g
+Ed γ
+N
+N ≤ N =
+5 Blow-out failurea
+Mc
+Rk, cb
+Ed Rd, cb
+γ
+N
+N ≤ N =
+Ms
+Rk, cb
+Rd, cb
+g
+Ed γ
+N
+N ≤ N =
+6 Steel failure of 
+reinforcement Ms, re
+Rk, re
+Ed,re Rd, re γ
+N
+N ≤ N =
+Ms, re
+Rk, re
+Rd, re h
+Ed, re γ
+N
+N ≤ N =
+7 Anchorage failure 
+of reinforcement 
+NEd,re ≤ NRd, a Rd, a h
+Ed, re N ≤ N
+a Not required for fasteners with c > 0,5 hef
+Figure 2 — Example for a multiple fastening with supplementary reinforcement to take up tension 
+loads and corresponding strut and tie model 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+8 
+b) The supplementary reinforcement should be placed as close to the fasteners as practicable to minimize 
+the effect of eccentricity associated with the angle of the failure cone. Preferably, the supplementary 
+reinforcement should enclose the surface reinforcement. Only these reinforcement bars with a distance 
+≤ 0,75 hef, from the fastener should be assumed as effective. 
+c) The minimum anchorage length of supplementary reinforcement in the concrete failure cone is 
+s min l 4d 1 = (anchorage with bends, hooks or loops) or s min l 10d 1 = (anchorage with straight bars with or 
+without welded transverse bars). 
+d) The supplementary reinforcement should be anchored outside the assumed failure cone with an 
+anchorage length lbd according to EN 1992-1-1. 
+e) A surface reinforcement should be provided as shown in Figure 2 designed to resist the forces arising 
+from the assumed strut and tie model, taking into account the splitting forces according to 6.2.6. 
+6.2.3 Steel failure of fastener 
+The characteristic resistance of a fastener in case of steel failure NRk,s is given in the relevant European 
+Technical Specification. The strength calculation is based on fuk. 
+6.2.4 Pull-out failure of fastener 
+The characteristic resistance in case of pull-out failure NRk,p is given in the relevant European Technical 
+Specification. 
+NOTE The characteristic resistance NRk,p is limited by the concrete pressure under the head of the fastener according 
+to Equation (2): 
+NRk, p = 6 ⋅ Ah ⋅ fck, cube ⋅ ψucr, N (2) 
+with 
+Ah = load bearing area of the head of the fastener 
+ = ( ) 2 2
+h d
+4
+d − π (3) 
+fck,cube, characteristic cube strength of the concrete strength class but noting the limitations 
+ given in the relevant European Technical Specification 
+ψucr, N = 1,0 for fasteners in cracked concrete 
+ = 1,4 for fasteners in non-cracked concrete 
+6.2.5 Concrete cone failure 
+The characteristic resistance of a fastener, a group of fasteners and the tensioned fasteners of a group of 
+fasteners in case of concrete cone failure may be obtained by Equation (4). 
+s, N re, N ec, N 0
+c, N
+c, N
+Rk, c Rk, c = ⋅ ⋅ψ ⋅ψ ⋅ψ
+A
+A
+N N o [N] (4) 
+The different factors of Equation (4) are given below. 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+9 
+6.2.5.1 Characteristic resistance of a single fastener 
+ Cracked concrete: 
+The characteristic resistance of a single fastener placed in cracked concrete and not influenced by 
+adjacent fasteners or edges of the concrete member is obtained by: 
+1,5 cr ck,cube ef
+o
+Rk,c N = k ⋅ f ⋅ h [N] (5) 
+with kcr factor to take into account the influence of load transfer mechanisms for 
+applications in cracked concrete, the actual value is given in the corresponding 
+European Technical Specification. 
+ fck,cube [N/mm2
+], characteristic cube strength of the concrete strength class but noting the 
+limitations given in the relevant European Technical Specification. 
+ hef [mm], see CEN/TS 1992-4-1:2009, Figure 5, the actual value is given in the 
+corresponding European Technical Specification. 
+NOTE For headed fasteners according to current experience the value is 8,5. The actual value for a particular 
+fastener may be taken from the relevant European Technical Specification. 
+ Non-cracked concrete: 
+The characteristic resistance of a single fastener placed in non-cracked concrete and not influenced by 
+adjacent fasteners or edges of the concrete member is obtained by: 
+1,5 ucr ck,cube ef
+o
+Rk,c N = k ⋅ f ⋅ h [N] (6) 
+with kucr factor to take into account the influence of load transfer mechanisms for 
+applications in non-cracked concrete, the actual value is given in the 
+corresponding European Technical Specification. 
+NOTE For headed fasteners according to current experience the value is 11,9. The actual value for a particular 
+fastener may be taken from the relevant European Technical Specification. 
+6.2.5.2 Effect of axial spacing and edge distance 
+The geometric effect of axial spacing and edge distance on the characteristic resistance is taken into account 
+by the value 0
+c, N c, N A /A , where 
+0
+c, Ν Α = reference projected area, see Figure 3 
+ = scr,N ⋅ scr,N (7) 
+c, N A = actual projected area, limited by overlapping concrete cones of adjacent fasteners 
+(s < scr,N) as well as by edges of the concrete member (c < ccr,N). 
+Examples for the calculation of Ac,N are given in Figure 4 
+scr,N, ccr,N given in the corresponding European Technical Specification 
+NOTE For headed fasteners according to current experience scr,N = 2 ccr,N = 3 hef.
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+10 
+Key 
+1 Concrete cone 
+Figure 3 — Idealized concrete cone and area 0 Ac, N of concrete cone of an individual fastener 
+cr,N cr,N
+0Ac,N = s ⋅ s
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+11 
+a) 
+Ac, N = (c1 + 0,5 scr, N) ⋅ scr, N
+if: c1 ≤ ccr, N
+b) 
+Ac, N = (c1 + s1 + 0,5 scr, N) ⋅ scr, N
+if: c1 ≤ ccr, N
+ s1 ≤ scr, N
+c) 
+Ac, N = (c1 + s1 + 0,5 scr, N) ⋅ (c2 + s2 + 0,5 scr, N) 
+if: c1; c2 ≤ ccr, N
+ s1 ; s2 ≤ scr, N
+Key 
+a) Individual fastener at the edge of a concrete member 
+b) Group of two fasteners at the edge of a concrete member 
+c) Group of four fasteners at a corner of a concrete member 
+Figure 4 — Examples of actual areas Ac, N of the idealised concrete cones for different arrangements of 
+fasteners in case of axial tension load 
+6.2.5.3 Effect of the disturbance of the distribution of stresses in the concrete due to edges 
+The factor ψs, N takes account of the disturbance of the distribution of stresses in the concrete due to edges of 
+the concrete member. For fastenings with several edge distances (e.g. fastening in a corner of the concrete 
+member or in a narrow member), the smallest edge distance c should be inserted in Equation (8). 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+12 
+0 7 0 3 1
+cr, N
+s, N = + ⋅ ≤
+c
+c
+ψ , , [-] (8) 
+6.2.5.4 Effect of shell spalling 
+The shell spalling factor ψre, N takes account of the effect of a dense reinforcement for embedment depths 
+hef < 100 mm: 
+1
+200
+0 5 ef
+re, N = + ≤
+h
+ψ , [-] (9) 
+with: hef [mm] 
+Irrespective of the embedment depth of the fastener, ψre, N may be taken as 1,0 in the following cases: 
+a) Reinforcement (any diameter) is provided at a spacing ≥ 150mm, or 
+b) Reinforcement with a diameter of 10 mm or less is provided at a spacing > 100 mm. 
+6.2.5.5 Effect of the eccentricity of the load 
+The factor ψec, N takes account of a group effect when different tension loads are acting on the individual 
+fasteners of a group. 
+1
+1 2
+1
+N cr, N
+ec, N ≤
++ ⋅ = e /s ψ [-] (10) 
+with 
+eN eccentricity of the resulting tensile load acting on the tensioned fasteners 
+(see CEN/TS 1992-4-1:2009, 5.2). 
+Where there is an eccentricity in two directions, ψec, N should be determined separately for each direction and 
+the product of both factors should be inserted in Equation (4). 
+6.2.5.6 Effect of the position of the fastening 
+The factor ψucr, N takes account of the position of the fastening in cracked or non-cracked concrete. 
+ψucr, N = 1,0 for fasteners in cracked concrete (11) 
+ = 1,4 for fasteners in non-cracked concrete (12) 
+6.2.5.7 Effect of a narrow member 
+For the case of fasteners in an application with three or more edges distances less than ccr, N from the 
+fasteners (see Figure 5) the calculation according to Equation (4) leads to conservative results. More precise 
+results are obtained if in the case of single fasteners the value hef is substituted by 
+ef
+cr, N
+' max ef h
+c
+c h = ⋅ (13) 
+or in the case of groups hef is substituted by the larger value of 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+13 
+ef
+cr, N
+' max ef ef
+cr, N
+' max ef o h
+s
+s h r h
+c
+c h = ⋅ = ⋅ (14) 
+with cmax = maximum distance from centre of a fastener to the edge of concrete member ≤ ccr,N
+smax = maximum centre to centre spacing of fasteners ≤ scr,N
+The value ' hef is inserted in Equation (5) or Equation (6) and used for the determination of 0
+c, N A and 
+c, N A according to Figures 3 and 4 as well as in Equations (7), (8) and (9), where the values 
+ef
+'
+ef
+cr,N '
+cr,N h
+h
+s = s ⋅ (15) 
+ef
+'
+ef
+cr,N '
+cr,N h
+h
+c = c ⋅ (16) 
+are inserted for scr,N or ccr,N, respectively. 
+NOTE An example for the calculation of '
+ef h is illustrated in Figure 6. 
+Key 
+a) (c1; c2,1; c2,2) ≤ ccr,N
+b) (c1,1; c1,2; c2,1; c2,2) ≤ ccr,N
+Figure 5 — Examples for fastenings in concrete members where '
+ef h , ' scr,N and ' ccr,N may be used 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+14 
+c1 = 110 mm 
+c2 = 100 mm 
+c3 = 120 mm = cmax
+c4 = 80 mm 
+s = 210 mm 
+hef = 200 mm 
+'
+ef h = 120/1,5 = 80 mm > 210/3 = 70mm 
+Figure 6 — Illustration of the calculation of '
+ef h for a double fastening influenced by 4 edges 
+6.2.6 Splitting failure 
+6.2.6.1 Splitting failure due to installation 
+Splitting failure during installation e.g. by torquing of fasteners (see CEN/TS 1992-4-1:2009, Figure 3) is 
+avoided by complying with minimum values for edge distances cmin, spacing smin, and member thickness hmin
+and requirements for reinforcement as given in the relevant European Technical Specification. 
+NOTE Minimum values for edge distance, spacing and member thickness should also be observed for headed 
+fasteners not torqued to allow adequate placing and compaction of the concrete. 
+6.2.6.2 Splitting failure due to loading 
+No verification of splitting failure is required if one of the following conditions is fulfilled: 
+a) The edge distance in all directions is c > 1,0 ccr,sp for fastenings with one anchor and c > 1,2 ccr,sp for 
+fastenings with more than one anchor. 
+ The characteristic values ccr,sp and scr,sp are given in the relevant European Technical Specification. 
+b) The characteristic resistance for concrete cone failure and pull-out failure is calculated for cracked 
+concrete and reinforcement resists the splitting forces and limits the crack width to wk ≤ 0,3 mm. 
+The required cross-section As of the splitting reinforcement may be determined as follows: 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+15 
+yk Ms, re
+Ed s / 0,5 f γ
+ΣN A = [mm²] (17) 
+with 
+ΣΝEd = sum of the design tensile force of the fasteners in tension under the design value of the actions [N] 
+fyk = nominal yield strength of the reinforcing steel ≤ 500 N/mm² 
+If the conditions a) and b) of 6.2.6.2 are not fulfilled, then the characteristic resistance of one fastener or a 
+group of fasteners should be calculated according to Equation (18). 
+s, N ec,N re, N h, sp 0
+c, N
+0 c, N
+Rk, sp Rk = ⋅ ⋅ψ ⋅ψ ⋅ψ ⋅ψ
+A
+A
+N N [N] (18) 
+with ) min( , 0
+Rk,p Rk,c
+0
+Rk N = N N
+NRk,p according to Section 6.2.4 
+s, N re, N ec, N ucr, N
+0
+Rk, c N ,ψ ⋅ψ ⋅ψ ⋅ψ according to 6.2.5, however the values ccr,N and scr,N should be 
+replaced by ccr,sp and scr,sp. The values ccr, sp and scr, sp are based on a member thickness hmin
+The factor ψh, sp takes into account the influence of the actual member depth h on the splitting resistance. For 
+fasteners according to current experience it is given by Equation (19). 
+2/3
+min
+ef
+2/3
+min
+h, sp
+2
+
+
+
+
+
+
+
+ ≤ 
+
+
+
+
+
+
+ = h
+h
+h
+h
+ψ (19) 
+For fastenings with several edge distances (e.g. fastening in a corner of the concrete member or in a narrow 
+member), the smallest edge distance c shall be inserted in Equation (18). 
+NOTE If in the European Technical Specification ccr,sp for more than one member depth h is given, then the member 
+depth valid for the used ccr,sp shall be inserted in Equation (4). 
+If the edge distance is smaller than the value ccr,sp then a longitudinal reinforcement should be provided along 
+the edge of the member. 
+6.2.7 Blow-out failure 
+Verification of blow-out failure is not required if the edge distance in all directions exceeds c = 0,5 hef. If a 
+verification is required, the characteristic resistance in case of blow-out failure is: 
+0 s, Nb g, Nb ec, Nb ucr, N
+c, Nb
+0 c, Nb
+Rk, cb Rk, cb ψ ψ ψ ψ
+A
+A
+N = N ⋅ ⋅ ⋅ ⋅ ⋅ [N] (20) 
+The different factors of Equation (20) are given below: 
+NOTE For groups of fasteners perpendicular to the edge, which are loaded uniformly, verification is only required for 
+the fasteners closest to the edge. 
+6.2.7.1 Characteristic resistance of a single anchor 
+The characteristic resistance of a single anchor, not influenced by adjacent fasteners or free structural 
+component edges placed in cracked concrete, is obtained by: 
+1 h ck,cube
+0
+Rk,cb N = 8 ⋅ c ⋅ A ⋅ f [N] (21) 
+with 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+16 
+fck,cube [N/mm2
+], characteristic cube strength of the concrete strength class but noting the limitations 
+ given in the relevant European Technical Specification 
+Ah [mm2
+], see Equation (3) 
+c1 [mm], edge distance, see Figure 7 
+Figure 7 — Idealized concrete break-out body and area 0
+c, Nb A of an individual fastener in case of blow￾out failure 
+6.2.7.2 Geometric effect of axial spacing and edge distance 
+The geometric effect of axial spacing and edge distance on the characteristic resistance is taken into account 
+by the value 
+0
+c, Nb c, Nb A /A 
+where 
+0
+c, Nb A = reference projected area, see Figure 7 
+ = (4 c1)² (22) 
+Ac, Nb = actual projected area, limited by overlapping concrete break-out bodies of adjacent fasteners 
+ (s < 4 c1) as well as by edges of the concrete member (c2 < 2 ⋅ c1 ) or the member depth. Examples 
+ for the calculation of Ac,Nb are given in Figure 8. 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+17 
+a)
+1
+1 1 4 (4 )
+s c
+A c c s ,
+4
+c Nb
+≤
+= +
+b)
+1
+2 1
+1 2 1
+4
+2
+4 ( 2 )
+s c
+c c
+A c c s c ,
+≤
+≤
+c Nb = + +
+c)
+1
+1
+1 1
+4
+2
+(2 ) (4 )
+s c
+f c
+A c f c s ,
+≤
+≤
+c Nb = + +
+Figure 8 — Examples of actual areas Ac, Nb of the idealised concrete break-out bodies for different 
+arrangements of fasteners in case of blow-out 
+6.2.7.3 Effect of the disturbance of the distribution of stresses in the concrete due to a corner 
+The factor ψs, Nb takes account of the disturbance of the distribution of stresses in the concrete due to a corner 
+of the concrete member. For fastenings with several edge distances (e.g. fastening in a corner of the concrete 
+member), the smallest edge distance, c2, should be inserted in Equation (23). 
+0,7 0,3 1
+1
+2
+s, Nb = + ⋅ ≤
+c
+c
+ψ (23) 
+6.2.7.4 Effect of the bearing area on the behaviour of groups 
+The factor ψg, Nb takes account of the bearing areas of the individual fasteners of a group. 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+18 
+1
+4 c
+s
+n (1 n)
+1
+1 ψg, Nb = + − ⋅ ≥ (24) 
+with n = number of tensioned fasteners in a row parallel to the edge 
+s1 ≤ 4c1
+6.2.7.5 Effect of the eccentricity of the load 
+The factor ψec, Nb takes account of a group effect, when different loads are acting on the individual fasteners of 
+a group. 
+1 2 /(4 c )
+1
+N 1
+ec, Nb + ⋅ e
+ψ = (25) 
+with 
+eN = eccentricity of the resulting tensile load in respect of the centre of gravity of the tensioned fasteners 
+6.2.7.6 Effect of the position of the fastening 
+The factor ψucr, N takes into account of the position of the fastening in cracked or non-cracked concrete. 
+ψucr, N = 1,0 for fastenings in cracked concrete (26) 
+ = 1,4 for fastenings in non-cracked concrete (27) 
+6.2.8 Steel failure of the supplementary reinforcement 
+The characteristic resistance the supplementary reinforcement NRk,,re of one fastener is 
+NRk, re = n ⋅ As ⋅ fyk (28) 
+with 
+As = cross section of one leg of the supplementary reinforcement 
+fyk = nominal yield strength of the supplementary reinforcement ≤ 500 N/mm² 
+n = number of legs of the supplementary reinforcement effective for one fastener 
+6.2.9 Anchorage failure of the supplementary reinforcement in the concrete cone 
+The design resistance NRd,a of the supplementary reinforcement of one fastener is given by 
+∑ ⋅ ⋅ ⋅ =
+n α
+l π d f N 1 s bd
+Rd, a (29) 
+with 
+l1 = anchorage length of the supplementary reinforcement in the assumed failure cone (see 
+ Figure 2) 
+ ≥ lb,min = 4 ⋅ ds (anchorage with bends, hooks or loops) 
+ ≥ 10 ⋅ ds (anchorage with straight bars with or without welded transverse bars) 
+lb,min = minimum anchorage length 
+ds = diameter of the reinforcement bar 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+19 
+fbd = design bond strength according to EN 1992-1-1, taking into account the concrete cover 
+ of the supplementary reinforcement 
+α = influencing factor, according to EN 1992-1-1 
+ = 0,7 for hooked bars 
+n = number of legs of the supplementary reinforcement effective for one fastener 
+6.3 Shear load 
+6.3.1 Required verifications 
+The required verifications are given in Table 2. 
+6.3.1.1 For fasteners without supplementary reinforcement the verifications of Table 2, lines 1 to 4 apply. 
+6.3.1.2 For fasteners with supplementary reinforcement the verifications of Table 2, lines 1, 2 and 4 to 6 
+apply. 
+Table 2 — Verification for headed fasteners loaded in shear 
+ Single fastener Fastener groups 
+ most loaded fastener fastener group 
+1 Steel failure of fastener 
+without lever arm Ms
+Rk, s
+Ed Rd, s γ
+V
+V ≤ V =
+Ms
+Rk, s
+Rd, s h
+Ed γ
+V
+V ≤ V =
+2 Steel failure of fastener 
+with lever arm 
+Ms
+Rk, s
+Ed Rd, s γ
+V
+V ≤ V =
+Ms
+Rk, s
+Rd, s h
+Ed γ
+V
+V ≤ V =
+3 Concrete edge failure 
+Mc
+Rk, c
+Ed Rd, c γ
+V
+V ≤ V =
+Mc
+Rk, c
+Rd, c g
+Ed γ
+V
+V ≤ V =
+4 Concrete pry-out failure 
+Mc
+Rk, cp
+Ed Rd, cp γ
+V
+V ≤ V =
+Mc
+Rk, cp
+Rd, cp
+g
+Ed γ
+V
+V ≤ V =
+5 Steel failure of 
+supplementary 
+reinforcement Ms, re
+Rk, re
+Ed, re Rd, re γ
+V
+V ≤ V =
+Ms, re
+Rk, re
+Rd, re h
+Ed, re γ
+V
+V ≤ V =
+6 Anchorage failure of 
+supplementary 
+reinforcement 
+VEd, re ≤ NRd, a Rd, a h
+Ed, re V ≤ N
+6.3.2 Detailing of supplementary reinforcement 
+When the design relies on supplementary reinforcement, concrete cone failure according to Equation (32) 
+needs not to be verified but the supplementary reinforcement should be designed to resist the total load. The 
+supplementary reinforcement may be in the form of a surface reinforcement (Figure 9) or in the shape of 
+stirrups or loops (Figure 10). 
+The supplementary reinforcement should be anchored outside the assumed failure cone with an anchorage 
+length lb,net according to EN 1992-1-1. 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+20 
+In general, for all fasteners of a group the same diameter of reinforcement should be provided. It should 
+consist of ribbed bars with fyk ≤ 500 N/mm² and a diameter not larger than 16 mm. The mandrel diameter, db, 
+should comply with EN 1992-1-1. 
+If the shear force is taken up by a surface reinforcement according to Figure 9, the following additional 
+requirements should be met: 
+a) Only bars with a distance ≤ 0,75c1 from the fastener should be assumed as effective. 
+b) The anchorage length l1 (see Figure 9) in the concrete breakout body is at least 
+min l1 = 10 ds, straight bars with or without welded transverse bars 
+ = 4 ds bars with a hook, bend or loop 
+c) Reinforcement along the edge of the member should be provided and be designed for the forces 
+according to an appropriate strut and tie model (see Figure 9). As a simplification an angle of the 
+compression struts of 45° may be assumed. 
+If the shear forces are taken up by a supplementary reinforcement is detailed according to Figure 10, it should 
+enclose and contact the shaft of the fastener and be positioned as closely as possible to the fixture. 
+Figure 9 — Surface reinforcement to take up shear forces with simplified strut and tie model to design 
+edge reinforcement 
+6.3.3 Steel failure of fastener 
+6.3.3.1 Shear load without lever arm 
+For headed fasteners welded or not welded to a steel fixture the characteristic resistance of a fastener in case 
+of steel failure VRk,s is given in the relevant European Technical Specification. The strength calculations are 
+based on uk f . In case of groups with fasteners with a hole clearance df given in CEN/TS 1992-4-1:2009, 
+Table 1 and made of non-ductile steel, this characteristic shear resistance should be multiplied with the factor 
+k2. The factor k2 is given in the relevant European Technical Specification. 
+NOTE According to current experience the factor k2 for non-ductile steel is k2 = 0,8. 
+6.3.3.2 Shear load with lever arm 
+For headed fastener the characteristic resistance in case of steel failure VRk,s may be obtained from 
+Equation (30). 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+21 
+l
+α M
+V M Rk, s
+Rk, s
+⋅ = [N] (30) 
+with 
+αM , l see CEN/TS 1992-4-1:2009, Section 5.2.3.3 
+MRk, s = ) 1 Sd Rd, s 0
+Rk, s M ⋅ ( − N /N (31) 
+NRd,s = NRk, s/γMs
+The characteristic resistance under tension load in case of steel failure NRk,s the partial safety factor γMs and 
+the characteristic bending resistance of a single headed fastener 0 MRk, s , are given in the relevant European 
+Technical Specification. 
+Figure 10 — Illustration of detailing of the supplementary reinforcement in form of loops, examples 
+NOTE The reinforcement in form of stirrups or loops should be detailed with a mandrel diameter according to 
+EN 1992-1-1. 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+22 
+6.3.4 Concrete pry-out failure 
+Fastenings may fail due to a concrete pry-out failure at the side opposite to load direction. The corresponding 
+characteristic resistance VRk,cp may be calculated from Equation (32). 
+VRk, cp = k3 ⋅ NRk,c [N] (32) 
+with 
+k3 factor to be taken from the relevant European Technical Specification, valid for applications 
+without supplementary reinforcement. In case of supplementary reinforcement the factor k3
+should be multiplied with 0,75 
+NRk,c according to 6.2.5, determined for a single fastener or all fasteners in a group loaded in shear 
+NOTE In cases where a fastener group is loaded by shear loads and/or external torsion moments, the direction of the 
+individual shear loads may alter. In the example of Figure 11 the shear loads acting on the individual anchors neutralise 
+each other and the shear load acting on the entire group is VEd = 0. Then verification of pry-out failure for the entire group 
+according to Equation (32) is substituted by the verification of the most unfavourable anchor. 
+Figure 11 — Group of two fasteners loaded by a torsion moment; shear loads acting on the individual 
+anchors of the group alter their directions, example 
+When calculating the resistance of the most unfavourable anchor the influences of both edge distances as well as anchor 
+spacing have to be considered. Examples for the calculation of Ac,N are given in Figure 12 and Figure 13. 
+ 
+Figure 12 — Group of four fasteners without edge influence, if the most unfavourable fastener shall be 
+verified, example for the calculation of the area Ac,N 
+1 2 cr,N
+c,N,4 c,N,1
+c,N,3 c,N,1
+c,N,2 c,N,1
+c,N,1 cr,N 1 cr,N 2
+( ; )
+(0.5) / 2) (0.5 / 2)
+s s s
+A A
+A A
+A A
+A s s s s
+≤
+=
+=
+=
+= ⋅ + ⋅ ⋅ +
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+23 
+ 
+Figure 13 — Group of two fasteners located in a corner, if the most unfavourable fastener shall be 
+verified, example for the calculation of the area Ac,N 
+6.3.5 Concrete edge failure 
+6.3.5.1 General 
+The following conditions shall be observed: 
+ For single fasteners and groups with not more than 4 fasteners and with an edge distance in all directions 
+c > 10 hef or c > 60 d, a check of the characteristic concrete edge failure resistance may be omitted. The 
+smaller value is decisive. 
+ For fastenings with more than one edge (see Figure 14), the resistances for all edges shall be calculated. 
+The smaller value is decisive. 
+ For groups with fasteners arranged perpendicular to the edge and loaded parallel to the edge or by a 
+torsion moment the verification for concrete edge failure is valid for s1 ≥ c1 or c1 ≥ 150 mm. 
+NOTE In cases of groups with fasteners arranged perpendicular to the edge and loaded parallel to the edge or by a 
+torsion moment where s1 < c1 and c1 < 150 mm the design method for concrete edge failure may yield unconservative 
+results. 
+6.3.5.2 Characteristic shear resistance VRk,c 
+The characteristic resistance of a fastener or a fastener group (Figure 15) corresponds to:
+s, V h, V ec,V α,V re, V 0
+c, V
+0 c, V
+Rk, c Rk, c = ⋅ ⋅ψ ⋅ψ ⋅ ψ ⋅ψ ⋅ψ
+A
+A
+V V [N] (33) 
+The different factors of Equation (33) are given below. 
+1 2 cr,N
+1 cr,N
+c,N,2 1 1 cr,N 2
+c,N,1 cr,N 1 cr,N 2
+( ; )
+( / 2 ) (0.5 )
+(0.5) / 2) (0.5 )
+c c c
+s s
+A s c s c
+A s s s c
+≤
+≤
+= + ⋅ ⋅ +
+= ⋅ + ⋅ ⋅ +
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+24 
+ 
+Key 
+1 loaded fastener 
+2 unloaded fastener 
+a) situation 
+b) verification for the left edge 
+c) verification for the bottom edge 
+Figure 14 — Verification for a quadruple fasting with hole clearance at a corner, example 
+Figure 15 — Example of a fastener group loaded perpendicular to the edge 
+6.3.5.2.1 Characteristic resistance of a single anchor 
+The initial value of the characteristic resistance of a headed fastener loaded perpendicular to the edge in 
+cracked concrete corresponds to: 
+1,5
+Rk,c nom f ck, cube 1 V = 1,6 ⋅ d ⋅ l ⋅ f ⋅ c α β [N] (34) 
+with 
+α
+α
+sin
+cos
+2
+1
+E2 Ed
+E1 Ed
+= ⋅
+= ⋅
+•
+V V
+V V
+o
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+25 
+0,5
+1
+0,1 
+
+
+
+
+
+
+ = ⋅ c
+l
+α f [-] (35) 
+0,2
+1
+nom 0,1 
+
+
+
+
+
+
+ = ⋅ c
+d β [-] (36) 
+fck,cube characteristic cube strength of the concrete strength class but noting the limitations 
+ given in the relevant European Technical Specification [N/mm2
+] 
+c1 edge distance in the direction of the shear load [mm] 
+lf = hef in case of a uniform diameter of the shank of the headed fastener [mm] 
+ ≤ 8 dnom
+dnom ≤ 60 mm, [mm] 
+The values dnom and lf are given in the relevant European Technical Specification. 
+6.3.5.2.2 Geometric effect of axial spacing, edge distance and member thickness 
+The geometrical effect of spacing as well as of further edge distances and the effect of thickness of the 
+concrete member on the characteristic resistance is taken into account by the ratio 0
+c, V c, V A /A , where: 
+0
+c, V A = reference projected area, see Figure 16 
+= 4,5 2
+1c (37) 
+Ac, V area of the idealized concrete break-out, limited by the overlapping concrete cones of adjacent 
+ fasteners (s < 3 c1) as well as by edges parallel to the assumed loading direction (c2 < 1,5 c1) and 
+ by member thickness (h < 1,5 c1). Examples for calculation of Ac,V are given in Figure 17. 
+Figure 16 — Idealized concrete break-out body and area 0
+c, V A for a single fastener 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+26 
+a) 
+ Ac, V = 1,5 c1 (1,5 c1 + c2) 
+ h ≥ 1,5 c1 
+ c2 ≤ 1,5 c1
+b) 
+ Ac, V = (2 ⋅ 1,5 c1 + s2) ⋅ h
+ h < 1,5 c1 
+ s2 ≤ 3 c1
+c) 
+ Ac, V = (1,5 c1 + s2 +⋅c2) ⋅ h
+ h < 1,5 c1 
+ s2 ≤ 3 c1 
+ c2 ≤ 1,5 c1
+Key
+a) single anchor at a corner 
+b) group of anchors at an edge in a thin concrete member 
+c) group of anchors at a corner in a thin concrete member 
+Figure 17 — Examples of actual projected areas Ac,V of the idealized concrete break-out bodies 
+for different fastener arrangements under shear loading 
+6.3.5.2.3 Effect of the disturbance of the distribution of stresses in the concrete due to further 
+ edges 
+The factor ψs, V takes account of the disturbance of the distribution of stresses in the concrete due to further 
+edges of the concrete member on the shear resistance. For fastenings with two edges parallel to the direction 
+of loading (e.g. in a narrow concrete member) the smaller edge distance should be inserted in Equation (38). 
+1
+1,5 0,7 0,3
+1
+2
+s, V = + ⋅ ≤
+c
+c
+ψ (38) 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+27 
+6.3.5.2.4 Effect of the thickness of the structural component 
+The factor ψh, V takes account of the fact that the concrete edge resistance does not decrease proportionally to 
+the member thickness as assumed by the ratio 0
+c, V c, V A /A (Figures 17b) and 17c)). 
+1 15 0 5
+1
+h, V  ≥ 
+ 
+
+ =
+,
+h
+, c
+ψ (39) 
+6.3.5.2.5 Effect of the eccentricity of the load 
+The factor ψ ec,V takes account into a group effect when different shear loads are acting on the individual 
+fasteners of a group (see Figure 18). 
+1
+1 2 /(3 )
+1
+V 1
+ec,V ≤
++ ⋅ ⋅ = e c
+ψ (40) 
+eV eccentricity of the resulting shear load acting on the fasteners relative to the centre of gravity of 
+the fasteners loaded in shear 
+Figure 18 — Resolving unequal shear components into an eccentric shear load resultant, example 
+6.3.5.2.6 Effect of load direction 
+The factor ψ α,V takes into account the angle α V between the load applied VSd and the direction 
+perpendicular to the free edge under consideration for the calculation of the concrete edge resistance (see 
+Figure 14). 
+1
+(cos )2 (0.4 sin )
+1
+2
+V V
+,V ≥
++ ⋅
+=
+α α
+ψ α (41) 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+28 
+α V = angle between design shear load VSd and a line perpendicular to the edge, 
+0° ≤ α V ≤ 90°, see Figure 14 
+6.3.5.2.7 Effect of the position of the fastening 
+The factor ψre, V takes account of the effect of the position of the fastening in cracked or non-cracked concrete 
+or of the type of reinforcement on the edge. 
+ψre, V = 1,0 fastening in cracked concrete without edge reinforcement or stirrups 
+ψre, V = 1,2 fastening in cracked concrete with straight edge reinforcement (> Ø 12 mm) 
+ψre, V = 1,4 fastening in cracked concrete with edge reinforcement and closely spaced stirrups or wire 
+mesh with a spacing a < 100 mm and a ≤ 2 c1, or 
+ fastening in non-cracked concrete (verification according to Part 1, Section 5) 
+A factor ψre, V > 1 for applications in cracked concrete should only be applied, if the embedment depth hef of 
+the fastener is hef ≥ 2,5 times the concrete cover of the edge reinforcement. 
+6.3.5.2.8 Effect of a narrow thin member 
+For fastenings in a narrow, thin member with c2,max < 1,5 c1 and h < 1,5 c1 (see Figure 19) the calculation 
+according to Equation (33) leads to conservative results. More precise results are achieved if c1 is limited in 
+case of single fasteners to the larger value of 
+
+
+
+ = /1,5
+/1,5
+max ' 2,max
+1 h
+c
+c (42) 
+with 
+c2,max = largest of the two edge distances parallel to the direction of loading 
+or in case of groups c1 is limited to the largest value of 
+
+
+
+
+
+=
+/3
+/1,5
+/1,5
+max
+max
+2,max
+'
+1
+s
+h
+c
+c (43) 
+with 
+smax = maximum spacing between fasteners within the group 
+The value '
+1c is inserted in Equations (34) to (40) as well as in the determination of the areas 0
+c, V A and c, V A 
+according to Figures 16 and 17. 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+29 
+if c2,1 and c2,2
+< 1,5 c1 
+and 
+h < 1,5 c1
+Figure 19 — Example of a fastener in a thin, narrow member where the value '
+1c may be used 
+NOTE An example for the calculation of '
+1c is illustrated in Figure 20. 
+ s = 100 mm c1 = 200 mm, h = 120 mm < 1,5 ⋅ 200 mm, 
+ c2,1 = 150 mm ≤ 1,5 ⋅ 200 mm, c2,2 = 100 mm < 1,5 ⋅ 200 mm, '
+1c = 150/1,5 = 100 mm 
+Figure 20 — Illustration of the calculation of the value '
+1c , example 
+6.3.5.3 Steel failure of supplementary reinforcement 
+The characteristic resistance of one fastener in case of steel failure of the supplementary reinforcement may 
+be calculated according to Equation (44). 
+NRk, re = k6 ⋅ n ⋅As ⋅ fyk (44) 
+with 
+k6 = efficiency factor 
+ = 1,0 surface reinforcement according to Figure 9 
+ = 0,5 supplementary reinforcement according to Figure 10 
+n = number of bars of the supplementary reinforcement of one fastener 
+As = cross section of one bar of the supplementary reinforcement 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+30 
+fyk = nominal yield strength of the supplementary reinforcement ≤ 500 N/mm² 
+NOTE The factor k6 = 0,5 for supplementary reinforcement according to Figure 10 takes account of unavoidable 
+tolerances in workmanship. 
+6.3.5.4 Anchorage failure of supplementary reinforcement in the concrete breakout body 
+For applications according to Figure 10 no proof of the anchorage capacity is necessary. 
+For applications according to Figure 9 the design resistance VRd,,a of the supplementary reinforcement of one 
+fastener in case of an anchorage failure is given by Equation (45). 
+∑ ⋅ ⋅ =
+n α
+l π d f N 1 s bd
+Rd, α (45) 
+with 
+l1 = anchorage length of the supplementary reinforcement in the assumed failure cone 
+ see Figure 9) 
+≥ lb,min = 4 ⋅ ds (anchorage with bends, hooks or loops) 
+≥ 10 ⋅ ds (anchorage with straight bars with or without welded transverse bars) 
+lb,min = minimum anchorage length 
+ds = diameter of the reinforcement bar 
+fbd = design bond strength according to EN 1992-1-1, taking into account the concrete cover of the 
+ supplementary reinforcement 
+α = influencing factor, according to EN 1992-1-1 
+ = 0,7 for hooked bars 
+n = number of legs of the supplementary reinforcement effective for one fastener 
+6.4 Combined tension and shear load 
+6.4.1 Fastenings without supplementary reinforcement 
+6.4.1.1 Steel failure decisive for tension and shear load 
+For combined tension and shear loads the following equations should be satisfied: 
+1 2
+V
+2
+Nβ + β ≤ (46) 
+where 
+βN = NEd/NRd ≤ 1 and βV = VEd/VRd ≤ 1 
+6.4.1.2 Other modes of failure decisive 
+For combined tension and shear loads either of the following Equations (47) (see Figure 21) or Equation (48) 
+should be satisfied: 
+βN + βV ≤ 1,2 (47) 
+DD CEN/TS 1992-4-2:2009
+CEN/TS 1992-4-2:2009 (E) 
+31 
+1 1,5
+V
+1,5
+Nβ + β ≤ (48) 
+where 
+βN = NEd/NRd ≤ 1 and βV = VEd/VRd ≤ 1 
+In Equations (47) and (48) the largest value of βN and βV for the different failure modes should be taken. 
+6.4.1.3 Fastenings with supplementary reinforcement 
+For fastenings with a supplementary reinforcement for tension and shear loads 6.4.1.1 and 6.4.1.2 apply. For 
+fastenings with a supplementary reinforcement to take up tension or shear loads only, Equation (49) should be 
+used with the largest value of βN and βV for the different failure modes. 
+1 7 7
+N V + ≤ k k β β (49) 
+The value k7 is given in the relevant European Technical Specification. 
+NOTE According to current experience k7 = 2/3 
+Key
+1) according equation (46) 
+2) according equation (47) 
+3) according equation (48) 
+4) according equation (49) (by applying k7 =2/3) 
+Figure 21 — Interaction diagram for combined tension and shear loads 
+7 Fatigue 
+Part 1 'General' of this Technical Specification applies. 
+8 Seismic 
+Part 1 'General' of this Technical Specification applies. 
+DD CEN/TS
+1992-4-2:2009
+BSI Group
+Headquarters 389
+Chiswick High Road,
+London, W4 4AL, UK
+Tel +44 (0)20 8996 9001
+Fax +44 (0)20 8996 7001
+www.bsigroup.com/
+standards
+BSI - British Standards Institution
+BSI is the independent national body responsible for preparing British
+Standards. It presents the UK view on standards in Europe and at the
+international level. It is incorporated by Royal Charter.
+Revisions
+British Standards are updated by amendment or revision. Users of British
+Standards should make sure that they possess the latest amendments or
+editions.
+It is the constant aim of BSI to improve the quality of our products and services.
+We would be grateful if anyone finding an inaccuracy or ambiguity while using
+this British Standard would inform the Secretary of the technical committee
+responsible, the identity of which can be found on the inside front cover. Tel:
++44 (0)20 8996 9000. Fax: +44 (0)20 8996 7400.
+BSI offers members an individual updating service called PLUS which ensures
+that subscribers automatically receive the latest editions of standards.
+Buying standards
+Orders for all BSI, international and foreign standards publications should be
+addressed to Customer Services. Tel: +44 (0)20 8996 9001. Fax: +44 (0)20 8996
+7001 Email: orders@bsigroup.com You may also buy directly using a debit/credit
+card from the BSI Shop on the Website http://www.bsigroup.com/shop
+In response to orders for international standards, it is BSI policy to supply the
+BSI implementation of those that have been published as British Standards,
+unless otherwise requested.
+Information on standards
+BSI provides a wide range of information on national, European and
+international standards through its Library and its Technical Help to Exporters
+Service. Various BSI electronic information services are also available which
+give details on all its products and services. Contact Information Centre. Tel:
++44 (0)20 8996 7111 Fax: +44 (0)20 8996 7048 Email: info@bsigroup.com
+Subscribing members of BSI are kept up to date with standards developments
+and receive substantial discounts on the purchase price of standards. For details
+of these and other benefits contact Membership Administration. Tel: +44 (0)20
+8996 7002 Fax: +44 (0)20 8996 7001 Email: membership@bsigroup.com
+Information regarding online access to British Standards via British Standards
+Online can be found at http://www.bsigroup.com/BSOL
+Further information about BSI is available on the BSI website at http://
+www.bsigroup.com.
+Copyright
+Copyright subsists in all BSI publications. BSI also holds the copyright, in the
+UK, of the publications of the international standardization bodies. Except as
+permitted under the Copyright, Designs and Patents Act 1988 no extract may
+be reproduced, stored in a retrieval system or transmitted in any form or by any
+means – electronic, photocopying, recording or otherwise – without prior written
+permission from BSI.
+This does not preclude the free use, in the course of implementing the standard,
+of necessary details such as symbols, and size, type or grade designations. If
+these details are to be used for any other purpose than implementation then the
+prior written permission of BSI must be obtained.
+Details and advice can be obtained from the Copyright and Licensing Manager.
+Tel: +44 (0)20 8996 7070 Email: copyright@bsigroup.com
