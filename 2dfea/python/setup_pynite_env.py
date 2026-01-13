@@ -28,8 +28,8 @@ class MockWorkingSet:
 
     def __init__(self):
         self.packages = [
-            MockDistribution('PyNiteFEA', '1.4.0'),
-            MockDistribution('numpy', '1.24.0'),
+            MockDistribution('PyNiteFEA', '1.0.11'),
+            MockDistribution('numpy', '1.25.2'),
             MockDistribution('scipy', '1.11.0'),
             MockDistribution('matplotlib', '3.7.0'),
             MockDistribution('prettytable', '3.0.0'),
