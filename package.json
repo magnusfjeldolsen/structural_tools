@@ -4,8 +4,17 @@
   "description": "Free structural engineering tools and calculators",
   "scripts": {
     "update-registry": "node module-registry/generate-registry.js",
-    "dev": "echo 'Open index.html in browser to test locally'",
-    "help": "echo 'Available scripts: npm run update-registry (regenerate module registry)'"
+    "dev": "npm run dev:2dfea",
+    "dev:2dfea": "cd 2dfea && npm run dev",
+    "dev:serve": "node scripts/dev-server.js",
+    "build": "npm run build:2dfea && npm run update-registry",
+    "build:2dfea": "cd 2dfea && npm install && npm run build",
+    "preview": "npm run build && npm run dev:serve",
+    "test:deploy": "node scripts/test-deployment.js",
+    "help": "node scripts/show-help.js"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
   },
   "keywords": [
     "structural-engineering",

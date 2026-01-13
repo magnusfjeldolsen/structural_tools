@@ -47,49 +47,120 @@ The project uses a **hybrid deployment model** that combines:
 
 ### Quick Start: Local Development
 
+**Option 1: Develop 2dfea (React/TypeScript with hot reload)**
 ```bash
-# 1. Clone the repository
+# 1. Clone and setup
 git clone https://github.com/magnusfjeldolsen/structural_tools.git
 cd structural_tools
+npm install  # Install root dependencies
 
-# 2. For 2dfea development, install dependencies
-cd 2dfea
-npm install
+# 2. Start 2dfea dev server (hot reload)
+npm run dev
+# Opens http://localhost:5173
+# Changes in 2dfea/src/ update automatically
+```
 
-# 3. Start dev server on localhost:5173
+**Option 2: Test all modules (mimics GitHub Pages)**
+```bash
+# 1. Start local server (mimics GitHub Pages structure)
+npm run dev:serve
+# Opens http://localhost:8080/structural_tools/
+
+# 2. Test any module:
+# - 2dfea: http://localhost:8080/structural_tools/2dfea/
+# - pryout: http://localhost:8080/structural_tools/pryout/
+# - etc.
+
+# Note: For 2dfea, you need to build first:
+npm run build:2dfea
+```
+
+**Option 3: Full preview (build + serve)**
+```bash
+# Build everything and serve locally
+npm run preview
+# This is what you should test before pushing to master
+```
+
+**View all commands:**
+```bash
+npm run help
+```
+
+### Development Workflows
+
+#### Workflow 1: Develop 2dfea (React/TypeScript)
+
+```bash
+# 1. Start dev server (hot reload)
 npm run dev
 
-# 4. For other modules, just open the HTML files in a browser
-```
+# 2. Make changes in 2dfea/src/
+#    Changes update automatically in browser
 
-### Making Changes
+# 3. Test your changes at http://localhost:5173
 
-#### Option A: Change 2dfea (React App)
-
-```bash
-# 1. Make changes in 2dfea/src/
-# 2. Test locally with: npm run dev
-
-# 3. Commit changes
+# 4. When satisfied, commit and push
 git add 2dfea/src/
 git commit -m "Add new feature to 2dfea"
-
-# 4. Push to master
 git push origin master
+# GitHub Actions automatically builds and deploys
 ```
 
-#### Option B: Change Plain HTML Modules
+#### Workflow 2: Develop Plain HTML Module (pryout, concrete_*, etc.)
 
 ```bash
-# 1. Edit the module directly (e.g., concrete_beam_design/index.html)
-# 2. Test by opening in browser or local HTTP server
+# 1. Start local server
+npm run dev:serve
 
-# 3. Commit changes
-git add concrete_beam_design/
-git commit -m "Update concrete beam design module"
+# 2. Edit module files (e.g., pryout/index.html, pryout/script.js)
 
-# 4. Push to master
+# 3. Refresh browser to see changes
+#    http://localhost:8080/structural_tools/pryout/
+
+# 4. When satisfied, commit and push
+git add pryout/
+git commit -m "Update pryout module"
 git push origin master
+# GitHub Actions automatically deploys
+```
+
+#### Workflow 3: Test Before Deploying (Recommended)
+
+```bash
+# 1. Build and preview everything
+npm run preview
+
+# 2. Test all modules at:
+#    http://localhost:8080/structural_tools/
+
+# 3. Verify:
+#    - All modules load correctly
+#    - 2dfea build works
+#    - No broken links
+#    - Assets load properly
+
+# 4. If all good, push to master
+git add .
+git commit -m "Your changes"
+git push origin master
+
+# 5. Monitor GitHub Actions:
+#    https://github.com/magnusfjeldolsen/structural_tools/actions
+```
+
+#### Workflow 4: Test Deployment Staging
+
+```bash
+# Mimic exact GitHub Actions deployment process
+npm run test:deploy
+
+# This creates deploy-staging/ directory with:
+# - Built 2dfea files
+# - All plain HTML modules
+# - Root files
+
+# Review the staging directory to verify everything is correct
 ```
 
 ### Automated Deployment (GitHub Actions)
