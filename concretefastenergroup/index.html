@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Free concrete fastener group design calculator. Elastic force distribution with torsion and multiple load cases for shear stud groups per EC2-1-4.">
+    <meta name="keywords" content="concrete fastener design, shear studs, EC2-1-4, structural engineering, stud connection, Eurocode 2, pry-out resistance">
+    <title>Concrete Fastener Group Design - Free Engineering Tool</title>
+
+    <!-- Open Graph tags -->
+    <meta property="og:title" content="Concrete Fastener Group Design Calculator">
+    <meta property="og:description" content="Calculate resistance for concrete fastener groups with elastic force distribution and torsion">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/concretefastenergroup">
+
+    <!-- Twitter Card tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Concrete Fastener Group Design Calculator">
+    <meta name="twitter:description" content="Calculate resistance for concrete fastener groups with elastic force distribution and torsion">
+
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-BFVZQQ2LYN');
+    </script>
+
+    <!-- Centralized CSS -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+    <link rel="stylesheet" href="../assets/css/forms.css">
+    <link rel="stylesheet" href="../assets/css/components.css">
+    <link rel="stylesheet" href="../assets/css/print.css">
+    <link rel="stylesheet" href="../assets/css/report-print.css">
+
+    <!-- TailwindCSS -->
+    <script>
+        tailwind.config = { darkMode: 'class' };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        .input-group {
+            @apply mb-4;
+        }
+
+        .input-label {
+            @apply block text-sm font-medium text-gray-300 mb-2;
+        }
+
+        .input-field {
+            @apply w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500;
+        }
+
+        .btn-primary {
+            @apply px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition;
+        }
+
+        .btn-secondary {
+            @apply px-3 py-1.5 bg-gray-600 text-gray-100 rounded-md hover:bg-gray-500 focus:outline-none transition;
+        }
+
+        .btn-danger {
+            @apply px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none transition;
+        }
+
+        .btn-success {
+            @apply px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none transition;
+        }
+
+        table {
+            @apply w-full border-collapse;
+        }
+
+        th {
+            @apply bg-gray-600 border border-gray-500 px-3 py-2 text-left text-sm font-semibold text-gray-100;
+        }
+
+        td {
+            @apply border border-gray-500 px-3 py-2 text-sm text-gray-100;
+        }
+
+        .table-input {
+            @apply w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500;
+        }
+
+        canvas {
+            @apply border border-gray-600 rounded-lg bg-gray-900;
+        }
+
+        .util-ok {
+            @apply text-green-400 font-semibold;
+        }
+
+        .util-warning {
+            @apply text-yellow-400 font-semibold;
+        }
+
+        .util-fail {
+            @apply text-red-400 font-semibold;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+    <main class="w-full max-w-7xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+        <!-- Back to Tools Link -->
+        <div class="flex justify-end mb-4">
+            <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+                ← Back to Tools
+            </a>
+        </div>
+
+        <!-- Development Warning Banner -->
+        <div class="bg-red-900 bg-opacity-50 border-2 border-red-500 rounded-lg p-4 mb-6">
+            <div class="flex items-start gap-3">
+                <svg class="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                    <h3 class="text-xl font-bold text-red-300 mb-2">⚠️ Development Not Finished</h3>
+                    <p class="text-red-200">
+                        This tool is currently under development. <strong>Calculations may be incorrect</strong>.
+                        Do not use for production work. Validation and testing are in progress.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <h2 class="text-2xl font-semibold text-center text-white">EC2-1-4 Pry-Out Shear Stud Analyzer</h2>
+        <p class="text-center text-gray-300 text-sm">Elastic force distribution with torsion for shear stud groups according to Eurocode 2-1-4</p>
+
+        <!-- Main Layout: Left Panel (50%) | Right Panel (50%) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- LEFT PANEL -->
+            <div class="space-y-4">
+
+                <!-- Material Properties -->
+                <div class="bg-gray-700 rounded-lg p-6">
+                    <h3 class="text-xl font-semibold text-blue-400 mb-4">Material Properties</h3>
+
+                    <div class="input-group">
+                        <label class="input-label">Concrete Strength, f<sub>ck</sub> (MPa)</label>
+                        <input type="number" id="fck" class="input-field" value="35" min="0" step="1">
+                    </div>
+
+                    <div class="input-group">
+                        <label class="input-label">Effective Embedment Depth, h<sub>ef</sub> (mm)</label>
+                        <input type="number" id="hef" class="input-field" value="100" min="0" step="1">
+                    </div>
+
+                    <div class="input-group">
+                        <label class="input-label">Stud Diameter, d (mm)</label>
+                        <input type="number" id="d" class="input-field" value="19" min="0" step="0.1">
+                    </div>
+
+                    <div class="input-group">
+                        <label class="input-label">Edge Distance, c (mm)</label>
+                        <input type="number" id="edge_dist" class="input-field" value="100" min="0" step="1">
+                    </div>
+
+                    <div class="input-group">
+                        <label class="input-label">Stud Spacing, s (mm)</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="spacing" class="input-field w-1/2" value="120" min="0" step="1" oninput="checkSpacingWarnings()">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="manual-spacing" onchange="toggleManualSpacing()">
+                                <label for="manual-spacing" class="text-sm text-gray-300 whitespace-nowrap">Manual override</label>
+                            </div>
+                        </div>
+                        <div id="spacing-info" class="text-xs text-cyan-400 mt-1 hidden">
+                            Auto-calculated from stud positions
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label class="input-label">Partial Factor, γ<sub>Mc</sub></label>
+                        <input type="number" id="gamma_Mc" class="input-field" value="1.5" min="0" step="0.1">
+                    </div>
+
+                    <div class="input-group">
+                        <label class="input-label">Factor k<sub>cp</sub></label>
+                        <input type="number" id="k_cp" class="input-field" value="1.0" min="0" step="0.1">
+                    </div>
+
+                    <div id="spacing-warning" class="hidden mt-2 p-2 bg-yellow-900 bg-opacity-30 border border-yellow-400 rounded text-sm text-yellow-300">
+                        ⚠️ <span id="spacing-warning-text"></span>
+                    </div>
+                </div>
+
+                <!-- Studs Table -->
+                <div class="bg-gray-700 rounded-lg p-6">
+                    <h3 class="text-xl font-semibold text-cyan-400 mb-4">Studs</h3>
+
+                    <div class="flex gap-2 mb-3">
+                        <input type="number" id="new-stud-x" class="input-field flex-1" placeholder="X (mm)" step="0.1">
+                        <input type="number" id="new-stud-y" class="input-field flex-1" placeholder="Y (mm)" step="0.1">
+                        <button onclick="addStud()" class="btn-success">+ Add</button>
+                    </div>
+
+                    <div class="overflow-auto max-h-80">
+                        <table id="studs-table" class="table-fixed w-full">
+                            <thead>
+                                <tr>
+                                    <th class="w-10">#</th>
+                                    <th class="w-24">X (mm)</th>
+                                    <th class="w-24">Y (mm)</th>
+                                    <th class="w-16">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="studs-tbody">
+                                <!-- Studs will be added here dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-2 flex justify-between items-center">
+                        <div class="text-sm text-gray-300">
+                            Total studs: <span id="stud-count" class="font-semibold">0</span>
+                        </div>
+                        <button onclick="deleteAllStuds()" class="btn-danger text-sm">
+                            Delete All
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Load Cases -->
+                <div class="bg-gray-700 rounded-lg p-6">
+                    <h3 class="text-xl font-semibold text-cyan-400 mb-4">Load Cases</h3>
+
+                    <div class="flex gap-2 mb-3">
+                        <select id="active-load-case" class="input-field flex-1" onchange="switchLoadCase()">
+                            <!-- Load cases will be added here -->
+                        </select>
+                        <button onclick="showAddLoadCaseDialog()" class="btn-success">+ Add</button>
+                        <button onclick="editLoadCase()" class="btn-secondary">Edit</button>
+                        <button onclick="deleteLoadCase()" class="btn-danger">Delete</button>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div>
+                            <label class="input-label">Force Application</label>
+                            <div class="space-y-2">
+                                <label class="flex items-center">
+                                    <input type="radio" name="force-application" value="centroid" checked onchange="toggleForceApplication()" class="mr-2">
+                                    <span class="text-sm text-gray-300">At centroid</span>
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="radio" name="force-application" value="point" onchange="toggleForceApplication()" class="mr-2">
+                                    <span class="text-sm text-gray-300">At point</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="point-coords" class="hidden grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="input-label">P<sub>x</sub> (mm)</label>
+                                <input type="number" id="Px" class="input-field" value="0" step="0.1">
+                            </div>
+                            <div>
+                                <label class="input-label">P<sub>y</sub> (mm)</label>
+                                <input type="number" id="Py" class="input-field" value="0" step="0.1">
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label class="input-label">V<sub>x</sub> (kN)</label>
+                            <input type="number" id="Vx" class="input-field" value="0" step="0.1" oninput="updateActiveLoadCase()">
+                        </div>
+
+                        <div class="input-group">
+                            <label class="input-label">V<sub>y</sub> (kN)</label>
+                            <input type="number" id="Vy" class="input-field" value="0" step="0.1" oninput="updateActiveLoadCase()">
+                        </div>
+
+                        <div class="input-group">
+                            <label class="input-label">M<sub>z</sub> (kNm)</label>
+                            <input type="number" id="Mz" class="input-field" value="0" step="0.1" oninput="updateActiveLoadCase()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Calculate Button -->
+                <button onclick="runAnalysis()" class="btn-primary w-full text-lg font-semibold">
+                    Calculate
+                </button>
+
+            </div>
+
+            <!-- RIGHT PANEL -->
+            <div class="space-y-4">
+
+                <!-- View Selector -->
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <div class="flex items-center gap-3">
+                        <label class="text-sm font-medium text-gray-300">View:</label>
+                        <select id="view-selector" class="input-field flex-1" onchange="switchTab(this.value)">
+                            <option value="model">Model</option>
+                            <option value="results">Results</option>
+                            <option value="envelope">Envelope</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Canvas -->
+                <div class="bg-gray-700 rounded-lg p-6">
+                    <canvas id="main-canvas" width="800" height="600" class="w-full"></canvas>
+
+                    <div class="mt-2 text-sm text-gray-300" id="canvas-info">
+                        Model view - Add studs to see geometry
+                    </div>
+
+                    <!-- Visualization Controls -->
+                    <div class="mt-3 flex gap-4 text-sm">
+                        <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                            <input type="checkbox" id="show-applied-loads" checked onchange="toggleAppliedLoads()">
+                            <span>Show Applied Loads</span>
+                        </label>
+                        <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                            <input type="checkbox" id="show-resulting-forces" checked onchange="toggleResultingForces()">
+                            <span>Show Resulting Forces</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Results Table -->
+                <div class="bg-gray-700 rounded-lg p-6">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-xl font-semibold text-green-400">Results</h3>
+                        <select id="results-view" class="input-field w-48" onchange="updateResultsView()">
+                            <option value="active">Active Load Case</option>
+                            <option value="envelope">Envelope</option>
+                        </select>
+                    </div>
+
+                    <div id="results-container" class="overflow-auto max-h-96">
+                        <div class="text-gray-400 text-center py-8">
+                            No results yet. Click Calculate to analyze.
+                        </div>
+                    </div>
+
+                    <div id="max-util" class="hidden mt-3 p-3 bg-blue-900 bg-opacity-30 border border-blue-400 rounded">
+                        <span class="font-semibold text-gray-100">Max Utilization:</span>
+                        <span id="max-util-text"></span>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Load Case Dialog (Hidden) -->
+    <div id="load-case-dialog" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold text-white mb-4" id="dialog-title">Add Load Case</h3>
+
+            <div class="space-y-3">
+                <div class="input-group">
+                    <label class="input-label">Load Case Name</label>
+                    <input type="text" id="dialog-lc-name" class="input-field" placeholder="e.g., Dead Load">
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">V<sub>x</sub> (kN)</label>
+                    <input type="number" id="dialog-Vx" class="input-field" value="0" step="0.1">
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">V<sub>y</sub> (kN)</label>
+                    <input type="number" id="dialog-Vy" class="input-field" value="0" step="0.1">
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">M<sub>z</sub> (kNm)</label>
+                    <input type="number" id="dialog-Mz" class="input-field" value="0" step="0.1">
+                </div>
+            </div>
+
+            <div class="flex gap-2 mt-6">
+                <button onclick="saveLoadCase()" class="btn-primary flex-1">Save</button>
+                <button onclick="closeLoadCaseDialog()" class="btn-secondary flex-1">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script -->
+    <script src="script.js"></script>
+
+</body>
+</html>
