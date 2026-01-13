@@ -11,8 +11,8 @@
  * 6. Handle analysis requests via message passing
  */
 
-// Load Pyodide from CDN
-importScripts("https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js");
+// Load Pyodide from CDN - v0.29.1 has NumPy 2.2.5 (compatible with PyNite 2.0.0)
+importScripts("https://cdn.jsdelivr.net/pyodide/v0.29.1/full/pyodide.js");
 
 let pyodide = null;
 let isInitialized = false;
@@ -37,9 +37,9 @@ async function initializePyodide() {
         console.log("[Worker] Installing additional dependencies via micropip...");
         await pyodide.runPythonAsync(`
             import micropip
-            await micropip.install("prettytable")
             await micropip.install("scipy")
             await micropip.install("matplotlib")
+            # prettytable not needed for core PyNite functionality
         `);
 
         console.log("[Worker] Setting up package mocking for PyNite...");
@@ -58,8 +58,8 @@ async function initializePyodide() {
         console.log("[Worker] Installing PyNite...");
         await pyodide.runPythonAsync(`
             import micropip
-            # Install PyNite 1.0.11 which is compatible with numpy 1.25.2
-            await micropip.install("PyniteFEA==1.0.11")
+            # Install PyNite 2.0.0 - last version before numpy 2.4+ requirement (v2.0.3+)
+            await micropip.install("PyniteFEA==2.0.0")
         `);
 
         console.log("[Worker] Loading PyNite analyzer module...");

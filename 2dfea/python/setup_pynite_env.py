@@ -28,11 +28,11 @@ class MockWorkingSet:
 
     def __init__(self):
         self.packages = [
-            MockDistribution('PyNiteFEA', '1.0.11'),
-            MockDistribution('numpy', '1.25.2'),
-            MockDistribution('scipy', '1.11.0'),
-            MockDistribution('matplotlib', '3.7.0'),
-            MockDistribution('prettytable', '3.0.0'),
+            MockDistribution('PyNiteFEA', '2.0.0'),
+            MockDistribution('numpy', '2.2.5'),  # Pyodide 0.29.1 has numpy 2.2.5
+            MockDistribution('scipy', '1.14.1'),
+            MockDistribution('matplotlib', '3.9.2'),
+            # prettytable not needed for core PyNite functionality
         ]
 
     def __iter__(self):
