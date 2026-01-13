@@ -1,0 +1,168 @@
+name: Deploy All Modules to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - '2dfea/**'
+      - 'pryout/**'
+      - 'concrete_*/**'
+      - 'steel_*/**'
+      - 'weld_capacity/**'
+      - 'THP/**'
+      - 'clustering/**'
+      - 'deliveryhub/**'
+      - 'DIN_rod_torque/**'
+      - 'ec2concrete/**'
+      - 'seismic_ec8/**'
+      - 'transversal_*/**'
+      - '2dframeanalysis/**'
+      - 'index.html'
+      - 'module-registry/**'
+      - '.github/workflows/deploy-all-modules.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy All Modules
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install 2dfea dependencies
+        working-directory: 2dfea
+        run: npm ci
+        env:
+          CI: true
+
+      - name: Run 2dfea type check
+        working-directory: 2dfea
+        run: npm run type-check
+
+      - name: Build 2dfea application
+        working-directory: 2dfea
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Regenerate module registry
+        run: npm run update-registry
+
+      - name: Prepare deployment staging
+        run: |
+          echo "=== Creating deployment staging directory ==="
+          mkdir -p ./deploy-staging
+
+          echo ""
+          echo "=== Copying 2dfea built files to staging/2dfea/ ==="
+          mkdir -p ./deploy-staging/2dfea
+          cp -r ./2dfea/dist/* ./deploy-staging/2dfea/
+
+          echo ""
+          echo "=== Copying all plain HTML modules to staging ==="
+          # Copy each plain module directory
+          for dir in pryout \
+                     concrete_plate_CFRP \
+                     concrete_beam_design \
+                     concrete_anchorage_length \
+                     concrete_base_plate_compressive_design \
+                     concrete_dowels \
+                     concrete_minimum_reinforcement \
+                     concrete_slab_design \
+                     steel_beam_relative_deisgn \
+                     steel_cross_section_database \
+                     steel_fire_temperature \
+                     weld_capacity \
+                     THP \
+                     clustering \
+                     deliveryhub \
+                     DIN_rod_torque \
+                     ec2concrete \
+                     seismic_ec8 \
+                     transversal_forces_stiffened_web \
+                     transversal_forces_unstiffened_web \
+                     2dframeanalysis; do
+            if [ -d "$dir" ]; then
+              echo "  Copying $dir/"
+              cp -r "$dir" ./deploy-staging/
+            fi
+          done
+
+          echo ""
+          echo "=== Copying root files to staging ==="
+          cp index.html ./deploy-staging/ || echo "  No index.html found"
+          cp -r module-registry ./deploy-staging/ || echo "  No module-registry/ found"
+          cp -r assets ./deploy-staging/ || echo "  No assets/ found"
+          cp robots.txt ./deploy-staging/ || echo "  No robots.txt found"
+          cp sitemap.xml ./deploy-staging/ || echo "  No sitemap.xml found"
+          cp google*.html ./deploy-staging/ || echo "  No google verification file found"
+
+          echo ""
+          echo "=== Creating .nojekyll file ==="
+          touch ./deploy-staging/.nojekyll
+
+      - name: Verify staging directory
+        run: |
+          echo "=== Staging directory structure ==="
+          ls -lah ./deploy-staging/
+          echo ""
+          echo "=== 2dfea module ==="
+          ls -lah ./deploy-staging/2dfea/ | head -20
+          echo ""
+          echo "=== Plain modules ==="
+          ls -d ./deploy-staging/*/ | grep -v "2dfea" | head -10
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-modules-build
+          path: deploy-staging/
+          retention-days: 1
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./deploy-staging
+          destination_dir: .
+          keep_files: false
+          commit_message: 'Deploy all modules from ${{ github.sha }}'
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Output deployment URL
+        run: |
+          echo "## ✅ Deployment Successful"
+          echo ""
+          echo "### All Modules Deployed"
+          echo "📱 Base URL: https://magnusfjeldolsen.github.io/structural_tools/"
+          echo ""
+          echo "### Module URLs"
+          echo "- 2D FEM: https://magnusfjeldolsen.github.io/structural_tools/2dfea/"
+          echo "- Pryout: https://magnusfjeldolsen.github.io/structural_tools/pryout/"
+          echo "- And 20+ more modules..."
+          echo ""
+          echo "### Build Details"
+          echo "- **Commit**: \`${{ github.sha }}\`"
+          echo "- **Branch**: \`${{ github.ref }}\`"
+          echo "- **Workflow**: [\`${{ github.workflow }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"

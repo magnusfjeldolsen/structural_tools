@@ -94,21 +94,29 @@ git push origin master
 
 ### Automated Deployment (GitHub Actions)
 
-**Trigger**: Any push to master that includes changes in `2dfea/` directory
+**Trigger**: Any push to master that includes changes in ANY module directory
 
 **Workflow Steps**:
 1. Checkout code from master
-2. Install Node.js dependencies
-3. Run TypeScript type checking (`npm run type-check`)
+2. Install Node.js dependencies (for built modules)
+3. Run TypeScript type checking (for 2dfea)
 4. Build 2dfea (`npm run build`)
    - Compiles TypeScript to JavaScript
    - Bundles with Vite
    - Outputs to `2dfea/dist/`
-5. Copy all modules to deployment directory
-6. Deploy to gh-pages branch
+5. Prepare staging directory:
+   - Copy 2dfea built files to `staging/2dfea/`
+   - Copy ALL plain HTML modules to staging
+   - Copy root files (index.html, module-registry, etc.)
+6. Deploy entire staging directory to gh-pages branch
 7. GitHub Pages automatically publishes within 1-2 minutes
 
-**Workflow File**: `.github/workflows/deploy-2dfea.yml`
+**Workflow File**: `.github/workflows/deploy-all-modules.yml`
+
+**Key Feature**: All modules are deployed together atomically. This ensures:
+- No module deployment can break another module
+- gh-pages always has consistent state
+- Single source of truth (master branch)
 
 ## GitHub Pages Configuration
 
@@ -280,12 +288,41 @@ const setupResponse = await fetch(new URL('../python/setup_pynite_env.py', impor
    # Create PR on GitHub
    ```
 
+## Unified Deployment Architecture (Updated 2026)
+
+### How It Works
+- **Single workflow** deploys ALL modules to gh-pages
+- **Trigger**: Any change to ANY module on master
+- **Process**:
+  1. Build 2dfea (TypeScript → JavaScript)
+  2. Stage all modules in temporary directory
+  3. Deploy entire staging directory to gh-pages
+  4. GitHub Pages serves from gh-pages branch
+
+### Module Types
+1. **Built Modules** (2dfea): Requires npm build, outputs to dist/
+2. **Plain HTML Modules** (pryout, concrete_*, steel_*, etc.): Copied as-is
+
+### Making Changes to Any Module
+1. Edit module on master branch (either built or plain HTML)
+2. Commit and push to master
+3. GitHub Actions automatically deploys EVERYTHING
+4. All modules stay in sync on gh-pages
+
+### Why This Approach?
+- ✅ Prevents partial deployments breaking other modules
+- ✅ Single source of truth (master)
+- ✅ Atomic updates - all modules deploy together
+- ✅ Simple mental model - push to master = full deploy
+- ✅ No risk of pryout deployment breaking 2dfea or vice versa
+
 ## Key Files
 
-- **Deployment Workflow**: `.github/workflows/deploy-2dfea.yml`
+- **Deployment Workflow**: `.github/workflows/deploy-all-modules.yml`
 - **2dfea Config**: `2dfea/vite.config.ts`
 - **2dfea Package**: `2dfea/package.json`
-- **Worker**: `2dfea/public/workers/solverWorker.js`
+- **2dfea Worker**: `2dfea/public/workers/solverWorker.js`
+- **2dfea Python Setup**: `2dfea/public/python/setup_pynite_env.py`
 - **GitHub Pages Settings**: https://github.com/magnusfjeldolsen/structural_tools/settings/pages
 
 ## Support
