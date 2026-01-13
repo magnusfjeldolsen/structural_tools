@@ -70,6 +70,13 @@ const server = http.createServer((req, res) => {
     urlPath = '/index.html';
   }
 
+  // Special handling for 2dfea: serve from dist/ folder
+  if (urlPath.startsWith('/2dfea/') || urlPath === '/2dfea') {
+    // Remove /2dfea prefix and add /2dfea/dist prefix
+    const subPath = urlPath.substring('/2dfea'.length);
+    urlPath = '/2dfea/dist' + (subPath || '/index.html');
+  }
+
   // Construct file path
   let filePath = path.join(__dirname, '..', urlPath);
 
