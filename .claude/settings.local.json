@@ -38,7 +38,11 @@
       "Bash(npm run dev:*)",
       "Bash(git commit:*)",
       "Bash(git merge:*)",
-      "Bash(start:*)"
+      "Bash(start:*)",
+      "Bash(git reset:*)",
+      "Bash(find:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(echo:*)"
     ],
     "deny": [],
     "ask": [],

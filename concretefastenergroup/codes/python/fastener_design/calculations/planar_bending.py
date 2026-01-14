@@ -175,8 +175,9 @@ def calculate_bending_forces(
     Mx_Nmm = Mx * 1e6  # kNm → Nmm
     My_Nmm = My * 1e6  # kNm → Nmm
 
-    # Sign convention: positive My creates compression on +x side (not tension)
-    # So we need to negate My in the formulation
+    # Build moment vector
+    # Due to the [y, x] position vector formulation (line 187), we need to negate My
+    # to achieve correct sign convention: positive My → tension at left, compression at right
     M = np.array([Mx_Nmm, -My_Nmm])
 
     # Calculate stress (N/mm²) and force (N) at each fastener

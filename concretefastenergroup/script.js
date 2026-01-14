@@ -34,7 +34,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize UI
     initializeTabs();
     initializeEventListeners();
-    addDefaultFastener();
+    // Add default 4-fastener grid (100x100mm)
+    addFastenerAt(0, 0);
+    addFastenerAt(100, 0);
+    addFastenerAt(100, 100);
+    addFastenerAt(0, 100);
+    updateFastenerTable();
+    updatePlot();
     updateLoadCaseTable();
 
     // Add keyboard shortcut for running analysis (Ctrl+Space)
@@ -255,6 +261,20 @@ function addDefaultFastener() {
     });
     updateFastenerTable();
     updatePlot();
+}
+
+function addFastenerAt(x, y) {
+    state.fasteners.push({
+        id: state.fastenerIdCounter++,
+        x: x,
+        y: y,
+        diameter: 16,
+        embedment_depth: 100,
+        steel_grade: 500,
+        area: null,  // Auto-calculated
+        area_override: null,
+        d_head: 28.8
+    });
 }
 
 function addFastener() {
