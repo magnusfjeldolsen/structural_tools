@@ -1499,13 +1499,15 @@ function updatePlot() {
             const cx = toCanvasX(fastener.x);
             const cy = toCanvasY(fastener.y);
 
+            // Get total forces (Python returns in applied direction, following right-hand rule)
             const Vx = dist.forces.Vx_total; // kN
             const Vy = dist.forces.Vy_total; // kN
 
             // Calculate arrow endpoint in canvas pixels
-            // IMPORTANT: Distributed forces are REACTIONS, so they point OPPOSITE to applied forces
-            const dx = -Vx * arrowScale; // Negative because reactions oppose applied forces
-            const dy = Vy * arrowScale; // Positive (canvas Y already inverted, so double negative = positive)
+            // Python returns forces in applied direction, so negate to show reactions
+            // Canvas Y is inverted by toCanvasY (positive dy → up in world coords)
+            const dx = -Vx * arrowScale;  // Negate to show resisting forces
+            const dy = Vy * arrowScale;   // Keep sign (canvas Y inversion handles it)
 
             // Draw arrow
             drawArrow(ctx, cx, cy, cx + dx, cy + dy, '#4CAF50');
