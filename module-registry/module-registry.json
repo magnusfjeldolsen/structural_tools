@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "generated": "2026-01-14T07:06:34.157Z",
+    "generated": "2026-01-14T11:26:40.922Z",
     "total_modules": 22,
     "version": "1.0.0",
     "duplicates_removed": 0,
@@ -185,18 +185,11 @@
     },
     {
       "id": "pryout",
-      "title": "EC2-1-4 Pry-Out Shear Stud Analyzer - Free Engineering Tool",
-      "description": "Free EC2-1-4 pry-out resistance calculator for shear stud groups. Elastic force distribution with torsion and multiple load cases.",
-      "keywords": [
-        "pry-out resistance",
-        "shear studs",
-        "ec2-1-4",
-        "structural engineering",
-        "stud connection",
-        "eurocode 2"
-      ],
+      "title": "EC2 Part 4 Fastener Design Calculator",
+      "description": "",
+      "keywords": [],
       "url": "./pryout/index.html",
-      "category": "structural-analysis"
+      "category": "other"
     },
     {
       "id": "seismic_ec8",

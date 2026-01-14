@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Mx Bending</title>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+</head>
+<body>
+    <h1>Testing Mx Bending Calculations</h1>
+    <div id="status">Loading Pyodide...</div>
+    <div id="results"></div>
+
+    <script>
+        async function main() {
+            const statusDiv = document.getElementById('status');
+            const resultsDiv = document.getElementById('results');
+
+            try {
+                // Load Pyodide
+                statusDiv.textContent = 'Loading Pyodide...';
+                const pyodide = await loadPyodide();
+
+                statusDiv.textContent = 'Loading Python packages...';
+                await pyodide.loadPackage(['numpy']);
+
+                // Mount filesystem
+                await pyodide.runPythonAsync(`
+                    import sys
+                    sys.path.insert(0, '/codes/python')
+                `);
+
+                // Load files
+                statusDiv.textContent = 'Loading fastener design module...';
+
+                const moduleFiles = [
+                    'codes/python/fastener_design/__init__.py',
+                    'codes/python/fastener_design/web_interface.py',
+                    'codes/python/fastener_design/calculations/planar_bending.py'
+                ];
+
+                for (const file of moduleFiles) {
+                    const response = await fetch(file);
+                    const content = await response.text();
+                    const path = '/' + file;
+                    const pathParts = path.split('/');
+                    const filename = pathParts.pop();
+                    const dir = pathParts.join('/');
+
+                    await pyodide.runPythonAsync(`
+                        import os
+                        os.makedirs('${dir}', exist_ok=True)
+                        with open('${path}', 'w') as f:
+                            f.write('''${content.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}''')
+                    `);
+                }
+
+                statusDiv.textContent = 'Running test...';
+
+                // Test bending calculation
+                const result = await pyodide.runPythonAsync(`
+import numpy as np
+import sys
+sys.path.insert(0, '/codes/python')
+
+from fastener_design.calculations import planar_bending
+
+# 4 fasteners in square
+positions = [(100, 100), (-100, 100), (-100, -100), (100, -100)]
+d = 16  # mm
+area = 3.14159 * (d/2)**2
+areas = [area] * 4
+
+Mx = 10.0  # kNm
+My = 0.0
+
+centroid = planar_bending.calculate_centroid(positions, areas)
+section_props = planar_bending.calculate_section_properties(positions, areas, centroid)
+forces = planar_bending.calculate_bending_forces(positions, areas, Mx, My, centroid, section_props)
+
+result = f"Centroid: {centroid}\\n"
+result += f"Ix: {section_props['Ix']:.0f} mm^4\\n"
+result += f"\\nForces from Mx = {Mx} kNm:\\n"
+for i, (pos, force) in enumerate(zip(positions, forces)):
+    result += f"  Fastener {i+1} at ({pos[0]:4.0f}, {pos[1]:4.0f}): {force:+8.2f} kN\\n"
+
+result
+                `);
+
+                resultsDiv.innerHTML = `<pre>${result}</pre>`;
+                statusDiv.textContent = 'Test complete!';
+
+            } catch (error) {
+                statusDiv.textContent = 'ERROR: ' + error.message;
+                console.error(error);
+            }
+        }
+
+        main();
+    </script>
+</body>
+</html>

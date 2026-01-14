@@ -1,1249 +1,1601 @@
-// ============================================================
-// EC2-1-4 Pry-Out Resistance of Shear Stud Groups
-// JavaScript implementation based on pryout4.py
-//
-// NOTE: This module provides accurate elastic force distribution
-// calculations for shear stud groups, which can be useful for other
-// structural calculations beyond pry-out resistance. The force
-// distribution accounts for both direct shear and torsional effects
-// with user-defined load application points.
-//
-// Development Status: Elastic force distribution is validated and accurate.
-// EC2-1-4 pry-out resistance calculations are under validation.
-// ============================================================
+/**
+ * EC2 Part 4 Fastener Design Calculator
+ * Main JavaScript Application
+ *
+ * Author: Magnus Fjeld Olsen
+ * Date: 2026-01-07
+ */
 
-// Global State
+// ============================================================================
+// GLOBAL STATE
+// ============================================================================
+
 const state = {
-    studs: [],
-    loadCases: [],
-    activeLoadCaseId: null,
-    results: {}, // results per load case ID
-    envelope: null,
-    ui: {
-        activeTab: 'model',
-        resultsView: 'active',
-        showAppliedLoads: true,
-        showResultingForces: true
-    },
-    nextStudId: 1,
-    nextLoadCaseId: 1,
-    dialogMode: 'add', // 'add' or 'edit'
-    editingLoadCaseId: null
+    pyodide: null,
+    pyodideReady: false,
+    fasteners: [],
+    loadCases: [
+        { name: 'LC1', description: 'Dead Load', Vx: 0, Vy: 0, Mx: 0, My: 0, Mz: 0, N: 0,
+          application_type: 'centroid', application_point: { x: 0, y: 0 } }
+    ],
+    activeLoadCase: 'LC1',
+    fastenerIdCounter: 1,
+    loadCaseIdCounter: 2,
+    lastResults: null
 };
 
-// ============================================================
-// Initialization
-// ============================================================
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
 
-document.addEventListener('DOMContentLoaded', () => {
-    // Load example studs from pryout4.py
-    const exampleStuds = [
-        {x: 90, y: 420},
-        {x: 90, y: 1710},
-        {x: 420, y: 90},
-        {x: 420, y: 2070},
-        {x: 2580, y: 90},
-        {x: 2580, y: 2070},
-        {x: 2910, y: 420},
-        {x: 2910, y: 1710}
-    ];
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('Initializing EC2 Part 4 Calculator...');
 
-    exampleStuds.forEach(s => {
-        state.studs.push({id: state.nextStudId++, x: s.x, y: s.y});
+    // Initialize UI
+    initializeTabs();
+    initializeEventListeners();
+    addDefaultFastener();
+    updateLoadCaseTable();
+
+    // Add keyboard shortcut for running analysis (Ctrl+Space)
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.code === 'Space') {
+            e.preventDefault();
+            runAnalysis();
+        }
     });
 
-    // Add default load case
-    state.loadCases.push({
-        id: state.nextLoadCaseId++,
-        name: 'LC1',
-        Vx: -50,
-        Vy: -50,
-        Mz: 0,
-        apply_at_centroid: true,
-        Px: 0,
-        Py: 0
-    });
+    // Initialize Pyodide
+    await initializePyodide();
 
-    state.activeLoadCaseId = 1;
-
-    // Update UI
-    updateStudTable();
-    updateLoadCaseDropdown();
-    loadActiveLoadCase();
-    checkSpacingWarnings();
-    refreshCanvas();
+    console.log('Initialization complete');
 });
 
-// ============================================================
-// Stud Management
-// ============================================================
+// ============================================================================
+// PYODIDE INITIALIZATION
+// ============================================================================
 
-function addStud() {
-    const xInput = document.getElementById('new-stud-x');
-    const yInput = document.getElementById('new-stud-y');
+async function initializePyodide() {
+    const overlay = document.getElementById('loading-overlay');
+    overlay.style.display = 'flex';
 
-    const x = parseFloat(xInput.value);
-    const y = parseFloat(yInput.value);
+    try {
+        console.log('Loading Pyodide...');
+        state.pyodide = await loadPyodide();
 
-    if (isNaN(x) || isNaN(y)) {
-        alert('Please enter valid coordinates for X and Y');
-        return;
+        console.log('Loading Python packages...');
+        await state.pyodide.loadPackage(['micropip', 'numpy']);
+
+        console.log('Installing fastener_design package...');
+        // Note: In production, this would load from the actual package
+        // For now, we'll use pyodide.runPythonAsync to define the module
+
+        // Mount the file system with our Python code
+        const cacheBust = Date.now();
+        await mountPythonCode(cacheBust);
+
+        state.pyodideReady = true;
+        console.log('Pyodide ready!');
+
+        overlay.style.display = 'none';
+    } catch (error) {
+        console.error('Failed to initialize Pyodide:', error);
+        alert('Failed to load Python environment. Please refresh the page.');
+        overlay.style.display = 'none';
     }
+}
 
-    state.studs.push({
-        id: state.nextStudId++,
-        x: x,
-        y: y
+async function mountPythonCode(cacheBust) {
+    // Mount Python package directly from source (development mode)
+    // This ensures code changes are reflected immediately on page reload
+    try {
+        console.log('Mounting fastener_design package from source...');
+
+        // Pass cacheBust to Python
+        state.pyodide.globals.set('js_cache_bust', cacheBust);
+
+        await state.pyodide.runPythonAsync(`
+import sys
+from js import fetch
+
+# Mount the package directory to Pyodide's virtual filesystem
+import os
+base_url = './codes/python/fastener_design'
+
+async def fetch_file(url):
+    """Fetch a file from the HTTP server"""
+    response = await fetch(url)
+    if response.status == 200:
+        return await response.text()
+    return None
+
+# Fetch and mount all Python files recursively
+files_to_fetch = [
+    '__init__.py',
+    'web_interface.py',
+    'design.py',
+    'core/__init__.py',
+    'core/fastener.py',
+    'core/fastener_group.py',
+    'core/concrete.py',
+    'core/factors.py',
+    'failure_modes/__init__.py',
+    'failure_modes/tension/__init__.py',
+    'failure_modes/tension/steel_failure.py',
+    'failure_modes/tension/concrete_cone.py',
+    'failure_modes/tension/pullout.py',
+    'failure_modes/tension/splitting.py',
+    'failure_modes/tension/blowout.py',
+    'failure_modes/shear/__init__.py',
+    'failure_modes/shear/steel_failure.py',
+    'failure_modes/shear/concrete_edge.py',
+    'failure_modes/shear/pryout.py',
+    'calculations/__init__.py',
+    'calculations/interaction.py',
+    'calculations/geometry.py',
+    'calculations/psi_factors.py',
+    'calculations/planar_bending.py',
+]
+
+# Create directory structure in /home/pyodide
+os.makedirs('/home/pyodide/fastener_design/core', exist_ok=True)
+os.makedirs('/home/pyodide/fastener_design/failure_modes/tension', exist_ok=True)
+os.makedirs('/home/pyodide/fastener_design/failure_modes/shear', exist_ok=True)
+os.makedirs('/home/pyodide/fastener_design/calculations', exist_ok=True)
+
+# Fetch and write files (with cache busting)
+cache_bust = str(int(js_cache_bust))
+for file_path in files_to_fetch:
+    url = f"{base_url}/{file_path}?v={cache_bust}"
+    content = await fetch_file(url)
+    if content:
+        full_path = f"/home/pyodide/fastener_design/{file_path}"
+        with open(full_path, 'w') as f:
+            f.write(content)
+        print(f"Mounted: {file_path}")
+    else:
+        print(f"Warning: Could not fetch {file_path}")
+
+# Add the directory to Python path
+sys.path.insert(0, '/home/pyodide')
+
+# Import the package
+from fastener_design.web_interface import run_analysis
+
+print("✓ Fastener design package mounted from source (development mode)")
+        `);
+
+        console.log('✓ Python package mounted successfully');
+    } catch (error) {
+        console.error('Error mounting Python package:', error);
+        throw error;
+    }
+}
+
+// ============================================================================
+// TAB MANAGEMENT
+// ============================================================================
+
+function initializeTabs() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.dataset.tab;
+            switchTab(tabId);
+        });
+    });
+}
+
+function switchTab(tabId) {
+    // Update buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabId);
     });
 
-    // Clear inputs
-    xInput.value = '';
-    yInput.value = '';
-
-    updateStudTable();
-    checkSpacingWarnings();
-    refreshCanvas();
+    // Update panes
+    document.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.toggle('active', pane.id === `tab-${tabId}`);
+    });
 }
 
-function deleteAllStuds() {
-    if (!confirm('Delete all studs? This will create two default studs at (-100, 0) and (100, 0).')) {
-        return;
-    }
+// ============================================================================
+// EVENT LISTENERS
+// ============================================================================
 
-    // Clear all studs
-    state.studs = [];
+function initializeEventListeners() {
+    // Fasteners tab
+    document.getElementById('add-fastener').addEventListener('click', addFastener);
+    document.getElementById('delete-selected').addEventListener('click', deleteSelectedFasteners);
+    document.getElementById('delete-all').addEventListener('click', deleteAllFasteners);
+    document.getElementById('select-all').addEventListener('change', toggleSelectAll);
 
-    // Add two default studs
-    state.studs.push({id: state.nextStudId++, x: -100, y: 0});
-    state.studs.push({id: state.nextStudId++, x: 100, y: 0});
+    // Concrete tab
+    document.getElementById('concrete-input-method').addEventListener('change', updateConcreteInputMethod);
+    document.getElementById('strength-class').addEventListener('change', updateKFactor);
+    document.getElementById('cracked').addEventListener('change', updateKFactor);
+    document.getElementById('reinforced').addEventListener('change', updateKFactor);
 
-    updateStudTable();
-    checkSpacingWarnings();
-    refreshCanvas();
+    // Geometry tab
+    document.getElementById('auto-spacings').addEventListener('change', toggleAutoSpacings);
+
+    // Loading tab
+    document.getElementById('add-load-case').addEventListener('click', addLoadCase);
+    document.getElementById('active-load-case').addEventListener('change', changeActiveLoadCase);
+    document.getElementById('application-type').addEventListener('change', updateApplicationTypeUI);
+    document.getElementById('app-x').addEventListener('input', updatePlot);
+    document.getElementById('app-y').addEventListener('input', updatePlot);
+
+    // Analysis tab
+    document.getElementById('loading-type').addEventListener('change', updateMaterialFactors);
+    document.getElementById('override-factors').addEventListener('change', toggleMaterialFactorOverride);
+    document.getElementById('run-analysis').addEventListener('click', runAnalysis);
+
+    // Plot controls
+    document.getElementById('force-scale').addEventListener('input', updatePlot);
+    document.getElementById('show-applied-forces').addEventListener('change', updatePlot);
+    document.getElementById('show-distributed-forces').addEventListener('change', updatePlot);
+    document.getElementById('reset-view').addEventListener('click', resetView);
 }
 
-function removeStud(id) {
-    if (state.studs.length === 1) {
-        alert('Cannot remove the last stud');
-        return;
-    }
+// ============================================================================
+// FASTENER MANAGEMENT
+// ============================================================================
 
-    if (confirm('Remove this stud?')) {
-        state.studs = state.studs.filter(s => s.id !== id);
-        updateStudTable();
-        checkSpacingWarnings();
-        refreshCanvas();
+function addDefaultFastener() {
+    state.fasteners.push({
+        id: state.fastenerIdCounter++,
+        x: 0,
+        y: 0,
+        diameter: 16,
+        embedment_depth: 100,
+        steel_grade: 500,
+        area: null,  // Auto-calculated
+        area_override: null,
+        d_head: 28.8
+    });
+    updateFastenerTable();
+    updatePlot();
+}
+
+function addFastener() {
+    state.fasteners.push({
+        id: state.fastenerIdCounter++,
+        x: 0,
+        y: 0,
+        diameter: 16,
+        embedment_depth: 100,
+        steel_grade: 500,
+        area: null,
+        area_override: null,
+        d_head: 28.8
+    });
+    updateFastenerTable();
+    updatePlot();
+}
+
+function deleteSelectedFasteners() {
+    const checkboxes = document.querySelectorAll('#fastener-tbody input[type="checkbox"]:checked');
+    const idsToDelete = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
+
+    state.fasteners = state.fasteners.filter(f => !idsToDelete.includes(f.id));
+
+    updateFastenerTable();
+    updatePlot();
+}
+
+function deleteAllFasteners() {
+    if (confirm('Delete all fasteners?')) {
+        state.fasteners = [];
+        updateFastenerTable();
+        updatePlot();
     }
 }
 
-function updateStudFromTable(id, field, value) {
-    const stud = state.studs.find(s => s.id === id);
-    if (!stud) return;
-
-    const numValue = parseFloat(value);
-    if (isNaN(numValue)) {
-        alert('Invalid coordinate value');
-        updateStudTable(); // Reset to previous value
-        return;
-    }
-
-    stud[field] = numValue;
-    checkSpacingWarnings();
-    refreshCanvas();
+function toggleSelectAll(e) {
+    const checkboxes = document.querySelectorAll('#fastener-tbody input[type="checkbox"]');
+    checkboxes.forEach(cb => cb.checked = e.target.checked);
 }
 
-function updateStudTable() {
-    const tbody = document.getElementById('studs-tbody');
+function updateFastenerTable() {
+    const tbody = document.getElementById('fastener-tbody');
     tbody.innerHTML = '';
 
-    state.studs.forEach((stud, index) => {
+    state.fasteners.forEach((f) => {
         const row = tbody.insertRow();
-        row.innerHTML = `
-            <td class="text-center">${index + 1}</td>
-            <td><input type="number" class="table-input" value="${stud.x}" step="0.1"
-                       onchange="updateStudFromTable(${stud.id}, 'x', this.value)"></td>
-            <td><input type="number" class="table-input" value="${stud.y}" step="0.1"
-                       onchange="updateStudFromTable(${stud.id}, 'y', this.value)"></td>
-            <td class="text-center">
-                <button onclick="removeStud(${stud.id})" class="text-red-600 hover:text-red-800 text-sm">
-                    Delete
-                </button>
-            </td>
-        `;
+
+        // Checkbox
+        const cellCheck = row.insertCell();
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.id = f.id;
+        cellCheck.appendChild(checkbox);
+
+        // ID
+        row.insertCell().textContent = f.id;
+
+        // Position
+        addEditableCell(row, f, 'x', 'number', () => updatePlot());
+        addEditableCell(row, f, 'y', 'number', () => updatePlot());
+
+        // Diameter - auto-update area when cell loses focus
+        const cellDiameter = row.insertCell();
+        const inputDiameter = document.createElement('input');
+        inputDiameter.type = 'number';
+        inputDiameter.value = f.diameter;
+
+        // Update value on every keystroke (maintains state)
+        inputDiameter.addEventListener('input', (e) => {
+            f.diameter = parseFloat(e.target.value);
+        });
+
+        // Recalculate area and update plot only when cell loses focus
+        inputDiameter.addEventListener('blur', () => {
+            if (!f.area_override) {
+                // Update area display after user finishes entering diameter
+                updateFastenerTable();
+            }
+            updatePlot();
+        });
+
+        cellDiameter.appendChild(inputDiameter);
+
+        // Embedment
+        addEditableCell(row, f, 'embedment_depth', 'number');
+
+        // Steel grade
+        addEditableCell(row, f, 'steel_grade', 'number');
+
+        // Area (with auto-calc indicator)
+        const cellArea = row.insertCell();
+        const inputArea = document.createElement('input');
+        inputArea.type = 'number';
+        const autoCalcArea = calculateFastenerArea(f.diameter);
+        inputArea.value = f.area_override || autoCalcArea;
+        inputArea.placeholder = `Auto: ${autoCalcArea}`;
+        inputArea.style.fontStyle = f.area_override ? 'normal' : 'italic';
+        inputArea.style.color = f.area_override ? '#212121' : '#757575';
+        inputArea.addEventListener('input', (e) => {
+            const val = e.target.value;
+            f.area_override = val ? parseFloat(val) : null;
+            inputArea.style.fontStyle = f.area_override ? 'normal' : 'italic';
+            inputArea.style.color = f.area_override ? '#212121' : '#757575';
+        });
+        inputArea.addEventListener('blur', () => {
+            // If cleared, show auto-calc value
+            if (!inputArea.value) {
+                inputArea.value = autoCalcArea;
+            }
+        });
+        cellArea.appendChild(inputArea);
+
+        // Head diameter
+        addEditableCell(row, f, 'd_head', 'number');
+    });
+}
+
+function addEditableCell(row, obj, prop, type, onChange) {
+    const cell = row.insertCell();
+    const input = document.createElement('input');
+    input.type = type;
+    input.value = obj[prop];
+    input.addEventListener('input', (e) => {
+        obj[prop] = type === 'number' ? parseFloat(e.target.value) : e.target.value;
+        if (onChange) onChange();
+    });
+    cell.appendChild(input);
+}
+
+function calculateFastenerArea(diameter) {
+    // Gross cross-sectional area: A = π × d² / 4
+    const grossArea = Math.PI * (diameter / 2) ** 2;
+    return Math.round(grossArea);
+}
+
+// ============================================================================
+// CONCRETE PROPERTIES
+// ============================================================================
+
+function updateConcreteInputMethod() {
+    const method = document.getElementById('concrete-input-method').value;
+    const strengthClassDiv = document.getElementById('concrete-strength-class');
+    const manualFckDiv = document.getElementById('concrete-manual-fck');
+
+    if (method === 'strength_class') {
+        strengthClassDiv.style.display = 'block';
+        manualFckDiv.style.display = 'none';
+    } else {
+        strengthClassDiv.style.display = 'none';
+        manualFckDiv.style.display = 'block';
+    }
+
+    updateKFactor();
+}
+
+function updateKFactor() {
+    const cracked = document.getElementById('cracked').checked;
+    const reinforced = document.getElementById('reinforced').checked;
+
+    let k;
+    if (cracked) {
+        k = 10.5;
+    } else {
+        k = reinforced ? 12.5 : 17.5;
+    }
+
+    document.getElementById('k-factor-display').textContent = k.toFixed(1);
+}
+
+// ============================================================================
+// GEOMETRY
+// ============================================================================
+
+function toggleAutoSpacings() {
+    const auto = document.getElementById('auto-spacings').checked;
+    const manualDiv = document.getElementById('manual-spacings');
+    manualDiv.style.display = auto ? 'none' : 'block';
+}
+
+// ============================================================================
+// LOAD CASES
+// ============================================================================
+
+function addLoadCase() {
+    const name = `LC${state.loadCaseIdCounter++}`;
+    state.loadCases.push({
+        name,
+        description: 'New Load Case',
+        Vx: 0,
+        Vy: 0,
+        Mx: 0,
+        My: 0,
+        Mz: 0,
+        N: 0,
+        application_type: 'centroid',
+        application_point: { x: 0, y: 0 }
     });
 
-    document.getElementById('stud-count').textContent = state.studs.length;
+    updateLoadCaseTable();
+    updateActiveLoadCaseDropdown();
 }
 
-// ============================================================
-// Load Case Management
-// ============================================================
+function updateLoadCaseTable() {
+    const tbody = document.getElementById('load-case-tbody');
+    tbody.innerHTML = '';
 
-function updateLoadCaseDropdown() {
-    const select = document.getElementById('active-load-case');
-    select.innerHTML = '';
+    state.loadCases.forEach((lc, idx) => {
+        const row = tbody.insertRow();
 
-    state.loadCases.forEach(lc => {
-        const option = document.createElement('option');
-        option.value = lc.id;
-        option.textContent = lc.name;
-        if (lc.id === state.activeLoadCaseId) {
-            option.selected = true;
-        }
-        select.appendChild(option);
+        // Name (editable)
+        const cellName = row.insertCell();
+        const inputName = document.createElement('input');
+        inputName.type = 'text';
+        inputName.value = lc.description;
+        inputName.addEventListener('input', (e) => {
+            lc.description = e.target.value;
+            updateActiveLoadCaseDropdown();
+        });
+        cellName.appendChild(inputName);
+
+        // Vx
+        addLoadEditableCell(row, lc, 'Vx');
+
+        // Vy
+        addLoadEditableCell(row, lc, 'Vy');
+
+        // Mx
+        addLoadEditableCell(row, lc, 'Mx');
+
+        // My
+        addLoadEditableCell(row, lc, 'My');
+
+        // Mz
+        addLoadEditableCell(row, lc, 'Mz');
+
+        // N
+        addLoadEditableCell(row, lc, 'N');
+
+        // Actions
+        const cellActions = row.insertCell();
+        const btnDelete = document.createElement('button');
+        btnDelete.textContent = 'Delete';
+        btnDelete.className = 'btn-danger';
+        btnDelete.style.padding = '0.25rem 0.5rem';
+        btnDelete.style.fontSize = '0.8rem';
+        btnDelete.addEventListener('click', () => deleteLoadCase(idx));
+        cellActions.appendChild(btnDelete);
     });
 }
 
-function switchLoadCase() {
-    const select = document.getElementById('active-load-case');
-    state.activeLoadCaseId = parseInt(select.value);
-    loadActiveLoadCase();
-
-    // Update results if already calculated
-    if (state.ui.activeTab === 'results' && state.results[state.activeLoadCaseId]) {
-        updateResultsView();
-        refreshCanvas();
-    }
-}
-
-function loadActiveLoadCase() {
-    const lc = state.loadCases.find(l => l.id === state.activeLoadCaseId);
-    if (!lc) return;
-
-    document.getElementById('Vx').value = lc.Vx;
-    document.getElementById('Vy').value = lc.Vy;
-    document.getElementById('Mz').value = lc.Mz;
-    document.getElementById('Px').value = lc.Px || 0;
-    document.getElementById('Py').value = lc.Py || 0;
-
-    if (lc.apply_at_centroid) {
-        document.querySelector('input[name="force-application"][value="centroid"]').checked = true;
-    } else {
-        document.querySelector('input[name="force-application"][value="point"]').checked = true;
-    }
-
-    toggleForceApplication();
-}
-
-function updateActiveLoadCase() {
-    const lc = state.loadCases.find(l => l.id === state.activeLoadCaseId);
-    if (!lc) return;
-
-    lc.Vx = parseFloat(document.getElementById('Vx').value) || 0;
-    lc.Vy = parseFloat(document.getElementById('Vy').value) || 0;
-    lc.Mz = parseFloat(document.getElementById('Mz').value) || 0;
-    lc.Px = parseFloat(document.getElementById('Px').value) || 0;
-    lc.Py = parseFloat(document.getElementById('Py').value) || 0;
-    lc.apply_at_centroid = document.querySelector('input[name="force-application"]:checked').value === 'centroid';
-}
-
-function toggleForceApplication() {
-    const pointCoords = document.getElementById('point-coords');
-    const isPoint = document.querySelector('input[name="force-application"][value="point"]').checked;
-
-    if (isPoint) {
-        pointCoords.classList.remove('hidden');
-    } else {
-        pointCoords.classList.add('hidden');
-    }
-
-    updateActiveLoadCase();
-}
-
-function showAddLoadCaseDialog() {
-    state.dialogMode = 'add';
-    document.getElementById('dialog-title').textContent = 'Add Load Case';
-    document.getElementById('dialog-lc-name').value = '';
-    document.getElementById('dialog-Vx').value = 0;
-    document.getElementById('dialog-Vy').value = 0;
-    document.getElementById('dialog-Mz').value = 0;
-    document.getElementById('load-case-dialog').classList.remove('hidden');
-}
-
-function editLoadCase() {
-    const lc = state.loadCases.find(l => l.id === state.activeLoadCaseId);
-    if (!lc) return;
-
-    state.dialogMode = 'edit';
-    state.editingLoadCaseId = lc.id;
-    document.getElementById('dialog-title').textContent = 'Edit Load Case';
-    document.getElementById('dialog-lc-name').value = lc.name;
-    document.getElementById('dialog-Vx').value = lc.Vx;
-    document.getElementById('dialog-Vy').value = lc.Vy;
-    document.getElementById('dialog-Mz').value = lc.Mz;
-    document.getElementById('load-case-dialog').classList.remove('hidden');
-}
-
-function saveLoadCase() {
-    const name = document.getElementById('dialog-lc-name').value.trim();
-    const Vx = parseFloat(document.getElementById('dialog-Vx').value) || 0;
-    const Vy = parseFloat(document.getElementById('dialog-Vy').value) || 0;
-    const Mz = parseFloat(document.getElementById('dialog-Mz').value) || 0;
-
-    if (!name) {
-        alert('Please enter a load case name');
-        return;
-    }
-
-    if (state.dialogMode === 'add') {
-        const newLC = {
-            id: state.nextLoadCaseId++,
-            name: name,
-            Vx: Vx,
-            Vy: Vy,
-            Mz: Mz,
-            apply_at_centroid: true,
-            Px: 0,
-            Py: 0
-        };
-        state.loadCases.push(newLC);
-        state.activeLoadCaseId = newLC.id;
-    } else if (state.dialogMode === 'edit') {
-        const lc = state.loadCases.find(l => l.id === state.editingLoadCaseId);
-        if (lc) {
-            lc.name = name;
-            lc.Vx = Vx;
-            lc.Vy = Vy;
-            lc.Mz = Mz;
+function addLoadEditableCell(row, obj, prop) {
+    const cell = row.insertCell();
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.value = obj[prop];
+    input.step = '0.1';
+    input.addEventListener('input', (e) => {
+        obj[prop] = parseFloat(e.target.value) || 0;
+        if (obj.name === state.activeLoadCase) {
+            updatePlot();
         }
-    }
-
-    updateLoadCaseDropdown();
-    loadActiveLoadCase();
-    closeLoadCaseDialog();
+    });
+    cell.appendChild(input);
 }
 
-function deleteLoadCase() {
+function deleteLoadCase(idx) {
     if (state.loadCases.length === 1) {
         alert('Cannot delete the last load case');
         return;
     }
 
-    if (confirm('Delete this load case?')) {
-        state.loadCases = state.loadCases.filter(l => l.id !== state.activeLoadCaseId);
-        delete state.results[state.activeLoadCaseId];
-        state.activeLoadCaseId = state.loadCases[0].id;
-        updateLoadCaseDropdown();
-        loadActiveLoadCase();
-        updateResultsView();
+    const deletedName = state.loadCases[idx].name;
+    state.loadCases.splice(idx, 1);
+
+    // Update active if deleted
+    if (state.activeLoadCase === deletedName) {
+        state.activeLoadCase = state.loadCases[0].name;
     }
+
+    updateLoadCaseTable();
+    updateActiveLoadCaseDropdown();
+    updatePlot();
 }
 
-function closeLoadCaseDialog() {
-    document.getElementById('load-case-dialog').classList.add('hidden');
-}
+function updateActiveLoadCaseDropdown() {
+    const select = document.getElementById('active-load-case');
+    select.innerHTML = '';
 
-// ============================================================
-// Spacing Warnings
-// ============================================================
-
-function toggleManualSpacing() {
-    const manualCheckbox = document.getElementById('manual-spacing');
-    const spacingInput = document.getElementById('spacing');
-
-    if (manualCheckbox.checked) {
-        // Manual mode: enable input, clear auto-calculated styling
-        spacingInput.readOnly = false;
-        spacingInput.style.backgroundColor = '';
-        spacingInput.title = 'Manual spacing override';
-    } else {
-        // Auto mode: update from calculated spacing
-        checkSpacingWarnings();
-    }
-}
-
-function checkSpacingWarnings() {
-    const d = parseFloat(document.getElementById('d').value) || 19;
-    const hef = parseFloat(document.getElementById('hef').value) || 100;
-    const edgeDist = parseFloat(document.getElementById('edge_dist').value) || 100;
-
-    const manualCheckbox = document.getElementById('manual-spacing');
-    const spacingInput = document.getElementById('spacing');
-    const spacingInfo = document.getElementById('spacing-info');
-
-    // Calculate actual minimum spacing from stud positions
-    const spacingData = calculateMinimumSpacing(state.studs);
-    const actualSpacing = spacingData.minSpacing;
-
-    let spacing;
-
-    // Check if manual override is active
-    if (manualCheckbox.checked) {
-        // Use manual value
-        spacing = parseFloat(spacingInput.value) || 120;
-        spacingInput.readOnly = false;
-        spacingInput.style.backgroundColor = '';
-        spacingInfo.classList.add('hidden');
-    } else {
-        // Auto-calculate from stud positions
-        if (actualSpacing !== Infinity) {
-            spacingInput.value = actualSpacing.toFixed(1);
-            spacingInput.readOnly = true;
-            spacingInput.style.backgroundColor = '#f0f9ff'; // light blue to indicate auto-calculated
-            spacingInput.title = 'Auto-calculated from stud positions (minimum distance between studs)';
-            spacingInfo.classList.remove('hidden');
-            spacing = actualSpacing;
-        } else {
-            // No studs yet, allow manual input
-            spacingInput.readOnly = false;
-            spacingInput.style.backgroundColor = '';
-            spacingInput.title = '';
-            spacingInfo.classList.add('hidden');
-            spacing = parseFloat(spacingInput.value) || 120;
-        }
-    }
-
-    const sMin = Math.max(3 * d, 100);
-    const cMin = Math.max(1.5 * hef, 2 * d);
-
-    const warnings = [];
-    if (spacing < sMin) {
-        warnings.push(`Stud spacing (${spacing.toFixed(0)} mm) < recommended minimum (${sMin.toFixed(0)} mm)`);
-    }
-    if (edgeDist < cMin) {
-        warnings.push(`Edge distance (${edgeDist} mm) < recommended minimum (${cMin.toFixed(0)} mm)`);
-    }
-
-    const warningDiv = document.getElementById('spacing-warning');
-    const warningText = document.getElementById('spacing-warning-text');
-
-    if (warnings.length > 0) {
-        warningText.textContent = warnings.join('. ');
-        warningDiv.classList.remove('hidden');
-    } else {
-        warningDiv.classList.add('hidden');
-    }
-}
-
-// ============================================================
-// Calculation Engine (Ported from Python)
-// ============================================================
-
-function calculateCentroid(studs) {
-    if (studs.length === 0) return {x: 0, y: 0};
-
-    const sumX = studs.reduce((sum, s) => sum + s.x, 0);
-    const sumY = studs.reduce((sum, s) => sum + s.y, 0);
-
-    return {
-        x: sumX / studs.length,
-        y: sumY / studs.length
-    };
-}
-
-function calculatePolarMoment(studs, Xc, Yc) {
-    return studs.reduce((sum, s) => {
-        const dx = s.x - Xc;
-        const dy = s.y - Yc;
-        return sum + dx * dx + dy * dy;
-    }, 0);
-}
-
-function applyActions(studs, Vx, Vy, Mz, applyAtCentroid, Px, Py) {
-    if (studs.length === 0) {
-        throw new Error('No studs defined');
-    }
-
-    // Calculate centroid
-    const centroid = calculateCentroid(studs);
-    const Xc = centroid.x;
-    const Yc = centroid.y;
-
-    // Determine point of application
-    if (applyAtCentroid) {
-        Px = Xc;
-        Py = Yc;
-    }
-
-    // Convert Mz from kNm to kNmm (distances are in mm)
-    const Mz_kNmm = Mz * 1000;
-
-    // Torsion contribution due to offset
-    const MOffset = Vx * (Py - Yc) - Vy * (Px - Xc);
-    const MTotal = Mz_kNmm + MOffset;
-
-    // Polar moment
-    const J = calculatePolarMoment(studs, Xc, Yc);
-    if (J <= 0) {
-        throw new Error('Polar moment must be > 0');
-    }
-
-    // Calculate forces for each stud
-    const results = [];
-    const n = studs.length;
-
-    for (const stud of studs) {
-        // Direct shear
-        let studVx = Vx / n;
-        let studVy = Vy / n;
-
-        // Torsional shear
-        const xRel = stud.x - Xc;
-        const yRel = stud.y - Yc;
-        const Vtx = -MTotal * yRel / J;
-        const Vty = MTotal * xRel / J;
-
-        studVx += Vtx;
-        studVy += Vty;
-
-        // Resultant
-        const Vres = Math.sqrt(studVx * studVx + studVy * studVy);
-
-        results.push({
-            id: stud.id,
-            x: stud.x,
-            y: stud.y,
-            Vx: studVx,
-            Vy: studVy,
-            Vres: Vres
-        });
-    }
-
-    return {
-        results: results,
-        centroid: {x: Xc, y: Yc},
-        applicationPoint: {x: Px, y: Py},
-        MTotal: MTotal
-    };
-}
-
-function calculateMinimumSpacing(studs) {
-    // Calculate minimum spacing for each stud to its nearest neighbor
-    // Returns: { minSpacing: overall minimum, spacings: array of min spacing per stud }
-
-    if (studs.length < 2) {
-        return { minSpacing: Infinity, spacings: [] };
-    }
-
-    const spacings = studs.map((stud, i) => {
-        let minDist = Infinity;
-
-        // Calculate distance to all other studs
-        studs.forEach((other, j) => {
-            if (i !== j) {
-                const dx = stud.x - other.x;
-                const dy = stud.y - other.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-
-                if (dist < minDist) {
-                    minDist = dist;
-                }
-            }
-        });
-
-        return minDist;
+    state.loadCases.forEach(lc => {
+        const option = document.createElement('option');
+        option.value = lc.name;
+        option.textContent = `${lc.name}: ${lc.description}`;
+        select.appendChild(option);
     });
 
-    // Overall minimum spacing is the smallest of all minimum distances
-    const minSpacing = Math.min(...spacings);
-
-    return { minSpacing, spacings };
+    select.value = state.activeLoadCase;
 }
 
-function calculatePryoutResistance(fck, hef, d, edgeDist, spacing, n) {
-    // Psi factors
-    const psiEdge = Math.min(1.0, Math.pow(edgeDist / (1.5 * hef), 1.5));
-    const psiSpacing = Math.min(1.0, Math.pow(spacing / (3 * hef), 1.5));
-    const psiGroup = 1.0 / Math.sqrt(n);
-
-    // Characteristic cone resistance (in kN)
-    const NRkC0 = 7.2 * Math.sqrt(fck) * Math.pow(hef, 1.5) / 1000.0;
-
-    // Design pry-out resistance
-    const gammaMc = parseFloat(document.getElementById('gamma_Mc').value) || 1.5;
-    const kCp = parseFloat(document.getElementById('k_cp').value) || 1.0;
-
-    const psi = psiEdge * psiSpacing * psiGroup;
-    const VRdCp = kCp * (NRkC0 * psi / gammaMc);
-
-    return {
-        VRdCp: VRdCp,
-        psiEdge: psiEdge,
-        psiSpacing: psiSpacing,
-        psiGroup: psiGroup,
-        NRkC0: NRkC0
-    };
+function changeActiveLoadCase() {
+    state.activeLoadCase = document.getElementById('active-load-case').value;
+    updatePlot();
 }
 
-function runAnalysis() {
-    if (state.studs.length === 0) {
-        alert('Please add at least one stud');
+function updateApplicationTypeUI() {
+    const type = document.getElementById('application-type').value;
+    const pointInputs = document.getElementById('application-point-inputs');
+    pointInputs.style.display = type === 'point' ? 'block' : 'none';
+}
+
+// ============================================================================
+// ANALYSIS OPTIONS
+// ============================================================================
+
+function updateMaterialFactors() {
+    const overrideChecked = document.getElementById('override-factors').checked;
+
+    if (!overrideChecked) {
+        const loadingType = document.getElementById('loading-type').value;
+
+        let gammaMs, gammaMc;
+        switch (loadingType) {
+            case 'static':
+                gammaMs = 1.25;
+                gammaMc = 1.5;
+                break;
+            case 'fatigue':
+                gammaMs = 1.0;
+                gammaMc = 1.5;
+                break;
+            case 'seismic':
+                gammaMs = 1.0;
+                gammaMc = 1.2;
+                break;
+        }
+
+        document.getElementById('gamma-ms-input').value = gammaMs.toFixed(2);
+        document.getElementById('gamma-mc-input').value = gammaMc.toFixed(2);
+    }
+}
+
+function toggleMaterialFactorOverride() {
+    const overrideChecked = document.getElementById('override-factors').checked;
+    const gammaMsInput = document.getElementById('gamma-ms-input');
+    const gammaMcInput = document.getElementById('gamma-mc-input');
+
+    gammaMsInput.disabled = !overrideChecked;
+    gammaMcInput.disabled = !overrideChecked;
+
+    if (!overrideChecked) {
+        // Reset to default values when unchecking
+        updateMaterialFactors();
+    }
+}
+
+// ============================================================================
+// ANALYSIS EXECUTION
+// ============================================================================
+
+async function runAnalysis() {
+    if (!state.pyodideReady) {
+        alert('Python environment not ready. Please wait...');
         return;
     }
 
-    // Get material properties
-    const fck = parseFloat(document.getElementById('fck').value);
-    const hef = parseFloat(document.getElementById('hef').value);
-    const d = parseFloat(document.getElementById('d').value);
-    const edgeDist = parseFloat(document.getElementById('edge_dist').value);
-
-    // Get spacing: manual override or auto-calculated
-    const manualCheckbox = document.getElementById('manual-spacing');
-    let spacing;
-
-    if (manualCheckbox.checked) {
-        // Use manual override value
-        spacing = parseFloat(document.getElementById('spacing').value) || 120;
-        console.log(`Using manual spacing override: ${spacing.toFixed(1)} mm`);
-    } else {
-        // Calculate from stud positions
-        const spacingData = calculateMinimumSpacing(state.studs);
-        const actualSpacing = spacingData.minSpacing;
-        spacing = actualSpacing !== Infinity ? actualSpacing : parseFloat(document.getElementById('spacing').value);
-
-        if (actualSpacing !== Infinity) {
-            console.log(`Auto-calculated minimum spacing: ${spacing.toFixed(1)} mm`);
-        } else {
-            console.log(`Using default spacing: ${spacing.toFixed(1)} mm (insufficient studs for auto-calc)`);
-        }
+    if (state.fasteners.length === 0) {
+        alert('Please add at least one fastener');
+        return;
     }
 
-    // Get active load case
-    updateActiveLoadCase();
+    // Switch to Analysis tab
+    switchTab('analysis');
+
+    // Build input JSON
+    const inputData = buildInputJSON();
+
+    console.log('Running analysis with input:', inputData);
 
     try {
-        // Calculate for active load case
-        const lc = state.loadCases.find(l => l.id === state.activeLoadCaseId);
-        const analysis = applyActions(
-            state.studs,
-            lc.Vx,
-            lc.Vy,
-            lc.Mz,
-            lc.apply_at_centroid,
-            lc.Px,
-            lc.Py
-        );
+        // Show loading
+        document.getElementById('results-container').innerHTML =
+            '<p style="text-align: center; color: #757575;">Analyzing...</p>';
 
-        const resistance = calculatePryoutResistance(fck, hef, d, edgeDist, spacing, state.studs.length);
+        // Call Python
+        const inputJson = JSON.stringify(inputData);
+        const resultJson = await state.pyodide.runPythonAsync(`
+import json
+result = run_analysis('''${inputJson}''')
+result
+        `);
 
-        // Add resistance and utilization to results
-        const results = analysis.results.map((r, index) => ({
-            stud: index + 1,
-            x_mm: r.x,
-            y_mm: r.y,
-            Vx_kN: r.Vx,
-            Vy_kN: r.Vy,
-            Vres_kN: r.Vres,
-            V_Rd_cp_kN: resistance.VRdCp,
-            utilization: r.Vres / resistance.VRdCp
-        }));
+        const results = JSON.parse(resultJson);
+        console.log('Analysis results:', results);
 
-        state.results[state.activeLoadCaseId] = {
-            results: results,
-            centroid: analysis.centroid,
-            applicationPoint: analysis.applicationPoint,
-            MTotal: analysis.MTotal,
-            resistance: resistance
-        };
+        state.lastResults = results;
 
-        // Calculate all load cases and envelope
-        calculateAllLoadCases(fck, hef, d, edgeDist, spacing);
-        calculateEnvelope();
+        // Display results
+        displayResults(results);
 
-        // Update UI
-        updateResultsView();
-        refreshCanvas();
-
-        // Auto-switch to Results view
-        switchTab('results');
-
-        console.log('Analysis complete for', lc.name);
     } catch (error) {
-        alert('Calculation error: ' + error.message);
-        console.error(error);
+        console.error('Analysis error:', error);
+        document.getElementById('results-container').innerHTML =
+            `<div class="result-status fail">Error: ${error.message}</div>`;
     }
 }
 
-function calculateAllLoadCases(fck, hef, d, edgeDist, spacingToUse) {
-    const resistance = calculatePryoutResistance(fck, hef, d, edgeDist, spacingToUse, state.studs.length);
+function buildInputJSON() {
+    // Get concrete properties
+    const concreteMethod = document.getElementById('concrete-input-method').value;
+    const concrete = {
+        thickness: parseFloat(document.getElementById('thickness').value),
+        cracked: document.getElementById('cracked').checked,
+        reinforced: document.getElementById('reinforced').checked
+    };
 
-    for (const lc of state.loadCases) {
-        try {
-            const analysis = applyActions(
-                state.studs,
-                lc.Vx,
-                lc.Vy,
-                lc.Mz,
-                lc.apply_at_centroid,
-                lc.Px,
-                lc.Py
-            );
+    if (concreteMethod === 'strength_class') {
+        concrete.strength_class = document.getElementById('strength-class').value;
+        concrete.fck = null;
+    } else {
+        concrete.strength_class = null;
+        concrete.fck = parseFloat(document.getElementById('fck').value);
+    }
 
-            const results = analysis.results.map((r, index) => ({
-                stud: index + 1,
-                x_mm: r.x,
-                y_mm: r.y,
-                Vx_kN: r.Vx,
-                Vy_kN: r.Vy,
-                Vres_kN: r.Vres,
-                V_Rd_cp_kN: resistance.VRdCp,
-                utilization: r.Vres / resistance.VRdCp
-            }));
+    // Get edge distances
+    const edge_distances = {
+        c1: parseFloat(document.getElementById('c1').value) || 0,
+        c2: parseFloat(document.getElementById('c2').value) || 0
+    };
+    const c3 = document.getElementById('c3').value;
+    const c4 = document.getElementById('c4').value;
+    if (c3) edge_distances.c3 = parseFloat(c3);
+    if (c4) edge_distances.c4 = parseFloat(c4);
 
-            state.results[lc.id] = {
-                results: results,
-                centroid: analysis.centroid,
-                applicationPoint: analysis.applicationPoint,
-                MTotal: analysis.MTotal,
-                resistance: resistance
-            };
-        } catch (error) {
-            console.error(`Error calculating load case ${lc.name}:`, error);
+    // Get spacings
+    const autoSpacings = document.getElementById('auto-spacings').checked;
+    const spacings = {
+        auto_calculate: autoSpacings
+    };
+    if (!autoSpacings) {
+        spacings.sx = parseFloat(document.getElementById('sx').value) || 0;
+        spacings.sy = parseFloat(document.getElementById('sy').value) || 0;
+    }
+
+    // Get failure modes
+    const tensionModes = Array.from(document.querySelectorAll('.tension-mode:checked'))
+        .map(cb => cb.value);
+    const shearModes = Array.from(document.querySelectorAll('.shear-mode:checked'))
+        .map(cb => cb.value);
+
+    // Get interaction exponents
+    const alphaN = parseFloat(document.getElementById('alpha-n').value);
+    const betaV = parseFloat(document.getElementById('beta-v').value);
+
+    // Get fastener type
+    const fastenerType = document.getElementById('fastener-type').value;
+
+    // Get global application point
+    const applicationType = document.getElementById('application-type').value;
+    const applicationPoint = applicationType === 'point' ? {
+        x: parseFloat(document.getElementById('app-x').value) || 0,
+        y: parseFloat(document.getElementById('app-y').value) || 0
+    } : null;
+
+    // Apply global application to all load cases
+    const loadCasesWithApplication = state.loadCases.map(lc => ({
+        ...lc,
+        application_type: applicationType,
+        application_point: applicationPoint
+    }));
+
+    // Build fasteners array with type
+    const fasteners = state.fasteners.map(f => ({
+        ...f,
+        fastener_type: fastenerType
+    }));
+
+    // Get material factors (from inputs, whether overridden or not)
+    const gammaMaterials = {
+        gamma_Ms: parseFloat(document.getElementById('gamma-ms-input').value),
+        gamma_Mc: parseFloat(document.getElementById('gamma-mc-input').value)
+    };
+
+    return {
+        fasteners,
+        concrete,
+        loading: {
+            load_cases: loadCasesWithApplication
+        },
+        edge_distances,
+        spacings,
+        analysis_options: {
+            loading_type: document.getElementById('loading-type').value,
+            failure_modes: {
+                tension: tensionModes,
+                shear: shearModes
+            },
+            interaction_exponents: {
+                alpha_N: alphaN,
+                beta_V: betaV
+            },
+            material_factors: gammaMaterials
         }
-    }
+    };
 }
 
-function calculateEnvelope() {
-    if (Object.keys(state.results).length === 0) {
-        state.envelope = null;
+// ============================================================================
+// RESULTS DISPLAY
+// ============================================================================
+
+function displayResults(results) {
+    const container = document.getElementById('results-container');
+    const selector = document.getElementById('results-load-case-selector');
+    const dropdown = document.getElementById('results-load-case-dropdown');
+    const plotSelector = document.getElementById('plot-load-case-selector');
+    const plotDropdown = document.getElementById('plot-load-case-dropdown');
+
+    if (results.status === 'error') {
+        container.innerHTML = `
+            <div class="result-status fail">
+                ERROR: ${results.error_message}
+            </div>
+        `;
+        selector.style.display = 'none';
+        plotSelector.style.display = 'none';
         return;
     }
 
-    const envelope = [];
+    // Store results globally for dropdown switching
+    state.lastResults = results;
+    state.selectedResultCase = 'max'; // Track which result case is displayed
 
-    // For each stud position
-    for (let i = 0; i < state.studs.length; i++) {
-        let maxVres = -Infinity;
-        let maxUtil = -Infinity;
-        let criticalLC = null;
-        let maxVx = 0;
-        let maxVy = 0;
-        let VRdCp = 0;
+    // Populate both dropdowns with load cases
+    const optionsHTML = '<option value="max">Max of All Load Cases</option>' +
+        (results.load_cases || []).map((lc, idx) =>
+            `<option value="${idx}">${lc.load_case_name}</option>`
+        ).join('');
 
-        // Find max across all load cases
-        for (const lcId in state.results) {
-            const result = state.results[lcId].results[i];
-            if (result.Vres_kN > maxVres) {
-                maxVres = result.Vres_kN;
-                maxUtil = result.utilization;
-                maxVx = result.Vx_kN;
-                maxVy = result.Vy_kN;
-                VRdCp = result.V_Rd_cp_kN;
-                criticalLC = state.loadCases.find(lc => lc.id === parseInt(lcId));
-            }
+    dropdown.innerHTML = optionsHTML;
+    plotDropdown.innerHTML = optionsHTML;
+
+    // Show selectors if multiple load cases
+    if (results.load_cases && results.load_cases.length > 1) {
+        selector.style.display = 'block';
+        plotSelector.style.display = 'block';
+    } else {
+        selector.style.display = 'none';
+        plotSelector.style.display = 'block'; // Still show for single case
+    }
+
+    // Set up dropdown change handlers
+    dropdown.onchange = () => {
+        displaySelectedLoadCase(results, dropdown.value);
+        // Sync plot dropdown
+        plotDropdown.value = dropdown.value;
+    };
+
+    plotDropdown.onchange = () => {
+        displaySelectedLoadCase(results, plotDropdown.value);
+        // Sync results dropdown
+        dropdown.value = plotDropdown.value;
+    };
+
+    // Display default (max of all)
+    displaySelectedLoadCase(results, 'max');
+}
+
+function displaySelectedLoadCase(results, selectedCase) {
+    const container = document.getElementById('results-container');
+
+    // Store which case is being viewed
+    state.selectedResultCase = selectedCase;
+
+    // Get the data to display (either max or specific load case)
+    let displayData;
+    let headerText = '';
+
+    if (selectedCase === 'max') {
+        // Show max utilizations across all load cases
+        displayData = {
+            failure_modes: results.max_utilizations,
+            interaction: results.max_utilizations.interaction,
+            overall_status: results.max_utilizations.overall_status
+        };
+        headerText = 'Maximum Utilizations Across All Load Cases';
+
+        // Update plot with force distribution from first load case
+        // (so arrows are visible even in max view)
+        if (results.load_cases && results.load_cases.length > 0 && results.load_cases[0].load_distribution) {
+            state.lastResults.load_distribution = results.load_cases[0].load_distribution;
+            state.lastResults.activeLoadCaseForPlot = results.load_cases[0]; // Store load case for applied forces
+            updatePlot();
         }
+    } else {
+        // Show specific load case
+        const caseIdx = parseInt(selectedCase);
+        const loadCase = results.load_cases[caseIdx];
+        displayData = {
+            failure_modes: loadCase.failure_modes,
+            interaction: loadCase.interaction,
+            overall_status: loadCase.overall_status,
+            load_distribution: loadCase.load_distribution
+        };
+        headerText = `Load Case: ${loadCase.load_case_name}`;
 
-        envelope.push({
-            stud: i + 1,
-            x_mm: state.studs[i].x,
-            y_mm: state.studs[i].y,
-            Vx_kN: maxVx,
-            Vy_kN: maxVy,
-            Vres_kN: maxVres,
-            V_Rd_cp_kN: VRdCp,
-            utilization: maxUtil,
-            criticalCase: criticalLC ? criticalLC.name : '-'
+        // Update plot with this load case's forces
+        if (loadCase.load_distribution) {
+            state.lastResults.load_distribution = loadCase.load_distribution;
+            state.lastResults.activeLoadCaseForPlot = loadCase; // Store load case for applied forces
+            updatePlot();
+        }
+    }
+
+    // Use Python nomenclature directly
+    const status = displayData.overall_status; // 'OK' or 'FAIL'
+    const statusClass = status === 'OK' ? 'pass' : 'fail';
+
+    let html = `
+        <div class="result-status ${statusClass}">
+            ${headerText}<br>
+            Overall Status: ${status}
+        </div>
+    `;
+
+    // Input summary
+    html += `
+        <div class="result-section">
+            <h4>Input Summary</h4>
+            <table class="result-table">
+                <tr><td>Number of Fasteners:</td><td>${results.input_summary.n_fasteners}</td></tr>
+                <tr><td>Centroid:</td><td>(${results.input_summary.centroid.x}, ${results.input_summary.centroid.y}) mm</td></tr>
+                <tr><td>k-factor:</td><td>${results.input_summary.concrete_k_factor}</td></tr>
+                <tr><td>γ<sub>Ms</sub>:</td><td>${results.input_summary.gamma_Ms}</td></tr>
+                <tr><td>γ<sub>Mc</sub>:</td><td>${results.input_summary.gamma_Mc}</td></tr>
+            </table>
+        </div>
+    `;
+
+    // Per-fastener force distribution (only for specific load cases, not max view)
+    if (selectedCase !== 'max' && displayData.load_distribution) {
+        html += `
+            <div class="result-section">
+                <h4>Force Distribution per Fastener</h4>
+                <table class="result-table" style="font-size: 0.9em;">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>V<sub>x</sub> (kN)</th>
+                            <th>V<sub>y</sub> (kN)</th>
+                            <th>V<sub>total</sub> (kN)</th>
+                            <th>N (kN)</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+        displayData.load_distribution.forEach(fastener => {
+            const Vx = fastener.forces.Vx_total;
+            const Vy = fastener.forces.Vy_total;
+            const Vtotal = fastener.resultants.V_resultant;
+            const N = fastener.forces.N;
+
+            html += `
+                        <tr>
+                            <td><strong>${fastener.fastener_id}</strong></td>
+                            <td>${Vx.toFixed(2)}</td>
+                            <td>${Vy.toFixed(2)}</td>
+                            <td><strong>${Vtotal.toFixed(2)}</strong></td>
+                            <td><strong>${N.toFixed(2)}</strong></td>
+                        </tr>`;
         });
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
     }
 
-    state.envelope = envelope;
-}
+    // Tension failure modes
+    if (displayData.failure_modes.tension) {
+        const isMaxView = selectedCase === 'max';
 
-// ============================================================
-// Results Display
-// ============================================================
+        html += `<div class="result-section">
+            <h4>Tension Failure Modes</h4>
+            <table class="utilization-table">
+                <thead>
+                    <tr>
+                        <th>Mode</th>
+                        <th>N<sub>Rd</sub> (kN)</th>
+                        <th>Utilization</th>
+                        <th>Status</th>
+                        ${isMaxView ? '<th>Governing Case</th>' : ''}
+                    </tr>
+                </thead>
+                <tbody>`;
 
-function updateResultsView() {
-    const view = document.getElementById('results-view').value;
-    state.ui.resultsView = view;
+        for (const [mode, data] of Object.entries(displayData.failure_modes.tension)) {
+            // Skip metadata keys
+            if (['governing', 'min_capacity', 'min_capacity_kN', 'status', 'overall_status'].includes(mode)) {
+                continue;
+            }
 
-    const container = document.getElementById('results-container');
+            // Check if data has required fields
+            if (!data || typeof data.utilization === 'undefined') {
+                continue;
+            }
 
-    if (view === 'active') {
-        const results = state.results[state.activeLoadCaseId];
-        if (!results) {
-            container.innerHTML = '<div class="text-gray-500 text-center py-8">No results for this load case. Click Calculate.</div>';
-            document.getElementById('max-util').classList.add('hidden');
-            return;
+            const capacityKey = isMaxView ? 'NRd_kN' : 'NRd_kN';
+            if (typeof data[capacityKey] === 'undefined') {
+                continue;
+            }
+
+            // Determine status from utilization (Python nomenclature)
+            const modeStatusText = data.status || (data.utilization <= 1.0 ? 'OK' : 'FAIL');
+            const modeStatus = modeStatusText === 'OK' ? 'pass-text' : 'fail-text';
+
+            // Utilization bar color
+            const utilPercent = data.utilization * 100;
+            let barClass = 'util-bar-ok';
+            if (utilPercent > 100) barClass = 'util-bar-fail';
+            else if (utilPercent > 85) barClass = 'util-bar-warning';
+
+            html += `
+                <tr>
+                    <td><strong>${mode.toUpperCase()}</strong></td>
+                    <td>${data[capacityKey].toFixed(2)}</td>
+                    <td>
+                        <div class="util-bar-container">
+                            <div class="util-bar ${barClass}" style="width: ${Math.min(utilPercent, 100)}%"></div>
+                            <span class="util-text">${data.utilization.toFixed(3)} (${utilPercent.toFixed(0)}%)</span>
+                        </div>
+                    </td>
+                    <td><span class="${modeStatus}">${modeStatusText}</span></td>
+                    ${isMaxView ? `<td>${data.governing_case || 'N/A'}</td>` : ''}
+                </tr>
+            `;
         }
 
-        displayResultsTable(results.results, false);
-    } else if (view === 'envelope') {
-        if (!state.envelope) {
-            container.innerHTML = '<div class="text-gray-500 text-center py-8">No envelope results. Click Calculate.</div>';
-            document.getElementById('max-util').classList.add('hidden');
-            return;
+        html += `
+                </tbody>
+            </table>`;
+
+        // Show governing mode (for individual load case view)
+        if (!isMaxView && displayData.failure_modes.tension.governing) {
+            html += `<p style="margin-top: 0.5rem;"><strong>Governing:</strong> ${results.failure_modes.tension.governing.toUpperCase()} - ${results.failure_modes.tension.status}</p>`;
         }
 
-        displayResultsTable(state.envelope, true);
+        html += `</div>`;
     }
 
-    refreshCanvas();
-}
+    // Shear failure modes
+    if (displayData.failure_modes.shear) {
+        const isMaxView = selectedCase === 'max';
 
-function displayResultsTable(results, showCriticalCase) {
-    const container = document.getElementById('results-container');
+        html += `<div class="result-section">
+            <h4>Shear Failure Modes</h4>
+            <table class="utilization-table">
+                <thead>
+                    <tr>
+                        <th>Mode</th>
+                        <th>V<sub>Rd</sub> (kN)</th>
+                        <th>Utilization</th>
+                        <th>Status</th>
+                        ${isMaxView ? '<th>Governing Case</th>' : ''}
+                    </tr>
+                </thead>
+                <tbody>`;
 
-    let html = '<table class="w-full"><thead><tr>';
-    html += '<th>Stud</th>';
-    html += '<th>V<sub>x</sub> (kN)</th>';
-    html += '<th>V<sub>y</sub> (kN)</th>';
-    html += '<th>V<sub>res</sub> (kN)</th>';
-    html += '<th>V<sub>Rd,cp</sub> (kN)</th>';
-    html += '<th>η (%)</th>';
-    if (showCriticalCase) {
-        html += '<th>Critical Case</th>';
+        for (const [mode, data] of Object.entries(displayData.failure_modes.shear)) {
+            // Skip metadata keys
+            if (['governing', 'min_capacity', 'min_capacity_kN', 'status', 'overall_status'].includes(mode)) {
+                continue;
+            }
+
+            // Check if data has required fields
+            if (!data || typeof data.utilization === 'undefined') {
+                continue;
+            }
+
+            const capacityKey = isMaxView ? 'VRd_kN' : 'VRd_kN';
+            if (typeof data[capacityKey] === 'undefined') {
+                continue;
+            }
+
+            // Determine status from utilization (Python nomenclature)
+            const modeStatusText = data.status || (data.utilization <= 1.0 ? 'OK' : 'FAIL');
+            const modeStatus = modeStatusText === 'OK' ? 'pass-text' : 'fail-text';
+
+            // Utilization bar color
+            const utilPercent = data.utilization * 100;
+            let barClass = 'util-bar-ok';
+            if (utilPercent > 100) barClass = 'util-bar-fail';
+            else if (utilPercent > 85) barClass = 'util-bar-warning';
+
+            html += `
+                <tr>
+                    <td><strong>${mode.toUpperCase()}</strong></td>
+                    <td>${data[capacityKey].toFixed(2)}</td>
+                    <td>
+                        <div class="util-bar-container">
+                            <div class="util-bar ${barClass}" style="width: ${Math.min(utilPercent, 100)}%"></div>
+                            <span class="util-text">${data.utilization.toFixed(3)} (${utilPercent.toFixed(0)}%)</span>
+                        </div>
+                    </td>
+                    <td><span class="${modeStatus}">${modeStatusText}</span></td>
+                    ${isMaxView ? `<td>${data.governing_case || 'N/A'}</td>` : ''}
+                </tr>
+            `;
+        }
+
+        html += `
+                </tbody>
+            </table>`;
+
+        // Show governing mode (for individual load case view)
+        if (!isMaxView && displayData.failure_modes.shear.governing) {
+            html += `<p style="margin-top: 0.5rem;"><strong>Governing:</strong> ${displayData.failure_modes.shear.governing.toUpperCase()} - ${displayData.failure_modes.shear.status}</p>`;
+        }
+
+        html += `</div>`;
     }
-    html += '</tr></thead><tbody>';
 
-    let maxUtil = 0;
-    let maxUtilStud = 0;
-    let maxUtilLC = '';
+    // Interaction
+    if (displayData.interaction) {
+        const int = displayData.interaction;
+        const intStatus = int.status === 'OK' ? 'pass-text' : 'fail-text';
+        const isMaxView = selectedCase === 'max';
 
-    results.forEach(r => {
-        const utilPct = r.utilization * 100;
-        let utilClass = 'util-ok';
-        if (utilPct > 100) utilClass = 'util-fail';
-        else if (utilPct > 85) utilClass = 'util-warning';
-
-        if (utilPct > maxUtil) {
-            maxUtil = utilPct;
-            maxUtilStud = r.stud;
-            maxUtilLC = r.criticalCase || '';
-        }
-
-        html += '<tr>';
-        html += `<td class="text-center">${r.stud}</td>`;
-        html += `<td class="text-right">${r.Vx_kN.toFixed(1)}</td>`;
-        html += `<td class="text-right">${r.Vy_kN.toFixed(1)}</td>`;
-        html += `<td class="text-right font-semibold">${r.Vres_kN.toFixed(1)}</td>`;
-        html += `<td class="text-right">${r.V_Rd_cp_kN.toFixed(1)}</td>`;
-        html += `<td class="text-right ${utilClass}">${utilPct.toFixed(1)}%</td>`;
-        if (showCriticalCase) {
-            html += `<td class="text-center text-sm">${r.criticalCase}</td>`;
-        }
-        html += '</tr>';
-    });
-
-    html += '</tbody></table>';
+        html += `
+            <div class="result-section">
+                <h4>N-V Interaction Check</h4>
+                <table class="result-table">
+                    <tr><td>Governing Tension:</td><td>${int.governing_tension_mode || 'N/A'}</td></tr>
+                    <tr><td>N<sub>Rd</sub>:</td><td>${int.NRd_kN?.toFixed(2) || 'N/A'} kN</td></tr>
+                    <tr><td>Governing Shear:</td><td>${int.governing_shear_mode || 'N/A'}</td></tr>
+                    <tr><td>V<sub>Rd</sub>:</td><td>${int.VRd_kN?.toFixed(2) || 'N/A'} kN</td></tr>
+                    <tr><td>Interaction Ratio:</td><td>${int.interaction_ratio?.toFixed(3) || 'N/A'}</td></tr>
+                    <tr><td>Status:</td><td><span class="${intStatus}">${int.status}</span></td></tr>
+                    ${isMaxView ? `<tr><td>Governing Case:</td><td>${int.governing_case || 'N/A'}</td></tr>` : ''}
+                </table>
+            </div>
+        `;
+    }
 
     container.innerHTML = html;
-
-    // Update max utilization display
-    const maxUtilDiv = document.getElementById('max-util');
-    const maxUtilText = document.getElementById('max-util-text');
-
-    let maxUtilClass = 'text-green-700';
-    if (maxUtil > 100) maxUtilClass = 'text-red-700';
-    else if (maxUtil > 85) maxUtilClass = 'text-yellow-700';
-
-    maxUtilText.innerHTML = `<span class="${maxUtilClass} font-bold">${maxUtil.toFixed(1)}%</span> at Stud ${maxUtilStud}`;
-    if (showCriticalCase && maxUtilLC) {
-        maxUtilText.innerHTML += ` (${maxUtilLC})`;
-    }
-    maxUtilDiv.classList.remove('hidden');
 }
 
-// ============================================================
-// Canvas Visualization
-// ============================================================
+// ============================================================================
+// VISUALIZATION
+// ============================================================================
 
-function refreshCanvas() {
-    const canvas = document.getElementById('main-canvas');
+function updatePlot() {
+    const canvas = document.getElementById('plot-canvas');
     const ctx = canvas.getContext('2d');
 
-    // Clear canvas
+    // Clear
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    if (state.studs.length === 0) {
-        ctx.fillStyle = '#9ca3af';
+    if (state.fasteners.length === 0) {
+        ctx.fillStyle = '#757575';
         ctx.font = '16px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('Add studs to see geometry', canvas.width / 2, canvas.height / 2);
-        document.getElementById('canvas-info').textContent = 'Add studs to see geometry';
+        ctx.fillText('No fasteners to display', canvas.width / 2, canvas.height / 2);
         return;
     }
-
-    const tab = state.ui.activeTab;
-
-    if (tab === 'model') {
-        drawModelView(ctx, canvas);
-    } else if (tab === 'results') {
-        drawResultsView(ctx, canvas);
-    } else if (tab === 'envelope') {
-        drawEnvelopeView(ctx, canvas);
-    }
-}
-
-function drawModelView(ctx, canvas) {
-    const edgeDist = parseFloat(document.getElementById('edge_dist').value) || 100;
 
     // Calculate bounds
-    const xs = state.studs.map(s => s.x);
-    const ys = state.studs.map(s => s.y);
-    const minX = Math.min(...xs) - edgeDist;
-    const maxX = Math.max(...xs) + edgeDist;
-    const minY = Math.min(...ys) - edgeDist;
-    const maxY = Math.max(...ys) + edgeDist;
+    const xs = state.fasteners.map(f => f.x);
+    const ys = state.fasteners.map(f => f.y);
 
-    const modelWidth = maxX - minX;
-    const modelHeight = maxY - minY;
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
 
-    const padding = 60;
-    const availWidth = canvas.width - 2 * padding;
-    const availHeight = canvas.height - 2 * padding;
+    const rangeX = maxX - minX || 200;
+    const rangeY = maxY - minY || 200;
 
-    const scale = Math.min(availWidth / modelWidth, availHeight / modelHeight);
+    // Smart edge distance plotting
+    const c1 = parseFloat(document.getElementById('c1').value) || 0;
+    const c2 = parseFloat(document.getElementById('c2').value) || 0;
 
-    // Transform functions - Cartesian coordinates (Y increases upward)
-    const toCanvasX = (x) => padding + (x - minX) * scale;
-    const toCanvasY = (y) => canvas.height - padding - (y - minY) * scale;
+    // Calculate minimum edge distance based on largest fastener diameter
+    const maxDiameter = Math.max(...state.fasteners.map(f => f.diameter));
+    const minEdgeDistance = Math.max(40, 1.2 * maxDiameter); // EC2 minimum
 
-    // Draw edge rectangle (dashed)
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]);
-    ctx.beginPath();
-    // In Cartesian coordinates: draw from bottom-left (minX, minY) to top-right (maxX, maxY)
-    // toCanvasY(maxY) is the top in canvas (smaller Y), toCanvasY(minY) is bottom (larger Y)
-    ctx.rect(toCanvasX(minX), toCanvasY(maxY), modelWidth * scale, modelHeight * scale);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    // Only include edges if they're within 5x minimum
+    const includeC1 = c1 > 0 && c1 <= 5 * minEdgeDistance;
+    const includeC2 = c2 > 0 && c2 <= 5 * minEdgeDistance;
 
-    // Draw centroid
-    const centroid = calculateCentroid(state.studs);
-    ctx.fillStyle = '#ef4444';
-    ctx.beginPath();
-    ctx.arc(toCanvasX(centroid.x), toCanvasY(centroid.y), 6, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.fillStyle = '#000000';
-    ctx.font = '12px sans-serif';
-    ctx.fillText('C', toCanvasX(centroid.x) + 10, toCanvasY(centroid.y) - 10);
+    // Extend bounds to include relevant edges
+    let plotMinX = minX;
+    let plotMaxX = maxX;
+    let plotMinY = minY;
+    let plotMaxY = maxY;
 
-    // Draw studs
-    state.studs.forEach((stud, index) => {
-        ctx.fillStyle = '#2563eb';
-        ctx.beginPath();
-        ctx.arc(toCanvasX(stud.x), toCanvasY(stud.y), 6, 0, 2 * Math.PI);
-        ctx.fill();
-
-        ctx.fillStyle = '#000000';
-        ctx.font = '12px sans-serif';
-        ctx.fillText(`${index + 1}`, toCanvasX(stud.x) + 10, toCanvasY(stud.y) + 5);
-    });
-
-    // Draw axes
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(padding + 10, canvas.height - padding - 10);
-    ctx.lineTo(padding + 50, canvas.height - padding - 10);
-    ctx.stroke();
-
-    ctx.strokeStyle = '#22c55e';
-    ctx.beginPath();
-    ctx.moveTo(padding + 10, canvas.height - padding - 10);
-    ctx.lineTo(padding + 10, canvas.height - padding - 50);
-    ctx.stroke();
-
-    ctx.fillStyle = '#000000';
-    ctx.font = '12px sans-serif';
-    ctx.fillText('x', padding + 55, canvas.height - padding - 5);
-    ctx.fillText('y', padding + 5, canvas.height - padding - 55);
-
-    document.getElementById('canvas-info').textContent = `Model view - ${state.studs.length} studs, Centroid: (${centroid.x.toFixed(1)}, ${centroid.y.toFixed(1)}) mm`;
-}
-
-function drawResultsView(ctx, canvas) {
-    const results = state.results[state.activeLoadCaseId];
-    if (!results) {
-        drawModelView(ctx, canvas);
-        return;
+    if (includeC1) {
+        plotMinX = Math.min(plotMinX, minX - c1);
+    }
+    if (includeC2) {
+        plotMinY = Math.min(plotMinY, minY - c2);
     }
 
-    drawModelView(ctx, canvas);
+    const plotRangeX = plotMaxX - plotMinX + 0.2 * (plotMaxX - plotMinX);
+    const plotRangeY = plotMaxY - plotMinY + 0.2 * (plotMaxY - plotMinY);
 
-    // Overlay force vectors
-    const lc = state.loadCases.find(l => l.id === state.activeLoadCaseId);
+    const margin = 80;
+    const plotWidth = canvas.width - 2 * margin;
+    const plotHeight = canvas.height - 2 * margin;
 
-    let infoText = `Results for ${lc.name}`;
-    if (state.ui.showAppliedLoads) infoText += ' - Red: applied loads';
-    if (state.ui.showResultingForces) infoText += ' - Orange: stud forces';
-    document.getElementById('canvas-info').textContent = infoText;
+    const scale = Math.min(plotWidth / plotRangeX, plotHeight / plotRangeY);
 
-    // Draw force arrows for each stud
-    drawForceArrows(ctx, canvas, results, lc);
-}
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
 
-function drawForceArrows(ctx, canvas, resultsData, loadCase = null) {
-    const edgeDist = parseFloat(document.getElementById('edge_dist').value) || 100;
+    const plotCenterX = (plotMinX + plotMaxX) / 2;
+    const plotCenterY = (plotMinY + plotMaxY) / 2;
 
-    // Calculate bounds and scale (same as drawModelView)
-    const xs = state.studs.map(s => s.x);
-    const ys = state.studs.map(s => s.y);
-    const minX = Math.min(...xs) - edgeDist;
-    const maxX = Math.max(...xs) + edgeDist;
-    const minY = Math.min(...ys) - edgeDist;
-    const maxY = Math.max(...ys) + edgeDist;
+    // Transform functions
+    const toCanvasX = (x) => centerX + (x - plotCenterX) * scale;
+    const toCanvasY = (y) => centerY - (y - plotCenterY) * scale;
 
-    const modelWidth = maxX - minX;
-    const modelHeight = maxY - minY;
+    // Draw axes
+    ctx.strokeStyle = '#E0E0E0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(canvas.width, centerY);
+    ctx.moveTo(centerX, 0);
+    ctx.lineTo(centerX, canvas.height);
+    ctx.stroke();
 
-    const padding = 60;
-    const availWidth = canvas.width - 2 * padding;
-    const availHeight = canvas.height - 2 * padding;
+    // Draw edge lines (if within limits)
+    if (includeC1 || includeC2) {
+        ctx.strokeStyle = '#FF5722';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
 
-    const scale = Math.min(availWidth / modelWidth, availHeight / modelHeight);
+        if (includeC1) {
+            const edgeX = minX - c1;
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(edgeX), toCanvasY(plotMinY));
+            ctx.lineTo(toCanvasX(edgeX), toCanvasY(plotMaxY));
+            ctx.stroke();
 
-    // Transform functions - Cartesian coordinates (Y increases upward)
-    const toCanvasX = (x) => padding + (x - minX) * scale;
-    const toCanvasY = (y) => canvas.height - padding - (y - minY) * scale;
+            // Label
+            ctx.fillStyle = '#FF5722';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`c1=${c1}`, toCanvasX(edgeX), toCanvasY(plotMaxY) + 15);
+        }
 
-    // Calculate plot region size (max of width and height in pixels)
-    const plotRegionSize = Math.max(availWidth, availHeight);
+        if (includeC2) {
+            const edgeY = minY - c2;
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(plotMinX), toCanvasY(edgeY));
+            ctx.lineTo(toCanvasX(plotMaxX), toCanvasY(edgeY));
+            ctx.stroke();
 
-    // Handle both result structures (results.results or envelope array)
-    const resultArray = resultsData.results ? resultsData.results : resultsData;
+            // Label
+            ctx.fillStyle = '#FF5722';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`c2=${c2}`, toCanvasX(plotMaxX) + 25, toCanvasY(edgeY));
+        }
 
-    // Find max force for scaling arrows - largest force gets 1/20 of plot region
-    const maxForce = Math.max(...resultArray.map(r => r.Vres_kN));
-    const maxArrowLength = plotRegionSize / 20;
+        ctx.setLineDash([]);
+    }
 
-    // Draw arrows for each stud (orange) - only if enabled
-    if (state.ui.showResultingForces) {
-        resultArray.forEach((r, index) => {
-            // Get stud by index (stud number - 1)
-            const stud = state.studs[index];
-            if (!stud) return;
+    // Draw fasteners
+    state.fasteners.forEach(f => {
+        const cx = toCanvasX(f.x);
+        const cy = toCanvasY(f.y);
 
-            const cx = toCanvasX(stud.x);
-            const cy = toCanvasY(stud.y);
+        // Circle
+        ctx.fillStyle = '#2196F3';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 8, 0, 2 * Math.PI);
+        ctx.fill();
 
-            // Calculate arrow length - proportional to force, max force gets maxArrowLength
-            const forceRatio = r.Vres_kN / maxForce;
-            const arrowLength = forceRatio * maxArrowLength;
+        // ID label
+        ctx.fillStyle = '#212121';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(f.id.toString(), cx, cy - 15);
+    });
 
-            // Calculate angle from Vx and Vy (negate Vy for canvas Y-inversion)
-            // Flip direction by adding PI - arrows show reaction forces (opposite to applied forces)
-            const angle = Math.atan2(-r.Vy_kN, r.Vx_kN) + Math.PI;
+    // Draw centroid
+    const Xc = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const Yc = ys.reduce((a, b) => a + b, 0) / ys.length;
+
+    ctx.fillStyle = '#FF9800';
+    ctx.beginPath();
+    ctx.arc(toCanvasX(Xc), toCanvasY(Yc), 5, 0, 2 * Math.PI);
+    ctx.fill();
+
+    ctx.fillStyle = '#FF9800';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('C', toCanvasX(Xc), toCanvasY(Yc) - 10);
+
+    // Check force display toggles
+    const showAppliedForces = document.getElementById('show-applied-forces').checked;
+    const showDistributedForces = document.getElementById('show-distributed-forces').checked;
+
+    // Draw applied forces if toggle is on
+    if (showAppliedForces) {
+        const appType = document.getElementById('application-type').value;
+        const appX = appType === 'point' ? (parseFloat(document.getElementById('app-x').value) || 0) : Xc;
+        const appY = appType === 'point' ? (parseFloat(document.getElementById('app-y').value) || 0) : Yc;
+
+        // Draw load application point marker if different from centroid
+        if (appType === 'point' && (appX !== Xc || appY !== Yc)) {
+            ctx.fillStyle = '#FF5722';
+            ctx.beginPath();
+            ctx.arc(toCanvasX(appX), toCanvasY(appY), 6, 0, 2 * Math.PI);
+            ctx.fill();
+
+            ctx.fillStyle = '#FF5722';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Load', toCanvasX(appX), toCanvasY(appY) - 12);
+        }
+
+        // Draw applied force arrows (Vx, Vy, N)
+        // Use load case from results if available, otherwise use active input load case
+        let loadCaseToDisplay;
+        if (state.lastResults && state.lastResults.activeLoadCaseForPlot) {
+            // Use load case from results view
+            loadCaseToDisplay = state.lastResults.activeLoadCaseForPlot;
+        } else {
+            // Use active input load case
+            const activeLoadCaseId = document.getElementById('active-load-case').value;
+            loadCaseToDisplay = state.loadCases.find(lc => lc.id === activeLoadCaseId);
+        }
+
+        if (loadCaseToDisplay) {
+            const Vx = loadCaseToDisplay.Vx || 0; // kN
+            const Vy = loadCaseToDisplay.Vy || 0; // kN
+            const N = loadCaseToDisplay.N || 0;   // kN
+
+            const forceScaleInput = parseFloat(document.getElementById('force-scale').value);
+
+            // Find max applied force for scaling
+            const maxAppliedForce = Math.max(Math.abs(Vx), Math.abs(Vy), Math.abs(N));
+
+            if (maxAppliedForce > 0) {
+                // Calculate arrow length scale: max force should be 1/20 of plot size
+                const plotSize = Math.min(canvas.width, canvas.height);
+                const maxArrowLength = (plotSize / 20) * forceScaleInput / 0.05;
+                const arrowScale = maxArrowLength / maxAppliedForce;
+
+                const appCanvasX = toCanvasX(appX);
+                const appCanvasY = toCanvasY(appY);
+
+                // Draw Vx arrow (horizontal shear)
+                if (Math.abs(Vx) > 0.01) {
+                    const dx = Vx * arrowScale;
+                    drawArrow(ctx, appCanvasX, appCanvasY, appCanvasX + dx, appCanvasY, '#FF5722');
+                }
+
+                // Draw Vy arrow (vertical shear)
+                if (Math.abs(Vy) > 0.01) {
+                    const dy = -Vy * arrowScale; // Negative because canvas Y is inverted
+                    drawArrow(ctx, appCanvasX, appCanvasY, appCanvasX, appCanvasY + dy, '#FF5722');
+                }
+
+                // Draw N arrow (tension, pointing away from concrete)
+                if (Math.abs(N) > 0.01) {
+                    const dn = -N * arrowScale; // Negative because tension points up (away from concrete)
+                    drawArrow(ctx, appCanvasX, appCanvasY, appCanvasX, appCanvasY + dn, '#FF5722');
+                }
+
+                // Draw Mz as a circular rotation arrow
+                const Mz = loadCaseToDisplay.Mz || 0; // kNm
+                if (Math.abs(Mz) > 0.01) {
+                    const radius = 30; // pixels
+                    const startAngle = Mz > 0 ? 0.2 : -0.2; // CCW for positive Mz
+                    const endAngle = Mz > 0 ? 2 * Math.PI - 0.2 : -(2 * Math.PI - 0.2);
+
+                    ctx.strokeStyle = '#FF5722';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(appCanvasX, appCanvasY, radius, startAngle, endAngle, Mz < 0);
+                    ctx.stroke();
+
+                    // Draw arrowhead at end of arc
+                    const arrowAngle = endAngle;
+                    const arrowX = appCanvasX + radius * Math.cos(arrowAngle);
+                    const arrowY = appCanvasY + radius * Math.sin(arrowAngle);
+
+                    // Tangent direction (perpendicular to radius)
+                    const tangentAngle = arrowAngle + (Mz > 0 ? Math.PI / 2 : -Math.PI / 2);
+
+                    ctx.fillStyle = '#FF5722';
+                    ctx.beginPath();
+                    ctx.moveTo(arrowX, arrowY);
+                    ctx.lineTo(
+                        arrowX - 8 * Math.cos(tangentAngle - Math.PI / 6),
+                        arrowY - 8 * Math.sin(tangentAngle - Math.PI / 6)
+                    );
+                    ctx.lineTo(
+                        arrowX - 8 * Math.cos(tangentAngle + Math.PI / 6),
+                        arrowY - 8 * Math.sin(tangentAngle + Math.PI / 6)
+                    );
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Draw Mz label
+                    ctx.fillStyle = '#FF5722';
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`Mz=${Mz.toFixed(1)}`, appCanvasX, appCanvasY - radius - 10);
+                }
+
+                // Draw Mx as curved double-arrow (bending about x-axis)
+                const Mx = loadCaseToDisplay.Mx || 0; // kNm
+                if (Math.abs(Mx) > 0.01) {
+                    // Show at right edge of canvas
+                    const edgeX = canvas.width - 60;
+                    const centerY = canvas.height / 2;
+                    const arcHeight = 40;
+
+                    ctx.strokeStyle = '#9C27B0'; // Purple for Mx
+                    ctx.lineWidth = 2;
+
+                    if (Mx > 0) {
+                        // Positive Mx: tension on +y (top) side
+                        // Draw arc curving upward
+                        ctx.beginPath();
+                        ctx.moveTo(edgeX, centerY - arcHeight/2);
+                        ctx.quadraticCurveTo(edgeX + 20, centerY, edgeX, centerY + arcHeight/2);
+                        ctx.stroke();
+
+                        // Arrowheads
+                        drawArrowhead(ctx, edgeX, centerY - arcHeight/2, 0, -1, '#9C27B0');
+                        drawArrowhead(ctx, edgeX, centerY + arcHeight/2, 0, 1, '#9C27B0');
+                    } else {
+                        // Negative Mx: compression on +y (top) side
+                        ctx.beginPath();
+                        ctx.moveTo(edgeX, centerY - arcHeight/2);
+                        ctx.quadraticCurveTo(edgeX - 20, centerY, edgeX, centerY + arcHeight/2);
+                        ctx.stroke();
+
+                        // Arrowheads
+                        drawArrowhead(ctx, edgeX, centerY - arcHeight/2, 0, 1, '#9C27B0');
+                        drawArrowhead(ctx, edgeX, centerY + arcHeight/2, 0, -1, '#9C27B0');
+                    }
+
+                    // Label
+                    ctx.fillStyle = '#9C27B0';
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(`Mx=${Mx.toFixed(1)}`, edgeX + 5, centerY);
+                }
+
+                // Draw My as curved double-arrow (bending about y-axis)
+                const My = loadCaseToDisplay.My || 0; // kNm
+                if (Math.abs(My) > 0.01) {
+                    // Show at bottom edge of canvas
+                    const centerX = canvas.width / 2;
+                    const edgeY = canvas.height - 60;
+                    const arcWidth = 40;
+
+                    ctx.strokeStyle = '#FF9800'; // Orange for My
+                    ctx.lineWidth = 2;
+
+                    if (My > 0) {
+                        // Positive My: tension on +x (right) side
+                        // Draw arc curving rightward
+                        ctx.beginPath();
+                        ctx.moveTo(centerX - arcWidth/2, edgeY);
+                        ctx.quadraticCurveTo(centerX, edgeY + 20, centerX + arcWidth/2, edgeY);
+                        ctx.stroke();
+
+                        // Arrowheads
+                        drawArrowhead(ctx, centerX - arcWidth/2, edgeY, -1, 0, '#FF9800');
+                        drawArrowhead(ctx, centerX + arcWidth/2, edgeY, 1, 0, '#FF9800');
+                    } else {
+                        // Negative My: compression on +x (right) side
+                        ctx.beginPath();
+                        ctx.moveTo(centerX - arcWidth/2, edgeY);
+                        ctx.quadraticCurveTo(centerX, edgeY - 20, centerX + arcWidth/2, edgeY);
+                        ctx.stroke();
+
+                        // Arrowheads
+                        drawArrowhead(ctx, centerX - arcWidth/2, edgeY, 1, 0, '#FF9800');
+                        drawArrowhead(ctx, centerX + arcWidth/2, edgeY, -1, 0, '#FF9800');
+                    }
+
+                    // Label
+                    ctx.fillStyle = '#FF9800';
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`My=${My.toFixed(1)}`, centerX, edgeY + 15);
+                }
+            }
+        }
+    }
+
+    // Draw distributed forces if results available and toggle is on
+    if (showDistributedForces && state.lastResults && state.lastResults.load_distribution) {
+        const forceScaleInput = parseFloat(document.getElementById('force-scale').value);
+
+        // Find maximum force magnitude for scaling
+        let maxForce = 0;
+        state.lastResults.load_distribution.forEach(dist => {
+            const Vx = dist.forces.Vx_total;
+            const Vy = dist.forces.Vy_total;
+            const forceMag = Math.sqrt(Vx * Vx + Vy * Vy);
+            maxForce = Math.max(maxForce, forceMag);
+        });
+
+        // Calculate arrow length scale: max force should be 1/20 of plot size
+        const plotSize = Math.min(canvas.width, canvas.height);
+        const maxArrowLength = (plotSize / 20) * forceScaleInput / 0.05; // Normalize to default scale
+        const arrowScale = maxForce > 0 ? maxArrowLength / maxForce : 1;
+
+        state.lastResults.load_distribution.forEach(dist => {
+            const fastener = state.fasteners.find(f => f.id === dist.fastener_id);
+            if (!fastener) return;
+
+            const cx = toCanvasX(fastener.x);
+            const cy = toCanvasY(fastener.y);
+
+            const Vx = dist.forces.Vx_total; // kN
+            const Vy = dist.forces.Vy_total; // kN
+
+            // Calculate arrow endpoint in canvas pixels
+            // IMPORTANT: Distributed forces are REACTIONS, so they point OPPOSITE to applied forces
+            const dx = -Vx * arrowScale; // Negative because reactions oppose applied forces
+            const dy = Vy * arrowScale; // Positive (canvas Y already inverted, so double negative = positive)
 
             // Draw arrow
-            drawArrow(ctx, cx, cy, angle, arrowLength, '#ff8c00', r.Vres_kN);
+            drawArrow(ctx, cx, cy, cx + dx, cy + dy, '#4CAF50');
         });
     }
 
-    // Draw applied loads at application point (red forces, blue moment) - only if enabled
-    if (state.ui.showAppliedLoads && loadCase && resultsData.applicationPoint) {
-        const appPoint = resultsData.applicationPoint;
-        const appX = toCanvasX(appPoint.x);
-        const appY = toCanvasY(appPoint.y);
-
-        // Draw application point marker (small X)
-        ctx.save();
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 2;
-        const crossSize = 8;
-        ctx.beginPath();
-        ctx.moveTo(appX - crossSize, appY - crossSize);
-        ctx.lineTo(appX + crossSize, appY + crossSize);
-        ctx.moveTo(appX - crossSize, appY + crossSize);
-        ctx.lineTo(appX + crossSize, appY - crossSize);
-        ctx.stroke();
-        ctx.restore();
-
-        // Calculate applied force magnitude and angle
-        const Vx = loadCase.Vx;
-        const Vy = loadCase.Vy;
-        const Mz = loadCase.Mz;
-        const Vres = Math.sqrt(Vx * Vx + Vy * Vy);
-
-        // Draw applied force arrow (red) - scaled same as stud forces
-        if (Vres > 0.01) {
-            const forceRatio = Vres / maxForce;
-            const appliedArrowLength = forceRatio * maxArrowLength;
-            const appliedAngle = Math.atan2(-Vy, Vx); // Negate Vy for canvas Y-inversion
-
-            drawArrow(ctx, appX, appY, appliedAngle, appliedArrowLength, '#ef4444', Vres, true);
-        }
-
-        // Draw applied moment arrow (blue circular arrow)
-        if (Math.abs(Mz) > 0.01) {
-            // Scale moment: Convert moment (kNm) to equivalent force scale
-            // Moment arrow radius scales with moment magnitude relative to max force
-            // Use characteristic length of model for scaling
-            const characteristicLength = Math.sqrt(modelWidth * modelHeight);
-            const equivalentForce = Math.abs(Mz * 1000) / characteristicLength; // kNm -> Nmm, then divide by length
-            const momentRatio = equivalentForce / (maxForce * 1000); // maxForce is in kN
-            const momentRadius = Math.min(momentRatio * maxArrowLength, maxArrowLength * 0.8);
-
-            drawMomentArrow(ctx, appX, appY, momentRadius, Mz > 0, Math.abs(Mz));
-        }
-
-        // Label application point
-        ctx.fillStyle = '#000000';
-        ctx.font = '12px sans-serif';
-        ctx.fillText('P', appX + 12, appY - 12);
-    }
+    // Update fastener forces display
+    updateFastenerForcesDisplay();
 }
 
-function drawArrow(ctx, x, y, angle, length, color, forceValue, isAppliedLoad = false) {
-    ctx.save();
+function updateFastenerForcesDisplay() {
+    const container = document.getElementById('fastener-forces-container');
+    const displayDiv = document.getElementById('fastener-forces-display');
 
-    // Draw arrow line
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = isAppliedLoad ? 3 : 2; // Thicker for applied loads
-
-    const endX = x + length * Math.cos(angle);
-    const endY = y + length * Math.sin(angle);
-
-    // Arrow shaft
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(endX, endY);
-    ctx.stroke();
-
-    // Arrowhead
-    const headLength = isAppliedLoad ? 12 : 10;
-    const headAngle = Math.PI / 6;
-
-    ctx.beginPath();
-    ctx.moveTo(endX, endY);
-    ctx.lineTo(
-        endX - headLength * Math.cos(angle - headAngle),
-        endY - headLength * Math.sin(angle - headAngle)
-    );
-    ctx.moveTo(endX, endY);
-    ctx.lineTo(
-        endX - headLength * Math.cos(angle + headAngle),
-        endY - headLength * Math.sin(angle + headAngle)
-    );
-    ctx.stroke();
-
-    // Label with force value
-    if (length > 15) {
-        ctx.font = isAppliedLoad ? '12px sans-serif bold' : '11px sans-serif';
-        ctx.fillStyle = color;
-        ctx.fillText(`${forceValue.toFixed(1)} kN`, endX + 5, endY - 5);
-    }
-
-    ctx.restore();
-}
-
-function drawMomentArrow(ctx, x, y, radius, isCounterClockwise, momentValue) {
-    if (radius < 5) radius = 15; // Minimum visible size
-
-    ctx.save();
-    ctx.strokeStyle = '#3b82f6'; // Blue color
-    ctx.fillStyle = '#3b82f6';
-    ctx.lineWidth = 3;
-
-    // Draw circular arc (270 degrees)
-    const startAngle = isCounterClockwise ? 0 : Math.PI;
-    const endAngle = isCounterClockwise ? (3 * Math.PI / 2) : (-Math.PI / 2);
-
-    ctx.beginPath();
-    ctx.arc(x, y, radius, startAngle, endAngle, !isCounterClockwise);
-    ctx.stroke();
-
-    // Draw arrowhead at end of arc
-    const headLength = 12;
-    const headAngle = Math.PI / 6;
-
-    // Position at end of arc
-    const arrowX = x + radius * Math.cos(endAngle);
-    const arrowY = y + radius * Math.sin(endAngle);
-
-    // Tangent angle at end of arc
-    const tangentAngle = endAngle + (isCounterClockwise ? Math.PI / 2 : -Math.PI / 2);
-
-    ctx.beginPath();
-    ctx.moveTo(arrowX, arrowY);
-    ctx.lineTo(
-        arrowX - headLength * Math.cos(tangentAngle - headAngle),
-        arrowY - headLength * Math.sin(tangentAngle - headAngle)
-    );
-    ctx.moveTo(arrowX, arrowY);
-    ctx.lineTo(
-        arrowX - headLength * Math.cos(tangentAngle + headAngle),
-        arrowY - headLength * Math.sin(tangentAngle + headAngle)
-    );
-    ctx.stroke();
-
-    // Label with moment value
-    ctx.font = '12px sans-serif bold';
-    ctx.fillStyle = '#3b82f6';
-    const labelX = x + (isCounterClockwise ? radius + 5 : -radius - 35);
-    const labelY = y - radius - 5;
-    ctx.fillText(`${momentValue.toFixed(1)} kNm`, labelX, labelY);
-
-    ctx.restore();
-}
-
-function drawEnvelopeView(ctx, canvas) {
-    if (!state.envelope) {
-        drawModelView(ctx, canvas);
+    // Only show if we have load distribution results
+    if (!state.lastResults || !state.lastResults.load_distribution) {
+        displayDiv.style.display = 'none';
         return;
     }
 
-    drawModelView(ctx, canvas);
-
-    // Overlay envelope force vectors
-    document.getElementById('canvas-info').textContent = 'Envelope view - Red arrows show maximum forces';
-
-    // Draw envelope force vectors
-    drawForceArrows(ctx, canvas, state.envelope);
-}
-
-// ============================================================
-// Tab Navigation
-// ============================================================
-
-function switchTab(tab) {
-    state.ui.activeTab = tab;
-
-    // Update dropdown selector
-    const viewSelector = document.getElementById('view-selector');
-    if (viewSelector) {
-        viewSelector.value = tab;
+    const loadDist = state.lastResults.load_distribution;
+    if (!loadDist || loadDist.length === 0) {
+        displayDiv.style.display = 'none';
+        return;
     }
 
-    refreshCanvas();
-}
+    displayDiv.style.display = 'block';
 
-// ============================================================
-// Visualization Controls
-// ============================================================
+    // Build table
+    let html = `
+        <table class="data-table" style="width: 100%; font-size: 0.85rem;">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Vx (kN)</th>
+                    <th>Vy (kN)</th>
+                    <th>V_tot (kN)</th>
+                    <th>N (kN)</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
 
-function toggleAppliedLoads() {
-    state.ui.showAppliedLoads = document.getElementById('show-applied-loads').checked;
-    refreshCanvas();
-}
+    loadDist.forEach(fastener => {
+        const forces = fastener.forces;
+        const res = fastener.resultants;
 
-function toggleResultingForces() {
-    state.ui.showResultingForces = document.getElementById('show-resulting-forces').checked;
-    refreshCanvas();
-}
-
-// ============================================================
-// Keyboard Shortcuts
-// ============================================================
-
-document.addEventListener('keydown', (e) => {
-    // Ctrl+Space to run analysis
-    if (e.ctrlKey && e.code === 'Space') {
-        e.preventDefault();
-        runAnalysis();
-    }
-});
-
-// ============================================================
-// Input Change Listeners
-// ============================================================
-
-document.addEventListener('DOMContentLoaded', () => {
-    const materialInputs = ['fck', 'hef', 'd', 'edge_dist', 'spacing', 'gamma_Mc', 'k_cp'];
-    materialInputs.forEach(id => {
-        const input = document.getElementById(id);
-        if (input) {
-            input.addEventListener('change', () => {
-                checkSpacingWarnings();
-                if (id === 'edge_dist') {
-                    refreshCanvas();
-                }
-            });
-        }
+        html += `
+            <tr>
+                <td>${fastener.fastener_id}</td>
+                <td>${forces.Vx_total}</td>
+                <td>${forces.Vy_total}</td>
+                <td>${res.V_resultant}</td>
+                <td>${forces.N}</td>
+            </tr>
+        `;
     });
-});
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color) {
+    const headlen = 10;
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2;
+
+    // Line
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    // Arrow head
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(x2 - headlen * Math.cos(angle + Math.PI / 6), y2 - headlen * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
+}
+
+function drawArrowhead(ctx, x, y, dirX, dirY, color) {
+    const headlen = 8;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - headlen * dirX + 4 * dirY, y - headlen * dirY - 4 * dirX);
+    ctx.lineTo(x - headlen * dirX - 4 * dirY, y - headlen * dirY + 4 * dirX);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function resetView() {
+    document.getElementById('force-scale').value = 0.05;
+    updatePlot();
+}
+
+// ============================================================================
+// INITIALIZATION HELPERS
+// ============================================================================
+
+// Call these on load
+updateKFactor();
+updateMaterialFactors();
+updateApplicationTypeUI();
