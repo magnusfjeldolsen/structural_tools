@@ -386,12 +386,14 @@ def distribute_loads_with_bending(
         if sum_r_squared > 0:
             Mz_Nmm = Mz_total * 1e6  # kNm → Nmm
             # Torsional RESISTING force components (oppose applied moment)
-            # For +Mz (CCW applied): resisting forces create CW torque
-            # Applied tangential: Fx = -F_i×y_i/r_i, Fy = +F_i×x_i/r_i
-            # Resisting (opposite): Fx = +F_i×y_i/r_i, Fy = -F_i×x_i/r_i
-            # Where F_i = Mz × r_i / Σr²
-            Vx_torsion = Mz_Nmm * dy / sum_r_squared / 1000.0  # kN (resisting)
-            Vy_torsion = -Mz_Nmm * dx / sum_r_squared / 1000.0  # kN (resisting)
+            # For +Mz (CCW applied), right-hand rule gives applied tangential forces:
+            #   Fx_applied = -F_i×y_i/r_i = -Mz×y_i/Σr²
+            #   Fy_applied = +F_i×x_i/r_i = +Mz×x_i/Σr²
+            # RESISTING forces are opposite (reverse the tangent vector):
+            #   Fx_resist = +Mz×y_i/Σr²
+            #   Fy_resist = -Mz×x_i/Σr²
+            Vx_torsion = Mz_Nmm * dy / sum_r_squared / 1000.0  # kN
+            Vy_torsion = -Mz_Nmm * dx / sum_r_squared / 1000.0  # kN
         else:
             Vx_torsion = 0.0
             Vy_torsion = 0.0

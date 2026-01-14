@@ -1499,15 +1499,19 @@ function updatePlot() {
             const cx = toCanvasX(fastener.x);
             const cy = toCanvasY(fastener.y);
 
-            // Get total forces (Python returns in applied direction, following right-hand rule)
-            const Vx = dist.forces.Vx_total; // kN
-            const Vy = dist.forces.Vy_total; // kN
+            // Get force components
+            // Direct forces: applied force magnitude (need negation to show reactions)
+            // Torsion forces: resisting forces (draw as-is)
+            const Vx_direct = dist.forces.Vx_direct;
+            const Vy_direct = dist.forces.Vy_direct;
+            const Vx_torsion = dist.forces.Vx_torsion;
+            const Vy_torsion = dist.forces.Vy_torsion;
 
             // Calculate arrow endpoint in canvas pixels
-            // Python returns forces in applied direction, so negate to show reactions
+            // Direct: negate to show reactions, Torsion: keep as resisting forces
             // Canvas Y is inverted by toCanvasY (positive dy → up in world coords)
-            const dx = -Vx * arrowScale;  // Negate to show resisting forces
-            const dy = Vy * arrowScale;   // Keep sign (canvas Y inversion handles it)
+            const dx = (-Vx_direct + Vx_torsion) * arrowScale;
+            const dy = (-Vy_direct + Vy_torsion) * arrowScale;
 
             // Draw arrow
             drawArrow(ctx, cx, cy, cx + dx, cy + dy, '#4CAF50');
