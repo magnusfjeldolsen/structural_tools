@@ -200,6 +200,97 @@ def calculate_bending_forces(
     return forces
 
 
+def verify_torsion_forces(
+    positions: List[Tuple[float, float]],
+    centroid: Tuple[float, float],
+    Vx_torsion_list: List[float],
+    Vy_torsion_list: List[float],
+    Mz: float,
+    tolerance: float = 1e-6
+) -> Dict[str, any]:
+    """
+    Verify torsional force calculations according to technical notes (torsion.md)
+
+    Args:
+        positions: List of (x, y) fastener coordinates [mm]
+        centroid: (xc, yc) centroid position [mm]
+        Vx_torsion_list: List of x-component torsional forces [kN]
+        Vy_torsion_list: List of y-component torsional forces [kN]
+        Mz: Applied torsional moment [kNm]
+        tolerance: Tolerance for verification checks
+
+    Returns:
+        Dictionary with verification results:
+            'perpendicularity_passed': bool
+            'force_equilibrium_passed': bool
+            'moment_recovery_passed': bool
+            'perpendicularity_errors': List[float]
+            'force_sum': Tuple[float, float]
+            'moment_recovered': float
+
+    Verification checks from technical notes section 10:
+        1. Perpendicularity: Fx_i * x_i + Fy_i * y_i = 0
+        2. Force equilibrium: Σ(Fx_i) = 0, Σ(Fy_i) = 0
+        3. Moment recovery: Σ(x_i * Fy_i - y_i * Fx_i) = Mz
+    """
+    if not positions or Mz == 0:
+        return {
+            'perpendicularity_passed': True,
+            'force_equilibrium_passed': True,
+            'moment_recovery_passed': True,
+            'perpendicularity_errors': [],
+            'force_sum': (0.0, 0.0),
+            'moment_recovered': 0.0
+        }
+
+    xc, yc = centroid
+    n = len(positions)
+
+    # Check 1: Perpendicularity (forces perpendicular to radius)
+    perpendicularity_errors = []
+    for i in range(n):
+        x_i = positions[i][0] - xc  # mm
+        y_i = positions[i][1] - yc  # mm
+        Fx_i = Vx_torsion_list[i] * 1000.0  # kN → N
+        Fy_i = Vy_torsion_list[i] * 1000.0  # kN → N
+
+        # Dot product should be zero
+        dot_product = Fx_i * x_i + Fy_i * y_i
+        perpendicularity_errors.append(abs(dot_product))
+
+    perp_passed = all(err < tolerance * 1e6 for err in perpendicularity_errors)  # Scale tolerance for N·mm
+
+    # Check 2: Force equilibrium
+    sum_Fx = sum(Vx_torsion_list)  # kN
+    sum_Fy = sum(Vy_torsion_list)  # kN
+    force_sum = (sum_Fx, sum_Fy)
+
+    force_eq_passed = (abs(sum_Fx) < tolerance and abs(sum_Fy) < tolerance)
+
+    # Check 3: Moment recovery
+    moment_sum = 0.0
+    for i in range(n):
+        x_i = positions[i][0] - xc  # mm
+        y_i = positions[i][1] - yc  # mm
+        Fx_i = Vx_torsion_list[i]   # kN
+        Fy_i = Vy_torsion_list[i]   # kN
+
+        # Moment = x * Fy - y * Fx (in kN·mm)
+        moment_sum += (x_i * Fy_i - y_i * Fx_i)
+
+    moment_recovered = moment_sum / 1000.0  # kN·mm → kNm
+    moment_passed = abs(moment_recovered - Mz) < tolerance
+
+    return {
+        'perpendicularity_passed': perp_passed,
+        'force_equilibrium_passed': force_eq_passed,
+        'moment_recovery_passed': moment_passed,
+        'perpendicularity_errors': perpendicularity_errors,
+        'force_sum': force_sum,
+        'moment_recovered': float(moment_recovered)
+    }
+
+
 def calculate_eccentricity_moments(
     N: float,
     Vx: float,
@@ -374,26 +465,38 @@ def distribute_loads_with_bending(
         Vx_direct = Vx / n
         Vy_direct = Vy / n
 
-        # Torsional shear from Mz (right-hand rule)
-        # For discrete fasteners: F_i = (Mz / Σ(r²)) × r_i
-        # NOT F_i = (Mz / J) × r_i, because J = Σ(r² × A) includes area
-        # We need Σ(r²) without area multiplier
-        # Positive Mz (CCW rotation looking down):
-        #   - Fastener at (+dx, 0): force in +y direction -> Vy = +Mz*dx/Σ(r²)
-        #   - Fastener at (0, +dy): force in -x direction -> Vx = -Mz*dy/Σ(r²)
+        # Torsional shear from Mz
+        # Following technical notes: torsion.md
+        #
+        # For +Mz (counter-clockwise when viewed from +z):
+        #   F_i = (Mz * r_i) / Σ(r_j²)
+        #   Fx_i = -F_i * (y_i / r_i)
+        #   Fy_i = +F_i * (x_i / r_i)
+        #
+        # Where:
+        #   - x_i, y_i are distances from centroid
+        #   - r_i = sqrt(x_i² + y_i²)
+        #   - These are RESISTING forces (oppose applied moment)
         sum_r_squared = sum([(positions[j][0] - centroid[0])**2 + (positions[j][1] - centroid[1])**2
                              for j in range(len(positions))])
-        if sum_r_squared > 0:
+        if sum_r_squared > 0 and Mz_total != 0:
             Mz_Nmm = Mz_total * 1e6  # kNm → Nmm
-            # Torsional RESISTING force components (oppose applied moment)
-            # For +Mz (CCW applied), ChatGPT's tangential forces are:
-            #   Fx_applied = -Mz×y_i/Σr²
-            #   Fy_applied = +Mz×x_i/Σr²
-            # To get RESISTING forces, flip tangent vector 180° (negate both):
-            #   Fx_resist = -Fx_applied = +Mz×y_i/Σr²
-            #   Fy_resist = -Fy_applied = -Mz×x_i/Σr²
-            Vx_torsion = -Mz_Nmm * dy / sum_r_squared / 1000.0  # kN
-            Vy_torsion = -Mz_Nmm * dx / sum_r_squared / 1000.0  # kN
+
+            # Distance from centroid
+            r_i = (dx**2 + dy**2)**0.5  # mm
+
+            if r_i > 0:
+                # Torsional force magnitude at this fastener
+                F_i_N = (Mz_Nmm * r_i) / sum_r_squared  # N
+
+                # Force components (for +Mz, CCW)
+                # Sign convention: these are resisting forces
+                Vx_torsion = -F_i_N * (dy / r_i) / 1000.0  # kN
+                Vy_torsion = +F_i_N * (dx / r_i) / 1000.0  # kN
+            else:
+                # Fastener at centroid has no torsional force
+                Vx_torsion = 0.0
+                Vy_torsion = 0.0
         else:
             Vx_torsion = 0.0
             Vy_torsion = 0.0

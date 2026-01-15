@@ -1509,9 +1509,11 @@ function updatePlot() {
 
             // Calculate arrow endpoint in canvas pixels
             // Direct: negate to show reactions, Torsion: keep as resisting forces
-            // Canvas Y is inverted by toCanvasY (positive dy → up in world coords)
-            const dx = (-Vx_direct + Vx_torsion) * arrowScale;
-            const dy = (-Vy_direct + Vy_torsion) * arrowScale;
+            // Canvas Y increases downward, so negate dy for correct arrow direction
+            const totalVx = -Vx_direct + Vx_torsion;  // World coordinates
+            const totalVy = -Vy_direct + Vy_torsion;  // World coordinates
+            const dx = totalVx * arrowScale;          // Canvas X (same as world X)
+            const dy = -totalVy * arrowScale;         // Canvas Y (inverted from world Y)
 
             // Draw arrow
             drawArrow(ctx, cx, cy, cx + dx, cy + dy, '#4CAF50');
