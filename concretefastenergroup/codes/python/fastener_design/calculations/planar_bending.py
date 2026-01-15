@@ -496,9 +496,10 @@ def distribute_loads_with_bending(
                     print(f"DEBUG Torsion: Mz={Mz_total} kNm, r_i={r_i:.2f} mm, sum_r²={sum_r_squared:.0f} mm², F_i={F_i_N:.2f} N")
 
                 # Force components (for +Mz, CCW)
-                # Sign convention: these are resisting forces
-                Vx_torsion = -F_i_N * (dy / r_i) / 1000.0  # kN
-                Vy_torsion = +F_i_N * (dx / r_i) / 1000.0  # kN
+                # Technical notes formula gives applied forces on fasteners
+                # Negate to get reaction forces (what fasteners push back with)
+                Vx_torsion = +F_i_N * (dy / r_i) / 1000.0  # kN (negated from tech notes)
+                Vy_torsion = -F_i_N * (dx / r_i) / 1000.0  # kN (negated from tech notes)
             else:
                 # Fastener at centroid has no torsional force
                 Vx_torsion = 0.0
