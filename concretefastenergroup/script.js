@@ -1358,6 +1358,10 @@ function updatePlot() {
 
             const forceScaleInput = parseFloat(document.getElementById('force-scale').value);
 
+            // Calculate application point in canvas coordinates
+            const appCanvasX = toCanvasX(appX);
+            const appCanvasY = toCanvasY(appY);
+
             // Find max applied force for scaling
             const maxAppliedForce = Math.max(Math.abs(Vx), Math.abs(Vy), Math.abs(N));
 
@@ -1366,9 +1370,6 @@ function updatePlot() {
                 const plotSize = Math.min(canvas.width, canvas.height);
                 const maxArrowLength = (plotSize / 20) * forceScaleInput / 0.05;
                 const arrowScale = maxArrowLength / maxAppliedForce;
-
-                const appCanvasX = toCanvasX(appX);
-                const appCanvasY = toCanvasY(appY);
 
                 // Draw Vx arrow (horizontal shear)
                 if (Math.abs(Vx) > 0.01) {
@@ -1409,94 +1410,94 @@ function updatePlot() {
                         ctx.stroke();
                     }
                 }
-
-                // Draw Mx and My as double arrows
-                if (Math.abs(Mx) > 0.01) {
-                    // Mx: double arrows parallel to X-axis (rotates around X)
-                    const offset = 50;
-                    const arrowLength = 40;
-                    ctx.strokeStyle = '#9C27B0';
-                    ctx.lineWidth = 3;
-
-                    // Right arrow (direction depends on sign of Mx)
-                    const dir = Mx > 0 ? 1 : -1;
-                    drawArrow(ctx, appCanvasX - arrowLength * dir, appCanvasY + offset,
-                             appCanvasX + arrowLength * dir, appCanvasY + offset, '#9C27B0');
-                    // Left arrow (opposite direction)
-                    drawArrow(ctx, appCanvasX + arrowLength * dir, appCanvasY - offset,
-                             appCanvasX - arrowLength * dir, appCanvasY - offset, '#9C27B0');
-
-                    // Label
-                    ctx.fillStyle = '#9C27B0';
-                    ctx.font = '12px sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(`Mx=${Mx.toFixed(1)}`, appCanvasX + offset + 50, appCanvasY);
-                }
-
-                if (Math.abs(My) > 0.01) {
-                    // My: double arrows parallel to Y-axis (rotates around Y)
-                    const offset = 50;
-                    const arrowLength = 40;
-                    ctx.strokeStyle = '#00BCD4';
-                    ctx.lineWidth = 3;
-
-                    // Top arrow (direction depends on sign of My)
-                    const dir = My > 0 ? 1 : -1;
-                    drawArrow(ctx, appCanvasX + offset, appCanvasY - arrowLength * dir,
-                             appCanvasX + offset, appCanvasY + arrowLength * dir, '#00BCD4');
-                    // Bottom arrow (opposite direction)
-                    drawArrow(ctx, appCanvasX - offset, appCanvasY + arrowLength * dir,
-                             appCanvasX - offset, appCanvasY - arrowLength * dir, '#00BCD4');
-
-                    // Label
-                    ctx.fillStyle = '#00BCD4';
-                    ctx.font = '12px sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(`My=${My.toFixed(1)}`, appCanvasX, appCanvasY - offset - 50);
-                }
-
-                // Draw Mz as a circular rotation arrow
-                if (Math.abs(Mz) > 0.01) {
-                    const radius = 30; // pixels
-                    const startAngle = Mz > 0 ? 0.2 : -0.2; // CCW for positive Mz
-                    const endAngle = Mz > 0 ? 2 * Math.PI - 0.2 : -(2 * Math.PI - 0.2);
-
-                    ctx.strokeStyle = '#FF5722';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    // anticlockwise=true for positive Mz (CCW), false for negative (CW)
-                    ctx.arc(appCanvasX, appCanvasY, radius, startAngle, endAngle, Mz > 0);
-                    ctx.stroke();
-
-                    // Draw arrowhead at end of arc
-                    const arrowAngle = endAngle;
-                    const arrowX = appCanvasX + radius * Math.cos(arrowAngle);
-                    const arrowY = appCanvasY + radius * Math.sin(arrowAngle);
-
-                    // Tangent direction (perpendicular to radius)
-                    const tangentAngle = arrowAngle + (Mz > 0 ? Math.PI / 2 : -Math.PI / 2);
-
-                    ctx.fillStyle = '#FF5722';
-                    ctx.beginPath();
-                    ctx.moveTo(arrowX, arrowY);
-                    ctx.lineTo(
-                        arrowX - 8 * Math.cos(tangentAngle - Math.PI / 6),
-                        arrowY - 8 * Math.sin(tangentAngle - Math.PI / 6)
-                    );
-                    ctx.lineTo(
-                        arrowX - 8 * Math.cos(tangentAngle + Math.PI / 6),
-                        arrowY - 8 * Math.sin(tangentAngle + Math.PI / 6)
-                    );
-                    ctx.closePath();
-                    ctx.fill();
-
-                    // Draw Mz label
-                    ctx.fillStyle = '#FF5722';
-                    ctx.font = '11px sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(`Mz=${Mz.toFixed(1)}`, appCanvasX, appCanvasY - radius - 10);
-                }
             }
+
+            // Draw moment arrows (Mx, My, Mz) - outside force conditional so they show independently
+            if (Math.abs(Mx) > 0.01) {
+            // Mx: double arrows parallel to X-axis (rotates around X)
+            const offset = 50;
+            const arrowLength = 40;
+            ctx.strokeStyle = '#9C27B0';
+            ctx.lineWidth = 3;
+
+            // Right arrow (direction depends on sign of Mx)
+            const dir = Mx > 0 ? 1 : -1;
+            drawArrow(ctx, appCanvasX - arrowLength * dir, appCanvasY + offset,
+                     appCanvasX + arrowLength * dir, appCanvasY + offset, '#9C27B0');
+            // Left arrow (opposite direction)
+            drawArrow(ctx, appCanvasX + arrowLength * dir, appCanvasY - offset,
+                     appCanvasX - arrowLength * dir, appCanvasY - offset, '#9C27B0');
+
+            // Label
+            ctx.fillStyle = '#9C27B0';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`Mx=${Mx.toFixed(1)}`, appCanvasX + offset + 50, appCanvasY);
+        }
+
+        if (Math.abs(My) > 0.01) {
+            // My: double arrows parallel to Y-axis (rotates around Y)
+            const offset = 50;
+            const arrowLength = 40;
+            ctx.strokeStyle = '#00BCD4';
+            ctx.lineWidth = 3;
+
+            // Top arrow (direction depends on sign of My)
+            const dir = My > 0 ? 1 : -1;
+            drawArrow(ctx, appCanvasX + offset, appCanvasY - arrowLength * dir,
+                     appCanvasX + offset, appCanvasY + arrowLength * dir, '#00BCD4');
+            // Bottom arrow (opposite direction)
+            drawArrow(ctx, appCanvasX - offset, appCanvasY + arrowLength * dir,
+                     appCanvasX - offset, appCanvasY - arrowLength * dir, '#00BCD4');
+
+            // Label
+            ctx.fillStyle = '#00BCD4';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`My=${My.toFixed(1)}`, appCanvasX, appCanvasY - offset - 50);
+        }
+
+        // Draw Mz as a circular rotation arrow
+        if (Math.abs(Mz) > 0.01) {
+            const radius = 30; // pixels
+            const startAngle = Mz > 0 ? 0.2 : -0.2; // CCW for positive Mz
+            const endAngle = Mz > 0 ? 2 * Math.PI - 0.2 : -(2 * Math.PI - 0.2);
+
+            ctx.strokeStyle = '#FF5722';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            // anticlockwise=true for positive Mz (CCW), false for negative (CW)
+            ctx.arc(appCanvasX, appCanvasY, radius, startAngle, endAngle, Mz > 0);
+            ctx.stroke();
+
+            // Draw arrowhead at end of arc
+            const arrowAngle = endAngle;
+            const arrowX = appCanvasX + radius * Math.cos(arrowAngle);
+            const arrowY = appCanvasY + radius * Math.sin(arrowAngle);
+
+            // Tangent direction (perpendicular to radius)
+            const tangentAngle = arrowAngle + (Mz > 0 ? Math.PI / 2 : -Math.PI / 2);
+
+            ctx.fillStyle = '#FF5722';
+            ctx.beginPath();
+            ctx.moveTo(arrowX, arrowY);
+            ctx.lineTo(
+                arrowX - 8 * Math.cos(tangentAngle - Math.PI / 6),
+                arrowY - 8 * Math.sin(tangentAngle - Math.PI / 6)
+            );
+            ctx.lineTo(
+                arrowX - 8 * Math.cos(tangentAngle + Math.PI / 6),
+                arrowY - 8 * Math.sin(tangentAngle + Math.PI / 6)
+            );
+            ctx.closePath();
+            ctx.fill();
+
+            // Draw Mz label
+            ctx.fillStyle = '#FF5722';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`Mz=${Mz.toFixed(1)}`, appCanvasX, appCanvasY - radius - 10);
+        }
         }
     }
 
