@@ -1413,10 +1413,10 @@ function updatePlot() {
                 // Draw Mx and My as double arrows
                 if (Math.abs(Mx) > 0.01) {
                     // Mx: double arrows parallel to X-axis (rotates around X)
-                    const offset = 40;
-                    const arrowLength = 30;
+                    const offset = 50;
+                    const arrowLength = 40;
                     ctx.strokeStyle = '#9C27B0';
-                    ctx.lineWidth = 2;
+                    ctx.lineWidth = 3;
 
                     // Right arrow (direction depends on sign of Mx)
                     const dir = Mx > 0 ? 1 : -1;
@@ -1425,14 +1425,20 @@ function updatePlot() {
                     // Left arrow (opposite direction)
                     drawArrow(ctx, appCanvasX + arrowLength * dir, appCanvasY - offset,
                              appCanvasX - arrowLength * dir, appCanvasY - offset, '#9C27B0');
+
+                    // Label
+                    ctx.fillStyle = '#9C27B0';
+                    ctx.font = '12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`Mx=${Mx.toFixed(1)}`, appCanvasX + offset + 50, appCanvasY);
                 }
 
                 if (Math.abs(My) > 0.01) {
                     // My: double arrows parallel to Y-axis (rotates around Y)
-                    const offset = 40;
-                    const arrowLength = 30;
+                    const offset = 50;
+                    const arrowLength = 40;
                     ctx.strokeStyle = '#00BCD4';
-                    ctx.lineWidth = 2;
+                    ctx.lineWidth = 3;
 
                     // Top arrow (direction depends on sign of My)
                     const dir = My > 0 ? 1 : -1;
@@ -1441,6 +1447,12 @@ function updatePlot() {
                     // Bottom arrow (opposite direction)
                     drawArrow(ctx, appCanvasX - offset, appCanvasY + arrowLength * dir,
                              appCanvasX - offset, appCanvasY - arrowLength * dir, '#00BCD4');
+
+                    // Label
+                    ctx.fillStyle = '#00BCD4';
+                    ctx.font = '12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`My=${My.toFixed(1)}`, appCanvasX, appCanvasY - offset - 50);
                 }
 
                 // Draw Mz as a circular rotation arrow
@@ -1452,7 +1464,8 @@ function updatePlot() {
                     ctx.strokeStyle = '#FF5722';
                     ctx.lineWidth = 2;
                     ctx.beginPath();
-                    ctx.arc(appCanvasX, appCanvasY, radius, startAngle, endAngle, Mz < 0);
+                    // anticlockwise=true for positive Mz (CCW), false for negative (CW)
+                    ctx.arc(appCanvasX, appCanvasY, radius, startAngle, endAngle, Mz > 0);
                     ctx.stroke();
 
                     // Draw arrowhead at end of arc
