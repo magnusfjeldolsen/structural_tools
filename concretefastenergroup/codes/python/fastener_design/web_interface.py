@@ -75,8 +75,8 @@ def run_analysis(input_json: str) -> str:
 
             # Find maximum forces on any fastener (for design check)
             # Design must be based on the most critically loaded fastener
-            max_tension_kN = max([abs(dist['N']) for dist in load_distribution], default=0.0)
-            max_shear_kN = max([dist['V_total'] for dist in load_distribution], default=0.0)
+            max_tension_kN = max([abs(dist['forces']['N']) for dist in load_distribution], default=0.0)
+            max_shear_kN = max([dist['resultants']['V_resultant'] for dist in load_distribution], default=0.0)
 
             # Create loading dict using maximum per-fastener forces
             # This ensures design accounts for:
