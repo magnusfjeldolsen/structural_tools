@@ -386,13 +386,13 @@ def distribute_loads_with_bending(
         if sum_r_squared > 0:
             Mz_Nmm = Mz_total * 1e6  # kNm → Nmm
             # Torsional RESISTING force components (oppose applied moment)
-            # For +Mz (CCW applied), right-hand rule gives applied tangential forces:
-            #   Fx_applied = -F_i×y_i/r_i = -Mz×y_i/Σr²
-            #   Fy_applied = +F_i×x_i/r_i = +Mz×x_i/Σr²
-            # RESISTING forces are opposite (reverse the tangent vector):
-            #   Fx_resist = +Mz×y_i/Σr²
-            #   Fy_resist = -Mz×x_i/Σr²
-            Vx_torsion = Mz_Nmm * dy / sum_r_squared / 1000.0  # kN
+            # For +Mz (CCW applied), ChatGPT's tangential forces are:
+            #   Fx_applied = -Mz×y_i/Σr²
+            #   Fy_applied = +Mz×x_i/Σr²
+            # To get RESISTING forces, flip tangent vector 180° (negate both):
+            #   Fx_resist = -Fx_applied = +Mz×y_i/Σr²
+            #   Fy_resist = -Fy_applied = -Mz×x_i/Σr²
+            Vx_torsion = -Mz_Nmm * dy / sum_r_squared / 1000.0  # kN
             Vy_torsion = -Mz_Nmm * dx / sum_r_squared / 1000.0  # kN
         else:
             Vx_torsion = 0.0
