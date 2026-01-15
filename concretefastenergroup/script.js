@@ -1421,54 +1421,61 @@ function updatePlot() {
                 shearArrowLength = maxArrowLength;
             }
 
-            const momentArrowLength = 60; // Length of moment arrows
             const momentGap = 25; // Gap between shear arrow tip and moment arrow
 
             if (Math.abs(Mx) > 0.01) {
                 // Mx: moment about X-axis (bending in YZ plane)
-                // Show as horizontal double-headed arrow through point C
-                // Positioned below shear arrows to avoid overlap
-                const yOffset = Math.max(40, shearArrowLength + momentGap);
+                // Show as horizontal arrow with double chevron through point C
+                // Positioned to the right, offset to avoid overlap
+                const xOffset = Math.max(50, shearArrowLength + momentGap);
 
-                // Positive Mx: arrow points right (tension on positive Y side)
-                // Negative Mx: arrow points left (compression on positive Y side)
+                // Positive Mx: arrow points RIGHT (tension on +Y side)
+                // Negative Mx: arrow points LEFT (compression on +Y side)
                 if (Mx > 0) {
-                    drawDoubleArrow(ctx, appCanvasX - momentArrowLength / 2, appCanvasY + yOffset,
-                                   appCanvasX + momentArrowLength / 2, appCanvasY + yOffset, '#9C27B0', 3);
+                    // Arrow from C pointing right
+                    drawMomentArrow(ctx, appCanvasX, appCanvasY,
+                                   appCanvasX + xOffset, appCanvasY, '#FF1493', 3);
                 } else {
-                    drawDoubleArrow(ctx, appCanvasX + momentArrowLength / 2, appCanvasY + yOffset,
-                                   appCanvasX - momentArrowLength / 2, appCanvasY + yOffset, '#9C27B0', 3);
+                    // Arrow from C pointing left
+                    drawMomentArrow(ctx, appCanvasX, appCanvasY,
+                                   appCanvasX - xOffset, appCanvasY, '#FF1493', 3);
                 }
 
                 // Label
-                ctx.fillStyle = '#9C27B0';
+                ctx.fillStyle = '#FF1493';
                 ctx.font = '12px sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText(`Mx=${Mx.toFixed(1)}`, appCanvasX, appCanvasY + yOffset + 20);
+                ctx.fillText(`Mx=${Mx.toFixed(1)}`,
+                            appCanvasX + (Mx > 0 ? xOffset + 25 : -xOffset - 25),
+                            appCanvasY);
             }
 
             if (Math.abs(My) > 0.01) {
                 // My: moment about Y-axis (bending in XZ plane)
-                // Show as vertical double-headed arrow through point C
-                // Positioned to the right of shear arrows to avoid overlap
-                const xOffset = Math.max(40, shearArrowLength + momentGap);
+                // Show as vertical arrow with double chevron through point C
+                // Positioned above/below, offset to avoid overlap
+                const yOffset = Math.max(50, shearArrowLength + momentGap);
 
-                // Positive My: arrow points down (canvas +Y, tension on negative X side)
-                // Negative My: arrow points up (canvas -Y, compression on negative X side)
-                // Note: Canvas Y is inverted
+                // Positive My: arrow points UP (tension on -X side)
+                // Negative My: arrow points DOWN (compression on -X side)
+                // Note: Canvas Y is inverted, so up = negative Y
                 if (My > 0) {
-                    drawDoubleArrow(ctx, appCanvasX + xOffset, appCanvasY - momentArrowLength / 2,
-                                   appCanvasX + xOffset, appCanvasY + momentArrowLength / 2, '#00BCD4', 3);
+                    // Arrow from C pointing up (canvas -Y)
+                    drawMomentArrow(ctx, appCanvasX, appCanvasY,
+                                   appCanvasX, appCanvasY - yOffset, '#FF1493', 3);
                 } else {
-                    drawDoubleArrow(ctx, appCanvasX + xOffset, appCanvasY + momentArrowLength / 2,
-                                   appCanvasX + xOffset, appCanvasY - momentArrowLength / 2, '#00BCD4', 3);
+                    // Arrow from C pointing down (canvas +Y)
+                    drawMomentArrow(ctx, appCanvasX, appCanvasY,
+                                   appCanvasX, appCanvasY + yOffset, '#FF1493', 3);
                 }
 
                 // Label
-                ctx.fillStyle = '#00BCD4';
+                ctx.fillStyle = '#FF1493';
                 ctx.font = '12px sans-serif';
-                ctx.textAlign = 'left';
-                ctx.fillText(`My=${My.toFixed(1)}`, appCanvasX + xOffset + 15, appCanvasY);
+                ctx.textAlign = 'center';
+                ctx.fillText(`My=${My.toFixed(1)}`,
+                            appCanvasX,
+                            appCanvasY + (My > 0 ? -yOffset - 15 : yOffset + 25));
             }
 
         // Draw Mz as a circular rotation arrow
@@ -1655,34 +1662,38 @@ function drawArrowhead(ctx, x, y, dirX, dirY, color) {
     ctx.fill();
 }
 
-function drawDoubleArrow(ctx, x1, y1, x2, y2, color, lineWidth = 2) {
-    const headlen = 10;
+function drawMomentArrow(ctx, x1, y1, x2, y2, color, lineWidth = 3) {
+    // Draw moment arrow with double chevron arrowhead at the end
     const angle = Math.atan2(y2 - y1, x2 - x1);
+    const chevronSpacing = 8; // Distance between chevrons
+    const chevronSize = 12; // Size of each chevron
 
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = lineWidth;
 
-    // Line
+    // Draw the line
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
 
-    // Arrow head at end (x2, y2)
+    // Draw double chevron arrowhead at end (x2, y2)
+    // First chevron (outermost)
     ctx.beginPath();
     ctx.moveTo(x2, y2);
-    ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(x2 - headlen * Math.cos(angle + Math.PI / 6), y2 - headlen * Math.sin(angle + Math.PI / 6));
+    ctx.lineTo(x2 - chevronSize * Math.cos(angle - Math.PI / 6), y2 - chevronSize * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(x2 - chevronSize * Math.cos(angle + Math.PI / 6), y2 - chevronSize * Math.sin(angle + Math.PI / 6));
     ctx.closePath();
     ctx.fill();
 
-    // Arrow head at start (x1, y1) - pointing opposite direction
-    const reverseAngle = angle + Math.PI;
+    // Second chevron (inner)
+    const innerX = x2 - chevronSpacing * Math.cos(angle);
+    const innerY = y2 - chevronSpacing * Math.sin(angle);
     ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x1 - headlen * Math.cos(reverseAngle - Math.PI / 6), y1 - headlen * Math.sin(reverseAngle - Math.PI / 6));
-    ctx.lineTo(x1 - headlen * Math.cos(reverseAngle + Math.PI / 6), y1 - headlen * Math.sin(reverseAngle + Math.PI / 6));
+    ctx.moveTo(innerX, innerY);
+    ctx.lineTo(innerX - chevronSize * Math.cos(angle - Math.PI / 6), innerY - chevronSize * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(innerX - chevronSize * Math.cos(angle + Math.PI / 6), innerY - chevronSize * Math.sin(angle + Math.PI / 6));
     ctx.closePath();
     ctx.fill();
 }
