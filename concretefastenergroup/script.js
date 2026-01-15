@@ -1497,7 +1497,9 @@ function updatePlot() {
             const arrowY = appCanvasY + radius * Math.sin(arrowAngle);
 
             // Tangent direction (perpendicular to radius)
-            const tangentAngle = arrowAngle + (Mz > 0 ? Math.PI / 2 : -Math.PI / 2);
+            // For positive Mz (CCW): tangent points counter-clockwise = +90° from radius
+            // For negative Mz (CW): tangent points clockwise = -90° from radius
+            const tangentAngle = arrowAngle + (Mz > 0 ? -Math.PI / 2 : Math.PI / 2);
 
             ctx.fillStyle = '#FF5722';
             ctx.beginPath();
