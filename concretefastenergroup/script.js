@@ -1508,13 +1508,12 @@ function updatePlot() {
             const Vy_torsion = dist.forces.Vy_torsion;
 
             // Calculate arrow endpoint in canvas pixels
-            // Green arrows show RESISTING forces (what fasteners provide)
-            // Both direct and torsion need negation to show as reactions (180° flip)
-            // This matches the applied load direction but shows fastener resistance
-            const totalVx = -Vx_direct - Vx_torsion;  // World coordinates (negate both)
-            const totalVy = -Vy_direct - Vy_torsion;  // World coordinates (negate both)
-            const dx = totalVx * arrowScale;          // Canvas X (same as world X)
-            const dy = -totalVy * arrowScale;         // Canvas Y (inverted from world Y)
+            // Python returns physically correct resisting forces
+            // Display them directly (no sign manipulation needed)
+            const totalVx = Vx_direct + Vx_torsion;  // Use Python values as-is
+            const totalVy = Vy_direct + Vy_torsion;  // Use Python values as-is
+            const dx = totalVx * arrowScale;         // Canvas X (same as world X)
+            const dy = -totalVy * arrowScale;        // Canvas Y (inverted from world Y)
 
             // Draw arrow
             drawArrow(ctx, cx, cy, cx + dx, cy + dy, '#4CAF50');

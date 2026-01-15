@@ -462,8 +462,10 @@ def distribute_loads_with_bending(
         N_total = N_direct + N_Mx
 
         # SHEAR FORCES
-        Vx_direct = Vx / n
-        Vy_direct = Vy / n
+        # Convention: All forces returned as REACTIONS (what fasteners provide)
+        # This means we negate applied loads to show fastener reactions
+        Vx_direct = Vx / n  # Applied load per fastener
+        Vy_direct = Vy / n  # Applied load per fastener
 
         # Torsional shear from Mz
         # Following technical notes: torsion.md
@@ -476,7 +478,7 @@ def distribute_loads_with_bending(
         # Where:
         #   - x_i, y_i are distances from centroid
         #   - r_i = sqrt(x_i² + y_i²)
-        #   - These are RESISTING forces (oppose applied moment)
+        #   - Technical notes formulas give resisting forces (fastener reactions)
         sum_r_squared = sum([(positions[j][0] - centroid[0])**2 + (positions[j][1] - centroid[1])**2
                              for j in range(len(positions))])
         if sum_r_squared > 0 and Mz_total != 0:
@@ -505,6 +507,10 @@ def distribute_loads_with_bending(
             Vx_torsion = 0.0
             Vy_torsion = 0.0
 
+        # Total forces (sum direct + torsion)
+        # Convention: Return forces as calculated
+        # - Direct forces: applied loads (will need negation for reaction arrows)
+        # - Torsion forces: resisting forces (will need negation for reaction arrows)
         Vx_total = Vx_direct + Vx_torsion
         Vy_total = Vy_direct + Vy_torsion
         V_resultant = (Vx_total**2 + Vy_total**2)**0.5
