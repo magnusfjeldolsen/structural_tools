@@ -1155,6 +1155,8 @@ function updatePlot() {
     // Smart edge distance plotting
     const c1 = parseFloat(document.getElementById('c1').value) || 0;
     const c2 = parseFloat(document.getElementById('c2').value) || 0;
+    const c3 = parseFloat(document.getElementById('c3').value) || 0;
+    const c4 = parseFloat(document.getElementById('c4').value) || 0;
 
     // Calculate minimum edge distance based on largest fastener diameter
     const maxDiameter = Math.max(...state.fasteners.map(f => f.diameter));
@@ -1163,6 +1165,8 @@ function updatePlot() {
     // Only include edges if they're within 5x minimum
     const includeC1 = c1 > 0 && c1 <= 5 * minEdgeDistance;
     const includeC2 = c2 > 0 && c2 <= 5 * minEdgeDistance;
+    const includeC3 = c3 > 0 && c3 <= 5 * minEdgeDistance;
+    const includeC4 = c4 > 0 && c4 <= 5 * minEdgeDistance;
 
     // Extend bounds to include relevant edges
     let plotMinX = minX;
@@ -1175,6 +1179,12 @@ function updatePlot() {
     }
     if (includeC2) {
         plotMinY = Math.min(plotMinY, minY - c2);
+    }
+    if (includeC3) {
+        plotMaxX = Math.max(plotMaxX, maxX + c3);
+    }
+    if (includeC4) {
+        plotMaxY = Math.max(plotMaxY, maxY + c4);
     }
 
     const plotRangeX = plotMaxX - plotMinX + 0.2 * (plotMaxX - plotMinX);
@@ -1207,7 +1217,7 @@ function updatePlot() {
     ctx.stroke();
 
     // Draw edge lines (if within limits)
-    if (includeC1 || includeC2) {
+    if (includeC1 || includeC2 || includeC3 || includeC4) {
         ctx.strokeStyle = '#FF5722';
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
@@ -1238,6 +1248,34 @@ function updatePlot() {
             ctx.font = '10px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(`c2=${c2}`, toCanvasX(plotMaxX) + 25, toCanvasY(edgeY));
+        }
+
+        if (includeC3) {
+            const edgeX = maxX + c3;
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(edgeX), toCanvasY(plotMinY));
+            ctx.lineTo(toCanvasX(edgeX), toCanvasY(plotMaxY));
+            ctx.stroke();
+
+            // Label
+            ctx.fillStyle = '#FF5722';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`c3=${c3}`, toCanvasX(edgeX), toCanvasY(plotMaxY) + 15);
+        }
+
+        if (includeC4) {
+            const edgeY = maxY + c4;
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(plotMinX), toCanvasY(edgeY));
+            ctx.lineTo(toCanvasX(plotMaxX), toCanvasY(edgeY));
+            ctx.stroke();
+
+            // Label
+            ctx.fillStyle = '#FF5722';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`c4=${c4}`, toCanvasX(plotMaxX) + 25, toCanvasY(edgeY));
         }
 
         ctx.setLineDash([]);
@@ -1314,6 +1352,9 @@ function updatePlot() {
             const Vx = loadCaseToDisplay.Vx || 0; // kN
             const Vy = loadCaseToDisplay.Vy || 0; // kN
             const N = loadCaseToDisplay.N || 0;   // kN
+            const Mx = loadCaseToDisplay.Mx || 0; // kNm
+            const My = loadCaseToDisplay.My || 0; // kNm
+            const Mz = loadCaseToDisplay.Mz || 0; // kNm
 
             const forceScaleInput = parseFloat(document.getElementById('force-scale').value);
 
@@ -1341,14 +1382,68 @@ function updatePlot() {
                     drawArrow(ctx, appCanvasX, appCanvasY, appCanvasX, appCanvasY + dy, '#FF5722');
                 }
 
-                // Draw N arrow (tension, pointing away from concrete)
+                // Draw N as cross symbol (tension out of plane)
                 if (Math.abs(N) > 0.01) {
-                    const dn = -N * arrowScale; // Negative because tension points up (away from concrete)
-                    drawArrow(ctx, appCanvasX, appCanvasY, appCanvasX, appCanvasY + dn, '#FF5722');
+                    const crossSize = 15;
+                    ctx.strokeStyle = '#FF5722';
+                    ctx.lineWidth = 2;
+
+                    if (N > 0) {
+                        // Tension: circle with dot (coming out of page)
+                        ctx.beginPath();
+                        ctx.arc(appCanvasX, appCanvasY, crossSize, 0, 2 * Math.PI);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(appCanvasX, appCanvasY, 3, 0, 2 * Math.PI);
+                        ctx.fill();
+                    } else {
+                        // Compression: circle with X (going into page)
+                        ctx.beginPath();
+                        ctx.arc(appCanvasX, appCanvasY, crossSize, 0, 2 * Math.PI);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(appCanvasX - crossSize * 0.7, appCanvasY - crossSize * 0.7);
+                        ctx.lineTo(appCanvasX + crossSize * 0.7, appCanvasY + crossSize * 0.7);
+                        ctx.moveTo(appCanvasX + crossSize * 0.7, appCanvasY - crossSize * 0.7);
+                        ctx.lineTo(appCanvasX - crossSize * 0.7, appCanvasY + crossSize * 0.7);
+                        ctx.stroke();
+                    }
+                }
+
+                // Draw Mx and My as double arrows
+                if (Math.abs(Mx) > 0.01) {
+                    // Mx: double arrows parallel to X-axis (rotates around X)
+                    const offset = 40;
+                    const arrowLength = 30;
+                    ctx.strokeStyle = '#9C27B0';
+                    ctx.lineWidth = 2;
+
+                    // Right arrow (direction depends on sign of Mx)
+                    const dir = Mx > 0 ? 1 : -1;
+                    drawArrow(ctx, appCanvasX - arrowLength * dir, appCanvasY + offset,
+                             appCanvasX + arrowLength * dir, appCanvasY + offset, '#9C27B0');
+                    // Left arrow (opposite direction)
+                    drawArrow(ctx, appCanvasX + arrowLength * dir, appCanvasY - offset,
+                             appCanvasX - arrowLength * dir, appCanvasY - offset, '#9C27B0');
+                }
+
+                if (Math.abs(My) > 0.01) {
+                    // My: double arrows parallel to Y-axis (rotates around Y)
+                    const offset = 40;
+                    const arrowLength = 30;
+                    ctx.strokeStyle = '#00BCD4';
+                    ctx.lineWidth = 2;
+
+                    // Top arrow (direction depends on sign of My)
+                    const dir = My > 0 ? 1 : -1;
+                    drawArrow(ctx, appCanvasX + offset, appCanvasY - arrowLength * dir,
+                             appCanvasX + offset, appCanvasY + arrowLength * dir, '#00BCD4');
+                    // Bottom arrow (opposite direction)
+                    drawArrow(ctx, appCanvasX - offset, appCanvasY + arrowLength * dir,
+                             appCanvasX - offset, appCanvasY - arrowLength * dir, '#00BCD4');
                 }
 
                 // Draw Mz as a circular rotation arrow
-                const Mz = loadCaseToDisplay.Mz || 0; // kNm
                 if (Math.abs(Mz) > 0.01) {
                     const radius = 30; // pixels
                     const startAngle = Mz > 0 ? 0.2 : -0.2; // CCW for positive Mz
@@ -1387,88 +1482,6 @@ function updatePlot() {
                     ctx.font = '11px sans-serif';
                     ctx.textAlign = 'center';
                     ctx.fillText(`Mz=${Mz.toFixed(1)}`, appCanvasX, appCanvasY - radius - 10);
-                }
-
-                // Draw Mx as curved double-arrow (bending about x-axis)
-                const Mx = loadCaseToDisplay.Mx || 0; // kNm
-                if (Math.abs(Mx) > 0.01) {
-                    // Show at right edge of canvas
-                    const edgeX = canvas.width - 60;
-                    const centerY = canvas.height / 2;
-                    const arcHeight = 40;
-
-                    ctx.strokeStyle = '#9C27B0'; // Purple for Mx
-                    ctx.lineWidth = 2;
-
-                    if (Mx > 0) {
-                        // Positive Mx: tension on +y (top) side
-                        // Draw arc curving upward
-                        ctx.beginPath();
-                        ctx.moveTo(edgeX, centerY - arcHeight/2);
-                        ctx.quadraticCurveTo(edgeX + 20, centerY, edgeX, centerY + arcHeight/2);
-                        ctx.stroke();
-
-                        // Arrowheads
-                        drawArrowhead(ctx, edgeX, centerY - arcHeight/2, 0, -1, '#9C27B0');
-                        drawArrowhead(ctx, edgeX, centerY + arcHeight/2, 0, 1, '#9C27B0');
-                    } else {
-                        // Negative Mx: compression on +y (top) side
-                        ctx.beginPath();
-                        ctx.moveTo(edgeX, centerY - arcHeight/2);
-                        ctx.quadraticCurveTo(edgeX - 20, centerY, edgeX, centerY + arcHeight/2);
-                        ctx.stroke();
-
-                        // Arrowheads
-                        drawArrowhead(ctx, edgeX, centerY - arcHeight/2, 0, 1, '#9C27B0');
-                        drawArrowhead(ctx, edgeX, centerY + arcHeight/2, 0, -1, '#9C27B0');
-                    }
-
-                    // Label
-                    ctx.fillStyle = '#9C27B0';
-                    ctx.font = '11px sans-serif';
-                    ctx.textAlign = 'left';
-                    ctx.fillText(`Mx=${Mx.toFixed(1)}`, edgeX + 5, centerY);
-                }
-
-                // Draw My as curved double-arrow (bending about y-axis)
-                const My = loadCaseToDisplay.My || 0; // kNm
-                if (Math.abs(My) > 0.01) {
-                    // Show at bottom edge of canvas
-                    const centerX = canvas.width / 2;
-                    const edgeY = canvas.height - 60;
-                    const arcWidth = 40;
-
-                    ctx.strokeStyle = '#FF9800'; // Orange for My
-                    ctx.lineWidth = 2;
-
-                    if (My > 0) {
-                        // Positive My: tension on +x (right) side
-                        // Draw arc curving rightward
-                        ctx.beginPath();
-                        ctx.moveTo(centerX - arcWidth/2, edgeY);
-                        ctx.quadraticCurveTo(centerX, edgeY + 20, centerX + arcWidth/2, edgeY);
-                        ctx.stroke();
-
-                        // Arrowheads
-                        drawArrowhead(ctx, centerX - arcWidth/2, edgeY, -1, 0, '#FF9800');
-                        drawArrowhead(ctx, centerX + arcWidth/2, edgeY, 1, 0, '#FF9800');
-                    } else {
-                        // Negative My: compression on +x (right) side
-                        ctx.beginPath();
-                        ctx.moveTo(centerX - arcWidth/2, edgeY);
-                        ctx.quadraticCurveTo(centerX, edgeY - 20, centerX + arcWidth/2, edgeY);
-                        ctx.stroke();
-
-                        // Arrowheads
-                        drawArrowhead(ctx, centerX - arcWidth/2, edgeY, 1, 0, '#FF9800');
-                        drawArrowhead(ctx, centerX + arcWidth/2, edgeY, -1, 0, '#FF9800');
-                    }
-
-                    // Label
-                    ctx.fillStyle = '#FF9800';
-                    ctx.font = '11px sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(`My=${My.toFixed(1)}`, centerX, edgeY + 15);
                 }
             }
         }
