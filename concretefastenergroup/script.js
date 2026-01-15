@@ -1017,8 +1017,8 @@ function displaySelectedLoadCase(results, selectedCase) {
             </table>`;
 
         // Show governing mode (for individual load case view)
-        if (!isMaxView && displayData.failure_modes.tension.governing) {
-            html += `<p style="margin-top: 0.5rem;"><strong>Governing:</strong> ${results.failure_modes.tension.governing.toUpperCase()} - ${results.failure_modes.tension.status}</p>`;
+        if (!isMaxView && displayData.failure_modes.tension && displayData.failure_modes.tension.governing) {
+            html += `<p style="margin-top: 0.5rem;"><strong>Governing:</strong> ${displayData.failure_modes.tension.governing.toUpperCase()} - ${displayData.failure_modes.tension.status}</p>`;
         }
 
         html += `</div>`;
