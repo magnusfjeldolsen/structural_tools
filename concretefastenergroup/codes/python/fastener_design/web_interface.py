@@ -73,17 +73,19 @@ def run_analysis(input_json: str) -> str:
                 lc
             )
 
-            # Create loading dict
-            loading = {
-                'tension': abs(lc.get('N', 0.0)) * 1000,  # kN → N
-                'shear': 0.0  # Will be calculated from Vx, Vy
-            }
+            # Find maximum forces on any fastener (for design check)
+            # Design must be based on the most critically loaded fastener
+            max_tension_kN = max([abs(dist['N']) for dist in load_distribution], default=0.0)
+            max_shear_kN = max([dist['V_total'] for dist in load_distribution], default=0.0)
 
-            # Calculate resultant shear from Vx, Vy
-            Vx_kN = lc.get('Vx', 0.0)
-            Vy_kN = lc.get('Vy', 0.0)
-            V_resultant = math.sqrt(Vx_kN**2 + Vy_kN**2)
-            loading['shear'] = V_resultant * 1000  # kN → N
+            # Create loading dict using maximum per-fastener forces
+            # This ensures design accounts for:
+            # - Tension from N + bending moments (Mx, My)
+            # - Shear from Vx, Vy + torsion (Mz)
+            loading = {
+                'tension': max_tension_kN * 1000,  # kN → N
+                'shear': max_shear_kN * 1000       # kN → N
+            }
 
             # Create design object
             design = FastenerDesign(
