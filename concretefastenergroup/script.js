@@ -1508,8 +1508,9 @@ function updatePlot() {
             const Vy_torsion = dist.forces.Vy_torsion;
 
             // Calculate arrow endpoint in canvas pixels
-            // Direct: negate to show reactions, Torsion: keep as resisting forces
-            // Canvas Y increases downward, so negate dy for correct arrow direction
+            // Green arrows show RESISTING forces (what fasteners provide)
+            // Direct: applied forces, negate to show fastener reactions
+            // Torsion: already calculated as resisting forces, use as-is
             const totalVx = -Vx_direct + Vx_torsion;  // World coordinates
             const totalVy = -Vy_direct + Vy_torsion;  // World coordinates
             const dx = totalVx * arrowScale;          // Canvas X (same as world X)
