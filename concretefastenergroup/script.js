@@ -1509,10 +1509,10 @@ function updatePlot() {
 
             // Calculate arrow endpoint in canvas pixels
             // Green arrows show RESISTING forces (what fasteners provide)
-            // Direct: applied forces, negate to show fastener reactions
-            // Torsion: already calculated as resisting forces, use as-is
-            const totalVx = -Vx_direct + Vx_torsion;  // World coordinates
-            const totalVy = -Vy_direct + Vy_torsion;  // World coordinates
+            // Both direct and torsion need negation to show as reactions (180° flip)
+            // This matches the applied load direction but shows fastener resistance
+            const totalVx = -Vx_direct - Vx_torsion;  // World coordinates (negate both)
+            const totalVy = -Vy_direct - Vy_torsion;  // World coordinates (negate both)
             const dx = totalVx * arrowScale;          // Canvas X (same as world X)
             const dy = -totalVy * arrowScale;         // Canvas Y (inverted from world Y)
 

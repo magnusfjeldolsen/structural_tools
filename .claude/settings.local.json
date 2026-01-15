@@ -42,7 +42,8 @@
       "Bash(git reset:*)",
       "Bash(find:*)",
       "Bash(git ls-tree:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": [],
