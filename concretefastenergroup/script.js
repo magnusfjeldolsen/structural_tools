@@ -1499,13 +1499,21 @@ function updatePlot() {
             const cx = toCanvasX(fastener.x);
             const cy = toCanvasY(fastener.y);
 
-            const Vx = dist.forces.Vx_total; // kN
-            const Vy = dist.forces.Vy_total; // kN
+            // Get force components
+            // Direct forces: applied force magnitude (need negation to show reactions)
+            // Torsion forces: resisting forces (draw as-is)
+            const Vx_direct = dist.forces.Vx_direct;
+            const Vy_direct = dist.forces.Vy_direct;
+            const Vx_torsion = dist.forces.Vx_torsion;
+            const Vy_torsion = dist.forces.Vy_torsion;
 
             // Calculate arrow endpoint in canvas pixels
-            // IMPORTANT: Distributed forces are REACTIONS, so they point OPPOSITE to applied forces
-            const dx = -Vx * arrowScale; // Negative because reactions oppose applied forces
-            const dy = Vy * arrowScale; // Positive (canvas Y already inverted, so double negative = positive)
+            // Python returns physically correct resisting forces
+            // Display them directly (no sign manipulation needed)
+            const totalVx = Vx_direct + Vx_torsion;  // Use Python values as-is
+            const totalVy = Vy_direct + Vy_torsion;  // Use Python values as-is
+            const dx = totalVx * arrowScale;         // Canvas X (same as world X)
+            const dy = -totalVy * arrowScale;        // Canvas Y (inverted from world Y)
 
             // Draw arrow
             drawArrow(ctx, cx, cy, cx + dx, cy + dy, '#4CAF50');
