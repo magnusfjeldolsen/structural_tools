@@ -489,6 +489,10 @@ def distribute_loads_with_bending(
                 # Torsional force magnitude at this fastener
                 F_i_N = (Mz_Nmm * r_i) / sum_r_squared  # N
 
+                # DEBUG OUTPUT (remove after testing)
+                if i == 0:  # Only print for first fastener
+                    print(f"DEBUG Torsion: Mz={Mz_total} kNm, r_i={r_i:.2f} mm, sum_r²={sum_r_squared:.0f} mm², F_i={F_i_N:.2f} N")
+
                 # Force components (for +Mz, CCW)
                 # Sign convention: these are resisting forces
                 Vx_torsion = -F_i_N * (dy / r_i) / 1000.0  # kN
