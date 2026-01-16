@@ -81,9 +81,10 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
 
   // Handle other parameters (x1, x2, direction) - global state
   const handleParameterChange = (key: string, value: string | number) => {
-    const numValue = typeof value === 'string' ? parseFloat(value) : value;
-    setLoadCreationMode('distributed', { ...loadParameters, [key]: numValue });
-    setLoadTypeDefaults('distributed', { [key]: numValue });
+    // Don't parse direction as a number - it's a string like "Fx", "Fy", etc.
+    const finalValue = key === 'direction' ? value : (typeof value === 'string' ? parseFloat(value) : value);
+    setLoadCreationMode('distributed', { ...loadParameters, [key]: finalValue });
+    setLoadTypeDefaults('distributed', { [key]: finalValue });
   };
 
   const toggleCoordinateSystem = () => {
