@@ -31,10 +31,14 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
 
     // Initialize direction and x1/x2 from loadParameters/defaults
     const defaults = loadTypeDefaults.distributed;
+
+    // Always restore direction from defaults if not in loadParameters
     if (!loadParameters.direction && defaults?.direction) {
       setLoadCreationMode('distributed', {
         ...loadParameters,
         direction: defaults.direction,
+        x1: defaults.x1 ?? loadParameters.x1 ?? 0,
+        x2: defaults.x2 ?? loadParameters.x2 ?? 0,
       });
     }
 
@@ -93,8 +97,8 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
       return;
     }
 
-    const x1 = parseFloat(loadParameters.x1 as any);
-    const x2 = parseFloat(loadParameters.x2 as any);
+    const x1 = loadParameters.x1 !== undefined ? parseFloat(loadParameters.x1 as any) : 0;
+    const x2 = loadParameters.x2 !== undefined ? parseFloat(loadParameters.x2 as any) : 0;
     if (isNaN(x1) || isNaN(x2) || x1 > x2) {
       alert('x1 must be less than or equal to x2');
       return;

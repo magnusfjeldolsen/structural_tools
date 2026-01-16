@@ -20,20 +20,26 @@ export function PointLoadForm({ isExpanded }: PointLoadFormProps) {
 
   // Initialize form with saved defaults on first render
   useEffect(() => {
-    if (!isExpanded || !loadTypeDefaults.point) {
+    if (!isExpanded) {
       return;
     }
 
     const defaults = loadTypeDefaults.point;
-    const currentParams = {
-      distance: loadParameters.distance ?? defaults.distance ?? 0,
-      magnitude: loadParameters.magnitude ?? defaults.magnitude ?? 0,
-      direction: loadParameters.direction ?? defaults.direction ?? 'Fx',
-    };
+    if (!defaults) return;
 
-    if ((defaults.distance !== undefined || defaults.magnitude !== undefined || defaults.direction !== undefined) &&
-        loadParameters.distance === undefined && loadParameters.magnitude === undefined && loadParameters.direction === undefined) {
-      setLoadCreationMode('point', currentParams);
+    // Always restore missing parameters from defaults
+    const needsUpdate =
+      (!loadParameters.distance && defaults.distance !== undefined) ||
+      (!loadParameters.magnitude && defaults.magnitude !== undefined) ||
+      (!loadParameters.direction && defaults.direction !== undefined);
+
+    if (needsUpdate) {
+      setLoadCreationMode('point', {
+        ...loadParameters,
+        distance: loadParameters.distance ?? defaults.distance ?? 0,
+        magnitude: loadParameters.magnitude ?? defaults.magnitude ?? 0,
+        direction: loadParameters.direction ?? defaults.direction ?? 'Fx',
+      });
     }
   }, [isExpanded]);
 

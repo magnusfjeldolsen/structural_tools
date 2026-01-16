@@ -20,22 +20,26 @@ export function NodalLoadForm({ isExpanded }: NodalLoadFormProps) {
 
   // Initialize form with saved defaults on first render
   useEffect(() => {
-    if (!isExpanded || !loadTypeDefaults.nodal) {
+    if (!isExpanded) {
       return;
     }
 
-    // Populate with saved defaults if not already set
     const defaults = loadTypeDefaults.nodal;
-    const currentParams = {
-      fx: loadParameters.fx ?? defaults.fx ?? 0,
-      fy: loadParameters.fy ?? defaults.fy ?? 0,
-      mz: loadParameters.mz ?? defaults.mz ?? 0,
-    };
+    if (!defaults) return;
 
-    // Only set if we have saved defaults and current params are empty
-    if ((defaults.fx !== undefined || defaults.fy !== undefined || defaults.mz !== undefined) &&
-        loadParameters.fx === undefined && loadParameters.fy === undefined && loadParameters.mz === undefined) {
-      setLoadCreationMode('nodal', currentParams);
+    // Always restore missing parameters from defaults
+    const needsUpdate =
+      (loadParameters.fx === undefined && defaults.fx !== undefined) ||
+      (loadParameters.fy === undefined && defaults.fy !== undefined) ||
+      (loadParameters.mz === undefined && defaults.mz !== undefined);
+
+    if (needsUpdate) {
+      setLoadCreationMode('nodal', {
+        ...loadParameters,
+        fx: loadParameters.fx ?? defaults.fx ?? 0,
+        fy: loadParameters.fy ?? defaults.fy ?? 0,
+        mz: loadParameters.mz ?? defaults.mz ?? 0,
+      });
     }
   }, [isExpanded]);
 
