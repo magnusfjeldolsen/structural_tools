@@ -111,9 +111,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const setLoadArrowScale = useUIStore((state) => state.setLoadArrowScale);
   const setDisplacementScale = useUIStore((state) => state.setDisplacementScale);
 
-  // Results query state
-  const selectedResultType = useUIStore((state) => state.selectedResultType);
-  const selectedResultName = useUIStore((state) => state.selectedResultName);
+  // Results query state (from ModelStore)
+  const activeResultView = useModelStore((state) => state.activeResultView);
 
   // Label visibility states
   const showDisplacementLabels = useUIStore((state) => state.showDisplacementLabels);
@@ -183,17 +182,17 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   // Tries to get from cache first, falls back to analysisResults for backward compat
   const getActiveResults = () => {
     // If user has selected a result, try to get it from cache
-    if (selectedResultName) {
-      if (selectedResultType === 'case') {
-        const caseResults = getResultsForCase(selectedResultName);
+    if (activeResultView.name) {
+      if (activeResultView.type === 'case') {
+        const caseResults = getResultsForCase(activeResultView.name);
         if (caseResults) return caseResults;
       } else {
-        const comboResults = getResultsForCombination(selectedResultName);
+        const comboResults = getResultsForCombination(activeResultView.name);
         if (comboResults) return comboResults;
       }
       // Selection exists but results don't
       console.warn(
-        `[CanvasView] No results available for ${selectedResultType} "${selectedResultName}"`
+        `[CanvasView] No results available for ${activeResultView.type} "${activeResultView.name}"`
       );
       return null;
     }
@@ -232,7 +231,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       results
     );
     setDisplacementScale(displacementScaleAuto);
-  }, [nodes, elements, analysisResults, selectedResultType, selectedResultName, setDisplacementScale]);
+  }, [nodes, elements, analysisResults, activeResultView.type, activeResultView.name, setDisplacementScale]);
 
   // === UTILITY FUNCTIONS ===
 
@@ -431,8 +430,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
               magnitude: loadParameters.magnitude || 0,
               case: loadParameters.case,
             });
-          } else if (loadCreationMode === 'lineLoad') {
+          } else if (loadCreationMode === 'lineLoad' || (loadCreationMode === 'distributed' && (!loadParameters.x1 || loadParameters.x1 === 0) && (!loadParameters.x2 || loadParameters.x2 === 0))) {
             // Line load: distributed load across entire element (can be uniform or varying)
+            // Also applies when x1=0 and x2=0 (full element length)
             // Get element length to calculate x2
             const element = elements.find((el) => el.name === hoveredElement);
             if (element) {
@@ -456,7 +456,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
               }
             }
           } else {
-            // distributed load with custom distribution
+            // distributed load with custom distribution (x1, x2 specified)
             addDistributedLoad({
               element: hoveredElement,
               direction: (loadParameters.direction || 'Fy') as 'Fx' | 'Fy',
@@ -1052,8 +1052,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const handleContextMenu = (e: Konva.KonvaEventObject<PointerEvent>) => {
     e.evt.preventDefault();
 
-    // Right-click context menu for loads
-    if (activeTab === 'loads') {
+    // Right-click context menu for loads (works in all tabs now)
+    if (true) {  // Changed from: if (activeTab === 'loads')
       const stage = e.target.getStage();
       if (!stage) return;
 

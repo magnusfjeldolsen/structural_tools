@@ -20,6 +20,7 @@ import { LoadInputDialog } from './components/LoadInputDialog';
 import { LoadContextMenu } from './components/LoadContextMenu';
 import { NodesTab } from './components/NodesTab';
 import { ElementsTab } from './components/ElementsTab';
+import { LoadsTab } from './components/LoadsTab';
 import { LoadsTabToolbar } from './components/LoadsTabToolbar';
 import { LoadCreationPanel } from './components/LoadCreationPanel';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -28,7 +29,7 @@ import { theme } from './styles/theme';
 export default function App() {
   const [initStatus, setInitStatus] = useState<'pending' | 'loading' | 'ready' | 'error'>('pending');
   const [initError, setInitError] = useState<string | null>(null);
-  const [rightPanelTab, setRightPanelTab] = useState<'nodes' | 'elements' | 'results'>('nodes');
+  const [rightPanelTab, setRightPanelTab] = useState<'nodes' | 'elements' | 'results' | 'loads'>('nodes');
   const [rightPanelWidth, setRightPanelWidth] = useState(30); // Percentage of viewport width
   const [isResizingPanel, setIsResizingPanel] = useState(false);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
@@ -251,7 +252,7 @@ export default function App() {
             borderBottom: `2px solid ${theme.colors.border}`,
             overflowX: 'auto',
           }}>
-            {(['nodes', 'elements', 'results'] as const).map((tab) => (
+            {(['nodes', 'elements', 'loads', 'results'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setRightPanelTab(tab)}
@@ -270,6 +271,7 @@ export default function App() {
               >
                 {tab === 'nodes' && 'Nodes'}
                 {tab === 'elements' && 'Elements'}
+                {tab === 'loads' && 'Loads'}
                 {tab === 'results' && 'Results'}
               </button>
             ))}
@@ -279,6 +281,7 @@ export default function App() {
           <div style={{ flex: 1, overflow: 'auto' }}>
             {rightPanelTab === 'nodes' && <NodesTab />}
             {rightPanelTab === 'elements' && <ElementsTab />}
+            {rightPanelTab === 'loads' && <LoadsTab />}
             {rightPanelTab === 'results' && <ResultsPanel />}
           </div>
         </div>

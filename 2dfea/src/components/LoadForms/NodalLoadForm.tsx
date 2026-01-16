@@ -2,6 +2,7 @@
  * Nodal Load Form - Compact form content for nodal loads
  */
 
+import { useEffect } from 'react';
 import { useModelStore, useUIStore } from '../../store';
 import { theme } from '../../styles/theme';
 
@@ -13,10 +14,38 @@ interface NodalLoadFormProps {
 export function NodalLoadForm({ isExpanded }: NodalLoadFormProps) {
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const loadParameters = useUIStore((state) => state.loadParameters) || {};
+  const loadTypeDefaults = useUIStore((state) => state.loadTypeDefaults);
   const setLoadCreationMode = useUIStore((state) => state.setLoadCreationMode);
+  const setLoadTypeDefaults = useUIStore((state) => state.setLoadTypeDefaults);
+
+  // Initialize form with saved defaults on first render
+  useEffect(() => {
+    if (!isExpanded) {
+      return;
+    }
+
+    const defaults = loadTypeDefaults.nodal;
+    if (!defaults) return;
+
+    // Always restore missing parameters from defaults
+    const needsUpdate =
+      (loadParameters.fx === undefined && defaults.fx !== undefined) ||
+      (loadParameters.fy === undefined && defaults.fy !== undefined) ||
+      (loadParameters.mz === undefined && defaults.mz !== undefined);
+
+    if (needsUpdate) {
+      setLoadCreationMode('nodal', {
+        ...loadParameters,
+        fx: loadParameters.fx ?? defaults.fx ?? 0,
+        fy: loadParameters.fy ?? defaults.fy ?? 0,
+        mz: loadParameters.mz ?? defaults.mz ?? 0,
+      });
+    }
+  }, [isExpanded]);
 
   const handleParameterChange = (key: string, value: string | number) => {
     setLoadCreationMode('nodal', { ...loadParameters, [key]: value });
+    setLoadTypeDefaults('nodal', { [key]: value });
   };
 
   const handleCreateLoad = () => {

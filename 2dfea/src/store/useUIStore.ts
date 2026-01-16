@@ -260,10 +260,14 @@ export interface UIState {
   setPasteMode: (enabled: boolean) => void;
   clearPasteData: () => void;  // Clears both copiedData and pasteMode
 
-  // Results Query State (for displaying different load cases/combinations)
-  selectedResultType: 'case' | 'combination';  // Which type user is viewing
-  selectedResultName: string | null;  // Which specific case/combo
-  setSelectedResult: (type: 'case' | 'combination', name: string | null) => void;
+  // Load type defaults - remember last values entered for each load type
+  loadTypeDefaults: {
+    nodal?: { fx?: number; fy?: number; mz?: number };
+    point?: { distance?: number; magnitude?: number; direction?: string };
+    distributed?: { x1?: number; x2?: number; w1?: number; w2?: number; direction?: string };
+    lineLoad?: { w1?: number; w2?: number; direction?: string };
+  };
+  setLoadTypeDefaults: (type: 'nodal' | 'point' | 'distributed' | 'lineLoad', values: any) => void;
 }
 
 // ============================================================================
@@ -337,8 +341,7 @@ const initialState = {
   loadParameters: null,
   copiedData: undefined,
   pasteMode: false,
-  selectedResultType: 'case' as 'case' | 'combination',
-  selectedResultName: null,
+  loadTypeDefaults: {},
 };
 
 // ============================================================================
@@ -751,9 +754,14 @@ export const useUIStore = create<UIState>()(
         set({ copiedData: undefined, pasteMode: false });
       },
 
-      // Results Query State actions
-      setSelectedResult: (type: string, name: string) => {
-        set({ selectedResultType: type, selectedResultName: name });
+      // Load type defaults actions
+      setLoadTypeDefaults: (type: string, values: any) => {
+        set((state) => {
+          state.loadTypeDefaults[type as keyof typeof state.loadTypeDefaults] = {
+            ...state.loadTypeDefaults[type as keyof typeof state.loadTypeDefaults],
+            ...values,
+          };
+        });
       },
     })),
     { name: 'UIStore' }

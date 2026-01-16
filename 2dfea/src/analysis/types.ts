@@ -34,6 +34,7 @@ export interface Element {
 // ============================================================================
 
 export interface NodalLoad {
+  id: string;         // Unique load ID (e.g., "NL1", "NL2")
   node: string;
   fx: number;     // kN
   fy: number;     // kN
@@ -42,6 +43,7 @@ export interface NodalLoad {
 }
 
 export interface DistributedLoad {
+  id: string;         // Unique load ID (e.g., "DL1", "DL2")
   element: string;
   direction: 'Fx' | 'Fy' | 'FX' | 'FY';  // Local (Fx, Fy) or Global (FX, FY) coordinate system
   w1: number;     // kN/m (start)
@@ -52,6 +54,7 @@ export interface DistributedLoad {
 }
 
 export interface ElementPointLoad {
+  id: string;         // Unique load ID (e.g., "PL1", "PL2")
   element: string;
   distance: number;   // m (from element start)
   direction: 'Fx' | 'Fy' | 'Mz' | 'FX' | 'FY' | 'MZ';  // Local (fx, fy, mz) or Global (FX, FY, MZ)

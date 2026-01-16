@@ -58,8 +58,9 @@ async function initializePyodide() {
         console.log("[Worker] Installing PyNite...");
         await pyodide.runPythonAsync(`
             import micropip
-            # Install PyNite 2.0.0 - last version before numpy 2.4+ requirement (v2.0.3+)
-            await micropip.install("PyniteFEA==2.0.0")
+            # Install PyNiteFEA v2.0.2 which is compatible with numpy 2.2.5
+            # Pyodide supports numpy up to 2.2.5, and v2.0.2 is the last version compatible
+            await micropip.install("PyniteFEA==2.0.2")
         `);
 
         console.log("[Worker] Loading PyNite analyzer module...");

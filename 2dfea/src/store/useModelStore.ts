@@ -44,6 +44,12 @@ interface ModelState {
   nextNodeNumber: number;  // Counter for node naming (never decrements)
   nextElementNumber: number;  // Counter for element naming (never decrements)
 
+  // Load ID counters (never decrement)
+  nextNodalLoadNumber: number;        // Counter for nodal load IDs (e.g., "NL1", "NL2")
+  nextPointLoadNumber: number;        // Counter for point load IDs (e.g., "PL1", "PL2")
+  nextDistributedLoadNumber: number;  // Counter for distributed load IDs (e.g., "DL1", "DL2")
+  nextLineLoadNumber: number;         // Counter for line load IDs (e.g., "LL1", "LL2")
+
   // Selection
   selectedNodes: string[];
   selectedElements: string[];
@@ -57,7 +63,11 @@ interface ModelState {
   loads: Loads;
   loadCases: LoadCase[];
   loadCombinations: LoadCombinationDefinition[];
-  activeLoadCase: string | null;  // Currently viewing
+  activeLoadCase: string | null;  // Active case for load creation
+  activeResultView: {
+    type: 'case' | 'combination';
+    name: string | null;
+  };  // Currently displayed results (can differ from activeLoadCase)
 
   // Analysis
   solver: SolverInterface | null;
@@ -95,15 +105,15 @@ interface ModelState {
   moveNodes: (nodeNames: string[], dx: number, dy: number) => void;
 
   // Actions - Loads
-  addNodalLoad: (load: Omit<NodalLoad, 'name'>) => void;
+  addNodalLoad: (load: Omit<NodalLoad, 'id'>) => void;
   updateNodalLoad: (index: number, updates: Partial<NodalLoad>) => void;
   deleteNodalLoad: (index: number) => void;
 
-  addDistributedLoad: (load: Omit<DistributedLoad, 'name'>) => void;
+  addDistributedLoad: (load: Omit<DistributedLoad, 'id'>) => void;
   updateDistributedLoad: (index: number, updates: Partial<DistributedLoad>) => void;
   deleteDistributedLoad: (index: number) => void;
 
-  addElementPointLoad: (load: Omit<ElementPointLoad, 'name'>) => void;
+  addElementPointLoad: (load: Omit<ElementPointLoad, 'id'>) => void;
   updateElementPointLoad: (index: number, updates: Partial<ElementPointLoad>) => void;
   deleteElementPointLoad: (index: number) => void;
 
@@ -120,6 +130,7 @@ interface ModelState {
   addLoadCase: (loadCase: LoadCase) => void;
   deleteLoadCase: (name: string) => void;
   setActiveLoadCase: (name: string | null) => void;
+  setActiveResultView: (type: 'case' | 'combination', name: string | null) => void;
 
   // Actions - Load Combinations
   addLoadCombination: (combination: LoadCombinationDefinition) => void;
@@ -150,6 +161,10 @@ const initialState = {
   elements: [],
   nextNodeNumber: 1,
   nextElementNumber: 1,
+  nextNodalLoadNumber: 1,
+  nextPointLoadNumber: 1,
+  nextDistributedLoadNumber: 1,
+  nextLineLoadNumber: 1,
   selectedNodes: [],
   selectedElements: [],
   selectedLoads: {
@@ -168,6 +183,10 @@ const initialState = {
   ],
   loadCombinations: [],
   activeLoadCase: 'Dead',
+  activeResultView: {
+    type: 'case',
+    name: 'Dead',
+  },
   solver: null,
   isInitializingSolver: false,
   isAnalyzing: false,
@@ -497,7 +516,9 @@ export const useModelStore = create<ModelState>()(
 
         addNodalLoad: (loadData) => {
           set((state) => {
-            state.loads.nodal.push(loadData);
+            const id = `NL${state.nextNodalLoadNumber}`;
+            state.loads.nodal.push({ ...loadData, id });
+            state.nextNodalLoadNumber++;
           });
         },
 
@@ -518,7 +539,9 @@ export const useModelStore = create<ModelState>()(
 
         addDistributedLoad: (loadData) => {
           set((state) => {
-            state.loads.distributed.push(loadData);
+            const id = `DL${state.nextDistributedLoadNumber}`;
+            state.loads.distributed.push({ ...loadData, id });
+            state.nextDistributedLoadNumber++;
           });
         },
 
@@ -539,7 +562,9 @@ export const useModelStore = create<ModelState>()(
 
         addElementPointLoad: (loadData) => {
           set((state) => {
-            state.loads.elementPoint.push(loadData);
+            const id = `PL${state.nextPointLoadNumber}`;
+            state.loads.elementPoint.push({ ...loadData, id });
+            state.nextPointLoadNumber++;
           });
         },
 
@@ -628,7 +653,19 @@ export const useModelStore = create<ModelState>()(
         },
 
         setActiveLoadCase: (name) => {
-          set({ activeLoadCase: name });
+          set((state: ModelState) => {
+            state.activeLoadCase = name;
+            // Auto-sync result view to match active case (if currently viewing a case)
+            if (state.activeResultView.type === 'case') {
+              state.activeResultView.name = name;
+            }
+          });
+        },
+
+        setActiveResultView: (type, name) => {
+          set((state: ModelState) => {
+            state.activeResultView = { type, name };
+          });
         },
 
         // ====================================================================
@@ -994,6 +1031,7 @@ export const useModelStore = create<ModelState>()(
           loadCases: state.loadCases,
           loadCombinations: state.loadCombinations,
           activeLoadCase: state.activeLoadCase,
+          activeResultView: state.activeResultView,
         }),
       }
     ),

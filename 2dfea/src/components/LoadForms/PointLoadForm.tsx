@@ -2,6 +2,7 @@
  * Point Load Form - Compact form content for element point loads
  */
 
+import { useEffect } from 'react';
 import { useModelStore, useUIStore } from '../../store';
 import { theme } from '../../styles/theme';
 
@@ -13,12 +14,42 @@ interface PointLoadFormProps {
 export function PointLoadForm({ isExpanded }: PointLoadFormProps) {
   const activeLoadCase = useModelStore((state) => state.activeLoadCase);
   const loadParameters = useUIStore((state) => state.loadParameters) || {};
+  const loadTypeDefaults = useUIStore((state) => state.loadTypeDefaults);
   const setLoadCreationMode = useUIStore((state) => state.setLoadCreationMode);
+  const setLoadTypeDefaults = useUIStore((state) => state.setLoadTypeDefaults);
 
-  const isLocal = (loadParameters.direction as string)?.toLowerCase() === loadParameters.direction;
+  // Initialize form with saved defaults on first render
+  useEffect(() => {
+    if (!isExpanded) {
+      return;
+    }
+
+    const defaults = loadTypeDefaults.point;
+    if (!defaults) return;
+
+    // Always restore missing parameters from defaults
+    const needsUpdate =
+      (!loadParameters.distance && defaults.distance !== undefined) ||
+      (!loadParameters.magnitude && defaults.magnitude !== undefined) ||
+      (!loadParameters.direction && defaults.direction !== undefined);
+
+    if (needsUpdate) {
+      setLoadCreationMode('point', {
+        ...loadParameters,
+        distance: loadParameters.distance ?? defaults.distance ?? 0,
+        magnitude: loadParameters.magnitude ?? defaults.magnitude ?? 0,
+        direction: loadParameters.direction ?? defaults.direction ?? 'Fx',
+      });
+    }
+  }, [isExpanded]);
+
+  const isLocal = typeof loadParameters.direction === 'string'
+    ? loadParameters.direction.toLowerCase() === loadParameters.direction
+    : false;
 
   const handleParameterChange = (key: string, value: string | number) => {
     setLoadCreationMode('point', { ...loadParameters, [key]: value });
+    setLoadTypeDefaults('point', { [key]: value });
   };
 
   const toggleCoordinateSystem = () => {
