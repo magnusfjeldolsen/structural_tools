@@ -431,8 +431,9 @@ export function CanvasView({ width, height }: CanvasViewProps) {
               magnitude: loadParameters.magnitude || 0,
               case: loadParameters.case,
             });
-          } else if (loadCreationMode === 'lineLoad') {
+          } else if (loadCreationMode === 'lineLoad' || (loadCreationMode === 'distributed' && (!loadParameters.x1 || loadParameters.x1 === 0) && (!loadParameters.x2 || loadParameters.x2 === 0))) {
             // Line load: distributed load across entire element (can be uniform or varying)
+            // Also applies when x1=0 and x2=0 (full element length)
             // Get element length to calculate x2
             const element = elements.find((el) => el.name === hoveredElement);
             if (element) {
@@ -456,7 +457,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
               }
             }
           } else {
-            // distributed load with custom distribution
+            // distributed load with custom distribution (x1, x2 specified)
             addDistributedLoad({
               element: hoveredElement,
               direction: (loadParameters.direction || 'Fy') as 'Fx' | 'Fy',

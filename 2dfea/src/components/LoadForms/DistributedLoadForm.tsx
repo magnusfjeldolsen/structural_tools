@@ -103,14 +103,18 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
     const x1 = loadParameters.x1 !== undefined ? parseFloat(loadParameters.x1 as any) : 0;
     const x2 = loadParameters.x2 !== undefined ? parseFloat(loadParameters.x2 as any) : 0;
 
-    // Allow x1=0, x2=0 (full element length), or x1 < x2
+    // Validation: allow x1=0, x2=0 (full element length), or x1 <= x2
     if (isNaN(x1) || isNaN(x2)) {
       alert('x1 and x2 must be valid numbers');
       return;
     }
-    if (x1 > x2 && x2 !== 0) {
-      alert('x1 must be less than or equal to x2 (or leave x2 at 0 for full element)');
-      return;
+    // If both are zero, load applies to full element length (OK)
+    // Otherwise, x1 must be less than or equal to x2
+    if (x1 !== 0 || x2 !== 0) {
+      if (x1 > x2) {
+        alert('x1 must be less than or equal to x2 (or leave both at 0 for full element)');
+        return;
+      }
     }
 
     // Use local state for w1/w2
