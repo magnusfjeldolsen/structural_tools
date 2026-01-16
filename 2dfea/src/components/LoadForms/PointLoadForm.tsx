@@ -43,7 +43,9 @@ export function PointLoadForm({ isExpanded }: PointLoadFormProps) {
     }
   }, [isExpanded]);
 
-  const isLocal = (loadParameters.direction as string)?.toLowerCase() === loadParameters.direction;
+  const isLocal = typeof loadParameters.direction === 'string'
+    ? loadParameters.direction.toLowerCase() === loadParameters.direction
+    : false;
 
   const handleParameterChange = (key: string, value: string | number) => {
     setLoadCreationMode('point', { ...loadParameters, [key]: value });

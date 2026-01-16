@@ -48,7 +48,9 @@ export function LineLoadForm({ isExpanded }: LineLoadFormProps) {
     }
   }, [isExpanded]);
 
-  const isLocal = (formParameters.direction as string)?.toLowerCase() === formParameters.direction;
+  const isLocal = typeof formParameters.direction === 'string'
+    ? formParameters.direction.toLowerCase() === formParameters.direction
+    : false;
 
   // Handle w1 input - local only
   const handleW1Change = (value: string) => {

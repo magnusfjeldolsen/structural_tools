@@ -51,7 +51,9 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
     }
   }, [isExpanded]);
 
-  const isLocal = (loadParameters.direction as string)?.toLowerCase() === loadParameters.direction;
+  const isLocal = typeof loadParameters.direction === 'string'
+    ? loadParameters.direction.toLowerCase() === loadParameters.direction
+    : false;
 
   // Handle w1 input - local only
   const handleW1Change = (value: string) => {
