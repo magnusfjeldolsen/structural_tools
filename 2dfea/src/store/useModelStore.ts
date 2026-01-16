@@ -63,7 +63,11 @@ interface ModelState {
   loads: Loads;
   loadCases: LoadCase[];
   loadCombinations: LoadCombinationDefinition[];
-  activeLoadCase: string | null;  // Currently viewing
+  activeLoadCase: string | null;  // Active case for load creation
+  activeResultView: {
+    type: 'case' | 'combination';
+    name: string | null;
+  };  // Currently displayed results (can differ from activeLoadCase)
 
   // Analysis
   solver: SolverInterface | null;
@@ -126,6 +130,7 @@ interface ModelState {
   addLoadCase: (loadCase: LoadCase) => void;
   deleteLoadCase: (name: string) => void;
   setActiveLoadCase: (name: string | null) => void;
+  setActiveResultView: (type: 'case' | 'combination', name: string | null) => void;
 
   // Actions - Load Combinations
   addLoadCombination: (combination: LoadCombinationDefinition) => void;
@@ -178,6 +183,10 @@ const initialState = {
   ],
   loadCombinations: [],
   activeLoadCase: 'Dead',
+  activeResultView: {
+    type: 'case',
+    name: 'Dead',
+  },
   solver: null,
   isInitializingSolver: false,
   isAnalyzing: false,
@@ -644,7 +653,19 @@ export const useModelStore = create<ModelState>()(
         },
 
         setActiveLoadCase: (name) => {
-          set({ activeLoadCase: name });
+          set((state: ModelState) => {
+            state.activeLoadCase = name;
+            // Auto-sync result view to match active case (if currently viewing a case)
+            if (state.activeResultView.type === 'case') {
+              state.activeResultView.name = name;
+            }
+          });
+        },
+
+        setActiveResultView: (type, name) => {
+          set((state: ModelState) => {
+            state.activeResultView = { type, name };
+          });
         },
 
         // ====================================================================
@@ -1010,6 +1031,7 @@ export const useModelStore = create<ModelState>()(
           loadCases: state.loadCases,
           loadCombinations: state.loadCombinations,
           activeLoadCase: state.activeLoadCase,
+          activeResultView: state.activeResultView,
         }),
       }
     ),

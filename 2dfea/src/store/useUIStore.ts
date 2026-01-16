@@ -260,11 +260,6 @@ export interface UIState {
   setPasteMode: (enabled: boolean) => void;
   clearPasteData: () => void;  // Clears both copiedData and pasteMode
 
-  // Results Query State (for displaying different load cases/combinations)
-  selectedResultType: 'case' | 'combination';  // Which type user is viewing
-  selectedResultName: string | null;  // Which specific case/combo
-  setSelectedResult: (type: 'case' | 'combination', name: string | null) => void;
-
   // Load type defaults - remember last values entered for each load type
   loadTypeDefaults: {
     nodal?: { fx?: number; fy?: number; mz?: number };
@@ -346,8 +341,6 @@ const initialState = {
   loadParameters: null,
   copiedData: undefined,
   pasteMode: false,
-  selectedResultType: 'case' as 'case' | 'combination',
-  selectedResultName: null,
   loadTypeDefaults: {},
 };
 
@@ -759,11 +752,6 @@ export const useUIStore = create<UIState>()(
 
       clearPasteData: () => {
         set({ copiedData: undefined, pasteMode: false });
-      },
-
-      // Results Query State actions
-      setSelectedResult: (type: string, name: string) => {
-        set({ selectedResultType: type, selectedResultName: name });
       },
 
       // Load type defaults actions

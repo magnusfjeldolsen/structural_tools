@@ -111,9 +111,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const setLoadArrowScale = useUIStore((state) => state.setLoadArrowScale);
   const setDisplacementScale = useUIStore((state) => state.setDisplacementScale);
 
-  // Results query state
-  const selectedResultType = useUIStore((state) => state.selectedResultType);
-  const selectedResultName = useUIStore((state) => state.selectedResultName);
+  // Results query state (from ModelStore)
+  const activeResultView = useModelStore((state) => state.activeResultView);
 
   // Label visibility states
   const showDisplacementLabels = useUIStore((state) => state.showDisplacementLabels);
@@ -183,17 +182,17 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   // Tries to get from cache first, falls back to analysisResults for backward compat
   const getActiveResults = () => {
     // If user has selected a result, try to get it from cache
-    if (selectedResultName) {
-      if (selectedResultType === 'case') {
-        const caseResults = getResultsForCase(selectedResultName);
+    if (activeResultView.name) {
+      if (activeResultView.type === 'case') {
+        const caseResults = getResultsForCase(activeResultView.name);
         if (caseResults) return caseResults;
       } else {
-        const comboResults = getResultsForCombination(selectedResultName);
+        const comboResults = getResultsForCombination(activeResultView.name);
         if (comboResults) return comboResults;
       }
       // Selection exists but results don't
       console.warn(
-        `[CanvasView] No results available for ${selectedResultType} "${selectedResultName}"`
+        `[CanvasView] No results available for ${activeResultView.type} "${activeResultView.name}"`
       );
       return null;
     }
@@ -232,7 +231,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       results
     );
     setDisplacementScale(displacementScaleAuto);
-  }, [nodes, elements, analysisResults, selectedResultType, selectedResultName, setDisplacementScale]);
+  }, [nodes, elements, analysisResults, activeResultView.type, activeResultView.name, setDisplacementScale]);
 
   // === UTILITY FUNCTIONS ===
 
