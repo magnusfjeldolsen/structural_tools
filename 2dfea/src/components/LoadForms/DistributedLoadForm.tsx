@@ -99,8 +99,14 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
 
     const x1 = loadParameters.x1 !== undefined ? parseFloat(loadParameters.x1 as any) : 0;
     const x2 = loadParameters.x2 !== undefined ? parseFloat(loadParameters.x2 as any) : 0;
-    if (isNaN(x1) || isNaN(x2) || x1 > x2) {
-      alert('x1 must be less than or equal to x2');
+
+    // Allow x1=0, x2=0 (full element length), or x1 < x2
+    if (isNaN(x1) || isNaN(x2)) {
+      alert('x1 and x2 must be valid numbers');
+      return;
+    }
+    if (x1 > x2 && x2 !== 0) {
+      alert('x1 must be less than or equal to x2 (or leave x2 at 0 for full element)');
       return;
     }
 
@@ -135,12 +141,12 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
   return (
     <div style={formContentStyle}>
       <div style={formGroupStyle}>
-        <label style={labelStyle}>x1 (m)</label>
+        <label style={labelStyle}>x1 (m) <span style={{fontWeight: 'normal', fontSize: '10px'}}>optional</span></label>
         <input
           type="number"
           value={loadParameters.x1 || ''}
           onChange={(e) => handleParameterChange('x1', parseFloat(e.target.value) || 0)}
-          placeholder="0"
+          placeholder="0 (start)"
           style={inputStyle}
           step="0.01"
           min="0"
@@ -148,12 +154,12 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
       </div>
 
       <div style={formGroupStyle}>
-        <label style={labelStyle}>x2 (m)</label>
+        <label style={labelStyle}>x2 (m) <span style={{fontWeight: 'normal', fontSize: '10px'}}>optional</span></label>
         <input
           type="number"
           value={loadParameters.x2 || ''}
           onChange={(e) => handleParameterChange('x2', parseFloat(e.target.value) || 0)}
-          placeholder="0"
+          placeholder="0 (full)"
           style={inputStyle}
           step="0.01"
           min="0"
@@ -211,7 +217,7 @@ export function DistributedLoadForm({ isExpanded }: DistributedLoadFormProps) {
       </div>
 
       <button onClick={handleCreateLoad} style={createButtonStyle}>
-        Create Distributed Load → Click Elements
+        Create Line Load → Click Elements
       </button>
     </div>
   );

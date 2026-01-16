@@ -39,8 +39,8 @@ export function LoadsTabToolbar({ expandedForm, onToggleForm }: LoadsTabToolbarP
   const loadTypeButtons = [
     { type: 'nodal' as const, label: 'Nodal Load' },
     { type: 'point' as const, label: 'Element Point Load' },
-    { type: 'distributed' as const, label: 'Distributed Load' },
-    { type: 'lineLoad' as const, label: 'Line Load' },
+    { type: 'distributed' as const, label: 'Line Load' },  // Renamed: now handles both line and distributed loads
+    // lineLoad removed: merged into distributed load (leave x1/x2 at 0 for full element)
   ];
 
   return (

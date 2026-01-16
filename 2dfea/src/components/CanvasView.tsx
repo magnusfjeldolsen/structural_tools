@@ -1052,8 +1052,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const handleContextMenu = (e: Konva.KonvaEventObject<PointerEvent>) => {
     e.evt.preventDefault();
 
-    // Right-click context menu for loads
-    if (activeTab === 'loads') {
+    // Right-click context menu for loads (works in all tabs now)
+    if (true) {  // Changed from: if (activeTab === 'loads')
       const stage = e.target.getStage();
       if (!stage) return;
 

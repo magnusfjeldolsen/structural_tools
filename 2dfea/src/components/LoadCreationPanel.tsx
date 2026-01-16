@@ -50,7 +50,7 @@ export function LoadCreationPanel({ expandedForm }: LoadCreationPanelProps) {
           <span style={modeTextStyle}>
             {loadCreationMode === 'nodal' && '➜ Click nodes to apply nodal loads'}
             {loadCreationMode === 'point' && '➜ Click elements to apply point loads'}
-            {loadCreationMode === 'distributed' && '➜ Click elements to apply distributed loads'}
+            {loadCreationMode === 'distributed' && '➜ Click elements to apply line loads'}
             {loadCreationMode === 'lineLoad' && '➜ Click elements to apply line loads'}
           </span>
         </div>
