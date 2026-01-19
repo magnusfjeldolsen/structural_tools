@@ -55,18 +55,22 @@ export function DropdownCell<T = string>({
   useEffect(() => {
     if (isEditing && autoOpen && selectRef?.current) {
       setTimeout(() => {
+        const element = selectRef.current;
+        if (!element) return;
+
         try {
           // Try modern showPicker API
-          if ('showPicker' in selectRef.current!) {
-            (selectRef.current as any).showPicker();
-          } else {
-            // Fallback for browsers without showPicker
-            selectRef.current?.focus();
-            selectRef.current?.click();
+          if ('showPicker' in element && typeof (element as any).showPicker === 'function') {
+            (element as any).showPicker();
           }
+          // Always fallback to focus/click
+          element.focus();
+          element.click();
         } catch (e) {
           // Silently fail if showPicker not supported
-          selectRef.current?.focus();
+          try {
+            element.focus();
+          } catch {}
         }
       }, 0);
     }
@@ -103,6 +107,10 @@ export function DropdownCell<T = string>({
           onChange={(e) => onChange?.(e.target.value as T)}
           onBlur={onSave}
           onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              onSave?.();
+            }
             // Prevent parent keyboard handler from interfering
             e.stopPropagation();
           }}

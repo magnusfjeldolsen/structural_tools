@@ -1,61 +1,119 @@
 /**
- * ElementsTab Component
+ * ElementsTab - Orchestration container for element data editing
  *
- * Editable table view of all elements in the model
- * Displays: Name, Start Node, End Node, E (GPa), I (m⁴), A (m²)
- * All fields are editable with validation
+ * Follows LoadsTab pattern:
+ * - Manages selection state, edit state, clipboard
+ * - Global keyboard handler (F2, arrows, Enter, Escape, Ctrl+C/V)
+ * - Validation logic
+ * - Passes all state to ElementTable as props
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useModelStore } from '../store/useModelStore';
 import { useUIStore } from '../store/useUIStore';
 import { theme } from '../styles/theme';
+import { ElementTable, CellIdentifier, ClipboardData } from './tables/ElementTable';
 
 export function ElementsTab() {
   const elements = useModelStore((state) => state.elements);
   const nodes = useModelStore((state) => state.nodes);
-  const selectedElements = useModelStore((state) => state.selectedElements);
-  const selectElement = useModelStore((state) => state.selectElement);
-  const clearSelection = useModelStore((state) => state.clearSelection);
   const updateElement = useModelStore((state) => state.updateElement);
   const activeTab = useUIStore((state) => state.activeTab);
 
-  const [editingCell, setEditingCell] = useState<{ elementName: string; field: string } | null>(null);
+  // Selection & Edit state
+  const [selectedCell, setSelectedCell] = useState<CellIdentifier>(null);
+  const [editingCell, setEditingCell] = useState<CellIdentifier>(null);
   const [editValue, setEditValue] = useState('');
+
+  // Clipboard state (NEW)
+  const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
+
+  // Validation state
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Only show elements tab in loads or structure tabs
-  if (activeTab !== 'loads' && activeTab !== 'structure') {
-    return null;
-  }
+  // Refs for focus management
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLSelectElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleElementClick = (elementName: string, e: React.MouseEvent) => {
-    e.preventDefault();
+  // Field configuration
+  const fields = ['name', 'nodeI', 'nodeJ', 'E', 'I', 'A'];
+
+  // Reset state when tab changes
+  useEffect(() => {
+    if (activeTab !== 'loads' && activeTab !== 'structure') {
+      setSelectedCell(null);
+      setEditingCell(null);
+      setValidationError(null);
+      setClipboard(null);
+    }
+  }, [activeTab]);
+
+  // Focus input when entering edit mode
+  useEffect(() => {
+    if (editingCell) {
+      if (editingCell.field === 'nodeI' || editingCell.field === 'nodeJ') {
+        dropdownRef.current?.focus();
+      } else {
+        inputRef.current?.focus();
+      }
+    }
+  }, [editingCell]);
+
+  // ============================================================================
+  // Handlers
+  // ============================================================================
+
+  const handleSelectCell = (cell: CellIdentifier) => {
     if (editingCell) return; // Don't select while editing
+    setSelectedCell(cell);
+  };
 
-    // Multi-select with shift
-    if (e.shiftKey) {
-      selectElement(elementName, true); // additive mode to toggle
-    } else {
-      // Single select (clear others)
-      clearSelection();
-      selectElement(elementName, false); // Replace selection
+  const handleEditStart = (cell: CellIdentifier) => {
+    if (!cell) return;
+
+    const element = elements[cell.rowIndex];
+    if (!element) return;
+
+    setValidationError(null);
+    setEditingCell(cell);
+    setSelectedCell(cell);
+
+    // Set edit value based on field
+    switch (cell.field) {
+      case 'name':
+        setEditValue(element.name);
+        break;
+      case 'nodeI':
+        setEditValue(element.nodeI);
+        break;
+      case 'nodeJ':
+        setEditValue(element.nodeJ);
+        break;
+      case 'E':
+        setEditValue(element.E.toString());
+        break;
+      case 'I':
+        setEditValue(element.I.toString());
+        break;
+      case 'A':
+        setEditValue(element.A.toString());
+        break;
     }
   };
 
-  const handleCellDoubleClick = (elementName: string, field: string, value: string) => {
-    setValidationError(null);
-    setEditingCell({ elementName, field });
+  const handleEditChange = (value: string) => {
     setEditValue(value);
   };
 
-  const handleCellChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setEditValue(e.target.value);
-  };
+  const handleEditSave = () => {
+    if (!editingCell) return;
 
-  const validateAndSave = (elementName: string, field: string) => {
-    const element = elements.find((e) => e.name === elementName);
+    const element = elements[editingCell.rowIndex];
     if (!element) return;
+
+    const elementName = element.name;
+    const field = editingCell.field;
 
     try {
       const updates: any = {};
@@ -74,8 +132,10 @@ export function ElementsTab() {
             return;
           }
           updates.name = newName;
+          // Special case: update using old name
           updateElement(elementName, updates);
           setEditingCell(null);
+          setValidationError(null);
           return;
         }
 
@@ -120,7 +180,7 @@ export function ElementsTab() {
         case 'E': {
           const E = parseFloat(editValue);
           if (isNaN(E) || E <= 0) {
-            setValidationError('E (Young\'s Modulus) must be a positive number');
+            setValidationError("E (Young's Modulus) must be a positive number");
             return;
           }
           updates.E = E;
@@ -151,51 +211,135 @@ export function ElementsTab() {
       updateElement(elementName, updates);
       setValidationError(null);
     } catch (error) {
-      setValidationError(
-        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+      setValidationError(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return;
     }
 
+    // Exit edit mode but keep cell selected
     setEditingCell(null);
+    setSelectedCell({ rowIndex: editingCell.rowIndex, field: editingCell.field });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+  const handleEditCancel = () => {
+    setEditingCell(null);
+    setValidationError(null);
+  };
+
+  const handleCopy = (value: number, type: 'value') => {
+    setClipboard({ value, type });
+  };
+
+  // ============================================================================
+  // Global Keyboard Handler (NEW)
+  // ============================================================================
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedCell || elements.length === 0) return;
+
+      const currentRowIndex = selectedCell.rowIndex;
+      const currentFieldIndex = fields.indexOf(selectedCell.field);
+
+      // Don't handle keys when editing (except Enter/Escape)
       if (editingCell) {
-        validateAndSave(editingCell.elementName, editingCell.field);
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleEditSave();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          handleEditCancel();
+        }
+        return;
       }
-    } else if (e.key === 'Escape') {
-      setEditingCell(null);
-      setValidationError(null);
-    }
-  };
 
-  const tableStyle = {
-    width: '100%',
-    borderCollapse: 'collapse' as const,
-    fontSize: '13px',
-  };
+      // F2 - Enter edit mode
+      if (e.key === 'F2') {
+        e.preventDefault();
+        handleEditStart(selectedCell);
+        return;
+      }
 
-  const headerStyle = {
-    backgroundColor: theme.colors.bgLight,
-    padding: '8px 12px',
-    textAlign: 'left' as const,
-    fontWeight: 'bold',
-    borderBottom: `2px solid ${theme.colors.border}`,
-    color: theme.colors.textPrimary,
-  };
+      // Arrow navigation
+      if (e.key === 'ArrowUp' && currentRowIndex > 0) {
+        e.preventDefault();
+        setSelectedCell({ rowIndex: currentRowIndex - 1, field: selectedCell.field });
+        return;
+      }
+      if (e.key === 'ArrowDown' && currentRowIndex < elements.length - 1) {
+        e.preventDefault();
+        setSelectedCell({ rowIndex: currentRowIndex + 1, field: selectedCell.field });
+        return;
+      }
+      if (e.key === 'ArrowLeft' && currentFieldIndex > 0) {
+        e.preventDefault();
+        setSelectedCell({ rowIndex: currentRowIndex, field: fields[currentFieldIndex - 1] });
+        return;
+      }
+      if (e.key === 'ArrowRight' && currentFieldIndex < fields.length - 1) {
+        e.preventDefault();
+        setSelectedCell({ rowIndex: currentRowIndex, field: fields[currentFieldIndex + 1] });
+        return;
+      }
 
-  const getCellStyle = (isSelected: boolean, isEditing: boolean) => ({
-    padding: '8px 12px',
-    borderBottom: `1px solid ${theme.colors.border}`,
-    backgroundColor: isEditing ? '#FFF9C4' : isSelected ? '#E3F2FD' : theme.colors.bgWhite,
-    cursor: isEditing ? 'text' : 'pointer',
-    color: theme.colors.textPrimary,
-  });
+      // Ctrl+C - Copy property value (E/I/A only)
+      if (e.ctrlKey && e.key === 'c') {
+        const field = selectedCell.field;
+        if (field === 'E' || field === 'I' || field === 'A') {
+          const element = elements[currentRowIndex];
+          if (element) {
+            const value = element[field];
+            handleCopy(value, 'value');
+            e.preventDefault();
+          }
+        }
+        return;
+      }
+
+      // Ctrl+V - Paste property value (E/I/A only)
+      if (e.ctrlKey && e.key === 'v' && clipboard) {
+        const field = selectedCell.field;
+        if (field === 'E' || field === 'I' || field === 'A') {
+          const element = elements[currentRowIndex];
+          if (element) {
+            updateElement(element.name, { [field]: clipboard.value });
+            e.preventDefault();
+          }
+        }
+        return;
+      }
+
+      // Escape - Clear clipboard
+      if (e.key === 'Escape' && clipboard) {
+        e.preventDefault();
+        setClipboard(null);
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedCell, editingCell, clipboard, elements, fields]);
+
+  // ============================================================================
+  // Render
+  // ============================================================================
+
+  // Only show elements tab in loads or structure tabs
+  if (activeTab !== 'loads' && activeTab !== 'structure') {
+    return null;
+  }
 
   return (
-    <div style={{ padding: '12px', overflow: 'auto', display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div
+      ref={containerRef}
+      style={{
+        padding: '12px',
+        overflow: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+      }}
+    >
       {/* Validation Error Alert */}
       {validationError && (
         <div
@@ -207,227 +351,27 @@ export function ElementsTab() {
             marginBottom: '12px',
             color: theme.colors.error || '#C62828',
             fontSize: '12px',
+            whiteSpace: 'pre-wrap',
           }}
         >
           ⚠️ {validationError}
         </div>
       )}
 
-      {elements.length === 0 ? (
-        <p style={{ color: theme.colors.textSecondary, textAlign: 'center', padding: '20px' }}>
-          No elements yet. Create elements in the Structure tab.
-        </p>
-      ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={headerStyle}>Name</th>
-              <th style={headerStyle}>Start Node</th>
-              <th style={headerStyle}>End Node</th>
-              <th style={headerStyle}>E (GPa)</th>
-              <th style={headerStyle}>I (m⁴)</th>
-              <th style={headerStyle}>A (m²)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {elements.map((element) => {
-              const isSelected = selectedElements.includes(element.name);
-              return (
-                <tr
-                  key={element.name}
-                  onClick={(e) => handleElementClick(element.name, e)}
-                  style={{
-                    backgroundColor: isSelected ? '#E3F2FD' : theme.colors.bgWhite,
-                    cursor: 'pointer',
-                    transition: 'background-color 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!editingCell) {
-                      (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isSelected
-                        ? '#BBDEFB'
-                        : '#F5F5F5';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isSelected
-                      ? '#E3F2FD'
-                      : theme.colors.bgWhite;
-                  }}
-                >
-                  {/* Name */}
-                  <td
-                    style={getCellStyle(isSelected, editingCell?.elementName === element.name && editingCell.field === 'name')}
-                    onDoubleClick={() => handleCellDoubleClick(element.name, 'name', element.name)}
-                  >
-                    {editingCell?.elementName === element.name && editingCell.field === 'name' ? (
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(element.name, 'name')}
-                        onKeyDown={handleKeyDown}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ) : (
-                      element.name
-                    )}
-                  </td>
-
-                  {/* Start Node - Editable Dropdown */}
-                  <td
-                    style={getCellStyle(isSelected, editingCell?.elementName === element.name && editingCell.field === 'nodeI')}
-                    onDoubleClick={() => handleCellDoubleClick(element.name, 'nodeI', element.nodeI)}
-                  >
-                    {editingCell?.elementName === element.name && editingCell.field === 'nodeI' ? (
-                      <select
-                        autoFocus
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(element.name, 'nodeI')}
-                        onKeyDown={handleKeyDown}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                        }}
-                      >
-                        <option value="">Select start node</option>
-                        {nodes.map((node) => (
-                          <option key={node.name} value={node.name}>
-                            {node.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      element.nodeI
-                    )}
-                  </td>
-
-                  {/* End Node - Editable Dropdown */}
-                  <td
-                    style={getCellStyle(isSelected, editingCell?.elementName === element.name && editingCell.field === 'nodeJ')}
-                    onDoubleClick={() => handleCellDoubleClick(element.name, 'nodeJ', element.nodeJ)}
-                  >
-                    {editingCell?.elementName === element.name && editingCell.field === 'nodeJ' ? (
-                      <select
-                        autoFocus
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(element.name, 'nodeJ')}
-                        onKeyDown={handleKeyDown}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                        }}
-                      >
-                        <option value="">Select end node</option>
-                        {nodes.map((node) => (
-                          <option key={node.name} value={node.name}>
-                            {node.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      element.nodeJ
-                    )}
-                  </td>
-
-                  {/* E - Editable Number */}
-                  <td
-                    style={getCellStyle(isSelected, editingCell?.elementName === element.name && editingCell.field === 'E')}
-                    onDoubleClick={() => handleCellDoubleClick(element.name, 'E', element.E.toString())}
-                  >
-                    {editingCell?.elementName === element.name && editingCell.field === 'E' ? (
-                      <input
-                        autoFocus
-                        type="number"
-                        step="0.1"
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(element.name, 'E')}
-                        onKeyDown={handleKeyDown}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ) : (
-                      element.E.toFixed(1)
-                    )}
-                  </td>
-
-                  {/* I - Editable Number */}
-                  <td
-                    style={getCellStyle(isSelected, editingCell?.elementName === element.name && editingCell.field === 'I')}
-                    onDoubleClick={() => handleCellDoubleClick(element.name, 'I', element.I.toString())}
-                  >
-                    {editingCell?.elementName === element.name && editingCell.field === 'I' ? (
-                      <input
-                        autoFocus
-                        type="number"
-                        step="1e-4"
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(element.name, 'I')}
-                        onKeyDown={handleKeyDown}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ) : (
-                      element.I.toExponential(2)
-                    )}
-                  </td>
-
-                  {/* A - Editable Number */}
-                  <td
-                    style={getCellStyle(isSelected, editingCell?.elementName === element.name && editingCell.field === 'A')}
-                    onDoubleClick={() => handleCellDoubleClick(element.name, 'A', element.A.toString())}
-                  >
-                    {editingCell?.elementName === element.name && editingCell.field === 'A' ? (
-                      <input
-                        autoFocus
-                        type="number"
-                        step="1e-4"
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(element.name, 'A')}
-                        onKeyDown={handleKeyDown}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ) : (
-                      element.A.toExponential(2)
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+      <ElementTable
+        selectedCell={selectedCell}
+        editingCell={editingCell}
+        editValue={editValue}
+        onSelectCell={handleSelectCell}
+        onEditStart={handleEditStart}
+        onEditChange={handleEditChange}
+        onEditSave={handleEditSave}
+        onEditCancel={handleEditCancel}
+        inputRef={inputRef}
+        dropdownRef={dropdownRef}
+        clipboard={clipboard}
+        onCopy={handleCopy}
+      />
     </div>
   );
 }

@@ -13,6 +13,7 @@
 import { RefObject } from 'react';
 import { useModelStore } from '../../store';
 import { theme } from '../../styles/theme';
+import { EditableCell } from '../shared/EditableCell';
 
 type LoadType = 'nodal' | 'distributed' | 'point';
 type CellIdentifier = { loadType: LoadType; rowIndex: number; field: string } | null;
@@ -31,7 +32,6 @@ interface DistributedLoadTableProps {
   onEditStart: (cell: CellIdentifier) => void;
   onEditChange: (value: string) => void;
   onEditSave: () => void;
-  onEditCancel: () => void;
   inputRef: RefObject<HTMLInputElement>;
   clipboard: ClipboardData | null;
   onCopy: (value: number, type: 'value' | 'position') => void;
@@ -45,7 +45,6 @@ export function DistributedLoadTable({
   onEditStart,
   onEditChange,
   onEditSave,
-  onEditCancel,
   inputRef,
   clipboard,
 }: DistributedLoadTableProps) {
@@ -116,56 +115,64 @@ export function DistributedLoadTable({
               <EditableCell
                 isSelected={isRowSelected && selectedCell?.field === 'w1'}
                 isEditing={isRowEditing && editingCell?.field === 'w1'}
-                value={isRowEditing && editingCell?.field === 'w1' ? editValue : w1Val.toFixed(2)}
+                value={isRowEditing && editingCell?.field === 'w1' ? editValue : w1Val}
                 onSelect={() => onSelectCell({ loadType: 'distributed', rowIndex, field: 'w1' })}
                 onEditStart={() => onEditStart({ loadType: 'distributed', rowIndex, field: 'w1' })}
                 onChange={onEditChange}
                 onSave={onEditSave}
-                onCancel={onEditCancel}
                 inputRef={inputRef}
                 canPaste={!!clipboard}
+                inputType="number"
+                inputStep="0.01"
+                format={(val) => Number(val).toFixed(2)}
               />
 
               {/* w2 Cell */}
               <EditableCell
                 isSelected={isRowSelected && selectedCell?.field === 'w2'}
                 isEditing={isRowEditing && editingCell?.field === 'w2'}
-                value={isRowEditing && editingCell?.field === 'w2' ? editValue : w2Val.toFixed(2)}
+                value={isRowEditing && editingCell?.field === 'w2' ? editValue : w2Val}
                 onSelect={() => onSelectCell({ loadType: 'distributed', rowIndex, field: 'w2' })}
                 onEditStart={() => onEditStart({ loadType: 'distributed', rowIndex, field: 'w2' })}
                 onChange={onEditChange}
                 onSave={onEditSave}
-                onCancel={onEditCancel}
                 inputRef={inputRef}
                 canPaste={!!clipboard}
+                inputType="number"
+                inputStep="0.01"
+                format={(val) => Number(val).toFixed(2)}
               />
 
               {/* x1 Cell */}
               <EditableCell
                 isSelected={isRowSelected && selectedCell?.field === 'x1'}
                 isEditing={isRowEditing && editingCell?.field === 'x1'}
-                value={isRowEditing && editingCell?.field === 'x1' ? editValue : x1Val.toFixed(2)}
+                value={isRowEditing && editingCell?.field === 'x1' ? editValue : x1Val}
                 onSelect={() => onSelectCell({ loadType: 'distributed', rowIndex, field: 'x1' })}
                 onEditStart={() => onEditStart({ loadType: 'distributed', rowIndex, field: 'x1' })}
                 onChange={onEditChange}
                 onSave={onEditSave}
-                onCancel={onEditCancel}
                 inputRef={inputRef}
                 canPaste={!!clipboard}
+                inputType="number"
+                inputStep="0.01"
+                format={(val) => Number(val).toFixed(2)}
               />
 
               {/* x2 Cell */}
               <EditableCell
                 isSelected={isRowSelected && selectedCell?.field === 'x2'}
                 isEditing={isRowEditing && editingCell?.field === 'x2'}
-                value={isRowEditing && editingCell?.field === 'x2' ? editValue : x2Val.toFixed(2)}
+                value={isRowEditing && editingCell?.field === 'x2' ? editValue : x2Val}
                 onSelect={() => onSelectCell({ loadType: 'distributed', rowIndex, field: 'x2' })}
                 onEditStart={() => onEditStart({ loadType: 'distributed', rowIndex, field: 'x2' })}
                 onChange={onEditChange}
                 onSave={onEditSave}
-                onCancel={onEditCancel}
                 inputRef={inputRef}
                 canPaste={!!clipboard}
+                inputType="number"
+                inputStep="0.01"
+                format={(val) => Number(val).toFixed(2)}
               />
 
               {/* Direction Cell (read-only for now) */}
@@ -183,62 +190,6 @@ export function DistributedLoadTable({
           );
         })}
       </div>
-    </div>
-  );
-}
-
-interface EditableCellProps {
-  isSelected: boolean;
-  isEditing: boolean;
-  value: string | number;
-  onSelect: () => void;
-  onEditStart: () => void;
-  onChange: (value: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
-  inputRef: RefObject<HTMLInputElement>;
-  canPaste: boolean;
-}
-
-function EditableCell({
-  isSelected,
-  isEditing,
-  value,
-  onSelect,
-  onEditStart,
-  onChange,
-  onSave,
-  inputRef,
-  canPaste,
-}: EditableCellProps) {
-  return (
-    <div
-      style={{
-        ...cellStyle,
-        ...(isSelected ? selectedCellStyle : {}),
-        ...(isEditing ? editingCellStyle : {}),
-        ...(canPaste && isSelected ? pasteCellStyle : {}),
-      }}
-      onClick={onSelect}
-      onDoubleClick={onEditStart}
-      tabIndex={0}
-    >
-      {isEditing ? (
-        <input
-          ref={inputRef}
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onSave}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-          }}
-          style={inputStyle}
-          autoFocus
-        />
-      ) : (
-        String(value)
-      )}
     </div>
   );
 }
@@ -311,24 +262,6 @@ const selectedCellStyle: React.CSSProperties = {
   backgroundColor: '#e3f2fd',
   outline: `2px solid ${theme.colors.primary}`,
   outlineOffset: '-1px',
-};
-
-const editingCellStyle: React.CSSProperties = {
-  backgroundColor: '#fff9c4',
-  padding: 0,
-};
-
-const pasteCellStyle: React.CSSProperties = {
-  backgroundColor: '#c8e6c9',
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  height: '100%',
-  padding: '6px 8px',
-  border: `1px solid ${theme.colors.primary}`,
-  fontSize: '12px',
-  boxSizing: 'border-box',
 };
 
 const emptyMessageStyle: React.CSSProperties = {

@@ -13,6 +13,7 @@
 import { RefObject } from 'react';
 import { useModelStore } from '../../store';
 import { theme } from '../../styles/theme';
+import { EditableCell } from '../shared/EditableCell';
 
 type LoadType = 'nodal' | 'distributed' | 'point';
 type CellIdentifier = { loadType: LoadType; rowIndex: number; field: string } | null;
@@ -31,7 +32,6 @@ interface NodalLoadTableProps {
   onEditStart: (cell: CellIdentifier) => void;
   onEditChange: (value: string) => void;
   onEditSave: () => void;
-  onEditCancel: () => void;
   inputRef: RefObject<HTMLInputElement>;
   clipboard: ClipboardData | null;
   onCopy: (value: number, type: 'value' | 'position') => void;
@@ -45,7 +45,6 @@ export function NodalLoadTable({
   onEditStart,
   onEditChange,
   onEditSave,
-  onEditCancel,
   inputRef,
   clipboard,
 }: NodalLoadTableProps) {
@@ -113,103 +112,53 @@ export function NodalLoadTable({
               <EditableCell
                 isSelected={isRowSelected && selectedCell?.field === 'fx'}
                 isEditing={isRowEditing && editingCell?.field === 'fx'}
-                value={isRowEditing && editingCell?.field === 'fx' ? editValue : fxVal.toFixed(2)}
+                value={isRowEditing && editingCell?.field === 'fx' ? editValue : fxVal}
                 onSelect={() => onSelectCell({ loadType: 'nodal', rowIndex, field: 'fx' })}
                 onEditStart={() => onEditStart({ loadType: 'nodal', rowIndex, field: 'fx' })}
                 onChange={onEditChange}
                 onSave={onEditSave}
-                onCancel={onEditCancel}
                 inputRef={inputRef}
                 canPaste={!!clipboard}
+                inputType="number"
+                inputStep="0.01"
+                format={(val) => Number(val).toFixed(2)}
               />
 
               {/* Fy Cell */}
               <EditableCell
                 isSelected={isRowSelected && selectedCell?.field === 'fy'}
                 isEditing={isRowEditing && editingCell?.field === 'fy'}
-                value={isRowEditing && editingCell?.field === 'fy' ? editValue : fyVal.toFixed(2)}
+                value={isRowEditing && editingCell?.field === 'fy' ? editValue : fyVal}
                 onSelect={() => onSelectCell({ loadType: 'nodal', rowIndex, field: 'fy' })}
                 onEditStart={() => onEditStart({ loadType: 'nodal', rowIndex, field: 'fy' })}
                 onChange={onEditChange}
                 onSave={onEditSave}
-                onCancel={onEditCancel}
                 inputRef={inputRef}
                 canPaste={!!clipboard}
+                inputType="number"
+                inputStep="0.01"
+                format={(val) => Number(val).toFixed(2)}
               />
 
               {/* Mz Cell */}
               <EditableCell
                 isSelected={isRowSelected && selectedCell?.field === 'mz'}
                 isEditing={isRowEditing && editingCell?.field === 'mz'}
-                value={isRowEditing && editingCell?.field === 'mz' ? editValue : mzVal.toFixed(2)}
+                value={isRowEditing && editingCell?.field === 'mz' ? editValue : mzVal}
                 onSelect={() => onSelectCell({ loadType: 'nodal', rowIndex, field: 'mz' })}
                 onEditStart={() => onEditStart({ loadType: 'nodal', rowIndex, field: 'mz' })}
                 onChange={onEditChange}
                 onSave={onEditSave}
-                onCancel={onEditCancel}
                 inputRef={inputRef}
                 canPaste={!!clipboard}
+                inputType="number"
+                inputStep="0.01"
+                format={(val) => Number(val).toFixed(2)}
               />
             </div>
           );
         })}
       </div>
-    </div>
-  );
-}
-
-interface EditableCellProps {
-  isSelected: boolean;
-  isEditing: boolean;
-  value: string | number;
-  onSelect: () => void;
-  onEditStart: () => void;
-  onChange: (value: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
-  inputRef: RefObject<HTMLInputElement>;
-  canPaste: boolean;
-}
-
-function EditableCell({
-  isSelected,
-  isEditing,
-  value,
-  onSelect,
-  onEditStart,
-  onChange,
-  onSave,
-  inputRef,
-  canPaste,
-}: EditableCellProps) {
-  return (
-    <div
-      style={{
-        ...cellStyle,
-        ...(isSelected ? selectedCellStyle : {}),
-        ...(isEditing ? editingCellStyle : {}),
-        ...(canPaste && isSelected ? pasteCellStyle : {}),
-      }}
-      onClick={onSelect}
-      onDoubleClick={onEditStart}
-      tabIndex={0}
-    >
-      {isEditing ? (
-        <input
-          ref={inputRef}
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onSave}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-          }}
-          style={inputStyle}
-          autoFocus
-        />
-      ) : (
-        String(value)
-      )}
     </div>
   );
 }
@@ -282,24 +231,6 @@ const selectedCellStyle: React.CSSProperties = {
   backgroundColor: '#e3f2fd',
   outline: `2px solid ${theme.colors.primary}`,
   outlineOffset: '-1px',
-};
-
-const editingCellStyle: React.CSSProperties = {
-  backgroundColor: '#fff9c4',
-  padding: 0,
-};
-
-const pasteCellStyle: React.CSSProperties = {
-  backgroundColor: '#c8e6c9',
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  height: '100%',
-  padding: '6px 8px',
-  border: `1px solid ${theme.colors.primary}`,
-  fontSize: '12px',
-  boxSizing: 'border-box',
 };
 
 const emptyMessageStyle: React.CSSProperties = {

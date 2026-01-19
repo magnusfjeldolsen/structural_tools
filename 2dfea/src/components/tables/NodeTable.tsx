@@ -59,11 +59,9 @@ export function NodeTable({
   onEditStart,
   onEditChange,
   onEditSave,
-  onEditCancel,
   inputRef,
   dropdownRef,
   clipboard,
-  onCopy,
 }: NodeTableProps) {
   const nodes = useModelStore((state) => state.nodes);
 
@@ -108,9 +106,6 @@ export function NodeTable({
       {/* Rows */}
       <div style={rowsContainerStyle}>
         {nodes.map((node, rowIndex) => {
-          const isRowSelected = selectedCell?.rowIndex === rowIndex;
-          const isRowEditing = editingCell?.rowIndex === rowIndex;
-
           return (
             <div key={node.name} style={rowStyle}>
               {/* Name */}

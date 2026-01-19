@@ -13,6 +13,7 @@
 import { RefObject } from 'react';
 import { useModelStore } from '../../store';
 import { theme } from '../../styles/theme';
+import { EditableCell } from '../shared/EditableCell';
 
 type LoadType = 'nodal' | 'distributed' | 'point';
 type CellIdentifier = { loadType: LoadType; rowIndex: number; field: string } | null;
@@ -31,7 +32,6 @@ interface PointLoadTableProps {
   onEditStart: (cell: CellIdentifier) => void;
   onEditChange: (value: string) => void;
   onEditSave: () => void;
-  onEditCancel: () => void;
   inputRef: RefObject<HTMLInputElement>;
   clipboard: ClipboardData | null;
   onCopy: (value: number, type: 'value' | 'position') => void;
@@ -45,7 +45,6 @@ export function PointLoadTable({
   onEditStart,
   onEditChange,
   onEditSave,
-  onEditCancel,
   inputRef,
   clipboard,
 }: PointLoadTableProps) {
@@ -112,28 +111,32 @@ export function PointLoadTable({
               <EditableCell
                 isSelected={isRowSelected && selectedCell?.field === 'distance'}
                 isEditing={isRowEditing && editingCell?.field === 'distance'}
-                value={isRowEditing && editingCell?.field === 'distance' ? editValue : distanceVal.toFixed(2)}
+                value={isRowEditing && editingCell?.field === 'distance' ? editValue : distanceVal}
                 onSelect={() => onSelectCell({ loadType: 'point', rowIndex, field: 'distance' })}
                 onEditStart={() => onEditStart({ loadType: 'point', rowIndex, field: 'distance' })}
                 onChange={onEditChange}
                 onSave={onEditSave}
-                onCancel={onEditCancel}
                 inputRef={inputRef}
                 canPaste={!!clipboard}
+                inputType="number"
+                inputStep="0.01"
+                format={(val) => Number(val).toFixed(2)}
               />
 
               {/* Magnitude Cell */}
               <EditableCell
                 isSelected={isRowSelected && selectedCell?.field === 'magnitude'}
                 isEditing={isRowEditing && editingCell?.field === 'magnitude'}
-                value={isRowEditing && editingCell?.field === 'magnitude' ? editValue : magnitudeVal.toFixed(2)}
+                value={isRowEditing && editingCell?.field === 'magnitude' ? editValue : magnitudeVal}
                 onSelect={() => onSelectCell({ loadType: 'point', rowIndex, field: 'magnitude' })}
                 onEditStart={() => onEditStart({ loadType: 'point', rowIndex, field: 'magnitude' })}
                 onChange={onEditChange}
                 onSave={onEditSave}
-                onCancel={onEditCancel}
                 inputRef={inputRef}
                 canPaste={!!clipboard}
+                inputType="number"
+                inputStep="0.01"
+                format={(val) => Number(val).toFixed(2)}
               />
 
               {/* Direction Cell (read-only for now) */}
@@ -151,62 +154,6 @@ export function PointLoadTable({
           );
         })}
       </div>
-    </div>
-  );
-}
-
-interface EditableCellProps {
-  isSelected: boolean;
-  isEditing: boolean;
-  value: string | number;
-  onSelect: () => void;
-  onEditStart: () => void;
-  onChange: (value: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
-  inputRef: RefObject<HTMLInputElement>;
-  canPaste: boolean;
-}
-
-function EditableCell({
-  isSelected,
-  isEditing,
-  value,
-  onSelect,
-  onEditStart,
-  onChange,
-  onSave,
-  inputRef,
-  canPaste,
-}: EditableCellProps) {
-  return (
-    <div
-      style={{
-        ...cellStyle,
-        ...(isSelected ? selectedCellStyle : {}),
-        ...(isEditing ? editingCellStyle : {}),
-        ...(canPaste && isSelected ? pasteCellStyle : {}),
-      }}
-      onClick={onSelect}
-      onDoubleClick={onEditStart}
-      tabIndex={0}
-    >
-      {isEditing ? (
-        <input
-          ref={inputRef}
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onSave}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-          }}
-          style={inputStyle}
-          autoFocus
-        />
-      ) : (
-        String(value)
-      )}
     </div>
   );
 }
@@ -279,24 +226,6 @@ const selectedCellStyle: React.CSSProperties = {
   backgroundColor: '#e3f2fd',
   outline: `2px solid ${theme.colors.primary}`,
   outlineOffset: '-1px',
-};
-
-const editingCellStyle: React.CSSProperties = {
-  backgroundColor: '#fff9c4',
-  padding: 0,
-};
-
-const pasteCellStyle: React.CSSProperties = {
-  backgroundColor: '#c8e6c9',
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  height: '100%',
-  padding: '6px 8px',
-  border: `1px solid ${theme.colors.primary}`,
-  fontSize: '12px',
-  boxSizing: 'border-box',
 };
 
 const emptyMessageStyle: React.CSSProperties = {

@@ -929,7 +929,6 @@ export const useModelStore = create<ModelState>()(
         getResultsForCase: (caseName: string) => {
           const caseResults = get().resultsCache.caseResults[caseName];
           if (!caseResults) {
-            console.warn(`[Results Query] No results found for load case: "${caseName}"`);
             return null;
           }
           return caseResults;
@@ -938,7 +937,6 @@ export const useModelStore = create<ModelState>()(
         getResultsForCombination: (comboName: string) => {
           const comboResults = get().resultsCache.combinationResults[comboName];
           if (!comboResults) {
-            console.warn(`[Results Query] No results found for combination: "${comboName}"`);
             return null;
           }
           return comboResults;

@@ -1,16 +1,18 @@
 /**
- * NodesTab Component
+ * NodesTab - Orchestration container for node data editing
  *
- * Editable table view of all nodes in the model
- * Displays: Name, X (m), Y (m), Support Type
- * All fields are editable with validation
+ * Follows LoadsTab pattern:
+ * - Manages selection state, edit state, clipboard
+ * - Global keyboard handler (F2, arrows, Enter, Escape, Ctrl+C/V)
+ * - Validation logic
+ * - Passes all state to NodeTable as props
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { useModelStore } from '../store/useModelStore';
 import { useUIStore } from '../store/useUIStore';
 import { theme } from '../styles/theme';
-import { SupportTypeLabels } from '../analysis/dataTranslator';
+import { NodeTable, CellIdentifier, ClipboardData } from './tables/NodeTable';
 import type { SupportType } from '../analysis/types';
 
 export function NodesTab() {
@@ -18,96 +20,94 @@ export function NodesTab() {
   const updateNode = useModelStore((state) => state.updateNode);
   const activeTab = useUIStore((state) => state.activeTab);
 
-  const [selectedCell, setSelectedCell] = useState<{ nodeName: string; field: string } | null>(null);
-  const [editingCell, setEditingCell] = useState<{ nodeName: string; field: string } | null>(null);
+  // Selection & Edit state
+  const [selectedCell, setSelectedCell] = useState<CellIdentifier>(null);
+  const [editingCell, setEditingCell] = useState<CellIdentifier>(null);
   const [editValue, setEditValue] = useState('');
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const [clipboard, setClipboard] = useState<{ value: number; fieldType: 'x' | 'y' } | null>(null);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-  const tableRef = useRef<HTMLTableElement>(null);
-  const dropdownRef = useRef<HTMLSelectElement>(null);
 
-  // Reset cell state when activeTab changes
+  // Clipboard state
+  const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
+
+  // Validation state
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Refs for focus management
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLSelectElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Field configuration
+  const fields = ['name', 'x', 'y', 'support'];
+
+  // Reset state when tab changes
   useEffect(() => {
     if (activeTab !== 'loads' && activeTab !== 'structure') {
       setSelectedCell(null);
       setEditingCell(null);
       setValidationError(null);
+      setClipboard(null);
     }
   }, [activeTab]);
 
-  // Focus and open dropdown when support cell enters edit mode
+  // Focus input when entering edit mode
   useEffect(() => {
-    if (editingCell?.field === 'support' && dropdownRef.current) {
-      // Use a small timeout to ensure the select is fully rendered before focusing
-      setTimeout(() => {
-        if (dropdownRef.current) {
-          dropdownRef.current.focus();
-          // Try to open dropdown using showPicker() API (modern browsers)
-          if (typeof dropdownRef.current.showPicker === 'function') {
-            dropdownRef.current.showPicker();
-          } else {
-            // Fallback: click to try to open dropdown
-            dropdownRef.current.click();
-          }
-        }
-      }, 50);
+    if (editingCell) {
+      if (editingCell.field === 'support') {
+        dropdownRef.current?.focus();
+      } else {
+        inputRef.current?.focus();
+      }
     }
   }, [editingCell]);
 
-  // Focus the selected cell after saving to enable arrow key navigation
-  useEffect(() => {
-    if (!editingCell && selectedCell && tableRef.current) {
-      // Use setTimeout to ensure DOM has updated before focusing
-      setTimeout(() => {
-        if (tableRef.current) {
-          // Find and focus the cell that has tabIndex={0} (the selected cell)
-          const rows = tableRef.current.querySelectorAll('tbody tr');
-          for (const row of rows) {
-            const cells = row.querySelectorAll('td');
-            for (let i = 0; i < cells.length; i++) {
-              const cell = cells[i];
-              // Focus the cell that is marked as selected (tabIndex={0})
-              if (cell.tabIndex === 0) {
-                (cell as HTMLTableCellElement).focus();
-                return;
-              }
-            }
-          }
-        }
-      }, 0);
-    }
-  }, [editingCell, selectedCell]);
+  // ============================================================================
+  // Handlers
+  // ============================================================================
 
-  // Only show nodes tab in loads or structure tabs
-  if (activeTab !== 'loads' && activeTab !== 'structure') {
-    return null;
-  }
-
-  const supportTypes = Object.keys(SupportTypeLabels) as SupportType[];
-
-  const handleCellClick = (nodeName: string, field: string, e: React.MouseEvent) => {
-    e.preventDefault();
+  const handleSelectCell = (cell: CellIdentifier) => {
     if (editingCell) return; // Don't select while editing
-    setSelectedCell({ nodeName, field });
-    // Focus the clicked cell element to enable keyboard events
-    (e.currentTarget as HTMLTableCellElement).focus();
+    setSelectedCell(cell);
   };
 
-  const handleCellDoubleClick = (nodeName: string, field: string, value: string) => {
+  const handleEditStart = (cell: CellIdentifier) => {
+    if (!cell) return;
+
+    const node = nodes[cell.rowIndex];
+    if (!node) return;
+
     setValidationError(null);
-    setSelectedCell({ nodeName, field });
-    setEditingCell({ nodeName, field });
+    setEditingCell(cell);
+    setSelectedCell(cell);
+
+    // Set edit value based on field
+    switch (cell.field) {
+      case 'name':
+        setEditValue(node.name);
+        break;
+      case 'x':
+        setEditValue(node.x.toString());
+        break;
+      case 'y':
+        setEditValue(node.y.toString());
+        break;
+      case 'support':
+        setEditValue(node.support);
+        break;
+    }
+  };
+
+  const handleEditChange = (value: string) => {
     setEditValue(value);
   };
 
-  const handleCellChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setEditValue(e.target.value);
-  };
+  const handleEditSave = () => {
+    if (!editingCell) return;
 
-  const validateAndSave = (nodeName: string, field: string) => {
-    const node = nodes.find((n) => n.name === nodeName);
+    const node = nodes[editingCell.rowIndex];
     if (!node) return;
+
+    const nodeName = node.name;
+    const field = editingCell.field;
 
     try {
       const updates: any = {};
@@ -119,7 +119,7 @@ export function NodesTab() {
             setValidationError('Node name cannot be empty');
             return;
           }
-          // Check for duplicate names (allow intermediate temporary names)
+          // Check for duplicate names (allow temporary names)
           const isDuplicate = nodes.some(
             (n) => n.name !== nodeName && n.name === newName && !newName.endsWith('_temp')
           );
@@ -133,9 +133,10 @@ export function NodesTab() {
             return;
           }
           updates.name = newName;
-          // Note: This is a special case - we need to update using the old name
+          // Special case: update using old name
           updateNode(nodeName, updates);
           setEditingCell(null);
+          setValidationError(null);
           return;
         }
 
@@ -147,15 +148,10 @@ export function NodesTab() {
           }
           // Check for duplicate coordinates
           const isDuplicate = nodes.some(
-            (n) =>
-              n.name !== nodeName &&
-              n.x === x &&
-              n.y === node.y
+            (n) => n.name !== nodeName && n.x === x && n.y === node.y
           );
           if (isDuplicate) {
-            setValidationError(
-              `Node coordinates (${x}, ${node.y}) already exist at another node`
-            );
+            setValidationError(`Node coordinates (${x}, ${node.y}) already exist at another node`);
             return;
           }
           updates.x = x;
@@ -170,15 +166,10 @@ export function NodesTab() {
           }
           // Check for duplicate coordinates
           const isDuplicate = nodes.some(
-            (n) =>
-              n.name !== nodeName &&
-              n.x === node.x &&
-              n.y === y
+            (n) => n.name !== nodeName && n.x === node.x && n.y === y
           );
           if (isDuplicate) {
-            setValidationError(
-              `Node coordinates (${node.x}, ${y}) already exist at another node`
-            );
+            setValidationError(`Node coordinates (${node.x}, ${y}) already exist at another node`);
             return;
           }
           updates.y = y;
@@ -187,10 +178,6 @@ export function NodesTab() {
 
         case 'support': {
           const supportType = editValue as SupportType;
-          if (!supportTypes.includes(supportType)) {
-            setValidationError('Invalid support type');
-            return;
-          }
           updates.support = supportType;
           break;
         }
@@ -199,173 +186,134 @@ export function NodesTab() {
       updateNode(nodeName, updates);
       setValidationError(null);
     } catch (error) {
-      setValidationError(
-        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+      setValidationError(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return;
     }
 
-    // Exit edit mode but keep the cell selected so user can navigate with arrow keys
+    // Exit edit mode but keep cell selected
     setEditingCell(null);
-    setSelectedCell({ nodeName, field });
+    setSelectedCell({ rowIndex: editingCell.rowIndex, field: editingCell.field });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+  const handleEditCancel = () => {
+    setEditingCell(null);
+    setValidationError(null);
+  };
+
+  const handleCopy = (value: number, type: 'position') => {
+    setClipboard({ value, type });
+  };
+
+  // ============================================================================
+  // Global Keyboard Handler
+  // ============================================================================
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedCell || nodes.length === 0) return;
+
+      const currentRowIndex = selectedCell.rowIndex;
+      const currentFieldIndex = fields.indexOf(selectedCell.field);
+
+      // Don't handle keys when editing (except Enter/Escape)
       if (editingCell) {
-        validateAndSave(editingCell.nodeName, editingCell.field);
-      }
-    } else if (e.key === 'Escape') {
-      setEditingCell(null);
-      setValidationError(null);
-      setClipboard(null);
-    }
-  };
-
-  const handleTableKeyDown = (e: React.KeyboardEvent, nodeName: string, field: string) => {
-    const fields = ['name', 'x', 'y', 'support'];
-    const nodeIndex = nodes.findIndex((n) => n.name === nodeName);
-    const fieldIndex = fields.indexOf(field);
-
-    // Escape key - clear clipboard and deselect when not editing
-    if (e.key === 'Escape' && !editingCell && clipboard) {
-      setClipboard(null);
-      e.preventDefault();
-      return;
-    }
-
-    // F2 to activate edit mode - only allow if this cell is currently selected
-    if (e.key === 'F2' && !editingCell && selectedCell?.nodeName === nodeName && selectedCell?.field === field) {
-      e.preventDefault();
-      setValidationError(null);
-      setEditingCell({ nodeName, field });
-      const node = nodes.find((n) => n.name === nodeName);
-      if (!node) return;
-
-      // Set edit value based on field
-      switch (field) {
-        case 'name':
-          setEditValue(node.name);
-          break;
-        case 'x':
-          setEditValue(node.x.toString());
-          break;
-        case 'y':
-          setEditValue(node.y.toString());
-          break;
-        case 'support':
-          setEditValue(node.support);
-          break;
-      }
-      return;
-    }
-
-    // Arrow key navigation (only when not editing)
-    if (!editingCell) {
-      // Up/Down arrows navigate between rows (nodes)
-      if (e.key === 'ArrowUp' && nodeIndex > 0) {
-        e.preventDefault();
-        const prevNode = nodes[nodeIndex - 1];
-        setSelectedCell({ nodeName: prevNode.name, field });
-        return;
-      }
-      if (e.key === 'ArrowDown' && nodeIndex < nodes.length - 1) {
-        e.preventDefault();
-        const nextNode = nodes[nodeIndex + 1];
-        setSelectedCell({ nodeName: nextNode.name, field });
-        return;
-      }
-      // Left/Right arrows navigate between fields (columns)
-      if (e.key === 'ArrowLeft' && fieldIndex > 0) {
-        e.preventDefault();
-        const prevField = fields[fieldIndex - 1];
-        setSelectedCell({ nodeName, field: prevField });
-        return;
-      }
-      if (e.key === 'ArrowRight' && fieldIndex < fields.length - 1) {
-        e.preventDefault();
-        const nextField = fields[fieldIndex + 1];
-        setSelectedCell({ nodeName, field: nextField });
-        return;
-      }
-    }
-
-    // Copy coordinate value to clipboard (Ctrl+C)
-    if (e.ctrlKey && e.key === 'c' && !editingCell) {
-      if (field === 'x' || field === 'y') {
-        const node = nodes.find((n) => n.name === nodeName);
-        if (node) {
-          const value = field === 'x' ? node.x : node.y;
-          setClipboard({ value, fieldType: field });
+        if (e.key === 'Enter') {
           e.preventDefault();
-        }
-      }
-      return;
-    }
-
-    // Paste coordinate value from clipboard (Ctrl+V)
-    if (e.ctrlKey && e.key === 'v' && !editingCell && clipboard) {
-      // Allow paste to any coordinate column (x or y), regardless of source field type
-      if (field === 'x' || field === 'y') {
-        const node = nodes.find((n) => n.name === nodeName);
-        if (node) {
-          updateNode(nodeName, { [field]: clipboard.value });
+          handleEditSave();
+        } else if (e.key === 'Escape') {
           e.preventDefault();
+          handleEditCancel();
         }
+        return;
       }
-      // Silent fail for Name, Support columns
-      return;
-    }
-  };
 
-  const tableStyle = {
-    width: '100%',
-    borderCollapse: 'collapse' as const,
-    fontSize: '13px',
-  };
+      // F2 - Enter edit mode
+      if (e.key === 'F2') {
+        e.preventDefault();
+        handleEditStart(selectedCell);
+        return;
+      }
 
-  const headerStyle = {
-    backgroundColor: theme.colors.bgLight,
-    padding: '8px 12px',
-    textAlign: 'left' as const,
-    fontWeight: 'bold',
-    borderBottom: `2px solid ${theme.colors.border}`,
-    color: theme.colors.textPrimary,
-  };
+      // Arrow navigation
+      if (e.key === 'ArrowUp' && currentRowIndex > 0) {
+        e.preventDefault();
+        setSelectedCell({ rowIndex: currentRowIndex - 1, field: selectedCell.field });
+        return;
+      }
+      if (e.key === 'ArrowDown' && currentRowIndex < nodes.length - 1) {
+        e.preventDefault();
+        setSelectedCell({ rowIndex: currentRowIndex + 1, field: selectedCell.field });
+        return;
+      }
+      if (e.key === 'ArrowLeft' && currentFieldIndex > 0) {
+        e.preventDefault();
+        setSelectedCell({ rowIndex: currentRowIndex, field: fields[currentFieldIndex - 1] });
+        return;
+      }
+      if (e.key === 'ArrowRight' && currentFieldIndex < fields.length - 1) {
+        e.preventDefault();
+        setSelectedCell({ rowIndex: currentRowIndex, field: fields[currentFieldIndex + 1] });
+        return;
+      }
 
-  const getCellStyle = (isCellSelected: boolean, isEditing: boolean, fieldType?: 'name' | 'x' | 'y' | 'support') => {
-    let backgroundColor = isEditing ? '#FFF9C4' : isCellSelected ? '#E3F2FD' : theme.colors.bgWhite;
+      // Ctrl+C - Copy coordinate value
+      if (e.ctrlKey && e.key === 'c') {
+        const field = selectedCell.field;
+        if (field === 'x' || field === 'y') {
+          const node = nodes[currentRowIndex];
+          if (node) {
+            const value = field === 'x' ? node.x : node.y;
+            handleCopy(value, 'position');
+            e.preventDefault();
+          }
+        }
+        return;
+      }
 
-    // Show light green highlight on coordinate columns (x or y) when clipboard has any coordinate value
-    if (clipboard && (fieldType === 'x' || fieldType === 'y') && !isEditing && !isCellSelected) {
-      backgroundColor = '#C8E6C9'; // Light green tint - indicates paste is possible
-    }
+      // Ctrl+V - Paste coordinate value
+      if (e.ctrlKey && e.key === 'v' && clipboard) {
+        const field = selectedCell.field;
+        if (field === 'x' || field === 'y') {
+          const node = nodes[currentRowIndex];
+          if (node) {
+            updateNode(node.name, { [field]: clipboard.value });
+            e.preventDefault();
+          }
+        }
+        return;
+      }
 
-    return {
-      padding: '8px 12px',
-      borderBottom: `1px solid ${theme.colors.border}`,
-      backgroundColor,
-      cursor: isEditing ? 'text' : 'pointer',
-      color: theme.colors.textPrimary,
-      outline: isCellSelected && !isEditing ? '2px solid #1976D2' : 'none',
+      // Escape - Clear clipboard
+      if (e.key === 'Escape' && clipboard) {
+        e.preventDefault();
+        setClipboard(null);
+        return;
+      }
     };
-  };
 
-  const handleContainerBlur = (e: React.FocusEvent<HTMLDivElement>) => {
-    // Only reset if focus is leaving the table container entirely
-    if (!tableContainerRef.current?.contains(e.relatedTarget as Node)) {
-      // Don't reset if we're in the process of editing (blur from input field)
-      if (!editingCell) {
-        setSelectedCell(null);
-      }
-    }
-  };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedCell, editingCell, clipboard, nodes, fields]);
+
+  // ============================================================================
+  // Render
+  // ============================================================================
+
+  // Only show nodes tab in loads or structure tabs
+  if (activeTab !== 'loads' && activeTab !== 'structure') {
+    return null;
+  }
 
   return (
     <div
-      ref={tableContainerRef}
-      style={{ padding: '12px', overflow: 'auto', display: 'flex', flexDirection: 'column', height: '100%' }}
-      onBlur={handleContainerBlur}
+      ref={containerRef}
+      style={{
+        padding: '12px',
+        overflow: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+      }}
     >
       {/* Validation Error Alert */}
       {validationError && (
@@ -378,205 +326,27 @@ export function NodesTab() {
             marginBottom: '12px',
             color: theme.colors.error || '#C62828',
             fontSize: '12px',
+            whiteSpace: 'pre-wrap',
           }}
         >
           ⚠️ {validationError}
         </div>
       )}
 
-      {nodes.length === 0 ? (
-        <p style={{ color: theme.colors.textSecondary, textAlign: 'center', padding: '20px' }}>
-          No nodes yet. Create nodes in the Structure tab.
-        </p>
-      ) : (
-        <table
-          ref={tableRef}
-          style={tableStyle}
-          tabIndex={-1}
-          onKeyDown={(e) => {
-            if (selectedCell) {
-              handleTableKeyDown(e, selectedCell.nodeName, selectedCell.field);
-            }
-          }}
-        >
-          <thead>
-            <tr>
-              <th style={headerStyle}>Name</th>
-              <th style={headerStyle}>X (m)</th>
-              <th style={headerStyle}>Y (m)</th>
-              <th style={headerStyle}>Support</th>
-            </tr>
-          </thead>
-          <tbody>
-            {nodes.map((node) => {
-              return (
-                <tr key={node.name}>
-                  {/* Name */}
-                  <td
-                    style={getCellStyle(
-                      selectedCell?.nodeName === node.name && selectedCell.field === 'name',
-                      editingCell?.nodeName === node.name && editingCell.field === 'name',
-                      'name'
-                    )}
-                    onClick={(e) => handleCellClick(node.name, 'name', e)}
-                    onDoubleClick={() => handleCellDoubleClick(node.name, 'name', node.name)}
-                    tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'name' ? 0 : -1}
-                  >
-                    {editingCell?.nodeName === node.name && editingCell.field === 'name' ? (
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(node.name, 'name')}
-                        onKeyDown={handleKeyDown}
-                        onFocus={(e) => e.currentTarget.select()}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ) : (
-                      node.name
-                    )}
-                  </td>
-
-                  {/* X Coordinate */}
-                  <td
-                    style={getCellStyle(
-                      selectedCell?.nodeName === node.name && selectedCell.field === 'x',
-                      editingCell?.nodeName === node.name && editingCell.field === 'x',
-                      'x'
-                    )}
-                    onClick={(e) => handleCellClick(node.name, 'x', e)}
-                    onDoubleClick={() => handleCellDoubleClick(node.name, 'x', node.x.toString())}
-                    tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'x' ? 0 : -1}
-                  >
-                    {editingCell?.nodeName === node.name && editingCell.field === 'x' ? (
-                      <input
-                        autoFocus
-                        type="number"
-                        step="0.01"
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(node.name, 'x')}
-                        onKeyDown={handleKeyDown}
-                        onFocus={(e) => e.currentTarget.select()}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ) : (
-                      node.x.toFixed(2)
-                    )}
-                  </td>
-
-                  {/* Y Coordinate */}
-                  <td
-                    style={getCellStyle(
-                      selectedCell?.nodeName === node.name && selectedCell.field === 'y',
-                      editingCell?.nodeName === node.name && editingCell.field === 'y',
-                      'y'
-                    )}
-                    onClick={(e) => handleCellClick(node.name, 'y', e)}
-                    onDoubleClick={() => handleCellDoubleClick(node.name, 'y', node.y.toString())}
-                    tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'y' ? 0 : -1}
-                  >
-                    {editingCell?.nodeName === node.name && editingCell.field === 'y' ? (
-                      <input
-                        autoFocus
-                        type="number"
-                        step="0.01"
-                        value={editValue}
-                        onChange={handleCellChange}
-                        onBlur={() => validateAndSave(node.name, 'y')}
-                        onKeyDown={handleKeyDown}
-                        onFocus={(e) => e.currentTarget.select()}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ) : (
-                      node.y.toFixed(2)
-                    )}
-                  </td>
-
-                  {/* Support Type */}
-                  <td
-                    style={getCellStyle(
-                      selectedCell?.nodeName === node.name && selectedCell.field === 'support',
-                      editingCell?.nodeName === node.name && editingCell.field === 'support',
-                      'support'
-                    )}
-                    onClick={(e) => handleCellClick(node.name, 'support', e)}
-                    onDoubleClick={() => handleCellDoubleClick(node.name, 'support', node.support)}
-                    tabIndex={selectedCell?.nodeName === node.name && selectedCell.field === 'support' ? 0 : -1}
-                  >
-                    {editingCell?.nodeName === node.name && editingCell.field === 'support' ? (
-                      <select
-                        ref={dropdownRef}
-                        autoFocus
-                        value={editValue}
-                        onChange={(e) => {
-                          // Just update the value, don't save yet - wait for Enter key
-                          setEditValue(e.target.value);
-                        }}
-                        onBlur={() => {
-                          // Only save if still in editing mode and blur is from outside dropdown
-                          if (editingCell?.nodeName === node.name && editingCell.field === 'support') {
-                            // Don't auto-save on blur, require explicit Enter or Escape
-                            setEditingCell(null);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Escape') {
-                            // Cancel edit without saving
-                            setEditingCell(null);
-                            setSelectedCell({ nodeName: node.name, field: 'support' });
-                            setValidationError(null);
-                          } else if (e.key === 'Enter') {
-                            // Save and return to navigation mode
-                            e.preventDefault();
-                            validateAndSave(node.name, 'support');
-                          }
-                          // Arrow keys will naturally navigate through options in the dropdown
-                        }}
-                        size={Math.min(5, supportTypes.length + 1)}
-                        style={{
-                          width: '100%',
-                          padding: '4px',
-                          border: `1px solid ${theme.colors.primary}`,
-                          borderRadius: '2px',
-                        }}
-                      >
-                        <option value="">Select support</option>
-                        {supportTypes.map((type) => (
-                          <option key={type} value={type}>
-                            {SupportTypeLabels[type]}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      SupportTypeLabels[node.support]
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+      <NodeTable
+        selectedCell={selectedCell}
+        editingCell={editingCell}
+        editValue={editValue}
+        onSelectCell={handleSelectCell}
+        onEditStart={handleEditStart}
+        onEditChange={handleEditChange}
+        onEditSave={handleEditSave}
+        onEditCancel={handleEditCancel}
+        inputRef={inputRef}
+        dropdownRef={dropdownRef}
+        clipboard={clipboard}
+        onCopy={handleCopy}
+      />
     </div>
   );
 }

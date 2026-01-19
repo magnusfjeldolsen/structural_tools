@@ -224,7 +224,6 @@ export function LoadsTab() {
           }}
           onEditChange={setEditValue}
           onEditSave={saveEdit}
-          onEditCancel={cancelEdit}
           inputRef={inputRef}
           clipboard={clipboard}
           onCopy={(value, type) => setClipboard({ value, type })}
@@ -244,7 +243,6 @@ export function LoadsTab() {
           }}
           onEditChange={setEditValue}
           onEditSave={saveEdit}
-          onEditCancel={cancelEdit}
           inputRef={inputRef}
           clipboard={clipboard}
           onCopy={(value, type) => setClipboard({ value, type })}
@@ -264,7 +262,6 @@ export function LoadsTab() {
           }}
           onEditChange={setEditValue}
           onEditSave={saveEdit}
-          onEditCancel={cancelEdit}
           inputRef={inputRef}
           clipboard={clipboard}
           onCopy={(value, type) => setClipboard({ value, type })}

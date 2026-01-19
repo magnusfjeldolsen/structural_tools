@@ -50,11 +50,9 @@ export function ElementTable({
   onEditStart,
   onEditChange,
   onEditSave,
-  onEditCancel,
   inputRef,
   dropdownRef,
   clipboard,
-  onCopy,
 }: ElementTableProps) {
   const elements = useModelStore((state) => state.elements);
   const nodes = useModelStore((state) => state.nodes);
@@ -108,9 +106,6 @@ export function ElementTable({
       {/* Rows */}
       <div style={rowsContainerStyle}>
         {elements.map((element, rowIndex) => {
-          const isRowSelected = selectedCell?.rowIndex === rowIndex;
-          const isRowEditing = editingCell?.rowIndex === rowIndex;
-
           return (
             <div key={element.name} style={rowStyle}>
               {/* Name */}

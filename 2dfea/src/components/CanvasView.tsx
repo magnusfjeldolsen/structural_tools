@@ -190,10 +190,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         const comboResults = getResultsForCombination(activeResultView.name);
         if (comboResults) return comboResults;
       }
-      // Selection exists but results don't
-      console.warn(
-        `[CanvasView] No results available for ${activeResultView.type} "${activeResultView.name}"`
-      );
+      // Selection exists but results don't - silently return null
       return null;
     }
     // Fall back to current analysisResults for backward compatibility

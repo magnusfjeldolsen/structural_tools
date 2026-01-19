@@ -86,6 +86,10 @@ export function EditableCell({
           onChange={(e) => onChange?.(e.target.value)}
           onBlur={onSave}
           onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              onSave?.();
+            }
             // Prevent parent keyboard handler from interfering
             e.stopPropagation();
           }}
