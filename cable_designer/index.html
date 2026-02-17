@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-BFVZQQ2LYN');
+</script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cable Designer</title>
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] }
+      }
+    }
+  }
+</script>
+
+<!-- Google Font: Inter -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- Chartjs crosshair plugin -->
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-crosshair@2.0.0/dist/chartjs-plugin-crosshair.min.js"></script>
+
+<style>
+  body { background-color: #030712; }
+  /* Thin scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: #111827; }
+  ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+  /* Input number spinners */
+  input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
+  /* Smooth focus ring */
+  input:focus, select:focus { outline: none; }
+</style>
+</head>
+
+<body class="h-full font-sans text-gray-200 antialiased">
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     LAYOUT: header + two-column main
+══════════════════════════════════════════════════════════════════════════════ -->
+<div class="flex flex-col min-h-screen">
+
+  <!-- HEADER ─────────────────────────────────────────────────────────────── -->
+  <header class="flex-none border-b border-gray-800 bg-gray-950 px-6 py-3 flex items-center gap-4">
+    <div>
+      <h1 class="text-lg font-semibold text-white tracking-tight">Cable Designer</h1>
+      <p class="text-xs text-gray-500 mt-0.5">Nonlinear cable analysis · Pyodide / Python in browser</p>
+    </div>
+    <div class="ml-auto flex items-center gap-3">
+      <span id="pyodide-status"
+        class="px-2 py-0.5 rounded text-xs font-medium bg-amber-900 text-amber-300 border border-amber-700 animate-pulse">
+        Loading engine…
+      </span>
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">← Back to Tools</a>
+    </div>
+  </header>
+
+  <!-- MAIN ───────────────────────────────────────────────────────────────── -->
+  <main class="flex flex-1 overflow-hidden">
+
+    <!-- ── LEFT PANEL: Inputs ─────────────────────────────────────────────── -->
+    <aside class="flex-none w-96 border-r border-gray-800 bg-gray-950 flex flex-col overflow-y-auto">
+
+      <div class="flex-1 p-4 space-y-4">
+
+        <!-- ╔══════════════════════════════╗ -->
+        <!-- ║  1. GEOMETRY                 ║ -->
+        <!-- ╚══════════════════════════════╝ -->
+        <section>
+          <h2 class="section-header">Geometry</h2>
+          <div class="space-y-3">
+
+            <!-- Span -->
+            <div class="input-row">
+              <label class="input-label" for="input-span">
+                Span length
+                <span class="input-symbol">L</span>
+              </label>
+              <div class="input-field-wrap">
+                <input id="input-span" type="number" step="0.1" min="0.1" max="500"
+                  class="input-field" value="10.0">
+                <span class="input-unit">m</span>
+              </div>
+            </div>
+
+            <!-- Segments slider -->
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <label class="input-label mb-0" for="input-nsegments">
+                  Discretization
+                  <span class="input-symbol">n</span>
+                </label>
+                <span class="text-xs text-sky-400 font-mono">
+                  <span id="nsegments-label">200</span> segments
+                </span>
+              </div>
+              <input id="input-nsegments" type="range" min="50" max="500" step="10" value="200"
+                class="w-full accent-sky-500 cursor-pointer">
+              <div class="flex justify-between text-xs text-gray-600 mt-0.5">
+                <span>50</span><span>Fast ←————→ Accurate</span><span>500</span>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ╔══════════════════════════════╗ -->
+        <!-- ║  2. MATERIAL                 ║ -->
+        <!-- ╚══════════════════════════════╝ -->
+        <section>
+          <h2 class="section-header">Material</h2>
+          <div class="space-y-3">
+
+            <div class="input-row">
+              <label class="input-label" for="input-aeff">
+                Effective area
+                <span class="input-symbol">A<sub>eff</sub></span>
+              </label>
+              <div class="input-field-wrap">
+                <input id="input-aeff" type="number" step="1" min="1"
+                  class="input-field" value="1130.0">
+                <span class="input-unit">mm²</span>
+              </div>
+            </div>
+
+            <div class="input-row">
+              <label class="input-label" for="input-emodulus">
+                Elastic modulus
+                <span class="input-symbol">E</span>
+              </label>
+              <div class="input-field-wrap">
+                <input id="input-emodulus" type="number" step="1000" min="1000"
+                  class="input-field" value="200000.0">
+                <span class="input-unit">MPa</span>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ╔══════════════════════════════╗ -->
+        <!-- ║  3. LOADS                    ║ -->
+        <!-- ╚══════════════════════════════╝ -->
+        <section>
+          <h2 class="section-header">Loads</h2>
+
+          <!-- Point loads -->
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Point Loads</h3>
+              <button id="btn-add-point-load"
+                class="px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-sky-400 hover:text-sky-300
+                       border border-gray-700 rounded transition-colors">
+                + Add
+              </button>
+            </div>
+            <div class="rounded-lg border border-gray-800 overflow-hidden">
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="bg-gray-900 text-gray-500">
+                    <th class="px-2 py-2 text-left font-medium">Position [m]</th>
+                    <th class="px-2 py-2 text-left font-medium">Force [kN] ↓</th>
+                    <th class="px-2 py-2 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody id="point-loads-tbody" class="bg-gray-950">
+                  <!-- rendered by ui.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Line loads -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Line Loads</h3>
+              <button id="btn-add-line-load"
+                class="px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-sky-400 hover:text-sky-300
+                       border border-gray-700 rounded transition-colors">
+                + Add
+              </button>
+            </div>
+            <div class="rounded-lg border border-gray-800 overflow-hidden">
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="bg-gray-900 text-gray-500">
+                    <th class="px-2 py-2 text-left font-medium">Start [m]</th>
+                    <th class="px-2 py-2 text-left font-medium">End [m]</th>
+                    <th class="px-2 py-2 text-left font-medium">q₁ [kN/m]</th>
+                    <th class="px-2 py-2 text-left font-medium">q₂ [kN/m]</th>
+                    <th class="px-2 py-2 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody id="line-loads-tbody" class="bg-gray-950">
+                  <!-- rendered by ui.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ╔══════════════════════════════╗ -->
+        <!-- ║  4. SOLVER (collapsible)     ║ -->
+        <!-- ╚══════════════════════════════╝ -->
+        <section>
+          <details class="group">
+            <summary class="section-header cursor-pointer list-none flex items-center justify-between select-none">
+              <span>Solver Settings</span>
+              <svg class="w-4 h-4 text-gray-500 group-open:rotate-180 transition-transform"
+                fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </summary>
+            <div class="mt-3 space-y-3">
+
+              <div class="input-row">
+                <label class="input-label" for="input-method">Method</label>
+                <select id="input-method"
+                  class="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900
+                         focus:border-sky-500 cursor-pointer">
+                  <option value="rootfinding">Root finding — Brent (recommended)</option>
+                  <option value="fixed_point">Fixed point iteration</option>
+                </select>
+              </div>
+
+              <p class="text-xs text-gray-600 leading-relaxed">
+                Root finding uses Brent's method for reliable convergence.
+                Fixed-point iteration is slower but shows convergence history.
+              </p>
+            </div>
+          </details>
+        </section>
+
+      </div><!-- /inputs -->
+
+      <!-- ANALYZE BUTTON (sticky footer) ─────────────────────────────────── -->
+      <div class="flex-none p-4 border-t border-gray-800 bg-gray-950">
+        <!-- Error message -->
+        <div id="error-message"
+          class="hidden mb-3 px-3 py-2 bg-red-950 border border-red-800 rounded-lg text-xs text-red-300">
+        </div>
+
+        <button id="btn-analyze"
+          class="w-full py-3 rounded-lg font-semibold text-sm bg-gray-700 text-gray-500 cursor-not-allowed">
+          Loading engine…
+        </button>
+      </div>
+
+    </aside><!-- /left panel -->
+
+    <!-- ── RIGHT PANEL: Results + Charts ──────────────────────────────────── -->
+    <div class="flex-1 overflow-y-auto bg-gray-950 p-5 space-y-5">
+
+      <!-- Placeholder (shown before first analysis) -->
+      <div id="results-placeholder"
+        class="flex flex-col items-center justify-center h-full min-h-64 text-center text-gray-600">
+        <svg class="w-16 h-16 mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+        <p class="text-sm">Configure inputs and click <span class="text-gray-400 font-medium">Analyze</span></p>
+        <p class="text-xs mt-1 text-gray-700">Results and interactive plots will appear here</p>
+      </div>
+
+      <!-- Results (hidden until analysis completes) -->
+      <div id="results-section" class="hidden space-y-5">
+
+        <!-- Convergence info bar -->
+        <div class="px-4 py-2 bg-gray-900 rounded-lg border border-gray-800 text-xs text-gray-500">
+          <span id="convergence-info">—</span>
+        </div>
+
+        <!-- ── Summary cards ──────────────────────────────────────────────── -->
+        <div class="grid grid-cols-4 gap-3">
+
+          <div class="result-card border-sky-800">
+            <p class="result-card-label">Horizontal Force</p>
+            <p class="result-card-symbol">H</p>
+            <p id="card-H" class="result-card-value">—</p>
+          </div>
+
+          <div class="result-card border-red-800">
+            <p class="result-card-label">Max Tension</p>
+            <p class="result-card-symbol">T<sub>max</sub></p>
+            <p id="card-Tmax" class="result-card-value">—</p>
+          </div>
+
+          <div class="result-card border-emerald-800">
+            <p class="result-card-label">Max Sag</p>
+            <p class="result-card-symbol">f</p>
+            <p id="card-f" class="result-card-value">—</p>
+          </div>
+
+          <div class="result-card border-violet-800">
+            <p class="result-card-label">Sag Ratio</p>
+            <p class="result-card-symbol">f / L</p>
+            <p id="card-sag-ratio" class="result-card-value">—</p>
+          </div>
+
+          <div class="result-card border-blue-800">
+            <p class="result-card-label">Left Reaction</p>
+            <p class="result-card-symbol">R<sub>A</sub></p>
+            <p id="card-Rleft" class="result-card-value">—</p>
+          </div>
+
+          <div class="result-card border-blue-800">
+            <p class="result-card-label">Right Reaction</p>
+            <p class="result-card-symbol">R<sub>B</sub></p>
+            <p id="card-Rright" class="result-card-value">—</p>
+          </div>
+
+          <div class="result-card border-purple-800">
+            <p class="result-card-label">Avg Stress</p>
+            <p class="result-card-symbol">σ<sub>avg</sub></p>
+            <p id="card-stress" class="result-card-value">—</p>
+          </div>
+
+          <div class="result-card border-gray-700">
+            <p class="result-card-label">Strain</p>
+            <p class="result-card-symbol">ε</p>
+            <p id="card-strain" class="result-card-value">—</p>
+          </div>
+
+        </div>
+
+        <!-- ── Charts ─────────────────────────────────────────────────────── -->
+
+        <!-- Load Diagram -->
+        <div class="chart-card">
+          <h3 class="chart-title">Applied Loads</h3>
+          <div class="h-44">
+            <canvas id="chart-loads"></canvas>
+          </div>
+        </div>
+
+        <!-- Cable Shape -->
+        <div class="chart-card">
+          <h3 class="chart-title">Cable Shape &amp; Deflection</h3>
+          <div class="h-52">
+            <canvas id="chart-shape"></canvas>
+          </div>
+        </div>
+
+        <!-- Force Distribution -->
+        <div class="chart-card">
+          <h3 class="chart-title">Force Distribution  ·  T, H, |V|</h3>
+          <div class="h-52">
+            <canvas id="chart-forces"></canvas>
+          </div>
+        </div>
+
+        <!-- Stress Distribution -->
+        <div class="chart-card">
+          <h3 class="chart-title">Stress Distribution  σ(x)</h3>
+          <div class="h-44">
+            <canvas id="chart-stress"></canvas>
+          </div>
+        </div>
+
+      </div><!-- /results-section -->
+
+    </div><!-- /right panel -->
+
+  </main>
+
+</div><!-- /layout -->
+
+<!-- ── Tailwind component classes (defined via style block, Tailwind CDN mode) -->
+<style>
+  .section-header {
+    @apply text-xs font-semibold text-gray-400 uppercase tracking-wider
+           border-b border-gray-800 pb-2 mb-3;
+  }
+  .input-row {
+    @apply flex items-center gap-3;
+  }
+  .input-label {
+    @apply text-sm text-gray-400 flex-none w-36 flex items-center gap-1;
+  }
+  .input-symbol {
+    @apply text-gray-600 font-mono text-xs ml-auto;
+  }
+  .input-field-wrap {
+    @apply flex-1 flex items-center bg-white border border-gray-300 rounded-lg
+           overflow-hidden focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-400/30 transition-colors;
+  }
+  .input-field {
+    @apply flex-1 bg-white px-3 py-2 text-sm text-gray-900 min-w-0;
+  }
+  .input-unit {
+    @apply flex-none px-2 py-2 text-xs text-gray-500 border-l border-gray-200
+           bg-gray-50 font-mono;
+  }
+  .result-card {
+    @apply bg-gray-900 border border-t-2 rounded-lg p-3 flex flex-col gap-0.5;
+  }
+  .result-card-label {
+    @apply text-xs text-gray-500 font-medium;
+  }
+  .result-card-symbol {
+    @apply text-xs text-gray-600 font-mono;
+  }
+  .result-card-value {
+    @apply text-base font-semibold text-white font-mono mt-1;
+  }
+  .chart-card {
+    @apply bg-gray-900 border border-gray-800 rounded-xl p-4;
+  }
+  .chart-title {
+    @apply text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3;
+  }
+</style>
+
+<!-- ── Bootstrap app ──────────────────────────────────────────────────────── -->
+<script type="module">
+  import { init } from './app.js';
+  init();
+</script>
+
+</body>
+</html>

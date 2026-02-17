@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-01-06T00:00:00.000Z",
-    "total_modules": 21,
+    "generated": "2026-02-17T14:14:28.000Z",
+    "total_modules": 22,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 3
@@ -23,6 +23,30 @@
         "structural engineering"
       ],
       "url": "./2dfea/index.html",
+      "category": "structural-analysis"
+    },
+    {
+      "id": "cable_designer",
+      "title": "Cable Designer - Nonlinear Cable Analysis",
+      "description": "Nonlinear cable analysis with arbitrary point and distributed loads. Runs Python (NumPy/SciPy) directly in the browser via Pyodide/WebAssembly. Interactive plots with hover inspection for sag, tension, and stress distribution along the cable.",
+      "keywords": [
+        "cable",
+        "cable design",
+        "cable analysis",
+        "nonlinear",
+        "sag",
+        "tension",
+        "catenary",
+        "pyodide",
+        "webassembly",
+        "structural analysis",
+        "cable force",
+        "cable stress",
+        "suspension",
+        "distributed load",
+        "point load"
+      ],
+      "url": "./cable_designer/index.html",
       "category": "structural-analysis"
     },
     {
