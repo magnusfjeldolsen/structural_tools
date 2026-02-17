@@ -1172,6 +1172,37 @@
           </a>
         </div>
 
+        <!-- Cable Designer -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-sky-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16 Q12 6 20 16"/>
+                <circle cx="4" cy="16" r="2" fill="currentColor"/>
+                <circle cx="20" cy="16" r="2" fill="currentColor"/>
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Cable Designer</h3>
+          </div>
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Nonlinear cable analysis with arbitrary point and distributed loads.
+            Runs Python (NumPy/SciPy) directly in the browser via Pyodide/WebAssembly.
+            Interactive plots with hover inspection for sag, tension, and stress along the cable.
+          </p>
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-sky-500/20 text-sky-300 rounded-full text-sm">Nonlinear</span>
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Pyodide</span>
+            <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">Interactive Plots</span>
+          </div>
+          <a href="./cable_designer/index.html"
+             class="inline-flex items-center px-6 py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
       </div>
     </section>
 

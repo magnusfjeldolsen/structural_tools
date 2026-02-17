@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-01-19T13:20:43.615Z",
-    "total_modules": 22,
+    "generated": "2026-02-17T14:15:28.305Z",
+    "total_modules": 23,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
@@ -24,6 +24,14 @@
       ],
       "url": "./2dfea/index.html",
       "category": "structural-analysis"
+    },
+    {
+      "id": "cable_designer",
+      "title": "Cable Designer",
+      "description": "",
+      "keywords": [],
+      "url": "./cable_designer/index.html",
+      "category": "other"
     },
     {
       "id": "concrete_plate_CFRP",
