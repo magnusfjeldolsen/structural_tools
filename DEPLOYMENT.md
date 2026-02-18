@@ -359,6 +359,56 @@ const setupResponse = await fetch(new URL('../python/setup_pynite_env.py', impor
    # Create PR on GitHub
    ```
 
+## Adding a New Module
+
+Every new module requires **three files to be updated** before it appears on the live site. Missing any one means the module either 404s, doesn't appear on the front page, or can't be found via search.
+
+### Checklist
+
+**1. `.github/workflows/deploy-all-modules.yml`** — two places inside the file:
+
+```yaml
+# (a) paths: trigger — add the module folder so a push to it fires the workflow
+    paths:
+      - 'your_module/**'   # add this line
+
+# (b) copy loop — add the folder name to the explicit list so it gets staged
+          for dir in ...                      your_module; do   # add here
+```
+
+**2. `module-registry/module-registry.json`** — add a JSON entry so the search bar finds it:
+
+```json
+{
+  "id": "your_module",
+  "title": "Human readable title",
+  "description": "What it does — shown in search results.",
+  "keywords": ["keyword1", "keyword2"],
+  "url": "./your_module/index.html",
+  "category": "structural-analysis | concrete | steel | other"
+}
+```
+Also increment `_meta.total_modules` by 1.
+
+**3. `index.html`** — add a tool card in the correct section so users can see and click it from the front page. Copy the card pattern from an existing tool in the same category.
+
+### Module-level requirements
+
+- `index.html` must exist at `your_module/index.html`
+- Google Analytics tag must be the first thing inside `<head>`
+- A "← Back to Tools" link (`href="../index.html"`) should be in the header
+
+### Plain HTML vs built modules
+
+| Type | Example | Build step? |
+|------|---------|-------------|
+| Plain HTML | `cable_designer/` | No — copied as-is |
+| Built (React/TS) | `2dfea/` | Yes — Vite build required |
+
+New modules are almost always **Plain HTML** — no workflow build changes needed beyond the three checklist items above.
+
+---
+
 ## Unified Deployment Architecture (Updated 2026)
 
 ### How It Works

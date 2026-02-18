@@ -20,6 +20,7 @@ on:
       - 'seismic_ec8/**'
       - 'transversal_*/**'
       - '2dframeanalysis/**'
+      - 'cable_designer/**'
       - 'index.html'
       - 'module-registry/**'
       - '.github/workflows/deploy-all-modules.yml'
@@ -103,7 +104,8 @@ jobs:
                      seismic_ec8 \
                      transversal_forces_stiffened_web \
                      transversal_forces_unstiffened_web \
-                     2dframeanalysis; do
+                     2dframeanalysis \
+                     cable_designer; do
             if [ -d "$dir" ]; then
               echo "  Copying $dir/"
               cp -r "$dir" ./deploy-staging/
