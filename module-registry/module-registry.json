@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-02-19T08:24:44.359Z",
-    "total_modules": 23,
+    "generated": "2026-02-27T09:46:58.170Z",
+    "total_modules": 24,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
@@ -228,6 +228,14 @@
       ],
       "url": "./2dframeanalysis/index.html",
       "category": "structural-analysis"
+    },
+    {
+      "id": "flexural_buckling",
+      "title": "Steel Column Flexural Buckling - EC3",
+      "description": "",
+      "keywords": [],
+      "url": "./flexural_buckling/index.html",
+      "category": "other"
     },
     {
       "id": "steel_fire_temperature",
