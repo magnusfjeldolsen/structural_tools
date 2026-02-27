@@ -46,6 +46,9 @@ function setupEventListeners() {
   // Form submission
   document.getElementById('buckling-form').addEventListener('submit', handleFormSubmit);
 
+  // Find lightest section button
+  document.getElementById('find-lightest-btn').addEventListener('click', handleFindLightestSection);
+
   // Save/Load buttons
   document.getElementById('save-json-btn').addEventListener('click', saveFormStateToJSON);
   document.getElementById('load-json-btn').addEventListener('click', () => {
@@ -68,11 +71,13 @@ function handleProfileTypeChange(event) {
   const profileType = event.target.value;
   const profileNameSelect = document.getElementById('profile-name');
   const sectionPropertiesDiv = document.getElementById('section-properties');
+  const findLightestBtn = document.getElementById('find-lightest-btn');
 
   if (!profileType) {
     profileNameSelect.disabled = true;
     profileNameSelect.innerHTML = '<option value="">-- First select profile type --</option>';
     sectionPropertiesDiv.classList.add('hidden');
+    findLightestBtn.disabled = true;
     return;
   }
 
@@ -89,6 +94,9 @@ function handleProfileTypeChange(event) {
 
   profileNameSelect.disabled = false;
   sectionPropertiesDiv.classList.add('hidden');
+
+  // Enable find lightest button when profile type is selected
+  findLightestBtn.disabled = false;
 }
 
 function handleProfileNameChange(event) {
@@ -121,22 +129,13 @@ function displaySectionProperties(section) {
   document.getElementById('prop-iy').textContent = toFixedIfNeeded(section.iy, 2);
   document.getElementById('prop-iz').textContent = toFixedIfNeeded(section.iz, 2);
 
-  // Display geometry based on section type
-  if (section.h && section.b) {
+  // Display height based on section type
+  if (section.h) {
     document.getElementById('prop-h').textContent = toFixedIfNeeded(section.h, 1);
-    document.getElementById('prop-b').textContent = toFixedIfNeeded(section.b, 1);
-    document.getElementById('prop-tf').textContent = toFixedIfNeeded(section.tf, 1);
-    document.getElementById('prop-tw').textContent = toFixedIfNeeded(section.tw, 1);
-  } else if (section.height && section.width) {
+  } else if (section.height) {
     document.getElementById('prop-h').textContent = toFixedIfNeeded(section.height, 1);
-    document.getElementById('prop-b').textContent = toFixedIfNeeded(section.width, 1);
-    document.getElementById('prop-tf').textContent = toFixedIfNeeded(section.t, 1);
-    document.getElementById('prop-tw').textContent = toFixedIfNeeded(section.t, 1);
   } else if (section.d) {
     document.getElementById('prop-h').textContent = toFixedIfNeeded(section.d, 1);
-    document.getElementById('prop-b').textContent = '-';
-    document.getElementById('prop-tf').textContent = toFixedIfNeeded(section.t, 1);
-    document.getElementById('prop-tw').textContent = toFixedIfNeeded(section.t, 1);
   }
 
   document.getElementById('prop-curve-y').textContent = section.buckling_curve_y || 'b';
@@ -240,6 +239,125 @@ async function handleFormSubmit(event) {
 
   // Display results
   displayResults(results, inputs);
+}
+
+// ============================================================================
+// FIND LIGHTEST SECTION
+// ============================================================================
+
+async function handleFindLightestSection(event) {
+  event.preventDefault();
+
+  // Gather inputs (without profileName - we'll search for it)
+  const inputs = {
+    profileType: document.getElementById('profile-type').value,
+    profileName: '', // Will be set by search
+    Ly: document.getElementById('Ly').value,
+    Lz: document.getElementById('Lz').value,
+    steelGrade: document.getElementById('steel-grade').value,
+    fy: document.getElementById('fy').value,
+    gamma_M1: document.getElementById('gamma-M1').value,
+    NEd_ULS: document.getElementById('NEd-ULS').value,
+    fireEnabled: document.getElementById('fire-enabled').checked,
+    fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
+    NEd_fire: document.getElementById('NEd-fire').value,
+    temperature: document.getElementById('temperature').value
+  };
+
+  // Validate profile type is selected
+  if (!inputs.profileType) {
+    alert('Please select a profile type first');
+    return;
+  }
+
+  // Disable form during search
+  const findLightestBtn = document.getElementById('find-lightest-btn');
+  const calculateBtn = document.getElementById('calculate-btn');
+  const searchProgress = document.getElementById('search-progress');
+  const formInputs = document.querySelectorAll('#buckling-form input, #buckling-form select, #buckling-form button');
+
+  findLightestBtn.disabled = true;
+  calculateBtn.disabled = true;
+  formInputs.forEach(input => input.disabled = true);
+  findLightestBtn.textContent = 'Searching...';
+  searchProgress.classList.remove('hidden');
+
+  // Progress callback
+  const progressCallback = (tested, total, currentProfile) => {
+    searchProgress.textContent = `Testing ${currentProfile.toUpperCase()}... (${tested} of ${total})`;
+  };
+
+  // Perform search
+  const searchResult = findLightestSection(inputs, progressCallback);
+
+  // Re-enable form
+  formInputs.forEach(input => input.disabled = false);
+  findLightestBtn.disabled = false;
+  calculateBtn.disabled = false;
+  findLightestBtn.textContent = 'Find Lightest Candidate';
+
+  if (!searchResult.success) {
+    searchProgress.textContent = `Search failed: ${searchResult.error}`;
+    searchProgress.classList.add('text-red-400');
+    setTimeout(() => {
+      searchProgress.classList.add('hidden');
+      searchProgress.classList.remove('text-red-400');
+    }, 5000);
+    return;
+  }
+
+  // Update form with found section
+  const optimalSection = searchResult.section;
+  const profileNameSelect = document.getElementById('profile-name');
+
+  // Update the profile dropdown
+  profileNameSelect.value = optimalSection.profileName;
+
+  // Trigger the change handler to update section properties display
+  handleProfileNameChange({ target: profileNameSelect });
+
+  // Display success message
+  searchProgress.textContent = `✓ Found: ${inputs.profileType.toUpperCase()} ${optimalSection.profileName.toUpperCase()} (tested ${searchResult.testedCount} of ${searchResult.totalCount} sections, utilization: ${(optimalSection.maxUtilization * 100).toFixed(1)}%)`;
+  searchProgress.classList.add('text-green-400');
+
+  // Auto-calculate and display results
+  // Gather fresh inputs from the form (including the just-selected profile)
+  const finalInputs = {
+    profileType: document.getElementById('profile-type').value,
+    profileName: optimalSection.profileName,
+    Ly: document.getElementById('Ly').value,
+    Lz: document.getElementById('Lz').value,
+    steelGrade: document.getElementById('steel-grade').value,
+    fy: document.getElementById('fy').value,
+    gamma_M1: document.getElementById('gamma-M1').value,
+    NEd_ULS: document.getElementById('NEd-ULS').value,
+    fireEnabled: document.getElementById('fire-enabled').checked,
+    fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
+    NEd_fire: document.getElementById('NEd-fire').value,
+    temperature: document.getElementById('temperature').value
+  };
+
+  // Perform the calculation
+  const finalResults = calculateBuckling(finalInputs);
+
+  if (!finalResults.success) {
+    console.error('Auto-calculation failed:', finalResults.error);
+    alert('Error calculating results for found section: ' + finalResults.error);
+    return;
+  }
+
+  // Display the results
+  displayResults(finalResults, finalInputs);
+
+  // Scroll to results
+  const resultsSection = document.getElementById('results-section');
+  resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Hide success message after 10 seconds
+  setTimeout(() => {
+    searchProgress.classList.add('hidden');
+    searchProgress.classList.remove('text-green-400');
+  }, 10000);
 }
 
 // ============================================================================

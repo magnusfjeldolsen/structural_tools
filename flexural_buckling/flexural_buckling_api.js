@@ -340,6 +340,26 @@ function getProfileNames(profileType) {
 }
 
 /**
+ * Get list of profile names sorted by section area (ascending)
+ * Only called when searching for lightest section
+ */
+function getProfileNamesSortedByArea(profileType) {
+  if (!steelDatabase[profileType]) {
+    return [];
+  }
+
+  const profiles = steelDatabase[profileType];
+  const profileNames = Object.keys(profiles);
+
+  // Sort by area (ascending - lightest first)
+  return profileNames.sort((a, b) => {
+    const areaA = profiles[a].area;
+    const areaB = profiles[b].area;
+    return areaA - areaB;
+  });
+}
+
+/**
  * Get section properties for a specific profile
  */
 function getSectionProperties(profileType, profileName) {
@@ -815,6 +835,123 @@ function calculateBuckling(inputs) {
         utilization: utilization_ULS
       },
       fireResults: fireResults
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// ============================================================================
+// FIND LIGHTEST SECTION
+// ============================================================================
+
+/**
+ * Find the lightest section that meets utilization requirements
+ * Searches through all profiles in the selected type, sorted by area
+ */
+function findLightestSection(inputs, progressCallback) {
+  try {
+    const profileType = inputs.profileType;
+
+    if (!profileType) {
+      throw new Error('Profile type must be selected');
+    }
+
+    // Get profiles sorted by area (lightest first)
+    const sortedProfiles = getProfileNamesSortedByArea(profileType);
+
+    if (sortedProfiles.length === 0) {
+      throw new Error('No profiles found for selected type');
+    }
+
+    let lastValidSection = null;
+    let testedCount = 0;
+    const totalCount = sortedProfiles.length;
+
+    // Iterate through sorted profiles
+    for (const profileName of sortedProfiles) {
+      testedCount++;
+
+      // Report progress if callback provided
+      if (progressCallback) {
+        progressCallback(testedCount, totalCount, profileName);
+      }
+
+      // Create test inputs with current profile
+      const testInputs = { ...inputs, profileName };
+
+      // Calculate buckling for this section
+      const results = calculateBuckling(testInputs);
+
+      if (!results.success) {
+        continue; // Skip invalid sections
+      }
+
+      // Determine maximum utilization based on design mode
+      let maxUtilization = results.ulsResults.utilization;
+      let utilizationSource = 'ULS';
+
+      // If fire design is enabled and in "specify temperature" mode
+      // take the maximum of ULS and fire utilization
+      if (inputs.fireEnabled && results.fireResults && inputs.fireMode === 'specify') {
+        const ulsUtil = results.ulsResults.utilization;
+        const fireUtil = results.fireResults.utilization;
+        maxUtilization = Math.max(ulsUtil, fireUtil);
+        utilizationSource = `max(ULS: ${(ulsUtil * 100).toFixed(1)}%, Fire: ${(fireUtil * 100).toFixed(1)}%)`;
+      }
+      // If fire design is enabled but in "find-critical" mode
+      // only use ULS utilization (theta_cr is a follower value)
+      else if (inputs.fireEnabled && inputs.fireMode === 'find-critical') {
+        utilizationSource = 'ULS (fire find-θ_cr mode)';
+      }
+
+      // Debug logging
+      console.log(`Testing ${profileName}: ${utilizationSource} = ${(maxUtilization * 100).toFixed(1)}%`);
+
+      // Check if this section is valid (utilization ≤ 100%)
+      if (maxUtilization <= 1.0) {
+        // Found the lightest section that works!
+        lastValidSection = {
+          profileName: profileName,
+          results: results,
+          maxUtilization: maxUtilization
+        };
+        console.log(`  ✓ Valid (≤100%) - FOUND LIGHTEST CANDIDATE!`);
+        // Stop searching - this is the lightest (smallest area) that passes
+        break;
+      } else {
+        // This section is too small (exceeds 100%)
+        console.log(`  ✗ Too small (exceeds 100%) - continuing to next heavier section...`);
+        // Continue testing heavier sections
+      }
+    }
+
+    // Check if we found a valid section
+    if (!lastValidSection) {
+      return {
+        success: false,
+        error: 'No suitable section found in selected profile type. All sections exceed 100% utilization.',
+        testedCount: testedCount,
+        totalCount: totalCount
+      };
+    }
+
+    // Check if all sections were valid (even the lightest works)
+    const allValid = testedCount === totalCount && lastValidSection;
+
+    return {
+      success: true,
+      section: lastValidSection,
+      testedCount: testedCount,
+      totalCount: totalCount,
+      allValid: allValid,
+      message: allValid
+        ? 'All sections in this profile type are suitable. Lightest section selected.'
+        : `Found optimal section after testing ${testedCount} of ${totalCount} profiles.`
     };
 
   } catch (error) {
