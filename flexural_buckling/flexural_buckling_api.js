@@ -1,0 +1,826 @@
+/**
+ * Steel Column Flexural Buckling API
+ * Eurocode 3-1-1 Section 6.3.1 | Fire design per EC3-1-2
+ */
+
+// ============================================================================
+// MODULE CONFIGURATION (for workflow integration)
+// ============================================================================
+
+const MODULE_CONFIG = {
+  module_id: "flexural_buckling",
+  module_name: "Steel Column Flexural Buckling",
+  version: "1.0.0",
+  standard: "Eurocode 3-1-1 Section 6.3.1",
+  description: "Flexural buckling capacity of compression members with optional fire design per EC3-1-2",
+
+  inputs: {
+    // Steel section
+    profileType: {
+      label: "Profile type",
+      symbol: "Profile",
+      type: "select",
+      options: ["hea", "heb", "hem", "ipe", "hrhs", "hshs", "hchs", "crhs", "cshs", "cchs"],
+      required: true,
+      category: "section",
+      description: "Steel section profile type"
+    },
+    profileName: {
+      label: "Profile size",
+      symbol: "Size",
+      type: "select",
+      required: true,
+      category: "section",
+      description: "Specific profile size (depends on profile type)"
+    },
+
+    // Buckling lengths
+    Ly: {
+      label: "Buckling length about y-axis",
+      symbol: "L_y",
+      type: "expression",
+      unit: "m",
+      required: true,
+      min: 0.1,
+      default: 3.5,
+      category: "geometry",
+      description: "Buckling length about major axis (accepts expressions)"
+    },
+    Lz: {
+      label: "Buckling length about z-axis",
+      symbol: "L_z",
+      type: "expression",
+      unit: "m",
+      required: true,
+      min: 0.1,
+      default: 3.5,
+      category: "geometry",
+      description: "Buckling length about minor axis (accepts expressions)"
+    },
+
+    // Material
+    steelGrade: {
+      label: "Steel grade",
+      symbol: "Grade",
+      type: "select",
+      options: ["S235", "S275", "S355", "S420", "S460"],
+      required: true,
+      default: "S355",
+      category: "material",
+      description: "Steel grade according to EC3"
+    },
+    fy: {
+      label: "Yield strength",
+      symbol: "f_y",
+      type: "number",
+      unit: "MPa",
+      required: true,
+      min: 200,
+      max: 500,
+      default: 355,
+      category: "material",
+      description: "Characteristic yield strength (auto-updates with grade and thickness)"
+    },
+    gamma_M1: {
+      label: "Partial factor γM1",
+      symbol: "γ_M1",
+      type: "number",
+      unit: "-",
+      required: true,
+      min: 0.9,
+      max: 1.5,
+      default: 1.05,
+      category: "material",
+      description: "Partial safety factor for member instability (1.05 typical for Norway, 1.0 elsewhere)"
+    },
+
+    // ULS loads
+    NEd_ULS: {
+      label: "Design axial force (ULS)",
+      symbol: "N_Ed",
+      type: "expression",
+      unit: "kN",
+      required: true,
+      min: 0,
+      default: 1000,
+      category: "loads_uls",
+      description: "Axial compression force for ULS - positive = compression (accepts expressions)"
+    },
+
+    // Fire loads
+    fireEnabled: {
+      label: "Enable fire design",
+      symbol: "Fire",
+      type: "boolean",
+      required: false,
+      default: false,
+      category: "loads_fire",
+      description: "Enable fire design calculations per EC3-1-2"
+    },
+    fireMode: {
+      label: "Fire temperature mode",
+      symbol: "Mode",
+      type: "select",
+      options: ["specify", "find-critical"],
+      required: false,
+      default: "specify",
+      category: "loads_fire",
+      description: "Specify temperature or find critical temperature"
+    },
+    NEd_fire: {
+      label: "Fire design axial force",
+      symbol: "N_Ed,fi",
+      type: "expression",
+      unit: "kN",
+      required: false,
+      min: 0,
+      default: 600,
+      category: "loads_fire",
+      description: "Axial compression force for fire case - positive = compression (accepts expressions)"
+    },
+    temperature: {
+      label: "Steel temperature",
+      symbol: "θ",
+      type: "number",
+      unit: "°C",
+      required: false,
+      min: 20,
+      max: 1000,
+      default: 20,
+      category: "loads_fire",
+      description: "Steel temperature for fire case (max 1000°C)"
+    }
+  },
+
+  outputs: {
+    // ULS outputs
+    lambda_bar_y: {
+      label: "Non-dimensional slenderness (y-axis)",
+      symbol: "λ̄_y",
+      unit: "-",
+      category: "uls_results"
+    },
+    lambda_bar_z: {
+      label: "Non-dimensional slenderness (z-axis)",
+      symbol: "λ̄_z",
+      unit: "-",
+      category: "uls_results"
+    },
+    chi_min: {
+      label: "Reduction factor (minimum)",
+      symbol: "χ_min",
+      unit: "-",
+      category: "uls_results"
+    },
+    Nb_Rd: {
+      label: "Buckling resistance",
+      symbol: "N_b,Rd",
+      unit: "kN",
+      category: "uls_results"
+    },
+    utilization_uls: {
+      label: "ULS utilization",
+      symbol: "η_ULS",
+      unit: "%",
+      category: "uls_results"
+    },
+
+    // Fire outputs
+    critical_temp: {
+      label: "Critical temperature",
+      symbol: "θ_cr",
+      unit: "°C",
+      category: "fire_results"
+    },
+    utilization_fire: {
+      label: "Fire utilization",
+      symbol: "η_fi",
+      unit: "%",
+      category: "fire_results"
+    }
+  }
+};
+
+// ============================================================================
+// MATERIAL DATABASE
+// ============================================================================
+
+const STEEL_GRADES = {
+  S235: {
+    fy: { "<=16": 235, "16-40": 225, "40-63": 215, "63-80": 215, "80-100": 215, "100-150": 195, "150-200": 185, "200-250": 175, "250-400": 165 }
+  },
+  S275: {
+    fy: { "<=16": 275, "16-40": 265, "40-63": 255, "63-80": 245, "80-100": 235, "100-150": 225, "150-200": 215, "200-250": 205, "250-400": 195 }
+  },
+  S355: {
+    fy: { "<=16": 355, "16-40": 345, "40-63": 335, "63-80": 325, "80-100": 315, "100-150": 295, "150-200": 285, "200-250": 275, "250-400": 265 }
+  },
+  S420: {
+    fy: { "<=16": 420, "16-40": 400, "40-63": 390, "63-80": 370, "80-100": 360, "100-150": 340, "150-200": 320, "200-250": 300, "250-400": 280 }
+  },
+  S460: {
+    fy: { "<=16": 460, "16-40": 440, "40-63": 430, "63-80": 410, "80-100": 400, "100-150": 380, "150-200": 360, "200-250": 340, "250-400": 320 }
+  }
+};
+
+// Fire reduction factors per EC3-1-2 Table 3.1
+const FIRE_REDUCTION_FACTORS = {
+  k_y_theta: [
+    { temp: 20, factor: 1.000 },
+    { temp: 100, factor: 1.000 },
+    { temp: 200, factor: 1.000 },
+    { temp: 300, factor: 1.000 },
+    { temp: 400, factor: 1.000 },
+    { temp: 500, factor: 0.780 },
+    { temp: 600, factor: 0.470 },
+    { temp: 700, factor: 0.230 },
+    { temp: 800, factor: 0.110 },
+    { temp: 900, factor: 0.060 },
+    { temp: 1000, factor: 0.040 },
+    { temp: 1100, factor: 0.020 },
+    { temp: 1200, factor: 0.000 }
+  ],
+  k_E_theta: [
+    { temp: 20, factor: 1.000 },
+    { temp: 100, factor: 1.000 },
+    { temp: 200, factor: 0.900 },
+    { temp: 300, factor: 0.800 },
+    { temp: 400, factor: 0.700 },
+    { temp: 500, factor: 0.600 },
+    { temp: 600, factor: 0.310 },
+    { temp: 700, factor: 0.130 },
+    { temp: 800, factor: 0.090 },
+    { temp: 900, factor: 0.068 },
+    { temp: 1000, factor: 0.045 },
+    { temp: 1100, factor: 0.023 },
+    { temp: 1200, factor: 0.000 }
+  ]
+};
+
+// Imperfection factors per EC3-1-1 Table 6.1
+const IMPERFECTION_FACTORS = {
+  a0: 0.13,
+  a: 0.21,
+  b: 0.34,
+  c: 0.49,
+  d: 0.76
+};
+
+// ============================================================================
+// STEEL SECTION DATABASE
+// ============================================================================
+
+let steelDatabase = {};
+let profileOrder = {}; // Store original order from JSON files
+
+/**
+ * Load steel section database from JSON files
+ */
+async function loadSteelDatabase() {
+  const profileTypes = ['hea', 'heb', 'hem', 'ipe', 'hrhs', 'hshs', 'hchs', 'crhs', 'cshs', 'cchs'];
+
+  for (const type of profileTypes) {
+    try {
+      const response = await fetch(`../steel_cross_section_database/${type}.json`);
+      const data = await response.json();
+
+      // Transform profiles array into object with profile names as keys
+      if (data.profiles && Array.isArray(data.profiles)) {
+        const profilesObj = {};
+        const orderArray = []; // Track original order
+
+        data.profiles.forEach(profile => {
+          const name = profile.profile;
+          orderArray.push(name); // Store order
+
+          // Transform property names to match our expected format
+          profilesObj[name] = {
+            // Original properties
+            ...profile,
+
+            // Add computed properties for buckling calculations
+            // Area in cm² (convert from mm²)
+            area: profile.A / 100,
+
+            // Second moment of area in cm⁴ (convert from mm⁴)
+            iy_moment: profile.Iy / 10000,
+            iz_moment: profile.Iz / 10000,
+
+            // Radius of gyration in cm (convert from mm)
+            iy: profile.iy / 10,
+            iz: profile.iz / 10,
+
+            // Buckling curves
+            buckling_curve_y: profile.alpha_yy || 'b',
+            buckling_curve_z: profile.alpha_zz || 'c'
+          };
+        });
+
+        steelDatabase[type] = profilesObj;
+        profileOrder[type] = orderArray; // Store original order
+      }
+    } catch (error) {
+      console.error(`Failed to load ${type}.json:`, error);
+    }
+  }
+
+  console.log('Steel database loaded:', Object.keys(steelDatabase));
+  return steelDatabase;
+}
+
+/**
+ * Get list of profile names for a given type (in original JSON order)
+ */
+function getProfileNames(profileType) {
+  if (!profileOrder[profileType]) {
+    return [];
+  }
+  // Return profiles in original JSON file order
+  return profileOrder[profileType];
+}
+
+/**
+ * Get section properties for a specific profile
+ */
+function getSectionProperties(profileType, profileName) {
+  if (!steelDatabase[profileType] || !steelDatabase[profileType][profileName]) {
+    return null;
+  }
+  return steelDatabase[profileType][profileName];
+}
+
+/**
+ * Get yield strength based on steel grade and flange thickness
+ */
+function getYieldStrength(steelGrade, thickness_mm) {
+  const grade = STEEL_GRADES[steelGrade];
+  if (!grade) return null;
+
+  const fyTable = grade.fy;
+
+  if (thickness_mm <= 16) return fyTable["<=16"];
+  if (thickness_mm <= 40) return fyTable["16-40"];
+  if (thickness_mm <= 63) return fyTable["40-63"];
+  if (thickness_mm <= 80) return fyTable["63-80"];
+  if (thickness_mm <= 100) return fyTable["80-100"];
+  if (thickness_mm <= 150) return fyTable["100-150"];
+  if (thickness_mm <= 200) return fyTable["150-200"];
+  if (thickness_mm <= 250) return fyTable["200-250"];
+  return fyTable["250-400"];
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Piecewise linear interpolation for fire reduction factors
+ */
+function getFireReductionFactor(temp, property) {
+  const table = FIRE_REDUCTION_FACTORS[property];
+
+  // Clamp temperature to valid range
+  if (temp <= table[0].temp) return table[0].factor;
+  if (temp >= table[table.length - 1].temp) return table[table.length - 1].factor;
+
+  // Piecewise linear interpolation
+  for (let i = 0; i < table.length - 1; i++) {
+    if (temp >= table[i].temp && temp <= table[i + 1].temp) {
+      const t1 = table[i].temp;
+      const t2 = table[i + 1].temp;
+      const f1 = table[i].factor;
+      const f2 = table[i + 1].factor;
+
+      // Linear interpolation: f = f1 + (f2 - f1) * (temp - t1) / (t2 - t1)
+      const interpolatedFactor = f1 + (f2 - f1) * (temp - t1) / (t2 - t1);
+      return interpolatedFactor;
+    }
+  }
+
+  return 0;
+}
+
+/**
+ * Evaluate mathematical expressions safely
+ */
+function evaluateExpression(expr) {
+  try {
+    // Remove whitespace
+    expr = expr.toString().trim();
+
+    // Only allow numbers, operators, parentheses, and decimal points
+    if (!/^[\d\s+\-*/.()]+$/.test(expr)) {
+      throw new Error('Invalid characters in expression');
+    }
+
+    // Evaluate using Function constructor (safer than eval)
+    const result = new Function('return ' + expr)();
+
+    if (typeof result !== 'number' || !isFinite(result)) {
+      throw new Error('Expression does not evaluate to a valid number');
+    }
+
+    return result;
+  } catch (error) {
+    throw new Error(`Invalid expression: ${expr}`);
+  }
+}
+
+/**
+ * Format number with fixed decimals, removing trailing zeros
+ */
+function toFixedIfNeeded(value, decimals = 3) {
+  if (typeof value !== 'number' || !isFinite(value)) return '-';
+  return parseFloat(value.toFixed(decimals)).toString();
+}
+
+// ============================================================================
+// BUCKLING CALCULATIONS (EC3-1-1 Section 6.3.1)
+// ============================================================================
+
+/**
+ * Calculate non-dimensional slenderness
+ * λ̄ = (L/i) / λ₁ where λ₁ = π√(E/fy)
+ */
+function calculateSlenderness(L_m, i_cm, fy_MPa, E_MPa = 210000) {
+  const L_cm = L_m * 100; // Convert m to cm
+  const lambda = L_cm / i_cm; // Actual slenderness
+  const lambda_1 = Math.PI * Math.sqrt(E_MPa / fy_MPa); // Euler slenderness
+  const lambda_bar = lambda / lambda_1; // Non-dimensional slenderness
+
+  return {
+    lambda: lambda,
+    lambda_1: lambda_1,
+    lambda_bar: lambda_bar
+  };
+}
+
+/**
+ * Calculate reduction factor χ per EC3-1-1 Eq. 6.49
+ */
+function calculateReductionFactor(lambda_bar, bucklingCurve) {
+  const alpha = IMPERFECTION_FACTORS[bucklingCurve];
+
+  if (!alpha) {
+    throw new Error(`Invalid buckling curve: ${bucklingCurve}`);
+  }
+
+  // φ = 0.5[1 + α(λ̄ - 0.2) + λ̄²]
+  const phi = 0.5 * (1 + alpha * (lambda_bar - 0.2) + lambda_bar * lambda_bar);
+
+  // χ = 1 / (φ + √(φ² - λ̄²)) but χ ≤ 1.0
+  let chi = 1 / (phi + Math.sqrt(phi * phi - lambda_bar * lambda_bar));
+
+  // Limit χ to 1.0
+  chi = Math.min(chi, 1.0);
+
+  return {
+    alpha: alpha,
+    phi: phi,
+    chi: chi
+  };
+}
+
+/**
+ * Check cross-section class (simplified check for Class 4 warning)
+ */
+function checkCrossSectionClass(section, fy_MPa) {
+  // Simplified Class 4 check per EC3-1-1 Table 5.2
+  // This is a basic check - full classification is more complex
+
+  const epsilon = Math.sqrt(235 / fy_MPa);
+  let isClass4 = false;
+
+  // For I-sections: check flange and web slenderness
+  if (section.h && section.b && section.tf && section.tw) {
+    const c_flange = (section.b / 2 - section.tw / 2 - section.r) || (section.b / 2);
+    const c_web = section.h - 2 * section.tf - 2 * (section.r || 0);
+
+    const flange_slenderness = c_flange / section.tf;
+    const web_slenderness = c_web / section.tw;
+
+    // Class 3 limit for outstand flange (compression): c/t ≤ 14ε
+    // Class 4 if exceeded
+    if (flange_slenderness > 14 * epsilon) {
+      isClass4 = true;
+    }
+
+    // Class 3 limit for web (compression): c/t ≤ 42ε
+    if (web_slenderness > 42 * epsilon) {
+      isClass4 = true;
+    }
+  }
+
+  // For hollow sections: check wall slenderness
+  if (section.d && section.t) { // CHS
+    const d_over_t = section.d / section.t;
+    // Class 3 limit: d/t ≤ 90ε²
+    if (d_over_t > 90 * epsilon * epsilon) {
+      isClass4 = true;
+    }
+  }
+
+  if (section.height && section.width && section.t) { // RHS/SHS
+    const h_over_t = (section.height - 3 * section.t) / section.t;
+    const b_over_t = (section.width - 3 * section.t) / section.t;
+    // Class 3 limit: c/t ≤ 42ε
+    if (h_over_t > 42 * epsilon || b_over_t > 42 * epsilon) {
+      isClass4 = true;
+    }
+  }
+
+  return {
+    isClass4: isClass4,
+    epsilon: epsilon
+  };
+}
+
+/**
+ * Calculate buckling resistance Nb,Rd
+ * Nb,Rd = χ × A × fy / γM1
+ */
+function calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C, gamma_M1) {
+  const E_MPa = 210000;
+
+  // Get material reduction factors for temperature
+  let k_y_theta = 1.0;
+  let k_E_theta = 1.0;
+
+  if (temperature_C > 20) {
+    k_y_theta = getFireReductionFactor(temperature_C, 'k_y_theta');
+    k_E_theta = getFireReductionFactor(temperature_C, 'k_E_theta');
+  }
+
+  // Reduced material properties at temperature
+  const fy_theta = fy_MPa * k_y_theta;
+  const E_theta = E_MPa * k_E_theta;
+
+  // Calculate slenderness about both axes
+  const slenderness_y = calculateSlenderness(Ly_m, section.iy, fy_theta, E_theta);
+  const slenderness_z = calculateSlenderness(Lz_m, section.iz, fy_theta, E_theta);
+
+  // Get buckling curves for the section
+  const curve_y = section.buckling_curve_y || 'b';
+  const curve_z = section.buckling_curve_z || 'c';
+
+  // Calculate reduction factors
+  const reduction_y = calculateReductionFactor(slenderness_y.lambda_bar, curve_y);
+  const reduction_z = calculateReductionFactor(slenderness_z.lambda_bar, curve_z);
+
+  // Governing axis is the one with lower χ (more critical)
+  const chi_min = Math.min(reduction_y.chi, reduction_z.chi);
+  const governing_axis = reduction_y.chi < reduction_z.chi ? 'y' : 'z';
+
+  // Buckling resistance: Nb,Rd = χ × A × fy / γM1
+  // A is in cm², fy in MPa → result in kN
+  const A_cm2 = section.area;
+  const Nb_Rd_kN = (chi_min * A_cm2 * fy_theta / gamma_M1) / 10; // Divide by 10: (cm² × MPa) / 10 = kN
+
+  // Check cross-section class
+  const classCheck = checkCrossSectionClass(section, fy_MPa);
+
+  return {
+    // Material properties
+    fy_theta: fy_theta,
+    E_theta: E_theta,
+    k_y_theta: k_y_theta,
+    k_E_theta: k_E_theta,
+
+    // Slenderness
+    slenderness_y: slenderness_y,
+    slenderness_z: slenderness_z,
+
+    // Buckling curves and imperfection factors
+    curve_y: curve_y,
+    curve_z: curve_z,
+    alpha_y: reduction_y.alpha,
+    alpha_z: reduction_z.alpha,
+
+    // Reduction factors
+    phi_y: reduction_y.phi,
+    phi_z: reduction_z.phi,
+    chi_y: reduction_y.chi,
+    chi_z: reduction_z.chi,
+    chi_min: chi_min,
+    governing_axis: governing_axis,
+
+    // Resistance
+    Nb_Rd_kN: Nb_Rd_kN,
+
+    // Class check
+    isClass4: classCheck.isClass4,
+    epsilon: classCheck.epsilon
+  };
+}
+
+// ============================================================================
+// CRITICAL TEMPERATURE CALCULATION (BRENT'S METHOD)
+// ============================================================================
+
+/**
+ * Brent's root-finding algorithm
+ * Robust combination of bisection, secant method, and inverse quadratic interpolation
+ */
+function brentRootFinder(f, a, b, tol = 1e-6, maxIter = 100) {
+  let fa = f(a);
+  let fb = f(b);
+
+  if (fa * fb > 0) {
+    throw new Error("Root not bracketed");
+  }
+
+  if (Math.abs(fa) < Math.abs(fb)) {
+    [a, b] = [b, a];
+    [fa, fb] = [fb, fa];
+  }
+
+  let c = a;
+  let fc = fa;
+  let mflag = true;
+  let d = 0;
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    if (Math.abs(b - a) < tol) {
+      return b;
+    }
+
+    let s;
+    if (fa !== fc && fb !== fc) {
+      // Inverse quadratic interpolation
+      s = (a * fb * fc) / ((fa - fb) * (fa - fc)) +
+          (b * fa * fc) / ((fb - fa) * (fb - fc)) +
+          (c * fa * fb) / ((fc - fa) * (fc - fb));
+    } else {
+      // Secant method
+      s = b - fb * (b - a) / (fb - fa);
+    }
+
+    // Check if bisection is needed
+    const cond1 = s < (3 * a + b) / 4 || s > b;
+    const cond2 = mflag && Math.abs(s - b) >= Math.abs(b - c) / 2;
+    const cond3 = !mflag && Math.abs(s - b) >= Math.abs(c - d) / 2;
+    const cond4 = mflag && Math.abs(b - c) < tol;
+    const cond5 = !mflag && Math.abs(c - d) < tol;
+
+    if (cond1 || cond2 || cond3 || cond4 || cond5) {
+      s = (a + b) / 2;
+      mflag = true;
+    } else {
+      mflag = false;
+    }
+
+    const fs = f(s);
+    d = c;
+    c = b;
+    fc = fb;
+
+    if (fa * fs < 0) {
+      b = s;
+      fb = fs;
+    } else {
+      a = s;
+      fa = fs;
+    }
+
+    if (Math.abs(fa) < Math.abs(fb)) {
+      [a, b] = [b, a];
+      [fa, fb] = [fb, fa];
+    }
+  }
+
+  return b;
+}
+
+/**
+ * Find critical temperature where utilization = 1.0
+ */
+function findCriticalTemperature(NEd_fire_kN, section, Ly_m, Lz_m, fy_MPa, gamma_M1) {
+  const tolerance = 0.001; // 0.1% convergence criterion
+
+  // Objective function: utilization - 1.0
+  function objective(temp) {
+    const result = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temp, gamma_M1);
+    const utilization = NEd_fire_kN / result.Nb_Rd_kN;
+    return utilization - 1.0;
+  }
+
+  const tempMin = 20;
+  const tempMax = 1000; // Limit to 1000°C to prevent unrealistic results
+
+  const objMin = objective(tempMin);
+  const objMax = objective(tempMax);
+
+  // Check if root exists in range
+  if (objMin * objMax > 0) {
+    if (objMin < 0) {
+      // Section always has excess capacity (even at 1000°C)
+      return { criticalTemp: null, message: 'Section has excess capacity at all temperatures up to 1000°C' };
+    } else {
+      // Section fails even at ambient temperature
+      return { criticalTemp: 20, message: 'Section fails at ambient temperature' };
+    }
+  }
+
+  // Find critical temperature using Brent's method
+  const criticalTemp = brentRootFinder(objective, tempMin, tempMax, tolerance);
+
+  // Limit to 1000°C maximum
+  const limitedTemp = Math.min(criticalTemp, 1000);
+
+  return {
+    criticalTemp: limitedTemp,
+    message: limitedTemp >= 1000 ? 'Critical temperature exceeds 1000°C (calculation limit)' : null
+  };
+}
+
+// ============================================================================
+// MAIN CALCULATION FUNCTION
+// ============================================================================
+
+/**
+ * Main function to perform all buckling calculations
+ */
+function calculateBuckling(inputs) {
+  try {
+    // Parse inputs
+    const profileType = inputs.profileType;
+    const profileName = inputs.profileName;
+    const Ly_m = evaluateExpression(inputs.Ly);
+    const Lz_m = evaluateExpression(inputs.Lz);
+    const steelGrade = inputs.steelGrade;
+    const fy_MPa = parseFloat(inputs.fy);
+    const gamma_M1 = parseFloat(inputs.gamma_M1);
+    const NEd_ULS_kN = evaluateExpression(inputs.NEd_ULS);
+
+    const fireEnabled = inputs.fireEnabled || false;
+    const fireMode = inputs.fireMode || 'specify';
+    const NEd_fire_kN = fireEnabled ? evaluateExpression(inputs.NEd_fire) : null;
+    const temperature_C = fireEnabled ? parseFloat(inputs.temperature) : 20;
+
+    // Get section properties
+    const section = getSectionProperties(profileType, profileName);
+    if (!section) {
+      throw new Error('Section not found in database');
+    }
+
+    // Calculate ULS buckling resistance at ambient temperature
+    const ulsResults = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, 20, gamma_M1);
+    const utilization_ULS = NEd_ULS_kN / ulsResults.Nb_Rd_kN;
+
+    // Calculate fire case if enabled
+    let fireResults = null;
+    let criticalTempResult = null;
+
+    if (fireEnabled && NEd_fire_kN) {
+      if (fireMode === 'find-critical') {
+        // Find critical temperature mode
+        criticalTempResult = findCriticalTemperature(NEd_fire_kN, section, Ly_m, Lz_m, fy_MPa, gamma_M1);
+
+        // Calculate properties at critical temperature (if valid)
+        const tempToUse = criticalTempResult.criticalTemp || 20;
+        fireResults = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, tempToUse, gamma_M1);
+        fireResults.utilization = NEd_fire_kN / fireResults.Nb_Rd_kN;
+        fireResults.criticalTemp = criticalTempResult.criticalTemp;
+        fireResults.criticalTempMessage = criticalTempResult.message;
+
+      } else {
+        // Specify temperature mode
+        fireResults = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C, gamma_M1);
+        const utilization_fire = NEd_fire_kN / fireResults.Nb_Rd_kN;
+
+        fireResults.utilization = utilization_fire;
+        fireResults.criticalTemp = null;
+        fireResults.criticalTempMessage = null;
+      }
+    }
+
+    return {
+      success: true,
+      inputs: {
+        profileType: profileType,
+        profileName: profileName,
+        section: section,
+        Ly_m: Ly_m,
+        Lz_m: Lz_m,
+        steelGrade: steelGrade,
+        fy_MPa: fy_MPa,
+        gamma_M1: gamma_M1,
+        NEd_ULS_kN: NEd_ULS_kN,
+        fireEnabled: fireEnabled,
+        NEd_fire_kN: NEd_fire_kN,
+        temperature_C: temperature_C
+      },
+      ulsResults: {
+        ...ulsResults,
+        utilization: utilization_ULS
+      },
+      fireResults: fireResults
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}

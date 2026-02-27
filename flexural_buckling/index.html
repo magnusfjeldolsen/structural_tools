@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steel Column Flexural Buckling - EC3</title>
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-BFVZQQ2LYN');
+  </script>
+
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <!-- Note: report-print.css NOT loaded - using custom print CSS below -->
+
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Print CSS for Flexural Buckling Report -->
+  <style>
+    @media print {
+      /* ===== PAGE SETUP ===== */
+      @page {
+        size: A4;
+        margin: 25mm 25mm 25mm 31.7mm;
+      }
+
+      /* ===== HIDE EVERYTHING EXCEPT REPORT ===== */
+      body * {
+        visibility: hidden;
+      }
+
+      /* ===== SHOW ONLY THE REPORT ===== */
+      #results,
+      #results *,
+      #detailed-report,
+      #detailed-report *,
+      .report-content,
+      .report-content * {
+        visibility: visible !important;
+      }
+
+      /* Override .hidden class */
+      #detailed-report.hidden {
+        display: block !important;
+        visibility: visible !important;
+      }
+
+      /* ===== POSITIONING ===== */
+      body {
+        background: white !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      #results {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        background: white !important;
+        padding: 15mm 20mm !important;  /* Top/Bottom: 15mm, Left/Right: 20mm */
+        margin: 0 !important;
+      }
+
+      #results > .bg-gray-700 {
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+      }
+
+      #detailed-report {
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+
+      .report-content {
+        background: white !important;
+        color: black !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+
+      /* ===== HIDE BUTTONS AND UI ELEMENTS ===== */
+      button,
+      .print\:hidden,
+      #results > .bg-gray-700 > div.flex {
+        display: none !important;
+        visibility: hidden !important;
+      }
+
+      /* ===== TYPOGRAPHY ===== */
+      .report-content h1 {
+        font-size: 20pt !important;
+        color: black !important;
+        page-break-after: avoid;
+      }
+
+      .report-content h2 {
+        font-size: 16pt !important;
+        page-break-after: avoid;
+      }
+
+      .report-content h3 {
+        font-size: 14pt !important;
+        page-break-after: avoid;
+      }
+
+      /* ===== COLORS FOR PRINT ===== */
+      .text-blue-900, .text-blue-800, .text-blue-700 {
+        color: #1e3a8a !important;
+      }
+
+      .text-green-900, .text-green-700 {
+        color: #14532d !important;
+      }
+
+      .text-red-900, .text-red-700 {
+        color: #7f1d1d !important;
+      }
+
+      .text-orange-600 {
+        color: #ea580c !important;
+      }
+
+      .text-gray-900, .text-gray-800 {
+        color: #111827 !important;
+      }
+
+      .text-gray-600 {
+        color: #4b5563 !important;
+      }
+
+      .text-gray-500 {
+        color: #6b7280 !important;
+      }
+
+      /* ===== BACKGROUNDS ===== */
+      .bg-blue-100 {
+        background: #dbeafe !important;
+      }
+
+      .bg-orange-100 {
+        background: #ffedd5 !important;
+      }
+
+      .bg-gray-50 {
+        background: #f9fafb !important;
+      }
+
+      .bg-blue-50 {
+        background: #eff6ff !important;
+      }
+
+      /* ===== BORDERS ===== */
+      .border-blue-400 {
+        border-color: #60a5fa !important;
+      }
+
+      .border-orange-400 {
+        border-color: #fb923c !important;
+      }
+
+      .border-gray-300 {
+        border-color: #d1d5db !important;
+      }
+
+      .border-blue-500 {
+        border-color: #3b82f6 !important;
+      }
+
+      /* ===== PAGE BREAKS ===== */
+      .page-break-before {
+        page-break-before: always !important;
+      }
+
+      .page-break-avoid {
+        page-break-inside: avoid !important;
+      }
+
+      /* ===== ENSURE PROPER DISPLAY TYPES ===== */
+      .grid {
+        display: grid !important;
+      }
+
+      .flex {
+        display: flex !important;
+      }
+
+      /* But hide flex containers that are UI elements */
+      #results > .bg-gray-700 > div.flex {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+  <main class="main-container">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-4">
+      <div class="flex gap-2">
+        <button id="save-json-btn" class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition flex items-center gap-1">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+          </svg>
+          Save
+        </button>
+        <button id="load-json-btn" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition flex items-center gap-1">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          Load
+        </button>
+        <input type="file" id="load-json-input" accept=".json" class="hidden">
+      </div>
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+        ← Back to Tools
+      </a>
+    </div>
+
+    <h1 class="heading-1 text-center mb-6">Steel Column Flexural Buckling</h1>
+    <p class="text-description text-center mb-2">Eurocode 3-1-1 Section 6.3.1 | Fire design per EC3-1-2</p>
+    <p class="text-sm text-yellow-500 text-center mb-6">⚠️ Positive loads = compression</p>
+
+    <!-- Main Form -->
+    <form id="buckling-form" class="space-y-6">
+
+      <!-- Calculation Description -->
+      <div class="bg-gray-800 rounded-lg p-6">
+        <h2 class="text-xl font-semibold text-white mb-4">Calculation Description (Optional)</h2>
+        <textarea
+          id="description"
+          rows="3"
+          class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-cyan-500"
+          placeholder="Enter a description for this calculation (appears at top of report)..."></textarea>
+      </div>
+
+      <!-- Steel Section Selection -->
+      <div class="bg-gray-800 rounded-lg p-6">
+        <h2 class="text-xl font-semibold text-white mb-4">Steel Section</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label for="profile-type" class="block text-sm font-medium text-gray-300 mb-1">Profile Type</label>
+            <select
+              id="profile-type"
+              class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-cyan-500"
+              required>
+              <option value="">-- Select Profile Type --</option>
+              <option value="hea">HEA - European wide flange</option>
+              <option value="heb">HEB - European wide flange</option>
+              <option value="hem">HEM - European wide flange</option>
+              <option value="ipe">IPE - European I-beam</option>
+              <option value="hrhs">HRHS - Rectangular hollow (hot-rolled)</option>
+              <option value="hshs">HSHS - Square hollow (hot-rolled)</option>
+              <option value="hchs">HCHS - Circular hollow (hot-rolled)</option>
+              <option value="crhs">CRHS - Rectangular hollow (cold-formed)</option>
+              <option value="cshs">CSHS - Square hollow (cold-formed)</option>
+              <option value="cchs">CCHS - Circular hollow (cold-formed)</option>
+            </select>
+          </div>
+          <div>
+            <label for="profile-name" class="block text-sm font-medium text-gray-300 mb-1">Profile Size</label>
+            <select
+              id="profile-name"
+              class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-cyan-500"
+              required
+              disabled>
+              <option value="">-- First select profile type --</option>
+            </select>
+          </div>
+        </div>
+        <!-- Section Properties Display -->
+        <div id="section-properties" class="mt-4 p-4 bg-gray-700 rounded hidden">
+          <h3 class="text-sm font-semibold text-cyan-400 mb-2">Section Properties</h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div><span class="text-gray-400">A:</span> <span id="prop-A" class="text-white font-mono">-</span> cm²</div>
+            <div><span class="text-gray-400">I<sub>y</sub>:</span> <span id="prop-Iy" class="text-white font-mono">-</span> cm⁴</div>
+            <div><span class="text-gray-400">I<sub>z</sub>:</span> <span id="prop-Iz" class="text-white font-mono">-</span> cm⁴</div>
+            <div><span class="text-gray-400">i<sub>y</sub>:</span> <span id="prop-iy" class="text-white font-mono">-</span> cm</div>
+            <div><span class="text-gray-400">i<sub>z</sub>:</span> <span id="prop-iz" class="text-white font-mono">-</span> cm</div>
+            <div><span class="text-gray-400">h:</span> <span id="prop-h" class="text-white font-mono">-</span> mm</div>
+            <div><span class="text-gray-400">b:</span> <span id="prop-b" class="text-white font-mono">-</span> mm</div>
+            <div><span class="text-gray-400">t<sub>f</sub>:</span> <span id="prop-tf" class="text-white font-mono">-</span> mm</div>
+            <div><span class="text-gray-400">t<sub>w</sub>:</span> <span id="prop-tw" class="text-white font-mono">-</span> mm</div>
+            <div><span class="text-gray-400">Curve y:</span> <span id="prop-curve-y" class="text-white font-mono">-</span></div>
+            <div><span class="text-gray-400">Curve z:</span> <span id="prop-curve-z" class="text-white font-mono">-</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Buckling Lengths -->
+      <div class="bg-gray-800 rounded-lg p-6">
+        <h2 class="text-xl font-semibold text-white mb-4">Buckling Lengths</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label for="Ly" class="block text-sm font-medium text-gray-300 mb-1">
+              L<sub>y</sub> - Buckling length about y-axis (m)
+            </label>
+            <input
+              type="text"
+              id="Ly"
+              class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-cyan-500 font-mono"
+              value="3.5"
+              placeholder="e.g. 3.5 or 0.7*5"
+              required>
+            <p class="text-xs text-gray-400 mt-1">Supports expressions (e.g., 0.7*5)</p>
+          </div>
+          <div>
+            <label for="Lz" class="block text-sm font-medium text-gray-300 mb-1">
+              L<sub>z</sub> - Buckling length about z-axis (m)
+            </label>
+            <input
+              type="text"
+              id="Lz"
+              class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-cyan-500 font-mono"
+              value="3.5"
+              placeholder="e.g. 3.5 or 0.5*7"
+              required>
+            <p class="text-xs text-gray-400 mt-1">Supports expressions (e.g., 0.5*7)</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Material Properties -->
+      <div class="bg-gray-800 rounded-lg p-6">
+        <h2 class="text-xl font-semibold text-white mb-4">Material Properties</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label for="steel-grade" class="block text-sm font-medium text-gray-300 mb-1">Steel Grade</label>
+            <select
+              id="steel-grade"
+              class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-cyan-500"
+              required>
+              <option value="S235">S235</option>
+              <option value="S275">S275</option>
+              <option value="S355" selected>S355</option>
+              <option value="S420">S420</option>
+              <option value="S460">S460</option>
+            </select>
+          </div>
+          <div>
+            <label for="fy" class="block text-sm font-medium text-gray-300 mb-1">
+              f<sub>y</sub> - Yield strength (MPa)
+            </label>
+            <input
+              type="number"
+              id="fy"
+              class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-cyan-500 font-mono"
+              value="355"
+              min="200"
+              max="500"
+              required>
+            <p class="text-xs text-gray-400 mt-1">Auto-updates with steel grade & thickness</p>
+          </div>
+          <div>
+            <label for="gamma-M1" class="block text-sm font-medium text-gray-300 mb-1">
+              γ<sub>M1</sub> - Partial factor
+            </label>
+            <input
+              type="number"
+              id="gamma-M1"
+              class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-cyan-500 font-mono"
+              value="1.05"
+              min="0.9"
+              max="1.5"
+              step="0.01"
+              required>
+            <p class="text-xs text-gray-400 mt-1">Norway: 1.05, Others: 1.0</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ULS Load Case -->
+      <div class="bg-gray-800 rounded-lg p-6">
+        <h2 class="text-xl font-semibold text-white mb-4">ULS Load Case</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label for="NEd-ULS" class="block text-sm font-medium text-gray-300 mb-1">
+              N<sub>Ed</sub> - Design axial force (kN)
+            </label>
+            <input
+              type="text"
+              id="NEd-ULS"
+              class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-cyan-500 font-mono"
+              value="1000"
+              placeholder="e.g. 1000 or 1.35*500+1.5*300"
+              required>
+            <p class="text-xs text-gray-400 mt-1">Positive = compression (supports expressions)</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fire Load Case -->
+      <div class="bg-gray-800 rounded-lg p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-semibold text-white">Fire Load Case (Optional)</h2>
+          <label class="flex items-center cursor-pointer">
+            <input type="checkbox" id="fire-enabled" class="mr-2 w-5 h-5 text-cyan-600 bg-gray-700 border-gray-600 rounded focus:ring-cyan-500">
+            <span class="text-gray-300">Enable Fire Design</span>
+          </label>
+        </div>
+        <div id="fire-inputs" class="space-y-4 hidden">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label for="NEd-fire" class="block text-sm font-medium text-gray-300 mb-1">
+                N<sub>Ed,fi</sub> - Fire design axial force (kN)
+              </label>
+              <input
+                type="text"
+                id="NEd-fire"
+                class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-cyan-500 font-mono"
+                value="600"
+                placeholder="e.g. 600 or 1.0*500+0.5*200">
+              <p class="text-xs text-gray-400 mt-1">Positive = compression (supports expressions)</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-1">Fire Temperature Mode</label>
+              <div class="flex gap-4 mt-2">
+                <label class="flex items-center cursor-pointer">
+                  <input type="radio" name="fire-mode" value="specify" class="mr-2" checked>
+                  <span class="text-gray-300">Specify Temperature</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                  <input type="radio" name="fire-mode" value="find-critical" class="mr-2">
+                  <span class="text-gray-300">Find Critical Temperature</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div id="temperature-input-container">
+            <label for="temperature" class="block text-sm font-medium text-gray-300 mb-1">
+              θ - Steel temperature (°C)
+            </label>
+            <input
+              type="number"
+              id="temperature"
+              class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-cyan-500 font-mono"
+              value="500"
+              min="20"
+              max="1000"
+              step="10">
+            <p class="text-xs text-gray-400 mt-1">Range: 20-1000°C (for capacity check)</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Calculate Button -->
+      <div class="flex justify-center">
+        <button
+          type="submit"
+          class="px-8 py-3 bg-cyan-600 hover:bg-cyan-700 text-white text-lg font-semibold rounded-lg transition shadow-lg">
+          Calculate Buckling Capacity
+        </button>
+      </div>
+    </form>
+
+    <!-- Results Section -->
+    <div id="results-section" class="mt-8 hidden">
+
+      <!-- Class 4 Warning -->
+      <div id="class4-warning" class="bg-yellow-900 border border-yellow-600 rounded-lg p-4 mb-6 hidden">
+        <h3 class="text-lg font-semibold text-yellow-300 mb-2">⚠️ Warning: Class 4 Section</h3>
+        <p class="text-yellow-100">
+          This section is classified as Class 4 (slender). The calculations shown use gross section properties
+          and may be unconservative. For accurate results, effective cross-section properties should be used
+          according to EC3-1-1 Section 6.2.2.5.
+        </p>
+      </div>
+
+      <!-- ULS Results -->
+      <div class="bg-gray-800 rounded-lg p-6 mb-6">
+        <h2 class="text-xl font-semibold text-white mb-4">ULS Results</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div class="bg-gray-700 rounded p-4">
+            <p class="text-sm text-gray-400 mb-1">Slenderness (y-axis)</p>
+            <p class="text-2xl font-mono text-white" id="result-lambda-y">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-4">
+            <p class="text-sm text-gray-400 mb-1">Slenderness (z-axis)</p>
+            <p class="text-2xl font-mono text-white" id="result-lambda-z">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-4">
+            <p class="text-sm text-gray-400 mb-1">Governing Axis</p>
+            <p class="text-2xl font-mono text-white" id="result-governing-axis">-</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div class="bg-gray-700 rounded p-4">
+            <p class="text-sm text-gray-400 mb-1">χ<sub>y</sub> - Reduction factor (y)</p>
+            <p class="text-2xl font-mono text-white" id="result-chi-y">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-4">
+            <p class="text-sm text-gray-400 mb-1">χ<sub>z</sub> - Reduction factor (z)</p>
+            <p class="text-2xl font-mono text-white" id="result-chi-z">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-4">
+            <p class="text-sm text-gray-400 mb-1">χ<sub>min</sub> - Governing</p>
+            <p class="text-2xl font-mono text-white" id="result-chi-min">-</p>
+          </div>
+        </div>
+        <div class="bg-gradient-to-r from-gray-700 to-gray-600 rounded-lg p-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <p class="text-sm text-gray-300 mb-1">N<sub>b,Rd</sub> - Buckling Resistance</p>
+              <p class="text-4xl font-mono font-bold text-cyan-400" id="result-Nb-Rd">-</p>
+            </div>
+            <div>
+              <p class="text-sm text-gray-300 mb-1">Utilization (N<sub>Ed</sub> / N<sub>b,Rd</sub>)</p>
+              <p class="text-4xl font-mono font-bold" id="result-utilization-uls">-</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fire Results -->
+      <div id="fire-results" class="bg-gray-800 rounded-lg p-6 mb-6 hidden">
+        <h2 class="text-xl font-semibold text-white mb-4">Fire Design Results</h2>
+
+        <!-- Temperature Specified Mode Results -->
+        <div id="fire-results-specify" class="hidden">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div class="bg-gray-700 rounded p-4">
+              <p class="text-sm text-gray-400 mb-1">k<sub>y,θ</sub> - Yield reduction</p>
+              <p class="text-2xl font-mono text-white" id="result-k-y-theta">-</p>
+            </div>
+            <div class="bg-gray-700 rounded p-4">
+              <p class="text-sm text-gray-400 mb-1">k<sub>E,θ</sub> - Stiffness reduction</p>
+              <p class="text-2xl font-mono text-white" id="result-k-E-theta">-</p>
+            </div>
+            <div class="bg-gray-700 rounded p-4">
+              <p class="text-sm text-gray-400 mb-1">N<sub>b,fi,Rd</sub> (kN)</p>
+              <p class="text-2xl font-mono text-white" id="result-Nb-fi-Rd">-</p>
+            </div>
+          </div>
+          <div class="bg-gradient-to-r from-gray-700 to-gray-600 rounded-lg p-6">
+            <p class="text-sm text-gray-300 mb-1">Utilization at θ = <span id="temp-display">-</span>°C</p>
+            <p class="text-4xl font-mono font-bold" id="result-utilization-fire">-</p>
+          </div>
+        </div>
+
+        <!-- Find Critical Temperature Mode Results -->
+        <div id="fire-results-critical" class="hidden">
+          <div class="bg-gradient-to-r from-orange-900 to-red-900 rounded-lg p-6">
+            <p class="text-sm text-gray-300 mb-1">θ<sub>cr</sub> - Critical Temperature (Utilization = 100%)</p>
+            <p class="text-5xl font-mono font-bold text-orange-300" id="result-critical-temp">-</p>
+            <p class="text-sm text-gray-400 mt-2" id="critical-temp-message"></p>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <div class="bg-gray-700 rounded p-4">
+              <p class="text-sm text-gray-400 mb-1">k<sub>y,θ</sub> at θ<sub>cr</sub></p>
+              <p class="text-2xl font-mono text-white" id="result-k-y-theta-crit">-</p>
+            </div>
+            <div class="bg-gray-700 rounded p-4">
+              <p class="text-sm text-gray-400 mb-1">k<sub>E,θ</sub> at θ<sub>cr</sub></p>
+              <p class="text-2xl font-mono text-white" id="result-k-E-theta-crit">-</p>
+            </div>
+            <div class="bg-gray-700 rounded p-4">
+              <p class="text-sm text-gray-400 mb-1">N<sub>b,fi,Rd</sub> at θ<sub>cr</sub> (kN)</p>
+              <p class="text-2xl font-mono text-white" id="result-Nb-fi-Rd-crit">-</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- On-Screen Calculations -->
+      <div class="bg-gray-800 rounded-lg p-6 mb-6">
+        <h2 class="text-xl font-semibold text-white mb-4 cursor-pointer" onclick="toggleCalculations()">
+          ▼ Detailed Calculations
+        </h2>
+        <div id="calculations-display" class="space-y-4 text-sm font-mono">
+          <!-- Calculations will be populated here -->
+        </div>
+      </div>
+
+      <!-- Detailed Report (wrapped in #results for print CSS) -->
+      <div id="results">
+        <div class="bg-gray-700 rounded-lg p-6 mt-6">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="text-lg font-semibold text-white cursor-pointer" onclick="toggleReport()">
+              ▼ Detailed Calculation Report
+            </h3>
+            <button type="button" onclick="printReport()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-lg transition print:hidden">
+              🖨️ Print Report
+            </button>
+          </div>
+          <div id="detailed-report" class="hidden mt-4">
+            <!-- Report content will be generated here -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Centralized JavaScript -->
+  <script src="../assets/js/common.js"></script>
+  <script src="flexural_buckling_api.js"></script>
+  <script src="flexural_buckling_ui.js"></script>
+
+  <!-- Persistent Cookie Settings Button -->
+  <button id="cookie-settings-btn"
+          onclick="if(window.cookieConsent) { window.cookieConsent.showConsentBanner(); } else { document.getElementById('cookie-consent')?.classList.remove('hidden'); }"
+          class="fixed bottom-3 left-3 z-40 bg-gray-800 hover:bg-gray-700 text-white rounded-lg shadow-lg border border-gray-600 transition-all duration-200 hover:scale-105"
+          style="padding: 6px 10px; font-size: 11px;"
+          title="Cookie Settings">
+    <span class="hidden sm:inline">🍪 Cookies</span>
+    <span class="sm:hidden">🍪</span>
+  </button>
+  <style>
+    /* Mobile-specific adjustments for cookie button */
+    @media (max-width: 640px) {
+      #cookie-settings-btn {
+        bottom: 8px !important;
+        left: 8px !important;
+        padding: 5px 8px !important;
+        font-size: 16px !important;
+      }
+    }
+    #cookie-settings-btn {
+      pointer-events: auto;
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
+
+  <!-- Cookie Consent Scripts -->
+  <script src="../assets/js/cookie-consent.js"></script>
+</body>
+</html>
