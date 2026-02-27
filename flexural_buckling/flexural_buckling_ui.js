@@ -217,6 +217,7 @@ async function handleFormSubmit(event) {
     fy: document.getElementById('fy').value,
     gamma_M1: document.getElementById('gamma-M1').value,
     NEd_ULS: document.getElementById('NEd-ULS').value,
+    allowClass4: document.getElementById('class4-toggle').checked,
     fireEnabled: document.getElementById('fire-enabled').checked,
     fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
     NEd_fire: document.getElementById('NEd-fire').value,
@@ -258,6 +259,7 @@ async function handleFindLightestSection(event) {
     fy: document.getElementById('fy').value,
     gamma_M1: document.getElementById('gamma-M1').value,
     NEd_ULS: document.getElementById('NEd-ULS').value,
+    allowClass4: document.getElementById('class4-toggle').checked,
     fireEnabled: document.getElementById('fire-enabled').checked,
     fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
     NEd_fire: document.getElementById('NEd-fire').value,
@@ -367,6 +369,9 @@ async function handleFindLightestSection(event) {
 function displayResults(results, inputs) {
   const resultsSection = document.getElementById('results-section');
   resultsSection.classList.remove('hidden');
+
+  // Display classification results
+  displayClassificationResults(results.ulsResults.classification);
 
   // Display Class 4 warning
   displayClass4Warning(results.ulsResults.isClass4);
@@ -494,6 +499,93 @@ function displayFireResults(results, inputs) {
       document.getElementById('result-k-E-theta-crit').textContent = '-';
       document.getElementById('result-Nb-fi-Rd-crit').textContent = '-';
     }
+  }
+}
+
+function displayClassificationResults(classification) {
+  if (!classification) return;
+
+  const classResultsDiv = document.getElementById('classification-results');
+  classResultsDiv.classList.remove('hidden');
+
+  // Overall class
+  const classElement = document.getElementById('section-class');
+  classElement.textContent = `Class ${classification.class}`;
+
+  // Color code the class
+  classElement.classList.remove('text-green-400', 'text-yellow-400', 'text-orange-400', 'text-red-400');
+  if (classification.class === 1 || classification.class === 2) {
+    classElement.classList.add('text-green-400');
+  } else if (classification.class === 3) {
+    classElement.classList.add('text-yellow-400');
+  } else if (classification.class === 4) {
+    classElement.classList.add('text-orange-400');
+  }
+
+  // Epsilon
+  document.getElementById('epsilon-value').textContent = toFixedIfNeeded(classification.epsilon, 4);
+
+  // Governing element
+  document.getElementById('governing-element').textContent = classification.governing_element || '-';
+
+  // Effective area (if Class 4)
+  const effAreaDisplay = document.getElementById('effective-area-display');
+  if (classification.is_class4 && classification.effective_properties) {
+    const aEff = classification.effective_properties.area;
+    const aGross = classification.effective_properties.gross_area;
+    effAreaDisplay.textContent =
+      `${toFixedIfNeeded(aEff, 2)} cm² (${toFixedIfNeeded((aEff/aGross)*100, 1)}%)`;
+  } else {
+    effAreaDisplay.textContent = '-';
+  }
+
+  // Populate element details table
+  const tbody = document.getElementById('classification-table-body');
+  tbody.innerHTML = '';
+
+  for (const elem of classification.element_results) {
+    const row = document.createElement('tr');
+    row.className = 'border-b border-gray-600';
+
+    const classColor = elem.class === 1 || elem.class === 2 ? 'text-green-400' :
+                       elem.class === 3 ? 'text-yellow-400' : 'text-orange-400';
+
+    row.innerHTML = `
+      <td class="py-2 px-3 text-gray-300">${elem.id}</td>
+      <td class="py-2 px-3 text-right text-gray-200">${toFixedIfNeeded(elem.c, 2)}</td>
+      <td class="py-2 px-3 text-right text-gray-200">${toFixedIfNeeded(elem.t, 2)}</td>
+      <td class="py-2 px-3 text-right text-gray-200">${toFixedIfNeeded(elem.slenderness, 2)}</td>
+      <td class="py-2 px-3 text-right text-gray-200">${toFixedIfNeeded(elem.limit_class3, 2)}</td>
+      <td class="py-2 px-3 text-center font-semibold ${classColor}">${elem.class}</td>
+    `;
+    tbody.appendChild(row);
+  }
+
+  // Show Class 4 info banner if applicable
+  const class4InfoDiv = document.getElementById('class4-info');
+  if (classification.is_class4 && classification.effective_properties) {
+    class4InfoDiv.classList.remove('hidden');
+    const reductionPercent = classification.effective_properties.area_reduction_percent;
+    document.getElementById('area-reduction-percent').textContent = toFixedIfNeeded(reductionPercent, 2);
+  } else {
+    class4InfoDiv.classList.add('hidden');
+  }
+}
+
+function toggleClassificationDetails() {
+  const detailsDiv = document.getElementById('classification-details');
+  const toggleIcon = document.getElementById('classification-toggle-icon');
+  const button = toggleIcon.parentElement;
+
+  detailsDiv.classList.toggle('hidden');
+
+  // Update arrow indicator and button text
+  if (detailsDiv.classList.contains('hidden')) {
+    toggleIcon.textContent = '▶';
+    button.childNodes[1].textContent = ' Show element classification details';
+  } else {
+    toggleIcon.textContent = '▼';
+    button.childNodes[1].textContent = ' Hide element classification details';
   }
 }
 
