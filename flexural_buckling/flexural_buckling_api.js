@@ -891,30 +891,42 @@ function findLightestSection(inputs, progressCallback) {
         continue; // Skip invalid sections
       }
 
-      // Determine maximum utilization
+      // Determine maximum utilization based on design mode
       let maxUtilization = results.ulsResults.utilization;
+      let utilizationSource = 'ULS';
 
       // If fire design is enabled and in "specify temperature" mode
+      // take the maximum of ULS and fire utilization
       if (inputs.fireEnabled && results.fireResults && inputs.fireMode === 'specify') {
-        maxUtilization = Math.max(
-          results.ulsResults.utilization,
-          results.fireResults.utilization
-        );
+        const ulsUtil = results.ulsResults.utilization;
+        const fireUtil = results.fireResults.utilization;
+        maxUtilization = Math.max(ulsUtil, fireUtil);
+        utilizationSource = `max(ULS: ${(ulsUtil * 100).toFixed(1)}%, Fire: ${(fireUtil * 100).toFixed(1)}%)`;
       }
-      // Note: If in "find-critical" mode, we only consider ULS utilization
-      // because theta_cr is a follower value that will adjust
+      // If fire design is enabled but in "find-critical" mode
+      // only use ULS utilization (theta_cr is a follower value)
+      else if (inputs.fireEnabled && inputs.fireMode === 'find-critical') {
+        utilizationSource = 'ULS (fire find-θ_cr mode)';
+      }
+
+      // Debug logging
+      console.log(`Testing ${profileName}: ${utilizationSource} = ${(maxUtilization * 100).toFixed(1)}%`);
 
       // Check if this section is valid (utilization ≤ 100%)
       if (maxUtilization <= 1.0) {
+        // Found the lightest section that works!
         lastValidSection = {
           profileName: profileName,
           results: results,
           maxUtilization: maxUtilization
         };
-        // Don't break - continue to find the lightest valid section
-      } else {
-        // First section that exceeds 100% - previous was the lightest
+        console.log(`  ✓ Valid (≤100%) - FOUND LIGHTEST CANDIDATE!`);
+        // Stop searching - this is the lightest (smallest area) that passes
         break;
+      } else {
+        // This section is too small (exceeds 100%)
+        console.log(`  ✗ Too small (exceeds 100%) - continuing to next heavier section...`);
+        // Continue testing heavier sections
       }
     }
 

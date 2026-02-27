@@ -129,22 +129,13 @@ function displaySectionProperties(section) {
   document.getElementById('prop-iy').textContent = toFixedIfNeeded(section.iy, 2);
   document.getElementById('prop-iz').textContent = toFixedIfNeeded(section.iz, 2);
 
-  // Display geometry based on section type
-  if (section.h && section.b) {
+  // Display height based on section type
+  if (section.h) {
     document.getElementById('prop-h').textContent = toFixedIfNeeded(section.h, 1);
-    document.getElementById('prop-b').textContent = toFixedIfNeeded(section.b, 1);
-    document.getElementById('prop-tf').textContent = toFixedIfNeeded(section.tf, 1);
-    document.getElementById('prop-tw').textContent = toFixedIfNeeded(section.tw, 1);
-  } else if (section.height && section.width) {
+  } else if (section.height) {
     document.getElementById('prop-h').textContent = toFixedIfNeeded(section.height, 1);
-    document.getElementById('prop-b').textContent = toFixedIfNeeded(section.width, 1);
-    document.getElementById('prop-tf').textContent = toFixedIfNeeded(section.t, 1);
-    document.getElementById('prop-tw').textContent = toFixedIfNeeded(section.t, 1);
   } else if (section.d) {
     document.getElementById('prop-h').textContent = toFixedIfNeeded(section.d, 1);
-    document.getElementById('prop-b').textContent = '-';
-    document.getElementById('prop-tf').textContent = toFixedIfNeeded(section.t, 1);
-    document.getElementById('prop-tw').textContent = toFixedIfNeeded(section.t, 1);
   }
 
   document.getElementById('prop-curve-y').textContent = section.buckling_curve_y || 'b';
@@ -319,16 +310,48 @@ async function handleFindLightestSection(event) {
   const optimalSection = searchResult.section;
   const profileNameSelect = document.getElementById('profile-name');
 
+  // Update the profile dropdown
   profileNameSelect.value = optimalSection.profileName;
+
+  // Trigger the change handler to update section properties display
   handleProfileNameChange({ target: profileNameSelect });
 
   // Display success message
   searchProgress.textContent = `✓ Found: ${inputs.profileType.toUpperCase()} ${optimalSection.profileName.toUpperCase()} (tested ${searchResult.testedCount} of ${searchResult.totalCount} sections, utilization: ${(optimalSection.maxUtilization * 100).toFixed(1)}%)`;
   searchProgress.classList.add('text-green-400');
 
-  // Auto-calculate to show results
-  const results = optimalSection.results;
-  displayResults(results, results.inputs);
+  // Auto-calculate and display results
+  // Gather fresh inputs from the form (including the just-selected profile)
+  const finalInputs = {
+    profileType: document.getElementById('profile-type').value,
+    profileName: optimalSection.profileName,
+    Ly: document.getElementById('Ly').value,
+    Lz: document.getElementById('Lz').value,
+    steelGrade: document.getElementById('steel-grade').value,
+    fy: document.getElementById('fy').value,
+    gamma_M1: document.getElementById('gamma-M1').value,
+    NEd_ULS: document.getElementById('NEd-ULS').value,
+    fireEnabled: document.getElementById('fire-enabled').checked,
+    fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
+    NEd_fire: document.getElementById('NEd-fire').value,
+    temperature: document.getElementById('temperature').value
+  };
+
+  // Perform the calculation
+  const finalResults = calculateBuckling(finalInputs);
+
+  if (!finalResults.success) {
+    console.error('Auto-calculation failed:', finalResults.error);
+    alert('Error calculating results for found section: ' + finalResults.error);
+    return;
+  }
+
+  // Display the results
+  displayResults(finalResults, finalInputs);
+
+  // Scroll to results
+  const resultsSection = document.getElementById('results-section');
+  resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   // Hide success message after 10 seconds
   setTimeout(() => {

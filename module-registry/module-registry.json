@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-02-17T14:14:28.000Z",
-    "total_modules": 22,
+    "generated": "2026-02-27T14:14:28.000Z",
+    "total_modules": 23,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 3
@@ -332,6 +332,31 @@
         "structural calculator"
       ],
       "url": "./weld_capacity/index.html",
+      "category": "steel"
+    },
+    {
+      "id": "flexural_buckling",
+      "title": "Steel Column Flexural Buckling Calculator | Free Engineering Tool",
+      "description": "Calculate flexural buckling capacity of compression members per EC3-1-1 Section 6.3.1. Features optional fire design with critical temperature calculation using Brent's method, steel section database integration, and detailed calculation reports.",
+      "keywords": [
+        "flexural buckling",
+        "column buckling",
+        "compression members",
+        "ec3-1-1",
+        "eurocode 3",
+        "fire design",
+        "critical temperature",
+        "buckling resistance",
+        "steel columns",
+        "slenderness",
+        "reduction factor",
+        "buckling curves",
+        "fire resistance",
+        "steel database",
+        "free engineering tool",
+        "structural calculator"
+      ],
+      "url": "./flexural_buckling/index.html",
       "category": "steel"
     }
   ]
