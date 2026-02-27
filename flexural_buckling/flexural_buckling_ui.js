@@ -195,9 +195,9 @@ function updateFireModeVisibility() {
   const temperatureInputContainer = document.getElementById('temperature-input-container');
 
   if (fireMode === 'specify') {
-    temperatureInputContainer.classList.remove('hidden');
+    temperatureInputContainer.classList.remove('find-critical');
   } else {
-    temperatureInputContainer.classList.add('hidden');
+    temperatureInputContainer.classList.add('find-critical');
   }
 }
 
