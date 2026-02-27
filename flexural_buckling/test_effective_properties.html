@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Effective Properties</title>
+  <script src="./flexural_buckling_api.js"></script>
+</head>
+<body>
+  <h1>Class 4 Effective Properties Test</h1>
+  <pre id="output"></pre>
+
+  <script>
+    const output = document.getElementById('output');
+    let log = '';
+
+    function print(msg) {
+      log += msg + '\n';
+      output.textContent = log;
+    }
+
+    async function runTests() {
+      print('='.repeat(80));
+      print('CLASS 4 EFFECTIVE PROPERTIES TEST');
+      print('='.repeat(80));
+
+      // Wait for database to load
+      await loadSteelDatabase();
+
+      // Test 1: IPE 220 / S460
+      print('\nTEST 1: IPE 220 / S460 - Class 4');
+      print('-'.repeat(80));
+
+      const ipe220 = getSectionProperties('ipe', 'IPE220');
+      print(`Gross section: A = ${ipe220.area.toFixed(2)} cm²`);
+
+      const classification1 = classifySection(ipe220, 460, 'ipe');
+      print(`Classification: Class ${classification1.class}`);
+      print(`Epsilon: ${classification1.epsilon.toFixed(4)}`);
+      print(`Governing element: ${classification1.governing_element}`);
+
+      if (classification1.is_class4) {
+        const effective1 = calculateClass4EffectiveProperties(ipe220, classification1);
+        print(`\nEffective Properties:`);
+        print(`  A_eff = ${effective1.area.toFixed(2)} cm² (gross: ${effective1.gross_area.toFixed(2)} cm²)`);
+        print(`  Area reduction = ${effective1.area_reduction.toFixed(2)} cm² (${effective1.area_reduction_percent.toFixed(2)}%)`);
+        print(`  I_eff,y = ${effective1.iy_moment.toFixed(0)} cm⁴ (gross: ${ipe220.iy_moment.toFixed(0)} cm⁴)`);
+        print(`  I_eff,z = ${effective1.iz_moment.toFixed(0)} cm⁴ (gross: ${ipe220.iz_moment.toFixed(0)} cm⁴)`);
+        print(`  i_eff,y = ${effective1.iy.toFixed(2)} cm (gross: ${ipe220.iy.toFixed(2)} cm)`);
+        print(`  i_eff,z = ${effective1.iz.toFixed(2)} cm (gross: ${ipe220.iz.toFixed(2)} cm)`);
+
+        print(`\nPlate Reductions:`);
+        for (const reduction of effective1.plate_reductions) {
+          print(`  ${reduction.element}:`);
+          print(`    c_gross = ${reduction.c_gross.toFixed(2)} mm`);
+          print(`    c_eff = ${reduction.c_eff.toFixed(2)} mm`);
+          print(`    ρ = ${reduction.rho.toFixed(4)}`);
+          print(`    λ̄p = ${reduction.lambda_p_bar.toFixed(4)}`);
+          print(`    Area reduction = ${reduction.area_reduction.toFixed(2)} cm²`);
+        }
+      }
+
+      // Test 2: HEA 800 / S235
+      print('\n' + '='.repeat(80));
+      print('TEST 2: HEA 800 / S235 - Class 4');
+      print('-'.repeat(80));
+
+      const hea800 = getSectionProperties('hea', 'HEA800');
+      print(`Gross section: A = ${hea800.area.toFixed(2)} cm²`);
+
+      const classification2 = classifySection(hea800, 235, 'hea');
+      print(`Classification: Class ${classification2.class}`);
+      print(`Epsilon: ${classification2.epsilon.toFixed(4)}`);
+      print(`Governing element: ${classification2.governing_element}`);
+
+      if (classification2.is_class4) {
+        const effective2 = calculateClass4EffectiveProperties(hea800, classification2);
+        print(`\nEffective Properties:`);
+        print(`  A_eff = ${effective2.area.toFixed(2)} cm² (gross: ${effective2.gross_area.toFixed(2)} cm²)`);
+        print(`  Area reduction = ${effective2.area_reduction.toFixed(2)} cm² (${effective2.area_reduction_percent.toFixed(2)}%)`);
+        print(`  I_eff,y = ${effective2.iy_moment.toFixed(0)} cm⁴ (gross: ${hea800.iy_moment.toFixed(0)} cm⁴)`);
+        print(`  I_eff,z = ${effective2.iz_moment.toFixed(0)} cm⁴ (gross: ${hea800.iz_moment.toFixed(0)} cm⁴)`);
+        print(`  i_eff,y = ${effective2.iy.toFixed(2)} cm (gross: ${hea800.iy.toFixed(2)} cm)`);
+        print(`  i_eff,z = ${effective2.iz.toFixed(2)} cm (gross: ${hea800.iz.toFixed(2)} cm)`);
+
+        print(`\nPlate Reductions:`);
+        for (const reduction of effective2.plate_reductions) {
+          print(`  ${reduction.element}:`);
+          print(`    c_gross = ${reduction.c_gross.toFixed(2)} mm`);
+          print(`    c_eff = ${reduction.c_eff.toFixed(2)} mm`);
+          print(`    ρ = ${reduction.rho.toFixed(4)}`);
+          print(`    λ̄p = ${reduction.lambda_p_bar.toFixed(4)}`);
+          print(`    Area reduction = ${reduction.area_reduction.toFixed(2)} cm²`);
+        }
+      }
+
+      // Test 3: HEA 200 / S355 - should be Class 1 or 2 (no reduction)
+      print('\n' + '='.repeat(80));
+      print('TEST 3: HEA 200 / S355 - Class 1/2 (control test)');
+      print('-'.repeat(80));
+
+      const hea200 = getSectionProperties('hea', 'HEA200');
+      print(`Gross section: A = ${hea200.area.toFixed(2)} cm²`);
+
+      const classification3 = classifySection(hea200, 355, 'hea');
+      print(`Classification: Class ${classification3.class}`);
+      print(`Epsilon: ${classification3.epsilon.toFixed(4)}`);
+      print(`Governing element: ${classification3.governing_element}`);
+
+      if (classification3.is_class4) {
+        print(`ERROR: HEA 200 / S355 should NOT be Class 4!`);
+      } else {
+        print(`✓ No effective properties needed (Class ${classification3.class})`);
+      }
+
+      print('\n' + '='.repeat(80));
+      print('TESTS COMPLETE');
+      print('='.repeat(80));
+    }
+
+    runTests().catch(err => {
+      print('ERROR: ' + err.message);
+      console.error(err);
+    });
+  </script>
+</body>
+</html>

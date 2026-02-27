@@ -33,25 +33,42 @@ Implementation of EN 1993-1-1 Section Classification (Classes 1-4) for steel mem
 
 ### 2. Class 4 Effective Properties
 
-**Function**: `calculateClass4EffectiveProperties(section, classification)`
+**Function**: `calculateClass4EffectiveProperties(section, classification, profileType)`
 
 Implements EN 1993-1-5 Section 4.4 (Effective Width Method):
 
-```
-For internal elements in uniform compression (ψ = 1.0):
-  λ̄p = (c/t) / (28.4ε√kσ)
-  ρ = (λ̄p - 0.055(3 + ψ)) / λ̄p²  (but ρ ≤ 1.0)
-  c_eff = ρ × c
+**Reduction Factor ρ** (element-type specific):
 
-Area reduction:
-  A_eff = A_gross - Σ(c - c_eff) × t
+For **internal elements** (webs, internal flanges):
 ```
+λ̄p = (c/t) / (limit_class3)
+ψ = 1.0 (uniform compression)
+ρ = (λ̄p - 0.055(3 + ψ)) / λ̄p² = (λ̄p - 0.220) / λ̄p²  (ρ ≤ 1.0)
+```
+
+For **outstand elements** (flange tips):
+```
+ρ = (λ̄p - 0.188) / λ̄p²  (ρ ≤ 1.0)
+```
+
+**Effective Width**:
+```
+c_eff = ρ × c
+A_eff = A_gross - Σ(c - c_eff) × t
+```
+
+**Effective Moments of Inertia**:
+- I-sections: Web reductions affect I_y, flange reductions affect I_z
+- RHS/SHS: Flange reductions affect I_y, web reductions affect I_z
+- CHS: Symmetric reduction on both axes
+- Uses thin-walled theory for web: I_reduction = (t/12) × (c³ - c_eff³)
 
 **Properties calculated**:
 - Effective area (A_eff)
-- Effective moments of inertia (I_eff,y, I_eff,z)
+- Effective moments of inertia (I_eff,y, I_eff,z) - **properly calculated, not scaled**
 - Effective radii of gyration (i_eff,y, i_eff,z)
 - Area reduction percentage
+- I_y and I_z reduction percentages
 
 ### 3. User Interface
 

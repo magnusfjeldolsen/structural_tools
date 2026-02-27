@@ -641,14 +641,19 @@ function classifySection(section, fy, profileType) {
  * Calculate Class 4 effective properties per EN 1993-1-5
  * @param {Object} section - Gross section properties
  * @param {Object} classification - Classification results
+ * @param {string} profileType - Profile type (for geometry identification)
  * @returns {Object} Effective section properties
  */
-function calculateClass4EffectiveProperties(section, classification) {
+function calculateClass4EffectiveProperties(section, classification, profileType) {
 
   let A_eff = section.area;  // Start with gross area (cm²)
   let removed_area = 0;
 
   const plateReductions = [];
+
+  // For pure compression: ψ = 1.0 (uniform compression on both edges)
+  // For bending (future): ψ will be calculated based on stress distribution
+  const psi = 1.0;
 
   // Iterate through Class 4 elements and calculate effective widths
   for (const element of classification.element_results) {
@@ -657,17 +662,32 @@ function calculateClass4EffectiveProperties(section, classification) {
     const c = element.c;  // mm
     const t = element.t;  // mm
     const slenderness = element.slenderness;
+    const elementType = element.type;
 
-    // Calculate plate slenderness parameter λp
+    // Calculate plate slenderness parameter λ̄p
     const limit_class3 = element.limit_class3;
     const lambda_p_bar = slenderness / limit_class3;
 
-    // Calculate reduction factor ρ per EN 1993-1-5 Eq. 4.2
-    // For internal compression elements: ρ = (λp - 0.055(3+ψ)) / λp² but ρ ≤ 1.0
-    // For pure compression: ψ = 1.0 (uniform compression)
-    const psi = 1.0;
-    let rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
-    rho = Math.min(Math.max(rho, 0), 1.0);  // Clamp between 0 and 1
+    // Calculate reduction factor ρ per EN 1993-1-5 Table 4.1 and Table 4.2
+    // The formulas depend on element type and stress ratio ψ
+    let rho;
+
+    if (elementType === 'internal') {
+      // Internal element in compression (Table 4.1)
+      // ψ = 1: uniform compression
+      // ρ = (λ̄p - 0.055(3 + ψ)) / λ̄p² ≤ 1.0
+      rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
+    } else if (elementType === 'outstand') {
+      // Outstand element in compression (Table 4.2)
+      // ρ = (λ̄p - 0.188) / λ̄p² ≤ 1.0
+      rho = (lambda_p_bar - 0.188) / (lambda_p_bar * lambda_p_bar);
+    } else if (elementType === 'circular') {
+      // Circular hollow sections - use internal element formula
+      rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
+    }
+
+    // Clamp ρ: 0 ≤ ρ ≤ 1.0
+    rho = Math.min(Math.max(rho, 0), 1.0);
 
     // Effective width
     const c_eff = rho * c;
@@ -677,9 +697,11 @@ function calculateClass4EffectiveProperties(section, classification) {
 
     plateReductions.push({
       element: element.id,
+      type: elementType,
       c_gross: c,
       c_eff: c_eff,
       rho: rho,
+      psi: psi,
       lambda_p_bar: lambda_p_bar,
       area_reduction: area_reduction
     });
@@ -687,15 +709,58 @@ function calculateClass4EffectiveProperties(section, classification) {
 
   A_eff = section.area - removed_area;
 
-  // For symmetric sections in pure compression, neutral axis doesn't shift
-  // Approximate I_eff by scaling I_gross proportionally to area reduction
-  const area_ratio = A_eff / section.area;
-  const I_eff_y = section.iy_moment * area_ratio;
-  const I_eff_z = section.iz_moment * area_ratio;
+  // Calculate effective moments of inertia
+  // For I-sections: web reduces I_y, flanges reduce I_z
+  // For RHS/SHS: flanges reduce I_y, webs reduce I_z
+  let I_eff_y = section.iy_moment;  // cm⁴
+  let I_eff_z = section.iz_moment;  // cm⁴
 
-  // Recalculate radii of gyration
-  const i_eff_y = Math.sqrt(I_eff_y / A_eff);
-  const i_eff_z = Math.sqrt(I_eff_z / A_eff);
+  // Identify which elements affect which axis
+  for (const reduction of plateReductions) {
+    const element_id = reduction.element.toLowerCase();
+
+    if (profileType === 'ipe' || profileType === 'hea' || profileType === 'heb' || profileType === 'hem') {
+      // I-sections
+      if (element_id.includes('web')) {
+        // Web reduction affects I_y (major axis)
+        // I_reduction = (1/12) * t * (c³ - c_eff³) for thin-walled approximation
+        const c_mm = reduction.c_gross;
+        const c_eff_mm = reduction.c_eff;
+        const t_cm = section.tw / 10;  // Convert mm to cm
+        const I_reduction = (t_cm / 12) * (Math.pow(c_mm/10, 3) - Math.pow(c_eff_mm/10, 3));
+        I_eff_y -= I_reduction;
+      } else if (element_id.includes('flange')) {
+        // Flange reduction affects I_z (minor axis)
+        // For flanges, reduction is smaller - use area-based approximation
+        const area_loss_ratio = reduction.area_reduction / section.area;
+        I_eff_z -= section.iz_moment * area_loss_ratio;
+      }
+    } else if (profileType === 'hrhs' || profileType === 'hshs' || profileType === 'crhs' || profileType === 'cshs') {
+      // RHS/SHS sections
+      if (element_id.includes('flange')) {
+        // Flanges affect I_y (bending about horizontal axis)
+        const area_loss_ratio = reduction.area_reduction / section.area;
+        I_eff_y -= section.iy_moment * area_loss_ratio;
+      } else if (element_id.includes('web')) {
+        // Webs affect I_z (bending about vertical axis)
+        const area_loss_ratio = reduction.area_reduction / section.area;
+        I_eff_z -= section.iz_moment * area_loss_ratio;
+      }
+    } else {
+      // CHS or unknown - use area scaling approximation for both axes
+      const area_loss_ratio = reduction.area_reduction / section.area;
+      I_eff_y -= section.iy_moment * area_loss_ratio;
+      I_eff_z -= section.iz_moment * area_loss_ratio;
+    }
+  }
+
+  // Ensure I_eff doesn't go negative (shouldn't happen, but safety check)
+  I_eff_y = Math.max(I_eff_y, section.iy_moment * 0.3);
+  I_eff_z = Math.max(I_eff_z, section.iz_moment * 0.3);
+
+  // Recalculate radii of gyration with effective properties
+  const i_eff_y = Math.sqrt(I_eff_y / A_eff);  // cm
+  const i_eff_z = Math.sqrt(I_eff_z / A_eff);  // cm
 
   return {
     ...section,
@@ -706,8 +771,12 @@ function calculateClass4EffectiveProperties(section, classification) {
     iz: i_eff_z,
     is_effective: true,
     gross_area: section.area,
+    gross_iy: section.iy,
+    gross_iz: section.iz,
     area_reduction: removed_area,
     area_reduction_percent: (removed_area / section.area) * 100,
+    iy_reduction_percent: ((section.iy_moment - I_eff_y) / section.iy_moment) * 100,
+    iz_reduction_percent: ((section.iz_moment - I_eff_z) / section.iz_moment) * 100,
     plate_reductions: plateReductions
   };
 }
@@ -793,7 +862,7 @@ function calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C,
     }
 
     // Calculate effective properties for Class 4 section
-    effectiveProperties = calculateClass4EffectiveProperties(section, classification);
+    effectiveProperties = calculateClass4EffectiveProperties(section, classification, profileType);
     workingSection = effectiveProperties;
   }
 

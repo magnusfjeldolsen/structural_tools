@@ -43,7 +43,8 @@
       "Bash(find:*)",
       "Bash(git ls-tree:*)",
       "Bash(echo:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": [],
