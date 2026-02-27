@@ -455,6 +455,264 @@ function toFixedIfNeeded(value, decimals = 3) {
 }
 
 // ============================================================================
+// SECTION CLASSIFICATION (EC3-1-1 Table 5.2)
+// ============================================================================
+
+// Classification templates for different profile families
+const CLASSIFICATION_TEMPLATES = {
+  i_section: {
+    applies_to: ['hea', 'heb', 'hem', 'ipe'],
+    subplates: [
+      { id: 'flange_outstand', type: 'outstand', c_formula: '(b/2 - tw/2 - r)', t_formula: 'tf' },
+      { id: 'web_internal', type: 'internal', c_formula: '(h - 2*tf - 2*r)', t_formula: 'tw' }
+    ]
+  },
+  rhs: {
+    applies_to: ['hrhs', 'hshs', 'crhs', 'cshs'],
+    subplates: [
+      { id: 'flange_internal', type: 'internal', c_formula: '(b - 3*t)', t_formula: 't' },
+      { id: 'web_internal', type: 'internal', c_formula: '(h - 3*t)', t_formula: 't' }
+    ]
+  },
+  chs: {
+    applies_to: ['hchs', 'cchs'],
+    subplates: [
+      { id: 'circular_tube', type: 'circular', c_formula: 'D', t_formula: 't' }
+    ]
+  }
+};
+
+/**
+ * Get classification template for a profile type
+ */
+function getClassificationTemplate(profileType) {
+  for (const template of Object.values(CLASSIFICATION_TEMPLATES)) {
+    if (template.applies_to.includes(profileType)) {
+      return template;
+    }
+  }
+  return null;
+}
+
+/**
+ * Evaluate formula string with section dimensions
+ */
+function evaluateFormula(formula, section) {
+  let expression = formula;
+
+  // Replace section properties in formula
+  for (const [key, value] of Object.entries(section)) {
+    if (typeof value === 'number') {
+      const regex = new RegExp(`\\b${key}\\b`, 'g');
+      expression = expression.replace(regex, value.toString());
+    }
+  }
+
+  // Evaluate mathematical expression
+  try {
+    return Function('"use strict"; return (' + expression + ')')();
+  } catch (error) {
+    console.error('Formula evaluation error:', formula, error);
+    return NaN;
+  }
+}
+
+/**
+ * Get classification limits based on element type per EC3-1-1 Table 5.2
+ */
+function getClassificationLimit(elementType, targetClass, epsilon) {
+  const limits = {
+    'outstand': {
+      1: 9 * epsilon,
+      2: 10 * epsilon,
+      3: 14 * epsilon
+    },
+    'internal': {
+      1: 33 * epsilon,
+      2: 38 * epsilon,
+      3: 42 * epsilon
+    },
+    'circular': {
+      1: 50 * epsilon * epsilon,
+      2: 70 * epsilon * epsilon,
+      3: 90 * epsilon * epsilon
+    }
+  };
+
+  return limits[elementType]?.[targetClass] || Infinity;
+}
+
+/**
+ * Determine plate class based on slenderness
+ */
+function getPlateClass(elementType, slenderness, epsilon) {
+  // Handle circular sections separately (use d/t ratio)
+  if (elementType === 'circular') {
+    const d_over_t = slenderness;
+    if (d_over_t <= 50 * epsilon * epsilon) return 1;
+    if (d_over_t <= 70 * epsilon * epsilon) return 2;
+    if (d_over_t <= 90 * epsilon * epsilon) return 3;
+    return 4;
+  }
+
+  // Internal and outstand elements (use c/t ratio)
+  const limit1 = getClassificationLimit(elementType, 1, epsilon);
+  const limit2 = getClassificationLimit(elementType, 2, epsilon);
+  const limit3 = getClassificationLimit(elementType, 3, epsilon);
+
+  if (slenderness <= limit1) return 1;
+  if (slenderness <= limit2) return 2;
+  if (slenderness <= limit3) return 3;
+  return 4;
+}
+
+/**
+ * Classify cross-section per EC3-1-1 Table 5.2 (pure compression)
+ * @param {Object} section - Section properties from database
+ * @param {number} fy - Yield strength in MPa
+ * @param {string} profileType - Profile type (hea, hrhs, etc.)
+ * @returns {Object} Classification result
+ */
+function classifySection(section, fy, profileType) {
+  const epsilon = Math.sqrt(235 / fy);
+
+  // Get classification template for this profile type
+  const template = getClassificationTemplate(profileType);
+
+  if (!template) {
+    return {
+      class: 3,
+      epsilon: epsilon,
+      governing_element: null,
+      element_results: [],
+      is_class4: false,
+      message: 'Classification template not available - assuming Class 3'
+    };
+  }
+
+  const subplates = template.subplates;
+  let worstClass = 1;
+  let governingElement = null;
+  const elementResults = [];
+
+  // Evaluate each subplate
+  for (const plate of subplates) {
+    const c = evaluateFormula(plate.c_formula, section);
+    const t = evaluateFormula(plate.t_formula, section);
+
+    // Check for invalid dimensions
+    if (!isFinite(c) || !isFinite(t) || c <= 0 || t <= 0) {
+      console.warn(`Invalid dimensions for ${plate.id}: c=${c}, t=${t}`);
+      continue;
+    }
+
+    const slenderness = c / t;
+    const plateClass = getPlateClass(plate.type, slenderness, epsilon);
+
+    elementResults.push({
+      id: plate.id,
+      type: plate.type,
+      c: c,
+      t: t,
+      slenderness: slenderness,
+      class: plateClass,
+      limit_class1: getClassificationLimit(plate.type, 1, epsilon),
+      limit_class2: getClassificationLimit(plate.type, 2, epsilon),
+      limit_class3: getClassificationLimit(plate.type, 3, epsilon)
+    });
+
+    // Track worst (highest) class
+    if (plateClass > worstClass) {
+      worstClass = plateClass;
+      governingElement = plate.id;
+    }
+  }
+
+  return {
+    class: worstClass,
+    epsilon: epsilon,
+    governing_element: governingElement,
+    element_results: elementResults,
+    is_class4: worstClass === 4
+  };
+}
+
+/**
+ * Calculate Class 4 effective properties per EN 1993-1-5
+ * @param {Object} section - Gross section properties
+ * @param {Object} classification - Classification results
+ * @returns {Object} Effective section properties
+ */
+function calculateClass4EffectiveProperties(section, classification) {
+
+  let A_eff = section.area;  // Start with gross area (cm²)
+  let removed_area = 0;
+
+  const plateReductions = [];
+
+  // Iterate through Class 4 elements and calculate effective widths
+  for (const element of classification.element_results) {
+    if (element.class !== 4) continue;
+
+    const c = element.c;  // mm
+    const t = element.t;  // mm
+    const slenderness = element.slenderness;
+
+    // Calculate plate slenderness parameter λp
+    const limit_class3 = element.limit_class3;
+    const lambda_p_bar = slenderness / limit_class3;
+
+    // Calculate reduction factor ρ per EN 1993-1-5 Eq. 4.2
+    // For internal compression elements: ρ = (λp - 0.055(3+ψ)) / λp² but ρ ≤ 1.0
+    // For pure compression: ψ = 1.0 (uniform compression)
+    const psi = 1.0;
+    let rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
+    rho = Math.min(Math.max(rho, 0), 1.0);  // Clamp between 0 and 1
+
+    // Effective width
+    const c_eff = rho * c;
+    const area_reduction = ((c - c_eff) * t) / 100;  // Convert mm² to cm²
+
+    removed_area += area_reduction;
+
+    plateReductions.push({
+      element: element.id,
+      c_gross: c,
+      c_eff: c_eff,
+      rho: rho,
+      lambda_p_bar: lambda_p_bar,
+      area_reduction: area_reduction
+    });
+  }
+
+  A_eff = section.area - removed_area;
+
+  // For symmetric sections in pure compression, neutral axis doesn't shift
+  // Approximate I_eff by scaling I_gross proportionally to area reduction
+  const area_ratio = A_eff / section.area;
+  const I_eff_y = section.iy_moment * area_ratio;
+  const I_eff_z = section.iz_moment * area_ratio;
+
+  // Recalculate radii of gyration
+  const i_eff_y = Math.sqrt(I_eff_y / A_eff);
+  const i_eff_z = Math.sqrt(I_eff_z / A_eff);
+
+  return {
+    ...section,
+    area: A_eff,
+    iy_moment: I_eff_y,
+    iz_moment: I_eff_z,
+    iy: i_eff_y,
+    iz: i_eff_z,
+    is_effective: true,
+    gross_area: section.area,
+    area_reduction: removed_area,
+    area_reduction_percent: (removed_area / section.area) * 100,
+    plate_reductions: plateReductions
+  };
+}
+
+// ============================================================================
 // BUCKLING CALCULATIONS (EC3-1-1 Section 6.3.1)
 // ============================================================================
 
@@ -502,66 +760,44 @@ function calculateReductionFactor(lambda_bar, bucklingCurve) {
 }
 
 /**
- * Check cross-section class (simplified check for Class 4 warning)
- */
-function checkCrossSectionClass(section, fy_MPa) {
-  // Simplified Class 4 check per EC3-1-1 Table 5.2
-  // This is a basic check - full classification is more complex
-
-  const epsilon = Math.sqrt(235 / fy_MPa);
-  let isClass4 = false;
-
-  // For I-sections: check flange and web slenderness
-  if (section.h && section.b && section.tf && section.tw) {
-    const c_flange = (section.b / 2 - section.tw / 2 - section.r) || (section.b / 2);
-    const c_web = section.h - 2 * section.tf - 2 * (section.r || 0);
-
-    const flange_slenderness = c_flange / section.tf;
-    const web_slenderness = c_web / section.tw;
-
-    // Class 3 limit for outstand flange (compression): c/t ≤ 14ε
-    // Class 4 if exceeded
-    if (flange_slenderness > 14 * epsilon) {
-      isClass4 = true;
-    }
-
-    // Class 3 limit for web (compression): c/t ≤ 42ε
-    if (web_slenderness > 42 * epsilon) {
-      isClass4 = true;
-    }
-  }
-
-  // For hollow sections: check wall slenderness
-  if (section.d && section.t) { // CHS
-    const d_over_t = section.d / section.t;
-    // Class 3 limit: d/t ≤ 90ε²
-    if (d_over_t > 90 * epsilon * epsilon) {
-      isClass4 = true;
-    }
-  }
-
-  if (section.height && section.width && section.t) { // RHS/SHS
-    const h_over_t = (section.height - 3 * section.t) / section.t;
-    const b_over_t = (section.width - 3 * section.t) / section.t;
-    // Class 3 limit: c/t ≤ 42ε
-    if (h_over_t > 42 * epsilon || b_over_t > 42 * epsilon) {
-      isClass4 = true;
-    }
-  }
-
-  return {
-    isClass4: isClass4,
-    epsilon: epsilon
-  };
-}
-
-/**
  * Calculate buckling resistance Nb,Rd
  * Nb,Rd = χ × A × fy / γM1
+ * @param {Object} section - Section properties
+ * @param {number} Ly_m - Buckling length y-axis (m)
+ * @param {number} Lz_m - Buckling length z-axis (m)
+ * @param {number} fy_MPa - Yield strength (MPa)
+ * @param {number} temperature_C - Steel temperature (°C)
+ * @param {number} gamma_M1 - Partial factor
+ * @param {string} profileType - Profile type (for classification)
+ * @param {boolean} allowClass4 - Allow Class 4 sections with effective properties
  */
-function calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C, gamma_M1) {
+function calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C, gamma_M1, profileType, allowClass4 = false) {
   const E_MPa = 210000;
 
+  // ========== SECTION CLASSIFICATION ==========
+  // Classify section per EC3-1-1 Table 5.2
+  const classification = classifySection(section, fy_MPa, profileType);
+
+  // Determine which section to use (gross or effective)
+  let workingSection = section;
+  let effectiveProperties = null;
+
+  if (classification.is_class4) {
+    if (!allowClass4) {
+      // Class 4 not allowed - return error
+      return {
+        success: false,
+        error: 'Section is Class 4 (slender). Enable "Allow Class 4" or choose a different profile.',
+        classification: classification
+      };
+    }
+
+    // Calculate effective properties for Class 4 section
+    effectiveProperties = calculateClass4EffectiveProperties(section, classification);
+    workingSection = effectiveProperties;
+  }
+
+  // ========== FIRE MATERIAL REDUCTION ==========
   // Get material reduction factors for temperature
   let k_y_theta = 1.0;
   let k_E_theta = 1.0;
@@ -575,9 +811,10 @@ function calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C,
   const fy_theta = fy_MPa * k_y_theta;
   const E_theta = E_MPa * k_E_theta;
 
-  // Calculate slenderness about both axes
-  const slenderness_y = calculateSlenderness(Ly_m, section.iy, fy_theta, E_theta);
-  const slenderness_z = calculateSlenderness(Lz_m, section.iz, fy_theta, E_theta);
+  // ========== BUCKLING CALCULATIONS ==========
+  // Calculate slenderness about both axes (using working section properties)
+  const slenderness_y = calculateSlenderness(Ly_m, workingSection.iy, fy_theta, E_theta);
+  const slenderness_z = calculateSlenderness(Lz_m, workingSection.iz, fy_theta, E_theta);
 
   // Get buckling curves for the section
   const curve_y = section.buckling_curve_y || 'b';
@@ -593,13 +830,12 @@ function calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C,
 
   // Buckling resistance: Nb,Rd = χ × A × fy / γM1
   // A is in cm², fy in MPa → result in kN
-  const A_cm2 = section.area;
+  const A_cm2 = workingSection.area;
   const Nb_Rd_kN = (chi_min * A_cm2 * fy_theta / gamma_M1) / 10; // Divide by 10: (cm² × MPa) / 10 = kN
 
-  // Check cross-section class
-  const classCheck = checkCrossSectionClass(section, fy_MPa);
-
   return {
+    success: true,
+
     // Material properties
     fy_theta: fy_theta,
     E_theta: E_theta,
@@ -627,9 +863,13 @@ function calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C,
     // Resistance
     Nb_Rd_kN: Nb_Rd_kN,
 
-    // Class check
-    isClass4: classCheck.isClass4,
-    epsilon: classCheck.epsilon
+    // Classification results
+    classification: classification,
+    effective_properties: effectiveProperties,
+
+    // Legacy support (deprecated - use classification.is_class4)
+    isClass4: classification.is_class4,
+    epsilon: classification.epsilon
   };
 }
 
@@ -714,12 +954,16 @@ function brentRootFinder(f, a, b, tol = 1e-6, maxIter = 100) {
 /**
  * Find critical temperature where utilization = 1.0
  */
-function findCriticalTemperature(NEd_fire_kN, section, Ly_m, Lz_m, fy_MPa, gamma_M1) {
+function findCriticalTemperature(NEd_fire_kN, section, Ly_m, Lz_m, fy_MPa, gamma_M1, profileType, allowClass4) {
   const tolerance = 0.001; // 0.1% convergence criterion
 
   // Objective function: utilization - 1.0
   function objective(temp) {
-    const result = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temp, gamma_M1);
+    const result = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temp, gamma_M1, profileType, allowClass4);
+    if (!result.success) {
+      // If calculation fails (e.g., Class 4 not allowed), return large positive value
+      return 999;
+    }
     const utilization = NEd_fire_kN / result.Nb_Rd_kN;
     return utilization - 1.0;
   }
@@ -777,6 +1021,9 @@ function calculateBuckling(inputs) {
     const NEd_fire_kN = fireEnabled ? evaluateExpression(inputs.NEd_fire) : null;
     const temperature_C = fireEnabled ? parseFloat(inputs.temperature) : 20;
 
+    // Class 4 handling
+    const allowClass4 = inputs.allowClass4 !== undefined ? inputs.allowClass4 : false;
+
     // Get section properties
     const section = getSectionProperties(profileType, profileName);
     if (!section) {
@@ -784,7 +1031,17 @@ function calculateBuckling(inputs) {
     }
 
     // Calculate ULS buckling resistance at ambient temperature
-    const ulsResults = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, 20, gamma_M1);
+    const ulsResults = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, 20, gamma_M1, profileType, allowClass4);
+
+    // Check if ULS calculation failed (e.g., Class 4 not allowed)
+    if (!ulsResults.success) {
+      return {
+        success: false,
+        error: ulsResults.error,
+        classification: ulsResults.classification
+      };
+    }
+
     const utilization_ULS = NEd_ULS_kN / ulsResults.Nb_Rd_kN;
 
     // Calculate fire case if enabled
@@ -794,18 +1051,32 @@ function calculateBuckling(inputs) {
     if (fireEnabled && NEd_fire_kN) {
       if (fireMode === 'find-critical') {
         // Find critical temperature mode
-        criticalTempResult = findCriticalTemperature(NEd_fire_kN, section, Ly_m, Lz_m, fy_MPa, gamma_M1);
+        criticalTempResult = findCriticalTemperature(NEd_fire_kN, section, Ly_m, Lz_m, fy_MPa, gamma_M1, profileType, allowClass4);
 
         // Calculate properties at critical temperature (if valid)
         const tempToUse = criticalTempResult.criticalTemp || 20;
-        fireResults = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, tempToUse, gamma_M1);
+        fireResults = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, tempToUse, gamma_M1, profileType, allowClass4);
+        if (!fireResults.success) {
+          return {
+            success: false,
+            error: fireResults.error,
+            classification: fireResults.classification
+          };
+        }
         fireResults.utilization = NEd_fire_kN / fireResults.Nb_Rd_kN;
         fireResults.criticalTemp = criticalTempResult.criticalTemp;
         fireResults.criticalTempMessage = criticalTempResult.message;
 
       } else {
         // Specify temperature mode
-        fireResults = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C, gamma_M1);
+        fireResults = calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C, gamma_M1, profileType, allowClass4);
+        if (!fireResults.success) {
+          return {
+            success: false,
+            error: fireResults.error,
+            classification: fireResults.classification
+          };
+        }
         const utilization_fire = NEd_fire_kN / fireResults.Nb_Rd_kN;
 
         fireResults.utilization = utilization_fire;
