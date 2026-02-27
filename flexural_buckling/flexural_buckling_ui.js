@@ -46,6 +46,9 @@ function setupEventListeners() {
   // Form submission
   document.getElementById('buckling-form').addEventListener('submit', handleFormSubmit);
 
+  // Find lightest section button
+  document.getElementById('find-lightest-btn').addEventListener('click', handleFindLightestSection);
+
   // Save/Load buttons
   document.getElementById('save-json-btn').addEventListener('click', saveFormStateToJSON);
   document.getElementById('load-json-btn').addEventListener('click', () => {
@@ -68,11 +71,13 @@ function handleProfileTypeChange(event) {
   const profileType = event.target.value;
   const profileNameSelect = document.getElementById('profile-name');
   const sectionPropertiesDiv = document.getElementById('section-properties');
+  const findLightestBtn = document.getElementById('find-lightest-btn');
 
   if (!profileType) {
     profileNameSelect.disabled = true;
     profileNameSelect.innerHTML = '<option value="">-- First select profile type --</option>';
     sectionPropertiesDiv.classList.add('hidden');
+    findLightestBtn.disabled = true;
     return;
   }
 
@@ -89,6 +94,9 @@ function handleProfileTypeChange(event) {
 
   profileNameSelect.disabled = false;
   sectionPropertiesDiv.classList.add('hidden');
+
+  // Enable find lightest button when profile type is selected
+  findLightestBtn.disabled = false;
 }
 
 function handleProfileNameChange(event) {
@@ -240,6 +248,93 @@ async function handleFormSubmit(event) {
 
   // Display results
   displayResults(results, inputs);
+}
+
+// ============================================================================
+// FIND LIGHTEST SECTION
+// ============================================================================
+
+async function handleFindLightestSection(event) {
+  event.preventDefault();
+
+  // Gather inputs (without profileName - we'll search for it)
+  const inputs = {
+    profileType: document.getElementById('profile-type').value,
+    profileName: '', // Will be set by search
+    Ly: document.getElementById('Ly').value,
+    Lz: document.getElementById('Lz').value,
+    steelGrade: document.getElementById('steel-grade').value,
+    fy: document.getElementById('fy').value,
+    gamma_M1: document.getElementById('gamma-M1').value,
+    NEd_ULS: document.getElementById('NEd-ULS').value,
+    fireEnabled: document.getElementById('fire-enabled').checked,
+    fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
+    NEd_fire: document.getElementById('NEd-fire').value,
+    temperature: document.getElementById('temperature').value
+  };
+
+  // Validate profile type is selected
+  if (!inputs.profileType) {
+    alert('Please select a profile type first');
+    return;
+  }
+
+  // Disable form during search
+  const findLightestBtn = document.getElementById('find-lightest-btn');
+  const calculateBtn = document.getElementById('calculate-btn');
+  const searchProgress = document.getElementById('search-progress');
+  const formInputs = document.querySelectorAll('#buckling-form input, #buckling-form select, #buckling-form button');
+
+  findLightestBtn.disabled = true;
+  calculateBtn.disabled = true;
+  formInputs.forEach(input => input.disabled = true);
+  findLightestBtn.textContent = 'Searching...';
+  searchProgress.classList.remove('hidden');
+
+  // Progress callback
+  const progressCallback = (tested, total, currentProfile) => {
+    searchProgress.textContent = `Testing ${currentProfile.toUpperCase()}... (${tested} of ${total})`;
+  };
+
+  // Perform search
+  const searchResult = findLightestSection(inputs, progressCallback);
+
+  // Re-enable form
+  formInputs.forEach(input => input.disabled = false);
+  findLightestBtn.disabled = false;
+  calculateBtn.disabled = false;
+  findLightestBtn.textContent = 'Find Lightest Candidate';
+
+  if (!searchResult.success) {
+    searchProgress.textContent = `Search failed: ${searchResult.error}`;
+    searchProgress.classList.add('text-red-400');
+    setTimeout(() => {
+      searchProgress.classList.add('hidden');
+      searchProgress.classList.remove('text-red-400');
+    }, 5000);
+    return;
+  }
+
+  // Update form with found section
+  const optimalSection = searchResult.section;
+  const profileNameSelect = document.getElementById('profile-name');
+
+  profileNameSelect.value = optimalSection.profileName;
+  handleProfileNameChange({ target: profileNameSelect });
+
+  // Display success message
+  searchProgress.textContent = `✓ Found: ${inputs.profileType.toUpperCase()} ${optimalSection.profileName.toUpperCase()} (tested ${searchResult.testedCount} of ${searchResult.totalCount} sections, utilization: ${(optimalSection.maxUtilization * 100).toFixed(1)}%)`;
+  searchProgress.classList.add('text-green-400');
+
+  // Auto-calculate to show results
+  const results = optimalSection.results;
+  displayResults(results, results.inputs);
+
+  // Hide success message after 10 seconds
+  setTimeout(() => {
+    searchProgress.classList.add('hidden');
+    searchProgress.classList.remove('text-green-400');
+  }, 10000);
 }
 
 // ============================================================================
