@@ -598,16 +598,110 @@ function generateDetailedReport(results, inputs) {
   html += '<div class="page-break-before">';
   html += '<h2 class="text-2xl font-bold mb-6 pb-2 border-b-2" style="color: #6b21a8;">DETAILED CALCULATIONS</h2>';
 
-  // Get calculations from display div and wrap in proper containers
-  const calcHTML = document.getElementById('calculations-display').innerHTML;
-  // Wrap each bg-gray-700 in bg-gray-50 for print styling
-  const styledCalcHTML = calcHTML
-    .replace(/class="bg-gray-700/g, 'class="bg-gray-50')
-    .replace(/text-blue-700/g, 'text-gray-800')
-    .replace(/text-green-700/g, 'text-gray-800')
-    .replace(/text-red-700/g, 'text-gray-800');
+  // ULS Calculations
+  html += '<div class="mb-6">';
+  html += '<h3 class="text-xl font-semibold text-gray-800 mb-3">ULS Buckling Calculations</h3>';
+  html += '<div class="bg-gray-50 rounded-lg p-4 mb-4">';
+  html += '<h4 class="font-semibold text-gray-800 mb-2">About y-axis:</h4>';
+  html += `<p class="text-sm mb-1">L<sub>y</sub> = ${toFixedIfNeeded(results.inputs.Ly_m, 2)} m = ${toFixedIfNeeded(results.inputs.Ly_m * 100, 1)} cm</p>`;
+  html += `<p class="text-sm mb-1">λ<sub>y</sub> = L<sub>y</sub> / i<sub>y</sub> = ${toFixedIfNeeded(results.inputs.Ly_m * 100, 1)} / ${toFixedIfNeeded(results.inputs.section.iy, 2)} = ${toFixedIfNeeded(uls.slenderness_y.lambda, 1)}</p>`;
+  html += `<p class="text-sm mb-1">λ<sub>1</sub> = π√(E/f<sub>y</sub>) = π√(210000/${toFixedIfNeeded(results.inputs.fy_MPa, 0)}) = ${toFixedIfNeeded(uls.slenderness_y.lambda_1, 1)}</p>`;
+  html += `<p class="text-sm mb-1">λ̄<sub>y</sub> = λ<sub>y</sub> / λ<sub>1</sub> = ${toFixedIfNeeded(uls.slenderness_y.lambda, 1)} / ${toFixedIfNeeded(uls.slenderness_y.lambda_1, 1)} = ${toFixedIfNeeded(uls.slenderness_y.lambda_bar, 3)}</p>`;
+  html += `<p class="text-sm mb-1">Buckling curve: ${uls.curve_y}, α = ${toFixedIfNeeded(uls.alpha_y, 2)}</p>`;
+  html += `<p class="text-sm mb-1">φ<sub>y</sub> = 0.5[1 + α(λ̄<sub>y</sub> - 0.2) + λ̄<sub>y</sub>²] = ${toFixedIfNeeded(uls.phi_y, 3)}</p>`;
+  html += `<p class="text-sm">χ<sub>y</sub> = 1 / (φ<sub>y</sub> + √(φ<sub>y</sub>² - λ̄<sub>y</sub>²)) = ${toFixedIfNeeded(uls.chi_y, 3)}</p>`;
+  html += '</div>';
 
-  html += styledCalcHTML;
+  html += '<div class="bg-gray-50 rounded-lg p-4 mb-4">';
+  html += '<h4 class="font-semibold text-gray-800 mb-2">About z-axis:</h4>';
+  html += `<p class="text-sm mb-1">L<sub>z</sub> = ${toFixedIfNeeded(results.inputs.Lz_m, 2)} m = ${toFixedIfNeeded(results.inputs.Lz_m * 100, 1)} cm</p>`;
+  html += `<p class="text-sm mb-1">λ<sub>z</sub> = L<sub>z</sub> / i<sub>z</sub> = ${toFixedIfNeeded(results.inputs.Lz_m * 100, 1)} / ${toFixedIfNeeded(results.inputs.section.iz, 2)} = ${toFixedIfNeeded(uls.slenderness_z.lambda, 1)}</p>`;
+  html += `<p class="text-sm mb-1">λ̄<sub>z</sub> = λ<sub>z</sub> / λ<sub>1</sub> = ${toFixedIfNeeded(uls.slenderness_z.lambda, 1)} / ${toFixedIfNeeded(uls.slenderness_z.lambda_1, 1)} = ${toFixedIfNeeded(uls.slenderness_z.lambda_bar, 3)}</p>`;
+  html += `<p class="text-sm mb-1">Buckling curve: ${uls.curve_z}, α = ${toFixedIfNeeded(uls.alpha_z, 2)}</p>`;
+  html += `<p class="text-sm mb-1">φ<sub>z</sub> = 0.5[1 + α(λ̄<sub>z</sub> - 0.2) + λ̄<sub>z</sub>²] = ${toFixedIfNeeded(uls.phi_z, 3)}</p>`;
+  html += `<p class="text-sm">χ<sub>z</sub> = 1 / (φ<sub>z</sub> + √(φ<sub>z</sub>² - λ̄<sub>z</sub>²)) = ${toFixedIfNeeded(uls.chi_z, 3)}</p>`;
+  html += '</div>';
+
+  html += '<div class="bg-blue-50 rounded-lg p-4 border-l-4 border-blue-500">';
+  html += '<h4 class="font-semibold text-gray-800 mb-2">Buckling Resistance:</h4>';
+  html += `<p class="text-sm mb-1">χ<sub>min</sub> = min(χ<sub>y</sub>, χ<sub>z</sub>) = ${toFixedIfNeeded(uls.chi_min, 3)} (${uls.governing_axis}-axis governs)</p>`;
+  html += `<p class="text-sm mb-1">N<sub>b,Rd</sub> = χ<sub>min</sub> × A × f<sub>y</sub> / γ<sub>M1</sub></p>`;
+  html += `<p class="text-sm mb-1">N<sub>b,Rd</sub> = ${toFixedIfNeeded(uls.chi_min, 3)} × ${toFixedIfNeeded(results.inputs.section.area, 2)} × ${toFixedIfNeeded(results.inputs.fy_MPa, 0)} / ${toFixedIfNeeded(results.inputs.gamma_M1, 2)} / 10</p>`;
+  html += `<p class="text-sm font-semibold">N<sub>b,Rd</sub> = ${toFixedIfNeeded(uls.Nb_Rd_kN, 1)} kN</p>`;
+  html += `<p class="text-sm mt-2">Utilization = ${toFixedIfNeeded(results.inputs.NEd_ULS_kN, 1)} / ${toFixedIfNeeded(uls.Nb_Rd_kN, 1)} = ${toFixedIfNeeded(uls.utilization * 100, 1)}%</p>`;
+  html += '</div>';
+  html += '</div>';
+
+  // Fire Design Calculations (if enabled)
+  if (inputs.fireEnabled && results.fireResults) {
+    const fire = results.fireResults;
+
+    html += '<div class="mb-6 page-break-avoid">';
+    html += '<h3 class="text-xl font-semibold text-gray-800 mb-3">Fire Design Calculations (EC3-1-2)</h3>';
+
+    html += '<div class="bg-orange-50 rounded-lg p-4 mb-4 border-l-4 border-orange-500">';
+    html += '<h4 class="font-semibold text-gray-800 mb-2">Material Reduction Factors:</h4>';
+
+    if (inputs.fireMode === 'find-critical' && fire.criticalTemp && fire.criticalTemp > 20 && fire.criticalTemp < 1000) {
+      html += `<p class="text-sm mb-1">Critical temperature: θ<sub>cr</sub> = ${toFixedIfNeeded(fire.criticalTemp, 1)} °C</p>`;
+      html += `<p class="text-sm mb-1">k<sub>y,θ</sub> = ${toFixedIfNeeded(fire.k_y_theta, 3)} (yield strength reduction, EC3-1-2 Table 3.1)</p>`;
+      html += `<p class="text-sm mb-1">k<sub>E,θ</sub> = ${toFixedIfNeeded(fire.k_E_theta, 3)} (stiffness reduction, EC3-1-2 Table 3.1)</p>`;
+      html += `<p class="text-sm mb-1">f<sub>y,θ</sub> = k<sub>y,θ</sub> × f<sub>y</sub> = ${toFixedIfNeeded(fire.k_y_theta, 3)} × ${toFixedIfNeeded(results.inputs.fy_MPa, 0)} = ${toFixedIfNeeded(fire.fy_theta, 1)} MPa</p>`;
+      html += `<p class="text-sm">E<sub>θ</sub> = k<sub>E,θ</sub> × E = ${toFixedIfNeeded(fire.k_E_theta, 3)} × 210000 = ${toFixedIfNeeded(fire.E_theta, 0)} MPa</p>`;
+    } else if (inputs.fireMode === 'specify') {
+      html += `<p class="text-sm mb-1">Temperature: θ = ${results.inputs.temperature_C} °C</p>`;
+      html += `<p class="text-sm mb-1">k<sub>y,θ</sub> = ${toFixedIfNeeded(fire.k_y_theta, 3)} (yield strength reduction, EC3-1-2 Table 3.1)</p>`;
+      html += `<p class="text-sm mb-1">k<sub>E,θ</sub> = ${toFixedIfNeeded(fire.k_E_theta, 3)} (stiffness reduction, EC3-1-2 Table 3.1)</p>`;
+      html += `<p class="text-sm mb-1">f<sub>y,θ</sub> = k<sub>y,θ</sub> × f<sub>y</sub> = ${toFixedIfNeeded(fire.k_y_theta, 3)} × ${toFixedIfNeeded(results.inputs.fy_MPa, 0)} = ${toFixedIfNeeded(fire.fy_theta, 1)} MPa</p>`;
+      html += `<p class="text-sm">E<sub>θ</sub> = k<sub>E,θ</sub> × E = ${toFixedIfNeeded(fire.k_E_theta, 3)} × 210000 = ${toFixedIfNeeded(fire.E_theta, 0)} MPa</p>`;
+    }
+    html += '</div>';
+
+    if (inputs.fireMode === 'find-critical' && fire.criticalTemp && fire.criticalTemp > 20 && fire.criticalTemp < 1000) {
+      // Show detailed buckling calculations at critical temperature
+      html += '<div class="bg-gray-50 rounded-lg p-4 mb-4">';
+      html += '<h4 class="font-semibold text-gray-800 mb-2">Buckling Calculations at θ<sub>cr</sub>:</h4>';
+      html += '<p class="text-sm mb-2 text-gray-700">Using same procedure as ULS but with reduced material properties:</p>';
+      html += `<p class="text-sm mb-1">λ̄<sub>y,θ</sub> = ${toFixedIfNeeded(fire.slenderness_y.lambda_bar, 3)}</p>`;
+      html += `<p class="text-sm mb-1">λ̄<sub>z,θ</sub> = ${toFixedIfNeeded(fire.slenderness_z.lambda_bar, 3)}</p>`;
+      html += `<p class="text-sm mb-1">χ<sub>y,θ</sub> = ${toFixedIfNeeded(fire.chi_y, 3)}</p>`;
+      html += `<p class="text-sm mb-1">χ<sub>z,θ</sub> = ${toFixedIfNeeded(fire.chi_z, 3)}</p>`;
+      html += `<p class="text-sm mb-2">χ<sub>min,θ</sub> = ${toFixedIfNeeded(fire.chi_min, 3)} (${fire.governing_axis}-axis governs)</p>`;
+      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = χ<sub>min,θ</sub> × A × f<sub>y,θ</sub> / γ<sub>M1</sub></p>`;
+      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.chi_min, 3)} × ${toFixedIfNeeded(results.inputs.section.area, 2)} × ${toFixedIfNeeded(fire.fy_theta, 1)} / ${toFixedIfNeeded(results.inputs.gamma_M1, 2)} / 10</p>`;
+      html += `<p class="text-sm font-semibold">N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} kN</p>`;
+      html += `<p class="text-sm mt-2">Utilization = ${toFixedIfNeeded(results.inputs.NEd_fire_kN, 1)} / ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} ≈ 100% (by definition of critical temp)</p>`;
+      html += '</div>';
+    } else if (inputs.fireMode === 'specify') {
+      // Show detailed buckling calculations at specified temperature
+      html += '<div class="bg-gray-50 rounded-lg p-4 mb-4">';
+      html += '<h4 class="font-semibold text-gray-800 mb-2">Slenderness at Elevated Temperature:</h4>';
+      html += '<p class="text-sm mb-2 text-gray-700">Recalculated with E<sub>θ</sub> and f<sub>y,θ</sub>:</p>';
+      html += `<p class="text-sm mb-1">λ<sub>1,θ</sub> = π√(E<sub>θ</sub>/f<sub>y,θ</sub>) = π√(${toFixedIfNeeded(fire.E_theta, 0)}/${toFixedIfNeeded(fire.fy_theta, 1)}) = ${toFixedIfNeeded(fire.slenderness_y.lambda_1, 1)}</p>`;
+      html += `<p class="text-sm mb-1">λ̄<sub>y,θ</sub> = λ<sub>y</sub> / λ<sub>1,θ</sub> = ${toFixedIfNeeded(fire.slenderness_y.lambda_bar, 3)}</p>`;
+      html += `<p class="text-sm">λ̄<sub>z,θ</sub> = λ<sub>z</sub> / λ<sub>1,θ</sub> = ${toFixedIfNeeded(fire.slenderness_z.lambda_bar, 3)}</p>`;
+      html += '</div>';
+
+      html += '<div class="bg-gray-50 rounded-lg p-4 mb-4">';
+      html += '<h4 class="font-semibold text-gray-800 mb-2">Reduction Factors at θ = ' + results.inputs.temperature_C + '°C:</h4>';
+      html += `<p class="text-sm mb-1">φ<sub>y,θ</sub> = 0.5[1 + α(λ̄<sub>y,θ</sub> - 0.2) + λ̄<sub>y,θ</sub>²] = ${toFixedIfNeeded(fire.phi_y, 3)}</p>`;
+      html += `<p class="text-sm mb-1">χ<sub>y,θ</sub> = 1 / (φ<sub>y,θ</sub> + √(φ<sub>y,θ</sub>² - λ̄<sub>y,θ</sub>²)) = ${toFixedIfNeeded(fire.chi_y, 3)}</p>`;
+      html += `<p class="text-sm mb-1">φ<sub>z,θ</sub> = 0.5[1 + α(λ̄<sub>z,θ</sub> - 0.2) + λ̄<sub>z,θ</sub>²] = ${toFixedIfNeeded(fire.phi_z, 3)}</p>`;
+      html += `<p class="text-sm mb-1">χ<sub>z,θ</sub> = 1 / (φ<sub>z,θ</sub> + √(φ<sub>z,θ</sub>² - λ̄<sub>z,θ</sub>²)) = ${toFixedIfNeeded(fire.chi_z, 3)}</p>`;
+      html += `<p class="text-sm font-semibold mt-2">χ<sub>min,θ</sub> = ${toFixedIfNeeded(fire.chi_min, 3)} (${fire.governing_axis}-axis governs)</p>`;
+      html += '</div>';
+
+      html += '<div class="bg-orange-50 rounded-lg p-4 border-l-4 border-orange-500">';
+      html += '<h4 class="font-semibold text-gray-800 mb-2">Fire Resistance:</h4>';
+      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = χ<sub>min,θ</sub> × A × f<sub>y,θ</sub> / γ<sub>M1</sub></p>`;
+      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.chi_min, 3)} × ${toFixedIfNeeded(results.inputs.section.area, 2)} × ${toFixedIfNeeded(fire.fy_theta, 1)} / ${toFixedIfNeeded(results.inputs.gamma_M1, 2)} / 10</p>`;
+      html += `<p class="text-sm font-semibold">N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} kN</p>`;
+      html += `<p class="text-sm mt-2">Utilization = N<sub>Ed,fi</sub> / N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(results.inputs.NEd_fire_kN, 1)} / ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} = ${toFixedIfNeeded(fire.utilization * 100, 1)}%</p>`;
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
   html += '</div>';
 
   html += '</div>'; // Close report-content
