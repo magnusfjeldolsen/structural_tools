@@ -11,6 +11,7 @@ on:
       - 'concretefastenergroup/**'
       - 'concrete_*/**'
       - 'steel_*/**'
+      - 'flexural_buckling/**'
       - 'weld_capacity/**'
       - 'THP/**'
       - 'clustering/**'
@@ -95,6 +96,7 @@ jobs:
                      steel_beam_relative_deisgn \
                      steel_cross_section_database \
                      steel_fire_temperature \
+                     flexural_buckling \
                      weld_capacity \
                      THP \
                      clustering \
