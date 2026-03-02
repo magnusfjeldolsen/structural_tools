@@ -72,13 +72,36 @@ function handleProfileTypeChange(event) {
   const profileNameSelect = document.getElementById('profile-name');
   const sectionPropertiesDiv = document.getElementById('section-properties');
   const findLightestBtn = document.getElementById('find-lightest-btn');
+  const descriptionP = document.getElementById('profile-type-description');
+
+  // Update description text below dropdown
+  const descriptions = {
+    'hea': 'European wide flange H-beams (HEA profiles)',
+    'heb': 'European heavy wide flange H-beams (HEB profiles)',
+    'hem': 'European extra heavy wide flange H-beams (HEM profiles)',
+    'ipe': 'European I-beams (IPE profiles)',
+    'hrhs': 'Hot formed rectangular hollow sections',
+    'hshs': 'Hot formed square hollow sections',
+    'hchs': 'Hot formed circular hollow sections',
+    'crhs': 'Cold formed rectangular hollow sections',
+    'cshs': 'Cold formed square hollow sections',
+    'cchs': 'Cold formed circular hollow sections'
+  };
 
   if (!profileType) {
     profileNameSelect.disabled = true;
     profileNameSelect.innerHTML = '<option value="">-- First select profile type --</option>';
     sectionPropertiesDiv.classList.add('hidden');
     findLightestBtn.disabled = true;
+    descriptionP.classList.add('hidden');
+    descriptionP.textContent = '';
     return;
+  }
+
+  // Show description
+  if (descriptions[profileType]) {
+    descriptionP.textContent = descriptions[profileType];
+    descriptionP.classList.remove('hidden');
   }
 
   // Load profile names
