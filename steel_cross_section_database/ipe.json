@@ -21,7 +21,7 @@
       "tw": 3.8,
       "tf": 5.2,
       "r": 5,
-      "m": 6.00,
+      "m": 6,
       "P": 328,
       "A": 764,
       "Av_z": 358,
@@ -40,7 +40,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 1,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 80,
+            "thickness": 3.8,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 29.799999999999997,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -29.799999999999997,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 16.1,
+            "thickness": 5.2,
+            "centroid": {
+              "y": 37.4,
+              "z": -14.950000000000001
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 37.4,
+                  "z": -6.9
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 37.4,
+                  "z": -23
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 16.1,
+            "thickness": 5.2,
+            "centroid": {
+              "y": 37.4,
+              "z": 14.950000000000001
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 37.4,
+                  "z": 6.9
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 37.4,
+                  "z": 23
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 16.1,
+            "thickness": 5.2,
+            "centroid": {
+              "y": -37.4,
+              "z": -14.950000000000001
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -37.4,
+                  "z": -6.9
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -37.4,
+                  "z": -23
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 16.1,
+            "thickness": 5.2,
+            "centroid": {
+              "y": -37.4,
+              "z": 14.950000000000001
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -37.4,
+                  "z": 6.9
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -37.4,
+                  "z": 23
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE100",
@@ -49,7 +247,7 @@
       "tw": 4.1,
       "tf": 5.7,
       "r": 7,
-      "m": 8.10,
+      "m": 8.1,
       "P": 400,
       "A": 1032,
       "Av_z": 508,
@@ -68,7 +266,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 1,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 100,
+            "thickness": 4.1,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 37.3,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -37.3,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 18.45,
+            "thickness": 5.7,
+            "centroid": {
+              "y": 47.15,
+              "z": -18.275
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 47.15,
+                  "z": -9.05
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 47.15,
+                  "z": -27.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 18.45,
+            "thickness": 5.7,
+            "centroid": {
+              "y": 47.15,
+              "z": 18.275
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 47.15,
+                  "z": 9.05
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 47.15,
+                  "z": 27.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 18.45,
+            "thickness": 5.7,
+            "centroid": {
+              "y": -47.15,
+              "z": -18.275
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -47.15,
+                  "z": -9.05
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -47.15,
+                  "z": -27.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 18.45,
+            "thickness": 5.7,
+            "centroid": {
+              "y": -47.15,
+              "z": 18.275
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -47.15,
+                  "z": 9.05
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -47.15,
+                  "z": 27.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE120",
@@ -83,7 +479,7 @@
       "Av_z": 631,
       "Av_y": 806,
       "Iy": 3178000,
-      "iy": 49.0,
+      "iy": 49,
       "Wel_y": 52960,
       "Iz": 276700,
       "iz": 14.5,
@@ -96,7 +492,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 1,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 120,
+            "thickness": 4.4,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 46.7,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -46.7,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 22.8,
+            "thickness": 6.3,
+            "centroid": {
+              "y": 56.85,
+              "z": -20.6
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 56.85,
+                  "z": -9.2
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 56.85,
+                  "z": -32
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 22.8,
+            "thickness": 6.3,
+            "centroid": {
+              "y": 56.85,
+              "z": 20.6
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 56.85,
+                  "z": 9.2
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 56.85,
+                  "z": 32
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 22.8,
+            "thickness": 6.3,
+            "centroid": {
+              "y": -56.85,
+              "z": -20.6
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -56.85,
+                  "z": -9.2
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -56.85,
+                  "z": -32
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 22.8,
+            "thickness": 6.3,
+            "centroid": {
+              "y": -56.85,
+              "z": 20.6
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -56.85,
+                  "z": 9.2
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -56.85,
+                  "z": 32
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE140",
@@ -124,13 +718,211 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 1,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 140,
+            "thickness": 4.7,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 56.1,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -56.1,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 27.15,
+            "thickness": 6.9,
+            "centroid": {
+              "y": 66.55,
+              "z": -22.924999999999997
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 66.55,
+                  "z": -9.35
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 66.55,
+                  "z": -36.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 27.15,
+            "thickness": 6.9,
+            "centroid": {
+              "y": 66.55,
+              "z": 22.924999999999997
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 66.55,
+                  "z": 9.35
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 66.55,
+                  "z": 36.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 27.15,
+            "thickness": 6.9,
+            "centroid": {
+              "y": -66.55,
+              "z": -22.924999999999997
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -66.55,
+                  "z": -9.35
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -66.55,
+                  "z": -36.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 27.15,
+            "thickness": 6.9,
+            "centroid": {
+              "y": -66.55,
+              "z": 22.924999999999997
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -66.55,
+                  "z": 9.35
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -66.55,
+                  "z": 36.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE160",
       "h": 160,
       "b": 82,
-      "tw": 5.0,
+      "tw": 5,
       "tf": 7.4,
       "r": 9,
       "m": 15.8,
@@ -152,14 +944,212 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 1,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 160,
+            "thickness": 5,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 63.599999999999994,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -63.599999999999994,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 29.5,
+            "thickness": 7.4,
+            "centroid": {
+              "y": 76.3,
+              "z": -26.25
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 76.3,
+                  "z": -11.5
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 76.3,
+                  "z": -41
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 29.5,
+            "thickness": 7.4,
+            "centroid": {
+              "y": 76.3,
+              "z": 26.25
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 76.3,
+                  "z": 11.5
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 76.3,
+                  "z": 41
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 29.5,
+            "thickness": 7.4,
+            "centroid": {
+              "y": -76.3,
+              "z": -26.25
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -76.3,
+                  "z": -11.5
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -76.3,
+                  "z": -41
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 29.5,
+            "thickness": 7.4,
+            "centroid": {
+              "y": -76.3,
+              "z": 26.25
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -76.3,
+                  "z": 11.5
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -76.3,
+                  "z": 41
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE180",
       "h": 180,
       "b": 91,
       "tw": 5.3,
-      "tf": 8.0,
+      "tf": 8,
       "r": 9,
       "m": 18.8,
       "P": 698,
@@ -180,7 +1170,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 1,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 180,
+            "thickness": 5.3,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 73,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -73,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 33.85,
+            "thickness": 8,
+            "centroid": {
+              "y": 86,
+              "z": -28.575000000000003
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 86,
+                  "z": -11.65
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 86,
+                  "z": -45.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 33.85,
+            "thickness": 8,
+            "centroid": {
+              "y": 86,
+              "z": 28.575000000000003
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 86,
+                  "z": 11.65
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 86,
+                  "z": 45.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 33.85,
+            "thickness": 8,
+            "centroid": {
+              "y": -86,
+              "z": -28.575000000000003
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -86,
+                  "z": -11.65
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -86,
+                  "z": -45.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 33.85,
+            "thickness": 8,
+            "centroid": {
+              "y": -86,
+              "z": 28.575000000000003
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -86,
+                  "z": 11.65
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -86,
+                  "z": 45.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE200",
@@ -208,7 +1396,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 1,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 200,
+            "thickness": 5.6,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 79.5,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -79.5,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 35.2,
+            "thickness": 8.5,
+            "centroid": {
+              "y": 95.75,
+              "z": -32.400000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 95.75,
+                  "z": -14.8
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 95.75,
+                  "z": -50
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 35.2,
+            "thickness": 8.5,
+            "centroid": {
+              "y": 95.75,
+              "z": 32.400000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 95.75,
+                  "z": 14.8
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 95.75,
+                  "z": 50
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 35.2,
+            "thickness": 8.5,
+            "centroid": {
+              "y": -95.75,
+              "z": -32.400000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -95.75,
+                  "z": -14.8
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -95.75,
+                  "z": -50
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 35.2,
+            "thickness": 8.5,
+            "centroid": {
+              "y": -95.75,
+              "z": 32.400000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -95.75,
+                  "z": 14.8
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -95.75,
+                  "z": 50
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE220",
@@ -236,7 +1622,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 1,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 220,
+            "thickness": 5.9,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 88.8,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -88.8,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 40.05,
+            "thickness": 9.2,
+            "centroid": {
+              "y": 105.4,
+              "z": -34.974999999999994
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 105.4,
+                  "z": -14.95
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 105.4,
+                  "z": -55
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 40.05,
+            "thickness": 9.2,
+            "centroid": {
+              "y": 105.4,
+              "z": 34.974999999999994
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 105.4,
+                  "z": 14.95
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 105.4,
+                  "z": 55
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 40.05,
+            "thickness": 9.2,
+            "centroid": {
+              "y": -105.4,
+              "z": -34.974999999999994
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -105.4,
+                  "z": -14.95
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -105.4,
+                  "z": -55
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 40.05,
+            "thickness": 9.2,
+            "centroid": {
+              "y": -105.4,
+              "z": 34.974999999999994
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -105.4,
+                  "z": 14.95
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -105.4,
+                  "z": 55
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE240",
@@ -264,7 +1848,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 1,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 240,
+            "thickness": 6.2,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 95.2,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -95.2,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 41.9,
+            "thickness": 9.8,
+            "centroid": {
+              "y": 115.1,
+              "z": -39.05
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 115.1,
+                  "z": -18.1
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 115.1,
+                  "z": -60
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 41.9,
+            "thickness": 9.8,
+            "centroid": {
+              "y": 115.1,
+              "z": 39.05
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 115.1,
+                  "z": 18.1
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 115.1,
+                  "z": 60
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 41.9,
+            "thickness": 9.8,
+            "centroid": {
+              "y": -115.1,
+              "z": -39.05
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -115.1,
+                  "z": -18.1
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -115.1,
+                  "z": -60
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 41.9,
+            "thickness": 9.8,
+            "centroid": {
+              "y": -115.1,
+              "z": 39.05
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -115.1,
+                  "z": 18.1
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -115.1,
+                  "z": 60
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE270",
@@ -292,7 +2074,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 2,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 270,
+            "thickness": 6.6,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 109.8,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -109.8,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 49.2,
+            "thickness": 10.2,
+            "centroid": {
+              "y": 129.9,
+              "z": -42.900000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 129.9,
+                  "z": -18.3
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 129.9,
+                  "z": -67.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 49.2,
+            "thickness": 10.2,
+            "centroid": {
+              "y": 129.9,
+              "z": 42.900000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 129.9,
+                  "z": 18.3
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 129.9,
+                  "z": 67.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 49.2,
+            "thickness": 10.2,
+            "centroid": {
+              "y": -129.9,
+              "z": -42.900000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -129.9,
+                  "z": -18.3
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -129.9,
+                  "z": -67.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 49.2,
+            "thickness": 10.2,
+            "centroid": {
+              "y": -129.9,
+              "z": 42.900000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -129.9,
+                  "z": 18.3
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -129.9,
+                  "z": 67.5
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE300",
@@ -320,7 +2300,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 2,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 300,
+            "thickness": 7.1,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 124.30000000000001,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -124.30000000000001,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 56.45,
+            "thickness": 10.7,
+            "centroid": {
+              "y": 144.65,
+              "z": -46.775000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 144.65,
+                  "z": -18.55
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 144.65,
+                  "z": -75
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 56.45,
+            "thickness": 10.7,
+            "centroid": {
+              "y": 144.65,
+              "z": 46.775000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 144.65,
+                  "z": 18.55
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 144.65,
+                  "z": 75
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 56.45,
+            "thickness": 10.7,
+            "centroid": {
+              "y": -144.65,
+              "z": -46.775000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -144.65,
+                  "z": -18.55
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -144.65,
+                  "z": -75
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 56.45,
+            "thickness": 10.7,
+            "centroid": {
+              "y": -144.65,
+              "z": 46.775000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -144.65,
+                  "z": 18.55
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -144.65,
+                  "z": 75
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE330",
@@ -348,13 +2526,211 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 2,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 330,
+            "thickness": 7.5,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 135.5,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -135.5,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 58.25,
+            "thickness": 11.5,
+            "centroid": {
+              "y": 159.25,
+              "z": -50.875
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 159.25,
+                  "z": -21.75
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 159.25,
+                  "z": -80
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 58.25,
+            "thickness": 11.5,
+            "centroid": {
+              "y": 159.25,
+              "z": 50.875
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 159.25,
+                  "z": 21.75
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 159.25,
+                  "z": 80
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 58.25,
+            "thickness": 11.5,
+            "centroid": {
+              "y": -159.25,
+              "z": -50.875
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -159.25,
+                  "z": -21.75
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -159.25,
+                  "z": -80
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 58.25,
+            "thickness": 11.5,
+            "centroid": {
+              "y": -159.25,
+              "z": 50.875
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -159.25,
+                  "z": 21.75
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -159.25,
+                  "z": 80
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE360",
       "h": 360,
       "b": 170,
-      "tw": 8.0,
+      "tw": 8,
       "tf": 12.7,
       "r": 18,
       "m": 57.1,
@@ -376,7 +2752,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 2,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 360,
+            "thickness": 8,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 149.3,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -149.3,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 63,
+            "thickness": 12.7,
+            "centroid": {
+              "y": 173.65,
+              "z": -53.5
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 173.65,
+                  "z": -22
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 173.65,
+                  "z": -85
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 63,
+            "thickness": 12.7,
+            "centroid": {
+              "y": 173.65,
+              "z": 53.5
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 173.65,
+                  "z": 22
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 173.65,
+                  "z": 85
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 63,
+            "thickness": 12.7,
+            "centroid": {
+              "y": -173.65,
+              "z": -53.5
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -173.65,
+                  "z": -22
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -173.65,
+                  "z": -85
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 63,
+            "thickness": 12.7,
+            "centroid": {
+              "y": -173.65,
+              "z": 53.5
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -173.65,
+                  "z": 22
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -173.65,
+                  "z": 85
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE400",
@@ -404,7 +2978,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 3,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 400,
+            "thickness": 8.6,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 165.5,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -165.5,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 64.7,
+            "thickness": 13.5,
+            "centroid": {
+              "y": 193.25,
+              "z": -57.650000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 193.25,
+                  "z": -25.3
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 193.25,
+                  "z": -90
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 64.7,
+            "thickness": 13.5,
+            "centroid": {
+              "y": 193.25,
+              "z": 57.650000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 193.25,
+                  "z": 25.3
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 193.25,
+                  "z": 90
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 64.7,
+            "thickness": 13.5,
+            "centroid": {
+              "y": -193.25,
+              "z": -57.650000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -193.25,
+                  "z": -25.3
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -193.25,
+                  "z": -90
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 64.7,
+            "thickness": 13.5,
+            "centroid": {
+              "y": -193.25,
+              "z": 57.650000000000006
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -193.25,
+                  "z": 25.3
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -193.25,
+                  "z": 90
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE450",
@@ -432,14 +3204,212 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 3,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 450,
+            "thickness": 9.4,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 189.4,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -189.4,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 69.3,
+            "thickness": 14.6,
+            "centroid": {
+              "y": 217.7,
+              "z": -60.349999999999994
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 217.7,
+                  "z": -25.7
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 217.7,
+                  "z": -95
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 69.3,
+            "thickness": 14.6,
+            "centroid": {
+              "y": 217.7,
+              "z": 60.349999999999994
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 217.7,
+                  "z": 25.7
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 217.7,
+                  "z": 95
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 69.3,
+            "thickness": 14.6,
+            "centroid": {
+              "y": -217.7,
+              "z": -60.349999999999994
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -217.7,
+                  "z": -25.7
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -217.7,
+                  "z": -95
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 69.3,
+            "thickness": 14.6,
+            "centroid": {
+              "y": -217.7,
+              "z": 60.349999999999994
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -217.7,
+                  "z": 25.7
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -217.7,
+                  "z": 95
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE500",
       "h": 500,
       "b": 200,
       "tw": 10.2,
-      "tf": 16.0,
+      "tf": 16,
       "r": 21,
       "m": 90.7,
       "P": 1744,
@@ -460,7 +3430,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 3,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 500,
+            "thickness": 10.2,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 213,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -213,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 73.9,
+            "thickness": 16,
+            "centroid": {
+              "y": 242,
+              "z": -63.050000000000004
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 242,
+                  "z": -26.1
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 242,
+                  "z": -100
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 73.9,
+            "thickness": 16,
+            "centroid": {
+              "y": 242,
+              "z": 63.050000000000004
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 242,
+                  "z": 26.1
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 242,
+                  "z": 100
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 73.9,
+            "thickness": 16,
+            "centroid": {
+              "y": -242,
+              "z": -63.050000000000004
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -242,
+                  "z": -26.1
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -242,
+                  "z": -100
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 73.9,
+            "thickness": 16,
+            "centroid": {
+              "y": -242,
+              "z": 63.050000000000004
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -242,
+                  "z": 26.1
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -242,
+                  "z": 100
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE550",
@@ -488,14 +3656,212 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 4,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 550,
+            "thickness": 11.1,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 233.8,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -233.8,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 75.45,
+            "thickness": 17.2,
+            "centroid": {
+              "y": 266.4,
+              "z": -67.275
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 266.4,
+                  "z": -29.55
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 266.4,
+                  "z": -105
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 75.45,
+            "thickness": 17.2,
+            "centroid": {
+              "y": 266.4,
+              "z": 67.275
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 266.4,
+                  "z": 29.55
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 266.4,
+                  "z": 105
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 75.45,
+            "thickness": 17.2,
+            "centroid": {
+              "y": -266.4,
+              "z": -67.275
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -266.4,
+                  "z": -29.55
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -266.4,
+                  "z": -105
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 75.45,
+            "thickness": 17.2,
+            "centroid": {
+              "y": -266.4,
+              "z": 67.275
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -266.4,
+                  "z": 29.55
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -266.4,
+                  "z": 105
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     },
     {
       "profile": "IPE600",
       "h": 600,
       "b": 220,
-      "tw": 12.0,
-      "tf": 19.0,
+      "tw": 12,
+      "tf": 19,
       "r": 24,
       "m": 122.4,
       "P": 2015,
@@ -503,7 +3869,7 @@
       "Av_z": 8378,
       "Av_y": 8360,
       "Iy": 920800000,
-      "iy": 243.0,
+      "iy": 243,
       "Wel_y": 3069000,
       "Iz": 33870000,
       "iz": 46.6,
@@ -516,7 +3882,205 @@
       "alpha_zz": "b",
       "web_bending_yy": 1,
       "web_compression": 4,
-      "flange_compression": 1
+      "flange_compression": 1,
+      "plate_elements": [
+        {
+          "id": "web",
+          "type": "internal",
+          "orientation": "y-direction",
+          "geometry": {
+            "gross_length": 600,
+            "thickness": 12,
+            "centroid": {
+              "y": 0,
+              "z": 0
+            },
+            "edges": {
+              "edge1": {
+                "id": "top_junction",
+                "position": {
+                  "y": 257,
+                  "z": 0
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "bottom_junction",
+                "position": {
+                  "y": -257,
+                  "z": 0
+                },
+                "type": "junction"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(h - 2*tf - 2*r)",
+            "t_formula": "tw"
+          },
+          "reduction_patterns": {
+            "compression_psi_1": "symmetric_edge",
+            "compression_psi_positive": "asymmetric_edge",
+            "bending_psi_negative": "compression_edge"
+          }
+        },
+        {
+          "id": "top_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 80,
+            "thickness": 19,
+            "centroid": {
+              "y": 290.5,
+              "z": -70
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 290.5,
+                  "z": -30
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 290.5,
+                  "z": -110
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "top_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 80,
+            "thickness": 19,
+            "centroid": {
+              "y": 290.5,
+              "z": 70
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": 290.5,
+                  "z": 30
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": 290.5,
+                  "z": 110
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_left",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 80,
+            "thickness": 19,
+            "centroid": {
+              "y": -290.5,
+              "z": -70
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -290.5,
+                  "z": -30
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -290.5,
+                  "z": -110
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        },
+        {
+          "id": "bottom_flange_tip_right",
+          "type": "outstand",
+          "orientation": "z-direction",
+          "geometry": {
+            "gross_length": 80,
+            "thickness": 19,
+            "centroid": {
+              "y": -290.5,
+              "z": 70
+            },
+            "edges": {
+              "edge1": {
+                "id": "web_junction",
+                "position": {
+                  "y": -290.5,
+                  "z": 30
+                },
+                "type": "junction"
+              },
+              "edge2": {
+                "id": "free_edge",
+                "position": {
+                  "y": -290.5,
+                  "z": 110
+                },
+                "type": "free"
+              }
+            }
+          },
+          "classification": {
+            "c_formula": "(b/2 - tw/2 - r)",
+            "t_formula": "tf"
+          },
+          "reduction_patterns": {
+            "compression_psi_positive": "free_edge",
+            "bending_psi_negative": "internal_strip"
+          }
+        }
+      ]
     }
   ]
 }
