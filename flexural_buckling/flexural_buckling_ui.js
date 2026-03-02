@@ -371,8 +371,28 @@ function displayResults(results, inputs) {
   const resultsSection = document.getElementById('results-section');
   resultsSection.classList.remove('hidden');
 
-  // Display classification results
-  displayClassificationResults(results.ulsResults.classification);
+  // Display ULS classification results
+  displayClassificationResults(results.ulsResults.classification, 'uls', inputs.fy || results.ulsResults.fy_theta);
+
+  // Display Fire classification results if enabled
+  if (inputs.fireEnabled && results.fireResults) {
+    displayClassificationResults(results.fireResults.classification, 'fire', results.fireResults.fy_theta);
+
+    // Show temperature in fire classification header
+    const fireTempDisplay = document.getElementById('fire-temp-display');
+    if (fireTempDisplay) {
+      const temp = inputs.fireMode === 'find-critical' && results.fireResults.criticalTemp
+        ? results.fireResults.criticalTemp
+        : inputs.temperature;
+      fireTempDisplay.textContent = toFixedIfNeeded(temp, 0);
+    }
+  } else {
+    // Hide fire classification if not enabled
+    const fireClassDiv = document.getElementById('classification-results-fire');
+    if (fireClassDiv) {
+      fireClassDiv.classList.add('hidden');
+    }
+  }
 
   // Display Class 4 warning
   displayClass4Warning(results.ulsResults.classification.is_class4);
@@ -399,7 +419,6 @@ function displayResults(results, inputs) {
   // Scroll to results
   resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-
 function displayClass4Warning(isClass4) {
   const warningDiv = document.getElementById('class4-warning');
 
@@ -506,14 +525,27 @@ function displayFireResults(results, inputs) {
   }
 }
 
-function displayClassificationResults(classification) {
+function displayClassificationResults(classification, suffix = '', fyDisplay = null) {
   if (!classification) return;
 
-  const classResultsDiv = document.getElementById('classification-results');
+  // Build element IDs with suffix
+  const sid = suffix ? `-${suffix}` : '';
+
+  const classResultsDiv = document.getElementById(`classification-results${sid}`);
+  if (!classResultsDiv) return; // Element doesn't exist
+
   classResultsDiv.classList.remove('hidden');
 
+  // Display fy value if provided
+  if (fyDisplay !== null) {
+    const fyDisplayElement = document.getElementById(`${suffix}-fy-display`);
+    if (fyDisplayElement) {
+      fyDisplayElement.textContent = toFixedIfNeeded(fyDisplay, 1);
+    }
+  }
+
   // Overall class
-  const classElement = document.getElementById('section-class');
+  const classElement = document.getElementById(`section-class${sid}`);
   classElement.textContent = `Class ${classification.class}`;
 
   // Color code the class
@@ -527,13 +559,13 @@ function displayClassificationResults(classification) {
   }
 
   // Epsilon
-  document.getElementById('epsilon-value').textContent = toFixedIfNeeded(classification.epsilon, 4);
+  document.getElementById(`epsilon-value${sid}`).textContent = toFixedIfNeeded(classification.epsilon, 4);
 
   // Governing element
-  document.getElementById('governing-element').textContent = classification.governing_element || '-';
+  document.getElementById(`governing-element${sid}`).textContent = classification.governing_element || '-';
 
   // Effective area (if Class 4)
-  const effAreaDisplay = document.getElementById('effective-area-display');
+  const effAreaDisplay = document.getElementById(`effective-area-display${sid}`);
   if (classification.is_class4 && classification.effective_properties) {
     const aEff = classification.effective_properties.area;
     const aGross = classification.effective_properties.gross_area;
@@ -544,7 +576,7 @@ function displayClassificationResults(classification) {
   }
 
   // Populate element details table
-  const tbody = document.getElementById('classification-table-body');
+  const tbody = document.getElementById(`classification-table-body${sid}`);
   tbody.innerHTML = '';
 
   for (const elem of classification.element_results) {
@@ -566,16 +598,15 @@ function displayClassificationResults(classification) {
   }
 
   // Show Class 4 info banner if applicable
-  const class4InfoDiv = document.getElementById('class4-info');
+  const class4InfoDiv = document.getElementById(`class4-info${sid}`);
   if (classification.is_class4 && classification.effective_properties) {
     class4InfoDiv.classList.remove('hidden');
     const reductionPercent = classification.effective_properties.area_reduction_percent;
-    document.getElementById('area-reduction-percent').textContent = toFixedIfNeeded(reductionPercent, 2);
+    document.getElementById(`area-reduction-percent${sid}`).textContent = toFixedIfNeeded(reductionPercent, 2);
   } else {
     class4InfoDiv.classList.add('hidden');
   }
 }
-
 function displayEffectiveProperties(effectiveProps) {
   const effPropsDiv = document.getElementById('class4-effective-properties');
 
@@ -614,9 +645,10 @@ function displayEffectiveProperties(effectiveProps) {
   document.getElementById('iz-reduction').textContent = toFixedIfNeeded(effectiveProps.iz_reduction_percent, 2) + '%';
 }
 
-function toggleClassificationDetails() {
-  const detailsDiv = document.getElementById('classification-details');
-  const toggleIcon = document.getElementById('classification-toggle-icon');
+function toggleClassificationDetails(suffix = '') {
+  const sid = suffix ? `-${suffix}` : '';
+  const detailsDiv = document.getElementById(`classification-details${sid}`);
+  const toggleIcon = document.getElementById(`classification-toggle-icon${sid}`);
   const button = toggleIcon.parentElement;
 
   detailsDiv.classList.toggle('hidden');
