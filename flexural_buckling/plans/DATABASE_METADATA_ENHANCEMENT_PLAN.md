@@ -16,30 +16,54 @@ The existing implementation calculates I_eff using approximations:
 - **Missing**: Exact centroid locations and parallel axis theorem contributions
 
 ### What's Missing
-For accurate I_eff calculation, we need:
+For accurate I_eff calculation, we need to **subtract the ineffective portions** from the gross properties:
+
 ```
-I_total = Σ (I_local + A × d²)
+I_eff = I_gross - Σ ΔI_removed
+
+Where for each removed plate strip:
+  ΔI_removed = I_local + A_removed × d²
 ```
 
 Where:
-- **I_local**: Local moment of inertia of plate about its own centroid
-- **A**: Plate area
-- **d**: Distance from plate centroid to section centroid
-- **d²**: Parallel axis theorem contribution (often dominates!)
+- **I_local**: Local moment of inertia of **removed strip** about its own centroid
+- **A_removed**: Area of the ineffective (removed) portion = (c_gross - c_eff) × t
+- **d**: Distance from **removed strip centroid** to section centroid
+- **d²**: Parallel axis theorem contribution
 
 ### Why This Matters
 
-**Example**: Top flange of IPE220
+**Example**: IPE220 web in pure compression (Class 4 with S460)
 ```
-Flange area = bf × tf = 11.0 × 0.92 = 10.12 cm²
-Distance from section centroid: d = h/2 - tf/2 = 22.0/2 - 0.92/2 = 10.54 cm
-Parallel axis contribution: A × d² = 10.12 × 10.54² = 1124 cm⁴
-Local inertia about flange's own centroid: (bf × tf³)/12 = (11.0 × 0.92³)/12 = 0.07 cm⁴
+Web Class 4: c_gross = 177.6 mm, c_eff = 158.5 mm (ρ = 0.892)
+Removed strip: 177.6 - 158.5 = 19.1 mm height at center of web
 
-Ratio: 1124 / 0.07 = 16,000:1 !!!
+For the REMOVED ineffective portion:
+  A_removed = 19.1 × 5.9 / 100 = 1.13 cm²
+  d = 0 (web is at section centroid, y = 0, z = 0)
+
+  I_local = (tw × h_removed³)/12 = (0.59 × 1.91³)/12 = 0.34 cm⁴
+  I_parallel = A_removed × d² = 1.13 × 0² = 0 cm⁴
+
+  ΔI_y = 0.34 + 0 = 0.34 cm⁴  (small, but correct!)
+
+  I_eff,y = 2772 - 0.34 = 2771.66 cm⁴
 ```
 
-**The parallel axis term dominates!** Ignoring it leads to massive errors in I_eff.
+**Key insight**: For IPE webs in pure compression, the removed strip is at the section centroid (d = 0), so **only I_local matters**. The parallel axis term is zero for webs, but crucial for flanges if they become Class 4.
+
+**Counter-example**: If IPE220 top flange were Class 4 (not the case here, but for illustration):
+```
+Flange at: y = 105.4 mm from centroid
+Removed strip area: ΔA = 1.0 cm² (hypothetical)
+
+  I_local = very small (thin flange)
+  I_parallel = 1.0 × 10.54² = 111 cm⁴  ← DOMINATES!
+
+  ΔI_y = I_local + 111 ≈ 111 cm⁴
+```
+
+**The parallel axis term dominates for elements far from the centroid!**
 
 ---
 
@@ -370,17 +394,29 @@ I_eff_z -= (I_local_reduction + I_parallel_z);
 
 ### 5.2 Correct Formula Summary
 
-```
-For a removed plate strip:
+**Key principle**: We **subtract** the ineffective portions from the gross section properties:
 
-ΔI = ΔI_local + ΔI_parallel
+```
+I_eff = I_gross - Σ ΔI_removed
+
+For each removed plate strip:
+  ΔI_removed = ΔI_local + ΔI_parallel
 
 Where:
   ΔI_local = (t/12) × (c³_gross - c³_eff)
-  ΔI_parallel = ΔA × d²
-  ΔA = (c_gross - c_eff) × t
-  d = distance from plate centroid to section centroid
+             ↑ Inertia of removed strip about its own centroid
+
+  ΔI_parallel = ΔA_removed × d²
+                ↑ Parallel axis contribution
+
+  ΔA_removed = (c_gross - c_eff) × t
+  d = distance from PLATE centroid to SECTION centroid
 ```
+
+**Important notes**:
+- For webs at section centroid: d = 0, so ΔI_parallel = 0 (only ΔI_local matters)
+- For flanges far from centroid: ΔI_parallel >> ΔI_local (parallel axis dominates)
+- This is why flange Class 4 has much more impact on I_eff than web Class 4
 
 ---
 
