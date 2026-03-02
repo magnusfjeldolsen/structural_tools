@@ -1098,6 +1098,10 @@ function calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C,
     k_y_theta: k_y_theta,
     k_E_theta: k_E_theta,
 
+    // Section properties used in calculations
+    section_used: workingSection,  // Either gross or effective
+    is_using_effective: classification.is_class4,
+
     // Slenderness
     slenderness_y: slenderness_y,
     slenderness_z: slenderness_z,
@@ -1398,6 +1402,7 @@ function findLightestSection(inputs, progressCallback) {
     let lastValidSection = null;
     let testedCount = 0;
     const totalCount = sortedProfiles.length;
+    const skippedClass4 = []; // Track Class 4 sections that were skipped
 
     // Iterate through sorted profiles
     for (const profileName of sortedProfiles) {
@@ -1414,8 +1419,22 @@ function findLightestSection(inputs, progressCallback) {
       // Calculate buckling for this section
       const results = calculateBuckling(testInputs);
 
+      // Handle calculation failure (typically Class 4 rejection)
       if (!results.success) {
-        continue; // Skip invalid sections
+        // Check if failure is due to Class 4 section when user chose to avoid
+        if (results.classification && results.classification.is_class4) {
+          const governingElement = results.classification.element_results.find(e => e.class === 4);
+          skippedClass4.push({
+            profileName: profileName,
+            reason: 'Class 4 section (user chose to avoid)',
+            governingElement: governingElement ? governingElement.id : 'unknown',
+            classification: results.classification
+          });
+          console.log(`  ⊗ Skipped ${profileName}: Class 4 (${governingElement ? governingElement.id : 'unknown'}) - avoid mode`);
+        } else {
+          console.log(`  ⊗ Skipped ${profileName}: ${results.error}`);
+        }
+        continue; // Try next section
       }
 
       // Determine maximum utilization based on design mode
@@ -1436,8 +1455,19 @@ function findLightestSection(inputs, progressCallback) {
         utilizationSource = 'ULS (fire find-θ_cr mode)';
       }
 
-      // Debug logging
-      console.log(`Testing ${profileName}: ${utilizationSource} = ${(maxUtilization * 100).toFixed(1)}%`);
+      // Enhanced logging with Class 4 indication
+      const ulsClass = results.ulsResults.classification;
+      let classInfo = '';
+      if (ulsClass.is_class4 && results.ulsResults.is_using_effective) {
+        const A_eff = results.ulsResults.effective_properties.area;
+        const A_gross = results.ulsResults.effective_properties.gross_area;
+        const governingElem = ulsClass.element_results.find(e => e.class === 4);
+        classInfo = ` [Class 4: ${governingElem ? governingElem.id : 'unknown'}, A_eff=${A_eff.toFixed(2)} cm² (${((1 - A_eff/A_gross) * 100).toFixed(1)}% reduction)]`;
+      } else if (ulsClass.class) {
+        classInfo = ` [Class ${ulsClass.class}]`;
+      }
+
+      console.log(`Testing ${profileName}${classInfo}: ${utilizationSource} = ${(maxUtilization * 100).toFixed(1)}%`);
 
       // Check if this section is valid (utilization ≤ 100%)
       if (maxUtilization <= 1.0) {
@@ -1445,7 +1475,8 @@ function findLightestSection(inputs, progressCallback) {
         lastValidSection = {
           profileName: profileName,
           results: results,
-          maxUtilization: maxUtilization
+          maxUtilization: maxUtilization,
+          utilizationSource: utilizationSource
         };
         console.log(`  ✓ Valid (≤100%) - FOUND LIGHTEST CANDIDATE!`);
         // Stop searching - this is the lightest (smallest area) that passes
@@ -1459,26 +1490,50 @@ function findLightestSection(inputs, progressCallback) {
 
     // Check if we found a valid section
     if (!lastValidSection) {
+      // Generate error message based on what happened
+      let errorMsg = 'No suitable section found in selected profile type.';
+      if (skippedClass4.length > 0 && skippedClass4.length === testedCount) {
+        errorMsg = `All ${testedCount} sections are Class 4. Enable "Allow Class 4" to use effective properties, or choose a different profile type/steel grade.`;
+      } else if (skippedClass4.length > 0) {
+        errorMsg = `No suitable section found. ${skippedClass4.length} lighter sections were skipped (Class 4 - avoid mode). Consider enabling "Allow Class 4" or choosing a different profile type.`;
+      } else {
+        errorMsg = 'No suitable section found. All sections exceed 100% utilization.';
+      }
+
       return {
         success: false,
-        error: 'No suitable section found in selected profile type. All sections exceed 100% utilization.',
+        error: errorMsg,
         testedCount: testedCount,
-        totalCount: totalCount
+        totalCount: totalCount,
+        skippedClass4: skippedClass4,
+        skippedClass4Count: skippedClass4.length
       };
     }
 
     // Check if all sections were valid (even the lightest works)
-    const allValid = testedCount === totalCount && lastValidSection;
+    const allValid = (testedCount - skippedClass4.length) === 1 && lastValidSection;
+
+    // Generate success message
+    let message = '';
+    if (allValid) {
+      message = skippedClass4.length > 0
+        ? `Lightest non-Class 4 section selected (${skippedClass4.length} Class 4 sections skipped).`
+        : 'All sections in this profile type are suitable. Lightest section selected.';
+    } else {
+      message = skippedClass4.length > 0
+        ? `Found optimal section after testing ${testedCount} profiles (${skippedClass4.length} Class 4 sections skipped).`
+        : `Found optimal section after testing ${testedCount} of ${totalCount} profiles.`;
+    }
 
     return {
       success: true,
       section: lastValidSection,
       testedCount: testedCount,
       totalCount: totalCount,
+      skippedClass4: skippedClass4,
+      skippedClass4Count: skippedClass4.length,
       allValid: allValid,
-      message: allValid
-        ? 'All sections in this profile type are suitable. Lightest section selected.'
-        : `Found optimal section after testing ${testedCount} of ${totalCount} profiles.`
+      message: message
     };
 
   } catch (error) {
