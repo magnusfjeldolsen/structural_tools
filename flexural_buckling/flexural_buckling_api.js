@@ -660,7 +660,12 @@ function calculateRemovedStrips(plate, element, rho, psi) {
   const c_eff = rho * c_gross;
   const strip_width = c_gross - c_eff;
 
-  if (strip_width <= 0) return strips;  // No reduction needed
+  console.log(`[Removed Strips] Plate ${plate.id}: c_gross=${c_gross.toFixed(2)}mm, c_eff=${c_eff.toFixed(2)}mm, strip_width=${strip_width.toFixed(2)}mm, ρ=${rho.toFixed(3)}`);
+
+  if (strip_width <= 0) {
+    console.log(`[Removed Strips] No reduction needed (strip_width <= 0)`);
+    return strips;  // No reduction needed
+  }
 
   // For pure compression (ψ = 1.0), use symmetric edge reduction
   if (plate.type === 'internal') {
@@ -670,7 +675,7 @@ function calculateRemovedStrips(plate, element, rho, psi) {
 
     // Strip 1: At edge1 (positive direction)
     const edge1_pos = plate.geometry.edges.edge1.position;
-    strips.push({
+    const strip1 = {
       id: `${plate.id}_strip1`,
       width: half_removed,
       thickness: t,
@@ -680,11 +685,13 @@ function calculateRemovedStrips(plate, element, rho, psi) {
         y: plate.orientation === 'y-direction' ? edge1_pos.y - half_removed/2 : plate.geometry.centroid.y,
         z: plate.orientation === 'z-direction' ? edge1_pos.z - Math.sign(edge1_pos.z) * half_removed/2 : plate.geometry.centroid.z
       }
-    });
+    };
+    strips.push(strip1);
+    console.log(`[Removed Strips] Created strip1: A=${strip1.area.toFixed(2)} cm², width=${half_removed.toFixed(2)}mm`);
 
     // Strip 2: At edge2 (negative direction)
     const edge2_pos = plate.geometry.edges.edge2.position;
-    strips.push({
+    const strip2 = {
       id: `${plate.id}_strip2`,
       width: half_removed,
       thickness: t,
@@ -694,7 +701,9 @@ function calculateRemovedStrips(plate, element, rho, psi) {
         y: plate.orientation === 'y-direction' ? edge2_pos.y + half_removed/2 : plate.geometry.centroid.y,
         z: plate.orientation === 'z-direction' ? edge2_pos.z + Math.sign(edge2_pos.z) * half_removed/2 : plate.geometry.centroid.z
       }
-    });
+    };
+    strips.push(strip2);
+    console.log(`[Removed Strips] Created strip2: A=${strip2.area.toFixed(2)} cm², width=${half_removed.toFixed(2)}mm`);
 
   } else if (plate.type === 'outstand') {
     // Pattern C: Free edge removal
@@ -783,8 +792,13 @@ function calculateClass4EffectiveProperties(section, classification, profileType
     return calculateClass4EffectivePropertiesFallback(section, classification, profileType);
   }
 
+  console.log(`[Class 4 Calc] Starting for ${section.profile}`);
+  console.log(`[Class 4 Calc] Classification:`, classification);
+  console.log(`[Class 4 Calc] Element results:`, classification.element_results);
+
   // STEP 1: Calculate removed strips for each Class 4 element
   for (const element of classification.element_results) {
+    console.log(`[Class 4 Calc] Checking element ${element.id}: class=${element.class}`);
     if (element.class !== 4) continue;
 
     // Find corresponding plate element
@@ -793,6 +807,8 @@ function calculateClass4EffectiveProperties(section, classification, profileType
       console.warn(`Plate element ${element.id} not found in section metadata`);
       continue;
     }
+
+    console.log(`[Class 4 Calc] Found Class 4 element: ${element.id}`);
 
     const slenderness = element.slenderness;
     const elementType = element.type;
@@ -812,8 +828,11 @@ function calculateClass4EffectiveProperties(section, classification, profileType
 
     const c_eff = rho * element.c;
 
+    console.log(`[Class 4 Calc] Element ${element.id}: λ_p_bar=${lambda_p_bar.toFixed(3)}, ρ=${rho.toFixed(3)}, c=${element.c.toFixed(2)}mm, c_eff=${c_eff.toFixed(2)}mm`);
+
     // Calculate removed strips using plate geometry
     const strips = calculateRemovedStrips(plate, element, rho, psi);
+    console.log(`[Class 4 Calc] Calculated ${strips.length} removed strips for ${element.id}`);
     removedStrips.push(...strips);
 
     plateReductions.push({
@@ -830,8 +849,14 @@ function calculateClass4EffectiveProperties(section, classification, profileType
 
   // STEP 2: Calculate effective area
   const A_gross = section.area;  // cm²
+  console.log(`[Class 4 Calc] Total removed strips: ${removedStrips.length}`);
+  console.log(`[Class 4 Calc] A_gross = ${A_gross.toFixed(2)} cm²`);
+
   const shift = calculateNeutralAxisShift(A_gross, removedStrips);
+  console.log(`[Class 4 Calc] Shift calculation: total_A_removed=${shift.total_A_removed.toFixed(2)} cm², e_N_y=${shift.e_N_y.toFixed(4)} cm, e_N_z=${shift.e_N_z.toFixed(4)} cm`);
+
   const A_eff = A_gross - shift.total_A_removed;
+  console.log(`[Class 4 Calc] A_eff = ${A_eff.toFixed(2)} cm² (reduction: ${shift.total_A_removed.toFixed(2)} cm², ${((shift.total_A_removed/A_gross)*100).toFixed(1)}%)`);
 
   // STEP 3: Calculate effective moments of inertia
   // I_eff = I_gross - Σ(ΔI_local + ΔI_parallel) - A_eff × e_N²
