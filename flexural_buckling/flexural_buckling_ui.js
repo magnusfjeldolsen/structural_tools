@@ -759,6 +759,12 @@ function generateDetailedReport(results, inputs) {
   const description = document.getElementById('description').value.trim();
   const timestamp = new Date().toLocaleString();
 
+  // Determine Class 4 status and properties to use throughout the report
+  const ulsReport = results.ulsResults;
+  const isClass4Report = ulsReport.is_using_effective;
+  const effPropsReport = ulsReport.effective_properties;
+  const sectionUsedReport = ulsReport.section_used || results.inputs.section;
+
   let html = '<div class="report-content bg-white text-gray-900 p-8 rounded-lg">';
 
   // Description (if provided)
@@ -784,11 +790,7 @@ function generateDetailedReport(results, inputs) {
   html += '<div class="space-y-2 text-sm">';
   html += `<div><span class="text-gray-600">Profile:</span> <span class="font-semibold">${inputs.profileType.toUpperCase()} ${inputs.profileName.toUpperCase()}</span></div>`;
 
-  // Check if Class 4 and show both gross and effective properties
-  const ulsReport = results.ulsResults;
-  const isClass4Report = ulsReport.is_using_effective;
-  const effPropsReport = ulsReport.effective_properties;
-
+  // Check if Class 4 and show both gross and effective properties (using variables from top of function)
   if (isClass4Report && effPropsReport) {
     html += `<div class="bg-orange-50 border border-orange-300 rounded px-2 py-1 mt-1"><span class="text-orange-800 font-semibold text-xs">⚠️ Class 4 Section - Effective Properties Used</span></div>`;
     html += `<div><span class="text-gray-600">A<sub>gross</sub> =</span> <span class="font-mono">${toFixedIfNeeded(effPropsReport.gross_area, 2)} cm²</span></div>`;
@@ -885,8 +887,7 @@ function generateDetailedReport(results, inputs) {
   html += '<div class="page-break-before">';
   html += '<h2 class="text-2xl font-bold mb-6 pb-2 border-b-2" style="color: #6b21a8;">DETAILED CALCULATIONS</h2>';
 
-  // ULS Calculations (reuse uls from line 831)
-  const sectionUsedReport = uls.section_used || results.inputs.section;
+  // ULS Calculations (reuse variables from top of function)
   const iySuffixReport = isClass4Report ? ',eff' : '';
   const izSuffixReport = isClass4Report ? ',eff' : '';
   const ASuffixReport = isClass4Report ? '<sub>eff</sub>' : '';
@@ -969,7 +970,7 @@ function generateDetailedReport(results, inputs) {
       html += '<div class="bg-gray-50 rounded-lg p-4 mb-4">';
       html += '<h4 class="font-semibold text-gray-800 mb-2">About y-axis (elevated temperature):</h4>';
       html += `<p class="text-sm mb-1">L<sub>y</sub> = ${toFixedIfNeeded(results.inputs.Ly_m, 2)} m = ${toFixedIfNeeded(results.inputs.Ly_m * 100, 1)} cm</p>`;
-      html += `<p class="text-sm mb-1">λ<sub>y</sub> = L<sub>y</sub> / i<sub>y</sub> = ${toFixedIfNeeded(results.inputs.Ly_m * 100, 1)} / ${toFixedIfNeeded(results.inputs.section.iy, 2)} = ${toFixedIfNeeded(fire.slenderness_y.lambda, 1)}</p>`;
+      html += `<p class="text-sm mb-1">λ<sub>y</sub> = L<sub>y</sub> / i<sub>y${iySuffixReport}</sub> = ${toFixedIfNeeded(results.inputs.Ly_m * 100, 1)} / ${toFixedIfNeeded(sectionUsedReport.iy, 2)} = ${toFixedIfNeeded(fire.slenderness_y.lambda, 1)}</p>`;
       html += `<p class="text-sm mb-1">λ<sub>1,θ</sub> = π√(E<sub>θ</sub>/f<sub>y,θ</sub>) = π√(${toFixedIfNeeded(fire.E_theta, 0)}/${toFixedIfNeeded(fire.fy_theta, 1)}) = ${toFixedIfNeeded(fire.slenderness_y.lambda_1, 1)}</p>`;
       html += `<p class="text-sm mb-1">λ̄<sub>y,θ</sub> = λ<sub>y</sub> / λ<sub>1,θ</sub> = ${toFixedIfNeeded(fire.slenderness_y.lambda, 1)} / ${toFixedIfNeeded(fire.slenderness_y.lambda_1, 1)} = ${toFixedIfNeeded(fire.slenderness_y.lambda_bar, 3)}</p>`;
       html += `<p class="text-sm mb-1">Buckling curve: ${fire.curve_y}, α = ${toFixedIfNeeded(fire.alpha_y, 2)}</p>`;
@@ -981,7 +982,7 @@ function generateDetailedReport(results, inputs) {
       html += '<div class="bg-gray-50 rounded-lg p-4 mb-4">';
       html += '<h4 class="font-semibold text-gray-800 mb-2">About z-axis (elevated temperature):</h4>';
       html += `<p class="text-sm mb-1">L<sub>z</sub> = ${toFixedIfNeeded(results.inputs.Lz_m, 2)} m = ${toFixedIfNeeded(results.inputs.Lz_m * 100, 1)} cm</p>`;
-      html += `<p class="text-sm mb-1">λ<sub>z</sub> = L<sub>z</sub> / i<sub>z</sub> = ${toFixedIfNeeded(results.inputs.Lz_m * 100, 1)} / ${toFixedIfNeeded(results.inputs.section.iz, 2)} = ${toFixedIfNeeded(fire.slenderness_z.lambda, 1)}</p>`;
+      html += `<p class="text-sm mb-1">λ<sub>z</sub> = L<sub>z</sub> / i<sub>z${izSuffixReport}</sub> = ${toFixedIfNeeded(results.inputs.Lz_m * 100, 1)} / ${toFixedIfNeeded(sectionUsedReport.iz, 2)} = ${toFixedIfNeeded(fire.slenderness_z.lambda, 1)}</p>`;
       html += `<p class="text-sm mb-1">λ̄<sub>z,θ</sub> = λ<sub>z</sub> / λ<sub>1,θ</sub> = ${toFixedIfNeeded(fire.slenderness_z.lambda, 1)} / ${toFixedIfNeeded(fire.slenderness_z.lambda_1, 1)} = ${toFixedIfNeeded(fire.slenderness_z.lambda_bar, 3)}</p>`;
       html += `<p class="text-sm mb-1">Buckling curve: ${fire.curve_z}, α = ${toFixedIfNeeded(fire.alpha_z, 2)}</p>`;
       html += `<p class="text-sm mb-1">φ<sub>z,θ</sub> = 0.5[1 + α(λ̄<sub>z,θ</sub> - 0.2) + λ̄<sub>z,θ</sub>²] = ${toFixedIfNeeded(fire.phi_z, 3)}</p>`;
@@ -992,8 +993,8 @@ function generateDetailedReport(results, inputs) {
       html += '<div class="bg-orange-50 rounded-lg p-4 border-l-4 border-orange-500">';
       html += '<h4 class="font-semibold text-gray-800 mb-2">Fire Buckling Resistance:</h4>';
       html += `<p class="text-sm mb-1">χ<sub>min,θ</sub> = min(χ<sub>y,θ</sub>, χ<sub>z,θ</sub>) = ${toFixedIfNeeded(fire.chi_min, 3)} (${fire.governing_axis}-axis governs)</p>`;
-      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = χ<sub>min,θ</sub> × A × f<sub>y,θ</sub> / γ<sub>M1</sub></p>`;
-      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.chi_min, 3)} × ${toFixedIfNeeded(results.inputs.section.area, 2)} × ${toFixedIfNeeded(fire.fy_theta, 1)} / ${toFixedIfNeeded(results.inputs.gamma_M1, 2)} / 10</p>`;
+      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = χ<sub>min,θ</sub> × A${ASuffixReport} × f<sub>y,θ</sub> / γ<sub>M1</sub></p>`;
+      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.chi_min, 3)} × ${toFixedIfNeeded(sectionUsedReport.area, 2)} × ${toFixedIfNeeded(fire.fy_theta, 1)} / ${toFixedIfNeeded(results.inputs.gamma_M1, 2)} / 10</p>`;
       html += `<p class="text-sm font-semibold">N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} kN</p>`;
 
       if (inputs.fireMode === 'find-critical') {
