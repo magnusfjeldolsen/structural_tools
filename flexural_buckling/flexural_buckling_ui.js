@@ -376,6 +376,9 @@ function displayResults(results, inputs) {
   // Display Class 4 warning
   displayClass4Warning(results.ulsResults.classification.is_class4);
 
+  // Display effective properties (if Class 4)
+  displayEffectiveProperties(results.ulsResults.effective_properties);
+
   // Display ULS results
   displayULSResults(results.ulsResults, results.inputs);
 
@@ -570,6 +573,44 @@ function displayClassificationResults(classification) {
   } else {
     class4InfoDiv.classList.add('hidden');
   }
+}
+
+function displayEffectiveProperties(effectiveProps) {
+  const effPropsDiv = document.getElementById('class4-effective-properties');
+
+  if (!effectiveProps) {
+    effPropsDiv.classList.add('hidden');
+    return;
+  }
+
+  effPropsDiv.classList.remove('hidden');
+
+  // Effective vs Gross properties
+  document.getElementById('eff-area').textContent = toFixedIfNeeded(effectiveProps.area, 2) + ' cm²';
+  document.getElementById('gross-area').textContent = toFixedIfNeeded(effectiveProps.gross_area, 2) + ' cm²';
+
+  // Gross I values need to be reconstructed from i and A: I = A × i²
+  const grossIy = effectiveProps.gross_area * effectiveProps.gross_iy * effectiveProps.gross_iy;
+  const grossIz = effectiveProps.gross_area * effectiveProps.gross_iz * effectiveProps.gross_iz;
+
+  document.getElementById('eff-iy').textContent = toFixedIfNeeded(effectiveProps.iy_moment, 2) + ' cm⁴';
+  document.getElementById('gross-iy').textContent = toFixedIfNeeded(grossIy, 2) + ' cm⁴';
+
+  document.getElementById('eff-iz').textContent = toFixedIfNeeded(effectiveProps.iz_moment, 2) + ' cm⁴';
+  document.getElementById('gross-iz').textContent = toFixedIfNeeded(grossIz, 2) + ' cm⁴';
+
+  document.getElementById('removed-strips-count').textContent = effectiveProps.removed_strips_count || '-';
+
+  // Neutral axis shift
+  const eNy = effectiveProps.neutral_axis_shift_y || 0;
+  const eNz = effectiveProps.neutral_axis_shift_z || 0;
+  document.getElementById('neutral-axis-y').textContent = toFixedIfNeeded(eNy, 4) + ' cm';
+  document.getElementById('neutral-axis-z').textContent = toFixedIfNeeded(eNz, 4) + ' cm';
+
+  // Reductions
+  document.getElementById('area-reduction').textContent = toFixedIfNeeded(effectiveProps.area_reduction_percent, 2) + '%';
+  document.getElementById('iy-reduction').textContent = toFixedIfNeeded(effectiveProps.iy_reduction_percent, 2) + '%';
+  document.getElementById('iz-reduction').textContent = toFixedIfNeeded(effectiveProps.iz_reduction_percent, 2) + '%';
 }
 
 function toggleClassificationDetails() {

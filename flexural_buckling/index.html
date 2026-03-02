@@ -666,6 +666,68 @@
         </div>
       </div>
 
+      <!-- Class 4 Effective Properties Details -->
+      <div id="class4-effective-properties" class="hidden bg-gray-800 rounded-lg p-6 mb-6">
+        <h3 class="text-lg font-semibold text-white mb-4">Effective Section Properties (EN 1993-1-5)</h3>
+
+        <!-- Effective vs Gross Comparison -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Effective Area</p>
+            <p class="text-xl font-mono text-cyan-400" id="eff-area">-</p>
+            <p class="text-xs text-gray-400">Gross: <span id="gross-area" class="font-mono">-</span></p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>eff,y</sub></p>
+            <p class="text-xl font-mono text-cyan-400" id="eff-iy">-</p>
+            <p class="text-xs text-gray-400">Gross: <span id="gross-iy" class="font-mono">-</span></p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>eff,z</sub></p>
+            <p class="text-xl font-mono text-cyan-400" id="eff-iz">-</p>
+            <p class="text-xs text-gray-400">Gross: <span id="gross-iz" class="font-mono">-</span></p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Removed Strips</p>
+            <p class="text-xl font-mono text-white" id="removed-strips-count">-</p>
+          </div>
+        </div>
+
+        <!-- Neutral Axis Shift -->
+        <div class="bg-gray-700 rounded p-4 mb-4">
+          <h4 class="text-sm font-semibold text-white mb-2">Neutral Axis Shift</h4>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <p class="text-xs text-gray-400">e<sub>N,y</sub> (shift in Y direction)</p>
+              <p class="text-lg font-mono text-white" id="neutral-axis-y">-</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-400">e<sub>N,z</sub> (shift in Z direction)</p>
+              <p class="text-lg font-mono text-white" id="neutral-axis-z">-</p>
+            </div>
+          </div>
+          <p class="text-xs text-gray-400 mt-2">
+            <em>For pure compression with symmetric reductions, e<sub>N</sub> ≈ 0</em>
+          </p>
+        </div>
+
+        <!-- Reductions -->
+        <div class="grid grid-cols-3 gap-4">
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Area Reduction</p>
+            <p class="text-lg font-mono text-orange-400" id="area-reduction">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>y</sub> Reduction</p>
+            <p class="text-lg font-mono text-orange-400" id="iy-reduction">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>z</sub> Reduction</p>
+            <p class="text-lg font-mono text-orange-400" id="iz-reduction">-</p>
+          </div>
+        </div>
+      </div>
+
       <!-- ULS Results -->
       <div class="bg-gray-800 rounded-lg p-6 mb-6">
         <h2 class="text-xl font-semibold text-white mb-4">ULS Results</h2>
