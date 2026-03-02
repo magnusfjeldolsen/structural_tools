@@ -397,8 +397,19 @@ function displayResults(results, inputs) {
   // Display Class 4 warning
   displayClass4Warning(results.ulsResults.classification.is_class4);
 
-  // Display effective properties (if Class 4)
-  displayEffectiveProperties(results.ulsResults.effective_properties);
+  // Display ULS effective properties (if Class 4)
+  displayEffectiveProperties(results.ulsResults.effective_properties, 'uls');
+
+  // Display Fire effective properties (if fire enabled and Class 4)
+  if (inputs.fireEnabled && results.fireResults) {
+    displayEffectiveProperties(results.fireResults.effective_properties, 'fire');
+  } else {
+    // Hide fire effective properties if not enabled
+    const fireEffPropsDiv = document.getElementById('class4-effective-properties-fire');
+    if (fireEffPropsDiv) {
+      fireEffPropsDiv.classList.add('hidden');
+    }
+  }
 
   // Display ULS results
   displayULSResults(results.ulsResults, results.inputs);
@@ -607,8 +618,11 @@ function displayClassificationResults(classification, suffix = '', fyDisplay = n
     class4InfoDiv.classList.add('hidden');
   }
 }
-function displayEffectiveProperties(effectiveProps) {
-  const effPropsDiv = document.getElementById('class4-effective-properties');
+function displayEffectiveProperties(effectiveProps, suffix = 'uls') {
+  const sid = suffix ? `-${suffix}` : '';
+  const effPropsDiv = document.getElementById(`class4-effective-properties${sid}`);
+
+  if (!effPropsDiv) return; // Element doesn't exist
 
   if (!effectiveProps) {
     effPropsDiv.classList.add('hidden');
@@ -618,33 +632,32 @@ function displayEffectiveProperties(effectiveProps) {
   effPropsDiv.classList.remove('hidden');
 
   // Effective vs Gross properties
-  document.getElementById('eff-area').textContent = toFixedIfNeeded(effectiveProps.area, 2) + ' cm²';
-  document.getElementById('gross-area').textContent = toFixedIfNeeded(effectiveProps.gross_area, 2) + ' cm²';
+  document.getElementById(`eff-area${sid}`).textContent = toFixedIfNeeded(effectiveProps.area, 2) + ' cm²';
+  document.getElementById(`gross-area${sid}`).textContent = toFixedIfNeeded(effectiveProps.gross_area, 2) + ' cm²';
 
   // Gross I values need to be reconstructed from i and A: I = A × i²
   const grossIy = effectiveProps.gross_area * effectiveProps.gross_iy * effectiveProps.gross_iy;
   const grossIz = effectiveProps.gross_area * effectiveProps.gross_iz * effectiveProps.gross_iz;
 
-  document.getElementById('eff-iy').textContent = toFixedIfNeeded(effectiveProps.iy_moment, 2) + ' cm⁴';
-  document.getElementById('gross-iy').textContent = toFixedIfNeeded(grossIy, 2) + ' cm⁴';
+  document.getElementById(`eff-iy${sid}`).textContent = toFixedIfNeeded(effectiveProps.iy_moment, 2) + ' cm⁴';
+  document.getElementById(`gross-iy${sid}`).textContent = toFixedIfNeeded(grossIy, 2) + ' cm⁴';
 
-  document.getElementById('eff-iz').textContent = toFixedIfNeeded(effectiveProps.iz_moment, 2) + ' cm⁴';
-  document.getElementById('gross-iz').textContent = toFixedIfNeeded(grossIz, 2) + ' cm⁴';
+  document.getElementById(`eff-iz${sid}`).textContent = toFixedIfNeeded(effectiveProps.iz_moment, 2) + ' cm⁴';
+  document.getElementById(`gross-iz${sid}`).textContent = toFixedIfNeeded(grossIz, 2) + ' cm⁴';
 
-  document.getElementById('removed-strips-count').textContent = effectiveProps.removed_strips_count || '-';
+  document.getElementById(`removed-strips-count${sid}`).textContent = effectiveProps.removed_strips_count || '-';
 
   // Neutral axis shift
   const eNy = effectiveProps.neutral_axis_shift_y || 0;
   const eNz = effectiveProps.neutral_axis_shift_z || 0;
-  document.getElementById('neutral-axis-y').textContent = toFixedIfNeeded(eNy, 4) + ' cm';
-  document.getElementById('neutral-axis-z').textContent = toFixedIfNeeded(eNz, 4) + ' cm';
+  document.getElementById(`neutral-axis-y${sid}`).textContent = toFixedIfNeeded(eNy, 4) + ' cm';
+  document.getElementById(`neutral-axis-z${sid}`).textContent = toFixedIfNeeded(eNz, 4) + ' cm';
 
   // Reductions
-  document.getElementById('area-reduction').textContent = toFixedIfNeeded(effectiveProps.area_reduction_percent, 2) + '%';
-  document.getElementById('iy-reduction').textContent = toFixedIfNeeded(effectiveProps.iy_reduction_percent, 2) + '%';
-  document.getElementById('iz-reduction').textContent = toFixedIfNeeded(effectiveProps.iz_reduction_percent, 2) + '%';
+  document.getElementById(`area-reduction${sid}`).textContent = toFixedIfNeeded(effectiveProps.area_reduction_percent, 2) + '%';
+  document.getElementById(`iy-reduction${sid}`).textContent = toFixedIfNeeded(effectiveProps.iy_reduction_percent, 2) + '%';
+  document.getElementById(`iz-reduction${sid}`).textContent = toFixedIfNeeded(effectiveProps.iz_reduction_percent, 2) + '%';
 }
-
 function toggleClassificationDetails(suffix = '') {
   const sid = suffix ? `-${suffix}` : '';
   const detailsDiv = document.getElementById(`classification-details${sid}`);
