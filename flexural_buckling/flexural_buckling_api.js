@@ -1030,9 +1030,27 @@ function calculateReductionFactor(lambda_bar, bucklingCurve) {
 function calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C, gamma_M1, profileType, allowClass4 = false) {
   const E_MPa = 210000;
 
+  // ========== FIRE MATERIAL REDUCTION (moved before classification) ==========
+  // Determine if this is a fire calculation
+  const isFireCalculation = temperature_C > 20;
+
+  // Get material reduction factors for temperature
+  let k_y_theta = 1.0;
+  let k_E_theta = 1.0;
+
+  if (isFireCalculation) {
+    k_y_theta = getFireReductionFactor(temperature_C, 'k_y_theta');
+    k_E_theta = getFireReductionFactor(temperature_C, 'k_E_theta');
+  }
+
+  // Reduced material properties at temperature
+  const fy_theta = fy_MPa * k_y_theta;
+  const E_theta = E_MPa * k_E_theta;
+
   // ========== SECTION CLASSIFICATION ==========
-  // Classify section per EC3-1-1 Table 5.2
-  const classification = classifySection(section, fy_MPa, profileType);
+  // Classify section at appropriate yield strength (fy_MPa for ULS, fy_theta for fire)
+  const fy_for_classification = isFireCalculation ? fy_theta : fy_MPa;
+  const classification = classifySection(section, fy_for_classification, profileType);
 
   // Determine which section to use (gross or effective)
   let workingSection = section;
@@ -1053,19 +1071,6 @@ function calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C,
     workingSection = effectiveProperties;
   }
 
-  // ========== FIRE MATERIAL REDUCTION ==========
-  // Get material reduction factors for temperature
-  let k_y_theta = 1.0;
-  let k_E_theta = 1.0;
-
-  if (temperature_C > 20) {
-    k_y_theta = getFireReductionFactor(temperature_C, 'k_y_theta');
-    k_E_theta = getFireReductionFactor(temperature_C, 'k_E_theta');
-  }
-
-  // Reduced material properties at temperature
-  const fy_theta = fy_MPa * k_y_theta;
-  const E_theta = E_MPa * k_E_theta;
 
   // ========== BUCKLING CALCULATIONS ==========
   // Calculate slenderness about both axes (using working section properties)
