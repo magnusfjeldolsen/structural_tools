@@ -644,121 +644,242 @@ function classifySection(section, fy, profileType) {
  * @param {string} profileType - Profile type (for geometry identification)
  * @returns {Object} Effective section properties
  */
+/**
+ * Calculate removed strips geometry and centroids for Class 4 elements
+ * @param {Object} plate - Plate element from plate_elements metadata
+ * @param {Object} element - Classification result element
+ * @param {number} rho - Reduction factor
+ * @param {number} psi - Stress ratio (1.0 for pure compression)
+ * @returns {Array} Array of removed strip objects with geometry
+ */
+function calculateRemovedStrips(plate, element, rho, psi) {
+  const strips = [];
+
+  const c_gross = element.c;  // mm
+  const t = element.t;        // mm
+  const c_eff = rho * c_gross;
+  const strip_width = c_gross - c_eff;
+
+  if (strip_width <= 0) return strips;  // No reduction needed
+
+  // For pure compression (ψ = 1.0), use symmetric edge reduction
+  if (plate.type === 'internal') {
+    // Pattern A: Symmetric edge reduction
+    // Remove two equal strips at edges
+    const half_removed = strip_width / 2;
+
+    // Strip 1: At edge1 (positive direction)
+    const edge1_pos = plate.geometry.edges.edge1.position;
+    strips.push({
+      id: `${plate.id}_strip1`,
+      width: half_removed,
+      thickness: t,
+      area: (half_removed * t) / 100,  // mm² → cm²
+      orientation: plate.orientation,
+      centroid: {
+        y: plate.orientation === 'y-direction' ? edge1_pos.y - half_removed/2 : plate.geometry.centroid.y,
+        z: plate.orientation === 'z-direction' ? edge1_pos.z - Math.sign(edge1_pos.z) * half_removed/2 : plate.geometry.centroid.z
+      }
+    });
+
+    // Strip 2: At edge2 (negative direction)
+    const edge2_pos = plate.geometry.edges.edge2.position;
+    strips.push({
+      id: `${plate.id}_strip2`,
+      width: half_removed,
+      thickness: t,
+      area: (half_removed * t) / 100,  // mm² → cm²
+      orientation: plate.orientation,
+      centroid: {
+        y: plate.orientation === 'y-direction' ? edge2_pos.y + half_removed/2 : plate.geometry.centroid.y,
+        z: plate.orientation === 'z-direction' ? edge2_pos.z + Math.sign(edge2_pos.z) * half_removed/2 : plate.geometry.centroid.z
+      }
+    });
+
+  } else if (plate.type === 'outstand') {
+    // Pattern C: Free edge removal
+    // Remove single strip from free edge inward
+    const free_edge = plate.geometry.edges.edge2;  // Assume edge2 is free edge
+
+    strips.push({
+      id: `${plate.id}_strip`,
+      width: strip_width,
+      thickness: t,
+      area: (strip_width * t) / 100,  // mm² → cm²
+      orientation: plate.orientation,
+      centroid: {
+        y: plate.orientation === 'y-direction' ? free_edge.position.y - strip_width/2 : plate.geometry.centroid.y,
+        z: plate.orientation === 'z-direction' ? free_edge.position.z - Math.sign(free_edge.position.z) * strip_width/2 : plate.geometry.centroid.z
+      }
+    });
+
+  } else if (plate.type === 'circular') {
+    // Circular sections: uniform reduction
+    // Treat as single "strip" at centroid
+    strips.push({
+      id: `${plate.id}_reduction`,
+      width: strip_width,
+      thickness: t,
+      area: (strip_width * t) / 100,  // mm² → cm²
+      orientation: 'radial',
+      centroid: { y: 0, z: 0 }  // At section centroid
+    });
+  }
+
+  return strips;
+}
+
+/**
+ * Calculate neutral axis shift due to Class 4 reductions
+ * Per EN 1993-1-5 Section 4.3(3) and Figure 4.1
+ * @param {number} A_gross - Gross area (cm²)
+ * @param {Array} removedStrips - Array of removed strip objects
+ * @returns {Object} Shift in Y and Z directions (cm)
+ */
+function calculateNeutralAxisShift(A_gross, removedStrips) {
+  let sum_A_y = 0;  // Σ(A_removed × y_centroid)
+  let sum_A_z = 0;  // Σ(A_removed × z_centroid)
+  let total_A_removed = 0;
+
+  for (const strip of removedStrips) {
+    const A = strip.area;  // cm²
+    const y = strip.centroid.y / 10;  // mm → cm
+    const z = strip.centroid.z / 10;  // mm → cm
+
+    sum_A_y += A * y;
+    sum_A_z += A * z;
+    total_A_removed += A;
+  }
+
+  const A_eff = A_gross - total_A_removed;
+
+  // e_N = (Σ A_removed × centroid) / A_eff
+  const e_N_y = A_eff > 0 ? sum_A_y / A_eff : 0;
+  const e_N_z = A_eff > 0 ? sum_A_z / A_eff : 0;
+
+  return { e_N_y, e_N_z, total_A_removed };
+}
+
+/**
+ * Calculate effective section properties for Class 4 sections
+ * Uses plate_elements metadata and parallel axis theorem
+ *
+ * @param {Object} section - Section properties with plate_elements
+ * @param {Object} classification - Classification results
+ * @param {string} profileType - Profile type identifier
+ * @returns {Object} Effective section properties
+ */
 function calculateClass4EffectiveProperties(section, classification, profileType) {
 
-  let A_eff = section.area;  // Start with gross area (cm²)
-  let removed_area = 0;
-
-  const plateReductions = [];
-
   // For pure compression: ψ = 1.0 (uniform compression on both edges)
-  // For bending (future): ψ will be calculated based on stress distribution
   const psi = 1.0;
 
-  // Iterate through Class 4 elements and calculate effective widths
+  const removedStrips = [];
+  const plateReductions = [];
+
+  // Check if section has plate_elements metadata
+  if (!section.plate_elements) {
+    console.warn(`Section ${section.profile} missing plate_elements metadata. Using fallback calculation.`);
+    return calculateClass4EffectivePropertiesFallback(section, classification, profileType);
+  }
+
+  // STEP 1: Calculate removed strips for each Class 4 element
   for (const element of classification.element_results) {
     if (element.class !== 4) continue;
 
-    const c = element.c;  // mm
-    const t = element.t;  // mm
+    // Find corresponding plate element
+    const plate = section.plate_elements.find(p => p.id === element.id);
+    if (!plate) {
+      console.warn(`Plate element ${element.id} not found in section metadata`);
+      continue;
+    }
+
     const slenderness = element.slenderness;
     const elementType = element.type;
-
-    // Calculate plate slenderness parameter λ̄p
     const limit_class3 = element.limit_class3;
     const lambda_p_bar = slenderness / limit_class3;
 
-    // Calculate reduction factor ρ per EN 1993-1-5 Table 4.1 and Table 4.2
-    // The formulas depend on element type and stress ratio ψ
+    // Calculate reduction factor ρ
     let rho;
-
     if (elementType === 'internal') {
-      // Internal element in compression (Table 4.1)
-      // ψ = 1: uniform compression
-      // ρ = (λ̄p - 0.055(3 + ψ)) / λ̄p² ≤ 1.0
       rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
     } else if (elementType === 'outstand') {
-      // Outstand element in compression (Table 4.2)
-      // ρ = (λ̄p - 0.188) / λ̄p² ≤ 1.0
       rho = (lambda_p_bar - 0.188) / (lambda_p_bar * lambda_p_bar);
     } else if (elementType === 'circular') {
-      // Circular hollow sections - use internal element formula
       rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
     }
-
-    // Clamp ρ: 0 ≤ ρ ≤ 1.0
     rho = Math.min(Math.max(rho, 0), 1.0);
 
-    // Effective width
-    const c_eff = rho * c;
-    const area_reduction = ((c - c_eff) * t) / 100;  // Convert mm² to cm²
+    const c_eff = rho * element.c;
 
-    removed_area += area_reduction;
+    // Calculate removed strips using plate geometry
+    const strips = calculateRemovedStrips(plate, element, rho, psi);
+    removedStrips.push(...strips);
 
     plateReductions.push({
       element: element.id,
       type: elementType,
-      c_gross: c,
+      c_gross: element.c,
       c_eff: c_eff,
       rho: rho,
       psi: psi,
       lambda_p_bar: lambda_p_bar,
-      area_reduction: area_reduction
+      strips_removed: strips.length
     });
   }
 
-  A_eff = section.area - removed_area;
+  // STEP 2: Calculate effective area
+  const A_gross = section.area;  // cm²
+  const shift = calculateNeutralAxisShift(A_gross, removedStrips);
+  const A_eff = A_gross - shift.total_A_removed;
 
-  // Calculate effective moments of inertia
-  // For I-sections: web reduces I_y, flanges reduce I_z
-  // For RHS/SHS: flanges reduce I_y, webs reduce I_z
+  // STEP 3: Calculate effective moments of inertia
+  // I_eff = I_gross - Σ(ΔI_local + ΔI_parallel) - A_eff × e_N²
   let I_eff_y = section.iy_moment;  // cm⁴
   let I_eff_z = section.iz_moment;  // cm⁴
 
-  // Identify which elements affect which axis
-  for (const reduction of plateReductions) {
-    const element_id = reduction.element.toLowerCase();
+  // Subtract removed strips
+  for (const strip of removedStrips) {
+    const A_removed = strip.area;  // cm²
+    const t_cm = strip.thickness / 10;  // mm → cm
+    const width_cm = strip.width / 10;  // mm → cm
 
-    if (profileType === 'ipe' || profileType === 'hea' || profileType === 'heb' || profileType === 'hem') {
-      // I-sections
-      if (element_id.includes('web')) {
-        // Web reduction affects I_y (major axis)
-        // I_reduction = (1/12) * t * (c³ - c_eff³) for thin-walled approximation
-        const c_mm = reduction.c_gross;
-        const c_eff_mm = reduction.c_eff;
-        const t_cm = section.tw / 10;  // Convert mm to cm
-        const I_reduction = (t_cm / 12) * (Math.pow(c_mm/10, 3) - Math.pow(c_eff_mm/10, 3));
-        I_eff_y -= I_reduction;
-      } else if (element_id.includes('flange')) {
-        // Flange reduction affects I_z (minor axis)
-        // For flanges, reduction is smaller - use area-based approximation
-        const area_loss_ratio = reduction.area_reduction / section.area;
-        I_eff_z -= section.iz_moment * area_loss_ratio;
-      }
-    } else if (profileType === 'hrhs' || profileType === 'hshs' || profileType === 'crhs' || profileType === 'cshs') {
-      // RHS/SHS sections
-      if (element_id.includes('flange')) {
-        // Flanges affect I_y (bending about horizontal axis)
-        const area_loss_ratio = reduction.area_reduction / section.area;
-        I_eff_y -= section.iy_moment * area_loss_ratio;
-      } else if (element_id.includes('web')) {
-        // Webs affect I_z (bending about vertical axis)
-        const area_loss_ratio = reduction.area_reduction / section.area;
-        I_eff_z -= section.iz_moment * area_loss_ratio;
-      }
-    } else {
-      // CHS or unknown - use area scaling approximation for both axes
-      const area_loss_ratio = reduction.area_reduction / section.area;
-      I_eff_y -= section.iy_moment * area_loss_ratio;
-      I_eff_z -= section.iz_moment * area_loss_ratio;
+    // Local inertia of removed strip about its own centroid
+    const I_local = (t_cm * Math.pow(width_cm, 3)) / 12;
+
+    // Distance from strip centroid to GROSS section centroid
+    const d_y = strip.centroid.y / 10;  // mm → cm
+    const d_z = strip.centroid.z / 10;  // mm → cm
+
+    // Parallel axis contributions
+    const I_parallel_y = A_removed * d_y * d_y;
+    const I_parallel_z = A_removed * d_z * d_z;
+
+    // Subtract from appropriate axis based on orientation
+    if (strip.orientation === 'y-direction') {
+      // Strip extends in Y → affects I_z
+      I_eff_z -= (I_local + I_parallel_z);
+    } else if (strip.orientation === 'z-direction') {
+      // Strip extends in Z → affects I_y
+      I_eff_y -= (I_local + I_parallel_y);
+    } else if (strip.orientation === 'radial') {
+      // Circular: affects both axes equally
+      I_eff_y -= (I_local + I_parallel_y);
+      I_eff_z -= (I_local + I_parallel_z);
     }
   }
 
-  // Ensure I_eff doesn't go negative (shouldn't happen, but safety check)
+  // STEP 4: Apply neutral axis shift correction
+  // I_eff,y -= A_eff × e_N,z² (note: opposite axes!)
+  // I_eff,z -= A_eff × e_N,y²
+  I_eff_y -= A_eff * shift.e_N_z * shift.e_N_z;
+  I_eff_z -= A_eff * shift.e_N_y * shift.e_N_y;
+
+  // Safety check: I_eff should not go below 30% of gross
   I_eff_y = Math.max(I_eff_y, section.iy_moment * 0.3);
   I_eff_z = Math.max(I_eff_z, section.iz_moment * 0.3);
 
-  // Recalculate radii of gyration with effective properties
+  // STEP 5: Calculate radii of gyration
   const i_eff_y = Math.sqrt(I_eff_y / A_eff);  // cm
   const i_eff_z = Math.sqrt(I_eff_z / A_eff);  // cm
 
@@ -770,14 +891,80 @@ function calculateClass4EffectiveProperties(section, classification, profileType
     iy: i_eff_y,
     iz: i_eff_z,
     is_effective: true,
-    gross_area: section.area,
+    gross_area: A_gross,
     gross_iy: section.iy,
     gross_iz: section.iz,
-    area_reduction: removed_area,
-    area_reduction_percent: (removed_area / section.area) * 100,
+    area_reduction: shift.total_A_removed,
+    area_reduction_percent: (shift.total_A_removed / A_gross) * 100,
     iy_reduction_percent: ((section.iy_moment - I_eff_y) / section.iy_moment) * 100,
     iz_reduction_percent: ((section.iz_moment - I_eff_z) / section.iz_moment) * 100,
-    plate_reductions: plateReductions
+    neutral_axis_shift_y: shift.e_N_y,
+    neutral_axis_shift_z: shift.e_N_z,
+    plate_reductions: plateReductions,
+    removed_strips_count: removedStrips.length
+  };
+}
+
+/**
+ * Fallback calculation for sections without plate_elements metadata
+ * Uses the old approximation method
+ */
+function calculateClass4EffectivePropertiesFallback(section, classification, profileType) {
+  let A_eff = section.area;
+  let removed_area = 0;
+  const plateReductions = [];
+  const psi = 1.0;
+
+  for (const element of classification.element_results) {
+    if (element.class !== 4) continue;
+
+    const limit_class3 = element.limit_class3;
+    const lambda_p_bar = element.slenderness / limit_class3;
+    const elementType = element.type;
+
+    let rho;
+    if (elementType === 'internal') {
+      rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
+    } else if (elementType === 'outstand') {
+      rho = (lambda_p_bar - 0.188) / (lambda_p_bar * lambda_p_bar);
+    } else {
+      rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
+    }
+    rho = Math.min(Math.max(rho, 0), 1.0);
+
+    const c_eff = rho * element.c;
+    const area_reduction = ((element.c - c_eff) * element.t) / 100;
+    removed_area += area_reduction;
+
+    plateReductions.push({
+      element: element.id,
+      type: elementType,
+      c_gross: element.c,
+      c_eff: c_eff,
+      rho: rho,
+      area_reduction: area_reduction
+    });
+  }
+
+  A_eff = section.area - removed_area;
+  const area_ratio = A_eff / section.area;
+  const I_eff_y = section.iy_moment * area_ratio;
+  const I_eff_z = section.iz_moment * area_ratio;
+  const i_eff_y = Math.sqrt(I_eff_y / A_eff);
+  const i_eff_z = Math.sqrt(I_eff_z / A_eff);
+
+  return {
+    ...section,
+    area: A_eff,
+    iy_moment: I_eff_y,
+    iz_moment: I_eff_z,
+    iy: i_eff_y,
+    iz: i_eff_z,
+    is_effective: true,
+    gross_area: section.area,
+    area_reduction: removed_area,
+    plate_reductions: plateReductions,
+    fallback_used: true
   };
 }
 
