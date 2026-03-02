@@ -1,0 +1,33 @@
+{
+  "profile_family": "I_sections",
+  "description": "I and H sections (HEA, HEB, HEM, IPE) classification template",
+  "applies_to": ["hea", "heb", "hem", "ipe"],
+  "reference": "EN 1993-1-1 Table 5.2 (sheets 1 and 2)",
+  "subplates": [
+    {
+      "id": "flange_outstand",
+      "type": "outstand",
+      "stress_type": "compression",
+      "c_formula": "(b/2 - tw/2 - r)",
+      "t_formula": "tf",
+      "position": "flange",
+      "description": "Flange tip (outstand element) - rolled sections"
+    },
+    {
+      "id": "web_internal",
+      "type": "internal",
+      "stress_type": "compression",
+      "c_formula": "(h - 2*tf - 2*r)",
+      "t_formula": "tw",
+      "position": "web",
+      "description": "Web (internal element) in pure compression"
+    }
+  ],
+  "notes": [
+    "For pure compression, both flanges and web are in compression",
+    "Corner radius r is subtracted from flange outstand width",
+    "Classification limits depend on epsilon = sqrt(235/fy)",
+    "Outstand limits: Class 1: 9ε, Class 2: 10ε, Class 3: 14ε",
+    "Internal limits: Class 1: 33ε, Class 2: 38ε, Class 3: 42ε"
+  ]
+}

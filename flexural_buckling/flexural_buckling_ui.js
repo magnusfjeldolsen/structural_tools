@@ -217,6 +217,7 @@ async function handleFormSubmit(event) {
     fy: document.getElementById('fy').value,
     gamma_M1: document.getElementById('gamma-M1').value,
     NEd_ULS: document.getElementById('NEd-ULS').value,
+    allowClass4: document.getElementById('class4-toggle').checked,
     fireEnabled: document.getElementById('fire-enabled').checked,
     fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
     NEd_fire: document.getElementById('NEd-fire').value,
@@ -258,6 +259,7 @@ async function handleFindLightestSection(event) {
     fy: document.getElementById('fy').value,
     gamma_M1: document.getElementById('gamma-M1').value,
     NEd_ULS: document.getElementById('NEd-ULS').value,
+    allowClass4: document.getElementById('class4-toggle').checked,
     fireEnabled: document.getElementById('fire-enabled').checked,
     fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
     NEd_fire: document.getElementById('NEd-fire').value,
@@ -331,6 +333,7 @@ async function handleFindLightestSection(event) {
     fy: document.getElementById('fy').value,
     gamma_M1: document.getElementById('gamma-M1').value,
     NEd_ULS: document.getElementById('NEd-ULS').value,
+    allowClass4: document.getElementById('class4-toggle').checked,
     fireEnabled: document.getElementById('fire-enabled').checked,
     fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
     NEd_fire: document.getElementById('NEd-fire').value,
@@ -368,8 +371,45 @@ function displayResults(results, inputs) {
   const resultsSection = document.getElementById('results-section');
   resultsSection.classList.remove('hidden');
 
+  // Display ULS classification results
+  displayClassificationResults(results.ulsResults.classification, 'uls', inputs.fy || results.ulsResults.fy_theta);
+
+  // Display Fire classification results if enabled
+  if (inputs.fireEnabled && results.fireResults) {
+    displayClassificationResults(results.fireResults.classification, 'fire', results.fireResults.fy_theta);
+
+    // Show temperature in fire classification header
+    const fireTempDisplay = document.getElementById('fire-temp-display');
+    if (fireTempDisplay) {
+      const temp = inputs.fireMode === 'find-critical' && results.fireResults.criticalTemp
+        ? results.fireResults.criticalTemp
+        : inputs.temperature;
+      fireTempDisplay.textContent = toFixedIfNeeded(temp, 0);
+    }
+  } else {
+    // Hide fire classification if not enabled
+    const fireClassDiv = document.getElementById('classification-results-fire');
+    if (fireClassDiv) {
+      fireClassDiv.classList.add('hidden');
+    }
+  }
+
   // Display Class 4 warning
-  displayClass4Warning(results.ulsResults.isClass4);
+  displayClass4Warning(results.ulsResults.classification.is_class4);
+
+  // Display ULS effective properties (if Class 4)
+  displayEffectiveProperties(results.ulsResults.effective_properties, 'uls');
+
+  // Display Fire effective properties (if fire enabled and Class 4)
+  if (inputs.fireEnabled && results.fireResults) {
+    displayEffectiveProperties(results.fireResults.effective_properties, 'fire');
+  } else {
+    // Hide fire effective properties if not enabled
+    const fireEffPropsDiv = document.getElementById('class4-effective-properties-fire');
+    if (fireEffPropsDiv) {
+      fireEffPropsDiv.classList.add('hidden');
+    }
+  }
 
   // Display ULS results
   displayULSResults(results.ulsResults, results.inputs);
@@ -390,7 +430,6 @@ function displayResults(results, inputs) {
   // Scroll to results
   resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-
 function displayClass4Warning(isClass4) {
   const warningDiv = document.getElementById('class4-warning');
 
@@ -497,6 +536,146 @@ function displayFireResults(results, inputs) {
   }
 }
 
+function displayClassificationResults(classification, suffix = '', fyDisplay = null) {
+  if (!classification) return;
+
+  // Build element IDs with suffix
+  const sid = suffix ? `-${suffix}` : '';
+
+  const classResultsDiv = document.getElementById(`classification-results${sid}`);
+  if (!classResultsDiv) return; // Element doesn't exist
+
+  classResultsDiv.classList.remove('hidden');
+
+  // Display fy value if provided
+  if (fyDisplay !== null) {
+    const fyDisplayElement = document.getElementById(`${suffix}-fy-display`);
+    if (fyDisplayElement) {
+      fyDisplayElement.textContent = toFixedIfNeeded(fyDisplay, 1);
+    }
+  }
+
+  // Overall class
+  const classElement = document.getElementById(`section-class${sid}`);
+  classElement.textContent = `Class ${classification.class}`;
+
+  // Color code the class
+  classElement.classList.remove('text-green-400', 'text-yellow-400', 'text-orange-400', 'text-red-400');
+  if (classification.class === 1 || classification.class === 2) {
+    classElement.classList.add('text-green-400');
+  } else if (classification.class === 3) {
+    classElement.classList.add('text-yellow-400');
+  } else if (classification.class === 4) {
+    classElement.classList.add('text-orange-400');
+  }
+
+  // Epsilon
+  document.getElementById(`epsilon-value${sid}`).textContent = toFixedIfNeeded(classification.epsilon, 4);
+
+  // Governing element
+  document.getElementById(`governing-element${sid}`).textContent = classification.governing_element || '-';
+
+  // Effective area (if Class 4)
+  const effAreaDisplay = document.getElementById(`effective-area-display${sid}`);
+  if (classification.is_class4 && classification.effective_properties) {
+    const aEff = classification.effective_properties.area;
+    const aGross = classification.effective_properties.gross_area;
+    effAreaDisplay.textContent =
+      `${toFixedIfNeeded(aEff, 2)} cm² (${toFixedIfNeeded((aEff/aGross)*100, 1)}%)`;
+  } else {
+    effAreaDisplay.textContent = '-';
+  }
+
+  // Populate element details table
+  const tbody = document.getElementById(`classification-table-body${sid}`);
+  tbody.innerHTML = '';
+
+  for (const elem of classification.element_results) {
+    const row = document.createElement('tr');
+    row.className = 'border-b border-gray-600';
+
+    const classColor = elem.class === 1 || elem.class === 2 ? 'text-green-400' :
+                       elem.class === 3 ? 'text-yellow-400' : 'text-orange-400';
+
+    row.innerHTML = `
+      <td class="py-2 px-3 text-gray-300">${elem.id}</td>
+      <td class="py-2 px-3 text-right text-gray-200">${toFixedIfNeeded(elem.c, 2)}</td>
+      <td class="py-2 px-3 text-right text-gray-200">${toFixedIfNeeded(elem.t, 2)}</td>
+      <td class="py-2 px-3 text-right text-gray-200">${toFixedIfNeeded(elem.slenderness, 2)}</td>
+      <td class="py-2 px-3 text-right text-gray-200">${toFixedIfNeeded(elem.limit_class3, 2)}</td>
+      <td class="py-2 px-3 text-center font-semibold ${classColor}">${elem.class}</td>
+    `;
+    tbody.appendChild(row);
+  }
+
+  // Show Class 4 info banner if applicable
+  const class4InfoDiv = document.getElementById(`class4-info${sid}`);
+  if (classification.is_class4 && classification.effective_properties) {
+    class4InfoDiv.classList.remove('hidden');
+    const reductionPercent = classification.effective_properties.area_reduction_percent;
+    document.getElementById(`area-reduction-percent${sid}`).textContent = toFixedIfNeeded(reductionPercent, 2);
+  } else {
+    class4InfoDiv.classList.add('hidden');
+  }
+}
+function displayEffectiveProperties(effectiveProps, suffix = 'uls') {
+  const sid = suffix ? `-${suffix}` : '';
+  const effPropsDiv = document.getElementById(`class4-effective-properties${sid}`);
+
+  if (!effPropsDiv) return; // Element doesn't exist
+
+  if (!effectiveProps) {
+    effPropsDiv.classList.add('hidden');
+    return;
+  }
+
+  effPropsDiv.classList.remove('hidden');
+
+  // Effective vs Gross properties
+  document.getElementById(`eff-area${sid}`).textContent = toFixedIfNeeded(effectiveProps.area, 2) + ' cm²';
+  document.getElementById(`gross-area${sid}`).textContent = toFixedIfNeeded(effectiveProps.gross_area, 2) + ' cm²';
+
+  // Gross I values need to be reconstructed from i and A: I = A × i²
+  const grossIy = effectiveProps.gross_area * effectiveProps.gross_iy * effectiveProps.gross_iy;
+  const grossIz = effectiveProps.gross_area * effectiveProps.gross_iz * effectiveProps.gross_iz;
+
+  document.getElementById(`eff-iy${sid}`).textContent = toFixedIfNeeded(effectiveProps.iy_moment, 2) + ' cm⁴';
+  document.getElementById(`gross-iy${sid}`).textContent = toFixedIfNeeded(grossIy, 2) + ' cm⁴';
+
+  document.getElementById(`eff-iz${sid}`).textContent = toFixedIfNeeded(effectiveProps.iz_moment, 2) + ' cm⁴';
+  document.getElementById(`gross-iz${sid}`).textContent = toFixedIfNeeded(grossIz, 2) + ' cm⁴';
+
+  document.getElementById(`removed-strips-count${sid}`).textContent = effectiveProps.removed_strips_count || '-';
+
+  // Neutral axis shift
+  const eNy = effectiveProps.neutral_axis_shift_y || 0;
+  const eNz = effectiveProps.neutral_axis_shift_z || 0;
+  document.getElementById(`neutral-axis-y${sid}`).textContent = toFixedIfNeeded(eNy, 4) + ' cm';
+  document.getElementById(`neutral-axis-z${sid}`).textContent = toFixedIfNeeded(eNz, 4) + ' cm';
+
+  // Reductions
+  document.getElementById(`area-reduction${sid}`).textContent = toFixedIfNeeded(effectiveProps.area_reduction_percent, 2) + '%';
+  document.getElementById(`iy-reduction${sid}`).textContent = toFixedIfNeeded(effectiveProps.iy_reduction_percent, 2) + '%';
+  document.getElementById(`iz-reduction${sid}`).textContent = toFixedIfNeeded(effectiveProps.iz_reduction_percent, 2) + '%';
+}
+function toggleClassificationDetails(suffix = '') {
+  const sid = suffix ? `-${suffix}` : '';
+  const detailsDiv = document.getElementById(`classification-details${sid}`);
+  const toggleIcon = document.getElementById(`classification-toggle-icon${sid}`);
+  const button = toggleIcon.parentElement;
+
+  detailsDiv.classList.toggle('hidden');
+
+  // Update arrow indicator and button text
+  if (detailsDiv.classList.contains('hidden')) {
+    toggleIcon.textContent = '▶';
+    button.childNodes[1].textContent = ' Show element classification details';
+  } else {
+    toggleIcon.textContent = '▼';
+    button.childNodes[1].textContent = ' Hide element classification details';
+  }
+}
+
 // ============================================================================
 // DETAILED CALCULATIONS DISPLAY
 // ============================================================================
@@ -506,14 +685,29 @@ function displayDetailedCalculations(results, inputs) {
   const uls = results.ulsResults;
   const inp = results.inputs;
 
+  // Determine which properties to use
+  const isClass4 = uls.is_using_effective;
+  const sectionUsed = uls.section_used || inp.section;
+  const effProps = uls.effective_properties;
+
   let html = '';
 
   // Section Information
   html += '<div class="bg-gray-700 rounded p-4 mb-3">';
   html += '<h3 class="text-blue-700 font-semibold mb-2">SECTION INFORMATION</h3>';
   html += `<p>Profile: ${inp.profileType.toUpperCase()} ${inp.profileName.toUpperCase()}</p>`;
-  html += `<p>A = ${toFixedIfNeeded(inp.section.area, 2)} cm²</p>`;
-  html += `<p>i<sub>y</sub> = ${toFixedIfNeeded(inp.section.iy, 2)} cm, i<sub>z</sub> = ${toFixedIfNeeded(inp.section.iz, 2)} cm</p>`;
+
+  if (isClass4 && effProps) {
+    html += `<p><strong>⚠️ Class 4 Section - Using Effective Properties (EN 1993-1-5)</strong></p>`;
+    html += `<p>A<sub>gross</sub> = ${toFixedIfNeeded(effProps.gross_area, 2)} cm²</p>`;
+    html += `<p><strong>A<sub>eff</sub> = ${toFixedIfNeeded(effProps.area, 2)} cm²</strong> (${toFixedIfNeeded(effProps.area_reduction_percent, 1)}% reduction)</p>`;
+    html += `<p>i<sub>y,eff</sub> = ${toFixedIfNeeded(sectionUsed.iy, 2)} cm, i<sub>z,eff</sub> = ${toFixedIfNeeded(sectionUsed.iz, 2)} cm</p>`;
+    html += `<p>e<sub>N,y</sub> = ${toFixedIfNeeded(effProps.neutral_axis_shift_y || 0, 4)} cm, e<sub>N,z</sub> = ${toFixedIfNeeded(effProps.neutral_axis_shift_z || 0, 4)} cm</p>`;
+  } else {
+    html += `<p>A = ${toFixedIfNeeded(inp.section.area, 2)} cm²</p>`;
+    html += `<p>i<sub>y</sub> = ${toFixedIfNeeded(inp.section.iy, 2)} cm, i<sub>z</sub> = ${toFixedIfNeeded(inp.section.iz, 2)} cm</p>`;
+  }
+
   html += `<p>Buckling curve y-axis: ${uls.curve_y}, Buckling curve z-axis: ${uls.curve_z}</p>`;
   html += '</div>';
 
@@ -527,11 +721,15 @@ function displayDetailedCalculations(results, inputs) {
   html += '</div>';
 
   // ULS Calculations
+  const iySuffix = isClass4 ? ',eff' : '';
+  const izSuffix = isClass4 ? ',eff' : '';
+  const ASuffix = isClass4 ? '<sub>eff</sub>' : '';
+
   html += '<div class="bg-gray-700 rounded p-4 mb-3">';
   html += '<h3 class="text-green-700 font-semibold mb-2">ULS BUCKLING CALCULATIONS</h3>';
   html += `<p class="mt-2 font-semibold">About y-axis:</p>`;
   html += `<p>L<sub>y</sub> = ${toFixedIfNeeded(inp.Ly_m, 2)} m = ${toFixedIfNeeded(inp.Ly_m * 100, 1)} cm</p>`;
-  html += `<p>λ<sub>y</sub> = L<sub>y</sub> / i<sub>y</sub> = ${toFixedIfNeeded(inp.Ly_m * 100, 1)} / ${toFixedIfNeeded(inp.section.iy, 2)} = ${toFixedIfNeeded(uls.slenderness_y.lambda, 1)}</p>`;
+  html += `<p>λ<sub>y</sub> = L<sub>y</sub> / i<sub>y${iySuffix}</sub> = ${toFixedIfNeeded(inp.Ly_m * 100, 1)} / ${toFixedIfNeeded(sectionUsed.iy, 2)} = ${toFixedIfNeeded(uls.slenderness_y.lambda, 1)}</p>`;
   html += `<p>λ<sub>1</sub> = π√(E/f<sub>y</sub>) = π√(210000/${toFixedIfNeeded(inp.fy_MPa, 0)}) = ${toFixedIfNeeded(uls.slenderness_y.lambda_1, 1)}</p>`;
   html += `<p>λ̄<sub>y</sub> = λ<sub>y</sub> / λ<sub>1</sub> = ${toFixedIfNeeded(uls.slenderness_y.lambda, 1)} / ${toFixedIfNeeded(uls.slenderness_y.lambda_1, 1)} = ${toFixedIfNeeded(uls.slenderness_y.lambda_bar, 3)}</p>`;
   html += `<p>Buckling curve: ${uls.curve_y}, α = ${toFixedIfNeeded(uls.alpha_y, 2)}</p>`;
@@ -540,7 +738,7 @@ function displayDetailedCalculations(results, inputs) {
 
   html += `<p class="mt-2 font-semibold">About z-axis:</p>`;
   html += `<p>L<sub>z</sub> = ${toFixedIfNeeded(inp.Lz_m, 2)} m = ${toFixedIfNeeded(inp.Lz_m * 100, 1)} cm</p>`;
-  html += `<p>λ<sub>z</sub> = L<sub>z</sub> / i<sub>z</sub> = ${toFixedIfNeeded(inp.Lz_m * 100, 1)} / ${toFixedIfNeeded(inp.section.iz, 2)} = ${toFixedIfNeeded(uls.slenderness_z.lambda, 1)}</p>`;
+  html += `<p>λ<sub>z</sub> = L<sub>z</sub> / i<sub>z${izSuffix}</sub> = ${toFixedIfNeeded(inp.Lz_m * 100, 1)} / ${toFixedIfNeeded(sectionUsed.iz, 2)} = ${toFixedIfNeeded(uls.slenderness_z.lambda, 1)}</p>`;
   html += `<p>λ̄<sub>z</sub> = λ<sub>z</sub> / λ<sub>1</sub> = ${toFixedIfNeeded(uls.slenderness_z.lambda, 1)} / ${toFixedIfNeeded(uls.slenderness_z.lambda_1, 1)} = ${toFixedIfNeeded(uls.slenderness_z.lambda_bar, 3)}</p>`;
   html += `<p>Buckling curve: ${uls.curve_z}, α = ${toFixedIfNeeded(uls.alpha_z, 2)}</p>`;
   html += `<p>φ<sub>z</sub> = 0.5[1 + α(λ̄<sub>z</sub> - 0.2) + λ̄<sub>z</sub>²] = 0.5[1 + ${toFixedIfNeeded(uls.alpha_z, 2)}×(${toFixedIfNeeded(uls.slenderness_z.lambda_bar, 3)} - 0.2) + ${toFixedIfNeeded(uls.slenderness_z.lambda_bar, 3)}²] = ${toFixedIfNeeded(uls.phi_z, 3)}</p>`;
@@ -548,7 +746,7 @@ function displayDetailedCalculations(results, inputs) {
 
   html += `<p class="mt-2 font-semibold">Buckling resistance:</p>`;
   html += `<p>χ<sub>min</sub> = min(χ<sub>y</sub>, χ<sub>z</sub>) = min(${toFixedIfNeeded(uls.chi_y, 3)}, ${toFixedIfNeeded(uls.chi_z, 3)}) = ${toFixedIfNeeded(uls.chi_min, 3)} (${uls.governing_axis}-axis governs)</p>`;
-  html += `<p>N<sub>b,Rd</sub> = χ<sub>min</sub> × A × f<sub>y</sub> / γ<sub>M1</sub> = ${toFixedIfNeeded(uls.chi_min, 3)} × ${toFixedIfNeeded(inp.section.area, 2)} × ${toFixedIfNeeded(inp.fy_MPa, 0)} / ${toFixedIfNeeded(inp.gamma_M1, 2)} / 10 = ${toFixedIfNeeded(uls.Nb_Rd_kN, 1)} kN</p>`;
+  html += `<p>N<sub>b,Rd</sub> = χ<sub>min</sub> × A${ASuffix} × f<sub>y</sub> / γ<sub>M1</sub> = ${toFixedIfNeeded(uls.chi_min, 3)} × ${toFixedIfNeeded(sectionUsed.area, 2)} × ${toFixedIfNeeded(inp.fy_MPa, 0)} / ${toFixedIfNeeded(inp.gamma_M1, 2)} / 10 = ${toFixedIfNeeded(uls.Nb_Rd_kN, 1)} kN</p>`;
   html += `<p class="mt-2">N<sub>Ed</sub> = ${toFixedIfNeeded(inp.NEd_ULS_kN, 1)} kN</p>`;
   html += `<p>Utilization = N<sub>Ed</sub> / N<sub>b,Rd</sub> = ${toFixedIfNeeded(inp.NEd_ULS_kN, 1)} / ${toFixedIfNeeded(uls.Nb_Rd_kN, 1)} = ${toFixedIfNeeded(uls.utilization, 3)} = ${toFixedIfNeeded(uls.utilization * 100, 1)} %</p>`;
   html += '</div>';
@@ -576,7 +774,7 @@ function displayDetailedCalculations(results, inputs) {
         html += `<p>k<sub>E,θ</sub> = ${toFixedIfNeeded(fire.k_E_theta, 3)} (piecewise linear interpolation from EC3-1-2 Table 3.1)</p>`;
         html += `<p>f<sub>y,θ</sub> = k<sub>y,θ</sub> × f<sub>y</sub> = ${toFixedIfNeeded(fire.k_y_theta, 3)} × ${toFixedIfNeeded(inp.fy_MPa, 0)} = ${toFixedIfNeeded(fire.fy_theta, 1)} MPa</p>`;
         html += `<p>E<sub>θ</sub> = k<sub>E,θ</sub> × E = ${toFixedIfNeeded(fire.k_E_theta, 3)} × 210000 = ${toFixedIfNeeded(fire.E_theta, 0)} MPa</p>`;
-        html += `<p>N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} kN (calculated with reduced material properties)</p>`;
+        html += `<p>N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} kN (calculated with reduced material properties${isClass4 ? ' and effective section' : ''})</p>`;
         html += `<p>Utilization = ${toFixedIfNeeded(inp.NEd_fire_kN, 1)} / ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} ≈ 1.00 = 100%</p>`;
       }
     } else {
@@ -585,9 +783,9 @@ function displayDetailedCalculations(results, inputs) {
       html += `<p>k<sub>E,θ</sub> = ${toFixedIfNeeded(fire.k_E_theta, 3)} (piecewise linear interpolation from EC3-1-2 Table 3.1)</p>`;
       html += `<p>f<sub>y,θ</sub> = k<sub>y,θ</sub> × f<sub>y</sub> = ${toFixedIfNeeded(fire.k_y_theta, 3)} × ${toFixedIfNeeded(inp.fy_MPa, 0)} = ${toFixedIfNeeded(fire.fy_theta, 1)} MPa</p>`;
       html += `<p>E<sub>θ</sub> = k<sub>E,θ</sub> × E = ${toFixedIfNeeded(fire.k_E_theta, 3)} × 210000 = ${toFixedIfNeeded(fire.E_theta, 0)} MPa</p>`;
-      html += `<p class="mt-2">Buckling calculations at elevated temperature follow same procedure as ULS with reduced f<sub>y,θ</sub> and E<sub>θ</sub>:</p>`;
+      html += `<p class="mt-2">Buckling calculations at elevated temperature follow same procedure as ULS with reduced f<sub>y,θ</sub> and E<sub>θ</sub>${isClass4 ? ' (using effective properties)' : ''}:</p>`;
       html += `<p>χ<sub>min</sub> = ${toFixedIfNeeded(fire.chi_min, 3)}</p>`;
-      html += `<p>N<sub>b,fi,Rd</sub> = χ<sub>min</sub> × A × f<sub>y,θ</sub> / γ<sub>M1</sub> = ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} kN</p>`;
+      html += `<p>N<sub>b,fi,Rd</sub> = χ<sub>min</sub> × A${ASuffix} × f<sub>y,θ</sub> / γ<sub>M1</sub> = ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} kN</p>`;
       html += `<p class="mt-2">N<sub>Ed,fi</sub> = ${toFixedIfNeeded(inp.NEd_fire_kN, 1)} kN</p>`;
       html += `<p>Utilization = N<sub>Ed,fi</sub> / N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(inp.NEd_fire_kN, 1)} / ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} = ${toFixedIfNeeded(fire.utilization, 3)} = ${toFixedIfNeeded(fire.utilization * 100, 1)} %</p>`;
     }
@@ -606,6 +804,12 @@ function generateDetailedReport(results, inputs) {
   const reportDiv = document.getElementById('detailed-report');
   const description = document.getElementById('description').value.trim();
   const timestamp = new Date().toLocaleString();
+
+  // Determine Class 4 status and properties to use throughout the report
+  const ulsReport = results.ulsResults;
+  const isClass4Report = ulsReport.is_using_effective;
+  const effPropsReport = ulsReport.effective_properties;
+  const sectionUsedReport = ulsReport.section_used || results.inputs.section;
 
   let html = '<div class="report-content bg-white text-gray-900 p-8 rounded-lg">';
 
@@ -631,9 +835,22 @@ function generateDetailedReport(results, inputs) {
   html += '<h3 class="font-semibold text-gray-800 mb-3">Section & Material</h3>';
   html += '<div class="space-y-2 text-sm">';
   html += `<div><span class="text-gray-600">Profile:</span> <span class="font-semibold">${inputs.profileType.toUpperCase()} ${inputs.profileName.toUpperCase()}</span></div>`;
-  html += `<div><span class="text-gray-600">A =</span> <span class="font-semibold">${toFixedIfNeeded(results.inputs.section.area, 2)} cm²</span></div>`;
-  html += `<div><span class="text-gray-600">i<sub>y</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(results.inputs.section.iy, 2)} cm</span></div>`;
-  html += `<div><span class="text-gray-600">i<sub>z</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(results.inputs.section.iz, 2)} cm</span></div>`;
+
+  // Check if Class 4 and show both gross and effective properties (using variables from top of function)
+  if (isClass4Report && effPropsReport) {
+    html += `<div class="bg-orange-50 border border-orange-300 rounded px-2 py-1 mt-1"><span class="text-orange-800 font-semibold text-xs">⚠️ Class 4 Section - Effective Properties Used</span></div>`;
+    html += `<div><span class="text-gray-600">A<sub>gross</sub> =</span> <span class="font-mono">${toFixedIfNeeded(effPropsReport.gross_area, 2)} cm²</span></div>`;
+    html += `<div><span class="text-gray-600">A<sub>eff</sub> =</span> <span class="font-semibold font-mono">${toFixedIfNeeded(effPropsReport.area, 2)} cm²</span> <span class="text-xs text-gray-500">(${toFixedIfNeeded(effPropsReport.area_reduction_percent, 1)}% reduction)</span></div>`;
+    html += `<div><span class="text-gray-600">i<sub>y,eff</sub> =</span> <span class="font-semibold font-mono">${toFixedIfNeeded(ulsReport.section_used.iy, 2)} cm</span></div>`;
+    html += `<div><span class="text-gray-600">i<sub>z,eff</sub> =</span> <span class="font-semibold font-mono">${toFixedIfNeeded(ulsReport.section_used.iz, 2)} cm</span></div>`;
+    html += `<div><span class="text-gray-600">e<sub>N,y</sub> =</span> <span class="font-mono">${toFixedIfNeeded(effPropsReport.neutral_axis_shift_y || 0, 4)} cm</span></div>`;
+    html += `<div><span class="text-gray-600">e<sub>N,z</sub> =</span> <span class="font-mono">${toFixedIfNeeded(effPropsReport.neutral_axis_shift_z || 0, 4)} cm</span></div>`;
+  } else {
+    html += `<div><span class="text-gray-600">A =</span> <span class="font-semibold">${toFixedIfNeeded(results.inputs.section.area, 2)} cm²</span></div>`;
+    html += `<div><span class="text-gray-600">i<sub>y</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(results.inputs.section.iy, 2)} cm</span></div>`;
+    html += `<div><span class="text-gray-600">i<sub>z</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(results.inputs.section.iz, 2)} cm</span></div>`;
+  }
+
   html += `<div><span class="text-gray-600">Steel grade:</span> <span class="font-semibold">${results.inputs.steelGrade}</span></div>`;
   html += `<div><span class="text-gray-600">f<sub>y</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(results.inputs.fy_MPa, 0)} MPa</span></div>`;
   html += `<div><span class="text-gray-600">γ<sub>M1</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(results.inputs.gamma_M1, 2)}</span></div>`;
@@ -716,13 +933,25 @@ function generateDetailedReport(results, inputs) {
   html += '<div class="page-break-before">';
   html += '<h2 class="text-2xl font-bold mb-6 pb-2 border-b-2" style="color: #6b21a8;">DETAILED CALCULATIONS</h2>';
 
-  // ULS Calculations
+  // ULS Calculations (reuse variables from top of function)
+  const iySuffixReport = isClass4Report ? ',eff' : '';
+  const izSuffixReport = isClass4Report ? ',eff' : '';
+  const ASuffixReport = isClass4Report ? '<sub>eff</sub>' : '';
+
   html += '<div class="mb-6">';
   html += '<h3 class="text-xl font-semibold text-gray-800 mb-3">ULS Buckling Calculations</h3>';
+
+  if (isClass4Report && effPropsReport) {
+    html += '<div class="bg-orange-50 border border-orange-400 rounded-lg p-3 mb-4">';
+    html += '<p class="text-sm text-orange-900 font-semibold">⚠️ Class 4 Section: Using Effective Properties per EN 1993-1-5</p>';
+    html += `<p class="text-xs text-orange-800 mt-1">A<sub>eff</sub> = ${toFixedIfNeeded(effPropsReport.area, 2)} cm² (${toFixedIfNeeded(effPropsReport.area_reduction_percent, 1)}% reduction from A<sub>gross</sub> = ${toFixedIfNeeded(effPropsReport.gross_area, 2)} cm²)</p>`;
+    html += '</div>';
+  }
+
   html += '<div class="bg-gray-50 rounded-lg p-4 mb-4">';
   html += '<h4 class="font-semibold text-gray-800 mb-2">About y-axis:</h4>';
   html += `<p class="text-sm mb-1">L<sub>y</sub> = ${toFixedIfNeeded(results.inputs.Ly_m, 2)} m = ${toFixedIfNeeded(results.inputs.Ly_m * 100, 1)} cm</p>`;
-  html += `<p class="text-sm mb-1">λ<sub>y</sub> = L<sub>y</sub> / i<sub>y</sub> = ${toFixedIfNeeded(results.inputs.Ly_m * 100, 1)} / ${toFixedIfNeeded(results.inputs.section.iy, 2)} = ${toFixedIfNeeded(uls.slenderness_y.lambda, 1)}</p>`;
+  html += `<p class="text-sm mb-1">λ<sub>y</sub> = L<sub>y</sub> / i<sub>y${iySuffixReport}</sub> = ${toFixedIfNeeded(results.inputs.Ly_m * 100, 1)} / ${toFixedIfNeeded(sectionUsedReport.iy, 2)} = ${toFixedIfNeeded(uls.slenderness_y.lambda, 1)}</p>`;
   html += `<p class="text-sm mb-1">λ<sub>1</sub> = π√(E/f<sub>y</sub>) = π√(210000/${toFixedIfNeeded(results.inputs.fy_MPa, 0)}) = ${toFixedIfNeeded(uls.slenderness_y.lambda_1, 1)}</p>`;
   html += `<p class="text-sm mb-1">λ̄<sub>y</sub> = λ<sub>y</sub> / λ<sub>1</sub> = ${toFixedIfNeeded(uls.slenderness_y.lambda, 1)} / ${toFixedIfNeeded(uls.slenderness_y.lambda_1, 1)} = ${toFixedIfNeeded(uls.slenderness_y.lambda_bar, 3)}</p>`;
   html += `<p class="text-sm mb-1">Buckling curve: ${uls.curve_y}, α = ${toFixedIfNeeded(uls.alpha_y, 2)}</p>`;
@@ -733,7 +962,7 @@ function generateDetailedReport(results, inputs) {
   html += '<div class="bg-gray-50 rounded-lg p-4 mb-4">';
   html += '<h4 class="font-semibold text-gray-800 mb-2">About z-axis:</h4>';
   html += `<p class="text-sm mb-1">L<sub>z</sub> = ${toFixedIfNeeded(results.inputs.Lz_m, 2)} m = ${toFixedIfNeeded(results.inputs.Lz_m * 100, 1)} cm</p>`;
-  html += `<p class="text-sm mb-1">λ<sub>z</sub> = L<sub>z</sub> / i<sub>z</sub> = ${toFixedIfNeeded(results.inputs.Lz_m * 100, 1)} / ${toFixedIfNeeded(results.inputs.section.iz, 2)} = ${toFixedIfNeeded(uls.slenderness_z.lambda, 1)}</p>`;
+  html += `<p class="text-sm mb-1">λ<sub>z</sub> = L<sub>z</sub> / i<sub>z${izSuffixReport}</sub> = ${toFixedIfNeeded(results.inputs.Lz_m * 100, 1)} / ${toFixedIfNeeded(sectionUsedReport.iz, 2)} = ${toFixedIfNeeded(uls.slenderness_z.lambda, 1)}</p>`;
   html += `<p class="text-sm mb-1">λ̄<sub>z</sub> = λ<sub>z</sub> / λ<sub>1</sub> = ${toFixedIfNeeded(uls.slenderness_z.lambda, 1)} / ${toFixedIfNeeded(uls.slenderness_z.lambda_1, 1)} = ${toFixedIfNeeded(uls.slenderness_z.lambda_bar, 3)}</p>`;
   html += `<p class="text-sm mb-1">Buckling curve: ${uls.curve_z}, α = ${toFixedIfNeeded(uls.alpha_z, 2)}</p>`;
   html += `<p class="text-sm mb-1">φ<sub>z</sub> = 0.5[1 + α(λ̄<sub>z</sub> - 0.2) + λ̄<sub>z</sub>²] = ${toFixedIfNeeded(uls.phi_z, 3)}</p>`;
@@ -743,8 +972,8 @@ function generateDetailedReport(results, inputs) {
   html += '<div class="bg-blue-50 rounded-lg p-4 border-l-4 border-blue-500">';
   html += '<h4 class="font-semibold text-gray-800 mb-2">Buckling Resistance:</h4>';
   html += `<p class="text-sm mb-1">χ<sub>min</sub> = min(χ<sub>y</sub>, χ<sub>z</sub>) = ${toFixedIfNeeded(uls.chi_min, 3)} (${uls.governing_axis}-axis governs)</p>`;
-  html += `<p class="text-sm mb-1">N<sub>b,Rd</sub> = χ<sub>min</sub> × A × f<sub>y</sub> / γ<sub>M1</sub></p>`;
-  html += `<p class="text-sm mb-1">N<sub>b,Rd</sub> = ${toFixedIfNeeded(uls.chi_min, 3)} × ${toFixedIfNeeded(results.inputs.section.area, 2)} × ${toFixedIfNeeded(results.inputs.fy_MPa, 0)} / ${toFixedIfNeeded(results.inputs.gamma_M1, 2)} / 10</p>`;
+  html += `<p class="text-sm mb-1">N<sub>b,Rd</sub> = χ<sub>min</sub> × A${ASuffixReport} × f<sub>y</sub> / γ<sub>M1</sub></p>`;
+  html += `<p class="text-sm mb-1">N<sub>b,Rd</sub> = ${toFixedIfNeeded(uls.chi_min, 3)} × ${toFixedIfNeeded(sectionUsedReport.area, 2)} × ${toFixedIfNeeded(results.inputs.fy_MPa, 0)} / ${toFixedIfNeeded(results.inputs.gamma_M1, 2)} / 10</p>`;
   html += `<p class="text-sm font-semibold">N<sub>b,Rd</sub> = ${toFixedIfNeeded(uls.Nb_Rd_kN, 1)} kN</p>`;
   html += `<p class="text-sm mt-2">Utilization = ${toFixedIfNeeded(results.inputs.NEd_ULS_kN, 1)} / ${toFixedIfNeeded(uls.Nb_Rd_kN, 1)} = ${toFixedIfNeeded(uls.utilization * 100, 1)}%</p>`;
   html += '</div>';
@@ -787,7 +1016,7 @@ function generateDetailedReport(results, inputs) {
       html += '<div class="bg-gray-50 rounded-lg p-4 mb-4">';
       html += '<h4 class="font-semibold text-gray-800 mb-2">About y-axis (elevated temperature):</h4>';
       html += `<p class="text-sm mb-1">L<sub>y</sub> = ${toFixedIfNeeded(results.inputs.Ly_m, 2)} m = ${toFixedIfNeeded(results.inputs.Ly_m * 100, 1)} cm</p>`;
-      html += `<p class="text-sm mb-1">λ<sub>y</sub> = L<sub>y</sub> / i<sub>y</sub> = ${toFixedIfNeeded(results.inputs.Ly_m * 100, 1)} / ${toFixedIfNeeded(results.inputs.section.iy, 2)} = ${toFixedIfNeeded(fire.slenderness_y.lambda, 1)}</p>`;
+      html += `<p class="text-sm mb-1">λ<sub>y</sub> = L<sub>y</sub> / i<sub>y${iySuffixReport}</sub> = ${toFixedIfNeeded(results.inputs.Ly_m * 100, 1)} / ${toFixedIfNeeded(sectionUsedReport.iy, 2)} = ${toFixedIfNeeded(fire.slenderness_y.lambda, 1)}</p>`;
       html += `<p class="text-sm mb-1">λ<sub>1,θ</sub> = π√(E<sub>θ</sub>/f<sub>y,θ</sub>) = π√(${toFixedIfNeeded(fire.E_theta, 0)}/${toFixedIfNeeded(fire.fy_theta, 1)}) = ${toFixedIfNeeded(fire.slenderness_y.lambda_1, 1)}</p>`;
       html += `<p class="text-sm mb-1">λ̄<sub>y,θ</sub> = λ<sub>y</sub> / λ<sub>1,θ</sub> = ${toFixedIfNeeded(fire.slenderness_y.lambda, 1)} / ${toFixedIfNeeded(fire.slenderness_y.lambda_1, 1)} = ${toFixedIfNeeded(fire.slenderness_y.lambda_bar, 3)}</p>`;
       html += `<p class="text-sm mb-1">Buckling curve: ${fire.curve_y}, α = ${toFixedIfNeeded(fire.alpha_y, 2)}</p>`;
@@ -799,7 +1028,7 @@ function generateDetailedReport(results, inputs) {
       html += '<div class="bg-gray-50 rounded-lg p-4 mb-4">';
       html += '<h4 class="font-semibold text-gray-800 mb-2">About z-axis (elevated temperature):</h4>';
       html += `<p class="text-sm mb-1">L<sub>z</sub> = ${toFixedIfNeeded(results.inputs.Lz_m, 2)} m = ${toFixedIfNeeded(results.inputs.Lz_m * 100, 1)} cm</p>`;
-      html += `<p class="text-sm mb-1">λ<sub>z</sub> = L<sub>z</sub> / i<sub>z</sub> = ${toFixedIfNeeded(results.inputs.Lz_m * 100, 1)} / ${toFixedIfNeeded(results.inputs.section.iz, 2)} = ${toFixedIfNeeded(fire.slenderness_z.lambda, 1)}</p>`;
+      html += `<p class="text-sm mb-1">λ<sub>z</sub> = L<sub>z</sub> / i<sub>z${izSuffixReport}</sub> = ${toFixedIfNeeded(results.inputs.Lz_m * 100, 1)} / ${toFixedIfNeeded(sectionUsedReport.iz, 2)} = ${toFixedIfNeeded(fire.slenderness_z.lambda, 1)}</p>`;
       html += `<p class="text-sm mb-1">λ̄<sub>z,θ</sub> = λ<sub>z</sub> / λ<sub>1,θ</sub> = ${toFixedIfNeeded(fire.slenderness_z.lambda, 1)} / ${toFixedIfNeeded(fire.slenderness_z.lambda_1, 1)} = ${toFixedIfNeeded(fire.slenderness_z.lambda_bar, 3)}</p>`;
       html += `<p class="text-sm mb-1">Buckling curve: ${fire.curve_z}, α = ${toFixedIfNeeded(fire.alpha_z, 2)}</p>`;
       html += `<p class="text-sm mb-1">φ<sub>z,θ</sub> = 0.5[1 + α(λ̄<sub>z,θ</sub> - 0.2) + λ̄<sub>z,θ</sub>²] = ${toFixedIfNeeded(fire.phi_z, 3)}</p>`;
@@ -810,8 +1039,8 @@ function generateDetailedReport(results, inputs) {
       html += '<div class="bg-orange-50 rounded-lg p-4 border-l-4 border-orange-500">';
       html += '<h4 class="font-semibold text-gray-800 mb-2">Fire Buckling Resistance:</h4>';
       html += `<p class="text-sm mb-1">χ<sub>min,θ</sub> = min(χ<sub>y,θ</sub>, χ<sub>z,θ</sub>) = ${toFixedIfNeeded(fire.chi_min, 3)} (${fire.governing_axis}-axis governs)</p>`;
-      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = χ<sub>min,θ</sub> × A × f<sub>y,θ</sub> / γ<sub>M1</sub></p>`;
-      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.chi_min, 3)} × ${toFixedIfNeeded(results.inputs.section.area, 2)} × ${toFixedIfNeeded(fire.fy_theta, 1)} / ${toFixedIfNeeded(results.inputs.gamma_M1, 2)} / 10</p>`;
+      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = χ<sub>min,θ</sub> × A${ASuffixReport} × f<sub>y,θ</sub> / γ<sub>M1</sub></p>`;
+      html += `<p class="text-sm mb-1">N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.chi_min, 3)} × ${toFixedIfNeeded(sectionUsedReport.area, 2)} × ${toFixedIfNeeded(fire.fy_theta, 1)} / ${toFixedIfNeeded(results.inputs.gamma_M1, 2)} / 10</p>`;
       html += `<p class="text-sm font-semibold">N<sub>b,fi,Rd</sub> = ${toFixedIfNeeded(fire.Nb_Rd_kN, 1)} kN</p>`;
 
       if (inputs.fireMode === 'find-critical') {

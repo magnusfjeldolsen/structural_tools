@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Classification UI Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #1a1a1a;
+      color: white;
+    }
+    .result {
+      margin: 10px 0;
+      padding: 10px;
+      background: #2a2a2a;
+      border-radius: 5px;
+    }
+    .error {
+      color: #ff4444;
+    }
+    .success {
+      color: #44ff44;
+    }
+  </style>
+</head>
+<body>
+  <h1>Classification API Test</h1>
+
+  <div id="results"></div>
+
+  <script src="flexural_buckling_api.js"></script>
+  <script>
+    const resultsDiv = document.getElementById('results');
+
+    // Test 1: IPE220 with S460 (expect Class 4)
+    console.log('Testing IPE220 with S460...');
+    const test1 = calculateBuckling({
+      profileType: 'ipe',
+      profileName: 'IPE220',
+      Ly: '3.5',
+      Lz: '3.5',
+      steelGrade: 'S460',
+      fy: '460',
+      gamma_M1: '1.0',
+      NEd_ULS: '500',
+      allowClass4: true,
+      fireEnabled: false
+    });
+
+    if (test1.success) {
+      const classification = test1.ulsResults.classification;
+      resultsDiv.innerHTML += `
+        <div class="result success">
+          <h3>Test 1: IPE220 / S460</h3>
+          <p>Classification: Class ${classification.class}</p>
+          <p>Epsilon: ${classification.epsilon.toFixed(4)}</p>
+          <p>Governing: ${classification.governing_element}</p>
+          <p>Is Class 4: ${classification.is_class4 ? 'Yes' : 'No'}</p>
+          ${classification.effective_properties ?
+            `<p>Effective Area: ${classification.effective_properties.area.toFixed(2)} cm² (${classification.effective_properties.area_reduction_percent.toFixed(2)}% reduction)</p>`
+            : ''}
+          <p>Elements:</p>
+          <ul>
+            ${classification.element_results.map(elem =>
+              `<li>${elem.id}: c/t = ${elem.slenderness.toFixed(2)}, limit = ${elem.limit_class3.toFixed(2)}, Class ${elem.class}</li>`
+            ).join('')}
+          </ul>
+        </div>
+      `;
+    } else {
+      resultsDiv.innerHTML += `
+        <div class="result error">
+          <h3>Test 1: IPE220 / S460 - FAILED</h3>
+          <p>Error: ${test1.error}</p>
+        </div>
+      `;
+    }
+
+    // Test 2: CSHS200x4 with S235 (expect Class 4)
+    console.log('Testing CSHS200x4 with S235...');
+    const test2 = calculateBuckling({
+      profileType: 'cshs',
+      profileName: 'CSHS200X4',
+      Ly: '3.5',
+      Lz: '3.5',
+      steelGrade: 'S235',
+      fy: '235',
+      gamma_M1: '1.0',
+      NEd_ULS: '500',
+      allowClass4: true,
+      fireEnabled: false
+    });
+
+    if (test2.success) {
+      const classification = test2.ulsResults.classification;
+      resultsDiv.innerHTML += `
+        <div class="result success">
+          <h3>Test 2: CSHS200x4 / S235</h3>
+          <p>Classification: Class ${classification.class}</p>
+          <p>Epsilon: ${classification.epsilon.toFixed(4)}</p>
+          <p>Governing: ${classification.governing_element}</p>
+          <p>Is Class 4: ${classification.is_class4 ? 'Yes' : 'No'}</p>
+          ${classification.effective_properties ?
+            `<p>Effective Area: ${classification.effective_properties.area.toFixed(2)} cm² (${classification.effective_properties.area_reduction_percent.toFixed(2)}% reduction)</p>`
+            : ''}
+          <p>Elements:</p>
+          <ul>
+            ${classification.element_results.map(elem =>
+              `<li>${elem.id}: c/t = ${elem.slenderness.toFixed(2)}, limit = ${elem.limit_class3.toFixed(2)}, Class ${elem.class}</li>`
+            ).join('')}
+          </ul>
+        </div>
+      `;
+    } else {
+      resultsDiv.innerHTML += `
+        <div class="result error">
+          <h3>Test 2: CSHS200x4 / S235 - FAILED</h3>
+          <p>Error: ${test2.error}</p>
+        </div>
+      `;
+    }
+
+    // Test 3: Class 4 not allowed
+    console.log('Testing IPE220 with S460, Class 4 NOT allowed...');
+    const test3 = calculateBuckling({
+      profileType: 'ipe',
+      profileName: 'IPE220',
+      Ly: '3.5',
+      Lz: '3.5',
+      steelGrade: 'S460',
+      fy: '460',
+      gamma_M1: '1.0',
+      NEd_ULS: '500',
+      allowClass4: false,
+      fireEnabled: false
+    });
+
+    if (!test3.success) {
+      resultsDiv.innerHTML += `
+        <div class="result success">
+          <h3>Test 3: IPE220 / S460 (Class 4 NOT allowed)</h3>
+          <p>Correctly rejected with error: ${test3.error}</p>
+        </div>
+      `;
+    } else {
+      resultsDiv.innerHTML += `
+        <div class="result error">
+          <h3>Test 3: IPE220 / S460 (Class 4 NOT allowed) - FAILED</h3>
+          <p>Should have been rejected but was accepted</p>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>
