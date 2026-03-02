@@ -374,7 +374,7 @@ function displayResults(results, inputs) {
   displayClassificationResults(results.ulsResults.classification);
 
   // Display Class 4 warning
-  displayClass4Warning(results.ulsResults.isClass4);
+  displayClass4Warning(results.ulsResults.classification.is_class4);
 
   // Display ULS results
   displayULSResults(results.ulsResults, results.inputs);
