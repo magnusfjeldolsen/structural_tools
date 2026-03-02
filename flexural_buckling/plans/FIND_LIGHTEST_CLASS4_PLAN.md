@@ -43,21 +43,46 @@ Current `findLightestSection()` does not properly handle Class 4 sections:
 **Key Insight** (from user):
 > "the topology of removed plate parts is not considering stress level, only stress ratios σ₁ and σ₂"
 
-For pure compression (ψ = 1.0):
-- Same removed strips for ULS and fire
-- Can reuse `A_eff`, `I_eff_y`, `I_eff_z` if both are Class 4
-- **Only recalculate** if classification differs between ULS and fire
+**Critical Understanding**:
+- **Higher f_y → MORE likely Class 4** (slenderness limits scale with ε = √(235/f_y))
+- **In fire**: f_y,θ is REDUCED → ε_fire INCREASES → Section MORE LIKELY to be lower class
+- **Therefore**: If ULS is Class 4, fire is **at least** Class 4 (or better: Class 3, 2, 1)
 
-**Implementation**:
+**Classification Possibilities**:
+1. **ULS: Class 4, Fire: Class 4** → Reuse effective properties ✅
+2. **ULS: Class 4, Fire: Class 3 or better** → Use GROSS properties in fire (not Class 4!)
+3. **ULS: Class 3, Fire: Class 4** → IMPOSSIBLE (fire has lower f_y, so more favorable)
+4. **ULS: Class 3, Fire: Class 3 or better** → Use gross properties for both
+
+**Corrected Implementation**:
 ```javascript
-if (ulsClassification.is_class4 && fireClassification.is_class4) {
-  // Reuse ULS effective properties
-  fireEffectiveProperties = ulsEffectiveProperties;
-} else if (fireClassification.is_class4 && !ulsClassification.is_class4) {
-  // Fire is Class 4, ULS is not → calculate fresh
-  fireEffectiveProperties = calculateClass4EffectiveProperties(section, fireClassification, profileType);
+// ULS classification (at f_y)
+const ulsClassification = classifySection(section, fy_MPa, profileType);
+
+// Fire classification (at f_y,θ - LOWER yield strength)
+const fireClassification = classifySection(section, fy_theta, profileType);
+
+// Determine which properties to use
+if (ulsClassification.is_class4) {
+  // ULS is Class 4 → fire is Class 4 OR BETTER
+  if (fireClassification.is_class4) {
+    // Both Class 4 → Reuse ULS effective properties (same topology)
+    fireWorkingSection = ulsEffectiveProperties;
+  } else {
+    // ULS Class 4, but fire improved to Class 1-3 → Use GROSS in fire!
+    fireWorkingSection = section; // Gross properties
+  }
+} else {
+  // ULS is Class 1-3 → fire is definitely NOT Class 4 (lower fy → better class)
+  fireWorkingSection = section; // Gross properties
 }
 ```
+
+**Why this matters**:
+- At high temperatures (f_y,θ very low), ε_fire becomes large
+- Slenderness limits become more forgiving
+- Section that was Class 4 at room temp may become Class 1 at 800°C!
+- Must use GROSS properties for fire calculation (not effective)
 
 ---
 
@@ -296,13 +321,16 @@ if (classification.is_class4) {
 
 ## 7. Edge Cases
 
-### 7.1 ULS OK, Fire Class 4 (with avoid mode)
-**Scenario**: IPE240/S355 at 700°C
-- ULS: Class 3 (ε = 0.81)
-- Fire: Class 4 (ε_fire = 1.15 at f_y,θ = 177 MPa)
-- User: Avoid Class 4
+### 7.1 ULS Class 4, Fire Improves to Class 3
+**Scenario**: IPE220/S460 at 800°C
+- ULS: Class 4 (ε = 0.71, web slender)
+- Fire: Class 3 (ε_fire = 1.62 at f_y,θ = 89 MPa, web now OK!)
+- User: Allow Class 4
 
-**Expected**: Section rejected, continue searching
+**Expected**:
+- ULS uses A_eff (effective properties)
+- Fire uses A_gross (section improved, no longer Class 4)
+- Utilization may be governed by either ULS or fire
 
 ### 7.2 All sections Class 4
 **Scenario**: All IPE sections with S460 have Class 4 webs
