@@ -333,6 +333,7 @@ async function handleFindLightestSection(event) {
     fy: document.getElementById('fy').value,
     gamma_M1: document.getElementById('gamma-M1').value,
     NEd_ULS: document.getElementById('NEd-ULS').value,
+    allowClass4: document.getElementById('class4-toggle').checked,
     fireEnabled: document.getElementById('fire-enabled').checked,
     fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
     NEd_fire: document.getElementById('NEd-fire').value,
