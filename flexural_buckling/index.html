@@ -420,9 +420,7 @@
         <h2 class="text-base font-semibold text-white mb-1.5">ULS Load Case</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label for="NEd-ULS" class="block text-xs font-medium text-gray-300 mb-1">
-              N<sub>Ed</sub> - Design axial force (kN)
-            </label>
+<div class="flex items-center justify-between mb-1">              <label for="NEd-ULS" class="block text-xs font-medium text-gray-300">                N<sub>Ed</sub> - Design axial force (kN)              </label>              <span class="text-xs text-gray-500 italic">Can use calculated loads</span>            </div>
             <input
               type="text"
               id="NEd-ULS"
@@ -567,35 +565,12 @@
           }
         });
 
-        // Keyboard shortcut: Ctrl+Enter to submit form
-        document.addEventListener('keydown', function(e) {
-          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            e.preventDefault();
-            const form = document.getElementById('buckling-form');
-            if (form) {
-              form.requestSubmit();
-            }
-          }
-        });
+// Keyboard shortcuts        document.addEventListener('keydown', function(e) {          // Ctrl+Space to submit form (calculate)          if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {            e.preventDefault();            const form = document.getElementById('buckling-form');            if (form) {              form.requestSubmit();            }          }          // Ctrl+Enter to find lightest candidate          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {            e.preventDefault();            const findLightestBtn = document.getElementById('find-lightest-btn');            if (findLightestBtn && !findLightestBtn.disabled) {              findLightestBtn.click();            }          }        });
       </script>
 
       <!-- Calculate Buttons -->
       <div class="flex flex-col items-center gap-2">
-        <button
-          type="submit"
-          id="calculate-btn"
-          class="w-full max-w-xs px-6 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold rounded-lg transition shadow-lg">
-          Calculate Buckling Capacity
-        </button>
-        <button
-          type="button"
-          id="find-lightest-btn"
-          class="w-full max-w-xs px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled>
-          Find Lightest Candidate
-        </button>
-        <div id="search-progress" class="hidden text-xs text-cyan-400"></div>
-        <p class="text-xs text-gray-400">Press <kbd class="px-1.5 py-0.5 bg-gray-700 border border-gray-600 rounded text-xs font-mono">Ctrl+Enter</kbd> to calculate</p>
+<div class="w-full max-w-xs flex items-center gap-2">          <button            type="submit"            id="calculate-btn"            class="flex-1 px-6 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold rounded-lg transition shadow-lg">            Calculate Buckling Capacity          </button>          <span class="text-xs text-gray-400 whitespace-nowrap"><kbd class="px-1.5 py-0.5 bg-gray-700 border border-gray-600 rounded text-xs font-mono">Ctrl+Space</kbd></span>        </div>        <div class="w-full max-w-xs flex items-center gap-2">          <button            type="button"            id="find-lightest-btn"            class="flex-1 px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"            disabled>            Find Lightest Candidate          </button>          <span class="text-xs text-gray-400 whitespace-nowrap"><kbd class="px-1.5 py-0.5 bg-gray-700 border border-gray-600 rounded text-xs font-mono">Ctrl+Enter</kbd></span>        </div>        <div id="search-progress" class="hidden text-xs text-cyan-400"></div>
       </div>
     </form>
 
@@ -962,7 +937,7 @@
               🖨️ Print Report
             </button>
           </div>
-          <div id="detailed-report" class="hidden mt-4">
+          <div id="detailed-report" class="mt-4">
             <!-- Report content will be generated here -->
           </div>
         </div>
