@@ -1,0 +1,27 @@
+{
+  "profile_family": "CHS_sections",
+  "description": "Circular hollow sections (HCHS, CCHS) classification template",
+  "applies_to": ["hchs", "cchs"],
+  "reference": "EN 1993-1-1 Table 5.2 (sheet 3)",
+  "subplates": [
+    {
+      "id": "circular_tube",
+      "type": "circular",
+      "stress_type": "compression",
+      "c_formula": "D",
+      "t_formula": "t",
+      "position": "wall",
+      "description": "Circular tube wall - uses d/t ratio for classification"
+    }
+  ],
+  "notes": [
+    "For circular sections, classification uses d/t ratio",
+    "Classification limits depend on epsilon² = 235/fy",
+    "Class 1: d/t ≤ 50ε²",
+    "Class 2: d/t ≤ 70ε²",
+    "Class 3: d/t ≤ 90ε²",
+    "Class 4: d/t > 90ε²",
+    "For pure compression, entire cross-section is uniformly compressed",
+    "D is outer diameter, t is wall thickness"
+  ]
+}

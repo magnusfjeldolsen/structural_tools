@@ -231,18 +231,8 @@
       </a>
     </div>
 
-    <p class="text-center mb-1 text-xs text-gray-400">Eurocode 3-1-1 Section 6.3.1 | Fire design per EC3-1-2</p>
+    <p class="text-center mb-1 text-xs text-gray-400">Eurocode 3-1-1 Section 6.3.1 | Fire design per EC3-1-2 | Section classification per EN 1993-1-1 Table 5.2</p>
     <p class="text-xs text-yellow-500 text-center mb-2">⚠️ Positive loads = compression</p>
-
-    <!-- Class 3 Assumption Warning - Ultra Compact -->
-    <div class="bg-yellow-900 border-l-2 border-yellow-500 rounded p-1.5 mb-2 max-w-4xl mx-auto">
-      <div class="flex items-start gap-1.5">
-        <svg class="w-3 h-3 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-        <p class="text-yellow-100 text-xs"><strong>Class 3 or better</strong> sections assumed. For <strong>Class 4</strong>, use effective properties per EC3-1-1 §6.2.2.5.</p>
-      </div>
-    </div>
 
     <!-- Main Form -->
     <form id="buckling-form" class="space-y-2">
@@ -404,14 +394,33 @@
         </div>
       </div>
 
+      <!-- Section Classification -->
+      <div class="bg-gray-800 rounded-lg p-3">
+        <h2 class="text-base font-semibold text-white mb-1.5">Section Classification</h2>
+        <div class="flex items-center justify-between">
+          <p class="text-xs text-gray-400">
+            Class 4 sections may experience local buckling. If allowed, effective (reduced) properties are used per EN 1993-1-5.
+          </p>
+          <div class="inline-flex flex-col">
+            <label class="block text-xs font-medium text-gray-300 mb-1 text-right">Class 4 Sections</label>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-300">Avoid</span>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="class4-toggle" class="sr-only peer" checked>
+                <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+              </label>
+              <span class="text-xs text-gray-300 whitespace-nowrap">Allow (eff. props)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ULS Load Case -->
       <div class="bg-gray-800 rounded-lg p-3">
         <h2 class="text-base font-semibold text-white mb-1.5">ULS Load Case</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label for="NEd-ULS" class="block text-xs font-medium text-gray-300 mb-1">
-              N<sub>Ed</sub> - Design axial force (kN)
-            </label>
+<div class="flex items-center justify-between mb-1">              <label for="NEd-ULS" class="block text-xs font-medium text-gray-300">                N<sub>Ed</sub> - Design axial force (kN)              </label>              <span class="text-xs text-gray-500 italic">Can use calculated loads</span>            </div>
             <input
               type="text"
               id="NEd-ULS"
@@ -556,49 +565,260 @@
           }
         });
 
-        // Keyboard shortcut: Ctrl+Enter to submit form
-        document.addEventListener('keydown', function(e) {
-          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            e.preventDefault();
-            const form = document.getElementById('buckling-form');
-            if (form) {
-              form.requestSubmit();
-            }
-          }
-        });
+// Keyboard shortcuts        document.addEventListener('keydown', function(e) {          // Ctrl+Space to submit form (calculate)          if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {            e.preventDefault();            const form = document.getElementById('buckling-form');            if (form) {              form.requestSubmit();            }          }          // Ctrl+Enter to find lightest candidate          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {            e.preventDefault();            const findLightestBtn = document.getElementById('find-lightest-btn');            if (findLightestBtn && !findLightestBtn.disabled) {              findLightestBtn.click();            }          }        });
       </script>
 
       <!-- Calculate Buttons -->
       <div class="flex flex-col items-center gap-2">
-        <button
-          type="submit"
-          id="calculate-btn"
-          class="w-full max-w-xs px-6 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold rounded-lg transition shadow-lg">
-          Calculate Buckling Capacity
-        </button>
-        <button
-          type="button"
-          id="find-lightest-btn"
-          class="w-full max-w-xs px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled>
-          Find Lightest Candidate
-        </button>
-        <div id="search-progress" class="hidden text-xs text-cyan-400"></div>
-        <p class="text-xs text-gray-400">Press <kbd class="px-1.5 py-0.5 bg-gray-700 border border-gray-600 rounded text-xs font-mono">Ctrl+Enter</kbd> to calculate</p>
+<div class="w-full max-w-xs flex items-center gap-2">          <button            type="submit"            id="calculate-btn"            class="flex-1 px-6 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold rounded-lg transition shadow-lg">            Calculate Buckling Capacity          </button>          <span class="text-xs text-gray-400 whitespace-nowrap"><kbd class="px-1.5 py-0.5 bg-gray-700 border border-gray-600 rounded text-xs font-mono">Ctrl+Space</kbd></span>        </div>        <div class="w-full max-w-xs flex items-center gap-2">          <button            type="button"            id="find-lightest-btn"            class="flex-1 px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"            disabled>            Find Lightest Candidate          </button>          <span class="text-xs text-gray-400 whitespace-nowrap"><kbd class="px-1.5 py-0.5 bg-gray-700 border border-gray-600 rounded text-xs font-mono">Ctrl+Enter</kbd></span>        </div>        <div id="search-progress" class="hidden text-xs text-cyan-400"></div>
       </div>
     </form>
 
     <!-- Results Section -->
     <div id="results-section" class="mt-8 hidden">
 
-      <!-- Class 4 Warning -->
-      <div id="class4-warning" class="bg-yellow-900 border border-yellow-600 rounded-lg p-4 mb-6 hidden">
-        <h3 class="text-lg font-semibold text-yellow-300 mb-2">⚠️ Warning: Class 4 Section</h3>
-        <p class="text-yellow-100">
-          This section is classified as Class 4 (slender). The calculations shown use gross section properties
-          and may be unconservative. For accurate results, effective cross-section properties should be used
-          according to EC3-1-1 Section 6.2.2.5.
+      <!-- Class 4 Warning (shown when Class 4 detected) -->
+      <div id="class4-warning" class="hidden mb-6 p-4 bg-orange-900 border border-orange-600 rounded">
+        <p class="text-sm text-orange-100">
+          <strong>⚠️ Class 4 Section Detected:</strong> This section contains slender elements that may buckle locally.
+          Effective properties are calculated per EN 1993-1-5 to account for reduced capacity.
         </p>
+      </div>
+
+      <!-- ULS Classification Results -->
+      <div id="classification-results-uls" class="hidden bg-gray-800 rounded-lg p-4 mb-6">
+        <h3 class="text-lg font-semibold text-white mb-3">ULS Classification <span class="text-sm text-gray-400">(at f<sub>y</sub> = <span id="uls-fy-display">-</span> MPa)</span></h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Overall Class</p>
+            <p class="text-2xl font-mono font-bold" id="section-class-uls">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">ε = √(235/f<sub>y</sub>)</p>
+            <p class="text-2xl font-mono text-white" id="epsilon-value-uls">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Governing Element</p>
+            <p class="text-sm font-mono text-white" id="governing-element-uls">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Effective Area</p>
+            <p class="text-sm font-mono text-white" id="effective-area-display-uls">-</p>
+          </div>
+        </div>
+
+        <!-- Detailed element classification (collapsible) -->
+        <div class="mt-3">
+          <button type="button" onclick="toggleClassificationDetails('uls')"
+                  class="text-sm text-cyan-400 hover:text-cyan-300 transition">
+            <span id="classification-toggle-icon-uls">▶</span> Show element classification details
+          </button>
+          <div id="classification-details-uls" class="hidden mt-2 overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead class="bg-gray-700">
+                <tr>
+                  <th class="p-2 text-left">Element</th>
+                  <th class="p-2 text-right">c (mm)</th>
+                  <th class="p-2 text-right">t (mm)</th>
+                  <th class="p-2 text-right">c/t</th>
+                  <th class="p-2 text-right">Limit (Class 3)</th>
+                  <th class="p-2 text-center">Class</th>
+                </tr>
+              </thead>
+              <tbody id="classification-table-body-uls" class="text-white">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Class 4 effective properties info (shown only if Class 4) -->
+        <div id="class4-info-uls" class="hidden mt-3 p-3 bg-blue-900 border border-blue-600 rounded">
+          <p class="text-xs text-blue-100">
+            <strong>Class 4 Section:</strong> Effective properties calculated per EN 1993-1-5.
+            Area reduced by <span id="area-reduction-percent-uls" class="font-mono">-</span>% to account for local buckling.
+          </p>
+        </div>
+      </div>
+
+      <!-- Fire Classification Results (shown only when fire enabled) -->
+      <div id="classification-results-fire" class="hidden bg-gray-800 rounded-lg p-4 mb-6">
+        <h3 class="text-lg font-semibold text-white mb-3">Fire Classification <span class="text-sm text-gray-400">(at f<sub>y,θ</sub> = <span id="fire-fy-display">-</span> MPa, θ = <span id="fire-temp-display">-</span>°C)</span></h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Overall Class</p>
+            <p class="text-2xl font-mono font-bold" id="section-class-fire">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">ε<sub>fire</sub> = √(235/f<sub>y,θ</sub>)</p>
+            <p class="text-2xl font-mono text-white" id="epsilon-value-fire">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Governing Element</p>
+            <p class="text-sm font-mono text-white" id="governing-element-fire">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Effective Area</p>
+            <p class="text-sm font-mono text-white" id="effective-area-display-fire">-</p>
+          </div>
+        </div>
+
+        <!-- Detailed element classification (collapsible) -->
+        <div class="mt-3">
+          <button type="button" onclick="toggleClassificationDetails('fire')"
+                  class="text-sm text-cyan-400 hover:text-cyan-300 transition">
+            <span id="classification-toggle-icon-fire">▶</span> Show element classification details
+          </button>
+          <div id="classification-details-fire" class="hidden mt-2 overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead class="bg-gray-700">
+                <tr>
+                  <th class="p-2 text-left">Element</th>
+                  <th class="p-2 text-right">c (mm)</th>
+                  <th class="p-2 text-right">t (mm)</th>
+                  <th class="p-2 text-right">c/t</th>
+                  <th class="p-2 text-right">Limit (Class 3)</th>
+                  <th class="p-2 text-center">Class</th>
+                </tr>
+              </thead>
+              <tbody id="classification-table-body-fire" class="text-white">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Class 4 effective properties info (shown only if Class 4) -->
+        <div id="class4-info-fire" class="hidden mt-3 p-3 bg-blue-900 border border-blue-600 rounded">
+          <p class="text-xs text-blue-100">
+            <strong>Class 4 Section:</strong> Effective properties calculated per EN 1993-1-5.
+            Area reduced by <span id="area-reduction-percent-fire" class="font-mono">-</span>% to account for local buckling.
+          </p>
+        </div>
+      </div>
+
+      <!-- ULS Effective Properties Details -->
+      <div id="class4-effective-properties-uls" class="hidden bg-gray-800 rounded-lg p-6 mb-6">
+        <h3 class="text-lg font-semibold text-white mb-4">ULS Effective Section Properties <span class="text-sm text-gray-400">(EN 1993-1-5)</span></h3>
+
+        <!-- Effective vs Gross Comparison -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Effective Area</p>
+            <p class="text-xl font-mono text-cyan-400" id="eff-area-uls">-</p>
+            <p class="text-xs text-gray-400">Gross: <span id="gross-area-uls" class="font-mono">-</span></p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>eff,y</sub></p>
+            <p class="text-xl font-mono text-cyan-400" id="eff-iy-uls">-</p>
+            <p class="text-xs text-gray-400">Gross: <span id="gross-iy-uls" class="font-mono">-</span></p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>eff,z</sub></p>
+            <p class="text-xl font-mono text-cyan-400" id="eff-iz-uls">-</p>
+            <p class="text-xs text-gray-400">Gross: <span id="gross-iz-uls" class="font-mono">-</span></p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Removed Strips</p>
+            <p class="text-xl font-mono text-white" id="removed-strips-count-uls">-</p>
+          </div>
+        </div>
+
+        <!-- Neutral Axis Shift -->
+        <div class="bg-gray-700 rounded p-4 mb-4">
+          <h4 class="text-sm font-semibold text-white mb-2">Neutral Axis Shift</h4>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <p class="text-xs text-gray-400">e<sub>N,y</sub> (shift in Y direction)</p>
+              <p class="text-lg font-mono text-white" id="neutral-axis-y-uls">-</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-400">e<sub>N,z</sub> (shift in Z direction)</p>
+              <p class="text-lg font-mono text-white" id="neutral-axis-z-uls">-</p>
+            </div>
+          </div>
+          <p class="text-xs text-gray-400 mt-2">
+            <em>For pure compression with symmetric reductions, e<sub>N</sub> ≈ 0</em>
+          </p>
+        </div>
+
+        <!-- Reductions -->
+        <div class="grid grid-cols-3 gap-4">
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Area Reduction</p>
+            <p class="text-lg font-mono text-orange-400" id="area-reduction-uls">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>y</sub> Reduction</p>
+            <p class="text-lg font-mono text-orange-400" id="iy-reduction-uls">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>z</sub> Reduction</p>
+            <p class="text-lg font-mono text-orange-400" id="iz-reduction-uls">-</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fire Effective Properties Details (shown only when fire enabled and Class 4) -->
+      <div id="class4-effective-properties-fire" class="hidden bg-gray-800 rounded-lg p-6 mb-6">
+        <h3 class="text-lg font-semibold text-white mb-4">Fire Effective Section Properties <span class="text-sm text-gray-400">(EN 1993-1-5)</span></h3>
+
+        <!-- Effective vs Gross Comparison -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Effective Area</p>
+            <p class="text-xl font-mono text-cyan-400" id="eff-area-fire">-</p>
+            <p class="text-xs text-gray-400">Gross: <span id="gross-area-fire" class="font-mono">-</span></p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>eff,y</sub></p>
+            <p class="text-xl font-mono text-cyan-400" id="eff-iy-fire">-</p>
+            <p class="text-xs text-gray-400">Gross: <span id="gross-iy-fire" class="font-mono">-</span></p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>eff,z</sub></p>
+            <p class="text-xl font-mono text-cyan-400" id="eff-iz-fire">-</p>
+            <p class="text-xs text-gray-400">Gross: <span id="gross-iz-fire" class="font-mono">-</span></p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Removed Strips</p>
+            <p class="text-xl font-mono text-white" id="removed-strips-count-fire">-</p>
+          </div>
+        </div>
+
+        <!-- Neutral Axis Shift -->
+        <div class="bg-gray-700 rounded p-4 mb-4">
+          <h4 class="text-sm font-semibold text-white mb-2">Neutral Axis Shift</h4>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <p class="text-xs text-gray-400">e<sub>N,y</sub> (shift in Y direction)</p>
+              <p class="text-lg font-mono text-white" id="neutral-axis-y-fire">-</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-400">e<sub>N,z</sub> (shift in Z direction)</p>
+              <p class="text-lg font-mono text-white" id="neutral-axis-z-fire">-</p>
+            </div>
+          </div>
+          <p class="text-xs text-gray-400 mt-2">
+            <em>For pure compression with symmetric reductions, e<sub>N</sub> ≈ 0</em>
+          </p>
+        </div>
+
+        <!-- Reductions -->
+        <div class="grid grid-cols-3 gap-4">
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">Area Reduction</p>
+            <p class="text-lg font-mono text-orange-400" id="area-reduction-fire">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>y</sub> Reduction</p>
+            <p class="text-lg font-mono text-orange-400" id="iy-reduction-fire">-</p>
+          </div>
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-xs text-gray-400 mb-1">I<sub>z</sub> Reduction</p>
+            <p class="text-lg font-mono text-orange-400" id="iz-reduction-fire">-</p>
+          </div>
+        </div>
       </div>
 
       <!-- ULS Results -->
@@ -717,7 +937,7 @@
               🖨️ Print Report
             </button>
           </div>
-          <div id="detailed-report" class="hidden mt-4">
+          <div id="detailed-report" class="mt-4">
             <!-- Report content will be generated here -->
           </div>
         </div>
