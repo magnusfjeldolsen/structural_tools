@@ -450,8 +450,68 @@ function displayResults(results, inputs) {
   // Generate detailed report
   generateDetailedReport(results, inputs);
 
+  // Plot section visualization
+  _plotSection(results, inputs);
+
   // Scroll to results
   resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function _plotSection(results, inputs) {
+  const container = document.getElementById('section-plot-container');
+  if (!container) return;
+
+  // Only plot for supported profile types
+  const supported = ['ipe', 'hea', 'heb', 'hem', 'hrhs', 'hshs', 'hchs', 'crhs', 'cshs', 'cchs'];
+  if (!supported.includes(inputs.profileType)) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  try {
+    // Get section from database
+    const section = steelDatabase[inputs.profileType][inputs.profileName];
+    if (!section) {
+      container.classList.add('hidden');
+      return;
+    }
+
+    // Get ULS effective properties if Class 4
+    const effProps = results.ulsResults && results.ulsResults.is_using_effective
+      ? results.ulsResults.effective_properties
+      : null;
+
+    // Determine canvas size based on section aspect ratio
+    let aspectRatio;
+    if (section.D) {
+      // Circular section: square aspect ratio
+      aspectRatio = 1.0;
+    } else {
+      // I/H or hollow rectangular/square sections
+      const width = section.b;
+      const height = section.h || section.b;  // For SHS, h might not be set (h = b)
+      aspectRatio = width / height;
+    }
+
+    const targetH = 380;
+    // Give extra horizontal space so even narrow sections look good
+    const targetW = Math.max(320, Math.min(600, Math.round(targetH * aspectRatio) + 220));
+
+    container.classList.remove('hidden');
+
+    SectionPlotter.plot('section-plot-canvas', section, effProps, {
+      profileType: inputs.profileType,
+      sectionName: inputs.profileName,
+      canvasWidth: targetW,
+      canvasHeight: targetH,
+      showLegend: true,
+      legendPosition: 'top-right'
+    });
+
+  } catch (err) {
+    console.error('[SectionPlotter] Failed to plot section:', err);
+    container.classList.add('hidden');
+  }
 }
 function displayClass4Warning(isClass4) {
   const warningDiv = document.getElementById('class4-warning');

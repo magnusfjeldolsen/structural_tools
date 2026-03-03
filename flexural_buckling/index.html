@@ -840,6 +840,18 @@
         </div>
       </div>
 
+      <!-- Section Visualization -->
+      <div id="section-plot-container" class="hidden bg-gray-800 rounded-lg p-6 mb-6">
+        <h2 class="text-xl font-semibold text-white mb-4">Section Visualization</h2>
+        <div class="flex justify-center">
+          <canvas
+            id="section-plot-canvas"
+            class="rounded border border-gray-600"
+            style="max-width: 100%; height: auto; display: block;"
+          ></canvas>
+        </div>
+      </div>
+
       <!-- ULS Results -->
       <div class="bg-gray-800 rounded-lg p-6 mb-6">
         <h2 class="text-xl font-semibold text-white mb-4">ULS Results</h2>
@@ -967,6 +979,7 @@
   <!-- Centralized JavaScript -->
   <script src="../assets/js/common.js"></script>
   <script src="flexural_buckling_api.js"></script>
+  <script src="section_plotter.js"></script>
   <script src="flexural_buckling_ui.js"></script>
 
   <!-- Persistent Cookie Settings Button -->
