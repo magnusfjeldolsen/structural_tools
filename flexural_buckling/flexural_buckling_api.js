@@ -281,7 +281,7 @@ async function loadSteelDatabase() {
 
   for (const type of profileTypes) {
     try {
-      const response = await fetch(`../steel_cross_section_database/${type}.json`);
+      const response = await fetch(`../steel_cross_section_database/${type}.json`, { cache: 'no-store' });
       const data = await response.json();
 
       // Transform profiles array into object with profile names as keys
@@ -667,51 +667,41 @@ function calculateRemovedStrips(plate, element, rho, psi) {
     return strips;  // No reduction needed
   }
 
-  // For pure compression (ψ = 1.0), use symmetric edge reduction
+  // For pure compression (ψ = 1.0)
   if (plate.type === 'internal') {
-    // Pattern A: Symmetric edge reduction
-    // Remove two equal strips at edges
-    const half_removed = strip_width / 2;
+    // EN 1993-1-5 Table 4.1, Row 1 (ψ = 1: Pure compression)
+    // Effective width b_eff = ρ × b̄ is distributed at EDGES (HATCHED in table):
+    //   - b_e1 = 0.5 × b_eff (kept at edge 1)
+    //   - b_e2 = 0.5 × b_eff (kept at edge 2)
+    // CENTER portion is REMOVED (WHITE in table): width = b̄ - b_eff
 
-    // Strip 1: At edge1 (positive direction)
-    const edge1_pos = plate.geometry.edges.edge1.position;
-    const strip1 = {
-      id: `${plate.id}_strip1`,
-      width: half_removed,
-      thickness: t,
-      area: (half_removed * t) / 100,  // mm² → cm²
+    const centroid = plate.geometry.centroid;
+
+    // Create single removed strip at center
+    const centerStrip = {
+      id: `${plate.id}_center_removed`,
+      width: strip_width,           // Total removed width
+      thickness: t,                 // Plate thickness
+      area: (strip_width * t) / 100, // mm² → cm²
       orientation: plate.orientation,
       centroid: {
-        y: plate.orientation === 'y-direction' ? edge1_pos.y - half_removed/2 : plate.geometry.centroid.y,
-        z: plate.orientation === 'z-direction' ? edge1_pos.z - Math.sign(edge1_pos.z) * half_removed/2 : plate.geometry.centroid.z
+        y: centroid.y,  // Center of plate in Y
+        z: centroid.z   // Center of plate in Z
       }
     };
-    strips.push(strip1);
-    console.log(`[Removed Strips] Created strip1: A=${strip1.area.toFixed(2)} cm², width=${half_removed.toFixed(2)}mm`);
 
-    // Strip 2: At edge2 (negative direction)
-    const edge2_pos = plate.geometry.edges.edge2.position;
-    const strip2 = {
-      id: `${plate.id}_strip2`,
-      width: half_removed,
-      thickness: t,
-      area: (half_removed * t) / 100,  // mm² → cm²
-      orientation: plate.orientation,
-      centroid: {
-        y: plate.orientation === 'y-direction' ? edge2_pos.y + half_removed/2 : plate.geometry.centroid.y,
-        z: plate.orientation === 'z-direction' ? edge2_pos.z + Math.sign(edge2_pos.z) * half_removed/2 : plate.geometry.centroid.z
-      }
-    };
-    strips.push(strip2);
-    console.log(`[Removed Strips] Created strip2: A=${strip2.area.toFixed(2)} cm², width=${half_removed.toFixed(2)}mm`);
+    strips.push(centerStrip);
+    console.log(`[Removed Strips] Created center strip: A=${centerStrip.area.toFixed(2)} cm², width=${strip_width.toFixed(2)}mm, centroid=(${centroid.y.toFixed(1)}, ${centroid.z.toFixed(1)})`);
 
   } else if (plate.type === 'outstand') {
-    // Pattern C: Free edge removal
-    // Remove single strip from free edge inward
-    const free_edge = plate.geometry.edges.edge2;  // Assume edge2 is free edge
+    // EN 1993-1-5 Table 4.2, Row 1 (ψ ≥ 0: Compression/uniform)
+    // Effective width b_eff = ρ × c is kept at SUPPORTED EDGE (HATCHED in table)
+    // FREE EDGE is REMOVED (WHITE in table): width = c - b_eff
 
-    strips.push({
-      id: `${plate.id}_strip`,
+    const free_edge = plate.geometry.edges.edge2;  // edge2 is free edge
+
+    const freeEdgeStrip = {
+      id: `${plate.id}_free_edge_removed`,
       width: strip_width,
       thickness: t,
       area: (strip_width * t) / 100,  // mm² → cm²
@@ -720,7 +710,10 @@ function calculateRemovedStrips(plate, element, rho, psi) {
         y: plate.orientation === 'y-direction' ? free_edge.position.y - strip_width/2 : plate.geometry.centroid.y,
         z: plate.orientation === 'z-direction' ? free_edge.position.z - Math.sign(free_edge.position.z) * strip_width/2 : plate.geometry.centroid.z
       }
-    });
+    };
+
+    strips.push(freeEdgeStrip);
+    console.log(`[Removed Strips] Created free edge strip: A=${freeEdgeStrip.area.toFixed(2)} cm², width=${strip_width.toFixed(2)}mm`);
 
   } else if (plate.type === 'circular') {
     // Circular sections: uniform reduction
@@ -926,6 +919,7 @@ function calculateClass4EffectiveProperties(section, classification, profileType
     neutral_axis_shift_y: shift.e_N_y,
     neutral_axis_shift_z: shift.e_N_z,
     plate_reductions: plateReductions,
+    removed_strips: removedStrips,
     removed_strips_count: removedStrips.length
   };
 }
