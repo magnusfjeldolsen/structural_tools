@@ -862,29 +862,44 @@ function calculateClass4EffectiveProperties(section, classification, profileType
     const t_cm = strip.thickness / 10;  // mm → cm
     const width_cm = strip.width / 10;  // mm → cm
 
-    // Local inertia of removed strip about its own centroid
-    const I_local = (t_cm * Math.pow(width_cm, 3)) / 12;
-
     // Distance from strip centroid to GROSS section centroid
     const d_y = strip.centroid.y / 10;  // mm → cm
     const d_z = strip.centroid.z / 10;  // mm → cm
 
-    // Parallel axis contributions
-    const I_parallel_y = A_removed * d_y * d_y;
-    const I_parallel_z = A_removed * d_z * d_z;
+    // Local inertia of removed strip about its own centroid
+    // For rectangle: I_y = (h × b³)/12, I_z = (b × h³)/12
+    let I_local_y, I_local_z;
 
-    // Subtract from appropriate axis based on orientation
     if (strip.orientation === 'y-direction') {
-      // Strip extends in Y → affects I_z
-      I_eff_z -= (I_local + I_parallel_z);
+      // Strip extends in Y-direction (e.g., web center strip)
+      // ly_strip = width_cm (height in Y), lz_strip = t_cm (width in Z)
+      const ly_strip = width_cm;
+      const lz_strip = t_cm;
+      I_local_y = (ly_strip * Math.pow(lz_strip, 3)) / 12;  // About Y-axis
+      I_local_z = (lz_strip * Math.pow(ly_strip, 3)) / 12;  // About Z-axis
+
     } else if (strip.orientation === 'z-direction') {
-      // Strip extends in Z → affects I_y
-      I_eff_y -= (I_local + I_parallel_y);
+      // Strip extends in Z-direction (e.g., flange tip)
+      // lz_strip = width_cm (width in Z), ly_strip = t_cm (height in Y)
+      const lz_strip = width_cm;
+      const ly_strip = t_cm;
+      I_local_y = (ly_strip * Math.pow(lz_strip, 3)) / 12;  // About Y-axis
+      I_local_z = (lz_strip * Math.pow(ly_strip, 3)) / 12;  // About Z-axis
+
     } else if (strip.orientation === 'radial') {
-      // Circular: affects both axes equally
-      I_eff_y -= (I_local + I_parallel_y);
-      I_eff_z -= (I_local + I_parallel_z);
+      // Circular: approximate as rectangular strip
+      const avg_dim = (width_cm + t_cm) / 2;
+      I_local_y = (avg_dim * Math.pow(avg_dim, 3)) / 12;
+      I_local_z = I_local_y;
     }
+
+    // Parallel axis theorem contributions
+    const I_parallel_y = A_removed * d_z * d_z;  // Note: d_z for I_y!
+    const I_parallel_z = A_removed * d_y * d_y;  // Note: d_y for I_z!
+
+    // Subtract local inertia and parallel axis contribution
+    I_eff_y -= (I_local_y + I_parallel_y);
+    I_eff_z -= (I_local_z + I_parallel_z);
   }
 
   // STEP 4: Apply neutral axis shift correction
