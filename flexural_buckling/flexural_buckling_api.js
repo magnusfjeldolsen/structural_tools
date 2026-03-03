@@ -463,21 +463,21 @@ const CLASSIFICATION_TEMPLATES = {
   i_section: {
     applies_to: ['hea', 'heb', 'hem', 'ipe'],
     subplates: [
-      { id: 'flange_outstand', type: 'outstand', c_formula: '(b/2 - tw/2 - r)', t_formula: 'tf' },
-      { id: 'web_internal', type: 'internal', c_formula: '(h - 2*tf - 2*r)', t_formula: 'tw' }
+      { id: 'top_flange_tip_left', type: 'outstand', c_formula: '(b/2 - tw/2 - r)', t_formula: 'tf' },
+      { id: 'web', type: 'internal', c_formula: '(h - 2*tf - 2*r)', t_formula: 'tw' }
     ]
   },
   rhs: {
     applies_to: ['hrhs', 'hshs', 'crhs', 'cshs'],
     subplates: [
-      { id: 'flange_internal', type: 'internal', c_formula: '(b - 3*t)', t_formula: 't' },
-      { id: 'web_internal', type: 'internal', c_formula: '(h - 3*t)', t_formula: 't' }
+      { id: 'top_flange', type: 'internal', c_formula: '(b - 3*t)', t_formula: 't' },
+      { id: 'left_web', type: 'internal', c_formula: '(h - 3*t)', t_formula: 't' }
     ]
   },
   chs: {
     applies_to: ['hchs', 'cchs'],
     subplates: [
-      { id: 'circular_tube', type: 'circular', c_formula: 'D', t_formula: 't' }
+      { id: 'circular_wall', type: 'circular', c_formula: 'D', t_formula: 't' }
     ]
   }
 };
