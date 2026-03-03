@@ -463,15 +463,20 @@ const CLASSIFICATION_TEMPLATES = {
   i_section: {
     applies_to: ['hea', 'heb', 'hem', 'ipe'],
     subplates: [
-      { id: 'top_flange_tip_left', type: 'outstand', c_formula: '(b/2 - tw/2 - r)', t_formula: 'tf' },
+      { id: 'top_flange_tip_left',    type: 'outstand', c_formula: '(b/2 - tw/2 - r)', t_formula: 'tf' },
+      { id: 'top_flange_tip_right',   type: 'outstand', c_formula: '(b/2 - tw/2 - r)', t_formula: 'tf' },
+      { id: 'bottom_flange_tip_left', type: 'outstand', c_formula: '(b/2 - tw/2 - r)', t_formula: 'tf' },
+      { id: 'bottom_flange_tip_right',type: 'outstand', c_formula: '(b/2 - tw/2 - r)', t_formula: 'tf' },
       { id: 'web', type: 'internal', c_formula: '(h - 2*tf - 2*r)', t_formula: 'tw' }
     ]
   },
   rhs: {
     applies_to: ['hrhs', 'hshs', 'crhs', 'cshs'],
     subplates: [
-      { id: 'top_flange', type: 'internal', c_formula: '(b - 3*t)', t_formula: 't' },
-      { id: 'left_web', type: 'internal', c_formula: '(h - 3*t)', t_formula: 't' }
+      { id: 'top_flange',    type: 'internal', c_formula: '(b - 3*t)', t_formula: 't' },
+      { id: 'bottom_flange', type: 'internal', c_formula: '(b - 3*t)', t_formula: 't' },
+      { id: 'left_web',      type: 'internal', c_formula: '(h - 3*t)', t_formula: 't' },
+      { id: 'right_web',     type: 'internal', c_formula: '(h - 3*t)', t_formula: 't' }
     ]
   },
   chs: {
@@ -500,8 +505,20 @@ function getClassificationTemplate(profileType) {
 function evaluateFormula(formula, section) {
   let expression = formula;
 
+  // Create a copy of section with fallbacks for square hollow sections
+  const sectionWithDefaults = { ...section };
+
+  // For Square Hollow Sections (SHS): h = b (both dimensions are equal)
+  if (sectionWithDefaults.b && !sectionWithDefaults.h) {
+    sectionWithDefaults.h = sectionWithDefaults.b;
+  }
+  // For any section: if h exists but b doesn't (shouldn't happen, but for symmetry)
+  if (sectionWithDefaults.h && !sectionWithDefaults.b) {
+    sectionWithDefaults.b = sectionWithDefaults.h;
+  }
+
   // Replace section properties in formula
-  for (const [key, value] of Object.entries(section)) {
+  for (const [key, value] of Object.entries(sectionWithDefaults)) {
     if (typeof value === 'number') {
       const regex = new RegExp(`\\b${key}\\b`, 'g');
       expression = expression.replace(regex, value.toString());
@@ -650,9 +667,10 @@ function classifySection(section, fy, profileType) {
  * @param {Object} element - Classification result element
  * @param {number} rho - Reduction factor
  * @param {number} psi - Stress ratio (1.0 for pure compression)
+ * @param {Object} section - Section object (needed for SHS centroid calculation)
  * @returns {Array} Array of removed strip objects with geometry
  */
-function calculateRemovedStrips(plate, element, rho, psi) {
+function calculateRemovedStrips(plate, element, rho, psi, section) {
   const strips = [];
 
   const c_gross = element.c;  // mm
@@ -677,6 +695,51 @@ function calculateRemovedStrips(plate, element, rho, psi) {
 
     const centroid = plate.geometry.centroid;
 
+    // Handle null centroids (common in SHS where y or z may be null)
+    // For SHS flanges (z-direction), y should be calculated as ±(h/2 - t/2)
+    // For SHS webs (y-direction), z should be calculated as ±(b/2 - t/2)
+    let centroid_y = centroid.y;
+    let centroid_z = centroid.z;
+
+    if (centroid_y === null || centroid_y === undefined) {
+      // This is likely a horizontal flange in SHS
+      // Try to get y from edges first
+      const edge1 = plate.geometry.edges?.edge1;
+      const edge2 = plate.geometry.edges?.edge2;
+      if (edge1 && edge1.position && edge1.position.y != null) {
+        centroid_y = (edge1.position.y + (edge2?.position?.y || edge1.position.y)) / 2;
+      } else if (section) {
+        // Calculate from section dimensions
+        // For top flange: y = +(b/2 - t/2) or +(h/2 - t/2)
+        // For bottom flange: y = -(b/2 - t/2) or -(h/2 - t/2)
+        // Use plate ID to determine which
+        const h = section.h || section.b;  // For SHS, h = b
+        const sign = plate.id.includes('top') ? 1 : (plate.id.includes('bottom') ? -1 : 0);
+        centroid_y = sign * (h/2 - t/2);
+      } else {
+        centroid_y = 0;
+      }
+    }
+
+    if (centroid_z === null || centroid_z === undefined) {
+      // This is likely a vertical web in SHS
+      // Try to get z from edges first
+      const edge1 = plate.geometry.edges?.edge1;
+      const edge2 = plate.geometry.edges?.edge2;
+      if (edge1 && edge1.position && edge1.position.z != null) {
+        centroid_z = (edge1.position.z + (edge2?.position?.z || edge1.position.z)) / 2;
+      } else if (section) {
+        // Calculate from section dimensions
+        // For left web: z = -(b/2 - t/2)
+        // For right web: z = +(b/2 - t/2)
+        const b = section.b;
+        const sign = plate.id.includes('left') ? -1 : (plate.id.includes('right') ? 1 : 0);
+        centroid_z = sign * (b/2 - t/2);
+      } else {
+        centroid_z = 0;
+      }
+    }
+
     // Create single removed strip at center
     const centerStrip = {
       id: `${plate.id}_center_removed`,
@@ -685,13 +748,14 @@ function calculateRemovedStrips(plate, element, rho, psi) {
       area: (strip_width * t) / 100, // mm² → cm²
       orientation: plate.orientation,
       centroid: {
-        y: centroid.y,  // Center of plate in Y
-        z: centroid.z   // Center of plate in Z
-      }
+        y: centroid_y,  // Center of plate in Y
+        z: centroid_z   // Center of plate in Z
+      },
+      edges: plate.geometry.edges  // Pass through edge positions for accurate plotting
     };
 
     strips.push(centerStrip);
-    console.log(`[Removed Strips] Created center strip: A=${centerStrip.area.toFixed(2)} cm², width=${strip_width.toFixed(2)}mm, centroid=(${centroid.y.toFixed(1)}, ${centroid.z.toFixed(1)})`);
+    console.log(`[Removed Strips] Created center strip: A=${centerStrip.area.toFixed(2)} cm², width=${strip_width.toFixed(2)}mm, centroid=(${centroid_y != null ? centroid_y.toFixed(1) : 'N/A'}, ${centroid_z != null ? centroid_z.toFixed(1) : 'N/A'})`);
 
   } else if (plate.type === 'outstand') {
     // EN 1993-1-5 Table 4.2, Row 1 (ψ ≥ 0: Compression/uniform)
@@ -824,7 +888,7 @@ function calculateClass4EffectiveProperties(section, classification, profileType
     console.log(`[Class 4 Calc] Element ${element.id}: λ_p_bar=${lambda_p_bar.toFixed(3)}, ρ=${rho.toFixed(3)}, c=${element.c.toFixed(2)}mm, c_eff=${c_eff.toFixed(2)}mm`);
 
     // Calculate removed strips using plate geometry
-    const strips = calculateRemovedStrips(plate, element, rho, psi);
+    const strips = calculateRemovedStrips(plate, element, rho, psi, section);
     console.log(`[Class 4 Calc] Calculated ${strips.length} removed strips for ${element.id}`);
     removedStrips.push(...strips);
 
