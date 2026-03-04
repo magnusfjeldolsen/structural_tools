@@ -984,6 +984,21 @@ function generateDetailedReport(results, inputs) {
   html += '</div></div>';
   html += '</div></div>';
 
+  // Section Visualization (if available)
+  const sectionCanvas = document.getElementById('section-plot-canvas');
+  if (sectionCanvas && !document.getElementById('section-plot-container').classList.contains('hidden')) {
+    try {
+      const sectionImageData = sectionCanvas.toDataURL('image/png');
+      html += '<div class="mb-8">';
+      html += '<h3 class="font-semibold text-gray-800 mb-3">Section Visualization</h3>';
+      html += '<div class="flex justify-center bg-gray-50 rounded-lg p-4">';
+      html += `<img src="${sectionImageData}" alt="Section visualization" style="max-width: 100%; height: auto;">`;
+      html += '</div></div>';
+    } catch (err) {
+      console.warn('Could not capture section plot for report:', err);
+    }
+  }
+
   // Results Summary
   html += '<div class="mb-8">';
   html += '<h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #15803d;">RESULTS SUMMARY</h2>';
