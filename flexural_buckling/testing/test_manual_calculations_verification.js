@@ -151,10 +151,24 @@ function classifyPlateElement(section, element, epsilon, psi) {
 // Effective Properties Calculation
 // ============================================================================
 
-function calculateClass4EffectiveProperties(section, classification) {
+// Helper function for EN 1993-1-5 buckling coefficients
+function getBucklingCoefficient(elementType, psi) {
+  if (elementType === 'internal' || elementType === 'circular') {
+    if (psi === 1.0) return 4.0;
+    if (psi > 0) return 8.2 / (1.05 + psi);
+    return 7.81 - 6.29 * psi + 9.78 * psi * psi;
+  } else if (elementType === 'outstand') {
+    if (psi >= 0) return 0.43;
+    return 0.57 - 0.21 * psi + 0.07 * psi * psi;
+  }
+  return 4.0;
+}
+
+function calculateClass4EffectiveProperties(section, classification, fy = 460) {
   const psi = 1.0;
   const removedStrips = [];
   const plateReductions = [];
+  const epsilon = Math.sqrt(235 / fy);
 
   for (const element of classification.element_results) {
     if (element.class !== 4) continue;
@@ -164,15 +178,21 @@ function calculateClass4EffectiveProperties(section, classification) {
 
     const slenderness = element.slenderness;
     const elementType = element.type;
-    const limit_class3 = element.limit_class3;
-    const lambda_p_bar = slenderness / limit_class3;
 
-    // Calculate reduction factor ρ
+    // EN 1993-1-5 formula for lambda_p
+    const k_sigma = getBucklingCoefficient(elementType, psi);
+    const lambda_p = slenderness / (28.4 * epsilon * Math.sqrt(k_sigma));
+
+    // Calculate reduction factor ρ per EN 1993-1-5 Section 4.4
     let rho;
-    if (elementType === 'internal') {
-      rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
+    const lambda_p_limit = 0.5 + Math.sqrt(0.085 - 0.055 * psi);
+
+    if (lambda_p <= lambda_p_limit) {
+      rho = 1.0;
+    } else if (elementType === 'internal' || elementType === 'circular') {
+      rho = (lambda_p - 0.055 * psi) / (lambda_p * lambda_p);
     } else if (elementType === 'outstand') {
-      rho = (lambda_p_bar - 0.188) / (lambda_p_bar * lambda_p_bar);
+      rho = (lambda_p - 0.188) / (lambda_p * lambda_p);
     }
     rho = Math.min(Math.max(rho, 0), 1.0);
 
@@ -187,7 +207,9 @@ function calculateClass4EffectiveProperties(section, classification) {
       c_gross: c_gross,
       c_eff: c_eff,
       rho: rho,
-      lambda_p_bar: lambda_p_bar,
+      lambda_p: lambda_p,
+      k_sigma: k_sigma,
+      epsilon: epsilon,
       strip_width: strip_width,
       strip_area_mm2: strip_width * t
     });
@@ -329,7 +351,8 @@ function test_IPE450_pureCompression(database) {
   for (const pr of effProps.plate_reductions) {
     console.log(`  ${pr.element}:`);
     console.log(`    Type: ${pr.type}`);
-    console.log(`    λ_p_bar: ${pr.lambda_p_bar.toFixed(4)}`);
+    console.log(`    λ_p: ${pr.lambda_p.toFixed(4)}`);
+    console.log(`    k_σ: ${pr.k_sigma.toFixed(2)}`);
     console.log(`    ρ: ${pr.rho.toFixed(4)}`);
     console.log(`    c_gross: ${pr.c_gross.toFixed(2)} mm`);
     console.log(`    c_eff: ${pr.c_eff.toFixed(2)} mm`);
@@ -467,7 +490,7 @@ function test_CSHS100X3_S460(database) {
     bp: 88, // b - 2×ro
     k_sigma: 4.0,
     bp_over_tp: 29.3333, // bp/t
-    lambda_p_bar: 0.7225,
+    lambda_p: 0.7225,
     rho_limit: 0.6732, // 0.5 + sqrt(0.085 - 0.055×ψ)
     rho_internal: 1.0, // Fully effective! (because λ_p_bar < rho_limit)
     expected_A_removed: 0
@@ -487,7 +510,7 @@ function test_CSHS100X3_S460(database) {
 
     console.log('\n--- Effective Properties ---');
     for (const pr of effProps.plate_reductions) {
-      console.log(`  ${pr.element}: λ_p_bar=${pr.lambda_p_bar.toFixed(4)}, ρ=${pr.rho.toFixed(4)}`);
+      console.log(`  ${pr.element}: λ_p_bar=${pr.lambda_p.toFixed(4)}, ρ=${pr.rho.toFixed(4)}`);
     }
 
     const epsilon = Math.sqrt(235 / fy);
@@ -541,7 +564,7 @@ function test_CSHS180X4_S460(database) {
     t: 4, // mm
     ro: 8, // mm
     bp: 164, // b - 2×ro
-    lambda_p_bar: 1.0099,
+    lambda_p: 1.0099,
     rho_internal: 0.9363,
     b_eff: 153.5476, // mm (per side)
     b_removed: 10.4524, // mm (centric on plate - center strip)
@@ -574,7 +597,7 @@ function test_CSHS180X4_S460(database) {
     console.log('\n--- Plate Reductions ---');
     for (const pr of effProps.plate_reductions) {
       console.log(`  ${pr.element}:`);
-      console.log(`    λ_p_bar: ${pr.lambda_p_bar.toFixed(4)}`);
+      console.log(`    λ_p_bar: ${pr.lambda_p.toFixed(4)}`);
       console.log(`    ρ: ${pr.rho.toFixed(4)}`);
       console.log(`    c_eff: ${pr.c_eff.toFixed(2)} mm`);
       console.log(`    strip_width: ${pr.strip_width.toFixed(2)} mm`);
@@ -583,7 +606,7 @@ function test_CSHS180X4_S460(database) {
 
     const computed = {
       rho_internal: effProps.plate_reductions[0] ? effProps.plate_reductions[0].rho : 0,
-      lambda_p_bar: effProps.plate_reductions[0] ? effProps.plate_reductions[0].lambda_p_bar : 0,
+      lambda_p: effProps.plate_reductions[0] ? effProps.plate_reductions[0].lambda_p : 0,
       b_eff: effProps.plate_reductions[0] ? effProps.plate_reductions[0].c_eff : 0,
       b_removed: effProps.plate_reductions[0] ? effProps.plate_reductions[0].strip_width : 0,
       A_removed_tot_mm2: effProps.A_removed * 100,
