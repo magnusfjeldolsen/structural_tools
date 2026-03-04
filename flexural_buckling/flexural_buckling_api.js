@@ -149,6 +149,52 @@ const MODULE_CONFIG = {
       default: 20,
       category: "loads_fire",
       description: "Steel temperature for fire case (max 1000°C)"
+    },
+
+    // Am/V filtering parameters
+    amvFilterEnabled: {
+      label: "Enable Am/V filter",
+      symbol: "Am/V filter",
+      type: "boolean",
+      required: false,
+      default: false,
+      category: "loads_fire",
+      description: "Filter sections by section factor (Am/V) to limit fire insulation requirements"
+    },
+    exposureConfig: {
+      label: "Exposure configuration",
+      symbol: "Exposure",
+      type: "select",
+      options: ["4-sides", "3-sides-top", "3-sides-bottom", "2-sides",
+                "1-side-left", "1-side-right", "1-side-bottom"],
+      required: false,
+      default: "4-sides",
+      category: "loads_fire",
+      description: "Fire exposure configuration (which sides are exposed to fire)"
+    },
+    shadowFactor: {
+      label: "Shadow factor",
+      symbol: "k_sh",
+      type: "number",
+      unit: "-",
+      required: false,
+      min: 0.0,
+      max: 1.0,
+      default: 0.9,
+      category: "loads_fire",
+      description: "Shadow parameter for I/H profiles (0.9 standard, 1.0 for hollow sections)"
+    },
+    maxAmV: {
+      label: "Maximum Am/V",
+      symbol: "Am/V_max",
+      type: "number",
+      unit: "m⁻¹",
+      required: false,
+      min: 50,
+      max: 500,
+      default: 200,
+      category: "loads_fire",
+      description: "Maximum allowed section factor (Am/V ratio)"
     }
   },
 
@@ -1471,6 +1517,276 @@ function findCriticalTemperature(NEd_fire_kN, section, Ly_m, Lz_m, fy_MPa, gamma
 }
 
 // ============================================================================
+// AM/V SECTION FACTOR CALCULATION (for fire design)
+// ============================================================================
+
+/**
+ * Calculate side height for I/H sections accounting for geometry
+ * Side = tf + flat_flange + quarter_circle + web + quarter_circle + flat_flange + tf
+ * Simplified: h_side = h + b - 2×r - tw + π×r
+ *
+ * @param {Object} section - Section properties
+ * @returns {number} Side height in mm
+ */
+function calculateIHSideHeight(section) {
+  const h = section.h;    // Section height (mm)
+  const b = section.b;    // Flange width (mm)
+  const tw = section.tw;  // Web thickness (mm)
+  const r = section.r;    // Root radius (mm)
+
+  // h_side = h + b - 2×r - tw + π×r
+  const h_side = h + b - 2*r - tw + Math.PI*r;
+
+  return h_side;
+}
+
+/**
+ * Calculate section factor Am/V based on exposure configuration
+ *
+ * @param {Object} section - Section properties from database
+ * @param {string} exposureConfig - Exposure configuration ID
+ * @param {string} profileType - Profile type (hea, hrhs, etc.)
+ * @param {number} shadowFactor - Shadow parameter k_sh (0.0 to 1.0)
+ * @returns {Object} {AmV: number, AmV_base: number, Am: number, k_sh: number, status: string}
+ */
+function calculateSectionFactor(section, exposureConfig, profileType, shadowFactor = 1.0) {
+  const A = section.A;  // Area in mm²
+  let P = section.P;    // Perimeter - may be in mm OR meters (database inconsistency!)
+
+  // Get height and width - handle different property names in database
+  // Some hollow sections use 'height'/'width' instead of 'h'/'b'
+  const h = section.h || section.height || section.d;  // Height in mm
+  const b = section.b || section.width || h;  // Width in mm (for SHS, b = h if not defined)
+
+  // Debug logging (can be removed in production)
+  if (exposureConfig !== '4-sides' && (!section.h && !section.height && !section.d)) {
+    console.warn('Section missing height dimension:', section);
+  }
+
+  // Validate inputs
+  if (!A || A <= 0) {
+    return {
+      AmV: null,
+      AmV_base: null,
+      Am: null,
+      k_sh: shadowFactor,
+      error: 'Invalid section area',
+      description: 'Error'
+    };
+  }
+
+  // Validate that we have required dimensions for non-4-sided exposure
+  if (exposureConfig !== '4-sides' && (!h || !b)) {
+    return {
+      AmV: null,
+      AmV_base: null,
+      Am: null,
+      k_sh: shadowFactor,
+      error: `Missing section dimensions (h=${h}, b=${b}) required for this exposure configuration`,
+      description: 'Error'
+    };
+  }
+
+  // WARNING: Database has inconsistent units!
+  // - I/H profiles: P in mm (e.g., 1136 for HEA200)
+  // - Hollow sections: P in meters (e.g., 0.153 for HRHS 50x30)
+  // Normalize to mm: if P < 10, it's likely in meters
+  if (P < 10) {
+    P = P * 1000;  // Convert meters to mm
+  }
+
+  let Am;  // Exposed perimeter in mm
+  let description = '';
+
+  // Profile type checks
+  const isIorH = ['hea', 'heb', 'hem', 'ipe'].includes(profileType);
+  const isCircular = ['hchs', 'cchs'].includes(profileType);
+  const isHollow = ['hrhs', 'hshs', 'hchs', 'crhs', 'cshs', 'cchs'].includes(profileType);
+
+  // Calculate side height for I/H sections (accounts for radii and geometry)
+  let h_side = h;  // Default for RHS/SHS
+  if (isIorH && section.tw && section.r) {
+    h_side = calculateIHSideHeight(section);
+  }
+
+  // Calculate exposed perimeter based on configuration
+  switch (exposureConfig) {
+    case '4-sides':
+      Am = P;
+      description = '4 sides - All exposed';
+      break;
+
+    case '3-sides-left-protected':
+      if (isCircular) {
+        return {
+          AmV: null,
+          AmV_base: null,
+          Am: null,
+          k_sh: shadowFactor,
+          error: 'Configuration not applicable to circular sections',
+          description: 'Not applicable'
+        };
+      }
+      if (isIorH) {
+        // Remove left side (includes flange geometry and radii)
+        Am = P - h_side;
+        description = '3 sides - Left side protected';
+      } else {
+        // RHS/SHS: Remove left side (simple height)
+        Am = P - h;
+        description = '3 sides - Left side protected';
+      }
+      break;
+
+    case '3-sides-top-protected':
+      if (isCircular) {
+        return {
+          AmV: null,
+          AmV_base: null,
+          Am: null,
+          k_sh: shadowFactor,
+          error: 'Configuration not applicable to circular sections',
+          description: 'Not applicable'
+        };
+      }
+      // All profiles: Remove top (width b)
+      // FIXED: RHS/SHS now correctly uses b (not h)
+      Am = P - b;
+      description = '3 sides - Top protected';
+      break;
+
+    case '2-sides-left-top-protected':
+      if (isCircular) {
+        return {
+          AmV: null,
+          AmV_base: null,
+          Am: null,
+          k_sh: shadowFactor,
+          error: 'Configuration not applicable to circular sections',
+          description: 'Not applicable'
+        };
+      }
+      if (isIorH) {
+        // Remove left side and top
+        Am = P - h_side - b;
+        description = '2 sides - Left and top protected';
+      } else {
+        // RHS/SHS: Remove left (h) and top (b)
+        // FIXED: Was using 2*h, now correctly h + b
+        Am = P - h - b;
+        description = '2 sides - Left and top protected';
+      }
+      break;
+
+    case '1-side-bottom':
+      if (isCircular) {
+        return {
+          AmV: null,
+          AmV_base: null,
+          Am: null,
+          k_sh: shadowFactor,
+          error: 'Configuration not applicable to circular sections',
+          description: 'Not applicable'
+        };
+      }
+      // Only bottom flange/side width
+      Am = b;
+      description = '1 side - Bottom only';
+      break;
+
+    case '1-side-side':
+      if (isCircular) {
+        return {
+          AmV: null,
+          AmV_base: null,
+          Am: null,
+          k_sh: shadowFactor,
+          error: 'Configuration not applicable to circular sections',
+          description: 'Not applicable'
+        };
+      }
+      if (isIorH) {
+        // One side with flange geometry
+        Am = h_side;
+        description = '1 side - Side only';
+      } else {
+        // RHS/SHS: Simple side height
+        Am = h;
+        description = '1 side - Side only';
+      }
+      break;
+
+    // Backward compatibility (deprecated - will be removed in future)
+    case '3-sides-top':
+      console.warn('DEPRECATED: "3-sides-top" config. Use "3-sides-top-protected" instead.');
+      Am = P - b;
+      description = '3 sides - Top protected (deprecated config)';
+      break;
+
+    case '3-sides-bottom':
+      console.warn('DEPRECATED: "3-sides-bottom" config. Use "3-sides-top-protected" instead (rotate section if needed).');
+      Am = P - b;
+      description = '3 sides - Top protected (deprecated config)';
+      break;
+
+    case '1-side-left':
+    case '1-side-right':
+      console.warn(`DEPRECATED: "${exposureConfig}" config. Use "1-side-side" instead.`);
+      Am = isIorH ? h_side : h;
+      description = '1 side - Side only (deprecated config)';
+      break;
+
+    case '2-sides':
+      console.warn('DEPRECATED: "2-sides" config. Use "2-sides-left-top-protected" instead.');
+      Am = isIorH ? (P - h_side - b) : (P - h - b);
+      description = '2 sides - Left and top protected (deprecated config)';
+      break;
+
+    default:
+      Am = P;
+      description = '4 sides - All exposed (default)';
+  }
+
+  // Calculate base Am/V in m⁻¹
+  // At this point: Am is in mm, A is in mm² (P was already normalized above)
+  // Am/A gives units of mm/mm² = 1/mm = mm⁻¹
+  // Convert mm⁻¹ to m⁻¹: multiply by 1000
+  const AmV_base = (Am / A) * 1000;  // Result in m⁻¹
+
+  // Determine if shadow factor should be applied
+  // Apply k_sh only for I/H profiles with multi-sided exposure
+  let k_sh_effective = shadowFactor;
+
+  // Override conditions:
+  // 1. Hollow sections: always k_sh = 1.0 (no shadowing geometry)
+  // 2. Single-sided exposure: k_sh = 1.0 (no shadowing with one side)
+  const isSingleSide = ['1-side-bottom', '1-side-side', '1-side-left', '1-side-right'].includes(exposureConfig);
+
+  // Override k_sh for cases where shadowing doesn't apply
+  if (isHollow || isSingleSide) {
+    k_sh_effective = 1.0;
+  }
+
+  // Calculate effective Am/V with shadow factor
+  const AmV_effective = k_sh_effective * AmV_base;
+
+  return {
+    AmV: AmV_effective,           // Effective Am/V with shadow factor (m⁻¹)
+    AmV_base: AmV_base,           // Base Am/V without shadow factor (m⁻¹)
+    Am: Am,                        // Exposed perimeter (mm)
+    h_side: isIorH ? h_side : null,  // Side height for I/H (for reference)
+    k_sh: k_sh_effective,         // Shadow factor actually applied
+    description: description,
+    exposureConfig: exposureConfig,
+    profileType: profileType,
+    shadowApplied: k_sh_effective !== 1.0,
+    shadowNote: k_sh_effective !== shadowFactor
+      ? `Shadow factor overridden to ${k_sh_effective} (${isHollow ? 'hollow section' : 'single-side exposure'})`
+      : null
+  };
+}
+
+// ============================================================================
 // MAIN CALCULATION FUNCTION
 // ============================================================================
 
@@ -1501,6 +1817,40 @@ function calculateBuckling(inputs) {
     const section = getSectionProperties(profileType, profileName);
     if (!section) {
       throw new Error('Section not found in database');
+    }
+
+    // Check Am/V if filtering is enabled
+    let amvResult = null;
+    if (inputs.amvFilterEnabled && fireEnabled) {
+      const exposureConfig = inputs.exposureConfig || '4-sides';
+      const shadowFactor = parseFloat(inputs.shadowFactor);
+      const maxAmV = parseFloat(inputs.maxAmV) || 200;
+
+      // Validate shadowFactor
+      const validShadowFactor = !isNaN(shadowFactor) && shadowFactor >= 0 && shadowFactor <= 1.0
+        ? shadowFactor
+        : 0.9;  // Default to 0.9 if invalid
+
+      amvResult = calculateSectionFactor(section, exposureConfig, profileType, validShadowFactor);
+
+      // Check if calculation was successful
+      if (amvResult.error) {
+        return {
+          success: false,
+          error: `Am/V calculation error: ${amvResult.error}`,
+          amvResult: amvResult
+        };
+      }
+
+      // Check if section passes Am/V criterion (using effective Am/V)
+      if (amvResult.AmV !== null && amvResult.AmV > maxAmV) {
+        return {
+          success: false,
+          error: `Section exceeds maximum Am/V: ${amvResult.AmV.toFixed(1)} > ${maxAmV} m⁻¹`,
+          amvResult: amvResult,
+          amvExceeded: true
+        };
+      }
     }
 
     // Calculate ULS buckling resistance at ambient temperature
@@ -1572,13 +1922,18 @@ function calculateBuckling(inputs) {
         NEd_ULS_kN: NEd_ULS_kN,
         fireEnabled: fireEnabled,
         NEd_fire_kN: NEd_fire_kN,
-        temperature_C: temperature_C
+        temperature_C: temperature_C,
+        amvFilterEnabled: inputs.amvFilterEnabled || false,
+        exposureConfig: inputs.exposureConfig,
+        shadowFactor: inputs.shadowFactor,
+        maxAmV: inputs.maxAmV
       },
       ulsResults: {
         ...ulsResults,
         utilization: utilization_ULS
       },
-      fireResults: fireResults
+      fireResults: fireResults,
+      amvResult: amvResult  // Include Am/V calculation result
     };
 
   } catch (error) {
@@ -1616,6 +1971,7 @@ function findLightestSection(inputs, progressCallback) {
     let testedCount = 0;
     const totalCount = sortedProfiles.length;
     const skippedClass4 = []; // Track Class 4 sections that were skipped
+    const skippedAmV = [];     // Track Am/V rejections
 
     // Iterate through sorted profiles
     for (const profileName of sortedProfiles) {
@@ -1632,8 +1988,23 @@ function findLightestSection(inputs, progressCallback) {
       // Calculate buckling for this section
       const results = calculateBuckling(testInputs);
 
-      // Handle calculation failure (typically Class 4 rejection)
+      // Handle calculation failure (typically Class 4 rejection or Am/V exceeded)
       if (!results.success) {
+        // Handle Am/V rejection
+        if (results.amvExceeded) {
+          skippedAmV.push({
+            profileName: profileName,
+            AmV_base: results.amvResult.AmV_base,
+            AmV_effective: results.amvResult.AmV,
+            k_sh: results.amvResult.k_sh,
+            maxAmV: inputs.maxAmV,
+            exposureConfig: results.amvResult.exposureConfig,
+            reason: `Am/V too high: ${results.amvResult.AmV.toFixed(1)} > ${inputs.maxAmV} m⁻¹`
+          });
+          console.log(`  ⊗ Skipped ${profileName}: ${results.error}`);
+          continue;
+        }
+
         // Check if failure is due to Class 4 section when user chose to avoid
         if (results.classification && results.classification.is_class4) {
           const governingElement = results.classification.element_results.find(e => e.class === 4);
@@ -1705,10 +2076,16 @@ function findLightestSection(inputs, progressCallback) {
     if (!lastValidSection) {
       // Generate error message based on what happened
       let errorMsg = 'No suitable section found in selected profile type.';
-      if (skippedClass4.length > 0 && skippedClass4.length === testedCount) {
-        errorMsg = `All ${testedCount} sections are Class 4. Enable "Allow Class 4" to use effective properties, or choose a different profile type/steel grade.`;
+
+      // Enhanced error message including Am/V rejections
+      if (skippedAmV.length > 0 && skippedClass4.length > 0) {
+        errorMsg = `No suitable section found. ${skippedClass4.length} sections skipped (Class 4), ${skippedAmV.length} sections skipped (Am/V too high). Consider relaxing constraints.`;
+      } else if (skippedAmV.length > 0) {
+        errorMsg = `No suitable section found. ${skippedAmV.length} sections exceeded Am/V limit. Consider increasing maximum Am/V or changing exposure configuration.`;
+      } else if (skippedClass4.length > 0 && skippedClass4.length === testedCount) {
+        errorMsg = `All ${testedCount} sections are Class 4. Enable "Allow Class 4" to use effective properties.`;
       } else if (skippedClass4.length > 0) {
-        errorMsg = `No suitable section found. ${skippedClass4.length} lighter sections were skipped (Class 4 - avoid mode). Consider enabling "Allow Class 4" or choosing a different profile type.`;
+        errorMsg = `No suitable section found. ${skippedClass4.length} lighter sections were skipped (Class 4 - avoid mode).`;
       } else {
         errorMsg = 'No suitable section found. All sections exceed 100% utilization.';
       }
@@ -1719,23 +2096,25 @@ function findLightestSection(inputs, progressCallback) {
         testedCount: testedCount,
         totalCount: totalCount,
         skippedClass4: skippedClass4,
-        skippedClass4Count: skippedClass4.length
+        skippedClass4Count: skippedClass4.length,
+        skippedAmV: skippedAmV,
+        skippedAmVCount: skippedAmV.length
       };
     }
 
     // Check if all sections were valid (even the lightest works)
-    const allValid = (testedCount - skippedClass4.length) === 1 && lastValidSection;
+    const allValid = (testedCount - skippedClass4.length - skippedAmV.length) === 1 && lastValidSection;
 
     // Generate success message
     let message = '';
     if (allValid) {
-      message = skippedClass4.length > 0
-        ? `Lightest non-Class 4 section selected (${skippedClass4.length} Class 4 sections skipped).`
-        : 'All sections in this profile type are suitable. Lightest section selected.';
+      message = 'Lightest section selected. ';
+      if (skippedClass4.length > 0) message += `${skippedClass4.length} Class 4 sections skipped. `;
+      if (skippedAmV.length > 0) message += `${skippedAmV.length} sections skipped (Am/V too high).`;
     } else {
-      message = skippedClass4.length > 0
-        ? `Found optimal section after testing ${testedCount} profiles (${skippedClass4.length} Class 4 sections skipped).`
-        : `Found optimal section after testing ${testedCount} of ${totalCount} profiles.`;
+      message = `Found optimal section after testing ${testedCount} profiles.`;
+      if (skippedClass4.length > 0) message += ` (${skippedClass4.length} Class 4 skipped)`;
+      if (skippedAmV.length > 0) message += ` (${skippedAmV.length} Am/V exceeded)`;
     }
 
     return {
@@ -1745,6 +2124,8 @@ function findLightestSection(inputs, progressCallback) {
       totalCount: totalCount,
       skippedClass4: skippedClass4,
       skippedClass4Count: skippedClass4.length,
+      skippedAmV: skippedAmV,
+      skippedAmVCount: skippedAmV.length,
       allValid: allValid,
       message: message
     };
