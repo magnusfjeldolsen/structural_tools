@@ -488,6 +488,81 @@
               <input type="radio" name="fire-mode" value="find-critical" class="hidden">
             </div>
           </div>
+
+          <!-- Am/V Filtering Section -->
+          <div class="mt-3 border-t border-gray-700 pt-3">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h3 class="text-sm font-semibold text-white">Section Factor (Am/V) Filtering</h3>
+                <p class="text-xs text-gray-400 mt-1">
+                  Limit maximum Am/V to avoid sections requiring excessive fire insulation
+                </p>
+              </div>
+              <label class="flex items-center cursor-pointer">
+                <input type="checkbox" id="amv-filter-enabled" class="mr-1 w-4 h-4 text-cyan-600 bg-gray-700 border-gray-600 rounded focus:ring-cyan-500">
+                <span class="text-gray-300 text-xs">Enable Am/V Filter</span>
+              </label>
+            </div>
+
+            <!-- Am/V Filter Inputs (shown when enabled) -->
+            <div id="amv-filter-inputs" class="hidden">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                <!-- Exposure Configuration Dropdown -->
+                <div>
+                  <label for="exposure-config" class="block text-xs font-medium text-gray-300 mb-1">
+                    Exposure Configuration
+                  </label>
+                  <select id="exposure-config"
+                          class="w-full bg-gray-700 text-white border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-cyan-500">
+                    <option value="4-sides">🔥 4 sides - All exposed</option>
+                    <option value="3-sides-left-protected">🛡️ 3 sides - Left side protected</option>
+                    <option value="3-sides-top-protected">🛡️ 3 sides - Top protected</option>
+                    <option value="2-sides-left-top-protected">🛡️🛡️ 2 sides - Left and top protected</option>
+                    <option value="1-side-bottom">🔥 1 side - Bottom only</option>
+                    <option value="1-side-side">🔥 1 side - Side only</option>
+                  </select>
+                  <p class="text-xs text-gray-400 mt-1">Select which sides are exposed to fire</p>
+                </div>
+
+                <!-- Shadow Parameter (k_sh) -->
+                <div>
+                  <label for="shadow-factor" class="block text-xs font-medium text-gray-300 mb-1">
+                    Shadow Factor (k<sub>sh</sub>)
+                    <span class="text-gray-500 cursor-help" title="Accounts for heat shadowing in I/H profiles. Standard: 0.9 for I/H, 1.0 for hollow sections">ⓘ</span>
+                  </label>
+                  <input type="number"
+                         id="shadow-factor"
+                         class="w-full bg-gray-700 text-white border border-gray-600 rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-cyan-500"
+                         value="0.9"
+                         min="0.0"
+                         max="1.0"
+                         step="0.05"
+                         placeholder="0.9">
+                  <p class="text-xs text-gray-400 mt-1">
+                    <span id="shadow-factor-hint">Standard: 0.9 (I/H)</span>
+                  </p>
+                </div>
+
+                <!-- Max Am/V Input -->
+                <div>
+                  <label for="max-amv" class="block text-xs font-medium text-gray-300 mb-1">
+                    Maximum Am/V (m⁻¹)
+                  </label>
+                  <input type="number"
+                         id="max-amv"
+                         class="w-full bg-gray-700 text-white border border-gray-600 rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-cyan-500"
+                         value="200"
+                         min="50"
+                         max="500"
+                         step="10"
+                         placeholder="e.g. 200">
+                  <p class="text-xs text-gray-400 mt-1">
+                    Typical: 100-300 m⁻¹
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

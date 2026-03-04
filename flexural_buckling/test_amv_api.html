@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Am/V API Test Suite</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 { color: #4ec9b0; }
+        h2 { color: #569cd6; margin-top: 30px; }
+        .test-section {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .test-result {
+            margin: 8px 0;
+            padding: 8px;
+            border-radius: 3px;
+        }
+        .pass {
+            background: #1e3a1e;
+            border-left: 4px solid #4caf50;
+        }
+        .fail {
+            background: #3a1e1e;
+            border-left: 4px solid #f44336;
+        }
+        .warning {
+            background: #3a361e;
+            border-left: 4px solid #ff9800;
+        }
+        .expected {
+            color: #9cdcfe;
+        }
+        .actual {
+            color: #ce9178;
+        }
+        .summary {
+            background: #2d2d30;
+            border: 2px solid #3e3e42;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 4px;
+        }
+        pre {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Am/V API Test Suite</h1>
+    <div id="test-results"></div>
+    <div class="summary" id="summary"></div>
+
+    <script src="flexural_buckling_api.js"></script>
+    <script>
+        const testResults = [];
+        let passCount = 0;
+        let failCount = 0;
+
+        function assert(condition, testName, expected, actual, tolerance = 0.1) {
+            const pass = condition;
+            const result = {
+                pass: pass,
+                testName: testName,
+                expected: expected,
+                actual: actual
+            };
+
+            testResults.push(result);
+
+            if (pass) {
+                passCount++;
+                console.log(`✓ ${testName}`);
+            } else {
+                failCount++;
+                console.error(`✗ ${testName}`);
+                console.error(`  Expected: ${expected}`);
+                console.error(`  Actual: ${actual}`);
+            }
+
+            return pass;
+        }
+
+        function approxEqual(a, b, tolerance = 0.1) {
+            return Math.abs(a - b) <= tolerance;
+        }
+
+        function runTests() {
+            console.log('=== Starting Am/V API Tests ===\n');
+
+            // Load HEA200 section from database
+            const hea200 = window.structuralSteelDatabase.hea.find(s => s.designation === 'HEA200');
+
+            if (!hea200) {
+                console.error('❌ Could not load HEA200 from database');
+                return;
+            }
+
+            console.log('Loaded HEA200:', hea200);
+            console.log(`  h=${hea200.h}, b=${hea200.b}, tw=${hea200.tw}, tf=${hea200.tf}, r=${hea200.r}`);
+            console.log(`  P=${hea200.P}, A=${hea200.A}\n`);
+
+            // Test 1: calculateIHSideHeight for HEA200
+            console.log('--- Test 1: calculateIHSideHeight() ---');
+            const h_side = calculateIHSideHeight(hea200);
+            const h_side_expected = 404.0;  // From implementation plan
+            console.log(`h_side = ${h_side.toFixed(2)} mm`);
+            assert(
+                approxEqual(h_side, h_side_expected, 1.0),
+                'HEA200 side height calculation',
+                `${h_side_expected.toFixed(1)} mm`,
+                `${h_side.toFixed(1)} mm`,
+                1.0
+            );
+
+            // Test 2: Example 1 - HEA200, 4-sides, k_sh=0.9
+            console.log('\n--- Test 2: Example 1 (4-sides, k_sh=0.9) ---');
+            const result1 = calculateSectionFactor(hea200, '4-sides', 'hea', 0.9);
+            console.log('Result:', result1);
+            assert(
+                approxEqual(result1.AmV_base, 167.5, 1.0),
+                'Example 1: AmV_base',
+                '167.5 m⁻¹',
+                `${result1.AmV_base.toFixed(1)} m⁻¹`,
+                1.0
+            );
+            assert(
+                approxEqual(result1.AmV, 150.8, 1.0),
+                'Example 1: AmV_effective (with k_sh=0.9)',
+                '150.8 m⁻¹',
+                `${result1.AmV.toFixed(1)} m⁻¹`,
+                1.0
+            );
+            assert(
+                result1.k_sh === 0.9,
+                'Example 1: Shadow factor applied',
+                '0.9',
+                `${result1.k_sh}`
+            );
+
+            // Test 3: New config - HEA200, 3-sides-top-protected, k_sh=0.9
+            console.log('\n--- Test 3: 3-sides-top-protected (k_sh=0.9) ---');
+            const result2 = calculateSectionFactor(hea200, '3-sides-top-protected', 'hea', 0.9);
+            console.log('Result:', result2);
+            assert(
+                approxEqual(result2.Am, 936, 2.0),
+                '3-sides-top-protected: Am = P - b',
+                '936 mm',
+                `${result2.Am.toFixed(0)} mm`,
+                2.0
+            );
+            assert(
+                approxEqual(result2.AmV_base, 173.9, 1.0),
+                '3-sides-top-protected: AmV_base',
+                '173.9 m⁻¹',
+                `${result2.AmV_base.toFixed(1)} m⁻¹`,
+                1.0
+            );
+            assert(
+                approxEqual(result2.AmV, 156.5, 1.0),
+                '3-sides-top-protected: AmV_effective',
+                '156.5 m⁻¹',
+                `${result2.AmV.toFixed(1)} m⁻¹`,
+                1.0
+            );
+
+            // Test 4: New config - HEA200, 3-sides-left-protected, k_sh=0.9
+            console.log('\n--- Test 4: 3-sides-left-protected (k_sh=0.9) ---');
+            const result3 = calculateSectionFactor(hea200, '3-sides-left-protected', 'hea', 0.9);
+            console.log('Result:', result3);
+            assert(
+                approxEqual(result3.Am, 732, 2.0),
+                '3-sides-left-protected: Am = P - h_side',
+                '732 mm',
+                `${result3.Am.toFixed(0)} mm`,
+                2.0
+            );
+            assert(
+                approxEqual(result3.AmV_base, 136.0, 1.0),
+                '3-sides-left-protected: AmV_base',
+                '136.0 m⁻¹',
+                `${result3.AmV_base.toFixed(1)} m⁻¹`,
+                1.0
+            );
+            assert(
+                approxEqual(result3.AmV, 122.4, 1.0),
+                '3-sides-left-protected: AmV_effective',
+                '122.4 m⁻¹',
+                `${result3.AmV.toFixed(1)} m⁻¹`,
+                1.0
+            );
+
+            // Test 5: Example 4 - HEA200, 1-side-bottom, k_sh should be 1.0
+            console.log('\n--- Test 5: Example 4 (1-side-bottom, k_sh override) ---');
+            const result4 = calculateSectionFactor(hea200, '1-side-bottom', 'hea', 0.9);
+            console.log('Result:', result4);
+            assert(
+                result4.k_sh === 1.0,
+                'Example 4: Shadow factor overridden to 1.0',
+                '1.0',
+                `${result4.k_sh}`
+            );
+            assert(
+                approxEqual(result4.Am, 200, 1.0),
+                'Example 4: Am (bottom flange)',
+                '200 mm',
+                `${result4.Am.toFixed(0)} mm`,
+                1.0
+            );
+            assert(
+                approxEqual(result4.AmV, 37.0, 1.0),
+                'Example 4: AmV_effective (no shadow applied)',
+                '37.0 m⁻¹',
+                `${result4.AmV.toFixed(1)} m⁻¹`,
+                1.0
+            );
+
+            // Test 6: RHS hollow section - k_sh should be 1.0
+            console.log('\n--- Test 6: Hollow section (RHS) - k_sh override ---');
+            const rhs = window.structuralSteelDatabase.hrhs[0];  // Get first RHS
+            console.log('Testing with:', rhs.designation);
+            const result5 = calculateSectionFactor(rhs, '4-sides', 'hrhs', 0.9);
+            console.log('Result:', result5);
+            assert(
+                result5.k_sh === 1.0,
+                'RHS: Shadow factor overridden to 1.0',
+                '1.0',
+                `${result5.k_sh}`
+            );
+            assert(
+                result5.AmV === result5.AmV_base,
+                'RHS: AmV equals AmV_base (no shadow)',
+                'AmV = AmV_base',
+                `${result5.AmV.toFixed(1)} = ${result5.AmV_base.toFixed(1)}`
+            );
+
+            // Test 7: Geometry check - HEA200 h_side used in 2-sided
+            console.log('\n--- Test 7: Verify h_side usage in calculations ---');
+            assert(
+                result3.h_side !== null,
+                'h_side is calculated for I/H sections',
+                'not null',
+                `${result3.h_side ? result3.h_side.toFixed(1) : 'null'} mm`
+            );
+            assert(
+                approxEqual(result3.h_side, 404.0, 1.0),
+                'h_side matches expected value',
+                '404.0 mm',
+                `${result3.h_side.toFixed(1)} mm`,
+                1.0
+            );
+
+            // Test 8: New config - HEA200, 2-sides-left-top-protected
+            console.log('\n--- Test 8: 2-sides-left-top-protected (k_sh=0.9) ---');
+            const result6 = calculateSectionFactor(hea200, '2-sides-left-top-protected', 'hea', 0.9);
+            console.log('Result:', result6);
+            assert(
+                approxEqual(result6.Am, 532, 2.0),
+                '2-sides-left-top-protected: Am = P - h_side - b',
+                '532 mm',
+                `${result6.Am.toFixed(0)} mm`,
+                2.0
+            );
+            assert(
+                approxEqual(result6.AmV_base, 98.8, 1.0),
+                '2-sides-left-top-protected: AmV_base',
+                '98.8 m⁻¹',
+                `${result6.AmV_base.toFixed(1)} m⁻¹`,
+                1.0
+            );
+            assert(
+                approxEqual(result6.AmV, 88.9, 1.0),
+                '2-sides-left-top-protected: AmV_effective',
+                '88.9 m⁻¹',
+                `${result6.AmV.toFixed(1)} m⁻¹`,
+                1.0
+            );
+
+            // Test 9: New config - HEA200, 1-side-side
+            console.log('\n--- Test 9: 1-side-side (k_sh override to 1.0) ---');
+            const result7 = calculateSectionFactor(hea200, '1-side-side', 'hea', 0.9);
+            console.log('Result:', result7);
+            assert(
+                approxEqual(result7.Am, 404.0, 1.0),
+                '1-side-side: Am = h_side',
+                '404.0 mm',
+                `${result7.Am.toFixed(1)} mm`,
+                1.0
+            );
+            assert(
+                result7.k_sh === 1.0,
+                '1-side-side: k_sh overridden to 1.0',
+                '1.0',
+                `${result7.k_sh}`
+            );
+            assert(
+                approxEqual(result7.AmV, 75.0, 1.0),
+                '1-side-side: AmV_effective',
+                '75.0 m⁻¹',
+                `${result7.AmV.toFixed(1)} m⁻¹`,
+                1.0
+            );
+
+            // Display results
+            displayResults();
+        }
+
+        function displayResults() {
+            const resultsDiv = document.getElementById('test-results');
+            const summaryDiv = document.getElementById('summary');
+
+            let html = '<h2>Test Results</h2>';
+
+            testResults.forEach(result => {
+                const className = result.pass ? 'pass' : 'fail';
+                const icon = result.pass ? '✓' : '✗';
+                html += `
+                    <div class="test-result ${className}">
+                        <strong>${icon} ${result.testName}</strong><br>
+                        <span class="expected">Expected: ${result.expected}</span><br>
+                        <span class="actual">Actual: ${result.actual}</span>
+                    </div>
+                `;
+            });
+
+            resultsDiv.innerHTML = html;
+
+            const totalTests = passCount + failCount;
+            const passRate = ((passCount / totalTests) * 100).toFixed(1);
+
+            summaryDiv.innerHTML = `
+                <h2>Summary</h2>
+                <p><strong>Total Tests:</strong> ${totalTests}</p>
+                <p><strong>Passed:</strong> ${passCount} (${passRate}%)</p>
+                <p><strong>Failed:</strong> ${failCount}</p>
+                <p><strong>Status:</strong> ${failCount === 0 ? '✅ All tests passed!' : '❌ Some tests failed'}</p>
+            `;
+
+            console.log(`\n=== Test Summary ===`);
+            console.log(`Total: ${totalTests}, Passed: ${passCount}, Failed: ${failCount}`);
+            console.log(`Pass rate: ${passRate}%`);
+        }
+
+        // Run tests when page loads
+        window.addEventListener('load', () => {
+            setTimeout(runTests, 500);  // Small delay to ensure database loads
+        });
+    </script>
+</body>
+</html>
