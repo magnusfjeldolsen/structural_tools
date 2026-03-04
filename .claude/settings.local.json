@@ -44,7 +44,16 @@
       "Bash(git ls-tree:*)",
       "Bash(echo:*)",
       "Bash(curl:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(done)",
+      "Bash(grep:*)",
+      "Bash(git fetch:*)",
+      "Bash(npm run dev:serve:*)",
+      "Bash(python3:*)",
+      "Bash(C:/Users/magnus/AppData/Local/Programs/Python/Python39/python.exe:*)",
+      "Bash(Start-Process:*)",
+      "Bash(cmd:*)",
+      "Bash(1)"
     ],
     "deny": [],
     "ask": [],

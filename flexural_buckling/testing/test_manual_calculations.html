@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual Calculations Verification Test</title>
+  <style>
+    body {
+      font-family: 'Consolas', 'Monaco', monospace;
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 20px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+    }
+    h1 {
+      color: #4ec9b0;
+      border-bottom: 2px solid #4ec9b0;
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: #dcdcaa;
+      margin-top: 30px;
+    }
+    .test-case {
+      background: #252526;
+      border-left: 4px solid #007acc;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+    .test-case.passed {
+      border-left-color: #4ec9b0;
+    }
+    .test-case.failed {
+      border-left-color: #f48771;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0;
+      background: #2d2d30;
+    }
+    th, td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #3e3e42;
+    }
+    th {
+      background: #37373d;
+      color: #dcdcaa;
+      font-weight: 600;
+    }
+    .pass {
+      color: #4ec9b0;
+      font-weight: bold;
+    }
+    .fail {
+      color: #f48771;
+      font-weight: bold;
+    }
+    .warning {
+      color: #ce9178;
+      font-weight: bold;
+    }
+    .metric {
+      display: inline-block;
+      background: #37373d;
+      padding: 5px 10px;
+      margin: 5px;
+      border-radius: 3px;
+    }
+    .summary {
+      background: #37373d;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 20px 0;
+    }
+    .code {
+      background: #1e1e1e;
+      padding: 10px;
+      border-radius: 3px;
+      overflow-x: auto;
+      font-size: 0.9em;
+    }
+    .error-box {
+      background: #3d1f1f;
+      border: 1px solid #f48771;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>📊 Manual Calculations Verification Test</h1>
+<p><strong>Reference:</strong> flexural_buckling/smath/manual_effective_sections_calculations.pdf</p>
+<p><strong>Date:</strong> 2026-03-04</p>
+
+<div class="summary">
+  <h2>🎯 Objective</h2>
+  <p>Verify that the <code>flexural_buckling_api.js</code> implementation matches manual calculations from SMath Studio for Class 4 effective properties.</p>
+  <p>Key parameter: <strong>ρ (rho)</strong> - reduction factor that determines how much of the plate remains effective</p>
+  <ul>
+    <li>ρ = 1.0 → Fully effective (no removal)</li>
+    <li>ρ = 0.5 → 50% effective (half removed)</li>
+    <li>ρ = 0.0 → Completely ineffective (all removed)</li>
+  </ul>
+</div>
+
+<h2>📋 Test Cases</h2>
+
+<!-- Test Case 1: IPE450 -->
+<div class="test-case failed">
+  <h3>Test Case 1: IPE450 S460 - Pure Compression ❌</h3>
+
+  <p><strong>Section:</strong> IPE450, h=450mm, b=190mm, tw=9.4mm, tf=14.6mm, r=21mm</p>
+  <p><strong>Steel:</strong> S460 (fy = 460 MPa)</p>
+  <p><strong>Element:</strong> Web (internal compression element)</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Parameter</th>
+        <th>Manual (PDF)</th>
+        <th>Current Code</th>
+        <th>Error</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>ε (epsilon)</td>
+        <td>0.7148</td>
+        <td>0.7148</td>
+        <td class="pass">0.0%</td>
+        <td class="pass">✓</td>
+      </tr>
+      <tr>
+        <td>bp (web height)</td>
+        <td>378.8 mm</td>
+        <td>378.8 mm</td>
+        <td class="pass">0.0%</td>
+        <td class="pass">✓</td>
+      </tr>
+      <tr>
+        <td>tp (web thickness)</td>
+        <td>9.4 mm</td>
+        <td>9.4 mm</td>
+        <td class="pass">0.0%</td>
+        <td class="pass">✓</td>
+      </tr>
+      <tr>
+        <td>bp/tp</td>
+        <td>40.298</td>
+        <td>40.298</td>
+        <td class="pass">0.0%</td>
+        <td class="pass">✓</td>
+      </tr>
+      <tr>
+        <td>λ_p (slenderness)</td>
+        <td>0.9926</td>
+        <td>0.9926</td>
+        <td class="pass">0.0%</td>
+        <td class="pass">✓</td>
+      </tr>
+      <tr style="background: #3d1f1f;">
+        <td><strong>ρ (reduction factor)</strong></td>
+        <td><strong>0.9516</strong></td>
+        <td><strong>0.6229</strong></td>
+        <td class="fail">34.5%</td>
+        <td class="fail">✗</td>
+      </tr>
+      <tr>
+        <td>b_eff (effective width)</td>
+        <td>360.5 mm</td>
+        <td>235.9 mm</td>
+        <td class="fail">34.5%</td>
+        <td class="fail">✗</td>
+      </tr>
+      <tr>
+        <td>A_removed (removed area)</td>
+        <td>172.3 mm²</td>
+        <td>1342.9 mm²</td>
+        <td class="fail">679.6%</td>
+        <td class="fail">✗</td>
+      </tr>
+      <tr style="background: #3d1f1f;">
+        <td><strong>A_eff (effective area)</strong></td>
+        <td><strong>9709.7 mm²</strong></td>
+        <td><strong>8539.1 mm²</strong></td>
+        <td class="fail">-12.1%</td>
+        <td class="fail">✗</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="error-box">
+    <strong>⚠️ Critical Issue:</strong> The code removes <strong>680% more material</strong> than it should!
+    This causes the section capacity to be <strong>under-estimated by 12.1%</strong>.
+  </div>
+</div>
+
+<!-- Test Case 2: IPE240 -->
+<div class="test-case failed">
+  <h3>Test Case 2: IPE240 S460 - Pure Compression ❌</h3>
+
+  <p><strong>Section:</strong> IPE240, h=240mm, b=120mm, tw=6.2mm, tf=9.8mm, r=15mm</p>
+  <p><strong>Expected:</strong> Class 4 but ρ ≈ 1.0 (no reduction, or possibly Class 3)</p>
+  <p><strong>Actual:</strong> ρ = 0.7673, removes 2.75 cm²</p>
+
+  <div class="error-box">
+    <strong>⚠️ Issue:</strong> Section should be fully effective (ρ = 1.0) but code applies 23% reduction.
+  </div>
+</div>
+
+<!-- Test Case 3: CSHS100X3 -->
+<div class="test-case failed">
+  <h3>Test Case 3: CSHS100X3 S460 - All 4 Sides ❌</h3>
+
+  <p><strong>Section:</strong> CSHS100X3, b=100mm, t=3mm, ro=6mm</p>
+  <p><strong>Steel:</strong> S460 (fy = 460 MPa)</p>
+  <p><strong>Element:</strong> All 4 internal sides (flanges + webs)</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Parameter</th>
+        <th>Manual (PDF)</th>
+        <th>Current Code</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>bp (flat width)</td>
+        <td>88 mm (b - 2×ro)</td>
+        <td>91 mm (?)</td>
+        <td class="warning">⚠️</td>
+      </tr>
+      <tr>
+        <td>λ_p</td>
+        <td>0.7225</td>
+        <td>1.0105</td>
+        <td class="fail">✗</td>
+      </tr>
+      <tr style="background: #3d1f1f;">
+        <td><strong>ρ</strong></td>
+        <td><strong>1.0 (fully effective)</strong></td>
+        <td><strong>0.7742</strong></td>
+        <td class="fail">✗</td>
+      </tr>
+      <tr>
+        <td>A_removed</td>
+        <td>0 mm²</td>
+        <td>2.47 cm²</td>
+        <td class="fail">✗</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="error-box">
+    <strong>⚠️ Issue:</strong> Section is just barely Class 4 (λ_p = 0.7225 vs limit 0.6732),
+    which triggers ρ = 1.0 (fully effective). Code incorrectly reduces by 22.6%.
+  </div>
+</div>
+
+<!-- Test Case 4: CSHS180X4 -->
+<div class="test-case failed">
+  <h3>Test Case 4: CSHS180X4 S460 - All 4 Sides ❌</h3>
+
+  <p><strong>Section:</strong> CSHS180X4, b=180mm, t=4mm, ro=8mm</p>
+  <p><strong>Steel:</strong> S460 (fy = 460 MPa)</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Parameter</th>
+        <th>Manual (PDF)</th>
+        <th>Current Code</th>
+        <th>Error</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>bp (flat width)</td>
+        <td>164 mm</td>
+        <td>168 mm</td>
+        <td class="warning">2.4%</td>
+        <td class="warning">⚠️</td>
+      </tr>
+      <tr>
+        <td>λ_p</td>
+        <td>1.0099</td>
+        <td>1.3991</td>
+        <td class="fail">38.5%</td>
+        <td class="fail">✗</td>
+      </tr>
+      <tr style="background: #3d1f1f;">
+        <td><strong>ρ</strong></td>
+        <td><strong>0.9363</strong></td>
+        <td><strong>0.6024</strong></td>
+        <td class="fail">35.7%</td>
+        <td class="fail">✗</td>
+      </tr>
+      <tr>
+        <td>A_removed (per side)</td>
+        <td>41.8 mm²</td>
+        <td>267.2 mm²</td>
+        <td class="fail">539%</td>
+        <td class="fail">✗</td>
+      </tr>
+      <tr>
+        <td>A_removed (total, 4 sides)</td>
+        <td>167.2 mm²</td>
+        <td>1068.9 mm²</td>
+        <td class="fail">539%</td>
+        <td class="fail">✗</td>
+      </tr>
+      <tr style="background: #3d1f1f;">
+        <td><strong>A_eff (effective area)</strong></td>
+        <td><strong>2607.8 mm²</strong></td>
+        <td><strong>1706.1 mm²</strong></td>
+        <td class="fail">-34.6%</td>
+        <td class="fail">✗</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="error-box">
+    <strong>⚠️ Critical Issue:</strong> The code removes <strong>539% more material</strong> than it should!
+    This causes the section capacity to be <strong>under-estimated by 35%</strong>.
+  </div>
+</div>
+
+<!-- Summary -->
+<div class="summary" style="background: #3d1f1f; border: 2px solid #f48771;">
+  <h2>❌ Test Summary: FAILED</h2>
+  <div class="metric">Total Tests: 4</div>
+  <div class="metric" style="background: #f48771; color: #000;">Passed: 0</div>
+  <div class="metric" style="background: #f48771; color: #000;">Failed: 4</div>
+  <div class="metric">Success Rate: 0%</div>
+</div>
+
+<!-- Root Cause -->
+<h2>🔍 Root Cause</h2>
+<div class="code">
+<strong>The Problem:</strong> Code uses EN 1993-1-1 lambda for EN 1993-1-5 rho formula
+
+<strong>Current code (WRONG):</strong>
+const lambda_p_bar = (c/t) / (42 × ε);         // EN 1993-1-1
+const rho = (lambda_p_bar - 0.22) / lambda_p_bar²;  // EN 1993-1-5 formula with wrong lambda!
+
+<strong>Should be:</strong>
+const lambda_p = (c/t) / (28.4 × ε × sqrt(k_σ));    // EN 1993-1-5
+const rho = (lambda_p - 0.22) / lambda_p²;          // EN 1993-1-5 formula with correct lambda
+</div>
+
+<h2>📊 Impact Analysis</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Section</th>
+      <th>Correct A_eff</th>
+      <th>Current A_eff</th>
+      <th>Capacity Loss</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #3d1f1f;">
+      <td>IPE450 S460</td>
+      <td>9709.7 mm²</td>
+      <td>8539.1 mm²</td>
+      <td class="fail">-12.1%</td>
+    </tr>
+    <tr style="background: #3d1f1f;">
+      <td>CSHS180X4 S460</td>
+      <td>2607.8 mm²</td>
+      <td>1706.1 mm²</td>
+      <td class="fail">-34.6%</td>
+    </tr>
+    <tr style="background: #3d1f1f;">
+      <td>CSHS100X3 S460</td>
+      <td>1139 mm² (full)</td>
+      <td>891.4 mm²</td>
+      <td class="fail">-21.7%</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="error-box" style="margin-top: 30px;">
+  <h2>⚠️ CRITICAL - DO NOT USE IN PRODUCTION</h2>
+  <p>This bug causes <strong>10-35% under-estimation</strong> of column capacity for Class 4 sections.</p>
+  <p><strong>Action required:</strong> Fix the lambda formula in <code>calculateClass4EffectiveProperties()</code>
+  to use EN 1993-1-5 before using this module in production.</p>
+  <p><strong>See:</strong> <code>testing/CRITICAL_BUG_FOUND.md</code> and <code>testing/TEST_SUITE_SUMMARY.md</code> for details.</p>
+</div>
+
+<script>
+console.log('📊 Manual Calculations Verification Test');
+console.log('❌ All 4 tests FAILED');
+console.log('🔍 Root cause: Wrong lambda formula used for rho calculation');
+console.log('📄 See CRITICAL_BUG_FOUND.md for fix details');
+</script>
+
+</body>
+</html>
