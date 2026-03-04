@@ -43,6 +43,9 @@ function setupEventListeners() {
     radio.addEventListener('change', updateFireModeVisibility);
   });
 
+  // Am/V filter checkbox
+  document.getElementById('amv-filter-enabled').addEventListener('change', updateAmVFilterInputsVisibility);
+
   // Form submission
   document.getElementById('buckling-form').addEventListener('submit', handleFormSubmit);
 
@@ -223,6 +226,17 @@ function updateFireModeVisibility() {
   }
 }
 
+function updateAmVFilterInputsVisibility() {
+  const amvFilterEnabled = document.getElementById('amv-filter-enabled').checked;
+  const amvFilterInputsDiv = document.getElementById('amv-filter-inputs');
+
+  if (amvFilterEnabled) {
+    amvFilterInputsDiv.classList.remove('hidden');
+  } else {
+    amvFilterInputsDiv.classList.add('hidden');
+  }
+}
+
 // ============================================================================
 // FORM SUBMISSION AND CALCULATIONS
 // ============================================================================
@@ -244,7 +258,11 @@ async function handleFormSubmit(event) {
     fireEnabled: document.getElementById('fire-enabled').checked,
     fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
     NEd_fire: document.getElementById('NEd-fire').value,
-    temperature: document.getElementById('temperature').value
+    temperature: document.getElementById('temperature').value,
+    amvFilterEnabled: document.getElementById('amv-filter-enabled').checked,
+    exposureConfig: document.getElementById('exposure-config').value,
+    shadowFactor: document.getElementById('shadow-factor').value,
+    maxAmV: document.getElementById('max-amv').value
   };
 
   // Validate inputs
@@ -286,7 +304,11 @@ async function handleFindLightestSection(event) {
     fireEnabled: document.getElementById('fire-enabled').checked,
     fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
     NEd_fire: document.getElementById('NEd-fire').value,
-    temperature: document.getElementById('temperature').value
+    temperature: document.getElementById('temperature').value,
+    amvFilterEnabled: document.getElementById('amv-filter-enabled').checked,
+    exposureConfig: document.getElementById('exposure-config').value,
+    shadowFactor: document.getElementById('shadow-factor').value,
+    maxAmV: document.getElementById('max-amv').value
   };
 
   // Validate profile type is selected
@@ -360,7 +382,11 @@ async function handleFindLightestSection(event) {
     fireEnabled: document.getElementById('fire-enabled').checked,
     fireMode: document.querySelector('input[name="fire-mode"]:checked').value,
     NEd_fire: document.getElementById('NEd-fire').value,
-    temperature: document.getElementById('temperature').value
+    temperature: document.getElementById('temperature').value,
+    amvFilterEnabled: document.getElementById('amv-filter-enabled').checked,
+    exposureConfig: document.getElementById('exposure-config').value,
+    shadowFactor: document.getElementById('shadow-factor').value,
+    maxAmV: document.getElementById('max-amv').value
   };
 
   // Perform the calculation
@@ -951,6 +977,13 @@ function generateDetailedReport(results, inputs) {
     if (inputs.fireMode === 'specify') {
       html += `<div><span class="text-gray-600">θ (Temperature) =</span> <span class="font-semibold">${results.inputs.temperature_C} °C</span></div>`;
     }
+    // Add Am/V information if filter enabled
+    if (inputs.amvFilterEnabled && results.amvResult) {
+      html += `<div class="pt-2 border-t border-gray-300"><span class="text-gray-600">Am/V Filter:</span> <span class="font-semibold">Enabled</span></div>`;
+      html += `<div><span class="text-gray-600">Exposure:</span> <span class="font-semibold">${results.amvResult.description}</span></div>`;
+      html += `<div><span class="text-gray-600">k<sub>sh</sub> =</span> <span class="font-semibold">${toFixedIfNeeded(results.amvResult.k_sh, 2)}</span>${results.amvResult.shadowNote ? ' <span class="text-xs text-gray-500">(auto)</span>' : ''}</div>`;
+      html += `<div><span class="text-gray-600">Am/V =</span> <span class="font-semibold">${toFixedIfNeeded(results.amvResult.AmV, 1)} m<sup>-1</sup></span> <span class="text-xs text-gray-500">(max: ${toFixedIfNeeded(inputs.maxAmV, 0)} m<sup>-1</sup>)</span></div>`;
+    }
   }
   html += '</div></div>';
   html += '</div></div>';
@@ -1117,6 +1150,27 @@ function generateDetailedReport(results, inputs) {
       html += `<p class="text-sm mb-1">φ<sub>z,θ</sub> = 0.5[1 + α(λ̄<sub>z,θ</sub> - 0.2) + λ̄<sub>z,θ</sub>²] = ${toFixedIfNeeded(fire.phi_z, 3)}</p>`;
       html += `<p class="text-sm">χ<sub>z,θ</sub> = 1 / (φ<sub>z,θ</sub> + √(φ<sub>z,θ</sub>² - λ̄<sub>z,θ</sub>²)) = ${toFixedIfNeeded(fire.chi_z, 3)}</p>`;
       html += '</div>';
+
+      // Am/V Section Factor Calculation (if filter enabled)
+      if (inputs.amvFilterEnabled && results.amvResult) {
+        html += '<div class="bg-blue-50 rounded-lg p-4 mb-4 border-l-4 border-blue-500">';
+        html += '<h4 class="font-semibold text-gray-800 mb-2">Section Factor (Am/V) Calculation:</h4>';
+        html += `<p class="text-sm mb-1">Exposure configuration: ${results.amvResult.description}</p>`;
+        html += `<p class="text-sm mb-1">Exposed perimeter: Am = ${toFixedIfNeeded(results.amvResult.Am, 1)} mm</p>`;
+        html += `<p class="text-sm mb-1">Cross-sectional area: A = ${toFixedIfNeeded(sectionUsedReport.area * 100, 1)} mm² <span class="text-xs text-gray-600">(= ${toFixedIfNeeded(sectionUsedReport.area, 2)} cm² × 100)</span></p>`;
+        html += `<p class="text-sm mb-1">Am/V<sub>base</sub> = Am / A × 1000 = ${toFixedIfNeeded(results.amvResult.Am, 1)} / ${toFixedIfNeeded(sectionUsedReport.area * 100, 1)} × 1000 = ${toFixedIfNeeded(results.amvResult.AmV_base, 1)} m<sup>-1</sup></p>`;
+        html += `<p class="text-sm mb-1">Shadow factor: k<sub>sh</sub> = ${toFixedIfNeeded(results.amvResult.k_sh, 2)}`;
+        if (results.amvResult.shadowNote) {
+          html += ` <span class="text-xs text-gray-600">(${results.amvResult.shadowNote})</span>`;
+        }
+        html += `</p>`;
+        html += `<p class="text-sm font-semibold">Am/V<sub>effective</sub> = k<sub>sh</sub> × Am/V<sub>base</sub> = ${toFixedIfNeeded(results.amvResult.k_sh, 2)} × ${toFixedIfNeeded(results.amvResult.AmV_base, 1)} = ${toFixedIfNeeded(results.amvResult.AmV, 1)} m<sup>-1</sup></p>`;
+
+        const passesAmV = results.amvResult.AmV <= parseFloat(inputs.maxAmV);
+        const statusColor = passesAmV ? 'text-green-700' : 'text-red-700';
+        html += `<p class="text-sm mt-2 ${statusColor}">Maximum allowed: ${toFixedIfNeeded(inputs.maxAmV, 0)} m<sup>-1</sup> → ${passesAmV ? '✓ PASS' : '✗ EXCEEDS LIMIT'}</p>`;
+        html += '</div>';
+      }
 
       // Fire Resistance
       html += '<div class="bg-orange-50 rounded-lg p-4 border-l-4 border-orange-500">';
@@ -1295,7 +1349,13 @@ function collectFormState() {
     fireEnabled: document.getElementById('fire-enabled').checked,
     NEd_fire: document.getElementById('NEd-fire').value,
     fireMode: document.querySelector('input[name="fire-mode"]:checked')?.value || 'specify',
-    temperature: document.getElementById('temperature').value
+    temperature: document.getElementById('temperature').value,
+
+    // Am/V filter
+    amvFilterEnabled: document.getElementById('amv-filter-enabled').checked,
+    exposureConfig: document.getElementById('exposure-config').value,
+    shadowFactor: document.getElementById('shadow-factor').value,
+    maxAmV: document.getElementById('max-amv').value
   };
 
   return formState;
@@ -1362,6 +1422,15 @@ function applyFormState(formState) {
       }
     }
     if (formState.temperature) document.getElementById('temperature').value = formState.temperature;
+
+    // Apply Am/V filter settings
+    if (formState.amvFilterEnabled !== undefined) {
+      document.getElementById('amv-filter-enabled').checked = formState.amvFilterEnabled;
+      updateAmVFilterInputsVisibility();
+    }
+    if (formState.exposureConfig) document.getElementById('exposure-config').value = formState.exposureConfig;
+    if (formState.shadowFactor) document.getElementById('shadow-factor').value = formState.shadowFactor;
+    if (formState.maxAmV) document.getElementById('max-amv').value = formState.maxAmV;
 
   } catch (error) {
     console.error('Failed to apply form state:', error);
