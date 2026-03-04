@@ -13,12 +13,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Setup event listeners
   setupEventListeners();
 
-  // Load saved state from localStorage
+  // Load saved state from localStorage (this will also update UI visibility)
   loadFormStateFromLocalStorage();
-
-  // Initialize form state
-  updateFireInputsVisibility();
-  updateFireModeVisibility();
 });
 
 // ============================================================================
@@ -1262,6 +1258,11 @@ function loadFormStateFromLocalStorage() {
     if (savedState) {
       const formState = JSON.parse(savedState);
       applyFormState(formState);
+    } else {
+      // No saved state - initialize UI visibility based on default values
+      updateFireInputsVisibility();
+      updateFireModeVisibility();
+      updateAmVFilterInputsVisibility();
     }
   } catch (error) {
     console.error('Failed to load from localStorage:', error);
@@ -1418,9 +1419,10 @@ function applyFormState(formState) {
       const fireModeRadio = document.querySelector(`input[name="fire-mode"][value="${formState.fireMode}"]`);
       if (fireModeRadio) {
         fireModeRadio.checked = true;
-        updateFireModeVisibility();
       }
     }
+    // Always update visibility to match current radio state
+    updateFireModeVisibility();
     if (formState.temperature) document.getElementById('temperature').value = formState.temperature;
 
     // Apply Am/V filter settings
