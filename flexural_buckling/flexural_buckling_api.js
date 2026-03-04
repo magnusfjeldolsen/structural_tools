@@ -827,15 +827,70 @@ function calculateNeutralAxisShift(A_gross, removedStrips) {
 }
 
 /**
+ * Get buckling coefficient k_σ from EN 1993-1-5 Table 4.1/4.2
+ *
+ * @param {string} elementType - 'internal', 'outstand', or 'circular'
+ * @param {number} psi - Stress ratio ψ (-1 to +1)
+ * @returns {number} Buckling coefficient k_σ
+ *
+ * Reference: EN 1993-1-5 Table 4.1 "Buckling factors k_σ for internal compression elements"
+ *            EN 1993-1-5 Table 4.2 "Buckling factors k_σ for outstand compression elements"
+ */
+function getBucklingCoefficient(elementType, psi) {
+  if (elementType === 'internal') {
+    // EN 1993-1-5 Table 4.1, Part 1: Internal compression elements
+    if (psi === 1.0) {
+      // Pure compression (bottom of table 4.1)
+      return 4.0;
+    } else if (psi > 0) {
+      // Compression with stress gradient (0 < ψ ≤ 1)
+      return 8.2 / (1.05 + psi);
+    } else if (psi === 0) {
+      // Compression on one edge, zero on other (ψ = 0)
+      return 7.81;
+    } else {
+      // Bending (ψ < 0)
+      // For -1 ≤ ψ < 0: k_σ = 7.81 - 6.29ψ + 9.78ψ²
+      return 7.81 - 6.29 * psi + 9.78 * psi * psi;
+    }
+  } else if (elementType === 'outstand') {
+    // EN 1993-1-5 Table 4.2: Outstand compression elements
+    if (psi >= 0) {
+      // Compression (including pure compression and stress gradient)
+      return 0.43;
+    } else {
+      // Bending (ψ < 0)
+      // For -1 ≤ ψ < 0: k_σ = 0.57 - 0.21ψ + 0.07ψ²
+      return 0.57 - 0.21 * psi + 0.07 * psi * psi;
+    }
+  } else if (elementType === 'circular') {
+    // Circular hollow sections - approximate as internal element
+    // EN 1993-1-6 provides more accurate formulas, but for now use internal element approach
+    if (psi === 1.0) {
+      return 4.0;
+    } else if (psi > 0) {
+      return 8.2 / (1.05 + psi);
+    } else {
+      return 7.81 - 6.29 * psi + 9.78 * psi * psi;
+    }
+  }
+
+  // Fallback (should not reach here)
+  console.warn(`Unknown element type: ${elementType}, using k_σ = 4.0`);
+  return 4.0;
+}
+
+/**
  * Calculate effective section properties for Class 4 sections
  * Uses plate_elements metadata and parallel axis theorem
  *
  * @param {Object} section - Section properties with plate_elements
  * @param {Object} classification - Classification results
  * @param {string} profileType - Profile type identifier
+ * @param {number} fy - Yield strength in N/mm² (MPa)
  * @returns {Object} Effective section properties
  */
-function calculateClass4EffectiveProperties(section, classification, profileType) {
+function calculateClass4EffectiveProperties(section, classification, profileType, fy) {
 
   // For pure compression: ψ = 1.0 (uniform compression on both edges)
   const psi = 1.0;
@@ -846,7 +901,7 @@ function calculateClass4EffectiveProperties(section, classification, profileType
   // Check if section has plate_elements metadata
   if (!section.plate_elements) {
     console.warn(`Section ${section.profile} missing plate_elements metadata. Using fallback calculation.`);
-    return calculateClass4EffectivePropertiesFallback(section, classification, profileType);
+    return calculateClass4EffectivePropertiesFallback(section, classification, profileType, fy);
   }
 
   console.log(`[Class 4 Calc] Starting for ${section.profile}`);
@@ -867,25 +922,56 @@ function calculateClass4EffectiveProperties(section, classification, profileType
 
     console.log(`[Class 4 Calc] Found Class 4 element: ${element.id}`);
 
-    const slenderness = element.slenderness;
+    const slenderness = element.slenderness;  // c/t
     const elementType = element.type;
-    const limit_class3 = element.limit_class3;
-    const lambda_p_bar = slenderness / limit_class3;
 
-    // Calculate reduction factor ρ
+    // Calculate epsilon (material factor)
+    const epsilon = Math.sqrt(235 / fy);
+
+    // Get buckling coefficient from EN 1993-1-5 Table 4.1/4.2
+    const k_sigma = getBucklingCoefficient(elementType, psi);
+
+    // Calculate plate slenderness λ_p per EN 1993-1-5 Section 4.4
+    // λ_p = (c/t) / (28.4 × ε × sqrt(k_σ))
+    const lambda_p = slenderness / (28.4 * epsilon * Math.sqrt(k_sigma));
+
+    // Calculate reduction factor ρ per EN 1993-1-5 Section 4.4
     let rho;
-    if (elementType === 'internal') {
-      rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
+    if (elementType === 'internal' || elementType === 'circular') {
+      // EN 1993-1-5 Section 4.4(2): For internal compression elements
+      // Check if λ_p exceeds the limit
+      const lambda_p_limit = 0.5 + Math.sqrt(0.085 - 0.055 * psi);
+
+      if (lambda_p <= lambda_p_limit) {
+        // No reduction needed
+        rho = 1.0;
+      } else {
+        // ρ = (λ_p - 0.055·ψ) / λ_p² but ρ ≤ 1.0
+        // Note: This is NOT 0.055(3+ψ) - that's a different formula!
+        rho = (lambda_p - 0.055 * psi) / (lambda_p * lambda_p);
+        rho = Math.min(rho, 1.0);
+      }
     } else if (elementType === 'outstand') {
-      rho = (lambda_p_bar - 0.188) / (lambda_p_bar * lambda_p_bar);
-    } else if (elementType === 'circular') {
-      rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
+      // EN 1993-1-5 Section 4.4(2): For outstand compression elements
+      const lambda_p_limit = 0.748;  // For ψ = 1.0 (pure compression)
+
+      if (lambda_p <= lambda_p_limit) {
+        // No reduction needed
+        rho = 1.0;
+      } else {
+        // ρ = (λ_p - 0.188) / λ_p² but ρ ≤ 1.0
+        rho = (lambda_p - 0.188) / (lambda_p * lambda_p);
+        rho = Math.min(rho, 1.0);
+      }
     }
+
+    // IMPORTANT: Cap rho to [0, 1.0] for robustness
+    // This handles edge cases where lambda_p is close to the limit
     rho = Math.min(Math.max(rho, 0), 1.0);
 
     const c_eff = rho * element.c;
 
-    console.log(`[Class 4 Calc] Element ${element.id}: λ_p_bar=${lambda_p_bar.toFixed(3)}, ρ=${rho.toFixed(3)}, c=${element.c.toFixed(2)}mm, c_eff=${c_eff.toFixed(2)}mm`);
+    console.log(`[Class 4 Calc] Element ${element.id}: ε=${epsilon.toFixed(4)}, k_σ=${k_sigma.toFixed(2)}, λ_p=${lambda_p.toFixed(4)}, ρ=${rho.toFixed(4)}, c=${element.c.toFixed(2)}mm, c_eff=${c_eff.toFixed(2)}mm`);
 
     // Calculate removed strips using plate geometry
     const strips = calculateRemovedStrips(plate, element, rho, psi, section);
@@ -899,7 +985,9 @@ function calculateClass4EffectiveProperties(section, classification, profileType
       c_eff: c_eff,
       rho: rho,
       psi: psi,
-      lambda_p_bar: lambda_p_bar,
+      k_sigma: k_sigma,
+      lambda_p: lambda_p,  // EN 1993-1-5 lambda
+      epsilon: epsilon,
       strips_removed: strips.length
     });
   }
@@ -1007,7 +1095,7 @@ function calculateClass4EffectiveProperties(section, classification, profileType
  * Fallback calculation for sections without plate_elements metadata
  * Uses the old approximation method
  */
-function calculateClass4EffectivePropertiesFallback(section, classification, profileType) {
+function calculateClass4EffectivePropertiesFallback(section, classification, profileType, fy) {
   let A_eff = section.area;
   let removed_area = 0;
   const plateReductions = [];
@@ -1016,17 +1104,39 @@ function calculateClass4EffectivePropertiesFallback(section, classification, pro
   for (const element of classification.element_results) {
     if (element.class !== 4) continue;
 
-    const limit_class3 = element.limit_class3;
-    const lambda_p_bar = element.slenderness / limit_class3;
     const elementType = element.type;
 
+    // Calculate epsilon (material factor)
+    const epsilon = Math.sqrt(235 / fy);
+
+    // Get buckling coefficient from EN 1993-1-5 Table 4.1/4.2
+    const k_sigma = getBucklingCoefficient(elementType, psi);
+
+    // Calculate plate slenderness λ_p per EN 1993-1-5 Section 4.4
+    const lambda_p = element.slenderness / (28.4 * epsilon * Math.sqrt(k_sigma));
+
     let rho;
-    if (elementType === 'internal') {
-      rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
+    if (elementType === 'internal' || elementType === 'circular') {
+      // EN 1993-1-5 Section 4.4(2): For internal compression elements
+      const lambda_p_limit = 0.5 + Math.sqrt(0.085 - 0.055 * psi);
+
+      if (lambda_p <= lambda_p_limit) {
+        rho = 1.0;
+      } else {
+        // ρ = (λ_p - 0.055·ψ) / λ_p² but ρ ≤ 1.0
+        rho = (lambda_p - 0.055 * psi) / (lambda_p * lambda_p);
+        rho = Math.min(rho, 1.0);
+      }
     } else if (elementType === 'outstand') {
-      rho = (lambda_p_bar - 0.188) / (lambda_p_bar * lambda_p_bar);
-    } else {
-      rho = (lambda_p_bar - 0.055 * (3 + psi)) / (lambda_p_bar * lambda_p_bar);
+      // EN 1993-1-5 Section 4.4(2): For outstand compression elements
+      const lambda_p_limit = 0.748;
+
+      if (lambda_p <= lambda_p_limit) {
+        rho = 1.0;
+      } else {
+        rho = (lambda_p - 0.188) / (lambda_p * lambda_p);
+        rho = Math.min(rho, 1.0);
+      }
     }
     rho = Math.min(Math.max(rho, 0), 1.0);
 
@@ -1165,7 +1275,7 @@ function calculateBucklingResistance(section, Ly_m, Lz_m, fy_MPa, temperature_C,
     }
 
     // Calculate effective properties for Class 4 section
-    effectiveProperties = calculateClass4EffectiveProperties(section, classification, profileType);
+    effectiveProperties = calculateClass4EffectiveProperties(section, classification, profileType, fy_MPa);
     workingSection = effectiveProperties;
   }
 
