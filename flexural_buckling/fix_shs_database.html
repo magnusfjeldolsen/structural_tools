@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fix SHS Database - Add h Parameter</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 { color: #4ec9b0; }
+        h2 { color: #569cd6; margin-top: 30px; }
+        .section {
+            background: #252526;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            border: 1px solid #3e3e42;
+        }
+        pre {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            border: 1px solid #3e3e42;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #1177bb;
+        }
+        .success { color: #4caf50; }
+        .warning { color: #ff9800; }
+        .error { color: #f44336; }
+        .info { color: #2196f3; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Fix SHS Database - Add h Parameter</h1>
+
+    <div class="section">
+        <h2>Problem</h2>
+        <p>Square Hollow Sections (SHS) are missing the 'h' property in the database.</p>
+        <p>For square sections: <strong>h = b</strong> (height equals width by definition)</p>
+        <p>This causes Am/V calculations to fail for non-4-sided exposure configurations.</p>
+    </div>
+
+    <div class="section">
+        <h2>Solution</h2>
+        <p>This tool will add <code>h = b</code> to all SHS sections in the database.</p>
+        <button onclick="analyzeDatabase()">1. Analyze Database</button>
+        <button onclick="fixDatabase()">2. Fix Database (Add h)</button>
+        <button onclick="exportFixed()">3. Export Fixed JSON</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script src="flexural_buckling_api.js"></script>
+    <script>
+        let fixedDatabase = null;
+
+        function analyzeDatabase() {
+            const resultsDiv = document.getElementById('results');
+            let html = '<div class="section"><h2>📊 Analysis Results</h2>';
+
+            if (!window.structuralSteelDatabase) {
+                html += '<p class="error">❌ Database not loaded!</p></div>';
+                resultsDiv.innerHTML = html;
+                return;
+            }
+
+            // Analyze CSHS (Cold-formed SHS)
+            if (window.structuralSteelDatabase.cshs) {
+                html += '<h3 class="info">CSHS (Cold-formed Square Hollow Sections)</h3>';
+                const cshs = window.structuralSteelDatabase.cshs;
+                let missingH = 0;
+                let hasH = 0;
+                let mismatch = 0;
+
+                cshs.forEach(section => {
+                    if (!section.h && section.b) {
+                        missingH++;
+                    } else if (section.h && section.b) {
+                        hasH++;
+                        if (Math.abs(section.h - section.b) > 0.01) {
+                            mismatch++;
+                        }
+                    }
+                });
+
+                html += `<p>Total sections: ${cshs.length}</p>`;
+                html += `<p class="error">Missing 'h': ${missingH} sections</p>`;
+                html += `<p class="success">Has 'h': ${hasH} sections</p>`;
+                if (mismatch > 0) {
+                    html += `<p class="warning">⚠️ Mismatch (h ≠ b): ${mismatch} sections</p>`;
+                }
+            }
+
+            // Analyze HSHS (Hot-formed SHS)
+            if (window.structuralSteelDatabase.hshs) {
+                html += '<h3 class="info">HSHS (Hot-formed Square Hollow Sections)</h3>';
+                const hshs = window.structuralSteelDatabase.hshs;
+                let missingH = 0;
+                let hasH = 0;
+                let mismatch = 0;
+
+                hshs.forEach(section => {
+                    if (!section.h && section.b) {
+                        missingH++;
+                    } else if (section.h && section.b) {
+                        hasH++;
+                        if (Math.abs(section.h - section.b) > 0.01) {
+                            mismatch++;
+                        }
+                    }
+                });
+
+                html += `<p>Total sections: ${hshs.length}</p>`;
+                html += `<p class="error">Missing 'h': ${missingH} sections</p>`;
+                html += `<p class="success">Has 'h': ${hasH} sections</p>`;
+                if (mismatch > 0) {
+                    html += `<p class="warning">⚠️ Mismatch (h ≠ b): ${mismatch} sections</p>`;
+                }
+            }
+
+            // Show sample section missing h
+            if (window.structuralSteelDatabase.cshs) {
+                const sampleMissing = window.structuralSteelDatabase.cshs.find(s => !s.h && s.b);
+                if (sampleMissing) {
+                    html += '<h3 class="warning">Sample Section Missing h:</h3>';
+                    html += '<pre>' + JSON.stringify(sampleMissing, null, 2) + '</pre>';
+                }
+            }
+
+            html += '</div>';
+            resultsDiv.innerHTML = html;
+        }
+
+        function fixDatabase() {
+            const resultsDiv = document.getElementById('results');
+            let html = '<div class="section"><h2>🔧 Fixing Database</h2>';
+
+            if (!window.structuralSteelDatabase) {
+                html += '<p class="error">❌ Database not loaded!</p></div>';
+                resultsDiv.innerHTML = html;
+                return;
+            }
+
+            // Create deep copy of database
+            fixedDatabase = JSON.parse(JSON.stringify(window.structuralSteelDatabase));
+
+            let totalFixed = 0;
+
+            // Fix CSHS
+            if (fixedDatabase.cshs) {
+                let fixed = 0;
+                fixedDatabase.cshs.forEach(section => {
+                    if (!section.h && section.b) {
+                        section.h = section.b;
+                        fixed++;
+                    }
+                });
+                html += `<p class="success">✓ CSHS: Added h to ${fixed} sections</p>`;
+                totalFixed += fixed;
+            }
+
+            // Fix HSHS
+            if (fixedDatabase.hshs) {
+                let fixed = 0;
+                fixedDatabase.hshs.forEach(section => {
+                    if (!section.h && section.b) {
+                        section.h = section.b;
+                        fixed++;
+                    }
+                });
+                html += `<p class="success">✓ HSHS: Added h to ${fixed} sections</p>`;
+                totalFixed += fixed;
+            }
+
+            html += `<p class="success"><strong>✅ Total: Fixed ${totalFixed} sections</strong></p>`;
+
+            // Show sample fixed section
+            if (fixedDatabase.cshs) {
+                const sampleFixed = fixedDatabase.cshs.find(s => s.h && s.b && s.h === s.b);
+                if (sampleFixed) {
+                    html += '<h3 class="success">Sample Fixed Section:</h3>';
+                    html += '<pre>' + JSON.stringify(sampleFixed, null, 2) + '</pre>';
+                    html += `<p class="info">✓ Now has: h = ${sampleFixed.h}, b = ${sampleFixed.b}</p>`;
+                }
+            }
+
+            html += '<p class="info">📝 Next: Click "Export Fixed JSON" to download the corrected database</p>';
+            html += '</div>';
+            resultsDiv.innerHTML = html;
+        }
+
+        function exportFixed() {
+            if (!fixedDatabase) {
+                alert('Please run "Fix Database" first!');
+                return;
+            }
+
+            const resultsDiv = document.getElementById('results');
+            let html = '<div class="section"><h2>📥 Export Fixed Database</h2>';
+
+            // Export CSHS
+            if (fixedDatabase.cshs) {
+                const cshsJson = JSON.stringify(fixedDatabase.cshs, null, 2);
+                const cshsBlob = new Blob([cshsJson], { type: 'application/json' });
+                const cshsUrl = URL.createObjectURL(cshsBlob);
+
+                html += '<h3>CSHS (Cold-formed Square Hollow Sections)</h3>';
+                html += `<p>Sections: ${fixedDatabase.cshs.length}</p>`;
+                html += `<a href="${cshsUrl}" download="cshs_fixed.json">`;
+                html += '<button>Download cshs_fixed.json</button>';
+                html += '</a>';
+
+                html += '<details style="margin-top: 10px;"><summary style="cursor: pointer; color: #569cd6;">Show JSON Preview</summary>';
+                html += '<pre>' + cshsJson.substring(0, 2000) + '\n...\n(truncated for display)</pre>';
+                html += '</details>';
+            }
+
+            // Export HSHS
+            if (fixedDatabase.hshs) {
+                const hshsJson = JSON.stringify(fixedDatabase.hshs, null, 2);
+                const hshsBlob = new Blob([hshsJson], { type: 'application/json' });
+                const hshsUrl = URL.createObjectURL(hshsBlob);
+
+                html += '<h3>HSHS (Hot-formed Square Hollow Sections)</h3>';
+                html += `<p>Sections: ${fixedDatabase.hshs.length}</p>`;
+                html += `<a href="${hshsUrl}" download="hshs_fixed.json">`;
+                html += '<button>Download hshs_fixed.json</button>';
+                html += '</a>';
+
+                html += '<details style="margin-top: 10px;"><summary style="cursor: pointer; color: #569cd6;">Show JSON Preview</summary>';
+                html += '<pre>' + hshsJson.substring(0, 2000) + '\n...\n(truncated for display)</pre>';
+                html += '</details>';
+            }
+
+            html += '<h3 class="info">Next Steps:</h3>';
+            html += '<ol>';
+            html += '<li>Download the fixed JSON file(s)</li>';
+            html += '<li>Update the database in <code>flexural_buckling_api.js</code></li>';
+            html += '<li>Replace the old CSHS/HSHS arrays with the fixed data</li>';
+            html += '<li>Test Am/V calculations with SHS sections</li>';
+            html += '</ol>';
+
+            html += '</div>';
+            resultsDiv.innerHTML = html;
+        }
+
+        // Auto-run analysis on page load
+        window.addEventListener('load', () => {
+            setTimeout(analyzeDatabase, 500);
+        });
+    </script>
+</body>
+</html>

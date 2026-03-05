@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Am/V UI Quick Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .test-section {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            background: #0e639c;
+            color: white;
+            border: none;
+            border-radius: 3px;
+        }
+        button:hover {
+            background: #1177bb;
+        }
+        pre {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+        .success { color: #4caf50; }
+        .error { color: #f44336; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Am/V UI Quick Test</h1>
+
+    <div class="test-section">
+        <h2>Test 1: Calculate with Am/V Filter</h2>
+        <p>Test HEA200, 4-sides exposure, k_sh=0.9, max Am/V=200 m⁻¹</p>
+        <button onclick="test1()">Run Test 1</button>
+        <pre id="result1"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Find Lightest with Am/V Filter</h2>
+        <p>Search for lightest HEA with Am/V max=150 m⁻¹</p>
+        <button onclick="test2()">Run Test 2</button>
+        <pre id="result2"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Check Shadow Factor Override</h2>
+        <p>Test HEA200 with 1-side exposure (should override k_sh to 1.0)</p>
+        <button onclick="test3()">Run Test 3</button>
+        <pre id="result3"></pre>
+    </div>
+
+    <script src="flexural_buckling_api.js"></script>
+    <script>
+        async function test1() {
+            const result1 = document.getElementById('result1');
+            result1.textContent = 'Running test...';
+
+            try {
+                const inputs = {
+                    profileType: 'hea',
+                    profileName: 'hea200',
+                    Ly: '4000',
+                    Lz: '4000',
+                    steelGrade: 'S355',
+                    fy: '355',
+                    gamma_M1: '1.0',
+                    NEd_ULS: '1000',
+                    allowClass4: true,
+                    fireEnabled: true,
+                    fireMode: 'specify',
+                    NEd_fire: '600',
+                    temperature: '500',
+                    amvFilterEnabled: true,
+                    exposureConfig: '4-sides',
+                    shadowFactor: '0.9',
+                    maxAmV: '200'
+                };
+
+                const results = calculateBuckling(inputs);
+
+                let output = '';
+                output += `Success: ${results.success}\n`;
+                if (results.success) {
+                    output += `\nAm/V Result:\n`;
+                    output += `  Am/V_base: ${results.amvResult.AmV_base.toFixed(1)} m⁻¹\n`;
+                    output += `  Am/V_eff: ${results.amvResult.AmV.toFixed(1)} m⁻¹\n`;
+                    output += `  k_sh: ${results.amvResult.k_sh}\n`;
+                    output += `  Exposure: ${results.amvResult.description}\n`;
+                    output += `  Max allowed: ${inputs.maxAmV} m⁻¹\n`;
+                    output += `  Passes filter: ${results.amvResult.AmV <= parseFloat(inputs.maxAmV) ? 'YES ✓' : 'NO ✗'}\n`;
+
+                    output += `\nBuckling Results:\n`;
+                    output += `  Nb,Rd (ULS): ${results.ulsResults.Nb_Rd_kN.toFixed(1)} kN\n`;
+                    output += `  Utilization: ${(results.ulsResults.utilization * 100).toFixed(1)}%\n`;
+                } else {
+                    output += `\nError: ${results.error}\n`;
+                }
+
+                result1.innerHTML = `<span class="${results.success ? 'success' : 'error'}">${output}</span>`;
+            } catch (error) {
+                result1.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            }
+        }
+
+        async function test2() {
+            const result2 = document.getElementById('result2');
+            result2.textContent = 'Running test... (this may take a few seconds)';
+
+            try {
+                const inputs = {
+                    profileType: 'hea',
+                    profileName: '',
+                    Ly: '4000',
+                    Lz: '4000',
+                    steelGrade: 'S355',
+                    fy: '355',
+                    gamma_M1: '1.0',
+                    NEd_ULS: '800',
+                    allowClass4: true,
+                    fireEnabled: true,
+                    fireMode: 'specify',
+                    NEd_fire: '500',
+                    temperature: '500',
+                    amvFilterEnabled: true,
+                    exposureConfig: '4-sides',
+                    shadowFactor: '0.9',
+                    maxAmV: '150'  // Strict limit
+                };
+
+                const searchResult = findLightestSection(inputs);
+
+                let output = '';
+                output += `Success: ${searchResult.success}\n`;
+                if (searchResult.success) {
+                    const section = searchResult.section;
+                    output += `\nLightest Section Found:\n`;
+                    output += `  Profile: ${section.profileName.toUpperCase()}\n`;
+                    output += `  Mass: ${section.mass} kg/m\n`;
+                    output += `  Am/V: ${section.amvResult.AmV.toFixed(1)} m⁻¹\n`;
+                    output += `  k_sh: ${section.amvResult.k_sh}\n`;
+                    output += `  Utilization: ${(section.maxUtilization * 100).toFixed(1)}%\n`;
+                    output += `\nSearch Stats:\n`;
+                    output += `  Tested: ${searchResult.testedCount} of ${searchResult.totalCount} sections\n`;
+                    if (searchResult.skippedAmV && searchResult.skippedAmV.length > 0) {
+                        output += `  Skipped (Am/V): ${searchResult.skippedAmV.length}\n`;
+                    }
+                } else {
+                    output += `\nError: ${searchResult.error}\n`;
+                    if (searchResult.skippedAmV && searchResult.skippedAmV.length > 0) {
+                        output += `  Sections rejected by Am/V: ${searchResult.skippedAmV.length}\n`;
+                        output += `  Examples:\n`;
+                        searchResult.skippedAmV.slice(0, 3).forEach(s => {
+                            output += `    ${s.profileName}: Am/V=${s.AmV_effective.toFixed(1)} > ${inputs.maxAmV}\n`;
+                        });
+                    }
+                }
+
+                result2.innerHTML = `<span class="${searchResult.success ? 'success' : 'error'}">${output}</span>`;
+            } catch (error) {
+                result2.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            }
+        }
+
+        async function test3() {
+            const result3 = document.getElementById('result3');
+            result3.textContent = 'Running test...';
+
+            try {
+                const inputs = {
+                    profileType: 'hea',
+                    profileName: 'hea200',
+                    Ly: '4000',
+                    Lz: '4000',
+                    steelGrade: 'S355',
+                    fy: '355',
+                    gamma_M1: '1.0',
+                    NEd_ULS: '1000',
+                    allowClass4: true,
+                    fireEnabled: true,
+                    fireMode: 'specify',
+                    NEd_fire: '600',
+                    temperature: '500',
+                    amvFilterEnabled: true,
+                    exposureConfig: '1-side-bottom',
+                    shadowFactor: '0.9',  // Should be overridden to 1.0
+                    maxAmV: '100'
+                };
+
+                const results = calculateBuckling(inputs);
+
+                let output = '';
+                output += `Success: ${results.success}\n`;
+                if (results.success) {
+                    output += `\nShadow Factor Override Test:\n`;
+                    output += `  Input k_sh: 0.9\n`;
+                    output += `  Effective k_sh: ${results.amvResult.k_sh}\n`;
+                    output += `  Override applied: ${results.amvResult.k_sh === 1.0 ? 'YES ✓' : 'NO ✗'}\n`;
+                    output += `  Reason: ${results.amvResult.shadowNote || 'No override needed'}\n`;
+                    output += `\nAm/V Calculation:\n`;
+                    output += `  Exposure: ${results.amvResult.description}\n`;
+                    output += `  Am: ${results.amvResult.Am.toFixed(1)} mm\n`;
+                    output += `  Am/V_base: ${results.amvResult.AmV_base.toFixed(1)} m⁻¹\n`;
+                    output += `  Am/V_eff: ${results.amvResult.AmV.toFixed(1)} m⁻¹\n`;
+                } else {
+                    output += `\nError: ${results.error}\n`;
+                }
+
+                result3.innerHTML = `<span class="${results.success ? 'success' : 'error'}">${output}</span>`;
+            } catch (error) {
+                result3.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            }
+        }
+    </script>
+</body>
+</html>

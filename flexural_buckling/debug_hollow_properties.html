@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Debug Hollow Section Properties</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 { color: #4ec9b0; }
+        pre { background: #252526; padding: 15px; border-radius: 4px; }
+        .section { margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Hollow Section Properties Debug</h1>
+    <div id="output"></div>
+
+    <script src="flexural_buckling_api.js"></script>
+    <script>
+        const output = document.getElementById('output');
+
+        // Check if database is available
+        if (!window.structuralSteelDatabase) {
+            output.innerHTML = '<p style="color: #f44336;">❌ Database not loaded!</p>';
+        } else {
+            let html = '';
+
+            // Check HRHS sections
+            if (window.structuralSteelDatabase.hrhs && window.structuralSteelDatabase.hrhs.length > 0) {
+                const hrhs = window.structuralSteelDatabase.hrhs[0];
+                html += '<div class="section">';
+                html += '<h2>HRHS Sample Section:</h2>';
+                html += '<pre>' + JSON.stringify(hrhs, null, 2) + '</pre>';
+                html += '</div>';
+            }
+
+            // Check HSHS sections
+            if (window.structuralSteelDatabase.hshs && window.structuralSteelDatabase.hshs.length > 0) {
+                const hshs = window.structuralSteelDatabase.hshs[0];
+                html += '<div class="section">';
+                html += '<h2>HSHS Sample Section:</h2>';
+                html += '<pre>' + JSON.stringify(hshs, null, 2) + '</pre>';
+                html += '</div>';
+            }
+
+            // Check available profile types
+            html += '<div class="section">';
+            html += '<h2>Available Profile Types:</h2>';
+            html += '<pre>' + JSON.stringify(Object.keys(window.structuralSteelDatabase), null, 2) + '</pre>';
+            html += '</div>';
+
+            output.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
