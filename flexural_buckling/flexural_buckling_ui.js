@@ -469,11 +469,14 @@ function displayResults(results, inputs) {
   // Display detailed calculations
   displayDetailedCalculations(results, inputs);
 
-  // Generate detailed report
-  generateDetailedReport(results, inputs);
-
-  // Plot section visualization
+  // Plot section visualization FIRST (so canvas is available for report)
   _plotSection(results, inputs);
+
+  // Generate detailed report AFTER section plot (to capture canvas)
+  // Use setTimeout to ensure canvas is fully rendered
+  setTimeout(() => {
+    generateDetailedReport(results, inputs);
+  }, 100);
 
   // Scroll to results
   resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
