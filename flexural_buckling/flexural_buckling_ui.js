@@ -469,27 +469,30 @@ function displayResults(results, inputs) {
   // Display detailed calculations
   displayDetailedCalculations(results, inputs);
 
-  // Plot section visualization FIRST (so canvas is available for report)
-  _plotSection(results, inputs);
-
-  // Generate detailed report AFTER section plot (to capture canvas)
-  // Use setTimeout to ensure canvas is fully rendered
-  setTimeout(() => {
+  // Plot section visualization FIRST, then generate report after plot is complete
+  _plotSection(results, inputs, () => {
+    // Callback: Generate detailed report AFTER section plot is fully rendered
     generateDetailedReport(results, inputs);
-  }, 100);
+  });
 
   // Scroll to results
   resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function _plotSection(results, inputs) {
+function _plotSection(results, inputs, onPlotComplete) {
   const container = document.getElementById('section-plot-container');
-  if (!container) return;
+  if (!container) {
+    // No container - call callback immediately if provided
+    if (onPlotComplete) onPlotComplete();
+    return;
+  }
 
   // Only plot for supported profile types
   const supported = ['ipe', 'hea', 'heb', 'hem', 'hrhs', 'hshs', 'hchs', 'crhs', 'cshs', 'cchs'];
   if (!supported.includes(inputs.profileType)) {
     container.classList.add('hidden');
+    // Not supported - call callback immediately if provided
+    if (onPlotComplete) onPlotComplete();
     return;
   }
 
@@ -498,6 +501,8 @@ function _plotSection(results, inputs) {
     const section = steelDatabase[inputs.profileType][inputs.profileName];
     if (!section) {
       container.classList.add('hidden');
+      // No section - call callback immediately if provided
+      if (onPlotComplete) onPlotComplete();
       return;
     }
 
@@ -533,9 +538,16 @@ function _plotSection(results, inputs) {
       legendPosition: 'top-right'
     });
 
+    // Plot is synchronous, but use requestAnimationFrame to ensure canvas is fully painted
+    requestAnimationFrame(() => {
+      if (onPlotComplete) onPlotComplete();
+    });
+
   } catch (err) {
     console.error('[SectionPlotter] Failed to plot section:', err);
     container.classList.add('hidden');
+    // Error - call callback anyway if provided
+    if (onPlotComplete) onPlotComplete();
   }
 }
 function displayClass4Warning(isClass4) {
