@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Am/V Unit Verification Test</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 { color: #4ec9b0; }
+        .test { background: #252526; padding: 15px; margin: 10px 0; border-radius: 4px; }
+        .pass { color: #4caf50; }
+        .fail { color: #f44336; }
+        pre { background: #1e1e1e; padding: 10px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Am/V Unit Conversion Verification</h1>
+
+    <div class="test">
+        <h2>Test 1: Hollow Section (HRHS 50x30 / 2.6)</h2>
+        <p>According to theory: Am/V ≈ 1/t for hollow sections</p>
+        <p>For t = 2.6 mm = 0.0026 m</p>
+        <p>Expected: Am/V ≈ 1/0.0026 = 384.6 m⁻¹</p>
+        <pre id="test1"></pre>
+    </div>
+
+    <div class="test">
+        <h2>Test 2: Hollow Section with 8mm thickness</h2>
+        <p>For t = 8 mm = 0.008 m</p>
+        <p>Expected: Am/V ≈ 1/0.008 = 125 m⁻¹ (as user mentioned)</p>
+        <pre id="test2"></pre>
+    </div>
+
+    <div class="test">
+        <h2>Test 3: HEA200 (from implementation plan)</h2>
+        <p>Expected from plan:</p>
+        <p>4-sides, k_sh=0.9: Am/V_eff = 150.8 m⁻¹</p>
+        <pre id="test3"></pre>
+    </div>
+
+    <script src="flexural_buckling_api.js"></script>
+    <script>
+        // Test 1: HRHS 50x30 / 2.6
+        const hrhs_50_30 = window.structuralSteelDatabase.hrhs.find(s => s.profile === 'HRHS 50x30 / 2.6');
+        if (hrhs_50_30) {
+            console.log('HRHS 50x30 / 2.6:', hrhs_50_30);
+
+            const result1 = calculateSectionFactor(hrhs_50_30, '4-sides', 'hrhs', 0.9);
+
+            let output1 = '';
+            output1 += `Database values:\n`;
+            output1 += `  P = ${hrhs_50_30.P} (${hrhs_50_30.P < 10 ? 'METERS' : 'mm'})\n`;
+            output1 += `  A = ${hrhs_50_30.A} mm²\n`;
+            output1 += `  t = ${hrhs_50_30.t} mm\n\n`;
+
+            output1 += `Calculated:\n`;
+            output1 += `  Am = ${result1.Am.toFixed(1)} mm\n`;
+            output1 += `  Am/V_base = ${result1.AmV_base.toFixed(1)} m⁻¹\n`;
+            output1 += `  k_sh = ${result1.k_sh} (overridden for hollow)\n`;
+            output1 += `  Am/V_eff = ${result1.AmV.toFixed(1)} m⁻¹\n\n`;
+
+            output1 += `Expected (1/t):\n`;
+            output1 += `  1/t = 1/${hrhs_50_30.t} mm = ${(1000 / hrhs_50_30.t).toFixed(1)} m⁻¹\n\n`;
+
+            const error = Math.abs(result1.AmV - (1000 / hrhs_50_30.t));
+            const errorPercent = (error / (1000 / hrhs_50_30.t)) * 100;
+
+            output1 += `Difference from 1/t:\n`;
+            output1 += `  ${error.toFixed(1)} m⁻¹ (${errorPercent.toFixed(1)}%)\n`;
+            output1 += `  ${errorPercent < 10 ? '✓ PASS - Within 10%' : '✗ FAIL - Error too large'}`;
+
+            document.getElementById('test1').textContent = output1;
+            document.getElementById('test1').className = errorPercent < 10 ? 'pass' : 'fail';
+        }
+
+        // Test 2: Find a hollow section with ~8mm thickness
+        const hrhs_8mm = window.structuralSteelDatabase.hrhs.find(s => s.t >= 7.5 && s.t <= 8.5);
+        if (hrhs_8mm) {
+            console.log('Hollow section ~8mm:', hrhs_8mm);
+
+            const result2 = calculateSectionFactor(hrhs_8mm, '4-sides', 'hrhs', 0.9);
+
+            let output2 = '';
+            output2 += `Section: ${hrhs_8mm.profile}\n`;
+            output2 += `  t = ${hrhs_8mm.t} mm\n`;
+            output2 += `  P = ${hrhs_8mm.P} ${hrhs_8mm.P < 10 ? 'm' : 'mm'}\n`;
+            output2 += `  A = ${hrhs_8mm.A} mm²\n\n`;
+
+            output2 += `Calculated Am/V = ${result2.AmV.toFixed(1)} m⁻¹\n`;
+            output2 += `Expected 1/t = ${(1000 / hrhs_8mm.t).toFixed(1)} m⁻¹\n`;
+            output2 += `User expectation: ≈ 125 m⁻¹\n\n`;
+
+            const close_to_125 = Math.abs(result2.AmV - 125) < 20;
+            output2 += close_to_125 ? '✓ PASS - Close to 125 m⁻¹' : '✗ FAIL - Not close to 125 m⁻¹';
+
+            document.getElementById('test2').textContent = output2;
+            document.getElementById('test2').className = close_to_125 ? 'pass' : 'fail';
+        } else {
+            document.getElementById('test2').textContent = 'No section with ~8mm thickness found';
+        }
+
+        // Test 3: HEA200
+        const hea200 = window.structuralSteelDatabase.hea.find(s => s.profile === 'HEA200');
+        if (hea200) {
+            console.log('HEA200:', hea200);
+
+            const result3 = calculateSectionFactor(hea200, '4-sides', 'hea', 0.9);
+
+            let output3 = '';
+            output3 += `Database values:\n`;
+            output3 += `  P = ${hea200.P} mm\n`;
+            output3 += `  A = ${hea200.A} mm²\n\n`;
+
+            output3 += `Calculated:\n`;
+            output3 += `  Am = ${result3.Am.toFixed(1)} mm\n`;
+            output3 += `  Am/V_base = ${result3.AmV_base.toFixed(1)} m⁻¹\n`;
+            output3 += `  k_sh = ${result3.k_sh}\n`;
+            output3 += `  Am/V_eff = ${result3.AmV.toFixed(1)} m⁻¹\n\n`;
+
+            output3 += `Expected from plan:\n`;
+            output3 += `  Am/V_eff = 150.8 m⁻¹\n\n`;
+
+            const matches = Math.abs(result3.AmV - 150.8) < 1.0;
+            output3 += matches ? '✓ PASS - Matches plan' : `✗ FAIL - Expected 150.8, got ${result3.AmV.toFixed(1)}`;
+
+            document.getElementById('test3').textContent = output3;
+            document.getElementById('test3').className = matches ? 'pass' : 'fail';
+        }
+    </script>
+</body>
+</html>
