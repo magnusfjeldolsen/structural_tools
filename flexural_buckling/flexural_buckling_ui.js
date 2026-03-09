@@ -710,6 +710,11 @@ function displayClassificationResults(classification, suffix = '', fyDisplay = n
   const tbody = document.getElementById(`classification-table-body${sid}`);
   tbody.innerHTML = '';
 
+  // Get plate reduction data if Class 4
+  const plateReductions = classification.is_class4 && classification.effective_properties
+    ? classification.effective_properties.plate_reductions || []
+    : [];
+
   for (const elem of classification.element_results) {
     const row = document.createElement('tr');
     row.className = 'border-b border-gray-600';
@@ -717,7 +722,11 @@ function displayClassificationResults(classification, suffix = '', fyDisplay = n
     const classColor = elem.class === 1 || elem.class === 2 ? 'text-green-400' :
                        elem.class === 3 ? 'text-yellow-400' : 'text-orange-400';
 
-    row.innerHTML = `
+    // Find matching plate reduction data for this element
+    const plateData = plateReductions.find(pr => pr.element === elem.id);
+
+    // Build row HTML
+    let rowHTML = `
       <td class="py-2 px-3 text-gray-300">${elem.id}</td>
       <td class="py-2 px-3 text-right text-gray-200">${toFixedIfNeeded(elem.c, 2)}</td>
       <td class="py-2 px-3 text-right text-gray-200">${toFixedIfNeeded(elem.t, 2)}</td>
@@ -725,17 +734,58 @@ function displayClassificationResults(classification, suffix = '', fyDisplay = n
       <td class="py-2 px-3 text-right text-gray-200">${toFixedIfNeeded(elem.limit_class3, 2)}</td>
       <td class="py-2 px-3 text-center font-semibold ${classColor}">${elem.class}</td>
     `;
+
+    // Add ρ-related columns
+    if (plateData) {
+      // Element has reduction data (Class 4 plate)
+      const lambdaP = toFixedIfNeeded(plateData.lambda_p, 3);
+
+      // Color code ρ: green if 1.0, yellow if 0.9-0.999, orange if < 0.9
+      const rhoValue = plateData.rho;
+      const rhoColor = rhoValue >= 0.999 ? 'text-green-400' :
+                       rhoValue >= 0.9 ? 'text-yellow-400' : 'text-orange-400';
+      const rhoText = toFixedIfNeeded(rhoValue, 3);
+
+      const cEff = toFixedIfNeeded(plateData.c_eff, 2);
+
+      rowHTML += `
+        <td class="py-2 px-3 text-right text-gray-200">${lambdaP}</td>
+        <td class="py-2 px-3 text-right font-semibold ${rhoColor}">${rhoText}</td>
+        <td class="py-2 px-3 text-right text-gray-200">${cEff}</td>
+      `;
+    } else {
+      // No reduction data (Class 1/2/3 element or non-Class 4 section)
+      rowHTML += `
+        <td class="py-2 px-3 text-right text-gray-400">-</td>
+        <td class="py-2 px-3 text-right text-gray-400">-</td>
+        <td class="py-2 px-3 text-right text-gray-400">-</td>
+      `;
+    }
+
+    row.innerHTML = rowHTML;
     tbody.appendChild(row);
   }
 
   // Show Class 4 info banner if applicable
   const class4InfoDiv = document.getElementById(`class4-info${sid}`);
+  const rhoExplanationDiv = document.getElementById(`rho-explanation${sid}`);
+
   if (classification.is_class4 && classification.effective_properties) {
     class4InfoDiv.classList.remove('hidden');
     const reductionPercent = classification.effective_properties.area_reduction_percent;
     document.getElementById(`area-reduction-percent${sid}`).textContent = toFixedIfNeeded(reductionPercent, 2);
+
+    // Show ρ explanation section for Class 4
+    if (rhoExplanationDiv) {
+      rhoExplanationDiv.classList.remove('hidden');
+    }
   } else {
     class4InfoDiv.classList.add('hidden');
+
+    // Hide ρ explanation section if not Class 4
+    if (rhoExplanationDiv) {
+      rhoExplanationDiv.classList.add('hidden');
+    }
   }
 }
 function displayEffectiveProperties(effectiveProps, suffix = 'uls') {
@@ -830,6 +880,53 @@ function displayDetailedCalculations(results, inputs) {
 
   html += `<p>Buckling curve y-axis: ${uls.curve_y}, Buckling curve z-axis: ${uls.curve_z}</p>`;
   html += '</div>';
+
+  // Class 4 Plate Reduction Factors (if applicable)
+  if (isClass4 && effProps && effProps.plate_reductions) {
+    html += '<div class="bg-gray-700 rounded p-4 mb-3">';
+    html += '<h3 class="text-cyan-700 font-semibold mb-2">CLASS 4 PLATE REDUCTION FACTORS (ρ) - EN 1993-1-5</h3>';
+    html += `<p class="mb-2">ε = √(235/f<sub>y</sub>) = √(235/${toFixedIfNeeded(inp.fy_MPa, 0)}) = ${toFixedIfNeeded(uls.classification.epsilon, 4)}</p>`;
+
+    for (const plate of effProps.plate_reductions) {
+      html += `<p class="mt-3 font-semibold text-cyan-400">${plate.element} (${plate.type} element):</p>`;
+      html += `<p>c/t = ${toFixedIfNeeded(plate.c_gross, 2)} / ${toFixedIfNeeded(plate.c_gross / (plate.c_gross / plate.c_eff * plate.rho), 2)} = ${toFixedIfNeeded(plate.c_gross / (plate.c_gross / plate.c_eff * plate.rho), 2)}</p>`;
+      html += `<p>k<sub>σ</sub> = ${toFixedIfNeeded(plate.k_sigma, 3)} (buckling coefficient, EN 1993-1-5 Table 4.1/4.2)</p>`;
+      html += `<p>λ<sub>p</sub> = (c/t) / (28.4 × ε × √k<sub>σ</sub>) = ${toFixedIfNeeded(plate.c_gross / (plate.c_gross / plate.c_eff * plate.rho), 2)} / (28.4 × ${toFixedIfNeeded(plate.epsilon, 4)} × √${toFixedIfNeeded(plate.k_sigma, 3)}) = ${toFixedIfNeeded(plate.lambda_p, 4)}</p>`;
+
+      if (plate.type === 'internal') {
+        const lambda_p_limit = 0.5 + Math.sqrt(0.085 - 0.055 * plate.psi);
+        html += `<p>λ<sub>p,limit</sub> = 0.5 + √(0.085 - 0.055ψ) = 0.5 + √(0.085 - 0.055×${toFixedIfNeeded(plate.psi, 1)}) = ${toFixedIfNeeded(lambda_p_limit, 4)}</p>`;
+
+        if (plate.lambda_p <= lambda_p_limit) {
+          html += `<p>λ<sub>p</sub> ≤ λ<sub>p,limit</sub> → <strong class="text-green-400">ρ = 1.000</strong> (fully effective, no reduction)</p>`;
+        } else {
+          html += `<p>λ<sub>p</sub> > λ<sub>p,limit</sub> → ρ = (λ<sub>p</sub> - 0.055ψ) / λ<sub>p</sub>²</p>`;
+          html += `<p>ρ = (${toFixedIfNeeded(plate.lambda_p, 4)} - 0.055×${toFixedIfNeeded(plate.psi, 1)}) / ${toFixedIfNeeded(plate.lambda_p, 4)}² = <strong class="text-yellow-400">${toFixedIfNeeded(plate.rho, 4)}</strong></p>`;
+        }
+      } else if (plate.type === 'outstand') {
+        const lambda_p_limit = 0.748;
+        html += `<p>λ<sub>p,limit</sub> = 0.748 (outstand elements)</p>`;
+
+        if (plate.lambda_p <= lambda_p_limit) {
+          html += `<p>λ<sub>p</sub> ≤ λ<sub>p,limit</sub> → <strong class="text-green-400">ρ = 1.000</strong> (fully effective, no reduction)</p>`;
+        } else {
+          html += `<p>λ<sub>p</sub> > λ<sub>p,limit</sub> → ρ = (λ<sub>p</sub> - 0.188) / λ<sub>p</sub>²</p>`;
+          html += `<p>ρ = (${toFixedIfNeeded(plate.lambda_p, 4)} - 0.188) / ${toFixedIfNeeded(plate.lambda_p, 4)}² = <strong class="text-yellow-400">${toFixedIfNeeded(plate.rho, 4)}</strong></p>`;
+        }
+      }
+
+      html += `<p>c<sub>eff</sub> = ρ × c<sub>gross</sub> = ${toFixedIfNeeded(plate.rho, 4)} × ${toFixedIfNeeded(plate.c_gross, 2)} = ${toFixedIfNeeded(plate.c_eff, 2)} mm</p>`;
+
+      const reduction_pct = ((1 - plate.rho) * 100);
+      if (reduction_pct > 0.1) {
+        html += `<p class="text-orange-400">Reduction: ${toFixedIfNeeded(reduction_pct, 1)}%</p>`;
+      } else {
+        html += `<p class="text-green-400">No reduction (fully effective)</p>`;
+      }
+    }
+
+    html += '</div>';
+  }
 
   // Material Properties
   html += '<div class="bg-gray-700 rounded p-4 mb-3">';
@@ -1012,6 +1109,64 @@ function generateDetailedReport(results, inputs) {
     } catch (err) {
       console.warn('Could not capture section plot for report:', err);
     }
+  }
+
+  // Class 4 Plate Reduction Factors (if applicable) - ADD TO REPORT
+  if (isClass4Report && effPropsReport && effPropsReport.plate_reductions) {
+    html += '<div class="mb-8">';
+    html += '<h2 class="text-2xl font-bold mb-4 pb-2 border-b-2" style="color: #0891b2;">CLASS 4 PLATE REDUCTION FACTORS (ρ)</h2>';
+    html += '<p class="text-sm text-gray-700 mb-4">Each Class 4 plate element is evaluated for effective width using <strong>EN 1993-1-5</strong>. The reduction factor ρ determines how much of the gross width is effective in resisting compression.</p>';
+
+    // Table of plate reductions
+    html += '<table class="w-full border-collapse border border-gray-400 text-sm mb-4">';
+    html += '<thead class="bg-gray-200">';
+    html += '<tr>';
+    html += '<th class="border border-gray-400 px-3 py-2 text-left">Element</th>';
+    html += '<th class="border border-gray-400 px-3 py-2 text-left">Type</th>';
+    html += '<th class="border border-gray-400 px-3 py-2 text-right">k<sub>σ</sub></th>';
+    html += '<th class="border border-gray-400 px-3 py-2 text-right">λ<sub>p</sub></th>';
+    html += '<th class="border border-gray-400 px-3 py-2 text-right font-bold">ρ</th>';
+    html += '<th class="border border-gray-400 px-3 py-2 text-right">c<sub>gross</sub> (mm)</th>';
+    html += '<th class="border border-gray-400 px-3 py-2 text-right">c<sub>eff</sub> (mm)</th>';
+    html += '<th class="border border-gray-400 px-3 py-2 text-right">Reduction</th>';
+    html += '</tr>';
+    html += '</thead>';
+    html += '<tbody>';
+
+    for (const plate of effPropsReport.plate_reductions) {
+      const reduction_pct = ((1 - plate.rho) * 100);
+      const rhoStyle = plate.rho >= 0.999 ? 'background-color: #d1fae5; font-weight: bold;' :
+                       plate.rho >= 0.9 ? 'background-color: #fef3c7;' :
+                       'background-color: #fed7aa; font-weight: bold;';
+
+      html += '<tr>';
+      html += `<td class="border border-gray-400 px-3 py-2">${plate.element}</td>`;
+      html += `<td class="border border-gray-400 px-3 py-2">${plate.type}</td>`;
+      html += `<td class="border border-gray-400 px-3 py-2 text-right font-mono">${toFixedIfNeeded(plate.k_sigma, 3)}</td>`;
+      html += `<td class="border border-gray-400 px-3 py-2 text-right font-mono">${toFixedIfNeeded(plate.lambda_p, 4)}</td>`;
+      html += `<td class="border border-gray-400 px-3 py-2 text-right font-mono" style="${rhoStyle}">${toFixedIfNeeded(plate.rho, 4)}</td>`;
+      html += `<td class="border border-gray-400 px-3 py-2 text-right font-mono">${toFixedIfNeeded(plate.c_gross, 2)}</td>`;
+      html += `<td class="border border-gray-400 px-3 py-2 text-right font-mono">${toFixedIfNeeded(plate.c_eff, 2)}</td>`;
+      html += `<td class="border border-gray-400 px-3 py-2 text-right">${toFixedIfNeeded(reduction_pct, 1)}%</td>`;
+      html += '</tr>';
+    }
+
+    html += '</tbody>';
+    html += '</table>';
+
+    // Formulas section
+    html += '<div class="text-xs text-gray-700 bg-gray-50 border border-gray-300 rounded p-3">';
+    html += '<p class="font-semibold mb-2">EN 1993-1-5 Section 4.4 Formulas:</p>';
+    html += '<p class="mb-1"><strong>Plate slenderness:</strong> λ<sub>p</sub> = (c/t) / (28.4ε√k<sub>σ</sub>), where ε = √(235/f<sub>y</sub>)</p>';
+    html += '<p class="mb-1"><strong>Internal elements:</strong> ρ = (λ<sub>p</sub> - 0.055ψ) / λ<sub>p</sub>² ≤ 1.0, if λ<sub>p</sub> > λ<sub>p,limit</sub> = 0.5 + √(0.085 - 0.055ψ)</p>';
+    html += '<p><strong>Outstand elements:</strong> ρ = (λ<sub>p</sub> - 0.188) / λ<sub>p</sub>² ≤ 1.0, if λ<sub>p</sub> > 0.748</p>';
+    html += '<p class="mt-2 font-semibold">Legend:</p>';
+    html += '<p class="ml-3">• <span style="background-color: #d1fae5;" class="px-2 py-1 font-bold">ρ = 1.000</span> = Fully effective (no reduction)</p>';
+    html += '<p class="ml-3">• <span style="background-color: #fef3c7;" class="px-2 py-1">ρ = 0.900-0.999</span> = Minor reduction (&lt; 10%)</p>';
+    html += '<p class="ml-3">• <span style="background-color: #fed7aa;" class="px-2 py-1 font-bold">ρ &lt; 0.900</span> = Significant reduction (≥ 10%)</p>';
+    html += '</div>';
+
+    html += '</div>';
   }
 
   // Results Summary
