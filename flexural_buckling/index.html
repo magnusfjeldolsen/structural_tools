@@ -717,6 +717,9 @@
                   <th class="p-2 text-right">c/t</th>
                   <th class="p-2 text-right">Limit (Class 3)</th>
                   <th class="p-2 text-center">Class</th>
+                  <th class="p-2 text-right" title="Plate slenderness (EN 1993-1-5)">λ<sub>p</sub></th>
+                  <th class="p-2 text-right" title="Reduction factor (EN 1993-1-5)">ρ</th>
+                  <th class="p-2 text-right" title="Effective width after reduction">c<sub>eff</sub> (mm)</th>
                 </tr>
               </thead>
               <tbody id="classification-table-body-uls" class="text-white">
@@ -732,6 +735,43 @@
             <strong>Class 4 Section:</strong> Effective properties calculated per EN 1993-1-5.
             Area reduced by <span id="area-reduction-percent-uls" class="font-mono">-</span>% to account for local buckling.
           </p>
+        </div>
+
+        <!-- ρ Explanation Section (shown only if Class 4) -->
+        <div id="rho-explanation-uls" class="hidden mt-3 p-4 bg-cyan-900 border border-cyan-600 rounded">
+          <h4 class="text-sm font-semibold text-cyan-100 mb-2">
+            📐 Plate Reduction Factor (ρ) - EN 1993-1-5
+          </h4>
+          <div class="text-xs text-cyan-100 space-y-2">
+            <p>
+              Class 4 sections use <strong>EN 1993-1-5</strong> to calculate <strong>effective widths</strong>
+              for slender plate elements. Each plate gets a reduction factor ρ (0 to 1.0):
+            </p>
+            <ul class="list-disc ml-5 space-y-1">
+              <li><strong class="text-green-400">ρ = 1.000</strong>: Plate is fully effective (no reduction needed)</li>
+              <li><strong class="text-yellow-400">ρ = 0.900-0.999</strong>: Minor reduction (&lt; 10%)</li>
+              <li><strong class="text-orange-400">ρ &lt; 0.900</strong>: Significant reduction (≥ 10%)</li>
+            </ul>
+
+            <div class="mt-3 pt-2 border-t border-cyan-700">
+              <p class="font-semibold mb-1">Why can ρ = 1.0 for Class 4 elements?</p>
+              <p>
+                <strong>EN 1993-1-1 Table 5.2</strong> (classification) is conservative.
+                <strong>EN 1993-1-5</strong> uses refined plate slenderness λ<sub>p</sub> with buckling coefficient k<sub>σ</sub>.
+                If λ<sub>p</sub> is below the limit, the plate is fully effective even if classified as Class 4.
+              </p>
+            </div>
+
+            <div class="mt-3 pt-2 border-t border-cyan-700 text-xs">
+              <p class="font-semibold mb-1">Formulas (EN 1993-1-5 Section 4.4):</p>
+              <p><strong>Internal elements:</strong></p>
+              <p class="ml-3">λ<sub>p</sub> = (c/t) / (28.4ε√k<sub>σ</sub>), where ε = √(235/f<sub>y</sub>)</p>
+              <p class="ml-3">ρ = (λ<sub>p</sub> - 0.055ψ) / λ<sub>p</sub>² ≤ 1.0, if λ<sub>p</sub> &gt; λ<sub>p,limit</sub></p>
+              <p class="ml-3">λ<sub>p,limit</sub> = 0.5 + √(0.085 - 0.055ψ), where ψ = stress ratio (1.0 for compression)</p>
+              <p class="mt-1"><strong>Outstand elements (flanges):</strong></p>
+              <p class="ml-3">ρ = (λ<sub>p</sub> - 0.188) / λ<sub>p</sub>² ≤ 1.0, if λ<sub>p</sub> &gt; 0.748</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -773,6 +813,9 @@
                   <th class="p-2 text-right">c/t</th>
                   <th class="p-2 text-right">Limit (Class 3)</th>
                   <th class="p-2 text-center">Class</th>
+                  <th class="p-2 text-right" title="Plate slenderness (EN 1993-1-5)">λ<sub>p</sub></th>
+                  <th class="p-2 text-right" title="Reduction factor (EN 1993-1-5)">ρ</th>
+                  <th class="p-2 text-right" title="Effective width after reduction">c<sub>eff</sub> (mm)</th>
                 </tr>
               </thead>
               <tbody id="classification-table-body-fire" class="text-white">
@@ -788,6 +831,31 @@
             <strong>Class 4 Section:</strong> Effective properties calculated per EN 1993-1-5.
             Area reduced by <span id="area-reduction-percent-fire" class="font-mono">-</span>% to account for local buckling.
           </p>
+        </div>
+
+        <!-- ρ Explanation Section for Fire (shown only if Class 4) -->
+        <div id="rho-explanation-fire" class="hidden mt-3 p-4 bg-cyan-900 border border-cyan-600 rounded">
+          <h4 class="text-sm font-semibold text-cyan-100 mb-2">
+            📐 Plate Reduction Factor (ρ) at Elevated Temperature - EN 1993-1-5
+          </h4>
+          <div class="text-xs text-cyan-100 space-y-2">
+            <p>
+              At elevated temperature, <strong>reduced yield strength f<sub>y,θ</sub></strong> affects plate slenderness.
+              This may result in different ρ values compared to ULS (ε increases as f<sub>y</sub> decreases).
+            </p>
+            <ul class="list-disc ml-5 space-y-1">
+              <li><strong class="text-green-400">ρ = 1.000</strong>: Plate is fully effective (no reduction needed)</li>
+              <li><strong class="text-yellow-400">ρ = 0.900-0.999</strong>: Minor reduction (&lt; 10%)</li>
+              <li><strong class="text-orange-400">ρ &lt; 0.900</strong>: Significant reduction (≥ 10%)</li>
+            </ul>
+
+            <div class="mt-3 pt-2 border-t border-cyan-700 text-xs">
+              <p class="font-semibold mb-1">Temperature Effect:</p>
+              <p>
+                Higher temperature → Lower f<sub>y,θ</sub> → Higher ε = √(235/f<sub>y,θ</sub>) → Higher λ<sub>p</sub> → Potentially lower ρ
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
