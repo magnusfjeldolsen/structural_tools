@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-03-09T10:10:34.143Z",
-    "total_modules": 24,
+    "generated": "2026-03-24T07:15:07.464Z",
+    "total_modules": 25,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
@@ -212,6 +212,21 @@
       ],
       "url": "./seismic_ec8/index.html",
       "category": "structural-analysis"
+    },
+    {
+      "id": "rockbolts",
+      "title": "Fjellbolter — Uttrekkskapasitet SVV 220",
+      "description": "Beregning av uttrekkskapasitet for fjellboltgrupper iht. SVV 220. Kontroller stag, heft og bergkjegle.",
+      "keywords": [
+        "fjellbolter",
+        "uttrekking",
+        "forankringslengde",
+        "svv 220",
+        "bergkjegle",
+        "geoteknikk"
+      ],
+      "url": "./rockbolts/index.html",
+      "category": "other"
     },
     {
       "id": "2dframeanalysis",
