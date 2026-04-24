@@ -943,10 +943,19 @@ export const useModelStore = create<ModelState>()(
         },
 
         getActiveResults: () => {
-          // This will be called by UI components that manage selectedResultType and selectedResultName
-          // For now, return the current analysisResults for backward compatibility
-          // TODO: Integrate with UI store to get selectedResultType and selectedResultName
-          return get().analysisResults;
+          const { activeResultView, analysisResults } = get();
+
+          if (activeResultView.name) {
+            const selected =
+              activeResultView.type === 'case'
+                ? get().getResultsForCase(activeResultView.name)
+                : get().getResultsForCombination(activeResultView.name);
+            if (selected) return selected;
+          }
+
+          // No selection, or selection not yet cached — preserve legacy
+          // behaviour of returning the most recent analysis.
+          return analysisResults;
         },
 
         clearAnalysisCache: () => {
