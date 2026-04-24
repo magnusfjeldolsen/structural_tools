@@ -6,7 +6,10 @@ Serves from the 2dfea directory root
 Usage:
     python serve.py
 
-Then open: http://localhost:8000/test/worker-test.html
+Then open: http://localhost:8000/docs/archive/worker-test/worker-test.html
+
+Note: the primary dev flow for 2dfea is `npm run dev` (Vite). This
+script is kept for ad-hoc worker/Python smoke testing only.
 """
 
 import http.server
@@ -53,7 +56,7 @@ if __name__ == '__main__':
     print(f"Serving from: {os.getcwd()}")
     print(f"Server running at: http://localhost:{PORT}")
     print(f"\nTest URLs:")
-    print(f"  Worker Test: http://localhost:{PORT}/test/worker-test.html")
+    print(f"  Worker Test: http://localhost:{PORT}/docs/archive/worker-test/worker-test.html")
     print(f"\nPress Ctrl+C to stop")
     print("=" * 60)
     print()

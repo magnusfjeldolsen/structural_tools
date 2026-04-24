@@ -179,11 +179,13 @@ import { SolverInterface, translateModelToWorker, getMaxMoment } from './analysi
 
 Run the integration test:
 ```bash
-# Start dev server
-python serve.py
+# Start dev server (primary flow)
+npm run dev
+# → http://localhost:3000
 
-# Open in browser
-http://localhost:8000/test/worker-test.html
+# Or, for ad-hoc worker smoke testing:
+python serve.py
+# → http://localhost:8000/docs/archive/worker-test/worker-test.html
 ```
 
 ## Next Steps
