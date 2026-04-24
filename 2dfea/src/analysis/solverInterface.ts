@@ -40,8 +40,11 @@ export class SolverInterface {
 
     return new Promise((resolve, reject) => {
       try {
-        // Create worker with proper module resolution (classic worker, not ES module)
-        this.worker = new Worker(new URL('/workers/solverWorker.js', import.meta.url));
+        // Create worker using Vite's BASE_URL so the path is correct in both
+        // dev ('/') and production ('/structural_tools/2dfea/'). Using
+        // `new URL('/workers/...', import.meta.url)` would strip the prod
+        // base path (leading '/' is treated as domain-root).
+        this.worker = new Worker(`${import.meta.env.BASE_URL}workers/solverWorker.js`);
 
         // Setup message handler
         this.worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
