@@ -158,7 +158,7 @@ Expected output should show:
 - Moments in kNm (not Nm)
 
 ### Browser Integration Test:
-1. Open `http://localhost:8000/test/worker-test.html`
+1. Open `http://localhost:8000/docs/archive/worker-test/worker-test.html` (via `python serve.py`), or use the full `npm run dev` app at `http://localhost:3000`
 2. Run analysis
 3. Check results show values in mm, kN, kNm
 4. Verify no `×1000` or `÷1000` in display code
