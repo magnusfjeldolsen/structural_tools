@@ -9,17 +9,18 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "immer": "^10.0.3",
+    "konva": "^9.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-konva": "^18.2.10",
-    "konva": "^9.2.0",
-    "zustand": "^4.4.7",
-    "immer": "^10.0.3"
+    "zustand": "^4.4.7"
   },
   "devDependencies": {
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",
+    "baseline-browser-mapping": "^2.10.21",
     "typescript": "^5.3.3",
     "vite": "^5.0.8"
   }
