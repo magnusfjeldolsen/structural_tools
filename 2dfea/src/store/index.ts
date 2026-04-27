@@ -11,7 +11,7 @@
  *   }
  */
 
-export { useModelStore } from './useModelStore';
+export { useModelStore, useTemporalModelStore } from './useModelStore';
 export { useUIStore } from './useUIStore';
 
 export type { Tool, SnapMode, ViewTransform, SnapSettings, UIState } from './useUIStore';

@@ -12,28 +12,28 @@
 - [x] `@ts-nocheck` will be preserved on `src/store/useModelStore.ts` and `src/store/useUIStore.ts`
 
 ## Phase 1 — Dependency and utilities
-- [ ] 1.1 `npm i zundo` (v2+) inside `2dfea/`
-- [ ] 1.2 Create `2dfea/src/utils/throttle.ts` — leading + trailing throttle helper (no lodash)
-- [ ] 1.3 `npm run type-check` green
-- [ ] Commit: `feat(2dfea): add zundo dep and throttle utility for undo/redo`
+- [x] 1.1 `npm i zundo` (v2+) inside `2dfea/` — installed `^2.3.0`
+- [x] 1.2 Create `2dfea/src/utils/throttle.ts` — leading + trailing throttle helper (no lodash)
+- [x] 1.3 `npm run type-check` green
+- [x] Commit: `feat(2dfea): add zundo dep and throttle utility for undo/redo` (bc32f51)
 
 ## Phase 2 — History configuration module
-- [ ] 2.1 Create `2dfea/src/store/historyConfig.ts` exporting `TRACKED_KEYS`, `partializeTracked`, `trackedEqual`, `INVALIDATE_ANALYSIS_PATCH`
-- [ ] 2.2 `npm run type-check` green
-- [ ] Confirm no circular import on `ModelState` type; if needed, lift type into `src/store/types.ts`
-- [ ] Commit: `feat(2dfea): add history config module for tracked-slice partializer`
+- [x] 2.1 Create `2dfea/src/store/historyConfig.ts` exporting `TRACKED_KEYS`, `partializeTracked`, `trackedEqual`, `INVALIDATE_ANALYSIS_PATCH`
+- [x] 2.2 `npm run type-check` green
+- [x] Confirm no circular import on `ModelState` type — used a local `TrackedSlice` interface (no ModelState import) to keep this file off the @ts-nocheck'd surface
+- [x] Commit: `feat(2dfea): add history config module for tracked-slice partializer` (3c07979)
 
 ## Phase 3 — Compose `temporal` into `useModelStore`
-- [ ] 3.1 Add imports (`zundo`, `useStore`, helpers)
-- [ ] 3.2 Wrap immer slice in `temporal(...)` between `persist` and `immer`
-- [ ] 3.3 Configure `partialize`, `equality`, `handleSet` (100ms throttle), `limit: 50`
-- [ ] 3.4 Export `useTemporalModelStore` hook from the store file
-- [ ] 3.5 Re-export from `src/store/index.ts`
-- [ ] 3.6 In `loadExample` action body, call `useModelStore.temporal.getState().clear()` AFTER state mutation (round-2 amendment)
-- [ ] 3.7 LEAVE `@ts-nocheck` in place on `useModelStore.ts` and `useUIStore.ts`
-- [ ] 3.8 `npm run type-check` green
-- [ ] 3.9 Smoke-test: `npm run dev`, add a node, inspect `useModelStore.temporal.getState().pastStates` in console
-- [ ] Commit: `feat(2dfea): compose zundo temporal middleware into model store`
+- [x] 3.1 Add imports (`zundo`, `useStore`, helpers)
+- [x] 3.2 Wrap immer slice in `temporal(...)` between `persist` and `immer`
+- [x] 3.3 Configure `partialize`, `equality`, `handleSet` (100ms throttle), `limit: 50`
+- [x] 3.4 Export `useTemporalModelStore` hook from the store file
+- [x] 3.5 Re-export from `src/store/index.ts`
+- [x] 3.6 In `loadExample` action body, call `useModelStore.temporal.getState().clear()` AFTER state mutation (round-2 amendment)
+- [x] 3.7 LEAVE `@ts-nocheck` in place on `useModelStore.ts` and `useUIStore.ts`
+- [x] 3.8 `npm run type-check` green
+- [ ] 3.9 Smoke-test: `npm run dev`, add a node, inspect `useModelStore.temporal.getState().pastStates` in console — covered by Phase 7 end-to-end smoke (running the manual QA matrix)
+- [x] Commit: `feat(2dfea): compose zundo temporal middleware into model store`
 
 ## Phase 4 — Toolbar Undo/Redo buttons
 - [ ] 4.1 Open `src/components/Toolbar.tsx`
