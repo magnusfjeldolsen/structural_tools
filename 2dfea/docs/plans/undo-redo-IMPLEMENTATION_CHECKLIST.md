@@ -1,0 +1,93 @@
+# Implementation Checklist — 2dfea Undo / Redo
+
+- **Plan**: [`undo-redo.md`](undo-redo.md) (round-2 amended)
+- **Branch**: `feature/2dfea-undo-redo`
+- **Change class**: 2dfea-only (TypeScript / React / Zustand)
+- **Started**: 2026-04-27
+- **Baseline**: `npm run type-check` green; `npm run build` green (1.39s, 612.73 kB)
+
+## Round-2 amendments locked in
+- [x] Plan workflow filename corrected to `deploy-all-modules.yml`
+- [x] `loadExample` documented as non-undoable (calls `temporal.clear()`)
+- [x] `@ts-nocheck` will be preserved on `src/store/useModelStore.ts` and `src/store/useUIStore.ts`
+
+## Phase 1 — Dependency and utilities
+- [ ] 1.1 `npm i zundo` (v2+) inside `2dfea/`
+- [ ] 1.2 Create `2dfea/src/utils/throttle.ts` — leading + trailing throttle helper (no lodash)
+- [ ] 1.3 `npm run type-check` green
+- [ ] Commit: `feat(2dfea): add zundo dep and throttle utility for undo/redo`
+
+## Phase 2 — History configuration module
+- [ ] 2.1 Create `2dfea/src/store/historyConfig.ts` exporting `TRACKED_KEYS`, `partializeTracked`, `trackedEqual`, `INVALIDATE_ANALYSIS_PATCH`
+- [ ] 2.2 `npm run type-check` green
+- [ ] Confirm no circular import on `ModelState` type; if needed, lift type into `src/store/types.ts`
+- [ ] Commit: `feat(2dfea): add history config module for tracked-slice partializer`
+
+## Phase 3 — Compose `temporal` into `useModelStore`
+- [ ] 3.1 Add imports (`zundo`, `useStore`, helpers)
+- [ ] 3.2 Wrap immer slice in `temporal(...)` between `persist` and `immer`
+- [ ] 3.3 Configure `partialize`, `equality`, `handleSet` (100ms throttle), `limit: 50`
+- [ ] 3.4 Export `useTemporalModelStore` hook from the store file
+- [ ] 3.5 Re-export from `src/store/index.ts`
+- [ ] 3.6 In `loadExample` action body, call `useModelStore.temporal.getState().clear()` AFTER state mutation (round-2 amendment)
+- [ ] 3.7 LEAVE `@ts-nocheck` in place on `useModelStore.ts` and `useUIStore.ts`
+- [ ] 3.8 `npm run type-check` green
+- [ ] 3.9 Smoke-test: `npm run dev`, add a node, inspect `useModelStore.temporal.getState().pastStates` in console
+- [ ] Commit: `feat(2dfea): compose zundo temporal middleware into model store`
+
+## Phase 4 — Toolbar Undo/Redo buttons
+- [ ] 4.1 Open `src/components/Toolbar.tsx`
+- [ ] 4.2 Subscribe to `pastStates`, `futureStates`, `undo`, `redo` via `useTemporalModelStore`
+- [ ] 4.3 Add `doUndo` / `doRedo` wrappers that call `INVALIDATE_ANALYSIS_PATCH` after temporal action
+- [ ] 4.4 Render Undo/Redo buttons in top row (visible on all tabs)
+- [ ] 4.5 Tooltip with shortcut text (`title="Undo (Ctrl+Z)"` etc.)
+- [ ] 4.6 Disabled state when stack empty
+- [ ] 4.7 Add `editButtonStyle(enabled: boolean)` helper (or reuse existing patterns)
+- [ ] 4.8 `npm run type-check` green
+- [ ] Commit: `feat(2dfea): add Undo/Redo toolbar buttons`
+
+## Phase 5 — Keyboard shortcuts
+- [ ] 5.1 Open `src/hooks/useKeyboardShortcuts.ts`
+- [ ] 5.2 Subscribe to temporal store
+- [ ] 5.3 Add Ctrl+Z / Cmd+Z handler (with `isEditingInput` + `commandInput.visible` guards)
+- [ ] 5.4 Add Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y / Cmd+Y redo handler (same guards)
+- [ ] 5.5 Wrappers invalidate analysis cache on each fire
+- [ ] 5.6 Update useEffect deps (undo/redo/pastLen/futureLen)
+- [ ] 5.7 `npm run type-check` green
+- [ ] Commit: `feat(2dfea): add Ctrl+Z/Y keyboard shortcuts for undo/redo`
+
+## Phase 6 — Documentation & cleanup
+- [ ] 6.1 JSDoc on `useTemporalModelStore`
+- [ ] 6.2 Inline comment block above `temporal()` wrap explaining tracked-slice + invalidation policy
+- [ ] 6.3 Append entry to `2dfea/docs/plans/INDEX.md` (if not already present)
+- [ ] Commit: `docs(2dfea): document undo/redo tracked-slice policy and INDEX entry`
+
+## Phase 7 — Verification
+- [ ] `npm run type-check` green (final)
+- [ ] `npm run build` green (final)
+- [ ] `npm run dev` smoke test against §8 Groups A–G
+  - [ ] Group A — Basic undo/redo semantics
+  - [ ] Group B — Cascading deletes
+  - [ ] Group C — Selection / UI / view do NOT undo
+  - [ ] Group D — Analysis invalidation on undo/redo
+  - [ ] Group E — History bounds & equality
+  - [ ] Group F — Persistence (history not persisted across reload)
+  - [ ] Group G — Keyboard guards (input focus + command input)
+- [ ] No console errors in dev
+- [ ] Push branch to origin
+- [ ] HAND OFF to user for manual QA — do NOT open PR until accept
+
+## Phase 8 — Post-accept
+- [ ] `gh pr create` (rebase-merge, NOT squash)
+- [ ] After merge: delete local + remote feature branch
+- [ ] Verify GitHub Actions deploy green
+- [ ] Verify https://magnusfjeldolsen.github.io/structural_tools/2dfea/ live and undo/redo works
+
+## Hard constraints (from prompt)
+- [ ] No `--no-verify` / no signing bypass
+- [ ] No commit amends (new commits only)
+- [ ] No direct push to master
+- [ ] `@ts-nocheck` preserved on existing store files
+- [ ] Transient/derived state (selection, hover, drag previews, solver, results) excluded from history
+- [ ] Drag operations coalesce to ONE entry (handled by 100ms `handleSet` throttle)
+- [ ] Keyboard shortcuts respect typing focus
