@@ -10,9 +10,16 @@
  * - Solver instance
  */
 
-import { create } from 'zustand';
+import { create, useStore } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
+import { temporal, type TemporalState } from 'zundo';
+import {
+  partializeTracked,
+  trackedEqual,
+  type TrackedSlice,
+} from './historyConfig';
+import { throttle } from '../utils/throttle';
 import type {
   Node,
   Element,
@@ -211,10 +218,30 @@ const initialState = {
 // STORE
 // ============================================================================
 
+/**
+ * Store composition: devtools ▸ persist ▸ temporal (zundo) ▸ immer.
+ *
+ * Undo / redo policy (see docs/plans/undo-redo.md):
+ * - Tracked slice = TRACKED_KEYS in src/store/historyConfig.ts
+ *   (nodes, elements, loads, loadCases, loadCombinations, ID counters).
+ * - Untracked: all UI/view state, selection, solver, isAnalyzing, analysisResults,
+ *   analysisError, resultsCache. Undo/redo never disturbs these.
+ * - Equality guard: reference compare on each tracked field (immer reuses refs for
+ *   unchanged subtrees), so a no-op mutation never produces a new history entry.
+ * - handleSet: 100 ms leading+trailing throttle so a burst of synchronous `set`
+ *   calls coalesces to a single history entry.
+ * - limit: 50 past states / 50 future states (zundo defaults to 50 future too).
+ * - Analysis cache invalidation on undo/redo is performed by callers (Toolbar +
+ *   useKeyboardShortcuts) using INVALIDATE_ANALYSIS_PATCH from historyConfig.ts —
+ *   solver instance is intentionally preserved.
+ * - loadExample is NOT undoable: it calls useModelStore.temporal.getState().clear()
+ *   after mutating the model, so the example becomes the new fresh-start.
+ */
 export const useModelStore = create<ModelState>()(
   devtools(
     persist(
-      immer((set, get) => ({
+      temporal(
+        immer((set, get) => ({
         ...initialState,
 
         // ====================================================================
@@ -1026,8 +1053,21 @@ export const useModelStore = create<ModelState>()(
             state.analysisResults = null;
             state.analysisError = null;
           });
+          // loadExample is NOT undoable — it is a fresh-start initialization.
+          // Clearing the temporal history here keeps that contract (see plan §5).
+          // Compatible with both today's behaviour (always called on startup) and
+          // the future browser-memory gate (only called when localStorage is empty).
+          (useModelStore as any).temporal.getState().clear();
         },
       })),
+        {
+          partialize: partializeTracked,
+          equality: trackedEqual,
+          handleSet: (handleSet) =>
+            throttle(handleSet, 100, { leading: true, trailing: true }),
+          limit: 50,
+        }
+      ),
       {
         name: '2dfea-model-storage',
         partialize: (state) => ({
@@ -1045,3 +1085,24 @@ export const useModelStore = create<ModelState>()(
     { name: 'ModelStore' }
   )
 );
+
+/**
+ * Hook for subscribing to the zundo temporal store attached to useModelStore.
+ *
+ * Exposes (via the `TemporalState<TrackedSlice>` shape):
+ *  - pastStates / futureStates  → arrays of past/future tracked-slice snapshots
+ *  - undo() / redo() / clear()  → temporal actions
+ *  - pause() / resume()         → bypass-history hooks (unused in v1)
+ *  - setOnSave()                → onSave hook (unused in v1)
+ *
+ * Callers that mutate via undo/redo must also apply INVALIDATE_ANALYSIS_PATCH
+ * to useModelStore so cached analysis results never lag the live model. See
+ * Toolbar.tsx and useKeyboardShortcuts.ts.
+ *
+ * Example:
+ *   const undo = useTemporalModelStore((t) => t.undo);
+ *   const canUndo = useTemporalModelStore((t) => t.pastStates.length > 0);
+ */
+export const useTemporalModelStore = <T,>(
+  selector: (state: TemporalState<TrackedSlice>) => T
+): T => useStore((useModelStore as any).temporal, selector);
