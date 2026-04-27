@@ -12,7 +12,8 @@
  * - Displaced Shape, Moment/Shear/Axial Diagrams
  */
 
-import { useModelStore, useUIStore } from '../store';
+import { useModelStore, useTemporalModelStore, useUIStore } from '../store';
+import { INVALIDATE_ANALYSIS_PATCH } from '../store/historyConfig';
 import { ScaleControl } from './ScaleControl';
 import { ResultsSelector } from './ResultsSelector';
 
@@ -70,6 +71,34 @@ export function Toolbar() {
   const analysisResults = useModelStore((state) => state.analysisResults);
   const resultsCache = useModelStore((state) => state.resultsCache);
 
+  // ------------------------------------------------------------------
+  // Undo / Redo (zundo temporal middleware) — see docs/plans/undo-redo.md
+  // Subscribe to past/future stack lengths so the buttons re-render when
+  // they should enable/disable. Length-only selectors avoid re-renders on
+  // unrelated temporal state changes.
+  // ------------------------------------------------------------------
+  const pastLen = useTemporalModelStore((t) => t.pastStates.length);
+  const futureLen = useTemporalModelStore((t) => t.futureStates.length);
+  const undo = useTemporalModelStore((t) => t.undo);
+  const redo = useTemporalModelStore((t) => t.redo);
+  const canUndo = pastLen > 0;
+  const canRedo = futureLen > 0;
+
+  const doUndo = () => {
+    if (!canUndo) return;
+    undo();
+    // Invalidate cached analysis results — the undone model state may no
+    // longer match cached diagrams. Solver instance is preserved.
+    useModelStore.setState((state: any) => Object.assign(state, INVALIDATE_ANALYSIS_PATCH));
+    console.log('[ModelStore] Undo', { past: pastLen - 1, future: futureLen + 1 });
+  };
+  const doRedo = () => {
+    if (!canRedo) return;
+    redo();
+    useModelStore.setState((state: any) => Object.assign(state, INVALIDATE_ANALYSIS_PATCH));
+    console.log('[ModelStore] Redo', { past: pastLen + 1, future: futureLen - 1 });
+  };
+
   // Check if we have any cached results available
   const hasResults = analysisResults || Object.keys(resultsCache.caseResults).length > 0 || Object.keys(resultsCache.combinationResults).length > 0;
 
@@ -123,6 +152,17 @@ export function Toolbar() {
     cursor: 'not-allowed',
   };
 
+  const editButtonStyle = (enabled: boolean) => ({
+    padding: '8px 12px',
+    border: '1px solid #ccc',
+    backgroundColor: enabled ? '#fff' : '#eee',
+    color: enabled ? '#000' : '#999',
+    cursor: enabled ? 'pointer' : 'not-allowed',
+    borderRadius: '4px',
+    fontWeight: 'normal' as const,
+    opacity: enabled ? 1 : 0.6,
+  });
+
   return (
     <div
       style={{
@@ -142,6 +182,34 @@ export function Toolbar() {
           gap: '8px',
         }}
       >
+        {/* Edit Group - Undo/Redo (visible on every tab) */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '4px',
+            marginRight: '8px',
+            paddingRight: '8px',
+            borderRight: '1px solid #ccc',
+          }}
+        >
+          <button
+            style={editButtonStyle(canUndo)}
+            onClick={doUndo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+          >
+            ↶ Undo
+          </button>
+          <button
+            style={editButtonStyle(canRedo)}
+            onClick={doRedo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Shift+Z / Ctrl+Y)"
+          >
+            ↷ Redo
+          </button>
+        </div>
+
         {/* Tool Group - Changes based on active tab */}
         <div style={{ display: 'flex', gap: '4px', marginRight: '16px' }}>
           {/* Structure Tab Tools - Creation tools only (CAD tools in left panel) */}

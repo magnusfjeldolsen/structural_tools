@@ -36,15 +36,15 @@
 - [x] Commit: `feat(2dfea): compose zundo temporal middleware into model store`
 
 ## Phase 4 — Toolbar Undo/Redo buttons
-- [ ] 4.1 Open `src/components/Toolbar.tsx`
-- [ ] 4.2 Subscribe to `pastStates`, `futureStates`, `undo`, `redo` via `useTemporalModelStore`
-- [ ] 4.3 Add `doUndo` / `doRedo` wrappers that call `INVALIDATE_ANALYSIS_PATCH` after temporal action
-- [ ] 4.4 Render Undo/Redo buttons in top row (visible on all tabs)
-- [ ] 4.5 Tooltip with shortcut text (`title="Undo (Ctrl+Z)"` etc.)
-- [ ] 4.6 Disabled state when stack empty
-- [ ] 4.7 Add `editButtonStyle(enabled: boolean)` helper (or reuse existing patterns)
-- [ ] 4.8 `npm run type-check` green
-- [ ] Commit: `feat(2dfea): add Undo/Redo toolbar buttons`
+- [x] 4.1 Open `src/components/Toolbar.tsx`
+- [x] 4.2 Subscribe to `pastStates.length`, `futureStates.length`, `undo`, `redo` via `useTemporalModelStore` (length-only selectors avoid spurious re-renders)
+- [x] 4.3 Add `doUndo` / `doRedo` wrappers that call `INVALIDATE_ANALYSIS_PATCH` after temporal action
+- [x] 4.4 Render Undo/Redo buttons in top row (visible on all tabs — placed before the tool group)
+- [x] 4.5 Tooltip with shortcut text (`title="Undo (Ctrl+Z)"`, `title="Redo (Ctrl+Shift+Z / Ctrl+Y)"`)
+- [x] 4.6 Disabled state when stack empty
+- [x] 4.7 Add `editButtonStyle(enabled: boolean)` helper
+- [x] 4.8 `npm run type-check` green
+- [x] Commit: `feat(2dfea): add Undo/Redo toolbar buttons`
 
 ## Phase 5 — Keyboard shortcuts
 - [ ] 5.1 Open `src/hooks/useKeyboardShortcuts.ts`
