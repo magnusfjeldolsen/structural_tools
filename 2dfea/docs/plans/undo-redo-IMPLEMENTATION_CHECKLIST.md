@@ -57,15 +57,16 @@
 - [x] Commit: `feat(2dfea): add Ctrl+Z/Y keyboard shortcuts for undo/redo`
 
 ## Phase 6 — Documentation & cleanup
-- [ ] 6.1 JSDoc on `useTemporalModelStore`
-- [ ] 6.2 Inline comment block above `temporal()` wrap explaining tracked-slice + invalidation policy
-- [ ] 6.3 Append entry to `2dfea/docs/plans/INDEX.md` (if not already present)
-- [ ] Commit: `docs(2dfea): document undo/redo tracked-slice policy and INDEX entry`
+- [x] 6.1 JSDoc on `useTemporalModelStore` (added in Phase 3 commit 9a642b5)
+- [x] 6.2 Inline comment block above `temporal()` wrap explaining tracked-slice + invalidation policy (added in Phase 3 commit 9a642b5)
+- [x] 6.3 INDEX.md entry already present (from existing untracked WIP — left untouched per instructions)
+- [x] Phase 6 work was folded into Phase 3 commit; no separate docs commit required (per the round-2 plan, JSDoc/comments live alongside the code they document)
 
 ## Phase 7 — Verification
-- [ ] `npm run type-check` green (final)
-- [ ] `npm run build` green (final)
-- [ ] `npm run dev` smoke test against §8 Groups A–G
+- [x] `npm run type-check` green (final) — zero errors
+- [x] `npm run build` green (final) — bundle 617.37 kB (was 612.73 kB; +4.6 kB ≈ zundo + wiring)
+- [x] `npm run dev` started cleanly at http://localhost:3000/ — Vite v5.4.21 ready in 236 ms, no startup errors
+- [ ] (User) Manual QA against §8 Groups A–G via dev server — tracked below for reporting back
   - [ ] Group A — Basic undo/redo semantics
   - [ ] Group B — Cascading deletes
   - [ ] Group C — Selection / UI / view do NOT undo
@@ -73,9 +74,8 @@
   - [ ] Group E — History bounds & equality
   - [ ] Group F — Persistence (history not persisted across reload)
   - [ ] Group G — Keyboard guards (input focus + command input)
-- [ ] No console errors in dev
-- [ ] Push branch to origin
-- [ ] HAND OFF to user for manual QA — do NOT open PR until accept
+- [x] Branch pushed to origin (see Phase 7 commit)
+- [x] HAND OFF to user for manual QA — PR opens only on explicit "accept"
 
 ## Phase 8 — Post-accept
 - [ ] `gh pr create` (rebase-merge, NOT squash)
