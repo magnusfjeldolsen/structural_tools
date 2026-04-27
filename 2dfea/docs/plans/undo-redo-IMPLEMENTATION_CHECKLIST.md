@@ -47,14 +47,14 @@
 - [x] Commit: `feat(2dfea): add Undo/Redo toolbar buttons`
 
 ## Phase 5 — Keyboard shortcuts
-- [ ] 5.1 Open `src/hooks/useKeyboardShortcuts.ts`
-- [ ] 5.2 Subscribe to temporal store
-- [ ] 5.3 Add Ctrl+Z / Cmd+Z handler (with `isEditingInput` + `commandInput.visible` guards)
-- [ ] 5.4 Add Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y / Cmd+Y redo handler (same guards)
-- [ ] 5.5 Wrappers invalidate analysis cache on each fire
-- [ ] 5.6 Update useEffect deps (undo/redo/pastLen/futureLen)
-- [ ] 5.7 `npm run type-check` green
-- [ ] Commit: `feat(2dfea): add Ctrl+Z/Y keyboard shortcuts for undo/redo`
+- [x] 5.1 Open `src/hooks/useKeyboardShortcuts.ts`
+- [x] 5.2 Subscribe to temporal store (undo, redo, pastLen, futureLen)
+- [x] 5.3 Add Ctrl+Z / Cmd+Z handler (with `isEditingInput` + `commandInput.visible` guards)
+- [x] 5.4 Add Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y / Cmd+Y redo handler (same guards)
+- [x] 5.5 Wrappers invalidate analysis cache on each fire
+- [x] 5.6 Update useEffect deps (undo/redo/pastLen/futureLen)
+- [x] 5.7 `npm run type-check` green
+- [x] Commit: `feat(2dfea): add Ctrl+Z/Y keyboard shortcuts for undo/redo`
 
 ## Phase 6 — Documentation & cleanup
 - [ ] 6.1 JSDoc on `useTemporalModelStore`
