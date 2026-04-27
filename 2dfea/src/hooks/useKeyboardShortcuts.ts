@@ -8,11 +8,14 @@
  * - M: Activate move tool
  * - Delete: Activate delete tool
  * - Ctrl+Space: Run full analysis (all load cases and combinations)
+ * - Ctrl+Z / Cmd+Z: Undo last model mutation (zundo temporal)
+ * - Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y / Cmd+Y: Redo
  */
 
 import { useEffect } from 'react';
 import { useUIStore } from '../store/useUIStore';
-import { useModelStore } from '../store/useModelStore';
+import { useModelStore, useTemporalModelStore } from '../store/useModelStore';
+import { INVALIDATE_ANALYSIS_PATCH } from '../store/historyConfig';
 
 export function useKeyboardShortcuts() {
   const activeTool = useUIStore((state) => state.activeTool);
@@ -31,6 +34,15 @@ export function useKeyboardShortcuts() {
   const clearSelection = useModelStore((state) => state.clearSelection);
   const runFullAnalysis = useModelStore((state) => state.runFullAnalysis);
   const solver = useModelStore((state) => state.solver);
+
+  // Temporal (zundo) bindings — see docs/plans/undo-redo.md.
+  // We subscribe to lengths so the effect closure has fresh values when the
+  // user actually presses Ctrl+Z / Ctrl+Y. Length-only selectors keep this
+  // hook's re-render footprint minimal.
+  const undo = useTemporalModelStore((t) => t.undo);
+  const redo = useTemporalModelStore((t) => t.redo);
+  const pastLen = useTemporalModelStore((t) => t.pastStates.length);
+  const futureLen = useTemporalModelStore((t) => t.futureStates.length);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -103,6 +115,53 @@ export function useKeyboardShortcuts() {
         }
       }
 
+      // ----------------------------------------------------------------
+      // Undo / Redo (zundo temporal) — Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
+      // and the Cmd-equivalents on macOS. See docs/plans/undo-redo.md.
+      //
+      // Guards (must short-circuit BEFORE preventDefault):
+      //  - commandInput.visible: the CAD command input is open; let it own
+      //    the keystroke.
+      //  - Active element is <input>/<textarea>/contenteditable: let the
+      //    native input's own undo handle it (so cell edits keep their
+      //    native undo).
+      // ----------------------------------------------------------------
+      const isEditingInput = (() => {
+        const el = document.activeElement;
+        if (!el) return false;
+        const tag = el.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
+        if ((el as HTMLElement).isContentEditable) return true;
+        return false;
+      })();
+
+      // Undo: Ctrl+Z / Cmd+Z (without Shift)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        if (commandInput?.visible || isEditingInput) return;
+        e.preventDefault();
+        if (pastLen > 0) {
+          undo();
+          useModelStore.setState((s: any) => Object.assign(s, INVALIDATE_ANALYSIS_PATCH));
+          console.log('[ModelStore] Undo', { past: pastLen - 1, future: futureLen + 1 });
+        }
+        return;
+      }
+
+      // Redo: Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y / Cmd+Y
+      const isRedo =
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z')) ||
+        ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'y' || e.key === 'Y'));
+      if (isRedo) {
+        if (commandInput?.visible || isEditingInput) return;
+        e.preventDefault();
+        if (futureLen > 0) {
+          redo();
+          useModelStore.setState((s: any) => Object.assign(s, INVALIDATE_ANALYSIS_PATCH));
+          console.log('[ModelStore] Redo', { past: pastLen + 1, future: futureLen - 1 });
+        }
+        return;
+      }
+
       // Ctrl/Cmd detection for multi-select
       // This is handled in the canvas mouse event handlers
     };
@@ -128,5 +187,9 @@ export function useKeyboardShortcuts() {
     clearDrawingElement,
     clearSelection,
     runFullAnalysis,
+    undo,
+    redo,
+    pastLen,
+    futureLen,
   ]);
 }
