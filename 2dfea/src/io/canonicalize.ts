@@ -30,8 +30,7 @@ import type {
   LoadCombinationDefinition,
 } from '../analysis/types';
 import type { ModelFileV1 } from './schema';
-import { CURRENT_SCHEMA_VERSION } from './schemaVersion';
-import { V1_UNITS } from './schema';
+import { CURRENT_SCHEMA_VERSION, V1_UNITS } from './schemaVersion';
 
 /**
  * Subset of the runtime ModelState that we serialize. Kept narrow on

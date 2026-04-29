@@ -172,9 +172,12 @@
 
 (Plan §7 Phase 9; no commit unless dynamic-import refactor needed)
 
-- [ ] `npm run build` after all changes; record bundle size delta
-- [ ] If > 15 KB gzipped over baseline (180.85 KB): switch import path to dynamic import
-- [ ] Confirm Vitest is devDep only (no runtime contribution)
+- [x] `npm run build` after all changes; bundle size:
+  - Eager main: **184.25 KB gzipped** (vs baseline **180.85 KB**) → **delta = 3.40 KB gzipped** ✓ well under 15 KB
+  - Lazy `importPath` chunk: **14.70 KB gzipped** (loaded on first Import click)
+- [x] Dynamic-import refactor applied: `src/io/importPath.ts` carries Zod schema + semantic validator + applyToStore; `promptUserForImport` does `await import('./importPath')` at runtime. Export path stays eager for Ctrl+S responsiveness.
+- [x] `V1_UNITS` constant moved to `schemaVersion.ts` (with re-export in `schema.ts`) so canonicalize doesn't pull Zod into the eager bundle.
+- [x] Confirm Vitest is devDep only — verified in `package.json`
 
 ---
 
