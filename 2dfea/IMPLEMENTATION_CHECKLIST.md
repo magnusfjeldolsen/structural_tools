@@ -57,23 +57,23 @@
 
 (Plan §7 Phase 2; commit: `feat(2dfea): add v1 schema, migration plumbing, semantic validator`)
 
-- [ ] Create `src/io/schema.ts`
-  - [ ] `ModelFileV1Schema` mirrors §5.2; envelope strict, `metadata` `.passthrough()`
-  - [ ] `metadata.units` is `z.literal()`-pinned
-  - [ ] `model`, `model.loads`, `model.idCounters`, every entity object: `.passthrough()`
-  - [ ] `model.loads.catchall(z.array(z.unknown()))` for forward-compat thermal/etc
-  - [ ] `.finite()` on every numeric field
-  - [ ] Enum constraints for `support`, distributed `direction`, elementPoint `direction`
-  - [ ] Export `type ModelFileV1 = z.infer<typeof ModelFileV1Schema>`
-  - [ ] Helper `warnUnknownKeys()` emits one deduped `console.warn` per unknown key
-- [ ] Create `src/io/migrations.ts` — `MIGRATIONS` registry + `migrateToCurrent()` (identity v1)
-- [ ] Create `src/io/semanticValidator.ts` — orphan refs, dup IDs, missing cases, activeResultView
-- [ ] Create test file `src/io/schema.test.ts`
-- [ ] Create test file `src/io/migrations.test.ts`
-- [ ] Create test file `src/io/semanticValidator.test.ts`
-- [ ] Create test file `src/io/forwardCompat.test.ts` (v1.1.0-shaped fixture, console.warn dedup, applyToStore drops unknown on re-export)
-- [ ] `npm run type-check` green
-- [ ] `npm test` green (all new tests passing)
+- [x] Create `src/io/schema.ts`
+  - [x] `ModelFileV1Schema` mirrors §5.2; envelope strict, `metadata` `.passthrough()`
+  - [x] `metadata.units` is `z.literal()`-pinned
+  - [x] `model`, `model.loads`, `model.idCounters`, every entity object: `.passthrough()`
+  - [x] `model.loads.catchall(z.array(z.unknown()))` for forward-compat thermal/etc
+  - [x] `.finite()` on every numeric field
+  - [x] Enum constraints for `support`, distributed `direction`, elementPoint `direction`
+  - [x] Export `type ModelFileV1 = z.infer<typeof ModelFileV1Schema>`
+  - [x] Helper `warnUnknownKeys()` emits one deduped `console.warn` per unknown key
+- [x] Create `src/io/migrations.ts` — `MIGRATIONS` registry + `migrateToCurrent()` (identity v1)
+- [x] Create `src/io/semanticValidator.ts` — orphan refs, dup IDs, missing cases, activeResultView
+- [x] Create test file `src/io/schema.test.ts`
+- [x] Create test file `src/io/migrations.test.ts`
+- [x] Create test file `src/io/semanticValidator.test.ts`
+- [ ] Create test file `src/io/forwardCompat.test.ts` (deferred to Phase 3; depends on `applyToStore` + `canonicalize`)
+- [x] `npm run type-check` green
+- [x] `npm test` green (Phase-2 tests passing — 31 assertions across 4 files including canonicalStringify)
 
 ---
 
