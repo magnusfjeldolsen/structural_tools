@@ -14,6 +14,7 @@
 
 import { useModelStore, useTemporalModelStore, useUIStore } from '../store';
 import { INVALIDATE_ANALYSIS_PATCH } from '../store/historyConfig';
+import { exportCurrentModelToFile } from '../io/exportImport';
 import { ScaleControl } from './ScaleControl';
 import { ResultsSelector } from './ResultsSelector';
 
@@ -70,6 +71,12 @@ export function Toolbar() {
   const solver = useModelStore((state) => state.solver);
   const analysisResults = useModelStore((state) => state.analysisResults);
   const resultsCache = useModelStore((state) => state.resultsCache);
+
+  // Save/load JSON (A4) — Export disabled when model is empty;
+  // Import always enabled (the user might want to import into an empty model).
+  const nodesLen = useModelStore((state) => state.nodes.length);
+  const elementsLen = useModelStore((state) => state.elements.length);
+  const canExport = nodesLen > 0 || elementsLen > 0;
 
   // ------------------------------------------------------------------
   // Undo / Redo (zundo temporal middleware) — see docs/plans/undo-redo.md
@@ -207,6 +214,28 @@ export function Toolbar() {
             title="Redo (Ctrl+Shift+Z / Ctrl+Y)"
           >
             ↷ Redo
+          </button>
+        </div>
+
+        {/* File Group - Export JSON (Import added in Phase 5; visible on every tab) */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '4px',
+            marginRight: '8px',
+            paddingRight: '8px',
+            borderRight: '1px solid #ccc',
+          }}
+        >
+          <button
+            style={editButtonStyle(canExport)}
+            onClick={() => {
+              void exportCurrentModelToFile();
+            }}
+            disabled={!canExport}
+            title="Export model to JSON file (Ctrl+S)"
+          >
+            📤 Export JSON
           </button>
         </div>
 
