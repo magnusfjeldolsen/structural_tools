@@ -1,0 +1,93 @@
+{
+  "_comments": {
+    "elements": {
+      "E1": "Steel beam, IPE 200 in S275 — example"
+    },
+    "loads": {
+      "NL1": "Tip dead load; sign convention: y-down is negative"
+    },
+    "nodes": {
+      "N1": "Fixed support at left end — restrains all DOFs"
+    }
+  },
+  "metadata": {
+    "appVersion": "unknown",
+    "author": null,
+    "description": "Single 4 m fixed-free beam under tip load",
+    "exportedAt": "2026-04-27T15:35:00.000Z",
+    "name": "Cantilever sample",
+    "units": {
+      "area": "m2",
+      "areaMomentOfInertia": "m4",
+      "force": "kN",
+      "length": "m",
+      "moment": "kNm",
+      "stress": "GPa"
+    }
+  },
+  "model": {
+    "activeLoadCase": "Dead",
+    "activeResultView": {
+      "name": "Dead",
+      "type": "case"
+    },
+    "elements": [
+      {
+        "A_m2": 0.001,
+        "E_GPa": 210,
+        "I_m4": 0.0001,
+        "name": "E1",
+        "nodeI": "N1",
+        "nodeJ": "N2"
+      }
+    ],
+    "idCounters": {
+      "nextDistributedLoadNumber": 1,
+      "nextElementNumber": 2,
+      "nextLineLoadNumber": 1,
+      "nextNodalLoadNumber": 2,
+      "nextNodeNumber": 3,
+      "nextPointLoadNumber": 1
+    },
+    "loadCases": [
+      {
+        "description": "Dead loads",
+        "name": "Dead"
+      },
+      {
+        "description": "Live loads",
+        "name": "Live"
+      }
+    ],
+    "loadCombinations": [],
+    "loads": {
+      "distributed": [],
+      "elementPoint": [],
+      "nodal": [
+        {
+          "case": "Dead",
+          "fx_kN": 0,
+          "fy_kN": -10,
+          "id": "NL1",
+          "mz_kNm": 0,
+          "node": "N2"
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "name": "N1",
+        "support": "fixed",
+        "x_m": 0,
+        "y_m": 0
+      },
+      {
+        "name": "N2",
+        "support": "free",
+        "x_m": 4,
+        "y_m": 0
+      }
+    ]
+  },
+  "schemaVersion": "1.0.0"
+}
