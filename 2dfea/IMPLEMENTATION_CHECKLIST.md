@@ -71,7 +71,7 @@
 - [x] Create test file `src/io/schema.test.ts`
 - [x] Create test file `src/io/migrations.test.ts`
 - [x] Create test file `src/io/semanticValidator.test.ts`
-- [ ] Create test file `src/io/forwardCompat.test.ts` (deferred to Phase 3; depends on `applyToStore` + `canonicalize`)
+- [x] Create test file `src/io/forwardCompat.test.ts` (created in Phase 3; depends on `applyToStore` + `canonicalize`)
 - [x] `npm run type-check` green
 - [x] `npm test` green (Phase-2 tests passing — 31 assertions across 4 files including canonicalStringify)
 
@@ -81,17 +81,18 @@
 
 (Plan §7 Phase 3; commit: `feat(2dfea): add canonicalize and applyToStore with temporal.clear`)
 
-- [ ] Create `src/io/canonicalize.ts` — `modelStateToFile()`, unit-suffix mapping; `appVersion: "unknown"` with `// TODO(appVersion):` comment
-- [ ] Create `src/io/applyToStore.ts` — uses `INVALIDATE_ANALYSIS_PATCH`; calls `temporal.getState().clear()`
-- [ ] Modify `src/store/useModelStore.ts`:
-  - [ ] Add `comments` to `ModelState` interface
-  - [ ] Add `comments` to `initialState` (all empty)
-  - [ ] Extend `persist` `partialize` to include `next*Number` counters + `comments`
-  - [ ] Add `onRehydrateStorage` to backfill missing counters (Phase 3.5)
-- [ ] Create test file `src/io/canonicalize.test.ts`
-- [ ] Create test file `src/io/roundtrip.test.ts` (load-bearing — round-trip byte-identity)
-- [ ] `npm run type-check` green
-- [ ] `npm test` green
+- [x] Create `src/io/canonicalize.ts` — `modelStateToFile()`, unit-suffix mapping; `appVersion: "unknown"` with `// TODO(appVersion):` comment
+- [x] Create `src/io/applyToStore.ts` — uses `INVALIDATE_ANALYSIS_PATCH`; calls `temporal.getState().clear()`
+- [x] Modify `src/store/useModelStore.ts`:
+  - [x] Add `comments` to `ModelState` interface
+  - [x] Add `comments` to `initialState` (all empty)
+  - [x] Extend `persist` `partialize` to include `next*Number` counters + `comments`
+  - [x] Add `onRehydrateStorage` to backfill missing counters (Phase 3.5)
+- [x] Create test file `src/io/canonicalize.test.ts`
+- [x] Create test file `src/io/roundtrip.test.ts` (load-bearing — round-trip byte-identity)
+- [x] Create test file `src/io/forwardCompat.test.ts` (deferred from Phase 2)
+- [x] `npm run type-check` green
+- [x] `npm test` green — 50 tests passing across 7 files
 
 ---
 
