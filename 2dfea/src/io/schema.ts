@@ -29,7 +29,10 @@
  * envelope is strict; everything else is permissive.
  */
 import { z } from 'zod';
-import { CURRENT_SCHEMA_VERSION } from './schemaVersion';
+import { CURRENT_SCHEMA_VERSION, V1_UNITS } from './schemaVersion';
+
+// Re-export V1_UNITS so existing consumers of `./schema` keep working.
+export { V1_UNITS } from './schemaVersion';
 
 // ----------------------------------------------------------------------------
 // Enums (kept in sync with src/analysis/types.ts)
@@ -177,16 +180,6 @@ const ModelSchema = z
 // ----------------------------------------------------------------------------
 // metadata — pin the units block, passthrough everything else
 // ----------------------------------------------------------------------------
-
-/** v1 unit policy — locked. Future versions MAY allow user-selected units. */
-export const V1_UNITS = {
-  length: 'm',
-  force: 'kN',
-  moment: 'kNm',
-  stress: 'GPa',
-  areaMomentOfInertia: 'm4',
-  area: 'm2',
-} as const;
 
 const UnitsSchema = z.object({
   length: z.literal(V1_UNITS.length),

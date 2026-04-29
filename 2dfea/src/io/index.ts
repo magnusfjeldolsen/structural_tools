@@ -26,8 +26,7 @@ export {
   type ModelFileOptions,
 } from './canonicalize';
 export { applyToStore } from './applyToStore';
-export {
-  exportCurrentModelToFile,
-  promptUserForImport,
-  handleImportText,
-} from './exportImport';
+export { exportCurrentModelToFile, promptUserForImport } from './exportImport';
+// handleImportText is dynamic-imported by promptUserForImport at runtime
+// (bundle-size split — plan §7 Phase 9). Tests / non-UI consumers should
+// import it directly from `./importPath` to bypass the dynamic import.
