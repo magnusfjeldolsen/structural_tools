@@ -10,12 +10,15 @@
  * - Ctrl+Space: Run full analysis (all load cases and combinations)
  * - Ctrl+Z / Cmd+Z: Undo last model mutation (zundo temporal)
  * - Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y / Cmd+Y: Redo
+ * - Ctrl+S / Cmd+S: Export model to JSON file (save/load JSON)
+ * - Ctrl+O / Cmd+O: Import model from JSON file (save/load JSON)
  */
 
 import { useEffect } from 'react';
 import { useUIStore } from '../store/useUIStore';
 import { useModelStore, useTemporalModelStore } from '../store/useModelStore';
 import { INVALIDATE_ANALYSIS_PATCH } from '../store/historyConfig';
+import { exportCurrentModelToFile, promptUserForImport } from '../io/exportImport';
 
 export function useKeyboardShortcuts() {
   const activeTool = useUIStore((state) => state.activeTool);
@@ -159,6 +162,36 @@ export function useKeyboardShortcuts() {
           useModelStore.setState((s: any) => Object.assign(s, INVALIDATE_ANALYSIS_PATCH));
           console.log('[ModelStore] Redo', { past: pastLen + 1, future: futureLen - 1 });
         }
+        return;
+      }
+
+      // ----------------------------------------------------------------
+      // Save / Load JSON — Ctrl+S export, Ctrl+O import. Same focus
+      // guards as Undo/Redo: don't fire when an input is focused or the
+      // CAD command input is visible. preventDefault preempts the
+      // browser's "Save Page As..." / "Open File..." defaults.
+      // ----------------------------------------------------------------
+
+      // Export: Ctrl+S / Cmd+S (without Shift)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 's' || e.key === 'S')) {
+        if (commandInput?.visible || isEditingInput) return;
+        e.preventDefault();
+        // Soft-no-op when the model is empty — Toolbar handles the
+        // disabled state visually; the shortcut still preventDefaults
+        // the browser save dialog so the keystroke is "consumed".
+        const state = useModelStore.getState();
+        if (state.nodes.length === 0 && state.elements.length === 0) {
+          return;
+        }
+        void exportCurrentModelToFile();
+        return;
+      }
+
+      // Import: Ctrl+O / Cmd+O (without Shift)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'o' || e.key === 'O')) {
+        if (commandInput?.visible || isEditingInput) return;
+        e.preventDefault();
+        void promptUserForImport();
         return;
       }
 
