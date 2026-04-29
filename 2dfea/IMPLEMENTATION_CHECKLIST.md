@@ -36,20 +36,20 @@
 
 ### 1a — `feat(2dfea): add zod, zod-to-json-schema, canonicalStringify, schemaVersion`
 
-- [ ] `npm i zod zod-to-json-schema` — added to `dependencies`
-- [ ] `npm i -D tsx` — added to `devDependencies` (for `generate-schema` script)
-- [ ] Create `src/io/schemaVersion.ts` — `CURRENT_SCHEMA_VERSION = '1.0.0'` + `SchemaVersionError`
-- [ ] Create `src/io/canonicalStringify.ts` — sorted keys, trailing newline, JSDoc
-- [ ] `npm run type-check` green
+- [x] `npm i zod zod-to-json-schema` — added to `dependencies`
+- [x] `npm i -D tsx` — added to `devDependencies` (for `generate-schema` script)
+- [x] Create `src/io/schemaVersion.ts` — `CURRENT_SCHEMA_VERSION = '1.0.0'` + `SchemaVersionError`
+- [x] Create `src/io/canonicalStringify.ts` — sorted keys, trailing newline, JSDoc
+- [x] `npm run type-check` green
 
 ### 1b — `chore(2dfea): add vitest test runner with sanity test`
 
-- [ ] `npm i -D vitest @vitest/ui jsdom` — added to `devDependencies`
-- [ ] Create `2dfea/vitest.config.ts` (jsdom, globals: false, `src/**/*.{test,spec}.{ts,tsx}`)
-- [ ] Add `test`, `test:watch`, `test:ui` scripts to `package.json`
-- [ ] Create `src/io/canonicalStringify.test.ts` (sanity test)
-- [ ] `npm run type-check` green
-- [ ] `npm test` → 1 passing
+- [x] `npm i -D vitest @vitest/ui jsdom` — added to `devDependencies`
+- [x] Create `2dfea/vitest.config.ts` (jsdom, globals: false, `src/**/*.{test,spec}.{ts,tsx}`)
+- [x] Add `test`, `test:watch`, `test:ui` scripts to `package.json`
+- [x] Create `src/io/canonicalStringify.test.ts` (sanity test, 8 assertions)
+- [x] `npm run type-check` green
+- [x] `npm test` → 8 passing
 
 ---
 
