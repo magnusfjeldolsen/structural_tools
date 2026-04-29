@@ -159,12 +159,12 @@
 
 (Plan §7 Phase 8; commit: `build(2dfea): publish JSON Schema document via prebuild script`)
 
-- [ ] Create `src/io/generateJsonSchema.ts`
-- [ ] Add scripts: `"generate-schema": "tsx src/io/generateJsonSchema.ts"`, `"prebuild": "npm run generate-schema"`
-- [ ] Run `npm run generate-schema`
-- [ ] Verify `public/schemas/2dfea-model-v1.json` written
-- [ ] `npm run build` succeeds (prebuild fires)
-- [ ] Confirm `dist/schemas/2dfea-model-v1.json` is included
+- [x] Create `src/io/generateJsonSchema.ts`
+- [x] Add scripts: `"generate-schema": "tsx src/io/generateJsonSchema.ts"`, `"prebuild": "npm run generate-schema"`
+- [x] Run `npm run generate-schema` — wrote `public/schemas/2dfea-model-v1.json` (457 lines)
+- [x] Add `@types/node` devDep + tsconfig.node.json includes generateJsonSchema.ts (excluded from main tsconfig — build-time only, not in runtime bundle)
+- [x] `npm run build` succeeds (prebuild fires)
+- [x] Confirm `dist/schemas/2dfea-model-v1.json` is included
 
 ---
 
