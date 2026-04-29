@@ -147,11 +147,11 @@
 
 (Plan §7 Phase 7; commit: `feat(2dfea): gate loadExample to fire only when localStorage is empty`)
 
-- [ ] Modify `src/App.tsx` — add startup `useEffect`:
-  - [ ] Read `localStorage.getItem('2dfea-model-storage')` for null/empty
-  - [ ] Only fire `loadExample()` if no persisted model AND store looks fresh
-- [ ] `npm run type-check` green
-- [ ] `npm run dev` smoke: clear localStorage → reload → cantilever; edit → reload → edits persist
+- [x] Modify `src/App.tsx` — add startup `useEffect`:
+  - [x] Read `localStorage.getItem('2dfea-model-storage')` for null/empty
+  - [x] Only fire `loadExample()` if no persisted model AND store looks fresh
+- [x] `npm run type-check` green
+- [ ] `npm run dev` smoke: deferred to Phase 11
 
 ---
 

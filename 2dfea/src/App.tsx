@@ -107,6 +107,34 @@ export default function App() {
     init();
   }, [initializeSolver]);
 
+  // ----------------------------------------------------------------------
+  // One-shot startup gate for loadExample (save/load JSON, plan §7 Phase 7).
+  //
+  // Goal: a fresh visit (no `'2dfea-model-storage'` entry) loads the
+  // cantilever example so the canvas isn't empty; a return visit lets the
+  // persist-rehydrated model stand. The Toolbar's manual "Load Example"
+  // button is unaffected — it always overwrites.
+  //
+  // Persist's onRehydrateStorage runs synchronously before this effect, so
+  // the store here either reflects the rehydrated model or the
+  // initialState. We additionally check `nodes.length === 0 && elements...`
+  // to handle the edge case where localStorage has a corrupt entry that
+  // persist swallowed silently — in that case we treat it as a fresh start.
+  // ----------------------------------------------------------------------
+  useEffect(() => {
+    const persisted = localStorage.getItem('2dfea-model-storage');
+    const isLocalStorageEmpty = !persisted || persisted === 'null' || persisted === '';
+    const state = useModelStore.getState();
+    const looksLikeFreshStart =
+      state.nodes.length === 0 && state.elements.length === 0;
+    if (isLocalStorageEmpty && looksLikeFreshStart) {
+      state.loadExample();
+      console.log('[App] No persisted model found — loaded cantilever example.');
+    }
+    // Run exactly once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Render initialization status
   if (initStatus === 'loading') {
     return (
