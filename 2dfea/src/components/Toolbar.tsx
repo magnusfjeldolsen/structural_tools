@@ -14,7 +14,7 @@
 
 import { useModelStore, useTemporalModelStore, useUIStore } from '../store';
 import { INVALIDATE_ANALYSIS_PATCH } from '../store/historyConfig';
-import { exportCurrentModelToFile } from '../io/exportImport';
+import { exportCurrentModelToFile, promptUserForImport } from '../io/exportImport';
 import { ScaleControl } from './ScaleControl';
 import { ResultsSelector } from './ResultsSelector';
 
@@ -217,7 +217,7 @@ export function Toolbar() {
           </button>
         </div>
 
-        {/* File Group - Export JSON (Import added in Phase 5; visible on every tab) */}
+        {/* File Group - Export/Import JSON (visible on every tab) */}
         <div
           style={{
             display: 'flex',
@@ -236,6 +236,15 @@ export function Toolbar() {
             title="Export model to JSON file (Ctrl+S)"
           >
             📤 Export JSON
+          </button>
+          <button
+            style={editButtonStyle(true)}
+            onClick={() => {
+              void promptUserForImport();
+            }}
+            title="Import model from JSON file (Ctrl+O)"
+          >
+            📥 Import JSON
           </button>
         </div>
 
