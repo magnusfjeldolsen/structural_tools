@@ -12,6 +12,7 @@ import { useModelStore } from './store';
 import { useUIStore } from './store/useUIStore';
 import { CanvasView, Toolbar, ResultsPanel } from './components';
 import { TabBar } from './components/TabBar';
+import { Toast } from './components/Toast';
 import { LeftCADPanel } from './components/LeftCADPanel';
 import { CommandInput } from './components/CommandInput';
 import { CoordinateDisplay } from './components/CoordinateDisplay';
@@ -318,6 +319,9 @@ export default function App() {
 
       {/* Command Input Modal */}
       <CommandInput />
+
+      {/* Toast notifications (save/load JSON success/failure messages) */}
+      <Toast />
     </div>
   );
 }

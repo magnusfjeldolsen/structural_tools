@@ -117,16 +117,16 @@
 
 (Plan §7 Phase 5; commit: `feat(2dfea): add Import JSON with confirm-before-overwrite and toast UX`)
 
-- [ ] Add `promptUserForImport()` and `handleImportText()` to `src/io/exportImport.ts`
-  - [ ] Gate 1: analysis-running confirm (`window.confirm`)
-  - [ ] Gate 2: confirm-before-overwrite (`window.confirm`) when nodes/elements/loads non-empty
-  - [ ] Validate: parse → version-check → migrate → Zod → semantic → apply
-- [ ] Create `src/store/useToastStore.ts` — toast slice (queue / kind / message / auto-dismiss)
-- [ ] Create `src/components/Toast.tsx` — top-right placement, 3-second auto-dismiss
-- [ ] Mount `<Toast />` in `App.tsx`
-- [ ] Modify `src/components/Toolbar.tsx` — add Import button, always enabled
-- [ ] `npm run type-check` green
-- [ ] `npm run dev` smoke: round-trip + corrupt-file + bad-version + orphan-ref scenarios
+- [x] Add `promptUserForImport()` and `handleImportText()` to `src/io/exportImport.ts` (added in Phase 4)
+  - [x] Gate 1: analysis-running confirm (`window.confirm`)
+  - [x] Gate 2: confirm-before-overwrite (`window.confirm`) when nodes/elements/loads non-empty
+  - [x] Validate: parse → version-check → migrate → Zod → semantic → apply
+- [x] Create `src/store/useToastStore.ts` — toast slice (auto-dismiss; created in Phase 4)
+- [x] Create `src/components/Toast.tsx` — top-right placement
+- [x] Mount `<Toast />` in `App.tsx`
+- [x] Modify `src/components/Toolbar.tsx` — add Import button, always enabled
+- [x] `npm run type-check` green
+- [ ] `npm run dev` smoke: deferred to Phase 11
 
 ---
 
