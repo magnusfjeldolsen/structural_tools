@@ -216,6 +216,8 @@ The schema is laid out for **AI consumption first, human readability second, mac
 5. **`idCounters` block is part of `model`**, not metadata. Reason: counters are model-authored data (they affect future entity naming) and round-trip identity. Mirrors the `TRACKED_KEYS` ID-counter inclusion that `historyConfig.ts:32-37` already enforces for undo/redo.
 6. **`_comments` is sibling to `model`**, not nested inside entities. Reason: keeps `types.ts` Node/Element/Load shapes stable; comments are an annotation layer. The leading underscore signals "not part of the analysis model".
 7. **Direction enums are case-sensitive** matching `types.ts` ('Fx'|'Fy'|'FX'|'FY' for distributed loads, etc.). This is a likely AI-generation footgun — the JSON Schema enum constraint and the Zod schema both enforce it; the validation error message says "expected one of: Fx, Fy, FX, FY (case-sensitive: lowercase = local, uppercase = global)".
+8. **`loads` is open-keyed by design.** The Zod shape uses `.catchall(z.array(z.unknown()))` so adding `loads.thermal`, `loads.prescribedDisplacement`, `loads.selfWeight`, or `loads.imperfection` in a future MINOR release is non-breaking — current code passes the unknown arrays through and ignores them; new code reads them. This is also how "self-weight" integrates without a schema bump if it's modeled as a derived load: it can become its own `loads.selfWeight: [{ element, gravityVector_m_per_s2, density_kg_per_m3 }]` array entry without touching v1. The same `.passthrough()` treatment applies to `model.idCounters` so that A1 / A2 introducing `nextSectionRefNumber` / `nextMaterialRefNumber` is also a MINOR addition.
+9. **Entity fields grow horizontally (new sibling keys), never by nesting existing keys.** AI prompts and downstream consumers can rely on stable top-level shape: an element's `E_GPa` will never be relocated to `Element.properties.E_GPa` in a future MINOR. Renames or relocations are MAJOR bumps only.
 
 ### 5.3 Versioning policy (SemVer)
 
@@ -233,10 +235,18 @@ The `schemaVersion` field uses **SemVer string** (`"1.0.0"`, not `1`). Justifica
 - **PATCH** (1.0.0 → 1.0.1): a documentation-only or non-breaking enum **expansion** (e.g. adding a new `support` type that old code wouldn't see in old files).
 
 **Forward compatibility**:
-- Old code reading a newer **MINOR** file: unknown fields are ignored (Zod's default `.passthrough()` for the `metadata` object only; the strict `model` schema will surface unknowns as a console warning but not reject).
+- Old code reading a newer **MINOR** file: unknown fields pass through Zod validation; a console warning lists each unknown key for diagnostic visibility; old code ignores them and proceeds. The `model` object, the `model.loads` map, the `model.idCounters` block, and every entity object inside `model.nodes` / `model.elements` / `model.loads.*` use `.passthrough()` for exactly this reason. Only `metadata.units` is `.literal()`-pinned; strict validation applies only to the top-level envelope (`schemaVersion`, `metadata`, `model`, `_comments`), since the envelope shape itself is stable across MINOR releases.
 - Old code reading a newer **MAJOR** file: rejected with the schema-version error toast (goal #6).
 
 `CURRENT_SCHEMA_VERSION` lives in `src/io/schemaVersion.ts` as a single exported const. Bumping it is a one-file edit (plus migration registration for MAJOR bumps).
+
+**A1/A2 forward-compat policy**:
+
+When the steel section library (A1) and material library (A2) ship, elements gain optional `sectionRef?: string` and `materialRef?: string` siblings to the existing `E_GPa` / `I_m4` / `A_m2` fields. **Numeric fields remain required** in v1.x.x — they are the engine's wire format. If both `sectionRef` and explicit numeric values are present, **explicit numeric values win** (the section reference is then advisory only, useful for AI prompts and human readers). A future v2.0.0 MAY make numerics optional when a `sectionRef` is present, but that is a MAJOR bump and requires a migration. v1 files always remain readable in v1.x.x.
+
+The same policy applies to materials: explicit `E_GPa` always wins over a `materialRef` lookup until v2 says otherwise.
+
+This subsection is the "rule of record" for A1/A2 — it locks in the precedence and bump-class semantics before sections/materials land, so the contract does not have to be relitigated when those features ship.
 
 ### 5.4 Validation library — Zod (chosen)
 
@@ -760,8 +770,11 @@ export default defineConfig({
 
 2.1 Create `src/io/schema.ts`:
    - Define `ModelFileV1Schema` as a Zod schema mirroring §5.2 exactly.
-   - Use `.strict()` on the `model` object to reject unknown fields.
+   - Use `.passthrough()` on the `model` object so unknown top-level model keys (introduced by future MINOR bumps) round-trip through validation without rejection. **Inner objects that should remain extensible (`model.loads`, `model.idCounters`, every entity object inside `model.nodes` / `model.elements` / `model.loads.*`) also use `.passthrough()`**. Only `metadata.units` is pinned via `z.literal()`; the only strict-validated layer is the top-level envelope (`schemaVersion`, `metadata`, `model`, `_comments`).
+   - Declare `model.loads` as `z.object({ nodal: z.array(NodalLoadSchema), distributed: z.array(DistributedLoadSchema), elementPoint: z.array(ElementPointLoadSchema) }).catchall(z.array(z.unknown()))` so future load-type keys (thermal, prescribed displacement, self-weight, member imperfections) are MINOR additions and pass through validation untouched.
+   - Declare `model.idCounters` as a `z.object({...known counters...}).passthrough()` so A1 / A2 adding `nextSectionRefNumber` / `nextMaterialRefNumber` is also a MINOR addition.
    - Use `.passthrough()` on `metadata` so future minor versions can add fields without breaking old code.
+   - After Zod parse succeeds, walk the parsed object and emit a single deduplicated `console.warn(...)` listing every unknown key encountered (e.g. `["model.elements[].sectionRef", "model.loads.thermal", ...]`). This is the diagnostic surface promised in §5.3 — old code reading a newer MINOR file does not reject, but it does loudly tell the developer what it ignored.
    - Use `.finite()` on every numeric field (rejects `NaN`/`Infinity`).
    - Pin `metadata.units` to a `z.literal()` object matching v1's unit policy.
    - Constrain enums for `support`, distributed `direction`, elementPoint `direction` from `types.ts`.
@@ -1082,7 +1095,7 @@ Required test files for v1 (each is a separate `.test.ts` co-located with the mo
    - Wrong `metadata.units` literal → `["metadata", "units", "length"]: Invalid literal value`.
    - Element with `nodeI: 123` (number, not string) → `["model", "elements", 0, "nodeI"]: Expected string`.
    - `NaN` in `x_m` → `.finite()` rejection.
-   - Unknown top-level field with `.strict()` → rejection.
+   - Unknown top-level **envelope** field (e.g. `garbage: true` as sibling of `schemaVersion`/`metadata`/`model`/`_comments`) → rejection. (Note: unknown keys on `model`, `model.loads`, `model.idCounters`, and inside entity objects are intentionally accepted via `.passthrough()` — those round-trip cases are covered in `forwardCompat.test.ts` below.)
 3. **`src/io/migrations.test.ts`** — identity migration on a v1.0.0 fixture returns input unchanged; `SchemaVersionError` thrown on `"9.9.9"`; thrown error carries `receivedVersion`.
 4. **`src/io/semanticValidator.test.ts`** — orphan element `nodeI`/`nodeJ` detected; orphan distributed-load `elementId` detected; load-combination referencing missing case detected; valid cantilever passes with empty issues.
 5. **`src/io/roundtrip.test.ts`** — the load-bearing test:
@@ -1093,6 +1106,17 @@ Required test files for v1 (each is a separate `.test.ts` co-located with the mo
    - Repeat with `next*Number` counters set to non-default values (e.g. `nextNodeNumber: 99`) — assert counters round-trip.
    - Repeat with `_comments` populated — assert comments round-trip.
 6. **`src/io/canonicalize.test.ts`** — unit-suffix mapping is exhaustive (every numeric field in `types.ts` has a suffixed counterpart in the file shape); `metadata.exportedAt` is a valid ISO 8601 string; `appVersion` defaults to `"unknown"` until follow-up TODO completes (see §11).
+7. **`src/io/forwardCompat.test.ts`** — verifies the §5.3 forward-compat contract using a hypothetical v1.1.0-shaped fixture. Required assertions:
+   1. Build a fixture identical to the cantilever, but with extra fields a future v1.1.0 file would have:
+      - `model.elements[0].sectionRef: "IPE 200"`
+      - `model.elements[0].materialRef: "S275"`
+      - `model.elements[0].releases: { nodeI: { Mz: false }, nodeJ: { Mz: true } }`
+      - `model.loads.thermal: [{ id: "TL1", element: "E1", deltaT_C: 10 }]`
+      - `model.idCounters.nextSectionRefNumber: 2`
+   2. Assert `ModelFileV1Schema.safeParse(fixture).success === true`.
+   3. Assert that the import path emits exactly one `console.warn` per unknown key (deduplicated). Spy on `console.warn` and verify the warned keys list contains entries like `model.elements[].sectionRef`, `model.elements[].materialRef`, `model.elements[].releases`, `model.loads.thermal`, `model.idCounters.nextSectionRefNumber` — the exact format is the implementer's call, but each unknown key fires once and only once.
+   4. Assert `applyToStore(fixture)` succeeds and the model loads (with the unknown fields silently dropped from the runtime store, since v1 doesn't know how to use them).
+   5. Assert subsequent `modelStateToFile` re-export does **not** include the unknown fields. Add a code comment in the test file: `// Unknown fields are NOT preserved through v1 round-trip; they are only ignored on import. A v1.1.0 reader would preserve them. This is the correct trade-off for v1 — there is nowhere in the v1 runtime store to put them.`
 
 **Coverage gate (informational, not enforcing)**: aim for ≥ 90% line coverage of `src/io/**`. Don't fail CI on coverage in v1 — let the round-trip test be the contract; coverage is a sanity check.
 
