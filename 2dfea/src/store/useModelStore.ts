@@ -76,6 +76,18 @@ interface ModelState {
     name: string | null;
   };  // Currently displayed results (can differ from activeLoadCase)
 
+  // Per-entity comments — parallel annotation map populated by save/load JSON
+  // import. NOT part of TRACKED_KEYS (undo/redo doesn't undo comment edits).
+  // IS part of the persist partialize so comments survive page reload.
+  // See docs/plans/save-load-json.md §5.7.
+  comments: {
+    nodes: Record<string, string>;
+    elements: Record<string, string>;
+    loads: Record<string, string>;
+    loadCases: Record<string, string>;
+    loadCombinations: Record<string, string>;
+  };
+
   // Analysis
   solver: SolverInterface | null;
   isInitializingSolver: boolean;
@@ -193,6 +205,15 @@ const initialState = {
   activeResultView: {
     type: 'case',
     name: 'Dead',
+  },
+  // Comments slice — populated by save/load JSON import; UI editor is a
+  // follow-up TODO (see docs/plans/save-load-json.md §11).
+  comments: {
+    nodes: {},
+    elements: {},
+    loads: {},
+    loadCases: {},
+    loadCombinations: {},
   },
   solver: null,
   isInitializingSolver: false,
@@ -1070,8 +1091,12 @@ export const useModelStore = create<ModelState>()(
       ),
       {
         name: '2dfea-model-storage',
+        // Save/load JSON (A4) extends partialize to include the next*Number
+        // ID counters and the comments slice — keeping localStorage in lockstep
+        // with TRACKED_KEYS prevents the latent counter-reset bug (plan §3
+        // goal #8) and makes comments survive a page reload. Analysis state
+        // and UI-only fields remain intentionally excluded.
         partialize: (state) => ({
-          // Only persist model data, not analysis state
           nodes: state.nodes,
           elements: state.elements,
           loads: state.loads,
@@ -1079,7 +1104,88 @@ export const useModelStore = create<ModelState>()(
           loadCombinations: state.loadCombinations,
           activeLoadCase: state.activeLoadCase,
           activeResultView: state.activeResultView,
+          // New in A4 (plan §3 goal #8 fix)
+          nextNodeNumber: state.nextNodeNumber,
+          nextElementNumber: state.nextElementNumber,
+          nextNodalLoadNumber: state.nextNodalLoadNumber,
+          nextPointLoadNumber: state.nextPointLoadNumber,
+          nextDistributedLoadNumber: state.nextDistributedLoadNumber,
+          nextLineLoadNumber: state.nextLineLoadNumber,
+          comments: state.comments,
         }),
+        // Backwards-compat: a localStorage entry written by a pre-A4 build
+        // lacks the next*Number counters and `comments` slice. Rehydrate
+        // missing counters from the loaded nodes/elements (re-derive the
+        // highest-used number); default `comments` to all-empty objects.
+        // This runs once per page load and is idempotent.
+        onRehydrateStorage: () => (rehydratedState, error) => {
+          if (error) {
+            console.warn('[ModelStore] persist rehydrate failed:', error);
+            return;
+          }
+          if (!rehydratedState) return;
+
+          const s: any = rehydratedState;
+
+          // Backfill missing comments slice
+          if (!s.comments) {
+            s.comments = {
+              nodes: {},
+              elements: {},
+              loads: {},
+              loadCases: {},
+              loadCombinations: {},
+            };
+          } else {
+            s.comments = {
+              nodes: s.comments.nodes ?? {},
+              elements: s.comments.elements ?? {},
+              loads: s.comments.loads ?? {},
+              loadCases: s.comments.loadCases ?? {},
+              loadCombinations: s.comments.loadCombinations ?? {},
+            };
+          }
+
+          // Backfill missing ID counters from existing entities. The
+          // re-derivation reads the highest "N42" / "E17" / etc. and
+          // sets nextX to highest + 1. Falls back to 1 when no entities
+          // are present.
+          const deriveCounter = (
+            arr: { name?: string; id?: string }[] | undefined,
+            prefix: string
+          ): number => {
+            if (!arr || arr.length === 0) return 1;
+            let max = 0;
+            for (const x of arr) {
+              const key = (x as any).name ?? (x as any).id;
+              if (typeof key !== 'string' || !key.startsWith(prefix)) continue;
+              const n = parseInt(key.slice(prefix.length), 10);
+              if (Number.isFinite(n) && n > max) max = n;
+            }
+            return max + 1;
+          };
+
+          if (typeof s.nextNodeNumber !== 'number') {
+            s.nextNodeNumber = deriveCounter(s.nodes, 'N');
+          }
+          if (typeof s.nextElementNumber !== 'number') {
+            s.nextElementNumber = deriveCounter(s.elements, 'E');
+          }
+          if (typeof s.nextNodalLoadNumber !== 'number') {
+            s.nextNodalLoadNumber = deriveCounter(s.loads?.nodal, 'NL');
+          }
+          if (typeof s.nextPointLoadNumber !== 'number') {
+            s.nextPointLoadNumber = deriveCounter(s.loads?.elementPoint, 'PL');
+          }
+          if (typeof s.nextDistributedLoadNumber !== 'number') {
+            s.nextDistributedLoadNumber = deriveCounter(s.loads?.distributed, 'DL');
+          }
+          if (typeof s.nextLineLoadNumber !== 'number') {
+            // No line-load entities exist as a separate array today; keep
+            // the conservative default.
+            s.nextLineLoadNumber = 1;
+          }
+        },
       }
     ),
     { name: 'ModelStore' }
