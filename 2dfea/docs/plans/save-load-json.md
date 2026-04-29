@@ -57,7 +57,7 @@ Each goal is observable and must be verifiable post-merge.
    - Files that pass syntactic validation but fail **semantic validation** (e.g. an element references a node ID that doesn't exist; a distributed load references a missing element). Toast: "Model is structurally invalid: <human-readable issue>". The store is **not** mutated.
 7. **Migration plumbing is in place but no migrations are registered for v1.0.0** (identity migration only). Adding a v2 migration in the future requires adding one entry to a `migrations` map and bumping `CURRENT_SCHEMA_VERSION` — no other code changes.
 8. The `persist` middleware's `partialize` is updated to include the `next*Number` ID counters (parity with `TRACKED_KEYS`) so reloads no longer reset counters silently. Existing `localStorage` entries written by prior versions still load (counters fall back to `1` and are then bumped via `getNextNodeNumber` / `getNextElementNumber` against the loaded nodes/elements; this is verified in §8 group F).
-9. **`loadExample` is gated**: on app boot, `loadExample()` runs **only when** `localStorage.getItem('2dfea-model-storage')` is null/empty. If a persisted model exists, `persist`'s rehydration takes over and `loadExample` is **not** called. The gating logic lives in `App.tsx` (or wherever `loadExample` is currently kicked off) — verify and wire there.
+9. **`loadExample` is gated**: on app boot, `loadExample()` is **never auto-called**. A fresh visit (cleared localStorage) yields an **empty model**; a return visit rehydrates the persisted model via Zustand's `persist` middleware. The "Load Example" toolbar button remains the only way to load the cantilever — manual override still works. **Amended during manual QA (2026-04-29)**: original goal was "fresh visit auto-loads cantilever", but in practice the `persist` middleware writes a hydration entry on store init *before* the gate's localStorage check fires, so the localStorage-presence heuristic could not reliably distinguish "truly fresh" from "rehydrated empty." Empty-on-fresh-start is the simpler, more defensible CAD-app default; user can click "Load Example" if they want the cantilever. See §8 Group G for the updated test expectations.
 10. A **canonical JSON Schema document** is published at `2dfea/public/schemas/2dfea-model-v1.json`. It is loaded via `import.meta.env.BASE_URL` in dev tools / docs, downloadable from `https://magnusfjeldolsen.github.io/structural_tools/2dfea/schemas/2dfea-model-v1.json`. Generated from the Zod schema using `zod-to-json-schema` so there is exactly one source of truth.
 11. **Per-entity comments** can be attached and round-trip: the file's optional `_comments` block maps entity-IDs to free-form strings. Importing a file with comments populates a runtime `comments: Record<string, string>` map on the model (NOT on the entities themselves — kept in a parallel store slice to avoid widening every type in `types.ts`). Exporting re-emits the comments. UI for editing comments is **out of scope for v1** (see Non-Goals); the round-trip is the deliverable.
 12. **Import-during-analysis is safe**: if the user clicks Import while `isAnalyzing` is true, the import is queued — a confirm dialog warns "Analysis is running. Import anyway? Results will be discarded." On confirm, `clearAnalysis()` runs first, the import proceeds, and the worker's in-flight result (if any) is dropped via the existing `resultsCache` invalidation pattern.
@@ -1159,10 +1159,10 @@ Run through each scenario with DevTools open. No console errors or warnings expe
 20. **ID-counter regression**: Add 50 nodes (N1…N50). Delete N1…N49 leaving only N50. Reload. Add a new node. Verify it is named **N51** (counter persisted), not N1 (counter reset to defaults). This is the latent bug that goal #8 fixes.
 21. **Backwards-compat**: Manually edit `localStorage['2dfea-model-storage']` to the **old** shape (no `nextNodeNumber` field). Reload. App should not crash; counters should be re-derived from existing nodes/elements.
 
-**Group G — `loadExample` startup gate**
-22. Clear `localStorage` (DevTools → Application → Storage → Clear site data). Reload. Cantilever loads automatically.
+**Group G — `loadExample` startup gate** (amended 2026-04-29 — see §3 goal #9)
+22. Clear `localStorage` (DevTools → Application → Storage → Clear site data). Reload. **Empty model loads** (no nodes/elements). User must click "Load Example" to populate. *Original spec was "cantilever auto-loads"; this was relaxed during manual QA — see §3 goal #9 rationale.*
 23. Edit cantilever (e.g. delete N2). Reload. Edited model persists; cantilever does **not** reload.
-24. Click "Load Example" toolbar button — cantilever overwrites the edited model (manual override still works).
+24. Click "Load Example" toolbar button — cantilever overwrites the current model (manual override works on both empty and edited starting states).
 
 **Group H — Import safety**
 25. Run a slow analysis (load a large model, click Run Full Analysis). While `isAnalyzing` is true, click Import. Confirm dialog appears. Cancel → no import; analysis continues.
@@ -1286,5 +1286,5 @@ Post-merge the feature is successful when:
 10. No console errors in dev or prod.
 11. Manual QA groups A–I all pass.
 12. The `next*Number` ID-counter regression (Group F #20) is resolved — 51st node is named N51 after reload.
-13. `loadExample` is correctly gated — fresh visit loads cantilever, return visit loads persisted model.
+13. `loadExample` is **not** auto-called on startup (amended 2026-04-29 — see §3 goal #9). Fresh visit shows empty model; return visit shows persisted model; "Load Example" toolbar button remains the only way to load the cantilever.
 14. A4 struck through in `2dfea/TODO.md` (manual edit by user, out of scope of this plan).
