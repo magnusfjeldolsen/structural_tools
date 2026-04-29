@@ -134,12 +134,12 @@
 
 (Plan §7 Phase 6; commit: `feat(2dfea): add Ctrl+S/Ctrl+O shortcuts for export/import`)
 
-- [ ] Modify `src/hooks/useKeyboardShortcuts.ts`:
-  - [ ] Ctrl+S / Cmd+S → export, with `commandInput` + `isEditingInput` guards + `e.preventDefault()`
-  - [ ] Ctrl+O / Cmd+O → import, same guard signature
-  - [ ] Add to dependency array
-- [ ] `npm run type-check` green
-- [ ] `npm run dev` smoke: Ctrl+S downloads, Ctrl+O opens picker, guards work
+- [x] Modify `src/hooks/useKeyboardShortcuts.ts`:
+  - [x] Ctrl+S / Cmd+S → export, with `commandInput` + `isEditingInput` guards + `e.preventDefault()`
+  - [x] Ctrl+O / Cmd+O → import, same guard signature
+  - [x] No new closure deps to add (handler reads `useModelStore.getState()` directly)
+- [x] `npm run type-check` green
+- [ ] `npm run dev` smoke: deferred to Phase 11
 
 ---
 
