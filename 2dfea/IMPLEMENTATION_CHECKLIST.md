@@ -100,15 +100,16 @@
 
 (Plan §7 Phase 4; commit: `feat(2dfea): add Export JSON toolbar button and shortcut handler`)
 
-- [ ] Create `src/io/exportImport.ts` — `exportCurrentModelToFile()`, `downloadJsonFile()`
-- [ ] Create `src/io/index.ts` — barrel re-export
-- [ ] Modify `src/components/Toolbar.tsx`:
-  - [ ] Add "File" mini-group adjacent to Edit (Undo/Redo)
-  - [ ] Export button with disabled state when model is empty
-  - [ ] Visible on every tab
-  - [ ] Tooltip: `Export model to JSON file (Ctrl+S)`
-- [ ] `npm run type-check` green
-- [ ] `npm run dev` smoke: cantilever loaded → click Export → file downloads → spot-check JSON shape
+- [x] Create `src/io/exportImport.ts` — `exportCurrentModelToFile()`, `downloadJsonFile()`, plus full import path used in Phase 5
+- [x] Create `src/io/index.ts` — barrel re-export
+- [x] Create `src/store/useToastStore.ts` — needed by export-success toast (Toast UI component lands in Phase 5)
+- [x] Modify `src/components/Toolbar.tsx`:
+  - [x] Add "File" mini-group adjacent to Edit (Undo/Redo)
+  - [x] Export button with disabled state when model is empty
+  - [x] Visible on every tab
+  - [x] Tooltip: `Export model to JSON file (Ctrl+S)`
+- [x] `npm run type-check` green
+- [ ] `npm run dev` smoke: deferred to Phase 11
 
 ---
 
