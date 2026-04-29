@@ -185,9 +185,10 @@
 
 (Plan §7 Phase 10; commit: `docs(2dfea): add file-format.md and v1 cantilever fixture`)
 
-- [ ] Create `docs/file-format.md` — schema overview, unit policy, versioning, AI-prompt notes
-- [ ] Create `docs/examples/cantilever-v1.json` — canonical fixture
-- [ ] (INDEX.md already lists save-load-json — verify entry exists)
+- [x] Create `docs/file-format.md` — schema overview, unit policy, versioning, AI-prompt notes
+- [x] Create `docs/examples/cantilever-v1.json` — canonical fixture
+- [x] Add `__fixtures__/fixtureParity.test.ts` — parses cantilever-v1.json against the v1 schema + semantic validator (52 tests now passing)
+- [x] INDEX.md already lists save-load-json (verified)
 
 ---
 
