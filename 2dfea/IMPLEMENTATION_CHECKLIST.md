@@ -32,21 +32,21 @@
 
 ## Phase 1 — `projectOntoSegment` helper + unit tests
 
-- [ ] Add `projectOntoSegment(point, lineStart, lineEnd): Point` to `src/geometry/snapUtils.ts`
-- [ ] Refactor `distanceToLineSegment` to delegate to `projectOntoSegment` (DRY per plan §5.2 option (a))
-- [ ] Create `src/geometry/snapUtils.test.ts` covering the 9 cases in plan §8 ("Unit tests for projectOntoSegment")
-  - [ ] Interior projection
-  - [ ] Beyond start endpoint (clamp)
-  - [ ] Beyond end endpoint (clamp)
-  - [ ] Vertical segment
-  - [ ] Horizontal segment symmetry
-  - [ ] Diagonal segment perpendicular foot
-  - [ ] Zero-length segment (no division by zero)
-  - [ ] Tolerance test (load-bearing) — `L ∈ {0.1, 1, 10, 100, 1000}`, 50 random offsets each, perpendicular distance ≤ 1×10⁻¹³ m
-  - [ ] Determinism (same inputs → same output)
-- [ ] `npm run type-check` green
-- [ ] `npm test` green (52 + new tests, all pass)
-- [ ] Commit: `feat(2dfea): add projectOntoSegment helper with unit tests`
+- [x] Add `projectOntoSegment(point, lineStart, lineEnd): Point` to `src/geometry/snapUtils.ts`
+- [x] Refactor `distanceToLineSegment` to delegate to `projectOntoSegment` (DRY per plan §5.2 option (a))
+- [x] Create `src/geometry/snapUtils.test.ts` covering the 9 cases in plan §8 ("Unit tests for projectOntoSegment")
+  - [x] Interior projection
+  - [x] Beyond start endpoint (clamp)
+  - [x] Beyond end endpoint (clamp)
+  - [x] Vertical segment
+  - [x] Horizontal segment symmetry
+  - [x] Diagonal segment perpendicular foot
+  - [x] Zero-length segment (no division by zero)
+  - [x] Tolerance test (load-bearing) — `L ∈ {0.1, 1, 10, 100, 1000}`, 50 random offsets each, perpendicular distance ≤ 1×10⁻¹³ m
+  - [x] Determinism (same inputs → same output)
+- [x] `npm run type-check` green
+- [x] `npm test` green — 9 files / 65 tests (was 8/52, added 13 new)
+- [x] Commit: `feat(2dfea): add projectOntoSegment helper with unit tests`
 
 ## Phase 2 — Extend `getSnappedPosition` signature
 
