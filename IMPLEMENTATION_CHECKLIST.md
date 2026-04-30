@@ -20,10 +20,10 @@
 
 ## Phase 1 — Data shape + helper + unit test
 
-- [ ] 1.1  Extend `Element` in `2dfea/src/analysis/types.ts` with optional `releaseStartMz?: boolean` and `releaseEndMz?: boolean`. Add a one-line comment pointing at plan §5.10 for the future-3D extension path.
-- [ ] 1.2  Create `2dfea/src/analysis/releaseTuple.ts` exporting `elementReleaseTuple(el: Element): [boolean, boolean]`. JSDoc cites the PyNite docs URL and the 2D-only convention.
-- [ ] 1.3  Create `2dfea/src/analysis/releaseTuple.test.ts` covering 4 cases: none, start-only, end-only, both.
-- [ ] 1.4  `npm run type-check` clean. `npm test` includes new test, all suites green.
+- [x] 1.1  Extend `Element` in `2dfea/src/analysis/types.ts` with optional `releaseStartMz?: boolean` and `releaseEndMz?: boolean`. Add a one-line comment pointing at plan §5.10 for the future-3D extension path.
+- [x] 1.2  Create `2dfea/src/analysis/releaseTuple.ts` exporting `elementReleaseTuple(el: Element): [boolean, boolean]`. JSDoc cites the PyNite docs URL and the 2D-only convention.
+- [x] 1.3  Create `2dfea/src/analysis/releaseTuple.test.ts` covering 4 cases: none, start-only, end-only, both.
+- [x] 1.4  `npm run type-check` clean. `npm test` includes new test, all suites green (84/84).
 - [ ] 1.5  Commit: `feat(2dfea): add releaseStartMz / releaseEndMz fields to Element`
 
 ## Phase 2 — Store wiring + worker payload
