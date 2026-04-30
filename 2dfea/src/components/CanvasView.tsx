@@ -375,14 +375,14 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       // Priority 1: Check for active move command first
       if (moveCommand?.stage === 'awaiting-basepoint-click') {
         // Set base point by click - use centralized snapping
-        const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
+        const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes, hoveredElement, elements, isShiftPressed);
         setMoveBasePoint(snappedPos);
         return;
       } else if (moveCommand?.stage === 'awaiting-endpoint-click') {
         // Set end point by click and execute move - use centralized snapping
         const basePoint = moveCommand.basePoint;
         if (basePoint) {
-          const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
+          const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes, hoveredElement, elements, isShiftPressed);
           const dx = snappedPos.x - basePoint.x;
           const dy = snappedPos.y - basePoint.y;
           moveNodes(selectedNodes, dx, dy);
@@ -540,7 +540,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
         }
       } else if (activeTool === 'draw-node') {
         // Add node at cursor position - use centralized snapping
-        const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
+        const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes, hoveredElement, elements, isShiftPressed);
         addNode({
           x: snappedPos.x,
           y: snappedPos.y,
@@ -551,7 +551,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           // First click - start drawing
           // Scenario 1 & 2: Get or create start node
           let startNode: string;
-          const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
+          const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes, hoveredElement, elements, isShiftPressed);
 
           if (hoveredNode) {
             // Start node exists - use it
@@ -576,7 +576,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           // Second click - complete element
           // Scenario: End node may or may not exist
           let endNode: string;
-          const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes);
+          const snappedPos = getSnappedPosition({ x: worldX, y: worldY }, hoveredNode, nodes, hoveredElement, elements, isShiftPressed);
 
           // Validation: Check if end node is same as start (prevent self-loops)
           if (hoveredNode && hoveredNode === drawingElement.startNode) {
