@@ -4,33 +4,15 @@ Ranked pick-list — top of list = do next. Pick one, hand off to `feature-plann
 
 ## Recently shipped
 
+- **A4. Save / Load model to JSON** ([PR #18](https://github.com/magnusfjeldolsen/structural_tools/pull/18), merged 2026-04-29) — schema-versioned JSON file export/import via Zod + a published JSON Schema document at `/2dfea/schemas/2dfea-model-v1.json`. AI-friendly format with unit-suffixed field names (`x_m`, `E_GPa`, `I_m4`), open-keyed `model`/`loads`/`idCounters` via `.passthrough()` so future MINOR bumps (sections, materials, releases, new load types) don't reject v1 readers. `Ctrl+S` export / `Ctrl+O` import with focus guards. Confirm-before-overwrite gates non-empty imports. Single canonical serializer drives both file artifact and `persist` middleware (also fixed a latent ID-counter `partialize` bug). Vitest suite (52 tests) added as devDep — single co-located `*.test.ts` convention. Follow-up TODOs tracked in plan §11 (`metadata.appVersion` wiring, comment editor UX, styled-modal replacement). Plan: [docs/plans/save-load-json.md](docs/plans/save-load-json.md).
 - **D1. Undo / Redo** ([PR #17](https://github.com/magnusfjeldolsen/structural_tools/pull/17), merged 2026-04-27) — bounded 50-entry history via `zundo` temporal middleware composed inside `devtools(persist(temporal(immer(...))))`. Tracks model-authored data only (nodes, elements, loads, cases, combos, ID counters); excludes UI/selection/solver/results. `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y` shortcuts (with input-focus + command-input guards) plus toolbar buttons on every tab. Undo/redo invalidates `analysisResults` + `resultsCache`. `loadExample` calls `temporal.clear()` (non-undoable initialization). Plan: [docs/plans/undo-redo.md](docs/plans/undo-redo.md).
 - **2dfea quick wins cleanup** ([PR #16](https://github.com/magnusfjeldolsen/structural_tools/pull/16), merged 2026-04-24) — four small fixes: silenced Vite `/public/...` warnings (worker + 2 Python fetches), bumped `baseline-browser-mapping`, updated 3 stale `worker-test.html` doc refs, wired `getActiveResults()` to `activeResultView`. Fixed a latent prod bug where the Worker URL would strip the base path. Plan: [docs/plans/quick-wins-cleanup.md](docs/plans/quick-wins-cleanup.md).
 
 ---
 
-## Next up — Foundation
+## Core modelling — next up
 
-### A4. Save / Load model to JSON + localStorage autosave
-
-**What:** Export full model state (nodes, elements, loads, load cases, combinations, active view) to a `.json` file the user can download. Import it back via file picker. localStorage autosave is **already wired** via Zustand's `persist` middleware (`'2dfea-model-storage'`) — A4's remaining scope is the explicit JSON file export/import + a schema-version field.
-
-**Why now:** File-based save/load is still missing; only the in-browser autosave exists today. Users will want a portable artifact before committing time to larger models. Should land before A1/A2/A3 multiply the model shape, so the schema-versioning pattern is set early.
-
-**Watch out for:**
-- Schema versioning — a saved file today should still load in 6 months when the model shape grows. Bump version on every breaking change to the tracked slice.
-- Analysis results: exclude from the save blob (recompute on load) or include (faster reload)? Probably exclude.
-- `activeResultView`, `isAnalyzing`, worker state etc. must NOT be persisted — only model-authored data. The `TRACKED_KEYS` list in [src/store/historyConfig.ts](src/store/historyConfig.ts) is a good baseline for "what to save".
-- On import: call `useModelStore.temporal.getState().clear()` after replacing state so undo can't take the user back to the pre-load model. (Already noted in §9 risk register of the undo-redo plan.)
-- `loadExample` should remain the fallback when no `'2dfea-model-storage'` entry exists; gate accordingly.
-
-**Related:** [src/store/useModelStore.ts](src/store/useModelStore.ts) holds the full shape; `persist` is already composed there. [src/store/historyConfig.ts](src/store/historyConfig.ts) defines the model-authored slice.
-
----
-
-## Core modelling (after foundation)
-
-Do **A1 → A2 → A3** in order. A1 and A2 pair tightly (adding a "Section" field naturally raises "which material?"), and A3 layers cleanly on top.
+Do **A1 → A2 → A3** in order. A1 and A2 pair tightly (adding a "Section" field naturally raises "which material?"), and A3 layers cleanly on top. The save/load schema is **already forward-compat-ready** for all three — `model.elements` accepts `sectionRef`/`materialRef`/`releases` as optional MINOR-bump siblings (see save-load-json plan §5.3 "A1/A2 forward-compat policy").
 
 ### A1. Steel section library
 
