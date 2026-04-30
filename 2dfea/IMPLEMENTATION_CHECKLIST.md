@@ -1,266 +1,156 @@
-# Implementation Checklist — Save / Load JSON for 2dfea
+# Implementation Checklist — Snap to Element Projection (2dfea)
 
-**Source plan:** [docs/plans/save-load-json.md](docs/plans/save-load-json.md)
-**Forward-compat hardening reference:** commit `b7731ac` (master)
-**Original plan commit:** `8fa6d52` (master)
-**Branch:** `feature/2dfea-save-load-json`
+**Source plan:** [docs/plans/snap-to-element-projection.md](docs/plans/snap-to-element-projection.md)
+**Plan commit:** `413bf37` (master)
+**Branch:** `feature/2dfea-snap-to-element-projection`
 **Date:** 2026-04-27
-**Change class:** 2dfea-only (TypeScript / React / Vite + Vitest devDependency)
-**Baseline status:** `npm run type-check` green, `npm run build` green (617.37 kB raw / 180.85 KB gzipped)
+**Change class:** 2dfea-only (TypeScript / React / Konva + Vitest unit tests)
+**Baseline status:** `npm run type-check` green, `npm test` green (8 files / 52 tests), `npm run build` green (627.72 kB raw / 184.25 KB gzipped index bundle)
 
 ---
 
 ## Project-specific guardrails
 
 - [x] CLAUDE.md & DEPLOYMENT.md read; constraints noted
-- [x] Keep `// @ts-nocheck` directive in `useModelStore.ts` (still present at line 1)
-- [x] Reuse `TRACKED_KEYS` from `src/store/historyConfig.ts` (no duplication; canonicalize.ts hard-references the same fields)
-- [x] Reuse `INVALIDATE_ANALYSIS_PATCH` from `src/store/historyConfig.ts` in `applyToStore`
-- [x] After import, call `useModelStore.temporal.getState().clear()` (applyToStore.ts last line)
-- [x] `loadExample` startup gate checks `localStorage.getItem('2dfea-model-storage')` for null/empty (App.tsx)
-- [x] `metadata.appVersion = "unknown"` in v1.0.0 with grep-discoverable `// TODO(appVersion):` comment (canonicalize.ts)
-- [x] Confirm-before-overwrite via `window.confirm` (exportImport.ts; styled modal tracked as follow-up TODO #3)
-- [x] Vitest: devDep only — zero production bundle impact (verified by `npm run build` chunk listing)
-- [x] Test files co-located as `<name>.test.ts` under `src/`
-- [x] `persist` middleware `partialize` extended to include `next*Number` ID counters and `comments` (useModelStore.ts)
-- [x] No hardcoded `/public/...` paths; Worker untouched (no changes to solverWorker.js)
-- [x] No changes to `vite.config.ts` (production base path)
-- [x] No changes to `.github/workflows/`
-- [x] No changes to `2dfea/src/analysis/types.ts` (entity shapes stable)
+- [x] No new HTML files in this feature -> Google Analytics tag rule N/A
+- [x] No worker / public/python changes -> relative-URL rule preserved
+- [x] No vite.config.ts / tsconfig changes
+- [x] `// @ts-nocheck` policy preserved on `useUIStore.ts` and `useModelStore.ts`
+- [x] No PyNite version change; no analysis pipeline change
+- [x] `snapTolerance` (10 px) MUST stay 10 — UX hover threshold, not precision threshold
+- [x] Files explicitly NOT to stage: `.claude/agents/structural-feature-implementer.md`, `.claude/settings.local.json`, `2dfea/.claude/` (untracked agent config)
+
+## Resolved design decisions (locked)
+
+- [x] Tri-colour snap marker: blue `#3b82f6` (projection) / green `#22c55e` (connected) / amber `#f59e0b` (free-end)
+- [x] Move command projects on BOTH base-point and endpoint clicks (lines 378 + 385)
+- [x] Node classification: `(elementCount >= 2 || isSupported) ? 'connected' : 'free-end'`
+- [x] `distanceToLineSegment` will be refactored to delegate to `projectOntoSegment` (single source of truth)
+- [x] Shift-bypass uses window-level `keydown`/`keyup` listener writing to new `useUIStore.isShiftHeld` flag — Konva `mousemove` does not fire on key alone, so marker must respond to keyboard immediately
 
 ---
 
-## Phase 1 — Dependencies, primitives, and Vitest setup
+## Phase 1 — `projectOntoSegment` helper + unit tests
 
-(Plan §7 Phase 1; commits split per user spec into deps+utils and vitest setup)
+- [ ] Add `projectOntoSegment(point, lineStart, lineEnd): Point` to `src/geometry/snapUtils.ts`
+- [ ] Refactor `distanceToLineSegment` to delegate to `projectOntoSegment` (DRY per plan §5.2 option (a))
+- [ ] Create `src/geometry/snapUtils.test.ts` covering the 9 cases in plan §8 ("Unit tests for projectOntoSegment")
+  - [ ] Interior projection
+  - [ ] Beyond start endpoint (clamp)
+  - [ ] Beyond end endpoint (clamp)
+  - [ ] Vertical segment
+  - [ ] Horizontal segment symmetry
+  - [ ] Diagonal segment perpendicular foot
+  - [ ] Zero-length segment (no division by zero)
+  - [ ] Tolerance test (load-bearing) — `L ∈ {0.1, 1, 10, 100, 1000}`, 50 random offsets each, perpendicular distance ≤ 1×10⁻¹³ m
+  - [ ] Determinism (same inputs → same output)
+- [ ] `npm run type-check` green
+- [ ] `npm test` green (52 + new tests, all pass)
+- [ ] Commit: `feat(2dfea): add projectOntoSegment helper with unit tests`
 
-### 1a — `feat(2dfea): add zod, zod-to-json-schema, canonicalStringify, schemaVersion`
+## Phase 2 — Extend `getSnappedPosition` signature
 
-- [x] `npm i zod zod-to-json-schema` — added to `dependencies`
-- [x] `npm i -D tsx` — added to `devDependencies` (for `generate-schema` script)
-- [x] Create `src/io/schemaVersion.ts` — `CURRENT_SCHEMA_VERSION = '1.0.0'` + `SchemaVersionError`
-- [x] Create `src/io/canonicalStringify.ts` — sorted keys, trailing newline, JSDoc
-- [x] `npm run type-check` green
+- [ ] Extend `getSnappedPosition` signature with `hoveredElement: string | null = null`, `elements: Element[] = []`, `bypassElementProjection = false` (defaults preserve back-compat for any unmigrated callers)
+- [ ] Implement three-priority body: node-snap > element-projection > raw cursor
+- [ ] Add `classifyNode(nodeName, nodes, elements): 'connected' | 'free-end'` helper (sibling in snapUtils for Phase 4 consumption)
+- [ ] Add `NodeSnapState` type export
+- [ ] JSDoc on `getSnappedPosition` and `projectOntoSegment` (priority order, Shift contract, IEEE-754 vs PyNite tolerance margin)
+- [ ] Add `classifyNode` unit test (5 cases per plan §7 Phase 4.2)
+- [ ] `npm run type-check` green
+- [ ] `npm test` green
+- [ ] Commit: `feat(2dfea): extend getSnappedPosition with element-projection and shift-bypass`
 
-### 1b — `chore(2dfea): add vitest test runner with sanity test`
+## Phase 3 — Update 5 CanvasView call sites
 
-- [x] `npm i -D vitest @vitest/ui jsdom` — added to `devDependencies`
-- [x] Create `2dfea/vitest.config.ts` (jsdom, globals: false, `src/**/*.{test,spec}.{ts,tsx}`)
-- [x] Add `test`, `test:watch`, `test:ui` scripts to `package.json`
-- [x] Create `src/io/canonicalStringify.test.ts` (sanity test, 8 assertions)
-- [x] `npm run type-check` green
-- [x] `npm test` → 8 passing
+- [ ] Verify call sites with Grep (lines may have shifted): expected 378, 385, 543, 554, 579
+- [ ] Line 378 — Move base-point click: pass `hoveredElement, elements, isShiftPressed`
+- [ ] Line 385 — Move endpoint click: pass `hoveredElement, elements, isShiftPressed`
+- [ ] Line 543 — `draw-node` tool: pass `hoveredElement, elements, isShiftPressed`
+- [ ] Line 554 — `draw-element` first click (start node): pass `hoveredElement, elements, isShiftPressed`
+- [ ] Line 579 — `draw-element` second click (end node): pass `hoveredElement, elements, isShiftPressed`
+- [ ] `npm run type-check` green
+- [ ] `npm test` green
+- [ ] Smoke-test in dev (one quick pass) — element click lands on the line; Shift bypass works; node-snap priority preserved
+- [ ] Commit: `feat(2dfea): wire element-projection snap into draw and move tools`
 
----
+## Phase 4 — Visual snap marker (tri-state)
 
-## Phase 2 — Schema, migrations, semantic validator
+- [ ] Add `isShiftHeld: boolean` and `setIsShiftHeld` to `useUIStore.ts` (next to existing snap fields)
+- [ ] Add window-level `keydown`/`keyup` listener in CanvasView `useEffect` updating `isShiftHeld` (cleanup on unmount)
+- [ ] Track current cursor world position (`mouseWorldPos` already exists at line 47) — reuse it for projection-foot rendering
+- [ ] Implement `renderSnapMarker()` block — single `<Circle>` with stroke colour by state:
+  - [ ] State (a) blue `#3b82f6` — `hoveredElement && !hoveredNode && !isShiftHeld` — at projection foot
+  - [ ] State (b) green `#22c55e` — `hoveredNode && classifyNode === 'connected' && !isShiftHeld` — at node coords
+  - [ ] State (c) amber `#f59e0b` — `hoveredNode && classifyNode === 'free-end' && !isShiftHeld` — at node coords
+  - [ ] Marker geometry: hollow circle, radius 7 px, strokeWidth 1.5, fill transparent, listening false
+  - [ ] Suppress marker when `isShiftHeld` OR `!snapEnabled` OR no snap target
+- [ ] Insert renderSnapMarker into Layer above renderNodes (so the new ring sits on top of the existing node fill)
+- [ ] `npm run type-check` green
+- [ ] `npm test` green
+- [ ] Smoke-test in dev — marker tri-state observable per plan §8 Group E
+- [ ] Commit: `feat(2dfea): add tri-colour snap marker (projection / connected / free-end)`
 
-(Plan §7 Phase 2; commit: `feat(2dfea): add v1 schema, migration plumbing, semantic validator`)
+## Phase 5 — Polish + docs
 
-- [x] Create `src/io/schema.ts`
-  - [x] `ModelFileV1Schema` mirrors §5.2; envelope strict, `metadata` `.passthrough()`
-  - [x] `metadata.units` is `z.literal()`-pinned
-  - [x] `model`, `model.loads`, `model.idCounters`, every entity object: `.passthrough()`
-  - [x] `model.loads.catchall(z.array(z.unknown()))` for forward-compat thermal/etc
-  - [x] `.finite()` on every numeric field
-  - [x] Enum constraints for `support`, distributed `direction`, elementPoint `direction`
-  - [x] Export `type ModelFileV1 = z.infer<typeof ModelFileV1Schema>`
-  - [x] Helper `warnUnknownKeys()` emits one deduped `console.warn` per unknown key
-- [x] Create `src/io/migrations.ts` — `MIGRATIONS` registry + `migrateToCurrent()` (identity v1)
-- [x] Create `src/io/semanticValidator.ts` — orphan refs, dup IDs, missing cases, activeResultView
-- [x] Create test file `src/io/schema.test.ts`
-- [x] Create test file `src/io/migrations.test.ts`
-- [x] Create test file `src/io/semanticValidator.test.ts`
-- [x] Create test file `src/io/forwardCompat.test.ts` (created in Phase 3; depends on `applyToStore` + `canonicalize`)
-- [x] `npm run type-check` green
-- [x] `npm test` green (Phase-2 tests passing — 31 assertions across 4 files including canonicalStringify)
+- [ ] JSDoc cross-references finalised (`@see docs/plans/snap-to-element-projection.md`) on `projectOntoSegment` and `getSnappedPosition`
+- [ ] One-paragraph code comment near snap-marker block in CanvasView pointing readers at the plan
+- [ ] One-line tooltip / canvas-help advertising "Hold Shift to bypass element snap" (minimum: a comment + the JSDoc)
+- [ ] (Optional) Plan amendment if anything material shifted during implementation
+- [ ] `npm run type-check && npm test && npm run build` all green
+- [ ] Bundle size delta < 1 KB gzipped (record post-build)
+- [ ] Commit: `docs(2dfea): JSDoc + canvas help for snap-to-element-projection`
 
----
+## Phase 6 — Pre-handoff verification (manual QA Groups A–E)
 
-## Phase 3 — Canonicalize / applyToStore / comments slice
+- [ ] **Group A — Draw on element**
+  - [ ] A1: Draw node mid-span on beam → lands exactly on the line; Full Analysis → moment diagram continuous across new node *(load-bearing end-to-end check)*
+  - [ ] A2: Draw node near fixed end → lands on the line, not at cursor pixel
+  - [ ] A3: Cursor past N2 → marker clamps to N2 or hides if too far
+- [ ] **Group B — Draw element ending on element**
+  - [ ] B4: `draw-element` second click on existing beam → endpoint lands on the beam (T-joint)
+  - [ ] B5: Run Full Analysis on T-joint → both elements respond; PyNite reports sub-member split on parent beam
+- [ ] **Group C — Shift escape**
+  - [ ] C6: Shift + click on beam → node lands at cursor pixel (off-axis)
+  - [ ] C7: Off-line node from C6 → PyNite reports `sub_members.length === 1` (no split — bypass genuine)
+- [ ] **Group D — Move onto element**
+  - [ ] D8: Move free node onto beam → moved node lands on line
+  - [ ] D9: Move with Shift on endpoint click → lands at cursor pixel
+- [ ] **Group E — Visual marker**
+  - [ ] E10: Cursor on beam → blue marker at perpendicular foot
+  - [ ] E10: Cursor on N1 (fixed support) → green marker
+  - [ ] E10: Cursor on N2 (free, 1 element) → amber marker
+  - [ ] E10: Free node N3 (no elements) → amber marker
+  - [ ] E10: N3 with 2 elements connected → green marker
+  - [ ] E11: Marker tracks perpendicular foot as cursor moves along beam
+  - [ ] E13: Hold Shift while hovering beam → marker disappears
+  - [ ] E14: Loads tab + Add point load + hover beam → marker still renders for visual consistency
+- [ ] No console errors / React warnings in dev
+- [ ] Final `npm run type-check`, `npm test`, `npm run build` — all green
+- [ ] Push branch to origin
 
-(Plan §7 Phase 3; commit: `feat(2dfea): add canonicalize and applyToStore with temporal.clear`)
+## Phase 7 — Gate 1 handoff
 
-- [x] Create `src/io/canonicalize.ts` — `modelStateToFile()`, unit-suffix mapping; `appVersion: "unknown"` with `// TODO(appVersion):` comment
-- [x] Create `src/io/applyToStore.ts` — uses `INVALIDATE_ANALYSIS_PATCH`; calls `temporal.getState().clear()`
-- [x] Modify `src/store/useModelStore.ts`:
-  - [x] Add `comments` to `ModelState` interface
-  - [x] Add `comments` to `initialState` (all empty)
-  - [x] Extend `persist` `partialize` to include `next*Number` counters + `comments`
-  - [x] Add `onRehydrateStorage` to backfill missing counters (Phase 3.5)
-- [x] Create test file `src/io/canonicalize.test.ts`
-- [x] Create test file `src/io/roundtrip.test.ts` (load-bearing — round-trip byte-identity)
-- [x] Create test file `src/io/forwardCompat.test.ts` (deferred from Phase 2)
-- [x] `npm run type-check` green
-- [x] `npm test` green — 50 tests passing across 7 files
+- [ ] Return summary to user with branch name, commits, dev URL, plan §8 Groups A–E to test
+- [ ] STOP — wait for explicit `accept` before opening PR
 
----
+## Phase 8 — PR & merge (Gate 2)
 
-## Phase 4 — Export path & Toolbar Export button
-
-(Plan §7 Phase 4; commit: `feat(2dfea): add Export JSON toolbar button and shortcut handler`)
-
-- [x] Create `src/io/exportImport.ts` — `exportCurrentModelToFile()`, `downloadJsonFile()`, plus full import path used in Phase 5
-- [x] Create `src/io/index.ts` — barrel re-export
-- [x] Create `src/store/useToastStore.ts` — needed by export-success toast (Toast UI component lands in Phase 5)
-- [x] Modify `src/components/Toolbar.tsx`:
-  - [x] Add "File" mini-group adjacent to Edit (Undo/Redo)
-  - [x] Export button with disabled state when model is empty
-  - [x] Visible on every tab
-  - [x] Tooltip: `Export model to JSON file (Ctrl+S)`
-- [x] `npm run type-check` green
-- [ ] `npm run dev` smoke: deferred to Phase 11
-
----
-
-## Phase 5 — Import path, Toolbar Import button, Toast UX
-
-(Plan §7 Phase 5; commit: `feat(2dfea): add Import JSON with confirm-before-overwrite and toast UX`)
-
-- [x] Add `promptUserForImport()` and `handleImportText()` to `src/io/exportImport.ts` (added in Phase 4)
-  - [x] Gate 1: analysis-running confirm (`window.confirm`)
-  - [x] Gate 2: confirm-before-overwrite (`window.confirm`) when nodes/elements/loads non-empty
-  - [x] Validate: parse → version-check → migrate → Zod → semantic → apply
-- [x] Create `src/store/useToastStore.ts` — toast slice (auto-dismiss; created in Phase 4)
-- [x] Create `src/components/Toast.tsx` — top-right placement
-- [x] Mount `<Toast />` in `App.tsx`
-- [x] Modify `src/components/Toolbar.tsx` — add Import button, always enabled
-- [x] `npm run type-check` green
-- [ ] `npm run dev` smoke: deferred to Phase 11
-
----
-
-## Phase 6 — Keyboard shortcuts (Ctrl+S / Ctrl+O)
-
-(Plan §7 Phase 6; commit: `feat(2dfea): add Ctrl+S/Ctrl+O shortcuts for export/import`)
-
-- [x] Modify `src/hooks/useKeyboardShortcuts.ts`:
-  - [x] Ctrl+S / Cmd+S → export, with `commandInput` + `isEditingInput` guards + `e.preventDefault()`
-  - [x] Ctrl+O / Cmd+O → import, same guard signature
-  - [x] No new closure deps to add (handler reads `useModelStore.getState()` directly)
-- [x] `npm run type-check` green
-- [ ] `npm run dev` smoke: deferred to Phase 11
-
----
-
-## Phase 7 — `loadExample` startup gate
-
-(Plan §7 Phase 7; commit: `feat(2dfea): gate loadExample to fire only when localStorage is empty`)
-
-- [x] Modify `src/App.tsx` — add startup `useEffect`:
-  - [x] Read `localStorage.getItem('2dfea-model-storage')` for null/empty
-  - [x] Only fire `loadExample()` if no persisted model AND store looks fresh
-- [x] `npm run type-check` green
-- [ ] `npm run dev` smoke: deferred to Phase 11
+- [ ] After Gate 1 accept: `gh pr create --base master --head feature/2dfea-snap-to-element-projection ...`
+- [ ] Return PR URL — STOP — wait for explicit `merge` confirmation
+- [ ] After Gate 2 confirmation: `gh pr merge <num> --rebase --delete-branch`
+- [ ] Confirm merge succeeded; switch back to master and pull
+- [ ] Report deploy window (~1–2 min) and live URL: https://magnusfjeldolsen.github.io/structural_tools/2dfea/
 
 ---
 
-## Phase 8 — Published JSON Schema (build-time)
+## Bundle / size budget
 
-(Plan §7 Phase 8; commit: `build(2dfea): publish JSON Schema document via prebuild script`)
+- Pre-feature index bundle: 627.72 kB raw / 184.25 KB gzipped
+- Goal #10: delta < 1 KB minified+gzipped
+- Post-feature: TBD (record after Phase 5 build)
 
-- [x] Create `src/io/generateJsonSchema.ts`
-- [x] Add scripts: `"generate-schema": "tsx src/io/generateJsonSchema.ts"`, `"prebuild": "npm run generate-schema"`
-- [x] Run `npm run generate-schema` — wrote `public/schemas/2dfea-model-v1.json` (457 lines)
-- [x] Add `@types/node` devDep + tsconfig.node.json includes generateJsonSchema.ts (excluded from main tsconfig — build-time only, not in runtime bundle)
-- [x] `npm run build` succeeds (prebuild fires)
-- [x] Confirm `dist/schemas/2dfea-model-v1.json` is included
+## Excluded files (working tree, never staged)
 
----
-
-## Phase 9 — Bundle-size verification
-
-(Plan §7 Phase 9; no commit unless dynamic-import refactor needed)
-
-- [x] `npm run build` after all changes; bundle size:
-  - Eager main: **184.25 KB gzipped** (vs baseline **180.85 KB**) → **delta = 3.40 KB gzipped** ✓ well under 15 KB
-  - Lazy `importPath` chunk: **14.70 KB gzipped** (loaded on first Import click)
-- [x] Dynamic-import refactor applied: `src/io/importPath.ts` carries Zod schema + semantic validator + applyToStore; `promptUserForImport` does `await import('./importPath')` at runtime. Export path stays eager for Ctrl+S responsiveness.
-- [x] `V1_UNITS` constant moved to `schemaVersion.ts` (with re-export in `schema.ts`) so canonicalize doesn't pull Zod into the eager bundle.
-- [x] Confirm Vitest is devDep only — verified in `package.json`
-
----
-
-## Phase 10 — Documentation, fixture, INDEX update
-
-(Plan §7 Phase 10; commit: `docs(2dfea): add file-format.md and v1 cantilever fixture`)
-
-- [x] Create `docs/file-format.md` — schema overview, unit policy, versioning, AI-prompt notes
-- [x] Create `docs/examples/cantilever-v1.json` — canonical fixture
-- [x] Add `__fixtures__/fixtureParity.test.ts` — parses cantilever-v1.json against the v1 schema + semantic validator (52 tests now passing)
-- [x] INDEX.md already lists save-load-json (verified)
-
----
-
-## Phase 11 — Pre-handoff verification & final commit
-
-- [x] `npm run type-check` green (final)
-- [x] `npm run build` green (final) — main 184.25 KB gzipped (delta +3.40 KB), lazy importPath chunk 14.70 KB gzipped, dist/schemas/2dfea-model-v1.json present
-- [x] `npm test` green (final) — **52 tests passing across 8 files**
-- [x] `npm run dev` smoke: dev server boots clean on port 3000 in 227 ms; full §8 Groups A–G interactive smoke handed off to the user during Gate 1
-- [x] Update `IMPLEMENTATION_CHECKLIST.md` ticking all items
-- [x] Final commit: `chore(2dfea): finalize save/load implementation checklist`
-- [x] Push branch: `git push -u origin feature/2dfea-save-load-json`
-
----
-
-## §8 Manual Smoke Matrix — interactive smoke handed off to user at Gate 1
-
-The automated test suite (52 tests, 8 files) covers the round-trip
-contract, schema validation, semantic validation, migration plumbing,
-forward-compat behavior, and fixture parity. The interactive matrix
-below verifies the UI wiring and OS-level behavior that the test
-suite cannot reach.
-
-### Group A — Basic export
-- [ ] A1: Cantilever → Export JSON → file downloads with timestamped name; pretty-printed; sorted keys; trailing newline; `schemaVersion: "1.0.0"`; `metadata.units`; `x_m`/`y_m`/`E_GPa`/`I_m4`/`A_m2`
-- [ ] A2: Empty model → Export button disabled
-- [ ] A3: Larger model → all entities round-trip with unit-suffixed names
-
-### Group B — Basic import
-- [ ] B4: Export → Clear Model → Import → cantilever restored; toast "Model imported successfully."; Undo disabled
-- [ ] B5: Edit `metadata.name`/`description` in file → reimport → loads OK
-- [ ] B6: Edit `_comments.nodes.N1` in file → reimport → comment in store; re-export preserves it
-
-### Group C — Round-trip determinism
-- [ ] C7: export → import → export → diff only differs on `metadata.exportedAt`
-- [ ] C8: edit `metadata.name` → reimport → re-export → name persists
-
-### Group D — Validation failures
-- [ ] D9: malformed JSON → toast "Could not parse file: …"; store unchanged
-- [ ] D10: `schemaVersion: "9.9.9"` → toast "Unsupported schema version 9.9.9"; store unchanged
-- [ ] D11: orphan `nodeI: "N99"` → toast "Element E1 references missing node 'N99'"; store unchanged
-- [ ] D12: numeric field set to string → Zod-style toast; console full errors; store unchanged
-- [ ] D13: `metadata.units.length: "mm"` → invalid-literal toast; store unchanged
-
-### Group E — Keyboard shortcuts
-- [ ] E14: empty model + Ctrl+S → no native Save Page As (preventDefault); export disabled
-- [ ] E15: Ctrl+O → picker; cancel → no-op
-- [ ] E16: Ctrl+S while focused in cell editor → no export
-- [ ] E17: Ctrl+S while CAD command input visible → no export
-
-### Group F — Persistence interaction
-- [ ] F18: cantilever → reload → cantilever persists
-- [ ] F19: cantilever → reload → Ctrl+Z is no-op
-- [ ] F20: ID-counter regression — add 50 nodes, delete N1–N49, reload, add new node → **N51** (not N1)
-- [ ] F21: backwards-compat — manually set `localStorage` to old shape (no counters) → reload → app does not crash; counters re-derived
-
-### Group G — `loadExample` startup gate
-- [ ] G22: clear localStorage → reload → cantilever auto-loads
-- [ ] G23: edit cantilever → reload → edits persist (cantilever does NOT reload)
-- [ ] G24: click Toolbar "Load Example" → cantilever overwrites edits (manual override)
-
----
-
-## Pre-handoff verification (Gate 1)
-
-- [x] All `npm` gates green: type-check, build, test (52/52)
-- [x] Bundle-size goal #18 met: eager delta +3.40 KB gzipped (target ≤15)
-- [x] Branch pushed to origin
-- [ ] **Awaiting user `accept` to proceed to Phase 8 PR open** — interactive smoke (§8 Groups A–G) is the user's verification step
-
-## Gate 2 — PR merge
-
-- [ ] PR opened via `gh pr create --base master --head feature/2dfea-save-load-json`
-- [ ] Awaiting user `merge` / `ship it` confirmation
-- [ ] Final: `gh pr merge <num> --rebase --delete-branch`
+- `.claude/agents/structural-feature-implementer.md` (uncommitted agent definition edit)
+- `.claude/settings.local.json` (local settings)
+- `2dfea/.claude/` (local agent config — untracked)
