@@ -1,0 +1,52 @@
+name: PR checks
+
+# Pre-merge gates for the 2dfea module: type-check, build, and test.
+# Configure as a required status check in
+#   Settings → Branches → Branch protection rules → master
+# so the merge button only enables after this run goes green.
+
+on:
+  pull_request:
+    branches: [master, main]
+    paths:
+      - '2dfea/**'
+      - '.github/workflows/pr-checks.yml'
+      - '.github/workflows/deploy-all-modules.yml'
+
+# Cancel older runs of the same PR when new commits are pushed
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-2dfea:
+    name: 2dfea type-check + build + test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install 2dfea dependencies
+        working-directory: 2dfea
+        run: npm ci
+        env:
+          CI: true
+
+      - name: Run 2dfea type check
+        working-directory: 2dfea
+        run: npm run type-check
+
+      - name: Build 2dfea application
+        working-directory: 2dfea
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Run 2dfea Vitest suite
+        working-directory: 2dfea
+        run: npm test

@@ -50,7 +50,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Install 2dfea dependencies
         working-directory: 2dfea
@@ -61,6 +61,10 @@ jobs:
       - name: Run 2dfea type check
         working-directory: 2dfea
         run: npm run type-check
+
+      - name: Run 2dfea Vitest suite
+        working-directory: 2dfea
+        run: npm test
 
       - name: Build 2dfea application
         working-directory: 2dfea
