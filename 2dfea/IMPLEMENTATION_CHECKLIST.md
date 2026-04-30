@@ -94,15 +94,24 @@
 
 ## Phase 5 — Polish + docs
 
-- [ ] JSDoc cross-references finalised (`@see docs/plans/snap-to-element-projection.md`) on `projectOntoSegment` and `getSnappedPosition`
-- [ ] One-paragraph code comment near snap-marker block in CanvasView pointing readers at the plan
-- [ ] One-line tooltip / canvas-help advertising "Hold Shift to bypass element snap" (minimum: a comment + the JSDoc)
-- [ ] (Optional) Plan amendment if anything material shifted during implementation
-- [ ] `npm run type-check && npm test && npm run build` all green
-- [ ] Bundle size delta < 1 KB gzipped (record post-build)
-- [ ] Commit: `docs(2dfea): JSDoc + canvas help for snap-to-element-projection`
+- [x] JSDoc cross-references finalised (`@see docs/plans/snap-to-element-projection.md`) on `projectOntoSegment` and `getSnappedPosition` — included inline with Phase 1/2 commits
+- [x] One-paragraph code comment near snap-marker block in CanvasView pointing readers at the plan and the Shift-bypass — included inline with Phase 4 commit
+- [x] One-line in-code Shift hint — JSDoc on `getSnappedPosition` documents the contract, plus the comment on `renderSnapMarker` advertises "hold Shift to bypass"
+- [x] No plan amendments needed — implementation followed the plan exactly. (One implementer's-call documented in Phase 4 checklist: layered the new tri-colour ring on top of the existing yellow node-hover ring rather than replacing it. Plan §5.5 explicitly leaves this choice to the implementer.)
+- [x] `npm run type-check && npm test && npm run build` all green
+- [x] Bundle size delta: **+0.41 KB gzipped** (184.66 KB vs 184.25 KB pre-feature) — under the 1 KB budget (goal #10)
+- [x] No separate Phase-5 commit — JSDoc + code comments are already in the Phase 1/2/4 commits; an empty polish commit would violate the "every commit must be substantive" rule. Final checklist tick will be the closing commit.
 
 ## Phase 6 — Pre-handoff verification (manual QA Groups A–E)
+
+**Automated gates (final, post Phase 4):**
+- [x] `npm run type-check` — green (0 errors)
+- [x] `npm test` — green (9 files / 79 tests; +27 new vs baseline)
+- [x] `npm run build` — green (629.17 kB raw / 184.66 KB gzipped; delta +0.41 KB)
+- [x] No console / TS / test warnings introduced
+
+**Manual QA — handoff to user via Phase 7 Gate 1 (deferred for user run):**
+
 
 - [ ] **Group A — Draw on element**
   - [ ] A1: Draw node mid-span on beam → lands exactly on the line; Full Analysis → moment diagram continuous across new node *(load-bearing end-to-end check)*
