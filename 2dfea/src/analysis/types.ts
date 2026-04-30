@@ -27,6 +27,10 @@ export interface Element {
   E: number;      // GPa (Young's modulus)
   I: number;      // m⁴ (Moment of inertia)
   A: number;      // m² (Cross-section area)
+  // 2D: only Mz releases. Future 3D will MAJOR-bump to a nested releases
+  // object — see docs/plans/member-end-releases-mz.md §5.10.
+  releaseStartMz?: boolean;  // default false / absent = rigid at i-node
+  releaseEndMz?: boolean;    // default false / absent = rigid at j-node
 }
 
 // ============================================================================
