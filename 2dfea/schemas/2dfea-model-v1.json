@@ -1,0 +1,457 @@
+{
+  "$ref": "#/definitions/2dfea-model-v1.0.0",
+  "definitions": {
+    "2dfea-model-v1.0.0": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "1.0.0"
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "appVersion": {
+              "type": "string"
+            },
+            "exportedAt": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "author": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "units": {
+              "type": "object",
+              "properties": {
+                "length": {
+                  "type": "string",
+                  "const": "m"
+                },
+                "force": {
+                  "type": "string",
+                  "const": "kN"
+                },
+                "moment": {
+                  "type": "string",
+                  "const": "kNm"
+                },
+                "stress": {
+                  "type": "string",
+                  "const": "GPa"
+                },
+                "areaMomentOfInertia": {
+                  "type": "string",
+                  "const": "m4"
+                },
+                "area": {
+                  "type": "string",
+                  "const": "m2"
+                }
+              },
+              "required": [
+                "length",
+                "force",
+                "moment",
+                "stress",
+                "areaMomentOfInertia",
+                "area"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "appVersion",
+            "exportedAt",
+            "units"
+          ],
+          "additionalProperties": true
+        },
+        "model": {
+          "type": "object",
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "x_m": {
+                    "type": "number"
+                  },
+                  "y_m": {
+                    "type": "number"
+                  },
+                  "support": {
+                    "type": "string",
+                    "enum": [
+                      "fixed",
+                      "pinned",
+                      "roller-x",
+                      "roller-y",
+                      "free"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "x_m",
+                  "y_m",
+                  "support"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "elements": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "nodeI": {
+                    "type": "string"
+                  },
+                  "nodeJ": {
+                    "type": "string"
+                  },
+                  "E_GPa": {
+                    "type": "number"
+                  },
+                  "I_m4": {
+                    "type": "number"
+                  },
+                  "A_m2": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "name",
+                  "nodeI",
+                  "nodeJ",
+                  "E_GPa",
+                  "I_m4",
+                  "A_m2"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "loads": {
+              "type": "object",
+              "properties": {
+                "nodal": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "node": {
+                        "type": "string"
+                      },
+                      "fx_kN": {
+                        "type": "number"
+                      },
+                      "fy_kN": {
+                        "type": "number"
+                      },
+                      "mz_kNm": {
+                        "type": "number"
+                      },
+                      "case": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "node",
+                      "fx_kN",
+                      "fy_kN",
+                      "mz_kNm"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "distributed": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "element": {
+                        "type": "string"
+                      },
+                      "direction": {
+                        "type": "string",
+                        "enum": [
+                          "Fx",
+                          "Fy",
+                          "FX",
+                          "FY"
+                        ]
+                      },
+                      "w1_kN_per_m": {
+                        "type": "number"
+                      },
+                      "w2_kN_per_m": {
+                        "type": "number"
+                      },
+                      "x1_m": {
+                        "type": "number"
+                      },
+                      "x2_m": {
+                        "type": "number"
+                      },
+                      "case": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "element",
+                      "direction",
+                      "w1_kN_per_m",
+                      "w2_kN_per_m",
+                      "x1_m",
+                      "x2_m"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "elementPoint": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "element": {
+                        "type": "string"
+                      },
+                      "distance_m": {
+                        "type": "number"
+                      },
+                      "direction": {
+                        "type": "string",
+                        "enum": [
+                          "Fx",
+                          "Fy",
+                          "Mz",
+                          "FX",
+                          "FY",
+                          "MZ"
+                        ]
+                      },
+                      "magnitude_kN_or_kNm": {
+                        "type": "number"
+                      },
+                      "case": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "element",
+                      "distance_m",
+                      "direction",
+                      "magnitude_kN_or_kNm"
+                    ],
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "required": [
+                "nodal",
+                "distributed",
+                "elementPoint"
+              ],
+              "additionalProperties": {
+                "type": "array",
+                "items": {}
+              }
+            },
+            "loadCases": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "loadCombinations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "factors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "factors"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "activeLoadCase": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "activeResultView": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "case",
+                    "combination"
+                  ]
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "name"
+              ],
+              "additionalProperties": true
+            },
+            "idCounters": {
+              "type": "object",
+              "properties": {
+                "nextNodeNumber": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "nextElementNumber": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "nextNodalLoadNumber": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "nextPointLoadNumber": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "nextDistributedLoadNumber": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "nextLineLoadNumber": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "nextNodeNumber",
+                "nextElementNumber",
+                "nextNodalLoadNumber",
+                "nextPointLoadNumber",
+                "nextDistributedLoadNumber",
+                "nextLineLoadNumber"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "nodes",
+            "elements",
+            "loads",
+            "loadCases",
+            "loadCombinations",
+            "activeLoadCase",
+            "activeResultView",
+            "idCounters"
+          ],
+          "additionalProperties": true
+        },
+        "_comments": {
+          "type": "object",
+          "properties": {
+            "nodes": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "elements": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "loads": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "loadCases": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "loadCombinations": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "metadata",
+        "model"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
