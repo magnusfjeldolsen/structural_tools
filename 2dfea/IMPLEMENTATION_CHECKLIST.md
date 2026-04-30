@@ -76,20 +76,21 @@
 
 ## Phase 4 — Visual snap marker (tri-state)
 
-- [ ] Add `isShiftHeld: boolean` and `setIsShiftHeld` to `useUIStore.ts` (next to existing snap fields)
-- [ ] Add window-level `keydown`/`keyup` listener in CanvasView `useEffect` updating `isShiftHeld` (cleanup on unmount)
-- [ ] Track current cursor world position (`mouseWorldPos` already exists at line 47) — reuse it for projection-foot rendering
-- [ ] Implement `renderSnapMarker()` block — single `<Circle>` with stroke colour by state:
-  - [ ] State (a) blue `#3b82f6` — `hoveredElement && !hoveredNode && !isShiftHeld` — at projection foot
-  - [ ] State (b) green `#22c55e` — `hoveredNode && classifyNode === 'connected' && !isShiftHeld` — at node coords
-  - [ ] State (c) amber `#f59e0b` — `hoveredNode && classifyNode === 'free-end' && !isShiftHeld` — at node coords
-  - [ ] Marker geometry: hollow circle, radius 7 px, strokeWidth 1.5, fill transparent, listening false
-  - [ ] Suppress marker when `isShiftHeld` OR `!snapEnabled` OR no snap target
-- [ ] Insert renderSnapMarker into Layer above renderNodes (so the new ring sits on top of the existing node fill)
-- [ ] `npm run type-check` green
-- [ ] `npm test` green
-- [ ] Smoke-test in dev — marker tri-state observable per plan §8 Group E
-- [ ] Commit: `feat(2dfea): add tri-colour snap marker (projection / connected / free-end)`
+- [x] Add `isShiftHeld: boolean` and `setIsShiftHeld` to `useUIStore.ts` (next to existing snap fields, with explanatory comment)
+- [x] Add window-level `keydown`/`keyup` listener in CanvasView `useEffect` updating `isShiftHeld` (with `blur` defensive reset, and cleanup on unmount)
+- [x] Reuse `mouseWorldPos` (already tracked at line 47) for projection-foot rendering
+- [x] Implement `renderSnapMarker()` — single `<Circle>` with stroke colour by state:
+  - [x] State (a) blue `#3b82f6` — `hoveredElement && !hoveredNode && !isShiftHeld` — at projection foot
+  - [x] State (b) green `#22c55e` — `hoveredNode && classifyNode === 'connected' && !isShiftHeld` — at node coords
+  - [x] State (c) amber `#f59e0b` — `hoveredNode && classifyNode === 'free-end' && !isShiftHeld` — at node coords
+  - [x] Marker geometry: hollow circle, radius 7, strokeWidth 1.5, listening false (no fill set -> transparent default)
+  - [x] Suppress marker when `isShiftHeld` OR `!snapEnabled` OR no snap target
+- [x] Insert `renderSnapMarker()` into Layer between `renderNodes()` and `renderElementAxes()` so the ring sits on top of node fills
+- [x] Existing yellow node-hover ring (cyan #00FFFF) kept — the new tri-colour marker layers on top, giving a richer visual without removing established hover signal. Plan §5.5 leaves this as implementer's call; layered approach felt safer than removing the existing indicator.
+- [x] `npm run type-check` green
+- [x] `npm test` green — 79 tests
+- [x] Smoke-test deferred to Phase 6 (Group E)
+- [x] Commit: `feat(2dfea): add tri-colour snap marker (projection / connected / free-end)`
 
 ## Phase 5 — Polish + docs
 

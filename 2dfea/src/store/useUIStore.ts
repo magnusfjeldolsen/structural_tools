@@ -116,6 +116,12 @@ export interface UIState {
   toggleSnapToElements: () => void;
   setSnapTolerance: (tolerance: number) => void;
 
+  // Shift-bypass for element-projection snap (plan: snap-to-element-projection §5.5).
+  // Tracked via window-level keydown/keyup listeners in CanvasView so the snap
+  // marker disappears immediately on Shift press without needing cursor motion.
+  isShiftHeld: boolean;
+  setIsShiftHeld: (held: boolean) => void;
+
   // Hover state (for snapping feedback)
   hoveredNode: string | null;
   hoveredElement: string | null;
@@ -297,7 +303,8 @@ const initialState = {
   snapEnabled: true,
   snapToNodes: true,
   snapToElements: true,
-  snapTolerance: 10,  // pixels
+  snapTolerance: 10,  // pixels — UX hover-detection threshold; do NOT tighten
+  isShiftHeld: false,
   hoveredNode: null,
   hoveredElement: null,
   hoveredLoad: null,
@@ -532,6 +539,10 @@ export const useUIStore = create<UIState>()(
 
       setSnapTolerance: (tolerance) => {
         set({ snapTolerance: tolerance });
+      },
+
+      setIsShiftHeld: (held) => {
+        set({ isShiftHeld: held });
       },
 
       // Hover state actions

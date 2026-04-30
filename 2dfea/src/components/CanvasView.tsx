@@ -17,7 +17,13 @@ import {
   calculateDiagramScale,
   getMaxDiagramValue,
 } from '../visualization';
-import { findNearestNode, findNearestElement, getSnappedPosition } from '../geometry/snapUtils';
+import {
+  findNearestNode,
+  findNearestElement,
+  getSnappedPosition,
+  classifyNode,
+  projectOntoSegment,
+} from '../geometry/snapUtils';
 import { calculateDeformedElementShape } from '../geometry/deformationUtils';
 import { findNodesInRect, findElementsInRect } from '../geometry/selectionUtils';
 import { isLocalDirection } from '../utils/coordinateUtils';
@@ -131,6 +137,8 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const setHoveredNode = useUIStore((state) => state.setHoveredNode);
   const setHoveredElement = useUIStore((state) => state.setHoveredElement);
   const setHoveredLoad = useUIStore((state) => state.setHoveredLoad);
+  const isShiftHeld = useUIStore((state) => state.isShiftHeld);
+  const setIsShiftHeld = useUIStore((state) => state.setIsShiftHeld);
   const copiedData = useUIStore((state) => state.copiedData);
   const pasteMode = useUIStore((state) => state.pasteMode);
   const clearPasteData = useUIStore((state) => state.clearPasteData);
@@ -334,6 +342,30 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [drawingElement, clearDrawingElement, moveCommand, commandInput, setCommandInput, setMoveStage, selectionStart, loadCreationMode, cancelLoadCreation]);
+
+  // Track Shift state at the window level so the snap-to-element marker
+  // disappears immediately on Shift press without requiring cursor motion
+  // (Konva mousemove only fires when the cursor moves).
+  // See docs/plans/snap-to-element-projection.md §5.5.
+  useEffect(() => {
+    const handleShiftDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' && !isShiftHeld) setIsShiftHeld(true);
+    };
+    const handleShiftUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setIsShiftHeld(false);
+    };
+    // Defensive blur handler: if focus leaves the window while Shift is held,
+    // we never see the keyup — reset on blur to avoid a stuck-Shift marker.
+    const handleBlur = () => setIsShiftHeld(false);
+    window.addEventListener('keydown', handleShiftDown);
+    window.addEventListener('keyup', handleShiftUp);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      window.removeEventListener('keydown', handleShiftDown);
+      window.removeEventListener('keyup', handleShiftUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [isShiftHeld, setIsShiftHeld]);
 
   // === MOUSE EVENT HANDLERS ===
 
@@ -1850,6 +1882,61 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     });
   };
 
+  // Render the tri-colour snap marker showing what the next click will resolve to.
+  // Single Konva <Circle> whose stroke colour signals the snap state; same shape and size
+  // for all states so the marker reads as a single indicator. Hidden when Shift is held
+  // (bypass active), when snapping is globally disabled, or when no snap target is in range.
+  // See docs/plans/snap-to-element-projection.md §5.5 — and hold Shift to bypass.
+  const renderSnapMarker = () => {
+    if (!snapEnabled || isShiftHeld) return null;
+
+    // States (b)/(c): an existing node is hovered — node-snap takes priority.
+    if (hoveredNode) {
+      const node = nodes.find((n) => n.name === hoveredNode);
+      if (!node) return null;
+      const state = classifyNode(hoveredNode, nodes, elements);
+      const stroke = state === 'connected' ? '#22c55e' : '#f59e0b';
+      const [px, py] = toScreen(node.x, node.y);
+      return (
+        <Circle
+          x={px}
+          y={py}
+          radius={7}
+          stroke={stroke}
+          strokeWidth={1.5}
+          listening={false}
+        />
+      );
+    }
+
+    // State (a): an element is hovered (no node) — show a blue marker at the projection foot.
+    if (hoveredElement && mouseWorldPos) {
+      const element = elements.find((e) => e.name === hoveredElement);
+      if (!element) return null;
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) return null;
+      const proj = projectOntoSegment(
+        { x: mouseWorldPos.x, y: mouseWorldPos.y },
+        { x: nodeI.x, y: nodeI.y },
+        { x: nodeJ.x, y: nodeJ.y }
+      );
+      const [px, py] = toScreen(proj.x, proj.y);
+      return (
+        <Circle
+          x={px}
+          y={py}
+          radius={7}
+          stroke="#3b82f6"
+          strokeWidth={1.5}
+          listening={false}
+        />
+      );
+    }
+
+    return null;
+  };
+
   // Helper: Get load color based on selection/hover state
   const getLoadColor = (type: 'nodal' | 'distributed' | 'elementPoint', index: number): string => {
     const isSelected = selectedLoads[type].includes(index);
@@ -2628,6 +2715,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           {renderSelectionHighlights()}
           {renderSupports()}
           {renderNodes()}
+          {renderSnapMarker()}
           {renderElementAxes()}
           {renderLoads()}
           {renderDrawingPreview()}
