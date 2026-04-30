@@ -6,25 +6,111 @@ import type { Node, Element } from '../analysis/types';
 import { distance, type Point } from './transformUtils';
 
 /**
- * Get snapped position - returns node coordinates if hovering over a node, else cursor position
- * This is the centralized snapping behavior used by all tools
- * @param worldPos - Current cursor position in world coordinates
+ * Get the snapped click coordinates given the current cursor position and hover state.
+ *
+ * Centralised snapping behaviour used by every click-driven tool (draw-node,
+ * draw-element, move command). Priority order:
+ *
+ *   1. **Node snap.** If a node is hovered, return that node's exact coordinates.
+ *      Existing junctions / supports always win — preserves the historical
+ *      snap-to-node UX that users rely on.
+ *   2. **Element-projection snap.** Else, if an element is hovered AND
+ *      `bypassElementProjection` is `false`, project the cursor onto the
+ *      element's axis (clamped to the segment's [0, 1] parametric range) and
+ *      return the projection foot. This places new mid-span nodes exactly on
+ *      the element's axis, well within PyNite's `PhysMember.descritize`
+ *      tolerance of `1e-12 * (1 + L)`, so the physical member auto-splits at
+ *      the new node on solve.
+ *   3. **Raw cursor.** Else, return the unmodified `worldPos`. Also the
+ *      fallback when `bypassElementProjection` is `true` (Shift held), or
+ *      when the hovered element / its endpoint nodes can no longer be found.
+ *
+ * Tie-breaking when multiple elements overlap: `findNearestElement` (the
+ * function that populates `hoveredElement`) deterministically returns the
+ * element with the smallest perpendicular distance, so the projection
+ * naturally lands on whichever element the user appears to be targeting.
+ *
+ * Shift-bypass contract: callers pass the click-event `shiftKey` value as
+ * `bypassElementProjection`. Holding Shift suppresses the projection so the
+ * user can place a node intentionally off-axis.
+ *
+ * @see docs/plans/snap-to-element-projection.md §5.3, §5.4, §5.6
+ *
+ * @param worldPos - Current cursor position in world coordinates (m)
  * @param hoveredNode - Name of hovered node (if any)
  * @param nodes - Array of all nodes
+ * @param hoveredElement - Name of hovered element (if any). Default `null` for
+ *   back-compat with callers that have not yet been migrated.
+ * @param elements - Array of all elements. Default `[]`.
+ * @param bypassElementProjection - When `true`, skip element-projection and
+ *   fall through to raw cursor coordinates. Default `false`.
  * @returns Snapped coordinates
  */
 export function getSnappedPosition(
   worldPos: Point,
   hoveredNode: string | null,
-  nodes: Node[]
+  nodes: Node[],
+  hoveredElement: string | null = null,
+  elements: Element[] = [],
+  bypassElementProjection = false
 ): Point {
+  // 1. Node snap — exact node coordinates always win
   if (hoveredNode) {
-    const node = nodes.find(n => n.name === hoveredNode);
+    const node = nodes.find((n) => n.name === hoveredNode);
     if (node) {
       return { x: node.x, y: node.y };
     }
   }
+
+  // 2. Element-projection snap — only when no node is hovered and not bypassed
+  if (hoveredElement && !bypassElementProjection) {
+    const element = elements.find((e) => e.name === hoveredElement);
+    if (element) {
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (nodeI && nodeJ) {
+        return projectOntoSegment(
+          worldPos,
+          { x: nodeI.x, y: nodeI.y },
+          { x: nodeJ.x, y: nodeJ.y }
+        );
+      }
+    }
+  }
+
+  // 3. Raw cursor — fallback
   return worldPos;
+}
+
+/**
+ * Snap-state classification for an existing node, used by the canvas snap-marker
+ * to colour-code the click target:
+ *
+ *   - `'connected'` — node has >=2 attached elements OR a non-`free` support.
+ *     Marker renders green: clicking reuses an established junction.
+ *   - `'free-end'` — node has <=1 attached element AND `support === 'free'`.
+ *     Marker renders amber: clicking reuses a possibly-dangling node, which is
+ *     worth flagging visually.
+ *
+ * O(n_elements) per call — negligible for any realistic model. Intended to be
+ * called once per mousemove from the snap-marker render block.
+ *
+ * @see docs/plans/snap-to-element-projection.md §5.5
+ */
+export type NodeSnapState = 'connected' | 'free-end';
+
+export function classifyNode(
+  nodeName: string,
+  nodes: Node[],
+  elements: Element[]
+): NodeSnapState {
+  const node = nodes.find((n) => n.name === nodeName);
+  if (!node) return 'free-end';
+  const elementCount = elements.filter(
+    (e) => e.nodeI === nodeName || e.nodeJ === nodeName
+  ).length;
+  const isSupported = node.support !== 'free';
+  return elementCount >= 2 || isSupported ? 'connected' : 'free-end';
 }
 
 /**

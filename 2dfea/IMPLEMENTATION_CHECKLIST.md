@@ -50,15 +50,16 @@
 
 ## Phase 2 — Extend `getSnappedPosition` signature
 
-- [ ] Extend `getSnappedPosition` signature with `hoveredElement: string | null = null`, `elements: Element[] = []`, `bypassElementProjection = false` (defaults preserve back-compat for any unmigrated callers)
-- [ ] Implement three-priority body: node-snap > element-projection > raw cursor
-- [ ] Add `classifyNode(nodeName, nodes, elements): 'connected' | 'free-end'` helper (sibling in snapUtils for Phase 4 consumption)
-- [ ] Add `NodeSnapState` type export
-- [ ] JSDoc on `getSnappedPosition` and `projectOntoSegment` (priority order, Shift contract, IEEE-754 vs PyNite tolerance margin)
-- [ ] Add `classifyNode` unit test (5 cases per plan §7 Phase 4.2)
-- [ ] `npm run type-check` green
-- [ ] `npm test` green
-- [ ] Commit: `feat(2dfea): extend getSnappedPosition with element-projection and shift-bypass`
+- [x] Extend `getSnappedPosition` signature with `hoveredElement: string | null = null`, `elements: Element[] = []`, `bypassElementProjection = false` (defaults preserve back-compat for any unmigrated callers)
+- [x] Implement three-priority body: node-snap > element-projection > raw cursor
+- [x] Add `classifyNode(nodeName, nodes, elements): 'connected' | 'free-end'` helper (sibling in snapUtils for Phase 4 consumption)
+- [x] Add `NodeSnapState` type export
+- [x] JSDoc on `getSnappedPosition` and `projectOntoSegment` (priority order, Shift contract, IEEE-754 vs PyNite tolerance margin)
+- [x] Add `classifyNode` unit test (6 cases — exceeds the 5 in plan §7 Phase 4.2 by adding a missing-name fallback)
+- [x] Add `getSnappedPosition` unit tests covering all three priority branches, Shift bypass, and back-compat 3-arg call
+- [x] `npm run type-check` green
+- [x] `npm test` green — 9 files / 79 tests
+- [x] Commit: `feat(2dfea): extend getSnappedPosition with element-projection and shift-bypass`
 
 ## Phase 3 — Update 5 CanvasView call sites
 
