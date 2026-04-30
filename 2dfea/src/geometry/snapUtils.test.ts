@@ -9,7 +9,13 @@
  * @see docs/plans/snap-to-element-projection.md §5.7, §8
  */
 import { describe, it, expect } from 'vitest';
-import { distanceToLineSegment, projectOntoSegment } from './snapUtils';
+import {
+  classifyNode,
+  distanceToLineSegment,
+  getSnappedPosition,
+  projectOntoSegment,
+} from './snapUtils';
+import type { Element, Node } from '../analysis/types';
 
 describe('projectOntoSegment', () => {
   it('projects a point onto the interior of a horizontal segment', () => {
@@ -121,6 +127,148 @@ describe('projectOntoSegment', () => {
         expect(perpDist).toBeLessThanOrEqual(1e-13);
       }
     }
+  });
+});
+
+describe('classifyNode', () => {
+  // Build a small graph: N1 (fixed) — E1 — N2 (free) — E2 — N3 (free); N4 isolated free
+  const baseElement = { E: 200, I: 1e-4, A: 1e-2 } as const;
+  const nodes: Node[] = [
+    { name: 'N1', x: 0, y: 0, support: 'fixed' },
+    { name: 'N2', x: 4, y: 0, support: 'free' },
+    { name: 'N3', x: 8, y: 0, support: 'free' },
+    { name: 'N4', x: 1, y: 5, support: 'free' },
+    { name: 'N5', x: 2, y: 5, support: 'pinned' },
+  ];
+  const elements: Element[] = [
+    { name: 'E1', nodeI: 'N1', nodeJ: 'N2', ...baseElement },
+    { name: 'E2', nodeI: 'N2', nodeJ: 'N3', ...baseElement },
+  ];
+
+  it('classifies a free node with no elements as free-end', () => {
+    expect(classifyNode('N4', nodes, elements)).toBe('free-end');
+  });
+
+  it('classifies a free node with exactly one element as free-end', () => {
+    // N3 has 1 element (E2) and support === 'free'
+    expect(classifyNode('N3', nodes, elements)).toBe('free-end');
+  });
+
+  it('classifies a free node with two or more elements as connected', () => {
+    // N2 has 2 elements (E1 + E2) and support === 'free' -> still connected
+    expect(classifyNode('N2', nodes, elements)).toBe('connected');
+  });
+
+  it('classifies a fixed-support node with no elements as connected (support overrides element count)', () => {
+    // N5 is pinned with 0 elements
+    expect(classifyNode('N5', nodes, elements)).toBe('connected');
+  });
+
+  it('classifies a fixed-support node with one element as connected', () => {
+    // N1 has 1 element (E1) and is fixed
+    expect(classifyNode('N1', nodes, elements)).toBe('connected');
+  });
+
+  it('returns free-end for a node name that is not in the array', () => {
+    expect(classifyNode('NONEXISTENT', nodes, elements)).toBe('free-end');
+  });
+});
+
+describe('getSnappedPosition', () => {
+  const baseElement = { E: 200, I: 1e-4, A: 1e-2 } as const;
+  const nodes: Node[] = [
+    { name: 'N1', x: 0, y: 0, support: 'fixed' },
+    { name: 'N2', x: 4, y: 0, support: 'free' },
+  ];
+  const elements: Element[] = [
+    { name: 'E1', nodeI: 'N1', nodeJ: 'N2', ...baseElement },
+  ];
+
+  it('returns exact node coordinates when a node is hovered (priority 1)', () => {
+    const result = getSnappedPosition({ x: 0.05, y: 0.05 }, 'N1', nodes);
+    expect(result.x).toBe(0);
+    expect(result.y).toBe(0);
+  });
+
+  it('returns raw cursor coordinates when nothing is hovered', () => {
+    const result = getSnappedPosition({ x: 1.7, y: 0.4 }, null, nodes);
+    expect(result.x).toBe(1.7);
+    expect(result.y).toBe(0.4);
+  });
+
+  it('projects the cursor onto the hovered element when no node is hovered', () => {
+    // Cursor 0.1 m above the beam axis at x = 2 -> projection foot is (2, 0)
+    const result = getSnappedPosition(
+      { x: 2, y: 0.1 },
+      null,
+      nodes,
+      'E1',
+      elements,
+      false
+    );
+    expect(result.x).toBe(2);
+    expect(result.y).toBe(0);
+  });
+
+  it('node hover wins over element hover (priority 1 beats priority 2)', () => {
+    // Both hovered — should snap to node, not project onto element
+    const result = getSnappedPosition(
+      { x: 0.05, y: 0.05 },
+      'N1',
+      nodes,
+      'E1',
+      elements,
+      false
+    );
+    expect(result.x).toBe(0);
+    expect(result.y).toBe(0);
+  });
+
+  it('falls through to raw cursor when bypassElementProjection is true (Shift held)', () => {
+    const result = getSnappedPosition(
+      { x: 2, y: 0.1 },
+      null,
+      nodes,
+      'E1',
+      elements,
+      true // Shift bypass
+    );
+    expect(result.x).toBe(2);
+    expect(result.y).toBe(0.1);
+  });
+
+  it('falls through to raw cursor when hoveredElement references a non-existent element', () => {
+    const result = getSnappedPosition(
+      { x: 2, y: 0.1 },
+      null,
+      nodes,
+      'E_GHOST',
+      elements,
+      false
+    );
+    expect(result.x).toBe(2);
+    expect(result.y).toBe(0.1);
+  });
+
+  it('falls through to raw cursor when an endpoint node of the hovered element is missing', () => {
+    const orphanElement: Element = { name: 'E_ORPHAN', nodeI: 'N1', nodeJ: 'GHOST', ...baseElement };
+    const result = getSnappedPosition(
+      { x: 2, y: 0.1 },
+      null,
+      nodes,
+      'E_ORPHAN',
+      [orphanElement],
+      false
+    );
+    expect(result.x).toBe(2);
+    expect(result.y).toBe(0.1);
+  });
+
+  it('is back-compatible — old 3-arg call still snaps to nodes only', () => {
+    // Defaults for hoveredElement/elements/bypass mean no element projection
+    const result = getSnappedPosition({ x: 2, y: 0.1 }, null, nodes);
+    expect(result.x).toBe(2);
+    expect(result.y).toBe(0.1);
   });
 });
 
