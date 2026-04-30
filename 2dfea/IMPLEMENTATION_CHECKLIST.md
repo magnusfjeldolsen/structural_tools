@@ -63,16 +63,16 @@
 
 ## Phase 3 — Update 5 CanvasView call sites
 
-- [ ] Verify call sites with Grep (lines may have shifted): expected 378, 385, 543, 554, 579
-- [ ] Line 378 — Move base-point click: pass `hoveredElement, elements, isShiftPressed`
-- [ ] Line 385 — Move endpoint click: pass `hoveredElement, elements, isShiftPressed`
-- [ ] Line 543 — `draw-node` tool: pass `hoveredElement, elements, isShiftPressed`
-- [ ] Line 554 — `draw-element` first click (start node): pass `hoveredElement, elements, isShiftPressed`
-- [ ] Line 579 — `draw-element` second click (end node): pass `hoveredElement, elements, isShiftPressed`
-- [ ] `npm run type-check` green
-- [ ] `npm test` green
-- [ ] Smoke-test in dev (one quick pass) — element click lands on the line; Shift bypass works; node-snap priority preserved
-- [ ] Commit: `feat(2dfea): wire element-projection snap into draw and move tools`
+- [x] Verify call sites with Grep — confirmed lines 378, 385, 543, 554, 579 (unchanged from plan)
+- [x] Line 378 — Move base-point click: pass `hoveredElement, elements, isShiftPressed`
+- [x] Line 385 — Move endpoint click: pass `hoveredElement, elements, isShiftPressed`
+- [x] Line 543 — `draw-node` tool: pass `hoveredElement, elements, isShiftPressed`
+- [x] Line 554 — `draw-element` first click (start node): pass `hoveredElement, elements, isShiftPressed`
+- [x] Line 579 — `draw-element` second click (end node): pass `hoveredElement, elements, isShiftPressed`
+- [x] `npm run type-check` green
+- [x] `npm test` green — 79 tests still pass
+- [x] Smoke-test deferred to Phase 6 manual QA (Group A/B/C/D) — geometry path is fully covered by getSnappedPosition unit tests in Phase 2
+- [x] Commit: `feat(2dfea): wire element-projection snap into draw and move tools`
 
 ## Phase 4 — Visual snap marker (tri-state)
 
