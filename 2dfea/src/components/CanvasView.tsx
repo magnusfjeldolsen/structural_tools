@@ -1854,9 +1854,14 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
   // Render nodes
   const renderNodes = () => {
+    // When the tri-colour snap marker (renderSnapMarker) is active, suppress the legacy
+    // cyan-fill hover treatment so the marker's stroke colour is visible. See plan §5.5 /
+    // Phase 4.4 ("replace, not render alongside"). Falls back to legacy cyan when snap
+    // is globally disabled or Shift is held (bypass), so the user still gets hover feedback.
+    const snapMarkerActive = snapEnabled && !isShiftHeld;
     return nodes.map((node) => {
       const [sx, sy] = toScreen(node.x, node.y);
-      const isHovered = hoveredNode === node.name;
+      const showLegacyHover = hoveredNode === node.name && !snapMarkerActive;
 
       return (
         <>
@@ -1864,10 +1869,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
             key={`node-${node.name}`}
             x={sx}
             y={sy}
-            radius={isHovered ? 7 : 5}
-            fill={isHovered ? "#00FFFF" : "#FF5722"}
-            stroke={isHovered ? "#00AAAA" : "#000"}
-            strokeWidth={isHovered ? 2 : 1}
+            radius={showLegacyHover ? 7 : 5}
+            fill={showLegacyHover ? "#00FFFF" : "#FF5722"}
+            stroke={showLegacyHover ? "#00AAAA" : "#000"}
+            strokeWidth={showLegacyHover ? 2 : 1}
           />
           <Text
             key={`label-${node.name}`}
