@@ -68,6 +68,11 @@ const ElementSchema = z
     E_GPa: z.number().finite(),
     I_m4: z.number().finite(),
     A_m2: z.number().finite(),
+    // v1.1.0 (additive, optional): per-end Mz release flags. Default-absent
+    // = rigid. See docs/plans/member-end-releases-mz.md §5.2 for the locked
+    // flat-sibling shape and §5.9 for the schema-bump rationale.
+    releaseStartMz: z.boolean().optional(),
+    releaseEndMz: z.boolean().optional(),
   })
   .passthrough();
 
@@ -273,7 +278,18 @@ const KNOWN_ID_COUNTER_KEYS = new Set([
 ]);
 
 const KNOWN_NODE_KEYS = new Set(['name', 'x_m', 'y_m', 'support']);
-const KNOWN_ELEMENT_KEYS = new Set(['name', 'nodeI', 'nodeJ', 'E_GPa', 'I_m4', 'A_m2']);
+const KNOWN_ELEMENT_KEYS = new Set([
+  'name',
+  'nodeI',
+  'nodeJ',
+  'E_GPa',
+  'I_m4',
+  'A_m2',
+  // v1.1.0 additions — keep listed so the unknown-keys diagnostic doesn't
+  // fire on legitimate v1.1.0 fields when a v1.1.0 reader loads a v1.1.0 file.
+  'releaseStartMz',
+  'releaseEndMz',
+]);
 const KNOWN_NODAL_LOAD_KEYS = new Set(['id', 'node', 'fx_kN', 'fy_kN', 'mz_kNm', 'case']);
 const KNOWN_DISTRIBUTED_LOAD_KEYS = new Set([
   'id',

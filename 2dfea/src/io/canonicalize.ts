@@ -129,6 +129,11 @@ export function modelStateToFile(
         E_GPa: e.E,
         I_m4: e.I,
         A_m2: e.A,
+        // v1.1.0 release flags: emit only when truthy. Absent = rigid (the
+        // default), keeping default-rigid files byte-identical to their
+        // v1.0.0 form except for the schemaVersion bump. See plan §5.9.
+        ...(e.releaseStartMz ? { releaseStartMz: true } : {}),
+        ...(e.releaseEndMz ? { releaseEndMz: true } : {}),
       })),
       loads: {
         nodal: state.loads.nodal.map((l) => ({
@@ -226,14 +231,26 @@ export function fileToStorePatch(file: ModelFileV1): StorePatch {
       y: n.y_m,
       support: n.support,
     })),
-    elements: m.elements.map((e) => ({
-      name: e.name,
-      nodeI: e.nodeI,
-      nodeJ: e.nodeJ,
-      E: e.E_GPa,
-      I: e.I_m4,
-      A: e.A_m2,
-    })),
+    elements: m.elements.map((e) => {
+      // v1.1.0 release flags pass-through: read from the (passthrough) file
+      // shape and copy onto the runtime Element only when truthy. Absent =
+      // rigid (the default), so we omit explicit-false to keep the runtime
+      // object minimal. See plan §5.9.
+      const fileEl = e as typeof e & {
+        releaseStartMz?: boolean;
+        releaseEndMz?: boolean;
+      };
+      return {
+        name: e.name,
+        nodeI: e.nodeI,
+        nodeJ: e.nodeJ,
+        E: e.E_GPa,
+        I: e.I_m4,
+        A: e.A_m2,
+        ...(fileEl.releaseStartMz ? { releaseStartMz: true } : {}),
+        ...(fileEl.releaseEndMz ? { releaseEndMz: true } : {}),
+      };
+    }),
     loads: {
       nodal: m.loads.nodal.map((l) => ({
         id: l.id,

@@ -9,7 +9,7 @@
  * SemVer policy is documented in docs/plans/save-load-json.md §5.3.
  */
 
-export const CURRENT_SCHEMA_VERSION = '1.0.0' as const;
+export const CURRENT_SCHEMA_VERSION = '1.1.0' as const;
 export type CurrentSchemaVersion = typeof CURRENT_SCHEMA_VERSION;
 
 /**

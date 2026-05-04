@@ -36,11 +36,18 @@ export type MigrationFn = (input: AnyVersionedModel) => AnyVersionedModel;
 
 /**
  * Registry: `fromVersion → migrationFn` returning the next-version's shape.
- * Identity entries are required for the loop to terminate at the current
- * version; v1.0.0 is its own identity since it is the current version.
+ * Each entry returns the same input with a bumped `schemaVersion` (and any
+ * structural transform required for the bump). The current version's own
+ * identity entry terminates the loop.
+ *
+ * v1.0.0 → v1.1.0: identity migration. v1.1.0 adds two optional element
+ * fields (`releaseStartMz`, `releaseEndMz`); absent = rigid, so v1.0.0
+ * files load with the rigid default automatically. Only the version stamp
+ * needs to change. See docs/plans/member-end-releases-mz.md §5.9.
  */
 export const MIGRATIONS: Record<string, MigrationFn> = {
-  '1.0.0': (input) => input,
+  '1.0.0': (input) => ({ ...input, schemaVersion: '1.1.0' }),
+  '1.1.0': (input) => input,
 };
 
 /**

@@ -24,64 +24,68 @@
 - [x] 1.2  Create `2dfea/src/analysis/releaseTuple.ts` exporting `elementReleaseTuple(el: Element): [boolean, boolean]`. JSDoc cites the PyNite docs URL and the 2D-only convention.
 - [x] 1.3  Create `2dfea/src/analysis/releaseTuple.test.ts` covering 4 cases: none, start-only, end-only, both.
 - [x] 1.4  `npm run type-check` clean. `npm test` includes new test, all suites green (84/84).
-- [ ] 1.5  Commit: `feat(2dfea): add releaseStartMz / releaseEndMz fields to Element`
+- [x] 1.5  Commit: `feat(2dfea): add releaseStartMz / releaseEndMz fields to Element` (`66635a9`)
 
-## Phase 2 — Store wiring + worker payload
+## Phase 2 — Save/load schema bump v1.0.0 → v1.1.0
 
-- [ ] 2.1  Confirm `addElement` in `useModelStore.ts` does not need new defaults (absent = false). Confirm `updateElement` accepts the new fields in its patch; the type-extension from Phase 1 already enables this.
-- [ ] 2.2  Update `translateElements` in `2dfea/src/analysis/dataTranslator.ts` to pass `releaseStartMz` / `releaseEndMz` through to the worker payload. Element type already permits the optional fields.
-- [ ] 2.3  `npm run type-check` clean.
-- [ ] 2.4  Commit: `feat(2dfea): pass member-end-release flags through to worker payload`
+- [x] 2.1  Bump `CURRENT_SCHEMA_VERSION` to `'1.1.0'` in `2dfea/src/io/schemaVersion.ts`.
+- [x] 2.2  In `2dfea/src/io/schema.ts`, add `releaseStartMz: z.boolean().optional()` and `releaseEndMz: z.boolean().optional()` to `ElementSchema`. Extend `KNOWN_ELEMENT_KEYS` with both names so the unknown-keys diagnostic doesn't fire on legitimate v1.1.0 fields.
+- [x] 2.3  In `2dfea/src/io/migrations.ts`, register identity migration `'1.0.0' → '1.1.0'` (returns `{ ...input, schemaVersion: '1.1.0' }`). Keep the `'1.1.0'` identity entry too so the loop terminates.
+- [x] 2.4  In `2dfea/src/io/canonicalize.ts`, emit `releaseStartMz: true` / `releaseEndMz: true` on `modelStateToFile` only when truthy (omit otherwise). On `fileToStorePatch`, propagate the flags onto the `Element` object (omit when absent).
+- [x] 2.5  Update `2dfea/src/io/__fixtures__/cantileverV1.ts`'s fixture to declare `schemaVersion: '1.1.0'` (must match `CURRENT_SCHEMA_VERSION` or `ModelFileV1Schema.safeParse` rejects). Add `makeCantileverV1WithReleasedEnd()` covering `releaseEndMz: true`.
+- [x] 2.6  Update `2dfea/src/io/forwardCompat.test.ts`: replace the deprecated nested `releases.nodeI.Mz` fields with v1.2.0+-style passthrough fields (`sectionRef`, `materialRef`, `plateBuckling`, `loads.thermal`, `idCounters.nextSectionRefNumber`). Keep the four classic assertions (parse, collectUnknownKeys, warnUnknownKeys count, applyToStore + re-export-drops-unknown). Add a dedicated `describe` block for "v1.0.0 reader on v1.1.0 file" demonstrating `releaseEndMz` is silently passed through, classified as unknown by a simulated v1.0.0 known-keys set, and round-trips losslessly through `modelStateToFile` → Zod parse → `fileToStorePatch`. Plus a "rigid omission" assertion proving canonicalize omits both fields when absent.
+- [x] 2.7  Add a migration test in `2dfea/src/io/migrations.test.ts` confirming a v1.0.0 input is migrated to v1.1.0 with rigid defaults (release fields absent). Update the multi-step-chain test to traverse `0.9.0 → 1.0.0 → 1.1.0`.
+- [x] 2.8  Update `2dfea/docs/examples/cantilever-v1.json`'s `schemaVersion` to `"1.1.0"` (existing fixtureParity test parses this file directly against the strict schema). Create `2dfea/docs/examples/cantilever-v1-1.json` showing one released end.
+- [x] 2.9  Run `npm run generate-schema` — regenerates `2dfea/public/schemas/2dfea-model-v1.json` to reflect v1.1.0. Stage the regenerated file as part of the commit (intentional — the prebuild override note in the user prompt explicitly authorises this).
+- [x] 2.10  `npm run type-check` clean. `npm test` green (10 files / 89 tests, +5 vs baseline). `npm run build` green.
+- [ ] 2.11  Commit: `feat(2dfea): bump schema to v1.1.0 with optional Mz release fields`
 
 ## Phase 3 — Elements table — two new boolean columns
 
-- [ ] 3.1  In `ElementTable.tsx`, add two new header items "Release i" and "Release j" and adjust `gridTemplateColumns` to fit. Render a checkbox-style cell for each row bound to `element.releaseStartMz` / `element.releaseEndMz`.
-- [ ] 3.2  In `ElementsTab.tsx`, extend the `fields` array with `'releaseStartMz'` and `'releaseEndMz'` and add edit/save/click handlers that toggle booleans (table-level edit only — bulk edit lives on the canvas panel per plan §5.6).
-- [ ] 3.3  Smoke-check: `npm run type-check` clean. Table renders new columns; clicking a checkbox toggles release on that row.
-- [ ] 3.4  Commit: `feat(2dfea): add Release start / Release end columns to Elements table`
+- [ ] 3.1  In `ElementTable.tsx`, add "Release start" and "Release end" boolean cells. Reuse existing cell conventions or introduce a small `BooleanCell` if no existing pattern fits.
+- [ ] 3.2  Multi-select bulk-edit must work via existing `updateElement` pattern.
+- [ ] 3.3  Tooltip on column headers: "Release moment (Mz) at this end. Pinned/free. Leave unchecked for rigid (default)."
+- [ ] 3.4  `npm run type-check` clean. `npm test` green.
+- [ ] 3.5  Commit: `feat(2dfea): add Release start / Release end columns to Elements table`
 
-## Phase 4 — Canvas i/j labels + hollow-circle indicators
+## Phase 4 — Canvas i/j labels on hover/select
 
-- [ ] 4.1  In `CanvasView.tsx`, locate the per-element render layer. Add Konva `<Text>` "i" and "j" labels at endpoint screen coords for every element where `hoveredElement === element.name || selectedElements.includes(element.name)`. Style: `fontSize: 11`, `fill: '#666'`, `listening: false`. Offset 8 px perpendicular to the element axis. **Reading `hoveredNode` MUST NOT trigger these labels** (plan §5.5).
-- [ ] 4.2  Add hollow-circle release indicator: for every element where `releaseStartMz === true`, draw a Konva `<Circle>` at the i-end with offset `min(0.1 × elementLengthScreenPx, 14 px)` along the i→j unit vector; mirror for `releaseEndMz` at the j-end. Style: `radius 5`, `stroke '#000'`, `strokeWidth 1.5`, `fill 'transparent'`, `listening: false`. One-line code comment cites plan §5.7.
-- [ ] 4.3  Smoke-check via `npm run dev`: hover an element → "i" / "j" labels appear at the endpoints; toggle a release in the Elements table → hollow circle appears at the corresponding end.
+- [ ] 4.1  In `CanvasView.tsx`, render Konva `<Text>` "i" at the i-node screen coords and "j" at the j-node screen coords, but ONLY when `hoveredElement === element.name || selectedElements.includes(element.name)`.
+- [ ] 4.2  Critical: `hoveredNode` MUST NOT trigger labels — a node can be i-end of one element and j-end of another, so node-hover labelling is meaningless.
+- [ ] 4.3  Style: `fontSize: 11`, `fill: '#666'`, `listening: false`, ~8 px perpendicular offset from the element axis.
 - [ ] 4.4  `npm run type-check` clean. `npm test` green.
-- [ ] 4.5  Commit: `feat(2dfea): add i/j endpoint labels and hollow-circle release indicator on canvas`
+- [ ] 4.5  Commit: `feat(2dfea): add i/j endpoint labels on element hover/select`
 
-## Phase 5 — Canvas floating release panel
+## Phase 5 — Canvas hollow-circle indicator at released ends
 
-- [ ] 5.1  Add a floating panel rendered in `CanvasView.tsx` (DOM overlay, not Konva) that becomes visible when `selectedElements.length > 0`. Four buttons: **Release start**, **Release end**, **Release both**, **Clear releases**. Style to match existing canvas-overlay panels.
-- [ ] 5.2  Each button iterates `selectedElements` and calls `updateElement(name, { ...flags })` for each. Throttling in zundo (already configured at 100 ms leading+trailing) coalesces these into one history step. Verify with manual undo test.
-- [ ] 5.3  Smoke-check: select 1 element → panel appears, click "Release end" → indicator at j-end. Select 3 elements → click "Release start" → indicators on all three i-ends. One Ctrl+Z reverts all three.
-- [ ] 5.4  `npm run type-check` clean.
-- [ ] 5.5  Commit: `feat(2dfea): add floating release panel for selected elements`
+- [ ] 5.1  In `CanvasView.tsx`, render a Konva `<Circle>` at each released endpoint of every element. Stroke `#000`, strokeWidth 1.5, transparent fill, radius 5, `listening: false`.
+- [ ] 5.2  Position: offset from the node along the element axis by `min(0.1 × elementLength_screen_px, 14 px)` so it doesn't overlap the node circle.
+- [ ] 5.3  Distinct from node markers (orange filled, radius 5–7) and snap markers (blue/green/amber rings, radius 7).
+- [ ] 5.4  `npm run type-check` clean. `npm test` green.
+- [ ] 5.5  Commit: `feat(2dfea): add hollow-circle indicator at released element ends`
 
-## Phase 6 — PyNite wiring
+## Phase 6 — Canvas floating release panel
 
-- [ ] 6.1  In `2dfea/public/python/pynite_analyzer.py`, after the existing `self.model.add_member(...)` call inside `create_model`, add a conditional `def_releases(...)` block that reads `element.get('releaseStartMz')` / `element.get('releaseEndMz')` and calls `self.model.def_releases(name, *(11 Falses), Rzi, *(5 Falses), Rzj)` only when at least one is true. Comment cites the PyNite docs URL.
-- [ ] 6.2  Smoke-test in dev: load Example (cantilever, 10 kN tip load). Run Full Analysis with no releases → record fixed-end Mz (~40 kNm) and tip Mz (~0). Set `releaseEndMz: true` on E1 → run again → tip Mz still 0 (was already free); fixed-end Mz still ~40 kNm (statically determinate; releasing the free end's "moment release" is a no-op for this case). Then set `releaseStartMz: true` on E1 instead → run → expect solver error (mechanism — fixed end has no rotational restraint left).
-- [ ] 6.3  `npm test` green.
-- [ ] 6.4  Commit: `feat(2dfea): wire def_releases into pynite analyzer`
+- [ ] 6.1  Render a small panel near the canvas edge (or pinned to the existing toolbar group) when `selectedElements.length > 0`.
+- [ ] 6.2  Four buttons: **Release start**, **Release end**, **Release both**, **Clear releases**. Set/clear semantics, NOT toggle. Idempotent on already-released elements.
+- [ ] 6.3  Wrap each button click in one history step (Zustand action that batches the mutations) so undo reverts all selected elements together.
+- [ ] 6.4  Match existing canvas-overlay panel styling.
+- [ ] 6.5  `npm run type-check` clean. `npm test` green.
+- [ ] 6.6  Commit: `feat(2dfea): add floating release panel for selected elements`
 
-## Phase 7 — Schema bump, canonicalize, migration, fixtures, forward-compat
+## Phase 7 — PyNite wiring
 
-- [ ] 7.1  Bump `CURRENT_SCHEMA_VERSION` to `'1.1.0'` in `2dfea/src/io/schemaVersion.ts`.
-- [ ] 7.2  In `2dfea/src/io/schema.ts`, add `releaseStartMz: z.boolean().optional()` and `releaseEndMz: z.boolean().optional()` to `ElementSchema`. Extend `KNOWN_ELEMENT_KEYS` with both names so the unknown-keys diagnostic doesn't fire on legitimate v1.1.0 fields.
-- [ ] 7.3  In `2dfea/src/io/migrations.ts`, register the identity migration `'1.0.0' → '1.1.0'` (returns `{ ...input, schemaVersion: '1.1.0' }`). Keep the existing `'1.1.0'` identity entry too so the loop terminates.
-- [ ] 7.4  In `2dfea/src/io/canonicalize.ts`, emit `releaseStartMz: true` / `releaseEndMz: true` on `modelStateToFile` only when truthy (omit otherwise). On `fileToStorePatch`, propagate the flags into the `Element` object (omit when absent).
-- [ ] 7.5  Update `2dfea/src/io/__fixtures__/cantileverV1.ts`'s fixture to declare `schemaVersion: '1.1.0'` (the test fixture must match the current version constant or `ModelFileV1Schema.safeParse` will reject it). Add an optional second fixture builder `makeCantileverV1WithReleasedEnd()` that includes `releaseEndMz: true` on E1.
-- [ ] 7.6  Update `2dfea/src/io/forwardCompat.test.ts`: replace the deprecated `releases: { nodeI: { Mz: false } }` nested structure with three new "still unknown to v1.1.0" passthrough fields (e.g. `sectionRef`, `materialRef`, `releases3d`) so the unknown-keys diagnostic still has something to report. Keep the four assertions (parse, collectUnknownKeys, warnUnknownKeys count, applyToStore + re-export-drops-unknown). Add a dedicated test asserting that a v1.1.0 file with `releaseEndMz: true` round-trips losslessly through `modelStateToFile` → Zod parse → `fileToStorePatch`.
-- [ ] 7.7  Add a migration test in `2dfea/src/io/migrations.test.ts` (or extend) confirming a v1.0.0 input is migrated to v1.1.0 and that release fields are absent (rigid defaults).
-- [ ] 7.8  Create `2dfea/docs/examples/cantilever-v1-1.json`: same cantilever as the existing example but `schemaVersion: "1.1.0"` and one element carries `releaseEndMz: true`.
-- [ ] 7.9  Run `npm run build` — the `prebuild` step regenerates `2dfea/public/schemas/2dfea-model-v1.json` to reflect v1.1.0. Stage the regenerated file as part of the commit (intentional — overrides the "leave alone" note for this feature).
-- [ ] 7.10  `npm run type-check` clean. `npm test` green.
-- [ ] 7.11  Commit: `feat(2dfea): bump schema to v1.1.0 with optional Mz release fields`
+- [ ] 7.1  In `2dfea/public/python/pynite_analyzer.py`, after the existing `self.model.add_member(...)` call, add a conditional `def_releases` block that reads `element.get('releaseStartMz')` / `element.get('releaseEndMz')` and calls `self.model.def_releases(name, *(5 Falses), Rzi, *(5 Falses), Rzj)` only when at least one is true.
+- [ ] 7.2  Result extraction (`moment_array`, `shear_array`) is unchanged.
+- [ ] 7.3  Confirm the JS-to-Python serialisation path (`dataTranslator.ts`) passes `releaseStartMz` / `releaseEndMz` through to the worker payload (via element spread / dict serialisation).
+- [ ] 7.4  `npm run type-check` clean. `npm test` green.
+- [ ] 7.5  Commit: `feat(2dfea): wire def_releases into pynite analyzer`
 
 ## Phase 8 — Pre-handoff verification
 
 - [ ] 8.1  `cd 2dfea && npm run type-check` final pass — green.
 - [ ] 8.2  `cd 2dfea && npm test` final pass — all suites green; new tests included.
-- [ ] 8.3  `cd 2dfea && npm run build` final pass — bundle produced; no new warnings beyond baseline; regenerated schema file already committed.
+- [ ] 8.3  `cd 2dfea && npm run build` final pass — bundle produced; no new warnings beyond baseline.
 - [ ] 8.4  `npm run dev` smoke against plan §8 Groups A–F (results recorded below).
 - [ ] 8.5  Push branch: `git push -u origin feature/2dfea-member-end-releases-mz`.
 - [ ] 8.6  Final checklist tick commit if the file changes during verification: `chore(2dfea): finalize member-end-releases-mz implementation checklist`.
@@ -105,3 +109,7 @@
 - [ ] 10.2  Wait for `pr-checks.yml` to go green.
 - [ ] 10.3  `gh pr merge <num> --rebase --delete-branch` (or `--auto` if checks still pending).
 - [ ] 10.4  Verify production deploy at https://magnusfjeldolsen.github.io/structural_tools/2dfea/ within 1–2 min.
+
+---
+
+**Phase ordering note:** This checklist's phase numbering follows the user's continuation prompt (Phase 2 = schema bump first; Phase 7 = PyNite wiring last) rather than the plan markdown's original Phase 1–8 sequence. The set of work is identical; the order minimises blast-radius (schema first → tests don't depend on UI; PyNite last → physics validation is the load-bearing end-to-end check). Phase 8 manual-QA Groups A–F still map 1:1 to plan §8.
