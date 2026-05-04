@@ -4,13 +4,19 @@
  *
  * Lives under `__fixtures__/` so the vitest include glob doesn't try to
  * run it as a test (the glob is `src/**​/*.{test,spec}.{ts,tsx}`).
+ *
+ * The fixture declares `schemaVersion: '1.1.0'` to match the current
+ * `ModelFileV1Schema` literal — `ModelFileV1Schema.safeParse` rejects any
+ * other version. Tests that need to verify the migration path should
+ * synthesise a v1.0.0-shaped object directly rather than re-routing this
+ * helper through `migrateToCurrent`.
  */
 
 import type { ModelFileV1 } from '../schema';
 
 export function makeCantileverV1(): ModelFileV1 {
   return {
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     metadata: {
       appVersion: 'unknown',
       exportedAt: '2026-04-27T15:35:00Z',
@@ -58,4 +64,15 @@ export function makeCantileverV1(): ModelFileV1 {
       },
     },
   };
+}
+
+/**
+ * v1.1.0 fixture with `releaseEndMz: true` on the cantilever beam — used by
+ * round-trip tests for the new release fields. Identical to
+ * `makeCantileverV1()` apart from the released-end flag.
+ */
+export function makeCantileverV1WithReleasedEnd(): ModelFileV1 {
+  const file = makeCantileverV1();
+  file.model.elements[0].releaseEndMz = true;
+  return file;
 }

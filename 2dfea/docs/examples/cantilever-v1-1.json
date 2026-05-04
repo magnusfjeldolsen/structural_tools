@@ -1,7 +1,7 @@
 {
   "_comments": {
     "elements": {
-      "E1": "Steel beam, IPE 200 in S275 — example"
+      "E1": "Steel beam, IPE 200 in S275 — j-end Mz released (pinned at tip)"
     },
     "loads": {
       "NL1": "Tip dead load; sign convention: y-down is negative"
@@ -13,9 +13,9 @@
   "metadata": {
     "appVersion": "unknown",
     "author": null,
-    "description": "Single 4 m fixed-free beam under tip load",
-    "exportedAt": "2026-04-27T15:35:00.000Z",
-    "name": "Cantilever sample",
+    "description": "Single 4 m fixed-free beam under tip load, j-end Mz released",
+    "exportedAt": "2026-04-30T16:00:00.000Z",
+    "name": "Cantilever sample (released j-end)",
     "units": {
       "area": "m2",
       "areaMomentOfInertia": "m4",
@@ -38,7 +38,8 @@
         "I_m4": 0.0001,
         "name": "E1",
         "nodeI": "N1",
-        "nodeJ": "N2"
+        "nodeJ": "N2",
+        "releaseEndMz": true
       }
     ],
     "idCounters": {
