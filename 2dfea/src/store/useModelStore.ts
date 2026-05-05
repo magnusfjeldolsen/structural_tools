@@ -1119,6 +1119,7 @@ export const useModelStore = create<ModelState>()(
             state.loads = {
               nodal: [
                 {
+                  id: 'NL1',
                   node: 'N2',
                   fx: 0,
                   fy: -10,   // kN downward
@@ -1129,6 +1130,7 @@ export const useModelStore = create<ModelState>()(
               distributed: [],
               elementPoint: [],
             };
+            state.nextNodalLoadNumber = 2;
 
             state.activeLoadCase = 'Dead';
             state.analysisResults = null;
