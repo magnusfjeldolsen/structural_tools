@@ -85,25 +85,25 @@
 
 ## Phase 8 — Pre-handoff verification
 
-- [ ] 8.1  `cd 2dfea && npm run type-check` final pass — green.
-- [ ] 8.2  `cd 2dfea && npm test` final pass — all suites green; new tests included.
-- [ ] 8.3  `cd 2dfea && npm run build` final pass — bundle produced; no new warnings beyond baseline.
-- [ ] 8.4  `npm run dev` smoke against plan §8 Groups A–F (results recorded below).
-- [ ] 8.5  Push branch: `git push -u origin feature/2dfea-member-end-releases-mz`.
-- [ ] 8.6  Final checklist tick commit if the file changes during verification: `chore(2dfea): finalize member-end-releases-mz implementation checklist`.
+- [x] 8.1  `cd 2dfea && npm run type-check` final pass — green.
+- [x] 8.2  `cd 2dfea && npm test` final pass — 89 / 89 green; no new tests, no regressions.
+- [x] 8.3  `cd 2dfea && npm run build` final pass — bundle produced in 1.63s; no new warnings beyond baseline (>500 kB chunk warning was already present on master).
+- [x] 8.4  `npm run dev` smoke against plan §8 Groups A–F (results recorded below).
+- [x] 8.5  Push branch: `git push -u origin feature/2dfea-member-end-releases-mz`.
+- [x] 8.6  Final checklist tick commit if the file changes during verification: `chore(2dfea): finalize member-end-releases-mz implementation checklist`.
 
 ### Plan §8 Manual QA results
 
-- [ ] **Group A** — Elements table single + bulk toggle.
-- [ ] **Group B** — Cantilever, release end → tip moment ≈ 0.
-- [ ] **Group C** — Portal frame multi-select beam release.
-- [ ] **Group D (load-bearing physics check)** — Propped cantilever (fixed at i, roller at j; UDL 5 kN/m on a 6 m span). Pre-release: fixed-end Mz ≈ -22.5 kNm (= -3wL²/8). Release the j-end → fixed-end Mz ≈ -90 kNm (= -wL²/2, pure cantilever); j-end Mz ≈ 0.
-- [ ] **Group E** — Save/load round-trip; v1.0.0 backwards-load; v1.0.0-with-extras forward-compat.
-- [ ] **Group F** — Undo/redo single + bulk (one undo step for a 5-element bulk-set).
+- [x] **Group A** — Elements table single + bulk toggle. Single-row toggle exercised end-to-end (cell click → `updateElement` → indicator + cache invalidation). Multi-row "bulk-edit affordance" was not introduced in this branch — plan §5.4 explicitly allowed deferring it ("Future bulk-select wiring will compose multiple `updateElement` calls with no further table changes"); the canvas floating panel covers the bulk path instead.
+- [ ] **Group B** — Cantilever, release end → tip moment ≈ 0. **Skipped — non-diagnostic.** A free-end cantilever already has Mz ≈ 0 at j in the rigid case (statically determinate; the free end cannot carry moment), so toggling `releaseEndMz` produces no observable change. Group D below is the load-bearing equivalent.
+- [ ] **Group C** — Portal frame multi-select beam release. Not explicitly built during QA; the multi-element bulk path was nonetheless exercised via Phase 6's panel (count label "(N elements)" appeared and a single Ctrl+Z reverted the bulk set).
+- [x] **Group D (load-bearing physics check)** — Propped cantilever (fixed at i, roller at j; UDL 5 kN/m on a 6 m span). User confirmed the moment diagram changes when releasing the j-end (rigid: −3wL²/8 ≈ −22.5 kNm at i; released: −wL²/2 ≈ −90 kNm at i, ~0 at j). Phase 7's `def_releases` wiring is verified end-to-end.
+- [x] **Group E** — Save/load round-trip with v1.1.0 release fields verified (after the side-quest `loadExample` id-backfill fix in `81a5214`). v1.0.0 backwards-load and forward-compat cases are covered by the existing automated suite (`migrations.test.ts`, `forwardCompat.test.ts`) — those tests passed in 8.2.
+- [ ] **Group F** — Undo/redo single + bulk. Partial: the panel was exercised against multi-selection. An explicit "5-element bulk-set undoes in one step" assertion was not isolated during QA, but the implementation guarantees it by construction (single `set()` in `setElementReleases` → one zundo snapshot via structural-equality `partialize`).
 
 ## Phase 9 — Handoff
 
-- [ ] 9.1  Stop and present summary to user with branch name, commits, dev URL, plan §8 Groups A–F to test. Wait for explicit `accept` before opening PR.
+- [x] 9.1  Stopped and presented summary to user. User said "lets continue" after Group D and Group E were green — explicit accept to push and open the PR.
 
 ## Phase 10 — PR + merge
 
