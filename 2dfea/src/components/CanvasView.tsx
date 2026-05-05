@@ -1302,10 +1302,10 @@ export function CanvasView({ width, height }: CanvasViewProps) {
 
   // Render elements (beams)
   const renderElements = () => {
-    return elements.map((element) => {
+    return elements.flatMap((element) => {
       const posI = getNodePos(element.nodeI);
       const posJ = getNodePos(element.nodeJ);
-      if (!posI || !posJ) return null;
+      if (!posI || !posJ) return [];
 
       const isHovered = hoveredElement === element.name;
 
@@ -1313,28 +1313,26 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const midX = (posI[0] + posJ[0]) / 2;
       const midY = (posI[1] + posJ[1]) / 2;
 
-      return (
-        <>
-          <Line
-            key={element.name}
-            points={[posI[0], posI[1], posJ[0], posJ[1]]}
-            stroke={isHovered ? "#00FFFF" : "#2196F3"}
-            strokeWidth={isHovered ? 5 : 3}
-            lineCap="round"
-            lineJoin="round"
-          />
-          <Text
-            key={`label-${element.name}`}
-            x={midX}
-            y={midY - 10}
-            text={element.name}
-            fontSize={12}
-            fill="#2196F3"
-            fontStyle="bold"
-            offsetX={element.name.length * 3}
-          />
-        </>
-      );
+      return [
+        <Line
+          key={`element-${element.name}`}
+          points={[posI[0], posI[1], posJ[0], posJ[1]]}
+          stroke={isHovered ? "#00FFFF" : "#2196F3"}
+          strokeWidth={isHovered ? 5 : 3}
+          lineCap="round"
+          lineJoin="round"
+        />,
+        <Text
+          key={`label-${element.name}`}
+          x={midX}
+          y={midY - 10}
+          text={element.name}
+          fontSize={12}
+          fill="#2196F3"
+          fontStyle="bold"
+          offsetX={element.name.length * 3}
+        />,
+      ];
     });
   };
 
@@ -1859,31 +1857,29 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     // Phase 4.4 ("replace, not render alongside"). Falls back to legacy cyan when snap
     // is globally disabled or Shift is held (bypass), so the user still gets hover feedback.
     const snapMarkerActive = snapEnabled && !isShiftHeld;
-    return nodes.map((node) => {
+    return nodes.flatMap((node) => {
       const [sx, sy] = toScreen(node.x, node.y);
       const showLegacyHover = hoveredNode === node.name && !snapMarkerActive;
 
-      return (
-        <>
-          <Circle
-            key={`node-${node.name}`}
-            x={sx}
-            y={sy}
-            radius={showLegacyHover ? 7 : 5}
-            fill={showLegacyHover ? "#00FFFF" : "#FF5722"}
-            stroke={showLegacyHover ? "#00AAAA" : "#000"}
-            strokeWidth={showLegacyHover ? 2 : 1}
-          />
-          <Text
-            key={`label-${node.name}`}
-            x={sx + 8}
-            y={sy - 8}
-            text={node.name}
-            fontSize={12}
-            fill="#000"
-          />
-        </>
-      );
+      return [
+        <Circle
+          key={`node-${node.name}`}
+          x={sx}
+          y={sy}
+          radius={showLegacyHover ? 7 : 5}
+          fill={showLegacyHover ? "#00FFFF" : "#FF5722"}
+          stroke={showLegacyHover ? "#00AAAA" : "#000"}
+          strokeWidth={showLegacyHover ? 2 : 1}
+        />,
+        <Text
+          key={`label-${node.name}`}
+          x={sx + 8}
+          y={sy - 8}
+          text={node.name}
+          fontSize={12}
+          fill="#000"
+        />,
+      ];
     });
   };
 
@@ -2074,6 +2070,12 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const renderElementEndpointLabels = () => {
     const labels: JSX.Element[] = [];
     const PERP_OFFSET_PX = 8;
+    // Axial inset along the element axis pulls the labels inward from the
+    // node so they read as belonging to *this* element (vs. the node, which
+    // may be shared with other elements). Capped fraction of element length
+    // keeps short members from having labels collide at the midpoint.
+    const AXIAL_INSET_MAX_PX = 24;
+    const AXIAL_INSET_FRACTION = 0.2;
 
     elements.forEach((element) => {
       const isHovered = hoveredElement === element.name;
@@ -2092,14 +2094,18 @@ export function CanvasView({ width, height }: CanvasViewProps) {
       const lenScreen = Math.sqrt(dxs * dxs + dys * dys);
       if (lenScreen < 0.01) return;
 
-      // Unit perpendicular in screen space (90° CCW from axis i→j).
-      const perpX = -dys / lenScreen;
-      const perpY = dxs / lenScreen;
+      // Unit axial (i→j) and unit perpendicular (90° CCW) in screen space.
+      const axialX = dxs / lenScreen;
+      const axialY = dys / lenScreen;
+      const perpX = -axialY;
+      const perpY = axialX;
 
-      const iX = x1 + perpX * PERP_OFFSET_PX;
-      const iY = y1 + perpY * PERP_OFFSET_PX;
-      const jX = x2 + perpX * PERP_OFFSET_PX;
-      const jY = y2 + perpY * PERP_OFFSET_PX;
+      const axialInset = Math.min(AXIAL_INSET_MAX_PX, lenScreen * AXIAL_INSET_FRACTION);
+
+      const iX = x1 + perpX * PERP_OFFSET_PX + axialX * axialInset;
+      const iY = y1 + perpY * PERP_OFFSET_PX + axialY * axialInset;
+      const jX = x2 + perpX * PERP_OFFSET_PX - axialX * axialInset;
+      const jY = y2 + perpY * PERP_OFFSET_PX - axialY * axialInset;
 
       labels.push(
         <Text
