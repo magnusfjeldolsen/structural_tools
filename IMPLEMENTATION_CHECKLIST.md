@@ -52,11 +52,11 @@
 
 ## Phase 4 — Canvas i/j labels on hover/select
 
-- [ ] 4.1  In `CanvasView.tsx`, render Konva `<Text>` "i" at the i-node screen coords and "j" at the j-node screen coords, but ONLY when `hoveredElement === element.name || selectedElements.includes(element.name)`.
-- [ ] 4.2  Critical: `hoveredNode` MUST NOT trigger labels — a node can be i-end of one element and j-end of another, so node-hover labelling is meaningless.
-- [ ] 4.3  Style: `fontSize: 11`, `fill: '#666'`, `listening: false`, ~8 px perpendicular offset from the element axis.
-- [ ] 4.4  `npm run type-check` clean. `npm test` green.
-- [ ] 4.5  Commit: `feat(2dfea): add i/j endpoint labels on element hover/select`
+- [x] 4.1  In `CanvasView.tsx`, render Konva `<Text>` "i" at the i-node screen coords and "j" at the j-node screen coords, but ONLY when `hoveredElement === element.name || selectedElements.includes(element.name)`. Implemented as new `renderElementEndpointLabels()`, wired into the render tree alongside `renderElementAxes()`.
+- [x] 4.2  Critical: `hoveredNode` MUST NOT trigger labels — a node can be i-end of one element and j-end of another, so node-hover labelling is meaningless. Implementation reads only `hoveredElement` and `selectedElements`; `hoveredNode` is never consulted.
+- [x] 4.3  Style: `fontSize: 11`, `fill: '#666'`, `listening: false`, ~8 px perpendicular offset from the element axis (90° CCW from axis i→j in screen space). Single-character labels centered via `offsetX`/`offsetY`.
+- [x] 4.4  `npm run type-check` clean. `npm test` green (10 / 89 — no new tests, no regressions).
+- [x] 4.5  Commit: `feat(2dfea): add i/j endpoint labels on element hover/select`
 
 ## Phase 5 — Canvas hollow-circle indicator at released ends
 

@@ -2067,6 +2067,69 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     return allElements.length > 0 ? allElements : null;
   };
 
+  // Render "i" / "j" endpoint labels on element hover or selection.
+  // See docs/plans/member-end-releases-mz.md §5.5. ELEMENT hover/select only —
+  // never node hover, because a node can be the i-end of one element and the
+  // j-end of another, so node-hover labelling would be meaningless.
+  const renderElementEndpointLabels = () => {
+    const labels: JSX.Element[] = [];
+    const PERP_OFFSET_PX = 8;
+
+    elements.forEach((element) => {
+      const isHovered = hoveredElement === element.name;
+      const isSelected = selectedElements.includes(element.name);
+      if (!isHovered && !isSelected) return;
+
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) return;
+
+      const [x1, y1] = toScreen(nodeI.x, nodeI.y);
+      const [x2, y2] = toScreen(nodeJ.x, nodeJ.y);
+
+      const dxs = x2 - x1;
+      const dys = y2 - y1;
+      const lenScreen = Math.sqrt(dxs * dxs + dys * dys);
+      if (lenScreen < 0.01) return;
+
+      // Unit perpendicular in screen space (90° CCW from axis i→j).
+      const perpX = -dys / lenScreen;
+      const perpY = dxs / lenScreen;
+
+      const iX = x1 + perpX * PERP_OFFSET_PX;
+      const iY = y1 + perpY * PERP_OFFSET_PX;
+      const jX = x2 + perpX * PERP_OFFSET_PX;
+      const jY = y2 + perpY * PERP_OFFSET_PX;
+
+      labels.push(
+        <Text
+          key={`endpoint-i-${element.name}`}
+          x={iX}
+          y={iY}
+          text="i"
+          fontSize={11}
+          fill="#666"
+          listening={false}
+          offsetX={2}
+          offsetY={5}
+        />,
+        <Text
+          key={`endpoint-j-${element.name}`}
+          x={jX}
+          y={jY}
+          text="j"
+          fontSize={11}
+          fill="#666"
+          listening={false}
+          offsetX={3}
+          offsetY={5}
+        />
+      );
+    });
+
+    return labels.length > 0 ? labels : null;
+  };
+
   // Render nodal loads as arrows (only visible in Loads tab)
   const renderLoads = () => {
     if (!showLoads || activeTab !== 'loads') return null;
@@ -2722,6 +2785,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           {renderNodes()}
           {renderSnapMarker()}
           {renderElementAxes()}
+          {renderElementEndpointLabels()}
           {renderLoads()}
           {renderDrawingPreview()}
           {renderSelectionRect()}
