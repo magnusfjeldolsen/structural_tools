@@ -60,11 +60,11 @@
 
 ## Phase 5 — Canvas hollow-circle indicator at released ends
 
-- [ ] 5.1  In `CanvasView.tsx`, render a Konva `<Circle>` at each released endpoint of every element. Stroke `#000`, strokeWidth 1.5, transparent fill, radius 5, `listening: false`.
-- [ ] 5.2  Position: offset from the node along the element axis by `min(0.1 × elementLength_screen_px, 14 px)` so it doesn't overlap the node circle.
-- [ ] 5.3  Distinct from node markers (orange filled, radius 5–7) and snap markers (blue/green/amber rings, radius 7).
-- [ ] 5.4  `npm run type-check` clean. `npm test` green.
-- [ ] 5.5  Commit: `feat(2dfea): add hollow-circle indicator at released element ends`
+- [x] 5.1  In `CanvasView.tsx`, render a Konva `<Circle>` at each released endpoint of every element. Stroke `#000`, strokeWidth 1.5, transparent fill (no `fill` prop), radius 5, `listening: false`. Implemented as new `renderReleaseIndicators()`, always-on (not gated on hover/select).
+- [x] 5.2  Position: offset from the node along the element axis by `min(0.1 × elementLength_screen_px, 14 px)` so it doesn't overlap the node circle. Computed from screen-space axial unit vector i→j; start indicator pushed inward from i, end indicator pushed inward from j.
+- [x] 5.3  Distinct from node markers (orange filled, radius 5–7) and snap markers (blue/green/amber rings, radius 7). Black stroke, no fill, radius 5 — visually unambiguous.
+- [x] 5.4  `npm run type-check` clean. `npm test` green (10 / 89 — no new tests, no regressions).
+- [x] 5.5  Commit: `feat(2dfea): add hollow-circle indicator at released element ends`
 
 ## Phase 6 — Canvas floating release panel
 

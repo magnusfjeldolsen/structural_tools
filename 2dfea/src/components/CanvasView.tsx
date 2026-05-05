@@ -2136,6 +2136,67 @@ export function CanvasView({ width, height }: CanvasViewProps) {
     return labels.length > 0 ? labels : null;
   };
 
+  // Render the hollow-circle indicator at every released element end. Always-on
+  // (not gated on hover/select) so the user can see at a glance which ends are
+  // released. Standard structural-drawing convention for a moment release.
+  // See docs/plans/member-end-releases-mz.md §5.7.
+  const renderReleaseIndicators = () => {
+    const indicators: JSX.Element[] = [];
+    const RADIUS_PX = 5;
+    const STROKE_WIDTH = 1.5;
+    const OFFSET_FRACTION = 0.1;
+    const OFFSET_MAX_PX = 14;
+
+    elements.forEach((element) => {
+      if (!element.releaseStartMz && !element.releaseEndMz) return;
+
+      const nodeI = nodes.find((n) => n.name === element.nodeI);
+      const nodeJ = nodes.find((n) => n.name === element.nodeJ);
+      if (!nodeI || !nodeJ) return;
+
+      const [x1, y1] = toScreen(nodeI.x, nodeI.y);
+      const [x2, y2] = toScreen(nodeJ.x, nodeJ.y);
+
+      const dxs = x2 - x1;
+      const dys = y2 - y1;
+      const lenScreen = Math.sqrt(dxs * dxs + dys * dys);
+      if (lenScreen < 0.01) return;
+
+      const axialX = dxs / lenScreen;
+      const axialY = dys / lenScreen;
+      const offset = Math.min(OFFSET_MAX_PX, lenScreen * OFFSET_FRACTION);
+
+      if (element.releaseStartMz) {
+        indicators.push(
+          <Circle
+            key={`release-start-${element.name}`}
+            x={x1 + axialX * offset}
+            y={y1 + axialY * offset}
+            radius={RADIUS_PX}
+            stroke="#000"
+            strokeWidth={STROKE_WIDTH}
+            listening={false}
+          />
+        );
+      }
+      if (element.releaseEndMz) {
+        indicators.push(
+          <Circle
+            key={`release-end-${element.name}`}
+            x={x2 - axialX * offset}
+            y={y2 - axialY * offset}
+            radius={RADIUS_PX}
+            stroke="#000"
+            strokeWidth={STROKE_WIDTH}
+            listening={false}
+          />
+        );
+      }
+    });
+
+    return indicators.length > 0 ? indicators : null;
+  };
+
   // Render nodal loads as arrows (only visible in Loads tab)
   const renderLoads = () => {
     if (!showLoads || activeTab !== 'loads') return null;
@@ -2792,6 +2853,7 @@ export function CanvasView({ width, height }: CanvasViewProps) {
           {renderSnapMarker()}
           {renderElementAxes()}
           {renderElementEndpointLabels()}
+          {renderReleaseIndicators()}
           {renderLoads()}
           {renderDrawingPreview()}
           {renderSelectionRect()}
