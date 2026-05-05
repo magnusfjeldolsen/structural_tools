@@ -25,6 +25,7 @@ import { ElementsTab } from './components/ElementsTab';
 import { LoadsTab } from './components/LoadsTab';
 import { LoadsTabToolbar } from './components/LoadsTabToolbar';
 import { LoadCreationPanel } from './components/LoadCreationPanel';
+import { AIPanel } from './components/AIPanel';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { theme } from './styles/theme';
 
@@ -354,6 +355,11 @@ export default function App() {
 
       {/* Toast notifications (save/load JSON success/failure messages) */}
       <Toast />
+
+      {/* Floating AI Assistant panel (plan §5.7). position: fixed — does not
+          consume layout space. zIndex 2050 sits above canvas, below
+          LoadInputDialog (2100), so dialogs win when both are open. */}
+      <AIPanel />
     </div>
   );
 }
