@@ -12,6 +12,16 @@ import { useModelStore } from '../../store';
 import { theme } from '../../styles/theme';
 import { EditableCell } from '../shared/EditableCell';
 import { DropdownCell } from '../shared/DropdownCell';
+import { BooleanCell } from '../shared/BooleanCell';
+
+/**
+ * Column-header tooltip for the two release columns. Per
+ * docs/plans/member-end-releases-mz.md §5.4 — keep the wording explicit
+ * about Mz, the default-rigid behaviour, and the per-end semantics so a
+ * casual user doesn't mis-interpret the checkbox.
+ */
+const RELEASE_HEADER_TOOLTIP =
+  'Release moment (Mz) at this end. Pinned/free. Leave unchecked for rigid (default).';
 
 export type CellIdentifier = { rowIndex: number; field: string } | null;
 
@@ -32,6 +42,17 @@ export interface ElementTableProps {
   onEditChange: (value: string) => void;
   onEditSave: () => void;
   onEditCancel: () => void;
+  /**
+   * Toggle a per-end Mz release on a single element. The parent forwards
+   * this to `updateElement(name, { [field]: next })`. Per
+   * docs/plans/member-end-releases-mz.md §5.4 — the cell IS the editor;
+   * there is no edit-mode round-trip.
+   */
+  onToggleRelease: (
+    elementName: string,
+    field: 'releaseStartMz' | 'releaseEndMz',
+    next: boolean
+  ) => void;
 
   // Refs
   inputRef: RefObject<HTMLInputElement>;
@@ -50,6 +71,7 @@ export function ElementTable({
   onEditStart,
   onEditChange,
   onEditSave,
+  onToggleRelease,
   inputRef,
   dropdownRef,
   clipboard,
@@ -101,6 +123,12 @@ export function ElementTable({
         <div style={headerItemStyle}>E (GPa)</div>
         <div style={headerItemStyle}>I (m⁴)</div>
         <div style={headerItemStyle}>A (m²)</div>
+        <div style={headerItemStyle} title={RELEASE_HEADER_TOOLTIP}>
+          Release start
+        </div>
+        <div style={headerItemStyle} title={RELEASE_HEADER_TOOLTIP}>
+          Release end
+        </div>
       </div>
 
       {/* Rows */}
@@ -196,6 +224,24 @@ export function ElementTable({
                 inputStep="0.0001"
                 format={(val) => Number(val).toExponential(2)}
               />
+
+              {/* Release Mz at i-end (releaseStartMz). Default-rigid (false). */}
+              <BooleanCell
+                isSelected={isCellSelected(rowIndex, 'releaseStartMz')}
+                value={Boolean(element.releaseStartMz)}
+                onSelect={() => onSelectCell({ rowIndex, field: 'releaseStartMz' })}
+                onToggle={(next) => onToggleRelease(element.name, 'releaseStartMz', next)}
+                title={RELEASE_HEADER_TOOLTIP}
+              />
+
+              {/* Release Mz at j-end (releaseEndMz). Default-rigid (false). */}
+              <BooleanCell
+                isSelected={isCellSelected(rowIndex, 'releaseEndMz')}
+                value={Boolean(element.releaseEndMz)}
+                onSelect={() => onSelectCell({ rowIndex, field: 'releaseEndMz' })}
+                onToggle={(next) => onToggleRelease(element.name, 'releaseEndMz', next)}
+                title={RELEASE_HEADER_TOOLTIP}
+              />
             </div>
           );
         })}
@@ -219,7 +265,7 @@ const containerStyle: React.CSSProperties = {
 
 const headerStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: '100px 120px 120px 100px 100px 100px',
+  gridTemplateColumns: '100px 120px 120px 100px 100px 100px 90px 90px',
   gap: '1px',
   padding: '8px',
   backgroundColor: theme.colors.primary,
@@ -244,7 +290,7 @@ const rowsContainerStyle: React.CSSProperties = {
 
 const rowStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: '100px 120px 120px 100px 100px 100px',
+  gridTemplateColumns: '100px 120px 120px 100px 100px 100px 90px 90px',
   gap: '1px',
   backgroundColor: theme.colors.bgWhite,
   borderBottom: `1px solid ${theme.colors.border}`,
