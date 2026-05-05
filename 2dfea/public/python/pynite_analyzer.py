@@ -45,10 +45,36 @@ class PyNiteWebAnalyzer:
             self.model.add_node(node['name'], float(node['x']), float(node['y']), 0.0)
             print(f"  Added node: {node['name']} at ({node['x']}, {node['y']})")
 
+        # Compute Rz suppliers per node BEFORE adding supports. A node "loses"
+        # Rz stiffness from an element only at the end where Rz is released. If
+        # ALL connecting elements release Rz at this node AND the support does
+        # not already constrain Rz, the global stiffness matrix has a singular
+        # Rz row at this node and PyNite raises "Unstable nodes". Physically the
+        # rotation at such a node is uncoupled from every element (the moment
+        # transmitted to/from this node is zero by definition of the release),
+        # so pinning Rz to zero is a safe regularisation that does not change
+        # the kinematic result. Without this pin, the cantilever-tip release
+        # case (single element with Rz released at its free-end node) cannot
+        # be solved.
+        rz_suppliers = {n['name']: 0 for n in nodes}
+        for el in elements:
+            if not bool(el.get('releaseStartMz')):
+                rz_suppliers[el['nodeI']] = rz_suppliers.get(el['nodeI'], 0) + 1
+            if not bool(el.get('releaseEndMz')):
+                rz_suppliers[el['nodeJ']] = rz_suppliers.get(el['nodeJ'], 0) + 1
+
         # Add supports BEFORE elements (PyNite requirement!)
         print(f"\nAdding supports:")
         for node in nodes:
-            self._add_support(node['name'], node['support'])
+            name = node['name']
+            sup = node['support']
+            # Only 'fixed' constrains Rz natively; for any other support, we
+            # need an implicit Rz pin when the node has lost all element-side
+            # Rz stiffness due to releases.
+            pin_rz = rz_suppliers.get(name, 0) == 0 and sup != 'fixed'
+            self._add_support(name, sup, pin_rz=pin_rz)
+            if pin_rz:
+                print(f"  ⚠ Implicit Rz pin at {name}: every connecting element-end releases Mz; pinning rotation to keep matrix non-singular.")
 
         # Add elements with unique material and section properties per element
         print(f"\nAdding {len(elements)} elements:")
@@ -124,9 +150,15 @@ class PyNiteWebAnalyzer:
                 if any([float(load['fx']) != 0, float(load['fy']) != 0, float(load['mz']) != 0]):
                     self._add_nodal_load(load)
 
-    def _add_support(self, node_name: str, support_type: str):
-        """Add support constraints to a node"""
-        print(f"Adding support: {node_name} = {support_type}")
+    def _add_support(self, node_name: str, support_type: str, pin_rz: bool = False):
+        """Add support constraints to a node.
+
+        pin_rz: if True, force the Rz (rotation about z) DOF to be constrained
+        regardless of the support type's native Rz behaviour. Used by the
+        caller to break a singular DOF created when every element-end at this
+        node releases Mz. See create_model() for the rationale.
+        """
+        print(f"Adding support: {node_name} = {support_type}{' [+Rz pin]' if pin_rz else ''}")
         if support_type == 'fixed':
             dx = True # constrained for translation in x
             dy = True # constrained for translation in y
@@ -143,29 +175,37 @@ class PyNiteWebAnalyzer:
             dz = True # constrained for translation in z
             rx = True # constrained for rotation about x
             ry = True # constrained for rotation about y
-            rz = False # constrained for rotation about z
+            rz = pin_rz # released-end induced pin only
             self.model.def_support(node_name, dx, dy, dz, rx, ry, rz)
 
         elif support_type == 'roller-x':
-            dx = False # constrained for translation in x
+            dx = False # free in x (this support type is rolling in x)
             dy = True # constrained for translation in y
             dz = True # constrained for translation in z
             rx = True # constrained for rotation about x
             ry = True # constrained for rotation about y
-            rz = False # constrained for rotation about z
+            rz = pin_rz # released-end induced pin only
 
-            self.model.def_support(node_name, False, True, True, True, False, False)
+            self.model.def_support(node_name, dx, dy, dz, rx, ry, rz)
 
         elif support_type == 'roller-y':
 
             dx = True # constrained for translation in x
-            dy = False # constrained for translation in y
+            dy = False # free in y (this support type is rolling in y)
             dz = True # constrained for translation in z
             rx = True # constrained for rotation about x
             ry = True # constrained for rotation about y
-            rz = False # constrained for rotation about z
+            rz = pin_rz # released-end induced pin only
 
-            self.model.def_support(node_name, True, False, True, True, False, False)
+            self.model.def_support(node_name, dx, dy, dz, rx, ry, rz)
+
+        elif support_type == 'free':
+            # Originally no def_support call. With an implicit Rz pin we
+            # constrain only the Rz DOF so the matrix is well-conditioned;
+            # the other DOFs remain free and are constrained by the element's
+            # stiffness contributions at this node.
+            if pin_rz:
+                self.model.def_support(node_name, False, False, False, False, False, True)
 
         elif support_type == 'free':
             # Free node - no constraints
