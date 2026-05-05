@@ -80,6 +80,23 @@ class PyNiteWebAnalyzer:
             )
             print(f"  Added element: {element['name']} from {element['nodeI']} to {element['nodeJ']}")
 
+            # Apply Mz end releases. 2D: only Rzi / Rzj are touched; all other
+            # DOFs remain rigid. Skip the call entirely when both ends are rigid
+            # so the default "no releases" path stays untouched.
+            # PyNite signature:
+            #   def_releases(member, Dxi, Dyi, Dzi, Rxi, Ryi, Rzi,
+            #                        Dxj, Dyj, Dzj, Rxj, Ryj, Rzj)
+            # See https://pynite.readthedocs.io/en/latest/member.html
+            release_start = bool(element.get('releaseStartMz'))
+            release_end = bool(element.get('releaseEndMz'))
+            if release_start or release_end:
+                self.model.def_releases(
+                    element['name'],
+                    False, False, False, False, False, release_start,
+                    False, False, False, False, False, release_end,
+                )
+                print(f"    Released Mz: i={release_start}, j={release_end}")
+
         # Add loads - handle both old array format and new object format
         if isinstance(loads, dict):
             # New format with load types
