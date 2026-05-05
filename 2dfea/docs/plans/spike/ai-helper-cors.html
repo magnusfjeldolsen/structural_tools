@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-BFVZQQ2LYN');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Helper — Phase 0 Spike Harness</title>
+<style>
+  :root {
+    --fg: #1f2937;
+    --muted: #6b7280;
+    --bg: #f9fafb;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --pass: #15803d;
+    --pass-bg: #dcfce7;
+    --fail: #b91c1c;
+    --fail-bg: #fee2e2;
+    --pending: #b45309;
+    --pending-bg: #fef3c7;
+    --info-bg: #eff6ff;
+    --info-border: #bfdbfe;
+    --code-bg: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    line-height: 1.5;
+  }
+  header {
+    padding: 24px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+  }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 32px 80px; }
+  .intro {
+    background: var(--info-bg);
+    border: 1px solid var(--info-border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 24px;
+    font-size: 13px;
+  }
+  .intro strong { color: #1e3a8a; }
+  details { margin-top: 8px; }
+  details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+  details pre {
+    background: var(--code-bg);
+    padding: 8px;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 12px;
+  }
+  .provider {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .provider h2 {
+    margin: 0 0 4px;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .provider .endpoint {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    color: var(--muted);
+    margin: 0 0 16px;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 8px 12px;
+    margin-bottom: 8px;
+    align-items: center;
+  }
+  .row label { font-size: 13px; color: var(--muted); }
+  .row input {
+    width: 100%;
+    font: inherit;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--card);
+  }
+  .row input[type="password"] { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+  .actions {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  button {
+    font: inherit;
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--card);
+    cursor: pointer;
+  }
+  button:hover { background: var(--bg); }
+  button.primary {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+  }
+  button.primary:hover { background: #1d4ed8; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .results { margin-top: 12px; }
+  .result {
+    border-left: 3px solid var(--border);
+    padding: 8px 12px;
+    margin: 6px 0;
+    background: var(--bg);
+    font-size: 13px;
+    border-radius: 0 4px 4px 0;
+  }
+  .result.pass { border-left-color: var(--pass); background: var(--pass-bg); }
+  .result.fail { border-left-color: var(--fail); background: var(--fail-bg); }
+  .result.pending { border-left-color: var(--pending); background: var(--pending-bg); }
+  .result .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .result .head strong { font-size: 13px; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--card);
+    border: 1px solid var(--border);
+  }
+  .badge.pass { background: var(--pass-bg); color: var(--pass); border-color: var(--pass); }
+  .badge.fail { background: var(--fail-bg); color: var(--fail); border-color: var(--fail); }
+  .badge.pending { background: var(--pending-bg); color: var(--pending); border-color: var(--pending); }
+  .result pre {
+    margin: 6px 0 0;
+    padding: 6px 8px;
+    background: var(--code-bg);
+    font-size: 12px;
+    border-radius: 4px;
+    max-height: 240px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .summary {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-top: 24px;
+  }
+  .summary h2 { margin: 0 0 12px; font-size: 16px; }
+  .summary pre {
+    background: var(--code-bg);
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .summary-actions { margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AI Helper — Phase 0 Spike Harness</h1>
+  <p>Verify CORS / tool-calling / vision for each provider. Throwaway. Not deployed.</p>
+</header>
+<main>
+  <div class="intro">
+    <strong>Privacy:</strong> API keys you paste here stay in this browser tab. They are sent only to the
+    provider's endpoint shown for each card. They are not logged to console, not persisted to localStorage,
+    and not echoed in error messages. Closing this tab forgets them.
+    <details>
+      <summary>What each test does</summary>
+<pre>1. Text       — POST a "say hello" prompt; assert HTTP 200 + non-empty content.
+2. Tool calls — POST with a toy tool definition (single number param); assert the model
+                returns a tool call (name + parsed args).
+3. Vision     — POST with a 1×1 red PNG embedded as base64; assert HTTP 200 + non-empty
+                content. (Most Groq / Llama-class models reject this — that's expected.)</pre>
+    </details>
+  </div>
+
+  <!-- ============================================================ -->
+  <section class="provider" id="provider-github" data-pid="github">
+    <h2>GitHub Models</h2>
+    <p class="endpoint">POST https://models.github.ai/inference/chat/completions</p>
+    <div class="row">
+      <label>PAT (models:read)</label>
+      <input type="password" data-field="key" placeholder="ghp_... or github_pat_..." autocomplete="off">
+    </div>
+    <div class="row">
+      <label>Model</label>
+      <input type="text" data-field="model" value="openai/gpt-4o-mini">
+    </div>
+    <div class="actions">
+      <button class="primary" data-action="run-all">Run all 3 tests</button>
+      <button data-action="run" data-kind="text">Test 1: Text</button>
+      <button data-action="run" data-kind="tools">Test 2: Tool call</button>
+      <button data-action="run" data-kind="vision">Test 3: Vision</button>
+    </div>
+    <div class="results" data-results></div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section class="provider" id="provider-anthropic" data-pid="anthropic">
+    <h2>Anthropic</h2>
+    <p class="endpoint">POST https://api.anthropic.com/v1/messages
+      &nbsp;·&nbsp; header: <code>anthropic-dangerous-direct-browser-access: true</code></p>
+    <div class="row">
+      <label>API key</label>
+      <input type="password" data-field="key" placeholder="sk-ant-..." autocomplete="off">
+    </div>
+    <div class="row">
+      <label>Model</label>
+      <input type="text" data-field="model" value="claude-haiku-4-5-20251001">
+    </div>
+    <div class="actions">
+      <button class="primary" data-action="run-all">Run all 3 tests</button>
+      <button data-action="run" data-kind="text">Test 1: Text</button>
+      <button data-action="run" data-kind="tools">Test 2: Tool call</button>
+      <button data-action="run" data-kind="vision">Test 3: Vision</button>
+    </div>
+    <div class="results" data-results></div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section class="provider" id="provider-openai" data-pid="openai">
+    <h2>OpenAI</h2>
+    <p class="endpoint">POST https://api.openai.com/v1/chat/completions</p>
+    <div class="row">
+      <label>API key</label>
+      <input type="password" data-field="key" placeholder="sk-... or sk-proj-..." autocomplete="off">
+    </div>
+    <div class="row">
+      <label>Model</label>
+      <input type="text" data-field="model" value="gpt-4o-mini">
+    </div>
+    <div class="actions">
+      <button class="primary" data-action="run-all">Run all 3 tests</button>
+      <button data-action="run" data-kind="text">Test 1: Text</button>
+      <button data-action="run" data-kind="tools">Test 2: Tool call</button>
+      <button data-action="run" data-kind="vision">Test 3: Vision</button>
+    </div>
+    <div class="results" data-results></div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section class="provider" id="provider-custom" data-pid="custom">
+    <h2>Custom OpenAI-compatible</h2>
+    <p class="endpoint">POST &lt;baseURL&gt;/chat/completions &nbsp;·&nbsp; (default: Groq's free tier)</p>
+    <div class="row">
+      <label>Base URL</label>
+      <input type="text" data-field="baseURL" value="https://api.groq.com/openai/v1">
+    </div>
+    <div class="row">
+      <label>API key</label>
+      <input type="password" data-field="key" placeholder="gsk_... (Groq) or other" autocomplete="off">
+    </div>
+    <div class="row">
+      <label>Model</label>
+      <input type="text" data-field="model" value="llama-3.3-70b-versatile">
+    </div>
+    <div class="actions">
+      <button class="primary" data-action="run-all">Run all 3 tests</button>
+      <button data-action="run" data-kind="text">Test 1: Text</button>
+      <button data-action="run" data-kind="tools">Test 2: Tool call</button>
+      <button data-action="run" data-kind="vision">Test 3: Vision</button>
+    </div>
+    <div class="results" data-results></div>
+  </section>
+
+  <section class="summary">
+    <h2>Summary (copy & paste back to the implementer)</h2>
+    <pre id="summary-out">(no tests run yet)</pre>
+    <div class="summary-actions">
+      <button data-action="copy-summary">Copy summary</button>
+      <button data-action="reset">Reset all results</button>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+// 1×1 red PNG, base64 (no data: prefix).
+const RED_PIXEL_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+
+// Toy tool definition for the tool-calling test. Schema is intentionally
+// trivial — we only verify the protocol, not schema fidelity.
+const TOY_TOOL_OPENAI = {
+  type: "function",
+  function: {
+    name: "report_number",
+    description: "Reports a single number back to the user. Always call this tool.",
+    parameters: {
+      type: "object",
+      properties: { value: { type: "number", description: "Any number." } },
+      required: ["value"],
+      additionalProperties: false,
+    },
+  },
+};
+const TOY_TOOL_ANTHROPIC = {
+  name: "report_number",
+  description: "Reports a single number back to the user. Always call this tool.",
+  input_schema: {
+    type: "object",
+    properties: { value: { type: "number", description: "Any number." } },
+    required: ["value"],
+  },
+};
+
+const SUMMARY_STORE = {}; // pid -> { text, tools, vision } each { ok, status, latencyMs, note }
+
+function fieldValue(pid, name) {
+  const el = document.querySelector(`#provider-${pid} [data-field="${name}"]`);
+  return el ? el.value.trim() : "";
+}
+
+function appendResult(pid, kind, state, head, body) {
+  const wrap = document.querySelector(`#provider-${pid} [data-results]`);
+  const div = document.createElement("div");
+  div.className = "result " + state;
+  div.innerHTML = `
+    <div class="head">
+      <strong>${escapeHtml(kind)}</strong>
+      <span class="badge ${state}">${state.toUpperCase()}</span>
+    </div>
+    <div>${escapeHtml(head)}</div>
+    ${body ? `<pre>${escapeHtml(body)}</pre>` : ""}
+  `;
+  wrap.appendChild(div);
+  return div;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function redactBearer(s) {
+  // Defensive — never echo a Bearer token to the UI even if a thrown error captured one.
+  return String(s).replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer ***REDACTED***");
+}
+
+async function runTest(pid, kind) {
+  const key = fieldValue(pid, "key");
+  const model = fieldValue(pid, "model");
+  if (!key) {
+    appendResult(pid, kind, "fail", "API key is empty — paste a key in the field above.", "");
+    SUMMARY_STORE[pid] = SUMMARY_STORE[pid] || {};
+    SUMMARY_STORE[pid][kind] = { ok: false, status: 0, latencyMs: 0, note: "no key" };
+    rebuildSummary();
+    return;
+  }
+  if (!model) {
+    appendResult(pid, kind, "fail", "Model field is empty.", "");
+    return;
+  }
+  const pending = appendResult(pid, kind, "pending", `Sending ${kind} request to ${pid}...`, "");
+  const t0 = performance.now();
+  try {
+    const result = await dispatch(pid, kind, { key, model });
+    const latencyMs = Math.round(performance.now() - t0);
+    const ok = result.ok;
+    pending.classList.remove("pending");
+    pending.classList.add(ok ? "pass" : "fail");
+    pending.querySelector(".badge").className = "badge " + (ok ? "pass" : "fail");
+    pending.querySelector(".badge").textContent = (ok ? "PASS" : "FAIL");
+    pending.querySelector(".head + div").textContent =
+      `HTTP ${result.status} · ${latencyMs} ms · ${result.summary}`;
+    const pre = document.createElement("pre");
+    pre.textContent = redactBearer(result.bodyExcerpt || "");
+    pending.appendChild(pre);
+    SUMMARY_STORE[pid] = SUMMARY_STORE[pid] || {};
+    SUMMARY_STORE[pid][kind] = {
+      ok, status: result.status, latencyMs, note: result.summary,
+    };
+  } catch (err) {
+    const latencyMs = Math.round(performance.now() - t0);
+    pending.classList.remove("pending");
+    pending.classList.add("fail");
+    pending.querySelector(".badge").className = "badge fail";
+    pending.querySelector(".badge").textContent = "FAIL";
+    pending.querySelector(".head + div").textContent =
+      `Network / CORS error · ${latencyMs} ms · ${redactBearer(err.message || String(err))}`;
+    SUMMARY_STORE[pid] = SUMMARY_STORE[pid] || {};
+    SUMMARY_STORE[pid][kind] = {
+      ok: false, status: 0, latencyMs, note: "network/CORS: " + redactBearer(err.message || String(err)),
+    };
+  }
+  rebuildSummary();
+}
+
+async function dispatch(pid, kind, { key, model }) {
+  // Routing: GitHub Models / OpenAI / Custom all use the OpenAI chat-completions shape.
+  // Anthropic has its own.
+  if (pid === "github") {
+    return openAICompatCall("https://models.github.ai/inference", key, model, kind);
+  }
+  if (pid === "openai") {
+    return openAICompatCall("https://api.openai.com/v1", key, model, kind);
+  }
+  if (pid === "custom") {
+    let baseURL = fieldValue(pid, "baseURL");
+    if (!baseURL) throw new Error("Custom: baseURL is empty");
+    baseURL = baseURL.replace(/\/$/, "");
+    return openAICompatCall(baseURL, key, model, kind);
+  }
+  if (pid === "anthropic") {
+    return anthropicCall(key, model, kind);
+  }
+  throw new Error("unknown provider id: " + pid);
+}
+
+async function openAICompatCall(baseURL, key, model, kind) {
+  const url = baseURL.replace(/\/$/, "") + "/chat/completions";
+  const body = { model, max_tokens: 200 };
+  if (kind === "text") {
+    body.messages = [{ role: "user", content: "Say the single word: hello." }];
+  } else if (kind === "tools") {
+    body.messages = [{
+      role: "user",
+      content: "Call the report_number tool with value=42. Use the tool, do not reply in text.",
+    }];
+    body.tools = [TOY_TOOL_OPENAI];
+    body.tool_choice = "auto";
+  } else if (kind === "vision") {
+    body.messages = [{
+      role: "user",
+      content: [
+        { type: "text", text: "What single colour is this image? Answer in one word." },
+        {
+          type: "image_url",
+          image_url: { url: "data:image/png;base64," + RED_PIXEL_PNG_BASE64 },
+        },
+      ],
+    }];
+  }
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "authorization": "Bearer " + key,
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await r.text();
+  let parsed = null;
+  try { parsed = JSON.parse(text); } catch {}
+  return summariseOpenAI(r.status, parsed, text, kind);
+}
+
+function summariseOpenAI(status, parsed, raw, kind) {
+  const ok2xx = status >= 200 && status < 300;
+  if (!ok2xx) {
+    return {
+      ok: false,
+      status,
+      summary: parsed?.error?.message ? truncate(parsed.error.message, 140) : "non-2xx",
+      bodyExcerpt: truncate(raw, 1200),
+    };
+  }
+  const choice = parsed?.choices?.[0];
+  const msg = choice?.message;
+  if (kind === "text" || kind === "vision") {
+    const content = typeof msg?.content === "string" ? msg.content : JSON.stringify(msg?.content);
+    const ok = !!content && content.length > 0;
+    return {
+      ok,
+      status,
+      summary: ok ? `content: ${truncate(content, 80)}` : "empty content",
+      bodyExcerpt: truncate(raw, 1200),
+    };
+  }
+  if (kind === "tools") {
+    const tcs = msg?.tool_calls;
+    if (Array.isArray(tcs) && tcs.length > 0) {
+      const tc = tcs[0];
+      const argsStr = tc?.function?.arguments || "";
+      let args;
+      try { args = JSON.parse(argsStr); } catch { args = argsStr; }
+      return {
+        ok: true,
+        status,
+        summary: `tool_call ${tc?.function?.name} args=${JSON.stringify(args)}`,
+        bodyExcerpt: truncate(raw, 1200),
+      };
+    }
+    return {
+      ok: false,
+      status,
+      summary: "no tool_calls in response (model replied in text instead)",
+      bodyExcerpt: truncate(raw, 1200),
+    };
+  }
+  return { ok: false, status, summary: "unknown kind", bodyExcerpt: truncate(raw, 1200) };
+}
+
+async function anthropicCall(key, model, kind) {
+  const url = "https://api.anthropic.com/v1/messages";
+  const body = { model, max_tokens: 200, messages: [] };
+  if (kind === "text") {
+    body.messages.push({ role: "user", content: "Say the single word: hello." });
+  } else if (kind === "tools") {
+    body.messages.push({
+      role: "user",
+      content: "Call the report_number tool with value=42. Use the tool, do not reply in text.",
+    });
+    body.tools = [TOY_TOOL_ANTHROPIC];
+  } else if (kind === "vision") {
+    body.messages.push({
+      role: "user",
+      content: [
+        { type: "text", text: "What single colour is this image? Answer in one word." },
+        {
+          type: "image",
+          source: { type: "base64", media_type: "image/png", data: RED_PIXEL_PNG_BASE64 },
+        },
+      ],
+    });
+  }
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await r.text();
+  let parsed = null;
+  try { parsed = JSON.parse(text); } catch {}
+  return summariseAnthropic(r.status, parsed, text, kind);
+}
+
+function summariseAnthropic(status, parsed, raw, kind) {
+  const ok2xx = status >= 200 && status < 300;
+  if (!ok2xx) {
+    return {
+      ok: false,
+      status,
+      summary: parsed?.error?.message ? truncate(parsed.error.message, 140) : "non-2xx",
+      bodyExcerpt: truncate(raw, 1200),
+    };
+  }
+  const blocks = Array.isArray(parsed?.content) ? parsed.content : [];
+  if (kind === "text" || kind === "vision") {
+    const text = blocks.filter(b => b?.type === "text").map(b => b.text).join("");
+    const ok = text.length > 0;
+    return {
+      ok,
+      status,
+      summary: ok ? `content: ${truncate(text, 80)}` : "empty content",
+      bodyExcerpt: truncate(raw, 1200),
+    };
+  }
+  if (kind === "tools") {
+    const tu = blocks.find(b => b?.type === "tool_use");
+    if (tu) {
+      return {
+        ok: true,
+        status,
+        summary: `tool_use ${tu.name} input=${JSON.stringify(tu.input)}`,
+        bodyExcerpt: truncate(raw, 1200),
+      };
+    }
+    return {
+      ok: false,
+      status,
+      summary: "no tool_use block in response (model replied in text instead)",
+      bodyExcerpt: truncate(raw, 1200),
+    };
+  }
+  return { ok: false, status, summary: "unknown kind", bodyExcerpt: truncate(raw, 1200) };
+}
+
+function truncate(s, n) {
+  if (!s) return "";
+  return s.length > n ? s.slice(0, n) + " …" : s;
+}
+
+function rebuildSummary() {
+  const pids = ["github", "anthropic", "openai", "custom"];
+  const labels = {
+    github: "GitHub Models",
+    anthropic: "Anthropic",
+    openai: "OpenAI",
+    custom: "Custom (" + (fieldValue("custom", "baseURL") || "?") + ")",
+  };
+  const lines = [];
+  lines.push("Phase 0 spike — AI helper CORS / tools / vision");
+  lines.push("Origin: " + location.origin + location.pathname);
+  lines.push("UA: " + navigator.userAgent);
+  lines.push("Date: " + new Date().toISOString());
+  lines.push("");
+  for (const pid of pids) {
+    const r = SUMMARY_STORE[pid];
+    if (!r) continue;
+    lines.push("[" + labels[pid] + "] (model=" + fieldValue(pid, "model") + ")");
+    for (const kind of ["text", "tools", "vision"]) {
+      const t = r[kind];
+      if (!t) continue;
+      lines.push(
+        "  " + kind.padEnd(7) +
+        " " + (t.ok ? "PASS" : "FAIL") +
+        " · HTTP " + t.status +
+        " · " + t.latencyMs + " ms" +
+        " · " + (t.note || "")
+      );
+    }
+    lines.push("");
+  }
+  document.getElementById("summary-out").textContent = lines.join("\n");
+}
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-action]");
+  if (!btn) return;
+  const action = btn.dataset.action;
+  if (action === "copy-summary") {
+    const text = document.getElementById("summary-out").textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = "Copied!";
+      setTimeout(() => (btn.textContent = "Copy summary"), 1500);
+    } catch {
+      btn.textContent = "Clipboard blocked — select text manually";
+    }
+    return;
+  }
+  if (action === "reset") {
+    document.querySelectorAll(".results").forEach(el => (el.innerHTML = ""));
+    for (const k of Object.keys(SUMMARY_STORE)) delete SUMMARY_STORE[k];
+    rebuildSummary();
+    return;
+  }
+  const card = btn.closest(".provider");
+  if (!card) return;
+  const pid = card.dataset.pid;
+  if (action === "run-all") {
+    btn.disabled = true;
+    try {
+      for (const k of ["text", "tools", "vision"]) {
+        await runTest(pid, k);
+      }
+    } finally {
+      btn.disabled = false;
+    }
+    return;
+  }
+  if (action === "run") {
+    const kind = btn.dataset.kind;
+    btn.disabled = true;
+    try {
+      await runTest(pid, kind);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+});
+
+rebuildSummary();
+</script>
+</body>
+</html>
