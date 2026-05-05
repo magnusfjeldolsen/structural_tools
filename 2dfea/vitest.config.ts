@@ -18,6 +18,10 @@ export default defineConfig({
     globals: false,
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'dist', 'public'],
+    // jsdom polyfills + @testing-library/jest-dom matchers wired here so AI-panel
+    // RTL tests can `expect(el).toBeInTheDocument()` etc. Existing logic-only
+    // tests (io/, geometry/, analysis/) don't import RTL and are unaffected.
+    setupFiles: ['./src/test/setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
