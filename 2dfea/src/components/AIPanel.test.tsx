@@ -16,7 +16,6 @@ import {
 import {
   _resetManualForTesting,
   peekManualPending,
-  submitManualResponse,
 } from '../ai/providers/manual';
 import { PROVIDERS } from '../ai/providers';
 
