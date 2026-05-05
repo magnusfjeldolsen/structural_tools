@@ -77,11 +77,11 @@
 
 ## Phase 7 — PyNite wiring
 
-- [ ] 7.1  In `2dfea/public/python/pynite_analyzer.py`, after the existing `self.model.add_member(...)` call, add a conditional `def_releases` block that reads `element.get('releaseStartMz')` / `element.get('releaseEndMz')` and calls `self.model.def_releases(name, *(5 Falses), Rzi, *(5 Falses), Rzj)` only when at least one is true.
-- [ ] 7.2  Result extraction (`moment_array`, `shear_array`) is unchanged.
-- [ ] 7.3  Confirm the JS-to-Python serialisation path (`dataTranslator.ts`) passes `releaseStartMz` / `releaseEndMz` through to the worker payload (via element spread / dict serialisation).
-- [ ] 7.4  `npm run type-check` clean. `npm test` green.
-- [ ] 7.5  Commit: `feat(2dfea): wire def_releases into pynite analyzer`
+- [x] 7.1  In `2dfea/public/python/pynite_analyzer.py`, after the existing `self.model.add_member(...)` call, added a conditional `def_releases` block that reads `element.get('releaseStartMz')` / `element.get('releaseEndMz')`. When at least one is true, calls `def_releases(name, False×5, Rzi, False×5, Rzj)` — all other DOFs stay rigid. Skipped entirely when both ends are rigid to keep the default path untouched. Comment cites the PyNite docs URL.
+- [x] 7.2  Result extraction (`moment_array`, `shear_array`) unchanged — PyNite handles the kinematics; released-end moment goes to ~0 in the diagram automatically.
+- [x] 7.3  `dataTranslator.ts` (`translateElements`) was a strict whitelist that dropped the new fields. Extended to forward `releaseStartMz` / `releaseEndMz` only when truthy (matches the canonicalize convention). Diagnostic log now annotates released elements.
+- [x] 7.4  `npm run type-check` clean. `npm test` green (10 / 89 — no new tests, no regressions). Note: Python changes don't HMR — dev server must be restarted (or the page hard-refreshed) before the new analyzer is fetched.
+- [x] 7.5  Commit: `feat(2dfea): wire def_releases into pynite analyzer`
 
 ## Phase 8 — Pre-handoff verification
 

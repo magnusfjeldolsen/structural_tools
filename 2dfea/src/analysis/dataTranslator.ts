@@ -66,22 +66,35 @@ function translateNodes(nodes: Node[]): Node[] {
 }
 
 /**
- * Translate elements (currently pass-through, but allows future transforms)
+ * Translate elements (currently pass-through, but allows future transforms).
+ *
+ * Mz release flags are forwarded only when truthy — matches the canonicalize
+ * convention so the Python side sees the key only when it actually means
+ * "released here" and the rigid case stays implicit.
  */
 function translateElements(elements: Element[]): Element[] {
-  const translated = elements.map((element) => ({
-    name: element.name,
-    nodeI: element.nodeI,
-    nodeJ: element.nodeJ,
-    E: element.E,   // GPa (backend will convert to Pa)
-    I: element.I,   // m⁴
-    A: element.A,   // m²
-  }));
+  const translated = elements.map((element) => {
+    const out: Element = {
+      name: element.name,
+      nodeI: element.nodeI,
+      nodeJ: element.nodeJ,
+      E: element.E,   // GPa (backend will convert to Pa)
+      I: element.I,   // m⁴
+      A: element.A,   // m²
+    };
+    if (element.releaseStartMz) out.releaseStartMz = true;
+    if (element.releaseEndMz) out.releaseEndMz = true;
+    return out;
+  });
 
   // Log element properties being sent to analysis (helps verify fresh values are used)
   console.log('[DataTranslator] Element properties collected for analysis:');
   translated.forEach((el) => {
-    console.log(`  ${el.name}: E=${el.E.toFixed(1)} GPa, I=${el.I.toExponential(2)} m⁴, A=${el.A.toExponential(2)} m²`);
+    const releases =
+      el.releaseStartMz || el.releaseEndMz
+        ? ` releases(start=${!!el.releaseStartMz}, end=${!!el.releaseEndMz})`
+        : '';
+    console.log(`  ${el.name}: E=${el.E.toFixed(1)} GPa, I=${el.I.toExponential(2)} m⁴, A=${el.A.toExponential(2)} m²${releases}`);
   });
 
   return translated;
