@@ -38,15 +38,17 @@
 - [x] 2.8  Update `2dfea/docs/examples/cantilever-v1.json`'s `schemaVersion` to `"1.1.0"` (existing fixtureParity test parses this file directly against the strict schema). Create `2dfea/docs/examples/cantilever-v1-1.json` showing one released end.
 - [x] 2.9  Run `npm run generate-schema` — regenerates `2dfea/public/schemas/2dfea-model-v1.json` to reflect v1.1.0. Stage the regenerated file as part of the commit (intentional — the prebuild override note in the user prompt explicitly authorises this).
 - [x] 2.10  `npm run type-check` clean. `npm test` green (10 files / 89 tests, +5 vs baseline). `npm run build` green.
-- [ ] 2.11  Commit: `feat(2dfea): bump schema to v1.1.0 with optional Mz release fields`
+- [x] 2.11  Commit: `feat(2dfea): bump schema to v1.1.0 with optional Mz release fields` (`966354d`)
 
 ## Phase 3 — Elements table — two new boolean columns
 
-- [ ] 3.1  In `ElementTable.tsx`, add "Release start" and "Release end" boolean cells. Reuse existing cell conventions or introduce a small `BooleanCell` if no existing pattern fits.
-- [ ] 3.2  Multi-select bulk-edit must work via existing `updateElement` pattern.
-- [ ] 3.3  Tooltip on column headers: "Release moment (Mz) at this end. Pinned/free. Leave unchecked for rigid (default)."
-- [ ] 3.4  `npm run type-check` clean. `npm test` green.
-- [ ] 3.5  Commit: `feat(2dfea): add Release start / Release end columns to Elements table`
+- [x] 3.1  In `ElementTable.tsx`, added "Release start" and "Release end" boolean cells via a new shared `BooleanCell` component (no existing boolean cell pattern existed). Grid template now `100px 120px 120px 100px 100px 100px 90px 90px`.
+- [x] 3.2  Multi-select bulk-edit reuses `updateElement(name, patch)` — the cell dispatches via the parent's `onToggleRelease` which forwards to `updateElement`. Future bulk-select wiring will compose multiple `updateElement` calls with no further table changes.
+- [x] 3.3  Tooltip on column headers AND on cells: "Release moment (Mz) at this end. Pinned/free. Leave unchecked for rigid (default)." (kept identical text on both for now).
+- [x] 3.4  Also: `useModelStore.updateElement` now invalidates the analysis cache on `releaseStartMz` / `releaseEndMz` changes (parity with E / I / A — releases change the kinematic stiffness matrix).
+- [x] 3.5  Keyboard: arrow-nav extended to the two new columns; Space toggles the release on the selected cell; F2 is a no-op on boolean cells (the cell IS the editor).
+- [x] 3.6  `npm run type-check` clean. `npm test` green (10 / 89 — no new tests, no regressions).
+- [x] 3.7  Commit: `feat(2dfea): add Release start / Release end columns to Elements table`
 
 ## Phase 4 — Canvas i/j labels on hover/select
 

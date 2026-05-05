@@ -36,8 +36,20 @@ export function ElementsTab() {
   const dropdownRef = useRef<HTMLSelectElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Field configuration
-  const fields = ['name', 'nodeI', 'nodeJ', 'E', 'I', 'A'];
+  // Field configuration. Order matches the table column order — keyboard
+  // arrow-navigation indexes into this array. The two release columns are
+  // booleans handled outside the edit-mode round-trip (the BooleanCell IS
+  // the editor); they participate in arrow-nav and Space-to-toggle.
+  const fields = [
+    'name',
+    'nodeI',
+    'nodeJ',
+    'E',
+    'I',
+    'A',
+    'releaseStartMz',
+    'releaseEndMz',
+  ];
 
   // Reset state when tab changes
   useEffect(() => {
@@ -229,6 +241,22 @@ export function ElementsTab() {
     setClipboard({ value, type });
   };
 
+  /**
+   * Toggle a per-end Mz release on a single element. Wraps the store's
+   * `updateElement(name, patch)` so the table cell stays presentational.
+   * Per docs/plans/member-end-releases-mz.md §5.4 — set/clear semantics,
+   * NOT XOR-toggle, since the cell itself is a checkbox driven by the
+   * `next` boolean coming from the React change event.
+   */
+  const handleToggleRelease = (
+    elementName: string,
+    field: 'releaseStartMz' | 'releaseEndMz',
+    next: boolean
+  ) => {
+    setValidationError(null);
+    updateElement(elementName, { [field]: next });
+  };
+
   // ============================================================================
   // Global Keyboard Handler (NEW)
   // ============================================================================
@@ -252,10 +280,34 @@ export function ElementsTab() {
         return;
       }
 
-      // F2 - Enter edit mode
+      // F2 - Enter edit mode (no-op for boolean cells — they don't have an
+      // edit-mode round-trip; Space is the toggle key).
       if (e.key === 'F2') {
+        if (
+          selectedCell.field === 'releaseStartMz' ||
+          selectedCell.field === 'releaseEndMz'
+        ) {
+          // Boolean cells: no edit mode. Don't preventDefault — let the
+          // browser ignore F2 here.
+          return;
+        }
         e.preventDefault();
         handleEditStart(selectedCell);
+        return;
+      }
+
+      // Space - Toggle on boolean cells (release-start / release-end).
+      if (
+        e.key === ' ' &&
+        (selectedCell.field === 'releaseStartMz' ||
+          selectedCell.field === 'releaseEndMz')
+      ) {
+        e.preventDefault();
+        const element = elements[currentRowIndex];
+        if (element) {
+          const field = selectedCell.field as 'releaseStartMz' | 'releaseEndMz';
+          handleToggleRelease(element.name, field, !element[field]);
+        }
         return;
       }
 
@@ -367,6 +419,7 @@ export function ElementsTab() {
         onEditChange={handleEditChange}
         onEditSave={handleEditSave}
         onEditCancel={handleEditCancel}
+        onToggleRelease={handleToggleRelease}
         inputRef={inputRef}
         dropdownRef={dropdownRef}
         clipboard={clipboard}

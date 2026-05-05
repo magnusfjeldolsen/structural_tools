@@ -323,10 +323,19 @@ export const useModelStore = create<ModelState>()(
             if (element) {
               Object.assign(element, updates);
 
-              // Clear analysis cache if structural properties (E, I, A) are changed
-              // This invalidates results and clears all diagrams until user re-runs analysis
-              if ('E' in updates || 'I' in updates || 'A' in updates) {
-                console.log(`[ModelStore] Element ${name} properties updated (E/I/A) - invalidating analysis cache`);
+              // Clear analysis cache if structural properties (E, I, A) or member-end
+              // releases (releaseStartMz / releaseEndMz) are changed. Releases change
+              // the kinematic stiffness matrix just like E / I / A do, so any cached
+              // results become invalid. This invalidates results and clears all
+              // diagrams until user re-runs analysis.
+              if (
+                'E' in updates ||
+                'I' in updates ||
+                'A' in updates ||
+                'releaseStartMz' in updates ||
+                'releaseEndMz' in updates
+              ) {
+                console.log(`[ModelStore] Element ${name} properties updated (E/I/A or releases) - invalidating analysis cache`);
                 state.analysisResults = null;
                 state.analysisError = null;
                 state.resultsCache = {
