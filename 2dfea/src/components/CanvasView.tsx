@@ -61,6 +61,12 @@ export function CanvasView({ width, height }: CanvasViewProps) {
   const getResultsForCase = useModelStore((state) => state.getResultsForCase);
   const getResultsForCombination = useModelStore((state) => state.getResultsForCombination);
   const analysisResults = useModelStore((state) => state.analysisResults);  // Keep for backward compat
+  // Subscribe to the cache version so the canvas re-renders when runFullAnalysis
+  // writes a new ResultsCache reference. Without this, getActiveResults() can read
+  // stale (cleared) data because the component never wakes up after the cache write.
+  // See debugging session 2026-05-05.
+  const resultsCacheVersion = useModelStore((state) => state.resultsCache.lastUpdated);
+  void resultsCacheVersion;
   const selectedNodes = useModelStore((state) => state.selectedNodes);
   const selectedElements = useModelStore((state) => state.selectedElements);
   const nextNodeNumber = useModelStore((state) => state.nextNodeNumber);
