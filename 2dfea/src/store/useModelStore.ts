@@ -105,6 +105,10 @@ interface ModelState {
 
   addElement: (element: Omit<Element, 'name'>) => void;
   updateElement: (name: string, updates: Partial<Omit<Element, 'name'>>) => void;
+  setElementReleases: (
+    names: string[],
+    patch: { releaseStartMz?: boolean; releaseEndMz?: boolean }
+  ) => void;
   deleteElement: (name: string) => void;
   clearElements: () => void;
   renumberElements: () => void;
@@ -352,6 +356,53 @@ export const useModelStore = create<ModelState>()(
                   },
                 };
               }
+            }
+          });
+        },
+
+        // Bulk-apply Mz release flags to many elements in one history step.
+        // Mirrors moveNodes' single-set pattern so all selected elements undo
+        // together. Releases change the kinematic stiffness matrix, so the
+        // analysis cache is invalidated whenever any element actually changes
+        // — matches the rule in updateElement.
+        setElementReleases: (names, patch) => {
+          set((state) => {
+            const targets = new Set(names);
+            let mutated = false;
+            for (const element of state.elements) {
+              if (!targets.has(element.name)) continue;
+              if (
+                'releaseStartMz' in patch &&
+                element.releaseStartMz !== patch.releaseStartMz
+              ) {
+                element.releaseStartMz = patch.releaseStartMz;
+                mutated = true;
+              }
+              if (
+                'releaseEndMz' in patch &&
+                element.releaseEndMz !== patch.releaseEndMz
+              ) {
+                element.releaseEndMz = patch.releaseEndMz;
+                mutated = true;
+              }
+            }
+
+            if (mutated) {
+              state.analysisResults = null;
+              state.analysisError = null;
+              state.resultsCache = {
+                caseResults: {},
+                combinationResults: {},
+                lastUpdated: 0,
+                analysisStatus: {
+                  totalCases: 0,
+                  totalCombinations: 0,
+                  successfulCases: 0,
+                  successfulCombinations: 0,
+                  failedCases: [],
+                  failedCombinations: [],
+                },
+              };
             }
           });
         },

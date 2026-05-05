@@ -68,12 +68,12 @@
 
 ## Phase 6 — Canvas floating release panel
 
-- [ ] 6.1  Render a small panel near the canvas edge (or pinned to the existing toolbar group) when `selectedElements.length > 0`.
-- [ ] 6.2  Four buttons: **Release start**, **Release end**, **Release both**, **Clear releases**. Set/clear semantics, NOT toggle. Idempotent on already-released elements.
-- [ ] 6.3  Wrap each button click in one history step (Zustand action that batches the mutations) so undo reverts all selected elements together.
-- [ ] 6.4  Match existing canvas-overlay panel styling.
-- [ ] 6.5  `npm run type-check` clean. `npm test` green.
-- [ ] 6.6  Commit: `feat(2dfea): add floating release panel for selected elements`
+- [x] 6.1  Render a small panel near the canvas edge when `selectedElements.length > 0`. New `ReleasePanel.tsx` mounted next to `SnapBar` in `App.tsx`; `position: absolute; top: 8; right: 8` inside the canvas-relative wrapper. Hidden via early return when nothing is selected.
+- [x] 6.2  Four buttons: **Release start**, **Release end**, **Release both**, **Clear releases**. Set/clear semantics, NOT toggle. Idempotent on already-released elements (the store action no-ops when the existing value already matches the patch).
+- [x] 6.3  Each button click invokes `useModelStore.setElementReleases(names, patch)` — a new bulk action that mutates all selected elements in one `set()` call. zundo's structural-equality `partialize` records this as a single history step, so undo reverts the entire selection together.
+- [x] 6.4  Match existing canvas-overlay panel styling: white-translucent background, 1 px border, 4 px radius, 8 px padding, 13 px font, subtle drop shadow — mirrors `SnapBar.tsx` exactly. Buttons are plain HTML `<button>` with consistent inline style.
+- [x] 6.5  `npm run type-check` clean. `npm test` green (10 / 89 — no new tests, no regressions).
+- [x] 6.6  Commit: `feat(2dfea): add floating release panel for selected elements`
 
 ## Phase 7 — PyNite wiring
 

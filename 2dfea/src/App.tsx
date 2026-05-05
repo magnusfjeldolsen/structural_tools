@@ -17,6 +17,7 @@ import { LeftCADPanel } from './components/LeftCADPanel';
 import { CommandInput } from './components/CommandInput';
 import { CoordinateDisplay } from './components/CoordinateDisplay';
 import { SnapBar } from './components/SnapBar';
+import { ReleasePanel } from './components/ReleasePanel';
 import { LoadInputDialog } from './components/LoadInputDialog';
 import { LoadContextMenu } from './components/LoadContextMenu';
 import { NodesTab } from './components/NodesTab';
@@ -257,6 +258,9 @@ export default function App() {
 
             {/* Snap Bar - bottom right of canvas */}
             <SnapBar />
+
+            {/* Release Panel - top right of canvas, visible when elements selected */}
+            <ReleasePanel />
           </div>
         </div>
 
