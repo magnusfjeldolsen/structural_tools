@@ -8,7 +8,10 @@
 
 const BEARER_RE = /Bearer\s+[A-Za-z0-9._\-+/=]+/g;
 const QUERY_KEY_RE = /([?&](?:api[_-]?key|token|access_token)=)[^&\s"]+/gi;
-const SK_LIKE_RE = /\b(?:sk|ghp|github_pat|sk-ant)[-_][A-Za-z0-9]+/g;
+// sk-ant-, sk-proj-, sk-, ghp_, github_pat_ prefixes followed by any
+// run of base64-ish characters (which includes `-` so we don't stop at the
+// first hyphen — sk-ant-realkey, sk-proj-abc, etc. are all fully redacted).
+const SK_LIKE_RE = /\b(?:sk-ant|sk-proj|sk|ghp|github_pat)[-_][A-Za-z0-9_-]+/g;
 
 const MAX_ERROR_LEN = 500;
 
