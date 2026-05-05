@@ -349,6 +349,10 @@ These are the *exact strings* drafted for the dialog. Each provider's row render
 
 **GitHub Models** (default):
 > Your GitHub Personal Access Token will be stored in this browser's localStorage and sent only to `models.github.ai`. Anyone with access to this browser, or who exploits an XSS bug on this page, can read the token. Use a fine-grained PAT scoped to **`models:read` only**, with a short expiration. You can revoke it any time at github.com/settings/tokens.
+>
+> **Free-tier limits**: GitHub Models' free tier rate-limits both requests-per-minute and requests-per-day. With short prompts on a lightweight model (e.g. `openai/gpt-4o-mini`), expect roughly **30+ short prompts per day** comfortably; heavy iterative sessions will hit the daily cap. When you do, switch to a paid provider below (Anthropic / OpenAI) using your own key, or wait for the daily reset. The exact current limits are at github.com/marketplace/models — they vary by model tier.
+
+**Rate-limit UX requirement (driven by user expectation set in Phase 0 handoff)**: the panel must surface remaining-quota information when GitHub Models returns it (via response headers), and the rate-limit error UI (Phase 6) must include a one-click "switch to BYO-key" link that opens the settings dialog with the Anthropic/OpenAI/Custom rows visible. This converts "free tier exhausted" from a dead-end into a continuation path.
 
 **Anthropic**:
 > Your Anthropic API key will be stored in this browser's localStorage and sent directly from your browser to api.anthropic.com (this requires `dangerouslyAllowBrowser`). Browser-side keys can be exfiltrated by any XSS on this page. **Anthropic recommends using API keys server-side, not from a browser.** If you accept the risk, generate a key with the lowest practical usage limit at console.anthropic.com.
