@@ -1,10 +1,10 @@
 {
   "_meta": {
-    "generated": "2026-02-27T14:14:28.000Z",
-    "total_modules": 23,
+    "generated": "2026-06-03T10:42:21.009Z",
+    "total_modules": 26,
     "version": "1.0.0",
     "duplicates_removed": 0,
-    "skipped_count": 3
+    "skipped_count": 4
   },
   "modules": [
     {
@@ -27,27 +27,11 @@
     },
     {
       "id": "cable_designer",
-      "title": "Cable Designer - Nonlinear Cable Analysis",
-      "description": "Nonlinear cable analysis with arbitrary point and distributed loads. Runs Python (NumPy/SciPy) directly in the browser via Pyodide/WebAssembly. Interactive plots with hover inspection for sag, tension, and stress distribution along the cable.",
-      "keywords": [
-        "cable",
-        "cable design",
-        "cable analysis",
-        "nonlinear",
-        "sag",
-        "tension",
-        "catenary",
-        "pyodide",
-        "webassembly",
-        "structural analysis",
-        "cable force",
-        "cable stress",
-        "suspension",
-        "distributed load",
-        "point load"
-      ],
+      "title": "Cable Designer",
+      "description": "",
+      "keywords": [],
       "url": "./cable_designer/index.html",
-      "category": "structural-analysis"
+      "category": "other"
     },
     {
       "id": "concrete_plate_CFRP",
@@ -120,6 +104,22 @@
       "category": "concrete"
     },
     {
+      "id": "concretefastenergroup",
+      "title": "Concrete Fastener Group Design - EC2 Part 4 Calculator",
+      "description": "Free concrete fastener group design calculator per EC2 Part 4 (CEN/TS 1992-4). Calculate resistance for fastener groups with elastic force distribution, torsion, and multiple load cases.",
+      "keywords": [
+        "concrete fastener design",
+        "ec2 part 4",
+        "shear studs",
+        "structural engineering",
+        "fastener connection",
+        "eurocode 2",
+        "cen/ts 1992-4"
+      ],
+      "url": "./concretefastenergroup/index.html",
+      "category": "concrete"
+    },
+    {
       "id": "concrete_minimum_reinforcement",
       "title": "Concrete Minimum Reinforcement Calculator | Free Structural Engineering Tool",
       "description": "Calculate minimum reinforcement for concrete structures according to EC2 and other standards. Features plates, beams, columns, and gulv på grunn calculations with scenario-based analysis and spacing compliance checks.",
@@ -134,27 +134,6 @@
         "structural calculator"
       ],
       "url": "./concrete_minimum_reinforcement/index.html",
-      "category": "concrete"
-    },
-    {
-      "id": "pryout",
-      "title": "EC2-1-4 Pry-Out Shear Stud Analyzer - Free Engineering Tool",
-      "description": "Calculate pry-out resistance for shear stud groups with elastic force distribution and torsion. Features multiple load cases, envelope analysis, and interactive visualization according to Eurocode 2-1-4.",
-      "keywords": [
-        "pry-out resistance",
-        "shear studs",
-        "ec2-1-4",
-        "stud connection",
-        "eurocode 2",
-        "elastic force distribution",
-        "torsion analysis",
-        "load cases",
-        "envelope analysis",
-        "structural engineering",
-        "free engineering tool",
-        "structural calculator"
-      ],
-      "url": "./pryout/index.html",
       "category": "concrete"
     },
     {
@@ -213,6 +192,14 @@
       "category": "concrete"
     },
     {
+      "id": "pryout",
+      "title": "EC2 Part 4 Fastener Design Calculator",
+      "description": "",
+      "keywords": [],
+      "url": "./pryout/index.html",
+      "category": "other"
+    },
+    {
       "id": "seismic_ec8",
       "title": "EC8 Seismic Avoidance Criteria Calculator",
       "description": "EC8 Seismic Avoidance Criteria Calculator - Determine if seismic design is required",
@@ -225,6 +212,43 @@
       ],
       "url": "./seismic_ec8/index.html",
       "category": "structural-analysis"
+    },
+    {
+      "id": "rockbolts",
+      "title": "Fjellbolter — Uttrekkskapasitet SVV 220",
+      "description": "Beregning av uttrekkskapasitet for fjellboltgrupper iht. SVV 220. Kontroller stag, heft og bergkjegle.",
+      "keywords": [
+        "fjellbolter",
+        "uttrekking",
+        "forankringslengde",
+        "svv 220",
+        "bergkjegle",
+        "geoteknikk"
+      ],
+      "url": "./rockbolts/index.html",
+      "category": "other"
+    },
+    {
+      "id": "piling",
+      "title": "Piling – Steel Pipe Pile Calculators (Draft)",
+      "description": "Steel pipe pile (stålrørspel) design tools. Currently: driving criterion / drop-weight check for tip-bearing piles driven to rock without soil shaft support (draft, per Peleveiledningen 2019).",
+      "keywords": [
+        "piling",
+        "pile",
+        "steel pipe pile",
+        "stålrørspel",
+        "pile driving",
+        "rammekriterium",
+        "peleveiledningen",
+        "tip bearing",
+        "point bearing",
+        "rock",
+        "geotechnical",
+        "steel",
+        "driveability"
+      ],
+      "url": "./piling/index.html",
+      "category": "steel"
     },
     {
       "id": "2dframeanalysis",
@@ -241,6 +265,14 @@
       ],
       "url": "./2dframeanalysis/index.html",
       "category": "structural-analysis"
+    },
+    {
+      "id": "flexural_buckling",
+      "title": "Steel Column Flexural Buckling - EC3",
+      "description": "",
+      "keywords": [],
+      "url": "./flexural_buckling/index.html",
+      "category": "other"
     },
     {
       "id": "steel_fire_temperature",
@@ -332,31 +364,6 @@
         "structural calculator"
       ],
       "url": "./weld_capacity/index.html",
-      "category": "steel"
-    },
-    {
-      "id": "flexural_buckling",
-      "title": "Steel Column Flexural Buckling Calculator | Free Engineering Tool",
-      "description": "Calculate flexural buckling capacity of compression members per EC3-1-1 Section 6.3.1. Features optional fire design with critical temperature calculation using Brent's method, steel section database integration, and detailed calculation reports.",
-      "keywords": [
-        "flexural buckling",
-        "column buckling",
-        "compression members",
-        "ec3-1-1",
-        "eurocode 3",
-        "fire design",
-        "critical temperature",
-        "buckling resistance",
-        "steel columns",
-        "slenderness",
-        "reduction factor",
-        "buckling curves",
-        "fire resistance",
-        "steel database",
-        "free engineering tool",
-        "structural calculator"
-      ],
-      "url": "./flexural_buckling/index.html",
       "category": "steel"
     }
   ]
