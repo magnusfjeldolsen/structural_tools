@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-06-03T07:32:28.119Z",
-    "total_modules": 25,
+    "generated": "2026-06-03T10:44:28.163Z",
+    "total_modules": 26,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
@@ -227,6 +227,28 @@
       ],
       "url": "./rockbolts/index.html",
       "category": "other"
+    },
+    {
+      "id": "piling",
+      "title": "Piling – Steel Pipe Pile Calculators (Draft)",
+      "description": "Steel pipe pile (stålrørspel) design tools. Currently: driving criterion / drop-weight check for tip-bearing piles driven to rock without soil shaft support (draft, per Peleveiledningen 2019).",
+      "keywords": [
+        "piling",
+        "pile",
+        "steel pipe pile",
+        "stålrørspel",
+        "pile driving",
+        "rammekriterium",
+        "peleveiledningen",
+        "tip bearing",
+        "point bearing",
+        "rock",
+        "geotechnical",
+        "steel",
+        "driveability"
+      ],
+      "url": "./piling/index.html",
+      "category": "steel"
     },
     {
       "id": "2dframeanalysis",

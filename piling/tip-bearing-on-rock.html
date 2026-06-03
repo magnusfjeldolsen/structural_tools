@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-BFVZQQ2LYN');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rammekriterium Fjell – Loddvekt-kalkulator</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#1a212b; --panel2:#222c38; --line:#33414f;
+    --ink:#e7edf3; --muted:#9fb0c0; --accent:#4ea1ff; --ok:#34c759; --warn:#ff9f0a; --bad:#ff453a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font:12.5px/1.4 "Segoe UI",system-ui,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  header{padding:8px 18px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#16202b,#0f1419)}
+  header h1{margin:0;font-size:16px;font-weight:650}
+  header p{margin:2px 0 0;color:var(--muted);font-size:12px}
+  .wrap{display:grid;grid-template-columns:330px minmax(420px,1fr) minmax(360px,430px);gap:14px;padding:12px 18px;align-items:start}
+  @media(max-width:1380px){.wrap{grid-template-columns:330px 1fr}}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+  .card h2{margin:0 0 8px;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+  .row{display:grid;grid-template-columns:1fr 78px;gap:8px;align-items:center;margin:5px 0}
+  .row label{color:var(--muted);font-size:12px}
+  .row label b{color:var(--ink);font-weight:600}
+  .row label .hint{display:block;font-size:10.5px;color:#7d8fa0;margin-top:1px}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:16px;background:transparent;margin:3px 0;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:5px;border:1px solid var(--line);background:var(--band,#222c38)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:13px;height:13px;border-radius:50%;background:#e7edf3;border:2px solid var(--accent);margin-top:-4px}
+  input[type=range]::-moz-range-track{height:8px;border-radius:5px;border:1px solid var(--line);background:var(--band,#222c38)}
+  input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#e7edf3;border:2px solid var(--accent)}
+  .sld{margin:3px 0 7px}
+  .sld .anno{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .sld .anno b{color:var(--ink)}
+  .row .num{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+  .row input[type=number]{width:58px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:6px;padding:3px 6px;font:inherit;text-align:right}
+  .row .unit{color:var(--muted);font-size:11px;min-width:28px}
+  select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:6px;padding:5px 7px;font:inherit}
+  .selrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0}
+  .selrow .lab{font-size:11px;color:var(--muted);margin-bottom:3px}
+  .selrow .lab b{color:var(--ink)}
+  .katnote{font-size:11px;color:var(--muted);margin-top:6px}
+  .katnote b{color:var(--ink)}
+  .hero{background:linear-gradient(135deg,#1d2a3a,#172230);border:1px solid #2b3b4d;border-radius:12px;
+    padding:12px 16px;margin-bottom:12px}
+  .hero .lab{color:var(--muted);font-size:12px;letter-spacing:.02em}
+  .hero .big{font-size:38px;font-weight:700;margin:2px 0;line-height:1}
+  .hero .big small{font-size:16px;color:var(--muted);font-weight:600}
+  .hero .sub{color:var(--muted);font-size:12px}
+  .bar{height:12px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);overflow:hidden;margin:7px 0 4px}
+  .bar > i{display:block;height:100%;border-radius:6px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}
+  .out{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 9px}
+  .out .k{color:var(--muted);font-size:11px;line-height:1.25}
+  .out .v{font-size:15px;font-weight:600;margin-top:1px}
+  .out .v small{font-size:11px;color:var(--muted);font-weight:400}
+  .checks{display:flex;flex-direction:column;gap:6px}
+  .chk{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2)}
+  .chk .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+  .chk .t{flex:1;font-size:12px}
+  .chk .t b{display:block}
+  .chk .t span{color:var(--muted);font-size:11px}
+  .chk .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}
+  .ok .dot{background:var(--ok)} .ok .badge{background:rgba(52,199,89,.15);color:var(--ok)}
+  .bad .dot{background:var(--bad)} .bad .badge{background:rgba(255,69,58,.15);color:var(--bad)}
+  .note{color:var(--muted);font-size:11px;margin-top:7px;line-height:1.5}
+  .fbox{background:#121a23;border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:7px;padding:7px 10px;margin-top:8px}
+  .fbox .eq{font-family:"Cascadia Code",Consolas,"Courier New",monospace;font-size:12px;color:#cfe3f5;line-height:1.6}
+  .fbox .ref{display:inline-block;font-size:10.5px;color:var(--accent);margin-top:3px;
+    background:rgba(78,161,255,.1);padding:1px 7px;border-radius:10px}
+  .fbox .def{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.45}
+  /* formelliste i kolonne C */
+  .flist{display:flex;flex-direction:column;gap:6px}
+  .frow{background:#121a23;border:1px solid var(--line);border-radius:7px;padding:6px 9px}
+  .frow .eq{font-family:Consolas,"Courier New",monospace;font-size:11.5px;color:#cfe3f5}
+  .frow .ref{font-size:10px;color:var(--accent);margin-top:2px}
+  details{margin-top:10px}
+  summary{cursor:pointer;color:var(--accent);font-size:11.5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase}
+  table.nom{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px}
+  table.nom td{padding:3px 7px;border-bottom:1px solid #26323f;vertical-align:top}
+  table.nom td:nth-child(1){font-family:monospace;color:#cfe3f5;white-space:nowrap;width:58px}
+  table.nom td:nth-child(3){color:var(--accent);white-space:nowrap;font-size:10px;text-align:right}
+  .reflist{font-size:11.5px;color:var(--muted);line-height:1.6;margin:8px 0 0;padding-left:16px}
+  .reflist b{color:var(--ink)}
+</style>
+</head>
+<body>
+<header>
+  <a href="./index.html" style="color:var(--accent);font-size:12px;text-decoration:none">← Peletyper / Back to Tools</a>
+  <h1>Rammekriterium Fjell — Loddvekt-kalkulator</h1>
+  <p>Spissbærende stålrørspeler til fjell · Peleveiledningen 2019 (4.6 / 4.7 / 4.2.4) · stålrør etter Kynningsrud-katalog · interaktivt dokumentasjonsark</p>
+</header>
+
+<div style="background:#7f1d1d;border:2px solid #ff453a;border-radius:8px;margin:12px 18px 0;padding:12px 16px">
+  <strong style="color:#fff;font-size:13px">⚠ UTKAST — kan være ufullstendig og gi feil resultater. Ikke til prosjektering.</strong>
+  <ul style="margin:6px 0 0;padding-left:18px;font-size:11.5px;line-height:1.55;color:#ffd7d7">
+    <li>Dette er et <b>rammbarhets-/screeningverktøy</b> (rammekriterium) — <b>ikke</b> en bæreevneberegning. R<sub>c;d</sub> er inndata, ikke beregnet her.</li>
+    <li>Forutsetter spissbæring mot fjell <b>uten sidestøtte/demping fra jord</b> langs pelen.</li>
+    <li>Forenklet 1-D støtbølgeteori — bekreft med bølgeligningsanalyse (f.eks. GRLWEAP) og/eller dynamisk testing (PDA/CAPWAP).</li>
+    <li>m<sub>min</sub> = k·m<sub>pel</sub> er en <b>utledet</b> tommelfingerregel (Pv. 17.3.1), ikke en kodefestet formel; k vurderes av geotekniker.</li>
+  </ul>
+</div>
+
+<div class="wrap">
+  <!-- ================= KOLONNE A: INNDATA ================= -->
+  <div>
+    <div class="card">
+      <h2>Pel — Kynningsrud stålrør</h2>
+      <div class="selrow">
+        <div><div class="lab">Ytre diameter <b>D</b> [mm]</div><select id="Dsel"></select></div>
+        <div><div class="lab">Godstykkelse <b>t</b> [mm]</div><select id="tsel"></select></div>
+      </div>
+      <div class="katnote">Stålareal <b id="kat_A">–</b> cm² · katalogvekt <b id="kat_kg">–</b> kg/m</div>
+      <div class="row"><label>Flytegrense <b>f<sub>yk</sub></b></label><div class="num"><input type="number" id="fyk_n"><span class="unit">MPa</span></div></div>
+      <div class="row"><label>Materialfaktor <b>γ<sub>M0</sub></b></label><div class="num"><input type="number" id="gs_n" step="0.01"></div></div>
+      <div class="row"><label>E-modul <b>E</b></label><div class="num"><input type="number" id="E_n"><span class="unit">GPa</span></div></div>
+      <div class="row"><label>Tetthet <b>ρ</b></label><div class="num"><input type="number" id="rho_n"><span class="unit">kg/m³</span></div></div>
+      <div class="row"><label>Lengde v/ ramming <b>l</b></label><div class="num"><input type="number" id="L_n"><span class="unit">m</span></div></div>
+    </div>
+
+    <div class="card">
+      <h2>Valgt lodd</h2>
+      <div class="row"><label>Loddmasse <b>m</b></label><div class="num"><input type="number" id="M_n" step="0.5"><span class="unit">t</span></div></div>
+      <div class="sld"><input type="range" id="M" min="1" max="20" step="0.25"><div class="anno" id="anno_M">–</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Bølgelengdekrav</h2>
+      <div class="row"><label>Antall pelelengder <b>k</b></label><div class="num"><input type="number" id="k_n" step="0.1"></div></div>
+      <div class="note">k = 1: bølgen når spiss · <b style="color:var(--ink)">k = 2: full rundtur topp→spiss→topp (anbefalt for berg)</b>. Forankret i Peleveiledningen 17.3.1.</div>
+    </div>
+
+    <div class="card">
+      <h2>Ramming — «hardt nok» (4.6/4.7)</h2>
+      <div class="row"><label>Fallhøyde <b>h</b></label><div class="num"><input type="number" id="H_n" step="0.05"><span class="unit">m</span></div></div>
+      <div class="sld"><input type="range" id="H" min="0.2" max="3" step="0.05"><div class="anno" id="anno_H">–</div></div>
+      <div class="row"><label>Utstyrsfaktor <b>f<sub>0</sub></b><span class="hint">1,0–1,2 effektivt · 0,5–0,6 lett</span></label><div class="num"><input type="number" id="f0_n" step="0.05"></div></div>
+      <div class="sld"><input type="range" id="f0" min="0.5" max="1.2" step="0.05"><div class="anno" id="anno_f0">–</div></div>
+      <div class="row"><label>Bølgekorr. <b>f<sub>w</sub></b><span class="hint">Tab. 4-14: trykk = 1,3–1,8</span></label><div class="num"><input type="number" id="fw_n" step="0.05"></div></div>
+      <div class="sld"><input type="range" id="fw" min="1" max="1.8" step="0.05"><div class="anno" id="anno_fw">–</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Bæreevne / kraftkrav berg (4.2.4)</h2>
+      <div class="row"><label>Dim. last/bæreevne <b>R<sub>c;d</sub></b></label><div class="num"><input type="number" id="Rcd_n" step="100"><span class="unit">kN</span></div></div>
+      <div class="note">F<sub>krav</sub> = 1,25 · R<sub>c;d</sub> (kontrollslag). R<sub>c;d</sub> = min(R<sub>b;d</sub> ; N<sub>c,Rd</sub>).</div>
+    </div>
+  </div>
+
+  <!-- ================= KOLONNE B: RESULTAT ================= -->
+  <div>
+    <div class="hero">
+      <div class="lab">MINIMUM LODDVEKT for lang nok støtbølge</div>
+      <div class="big"><span id="o_Mmin">–</span> <small>t</small></div>
+      <div class="sub">pelvekt m<sub>pel</sub> = <span id="o_mpel">–</span> t</div>
+      <div class="bar"><i id="o_bar"></i></div>
+      <div class="sub" id="o_barlab">–</div>
+      <div class="fbox">
+        <div class="eq">τ = m/z ⟶ λ = c·τ = m/(ρ·A)</div>
+        <div class="eq" style="color:#9fe6b0">λ ≥ k·l ⟶ m<sub>min</sub> = k·ρ·A·l = k·m<sub>pel</sub></div>
+        <span class="ref">endim. støtbølgeteori · Pv. 17.3.1</span>
+        <div class="def">Toppspenningen σ<sub>0</sub> er uavhengig av loddmassen (Pv. komm. til 4-51). Massen styrer bølgens varighet/lengde — «et tungt lodd er å foretrekke for å få størst mulig kraft ned til pelespiss» (Pv. 17.3.1).</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Kontroller</h2>
+      <div class="checks">
+        <div class="chk" id="c_lodd"><span class="dot"></span><div class="t"><b>Loddvekt&nbsp; m ≥ m<sub>min</sub></b><span id="c_lodd_s">–</span></div><span class="badge">–</span></div>
+        <div class="chk" id="c_kraft"><span class="dot"></span><div class="t"><b>Kraft til berg&nbsp; F<sub>berg</sub> ≥ 1,25·R<sub>c;d</sub></b><span id="c_kraft_s">–</span></div><span class="badge">–</span></div>
+        <div class="chk" id="c_spenn"><span class="dot"></span><div class="t"><b>Ikke overramming&nbsp; σ<sub>max</sub> ≤ f<sub>yd</sub></b><span id="c_spenn_s">–</span></div><span class="badge">–</span></div>
+        <div class="chk" id="c_fall"><span class="dot"></span><div class="t"><b>Fallhøyde&nbsp; h ≤ h<sub>max</sub></b><span id="c_fall_s">–</span></div><span class="badge">–</span></div>
+        <div class="chk" id="c_klasse"><span class="dot"></span><div class="t"><b>Tverrsnittsklasse&nbsp; D/t ≤ 90·ε²</b><span id="c_klasse_s">–</span></div><span class="badge">–</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Pel- og bølgeegenskaper</h2>
+      <div class="grid">
+        <div class="out"><div class="k">Stålareal A</div><div class="v"><span id="o_As">–</span> <small>mm²</small></div></div>
+        <div class="out"><div class="k">Pelvekt m<sub>pel</sub> = ρ·A·l</div><div class="v"><span id="o_mpel2">–</span> <small>t</small></div></div>
+        <div class="out"><div class="k">Bølgehast. c = √(E/ρ)</div><div class="v"><span id="o_c">–</span> <small>m/s</small></div></div>
+        <div class="out"><div class="k">Impedans z = A·E/c</div><div class="v"><span id="o_z">–</span> <small>MN·s/m</small></div></div>
+        <div class="out"><div class="k">Rundturstid 2l/c</div><div class="v"><span id="o_trt">–</span> <small>ms</small></div></div>
+        <div class="out"><div class="k">Anslagshast. v<sub>0</sub> = √(2gh)</div><div class="v"><span id="o_v0">–</span> <small>m/s</small></div></div>
+        <div class="out"><div class="k">Bølgelengde λ = c·τ</div><div class="v"><span id="o_lam">–</span> <small>m</small></div></div>
+        <div class="out"><div class="k">Dekning λ/l (bør ≥ k)</div><div class="v"><span id="o_n">–</span> <small>×</small></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Rammespenninger &amp; fallhøyde</h2>
+      <div class="grid">
+        <div class="out"><div class="k">Frontspenning σ<sub>0</sub> (4-51)</div><div class="v"><span id="o_s0">–</span> <small>MPa</small></div></div>
+        <div class="out"><div class="k">Maks rammesp. σ<sub>max</sub> (4-52)</div><div class="v"><span id="o_smax">–</span> <small>MPa</small></div></div>
+        <div class="out"><div class="k">Kapasitet σ<sub>dr</sub> = f<sub>yd</sub></div><div class="v"><span id="o_sdr">–</span> <small>MPa</small></div></div>
+        <div class="out"><div class="k">Maks fallhøyde h<sub>max</sub> (4-54)</div><div class="v"><span id="o_hmax">–</span> <small>m</small></div></div>
+        <div class="out"><div class="k">Kraft til berg F<sub>berg</sub></div><div class="v"><span id="o_Fberg">–</span> <small>kN</small></div></div>
+        <div class="out"><div class="k">Kraftkrav F<sub>krav</sub></div><div class="v"><span id="o_Fkrav">–</span> <small>kN</small></div></div>
+        <div class="out"><div class="k">Nødv. kontrollslag-fallh.</div><div class="v"><span id="o_hk">–</span> <small>m</small></div></div>
+        <div class="out"><div class="k">Maks pelelengde m/ valgt lodd</div><div class="v"><span id="o_Lmax">–</span> <small>m</small></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= KOLONNE C: FORMELGRUNNLAG ================= -->
+  <div>
+    <div class="card">
+      <h2>Formelgrunnlag (iht. Peleveiledningen)</h2>
+      <div class="flist">
+        <div class="frow"><div class="eq">A = π·t·(D − t)</div><div class="ref">tynnvegget rør · NS-EN 1993-1-1</div></div>
+        <div class="frow"><div class="eq">c = √(E/ρ) · z = A·E/c = ρ·c·A</div><div class="ref">Peleveiledningen (4-50), Tab. 4-13</div></div>
+        <div class="frow"><div class="eq">v₀ = √(2·g·h) · f₀ = f_i·η·√2</div><div class="ref">Peleveiledningen (4-50)/(4-51)</div></div>
+        <div class="frow"><div class="eq">σ₀ = f₀·√(g·h·ρ·E)</div><div class="ref">Peleveiledningen (4-51)</div></div>
+        <div class="frow"><div class="eq">σ_max = f_w·σ₀</div><div class="ref">Peleveiledningen (4-52)</div></div>
+        <div class="frow"><div class="eq">σ_dr = f_yd = f_yk/γ_M0</div><div class="ref">stål: NS-EN 1993 · Pv. 4.7/7.6 — overfasthet (+25%) droppet</div></div>
+        <div class="frow"><div class="eq">h_max = σ_dr² / (ρ·g·E·(f₀·f_w)²)</div><div class="ref">Peleveiledningen (4-54)</div></div>
+        <div class="frow"><div class="eq">F_berg = σ_max·A · F_krav = 1,25·R_c;d</div><div class="ref">Peleveiledningen 4.2.4 (ref. [1.4])</div></div>
+        <div class="frow"><div class="eq">h_kontroll = (σ_krav/(f₀·f_w))²/(ρ·g·E)</div><div class="ref">(4-52) løst for h · σ_krav = F_krav/A</div></div>
+        <div class="frow"><div class="eq">ε = √(235/f_yk) · D/t ≤ 90·ε²</div><div class="ref">NS-EN 1993-1-1 (klasse ≤ 3)</div></div>
+        <div class="frow" style="border-left:3px solid #9fe6b0"><div class="eq">m_min = k·ρ·A·l = k·m_pel</div><div class="ref">utledet, endim. støtbølgeteori · Pv. 17.3.1 (ikke nummerert formel)</div></div>
+      </div>
+
+      <details>
+        <summary>▸ Nomenklatur</summary>
+        <table class="nom">
+          <tr><td>A</td><td>pelens tverrsnittsareal</td><td>—</td></tr>
+          <tr><td>l</td><td>lengde av pel ved ramming</td><td>—</td></tr>
+          <tr><td>E, ρ</td><td>stålets E-modul og densitet</td><td>Tab. 4-13</td></tr>
+          <tr><td>c</td><td>bølgeforplantn.hast. = √(E/ρ)</td><td>(4-50)</td></tr>
+          <tr><td>z</td><td>pelens ak. impedans = A·E/c</td><td>(4-50)</td></tr>
+          <tr><td>m</td><td>fallloddets masse</td><td>symbolliste</td></tr>
+          <tr><td>h</td><td>loddets fallhøyde</td><td>(4-51)</td></tr>
+          <tr><td>v₀</td><td>anslagshastighet = √(2gh)</td><td>(4-50)</td></tr>
+          <tr><td>η</td><td>virkningsgrad energioverf.</td><td>(4-50)</td></tr>
+          <tr><td>f₀</td><td>utstyrsfaktor = f_i·η·√2</td><td>(4-51)</td></tr>
+          <tr><td>f_w</td><td>bølgekorreksjon</td><td>Tab. 4-14</td></tr>
+          <tr><td>σ₀</td><td>frontspenning støtbølge</td><td>(4-51)</td></tr>
+          <tr><td>σ_max</td><td>maks rammespenning</td><td>(4-52)</td></tr>
+          <tr><td>σ_dr</td><td>dim. dyn. fasthet (stål = f_yd)</td><td>4.7/7.6</td></tr>
+          <tr><td>h_max</td><td>maksimal fallhøyde</td><td>(4-54)</td></tr>
+          <tr><td>N_s</td><td>bæreevnefaktor berg = 4,0</td><td>(4-19)</td></tr>
+          <tr><td>R_c;d</td><td>pelens dim. bæreevne/last</td><td>4.2.4</td></tr>
+        </table>
+      </details>
+
+      <details>
+        <summary>▸ Referanser</summary>
+        <ul class="reflist">
+          <li><b>Peleveiledningen 2019</b> — 4.2.4 peler til berg / kontrollslag; 4.6 rammespenninger (4-50…4-52); 4.7 maks fallhøyde (4-54); Tab. 4-13 materialkonstanter; Tab. 4-14 f<sub>w</sub>; 7.6 σ<sub>dr</sub> betong (7-1); 17.3.1 PDA/CAPWAP, støtbølgelengde, tungt lodd.</li>
+          <li><b>NS-EN 1993-1-1 / -5</b> — stål/stålpeler, tverrsnittsklasse, γ<sub>M0</sub>.</li>
+          <li><b>NS-EN 10210 / 10025-2</b> — f<sub>yk</sub> (R<sub>eH</sub>).</li>
+          <li><b>ref. [1.4]</b> = NS-EN 1997-1.</li>
+          <li><b>Kynningsrud</b> — Stålspunt/Stålrør, dimensjonstabell (Almanakk 2012).</li>
+        </ul>
+        <div class="note">Kriteriet m<sub>min</sub> = k·m<sub>pel</sub> er utledet fra endim. støtbølgeteori og forankret i Pv. 17.3.1 — ikke en nummerert formel i veiledningen. k bør vurderes av geotekniker.</div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+const g = 9.80665;
+// Kynningsrud stålrør: ytre diameter -> tilgjengelige godstykkelser [mm]
+const ROR = {
+  "323.9":[5.0,8.0,10.0,12.5],
+  "406.4":[5.0,8.0,10.0,12.5],
+  "508":[5.0,6.3,8.0,10.0,12.5],
+  "610":[6.3,8.0,10.0,12.5],
+  "711":[6.3,8.0,8.8,10.0,12.5,14.2],
+  "813":[6.3,8.0,8.8,10.0,12.5,14.2,16.0],
+  "914":[8.0,10.0,12.5,14.2,16.0],
+  "1016":[8.0,10.0,12.5,14.2,16.0],
+  "1220":[10.0,12.5,14.2]
+};
+const NUM = ["fyk","gs","E","rho","L","M","k","H","f0","fw","Rcd"];
+const DEF = {fyk:355,gs:1.05,E:210,rho:7850,L:17.2,M:10,k:2.0,H:1.05,f0:1.2,fw:1.8,Rcd:6500};
+const SLIDERS = ["M","H","f0","fw"];
+
+function get(id){return parseFloat(document.getElementById(id).value);}
+
+// fyll diameter-liste
+const Dsel=document.getElementById("Dsel"), tsel=document.getElementById("tsel");
+for(const D of Object.keys(ROR)){
+  const o=document.createElement("option"); o.value=D; o.textContent=D.replace(".",","); Dsel.appendChild(o);
+}
+function fyllTykkelser(keepT){
+  const D=Dsel.value; tsel.innerHTML="";
+  for(const t of ROR[D]){
+    const o=document.createElement("option"); o.value=t; o.textContent=t.toLocaleString("no-NO",{minimumFractionDigits:1}); tsel.appendChild(o);
+  }
+  // behold valgt t hvis mulig, ellers tykkeste
+  const opts=ROR[D];
+  if(keepT!=null && opts.includes(keepT)) tsel.value=keepT;
+  else tsel.value=opts[opts.length-1];
+}
+Dsel.value="813"; fyllTykkelser(14.2);
+Dsel.addEventListener("change",()=>{ const prev=parseFloat(tsel.value); fyllTykkelser(prev); calc(); });
+tsel.addEventListener("change",calc);
+
+// init tall-input + slidere
+for(const id of NUM){ const n=document.getElementById(id+"_n"); if(n)n.value=DEF[id]; }
+for(const id of SLIDERS){ const s=document.getElementById(id); if(s)s.value=DEF[id]; }
+for(const id of NUM){
+  const n=document.getElementById(id+"_n"), s=document.getElementById(id);
+  if(n)n.addEventListener("input",()=>{ if(s)s.value=n.value; calc(); });
+  if(s)s.addEventListener("input",()=>{ if(n)n.value=s.value; calc(); });
+}
+
+function fmt(x,d=0){ if(!isFinite(x))return "–"; return x.toLocaleString("no-NO",{minimumFractionDigits:d,maximumFractionDigits:d}); }
+function badge(elId,sId,ok,detail){
+  const el=document.getElementById(elId);
+  el.classList.remove("ok","bad"); el.classList.add(ok?"ok":"bad");
+  el.querySelector(".badge").textContent = ok?"OK":"IKKE OK";
+  document.getElementById(sId).textContent = detail;
+}
+// grønt gyldighetsbånd på en slider + annotert min/max (lukket form)
+function setBand(id, lo, hi, annoId, unit, dec, lowerOnly){
+  const s=document.getElementById(id), smin=+s.min, smax=+s.max, anno=document.getElementById(annoId);
+  const grey="#222c38", u = unit?(" "+unit):"";
+  const fr=v=>Math.max(0,Math.min(100,(v-smin)/(smax-smin)*100));
+  let infeasible = !isFinite(lo) || (!lowerOnly && (!isFinite(hi) || hi<=lo));
+  const vlo=Math.max(lo,smin), vhi=Math.min(lowerOnly?smax:hi,smax);
+  if(!infeasible && vhi<=vlo) infeasible=true;
+  if(infeasible){
+    s.style.setProperty("--band",grey);
+    anno.innerHTML = (lowerOnly && isFinite(lo))
+      ? '<span style="color:var(--bad)">≥ '+fmt(lo,dec)+u+' — over slidermaks</span>'
+      : '<span style="color:var(--bad)">ingen gyldig range</span>';
+    return;
+  }
+  const a=fr(vlo), b=fr(vhi);
+  s.style.setProperty("--band",
+    "linear-gradient(90deg,"+grey+" 0 "+a+"%,rgba(52,199,89,.5) "+a+"% "+b+"%,"+grey+" "+b+"% 100%)");
+  const lotxt = fmt(lo,dec)+(lo<smin?" ↓":"");
+  const hitxt = lowerOnly ? "—" : fmt(hi,dec)+(hi>smax?" ↑":"");
+  anno.innerHTML = lowerOnly
+    ? "gyldig <b>≥ "+lotxt+"</b>"+u
+    : "gyldig <b>"+lotxt+" – "+hitxt+"</b>"+u;
+}
+
+function calc(){
+  const D=parseFloat(Dsel.value)/1000, t=parseFloat(tsel.value)/1000, L=get("L_n");
+  const fyk=get("fyk_n")*1e6, gs=get("gs_n"), E=get("E_n")*1e9, rho=get("rho_n");
+  const k=get("k_n"), M=get("M_n")*1000, H=get("H_n"), f0=get("f0_n"), fw=get("fw_n");
+  const Rcd=get("Rcd_n")*1000;
+
+  const A = Math.PI*t*(D-t);
+  const m_pel = rho*A*L;
+  const c = Math.sqrt(E/rho);
+  const z = rho*c*A;
+  const t_rt = 2*L/c;
+  const v0 = Math.sqrt(2*g*H);
+  const M_min = k*m_pel;
+  const lam = M/(rho*A);
+  const n_dek = lam/L;
+
+  const s0 = f0*Math.sqrt(rho*g*H*E);
+  const smax = fw*s0;
+  const fyd = fyk/gs, sdr = fyd;
+  const hmax = sdr*sdr/(rho*g*E*Math.pow(f0*fw,2));
+  const Fberg = smax*A;
+  const Fkrav = 1.25*Rcd;
+  const skrav = Fkrav/A;
+  const hk = Math.pow(skrav/(f0*fw),2)/(rho*g*E);
+  const eps = Math.sqrt(235e6/fyk);
+  const dt_ratio = D/t, dt_lim = 90*eps*eps;
+  const Lmax = M/(k*rho*A);
+
+  // katalog-note
+  document.getElementById("kat_A").textContent=fmt(A*1e4,0);     // cm2
+  document.getElementById("kat_kg").textContent=fmt(rho*A,0);    // kg/m
+
+  // hero
+  document.getElementById("o_Mmin").textContent=fmt(M_min/1000,2);
+  document.getElementById("o_mpel").textContent=fmt(m_pel/1000,2);
+  const ratio = M/M_min, bar=document.getElementById("o_bar");
+  bar.style.width=Math.min(100,ratio*50)+"%";
+  bar.style.background = M>=M_min ? "linear-gradient(90deg,#2a7,#34c759)" : "linear-gradient(90deg,#a33,#ff453a)";
+  document.getElementById("o_barlab").innerHTML =
+    "Valgt lodd <b>"+fmt(M/1000,2)+" t</b> = "+fmt(ratio,2)+"× minimum ("+(M>=M_min?"tilstrekkelig":"FOR LETT")+")";
+
+  const set=(id,v)=>document.getElementById(id).textContent=v;
+  set("o_As",fmt(A*1e6,0)); set("o_mpel2",fmt(m_pel/1000,2)); set("o_c",fmt(c,0));
+  set("o_z",fmt(z/1e6,2)); set("o_trt",fmt(t_rt*1000,2)); set("o_v0",fmt(v0,2));
+  set("o_lam",fmt(lam,1)); set("o_n",fmt(n_dek,2));
+  set("o_s0",fmt(s0/1e6,1)); set("o_smax",fmt(smax/1e6,1)); set("o_sdr",fmt(sdr/1e6,1));
+  set("o_hmax",fmt(hmax,2)); set("o_Fberg",fmt(Fberg/1000,0)); set("o_Fkrav",fmt(Fkrav/1000,0));
+  set("o_hk",fmt(hk,2)); set("o_Lmax",fmt(Lmax,1));
+
+  badge("c_lodd","c_lodd_s", M>=M_min,"m "+fmt(M/1000,2)+" t  vs  m_min "+fmt(M_min/1000,2)+" t");
+  badge("c_kraft","c_kraft_s", Fberg>=Fkrav,"F_berg "+fmt(Fberg/1000,0)+" vs F_krav "+fmt(Fkrav/1000,0)+" kN");
+  badge("c_spenn","c_spenn_s", smax<=sdr,"σ_max "+fmt(smax/1e6,1)+" vs f_yd "+fmt(sdr/1e6,1)+" MPa");
+  badge("c_fall","c_fall_s", H<=hmax,"h "+fmt(H,2)+" vs h_max "+fmt(hmax,2)+" m");
+  badge("c_klasse","c_klasse_s", dt_ratio<=dt_lim,"D/t "+fmt(dt_ratio,1)+" vs 90·ε² "+fmt(dt_lim,1));
+
+  // ---- gyldighetsområder per slider (alt grønt), gitt nåværende verdi av de andre ----
+  // σ_max = f_w·f_0·√(ρ·g·E)·√H skal ligge i [σ_krav , f_yd];  M-kontrollen er frakoblet (kun loddvekt)
+  const rgE = rho*g*E, sqrtH = Math.sqrt(rgE*H);
+  const f0lo = skrav/(fw*sqrtH),  f0hi = fyd/(fw*sqrtH);   // f0 ∈ [σ_krav/B , f_yd/B], B=f_w·√(ρgEH)
+  const fwlo = skrav/(f0*sqrtH),  fwhi = fyd/(f0*sqrtH);   // symmetrisk
+  setBand("M",  M_min/1000, null, "anno_M",  "t", 2, true);  // M ≥ M_min
+  setBand("H",  hk,   hmax, "anno_H",  "m", 2, false);        // [h_kontroll , h_max]
+  setBand("f0", f0lo, f0hi, "anno_f0", "",  2, false);
+  setBand("fw", fwlo, fwhi, "anno_fw", "",  2, false);
+}
+calc();
+</script>
+</body>
+</html>

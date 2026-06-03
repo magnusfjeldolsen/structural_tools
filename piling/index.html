@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-BFVZQQ2LYN');
+</script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Steel pipe pile (stålrørspel) design tools. Currently: driving criterion / drop-weight check for tip-bearing piles driven to rock without soil shaft support (draft, per Peleveiledningen 2019).">
+  <meta name="keywords" content="piling, pile, steel pipe pile, stålrørspel, pile driving, rammekriterium, peleveiledningen, tip bearing, point bearing, rock, geotechnical, steel, driveability">
+  <title>Piling – Steel Pipe Pile Calculators (Draft)</title>
+
+  <!-- Tailwind CSS -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen">
+
+  <main class="w-full max-w-5xl mx-auto p-6">
+    <!-- Header -->
+    <div class="flex justify-end mb-4">
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
+        ← Back to Tools
+      </a>
+    </div>
+
+    <!-- DRAFT WARNING -->
+    <div class="mb-6 flex items-start gap-3 px-5 py-4 bg-red-600 border-2 border-red-400 rounded-lg shadow-lg">
+      <svg class="w-7 h-7 text-white flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+      <div>
+        <h3 class="text-white font-bold text-base">⚠ Draft module — may be incomplete and may produce incorrect results</h3>
+        <p class="text-red-100 text-sm mt-1">Only the rock tip-bearing driving criterion is implemented, and it is a simplified screening tool. Verify everything independently. Do not use for design.</p>
+      </div>
+    </div>
+
+    <div class="text-center mb-8">
+      <h1 class="text-4xl font-bold text-white mb-3">Steel Pipe Piles</h1>
+      <p class="text-lg text-gray-300 max-w-3xl mx-auto leading-relaxed">
+        Design checks for driven steel pipe piles (stålrørspeler). Choose a pile type below.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+
+      <!-- Active: tip bearing on rock -->
+      <a href="./tip-bearing-on-rock.html"
+         class="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-blue-500 rounded-xl p-6 transition group">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xl font-semibold text-white">Tip-bearing on rock</h2>
+          <span class="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded-full">DRAFT</span>
+        </div>
+        <p class="text-gray-400 text-sm">
+          Driving criterion / drop-weight check for point-bearing piles driven to rock,
+          <strong>without soil shaft support</strong> (Peleveiledningen 2019, 1-D stress-wave theory).
+        </p>
+        <span class="inline-block mt-3 text-blue-400 text-sm group-hover:translate-x-1 transition-transform">Open calculator →</span>
+      </a>
+
+      <!-- Coming soon: tip bearing in soil -->
+      <div class="block bg-gray-800/50 border border-gray-800 rounded-xl p-6 opacity-60 cursor-not-allowed">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xl font-semibold text-gray-400">Tip-bearing in soil</h2>
+          <span class="px-2 py-0.5 bg-gray-700 text-gray-400 text-xs font-bold rounded-full">COMING SOON</span>
+        </div>
+        <p class="text-gray-500 text-sm">End-bearing resistance of piles founded in soil.</p>
+      </div>
+
+      <!-- Coming soon: friction in soil -->
+      <div class="block bg-gray-800/50 border border-gray-800 rounded-xl p-6 opacity-60 cursor-not-allowed">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xl font-semibold text-gray-400">Friction in soil</h2>
+          <span class="px-2 py-0.5 bg-gray-700 text-gray-400 text-xs font-bold rounded-full">COMING SOON</span>
+        </div>
+        <p class="text-gray-500 text-sm">Shaft-friction (skin-friction) resistance along the embedded length.</p>
+      </div>
+
+      <!-- Coming soon: friction + tip in soil -->
+      <div class="block bg-gray-800/50 border border-gray-800 rounded-xl p-6 opacity-60 cursor-not-allowed">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xl font-semibold text-gray-400">Friction + tip in soil</h2>
+          <span class="px-2 py-0.5 bg-gray-700 text-gray-400 text-xs font-bold rounded-full">COMING SOON</span>
+        </div>
+        <p class="text-gray-500 text-sm">Combined shaft-friction and end-bearing resistance.</p>
+      </div>
+
+    </div>
+  </main>
+
+</body>
+</html>

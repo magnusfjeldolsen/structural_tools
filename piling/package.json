@@ -1,0 +1,6 @@
+{
+  "name": "piling",
+  "private": true,
+  "type": "module",
+  "description": "In-browser pile design calculators (plain HTML/ESM, no build). package.json only marks .js as ES modules for Node-based tests; the browser loads the modules directly."
+}
