@@ -41,6 +41,16 @@ Test at: https://magnusfjeldolsen.github.io/structural_tools/
 
 **⚠️ ALWAYS READ [DEPLOYMENT.md](DEPLOYMENT.md) FOR FULL DETAILS** before modifying deployment workflows, build processes, or module structure.
 
+### Deployment gotchas every agent must know
+
+The live site is the **`gh-pages` branch** (GitHub Pages "legacy" / deploy-from-branch mode), auto-built from **`master`** by `.github/workflows/deploy-all-modules.yml` on every push that touches a module path. These rules are non-obvious and have caused real bugs — full detail in [DEPLOYMENT.md](DEPLOYMENT.md):
+
+- **A module is published only if its folder is in the workflow's copy-loop allowlist** (`for dir in … ; do` in `deploy-all-modules.yml`). If it's missing there, the page **404s even when committed and in the registry** — also add `'<folder>/**'` to that workflow's `paths:` trigger.
+- **`module-registry/module-registry.json` is auto-generated** on every deploy by `module-registry/generate-registry.js` — **do NOT hand-edit it** (changes are overwritten). The generator scans each top-level folder's **`index.html`** (`<title>` / `<meta name="description|keywords">`), so a module needs an `index.html` to be searchable, and its registry URL is forced to `./<folder>/index.html`.
+- **Merging a PR into `master` is gated by a required CI check** (`2dfea type-check + build + test`, from `.github/workflows/pr-checks.yml`) enforced by a branch-protection ruleset — **not** bypassable with `--admin`. It always runs but skips the heavy 2dfea build when no 2dfea files changed.
+- **Editing `CLAUDE.md` / `DEPLOYMENT.md` does NOT trigger a deploy** (root docs aren't in the `paths:` filter).
+- After a rebase-merge, your **local `master` can diverge** from origin (gh can't fast-forward it) and the working tree may show stale content — trust `origin/master` / the live site; `git reset --hard origin/master` to resync.
+
 ### Quick Start: Local Development
 
 For local testing before deployment:
@@ -67,7 +77,7 @@ The project uses a **hybrid deployment model**:
 
 **Automatic deployment** is triggered by:
 1. Push to `master` or `main` branch
-2. Changes in `2dfea/` directory OR `.github/workflows/deploy-2dfea.yml` file
+2. Changes under any module directory, `index.html`, `module-registry/`, or `.github/workflows/deploy-all-modules.yml` (see the `paths:` filter in that workflow)
 3. GitHub Actions workflow automatically:
    - Installs dependencies
    - Type-checks the code
@@ -165,7 +175,9 @@ This is automatically handled in vite.config.ts when NODE_ENV=production.
 ### Key Files
 
 - **Deployment Guide**: `DEPLOYMENT.md` (comprehensive reference)
-- **Workflow**: `.github/workflows/deploy-2dfea.yml`
+- **Deploy Workflow**: `.github/workflows/deploy-all-modules.yml` (build + publish all modules)
+- **PR gate Workflow**: `.github/workflows/pr-checks.yml` (required `2dfea type-check + build + test`)
+- **Registry generator**: `module-registry/generate-registry.js` (auto-builds `module-registry.json`)
 - **2dfea Config**: `2dfea/vite.config.ts`
 - **2dfea Package**: `2dfea/package.json`
 - **Worker**: `2dfea/public/workers/solverWorker.js`
