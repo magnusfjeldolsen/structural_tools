@@ -478,37 +478,6 @@
       
       <div class="grid md:grid-cols-2 gap-8 mb-8">
         
-        <!-- Steel Fire Temperature Tool -->
-        <div class="tool-card rounded-xl p-8 pulse-glow">
-          <div class="flex items-center mb-4">
-            <div class="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center mr-4">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
-              </svg>
-            </div>
-            <h3 class="text-2xl font-bold text-white">Steel Fire Temperature</h3>
-          </div>
-          
-          <p class="text-gray-300 mb-6 leading-relaxed">
-            Calculate fire resistance of unprotected steel structures with interactive temperature simulation. 
-            Features Am/V ratio calculation, shadow effects, and detailed temperature-time curves.
-          </p>
-          
-          <div class="flex flex-wrap gap-2 mb-6">
-            <span class="px-3 py-1 bg-red-500/20 text-red-300 rounded-full text-sm">Fire Resistance</span>
-            <span class="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-sm">Temperature Simulation</span>
-            <span class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">Am/V Calculation</span>
-          </div>
-          
-          <a href="./steel_fire_temperature/index.html" 
-             class="inline-flex items-center px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition group">
-            Launch Calculator
-            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-          </a>
-        </div>
-
         <!-- Steel Column Flexural Buckling Tool -->
         <div class="tool-card rounded-xl p-8 pulse-glow">
           <div class="flex items-center mb-4">
@@ -541,66 +510,30 @@
           </a>
         </div>
 
-        <!-- Two-Sided Hat Profile Tool -->
+        <!-- Steel Profile Calculator -->
         <div class="tool-card rounded-xl p-8">
-          <!-- UNFINISHED WARNING -->
-          <div class="mb-4 flex items-center gap-2 px-4 py-2 bg-red-600 border-2 border-red-400 rounded-lg">
-            <svg class="w-5 h-5 text-white flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-            <span class="text-white text-sm font-bold">⚠ UNFINISHED — may produce INCORRECT results. Not for design use.</span>
-          </div>
           <div class="flex items-center mb-4">
-            <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mr-4">
+            <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mr-4">
               <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2H9a2 2 0 00-2 2" />
               </svg>
             </div>
-            <h3 class="text-2xl font-bold text-white">Two-Sided Hat Profile</h3>
+            <h3 class="text-2xl font-bold text-white">Steel Profile Calculator</h3>
           </div>
           
           <p class="text-gray-300 mb-6 leading-relaxed">
-            Calculate structural capacities and cross-sectional classifications for two-sided hat profiles. 
-            Features Eurocode 3 compliance with detailed geometric property calculations.
+            Compare IPE, HEA, and HEB steel profiles for optimal structural performance and weight efficiency. 
+            Features moment capacity, deflection analysis, and comprehensive profile comparison across different series.
           </p>
           
           <div class="flex flex-wrap gap-2 mb-6">
-            <span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm">Eurocode 3</span>
-            <span class="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-sm">Cross-Section Class</span>
-            <span class="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm">Hat Profile</span>
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Profile Comparison</span>
+            <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">Weight Optimization</span>
+            <span class="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm">Deflection Analysis</span>
           </div>
           
-          <a href="./THP/index.html" 
-             class="inline-flex items-center px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition group">
-            Launch Calculator
-            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-          </a>
-        </div>
-
-        <!-- Weld Capacity Calculator -->
-        <div class="tool-card rounded-xl p-8">
-          <div class="flex items-center mb-4">
-            <div class="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center mr-4">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-              </svg>
-            </div>
-            <h3 class="text-2xl font-bold text-white">Weld Capacity Calculator</h3>
-          </div>
-          
-          <p class="text-gray-300 mb-6 leading-relaxed">
-            Calculate weld capacity and utilization for steel welded connections. 
-            Features comprehensive stress analysis with normal force, shear force, and moment combinations using von Mises criteria.
-          </p>
-          
-          <div class="flex flex-wrap gap-2 mb-6">
-            <span class="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-sm">Weld Design</span>
-            <span class="px-3 py-1 bg-red-500/20 text-red-300 rounded-full text-sm">von Mises Stress</span>
-            <span class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">Capacity Analysis</span>
-          </div>
-          
-          <a href="./weld_capacity/index.html" 
-             class="inline-flex items-center px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition group">
+          <a href="./steel_beam_relative_deisgn/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition group">
             Launch Calculator
             <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -639,30 +572,30 @@
           </a>
         </div>
 
-        <!-- Steel Profile Calculator -->
+        <!-- Weld Capacity Calculator -->
         <div class="tool-card rounded-xl p-8">
           <div class="flex items-center mb-4">
-            <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mr-4">
+            <div class="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center mr-4">
               <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2H9a2 2 0 00-2 2" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
               </svg>
             </div>
-            <h3 class="text-2xl font-bold text-white">Steel Profile Calculator</h3>
+            <h3 class="text-2xl font-bold text-white">Weld Capacity Calculator</h3>
           </div>
           
           <p class="text-gray-300 mb-6 leading-relaxed">
-            Compare IPE, HEA, and HEB steel profiles for optimal structural performance and weight efficiency. 
-            Features moment capacity, deflection analysis, and comprehensive profile comparison across different series.
+            Calculate weld capacity and utilization for steel welded connections. 
+            Features comprehensive stress analysis with normal force, shear force, and moment combinations using von Mises criteria.
           </p>
           
           <div class="flex flex-wrap gap-2 mb-6">
-            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Profile Comparison</span>
-            <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">Weight Optimization</span>
-            <span class="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm">Deflection Analysis</span>
+            <span class="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-sm">Weld Design</span>
+            <span class="px-3 py-1 bg-red-500/20 text-red-300 rounded-full text-sm">von Mises Stress</span>
+            <span class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">Capacity Analysis</span>
           </div>
           
-          <a href="./steel_beam_relative_deisgn/index.html" 
-             class="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition group">
+          <a href="./weld_capacity/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition group">
             Launch Calculator
             <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -732,31 +665,66 @@
           </a>
         </div>
 
-        <!-- Steel Column Flexural Buckling Tool -->
+        <!-- Steel Fire Temperature Tool -->
         <div class="tool-card rounded-xl p-8 pulse-glow">
           <div class="flex items-center mb-4">
-            <div class="w-12 h-12 bg-cyan-500 rounded-lg flex items-center justify-center mr-4">
+            <div class="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center mr-4">
               <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
               </svg>
             </div>
-            <h3 class="text-2xl font-bold text-white">Steel Column Flexural Buckling</h3>
+            <h3 class="text-2xl font-bold text-white">Steel Fire Temperature</h3>
           </div>
-
+          
           <p class="text-gray-300 mb-6 leading-relaxed">
-            Calculate flexural buckling capacity of compression members per EC3-1-1 Section 6.3.1.
-            Features optional fire design with critical temperature calculation using Brent's method, steel section database integration, and detailed calculation reports.
+            Calculate fire resistance of unprotected steel structures with interactive temperature simulation. 
+            Features Am/V ratio calculation, shadow effects, and detailed temperature-time curves.
           </p>
-
+          
           <div class="flex flex-wrap gap-2 mb-6">
-            <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">EC3-1-1 6.3.1</span>
-            <span class="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-sm">Fire Design</span>
-            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Critical Temperature</span>
-            <span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm">Steel Database</span>
+            <span class="px-3 py-1 bg-red-500/20 text-red-300 rounded-full text-sm">Fire Resistance</span>
+            <span class="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-sm">Temperature Simulation</span>
+            <span class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">Am/V Calculation</span>
           </div>
+          
+          <a href="./steel_fire_temperature/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
 
-          <a href="./flexural_buckling/index.html"
-             class="inline-flex items-center px-6 py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold rounded-lg transition group">
+        <!-- Two-Sided Hat Profile Tool -->
+        <div class="tool-card rounded-xl p-8">
+          <!-- UNFINISHED WARNING -->
+          <div class="mb-4 flex items-center gap-2 px-4 py-2 bg-red-600 border-2 border-red-400 rounded-lg">
+            <svg class="w-5 h-5 text-white flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+            <span class="text-white text-sm font-bold">⚠ UNFINISHED — may produce INCORRECT results. Not for design use.</span>
+          </div>
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Two-Sided Hat Profile</h3>
+          </div>
+          
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Calculate structural capacities and cross-sectional classifications for two-sided hat profiles. 
+            Features Eurocode 3 compliance with detailed geometric property calculations.
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm">Eurocode 3</span>
+            <span class="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-sm">Cross-Section Class</span>
+            <span class="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm">Hat Profile</span>
+          </div>
+          
+          <a href="./THP/index.html" 
+             class="inline-flex items-center px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition group">
             Launch Calculator
             <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="no" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Beregning av uttrekkskapasitet for fjellboltgrupper iht. SVV 220. Kontroller stag, heft og bergkjegle.">
+  <meta name="keywords" content="fjellbolter, uttrekking, forankringslengde, SVV 220, bergkjegle, geoteknikk">
+  <title>Fjellbolter — Uttrekkskapasitet SVV 220</title>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Fjellbolter — Uttrekkskapasitet SVV 220">
+  <meta property="og:description" content="Beregn forankringslengde for fjellboltgrupper iht. SVV Håndbok V220">
+  <meta property="og:type" content="website">
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-BFVZQQ2LYN');
+  </script>
+
+  <!-- Centralized CSS -->
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/report-print.css">
+
+  <!-- Tailwind CSS -->
+  <script>tailwind.config = { darkMode: 'class' };</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Module scripts -->
+  <script src="rockData.js"></script>
+  <script src="rockbolts_api.js"></script>
+</head>
+
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
+
+<main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
+
+  <!-- Header -->
+  <div class="flex justify-end print:hidden">
+    <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">← Tilbake til verktøy</a>
+  </div>
+
+  <div class="text-center mb-6">
+    <h1 class="text-3xl font-bold text-white mb-2">Uttrekking av fjellboltgruppe</h1>
+    <p class="text-gray-300">Beregning iht. SVV 220 — Forankringslengde i berg (Kim &amp; Lee)</p>
+  </div>
+
+  <!-- Calculation description -->
+  <div class="bg-gray-700 rounded-lg p-6 print:hidden">
+    <h3 class="text-xl font-semibold text-cyan-400 mb-3">Beregningstittel (valgfri)</h3>
+    <textarea id="calc_description" rows="2"
+      placeholder="Eks: Prosjekt ABC — Veggforankring, midlertidig stag type A ..."
+      class="w-full px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md resize-y text-sm"></textarea>
+  </div>
+
+  <!-- ═══════════════ INPUT FORM ═══════════════ -->
+  <form id="calc-form" onsubmit="event.preventDefault(); calculateAndShow();" class="space-y-6">
+
+    <!-- Row 1: two columns -->
+    <div class="grid md:grid-cols-2 gap-6">
+
+      <!-- ── Belastning og stag ── -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Belastning og stag</h3>
+        <div class="space-y-4">
+
+          <div class="flex items-center gap-4">
+            <label class="text-sm font-medium min-w-[170px] text-right">N<sub>Ed,per stag</sub> (kN):</label>
+            <input type="number" id="N_Ed" value="1632" step="any" required
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label class="text-sm font-medium min-w-[170px] text-right">Stagtype:</label>
+            <select id="stagtype"
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+              <option value="midlertidig" selected>Midlertidig (faktor 0.65)</option>
+              <option value="permanent">Permanent (faktor 0.50)</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label class="text-sm font-medium min-w-[170px] text-right">f<sub>tk</sub> (MPa):</label>
+            <input type="number" id="f_tk" value="900" step="any" required
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          </div>
+
+          <div>
+            <div class="flex items-center gap-4">
+              <label class="text-sm font-medium min-w-[170px] text-right">φ — stagdiameter (mm):</label>
+              <input type="number" id="phi" value="90" step="any" required oninput="updateMinBorehole()"
+                class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Borhull og heftforbindelser ── -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-orange-400 mb-4">Borhull og heftforbindelser</h3>
+        <div class="space-y-4">
+
+          <div>
+            <div class="flex items-center gap-4">
+              <label class="text-sm font-medium min-w-[170px] text-right">d<sub>borhull</sub> (mm):</label>
+              <input type="number" id="d_borhull_valgt" value="140" step="any" required
+                oninput="validateBorehole()"
+                class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-orange-400">
+            </div>
+            <div id="d_min_info" class="ml-[186px] mt-1 text-xs text-cyan-400">Anbefalt min: 1.5·φ = 135 mm</div>
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label class="text-sm font-medium min-w-[170px] text-right">Mørtelklasse:</label>
+            <select id="mortar_class" onchange="updateMortarBond()"
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-orange-400">
+              <option value="1.9">B30 — τd = 1.9 MPa</option>
+              <option value="1.5">B25 — τd = 1.5 MPa</option>
+              <option value="custom">Egendefinert</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label class="text-sm font-medium min-w-[170px] text-right">τ<sub>d,stål-mørtel</sub> (MPa):</label>
+            <input type="number" id="tau_d_staal_mortel" value="1.9" step="any" required
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-orange-400">
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label class="text-sm font-medium min-w-[170px] text-right">Bergtype (mørtel–berg):</label>
+            <select id="rock_type" onchange="updateRockBond()"
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-orange-400">
+              <option value="">— Velg bergtype —</option>
+              <option value="custom">Egendefinert (manuell verdi)</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label class="text-sm font-medium min-w-[170px] text-right">τ<sub>k,mørtel-berg</sub> (MPa):</label>
+            <input type="number" id="tau_k_mortel_berg" value="1.5" step="any" required
+              oninput="setRockTypeCustom()"
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-orange-400">
+          </div>
+
+          <div class="flex items-center gap-4">
+            <label class="text-sm font-medium min-w-[170px] text-right">γ<sub>mørtel-berg</sub>:</label>
+            <input type="number" id="gamma_mortel_berg" value="1.25" step="any" required
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-orange-400">
+          </div>
+
+        </div>
+      </div>
+    </div><!-- end row 1 -->
+
+    <!-- ── Bergmasse og ankergeometri (full width) ── -->
+    <div class="bg-gray-700 rounded-lg p-6">
+      <h3 class="text-xl font-semibold text-green-400 mb-4">Bergmasse og ankergeometri</h3>
+
+      <!-- Rock quality selector -->
+      <div class="flex items-center gap-4 mb-5">
+        <label class="text-sm font-medium min-w-[170px] text-right">Bergkvalitetsklasse:</label>
+        <select id="rock_quality" onchange="updateRockQuality()"
+          class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-green-400">
+          <option value="">— Velg bergkvalitetsklasse —</option>
+        </select>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-6">
+
+        <!-- Col 1: Berg properties -->
+        <div class="space-y-4">
+          <p class="text-xs text-gray-400 font-semibold uppercase tracking-wide">Bergmasseparametere</p>
+
+          <div class="flex items-center gap-3">
+            <label class="text-sm font-medium min-w-[90px] text-right">γ<sub>M,berg</sub>:</label>
+            <input type="number" id="gamma_M" value="3" step="any" required
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-green-400">
+            <span class="text-xs text-gray-400 whitespace-nowrap">typisk 2–3</span>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <label class="text-sm font-medium min-w-[90px] text-right">τ<sub>k</sub> (kPa):</label>
+            <input type="number" id="tau_k_berg" value="50" step="any" required
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-green-400">
+            <span class="text-xs text-gray-400 whitespace-nowrap">skjærstyrke</span>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <label class="text-sm font-medium min-w-[90px] text-right">ψ (°):</label>
+            <input type="number" id="psi" value="40" step="any" required
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-green-400">
+            <span class="text-xs text-gray-400 whitespace-nowrap">bruddvinkel</span>
+          </div>
+        </div>
+
+        <!-- Col 2: Anchor geometry -->
+        <div class="space-y-4">
+          <p class="text-xs text-gray-400 font-semibold uppercase tracking-wide">Ankergeometri</p>
+
+          <div class="flex items-center gap-3">
+            <label class="text-sm font-medium min-w-[90px] text-right">α (°):</label>
+            <input type="number" id="alpha" value="60" min="30" max="90" step="any" required
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-green-400">
+            <span class="text-xs text-gray-400 whitespace-nowrap">30–90° mot berg</span>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <label class="text-sm font-medium min-w-[90px] text-right">η (stk):</label>
+            <input type="number" id="eta" value="1" min="1" step="1" required
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-green-400">
+            <span class="text-xs text-gray-400 whitespace-nowrap">antall stag</span>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <label class="text-sm font-medium min-w-[90px] text-right">D (mm):</label>
+            <input type="number" id="D" value="10000" step="any" required
+              class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-green-400">
+            <span class="text-xs text-gray-400 whitespace-nowrap">senteravstand</span>
+          </div>
+        </div>
+
+        <!-- Col 3: Reference info -->
+        <div class="bg-gray-600 rounded-lg p-4 text-sm text-gray-300 space-y-3">
+          <div>
+            <p class="font-semibold text-gray-100 mb-1">Bruddvinkel ψ</p>
+            <table class="w-full text-xs">
+              <tr><td class="py-0.5">Meget godt berg (f<sub>c</sub> &gt; 50 MPa)</td><td class="text-right text-green-300">ψ ≤ 45°</td></tr>
+              <tr><td class="py-0.5">Godt berg (f<sub>c</sub> = 15–50 MPa)</td><td class="text-right text-yellow-300">ψ ≤ 40°</td></tr>
+              <tr><td class="py-0.5">Dårlig berg (f<sub>c</sub> &lt; 15 MPa)</td><td class="text-right text-red-300">ψ ≤ 30°</td></tr>
+            </table>
+          </div>
+          <div>
+            <p class="font-semibold text-gray-100 mb-1">Ankervinkel α</p>
+            <p class="text-xs">30–90° mot bergoverflaten.<br>α = 90° for vertikale stag.</p>
+          </div>
+          <div>
+            <p class="font-semibold text-gray-100 mb-1">Antall stag η</p>
+            <p class="text-xs">η = 1: enkelt stag.<br>η &gt; 1: stagrekke (eq. 10-29).</p>
+          </div>
+        </div>
+
+      </div><!-- end 3-col grid -->
+    </div><!-- end bergmasse -->
+
+    <!-- Calculate button -->
+    <div class="flex justify-center print:hidden">
+      <button type="submit"
+        class="px-10 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-lg transition shadow-lg">
+        Beregn forankringslengde
+      </button>
+    </div>
+
+  </form><!-- end form -->
+
+  <!-- ═══════════════ RESULTS ═══════════════ -->
+  <div id="results" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50 hidden">
+    <div id="calc-steps" class="text-white"></div>
+  </div>
+
+  <!-- ═══════════════ DETAILED REPORT ═══════════════ -->
+  <div id="report-section" class="bg-gray-700 rounded-lg p-6 mt-6 hidden">
+    <div class="flex justify-between items-center mb-3 print:hidden">
+      <h3 class="text-lg font-semibold text-white cursor-pointer" onclick="toggleReport()">
+        ▼ Detaljert beregningsrapport
+      </h3>
+      <button type="button" onclick="printReport()"
+        class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-lg transition">
+        🖨️ Skriv ut rapport
+      </button>
+    </div>
+    <div id="detailed-report" class="hidden mt-4">
+      <!-- Generated by generateDetailedReport() -->
+    </div>
+  </div>
+
+</main><!-- end main -->
+
+
+<!-- Centralized JS (cookie consent etc.) -->
+<script src="../assets/js/common.js"></script>
+
+
+<!-- ═══════════════ APP SCRIPT ═══════════════ -->
+<script>
+
+  // ── Initialise dropdowns ────────────────────────────────────────────────
+  (function initDropdowns() {
+    const rockTypeEl = document.getElementById('rock_type');
+    window.ROCK_TYPES.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.tau_k;
+      opt.textContent = `${r.name} — τk = ${r.tau_k} MPa`;
+      rockTypeEl.appendChild(opt);
+    });
+
+    const rockQualEl = document.getElementById('rock_quality');
+    window.ROCK_QUALITY.forEach((q, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = q.label;
+      rockQualEl.appendChild(opt);
+    });
+  })();
+
+  // ── Reactive helpers ────────────────────────────────────────────────────
+  function updateMinBorehole() {
+    validateBorehole();
+  }
+
+  function validateBorehole() {
+    const phi  = parseFloat(document.getElementById('phi').value) || 0;
+    const d    = parseFloat(document.getElementById('d_borhull_valgt').value);
+    const dRec = 1.5 * phi;
+    const el   = document.getElementById('d_min_info');
+
+    if (!isNaN(d) && d < phi && phi > 0) {
+      el.textContent  = `⛔ d < φ = ${phi} mm — borhull kan ikke være mindre enn stagdiameteren!`;
+      el.className    = 'ml-[186px] mt-1 text-xs text-red-400 font-semibold';
+    } else if (!isNaN(d) && d < dRec && phi > 0) {
+      el.textContent  = `⚠ d < 1.5·φ = ${dRec.toFixed(0)} mm — ikke normalt. Kontroller!`;
+      el.className    = 'ml-[186px] mt-1 text-xs text-yellow-400 font-semibold';
+    } else {
+      el.textContent  = `Anbefalt min: 1.5·φ = ${dRec.toFixed(0)} mm`;
+      el.className    = 'ml-[186px] mt-1 text-xs text-cyan-400';
+    }
+  }
+
+  function updateMortarBond() {
+    const val = document.getElementById('mortar_class').value;
+    if (val !== 'custom') {
+      document.getElementById('tau_d_staal_mortel').value = val;
+    }
+  }
+
+  function updateRockBond() {
+    const val = document.getElementById('rock_type').value;
+    if (val && val !== 'custom') {
+      document.getElementById('tau_k_mortel_berg').value = val;
+    }
+  }
+
+  function setRockTypeCustom() {
+    document.getElementById('rock_type').value = 'custom';
+  }
+
+  function updateRockQuality() {
+    const idx = document.getElementById('rock_quality').value;
+    if (idx === '') return;
+    const q = window.ROCK_QUALITY[parseInt(idx)];
+    document.getElementById('tau_k_berg').value = q.tau_k_default;
+    document.getElementById('psi').value = q.psi_max;
+  }
+
+  // ── Utilization colour helpers ──────────────────────────────────────────
+  // Dark-mode colours (screen)
+  function utilColorDark(u) {
+    if (u <= 85)  return 'text-green-400';
+    if (u <= 100) return 'text-yellow-400';
+    return 'text-red-400';
+  }
+  // Light-mode colours (print / report)
+  function utilColorLight(u) {
+    if (u <= 85)  return 'text-green-900';
+    if (u <= 100) return 'text-yellow-900';
+    return 'text-red-900';
+  }
+  function utilBgColor(u) {
+    if (u <= 85)  return 'bg-green-400';
+    if (u <= 100) return 'bg-yellow-400';
+    return 'bg-red-400';
+  }
+  function utilLabel(u) {
+    if (u <= 85)  return 'OK';
+    if (u <= 100) return 'HØYT';
+    return 'BRUDD';
+  }
+  function fmt(v, d = 3) { return v.toFixed(d); }
+  function fmtPct(v) { return v.toFixed(1) + ' %'; }
+
+  // ── Governing label lookup ──────────────────────────────────────────────
+  const GOVERNING_LABELS = {
+    Ltb_staal:    'Heft stål–mørtel',
+    Ltb_mortel:   'Heft mørtel–berg',
+    lambda_enkel: 'Bergkjegle, enkelt stag',
+    lambda_rekke: 'Bergkjegle, stagrekke',
+  };
+
+  // ── Toggle / print ──────────────────────────────────────────────────────
+  function toggleReport() {
+    const report = document.getElementById('detailed-report');
+    const header = event.currentTarget;
+    report.classList.toggle('hidden');
+    header.textContent = report.classList.contains('hidden')
+      ? '▼ Detaljert beregningsrapport'
+      : '▲ Detaljert beregningsrapport';
+  }
+  function printReport() { window.print(); }
+
+  // ── Read inputs ─────────────────────────────────────────────────────────
+  function readInputs() {
+    return {
+      N_Ed:               parseFloat(document.getElementById('N_Ed').value),
+      isPermanent:        document.getElementById('stagtype').value === 'permanent',
+      f_tk:               parseFloat(document.getElementById('f_tk').value),
+      phi:                parseFloat(document.getElementById('phi').value),
+      d_borhull_valgt:    parseFloat(document.getElementById('d_borhull_valgt').value),
+      tau_d_staal_mortel: parseFloat(document.getElementById('tau_d_staal_mortel').value),
+      tau_k_mortel_berg:  parseFloat(document.getElementById('tau_k_mortel_berg').value),
+      gamma_mortel_berg:  parseFloat(document.getElementById('gamma_mortel_berg').value),
+      gamma_M:            parseFloat(document.getElementById('gamma_M').value),
+      tau_k_berg:         parseFloat(document.getElementById('tau_k_berg').value),
+      psi:                parseFloat(document.getElementById('psi').value),
+      alpha:              parseFloat(document.getElementById('alpha').value),
+      eta:                parseInt(document.getElementById('eta').value),
+      D:                  parseFloat(document.getElementById('D').value),
+    };
+  }
+
+  // ── Main calculate + render ─────────────────────────────────────────────
+  function calculateAndShow() {
+    const inputs = readInputs();
+
+    // Hard block: borehole cannot be smaller than the bar itself
+    if (inputs.d_borhull_valgt < inputs.phi) {
+      alert(`Borhullsdiameter (${inputs.d_borhull_valgt} mm) er mindre enn stagdiameteren (${inputs.phi} mm). Kan ikke beregne.`);
+      return;
+    }
+
+    const r = window.RockboltsAPI.calcAll(inputs);
+    renderResults(r);
+    generateDetailedReport(r);
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('report-section').classList.remove('hidden');
+    document.getElementById('detailed-report').classList.remove('hidden');
+    document.querySelector('#report-section h3').textContent = '▲ Detaljert beregningsrapport';
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ── Quick results (on-screen) ───────────────────────────────────────────
+  function renderResults(r) {
+    const { results: res, intermediate: im, utilizations: ut, status, inputs } = r;
+    const stagType = inputs.isPermanent ? 'Permanent' : 'Midlertidig';
+
+    const utilBoxes = [
+      { label: 'Stag', sublabel: 'P<sub>p</sub> / R<sub>i</sub>', util: ut.stag,         note: '' },
+      { label: 'Stål–mørtel', sublabel: 'L<sub>tb,stål</sub> / L<sub>innb</sub>', util: ut.staal_mortel, note: '' },
+      { label: 'Mørtel–berg', sublabel: 'L<sub>tb,mørt</sub> / L<sub>innb</sub>', util: ut.mortel_berg,  note: '' },
+      { label: 'Bergkjegle enkel', sublabel: 'λ<sub>enkel</sub> / L<sub>innb</sub>', util: ut.kjegle_enkel, note: '' },
+      { label: 'Bergkjegle rekke', sublabel: 'λ<sub>rekke</sub> / L<sub>innb</sub>', util: ut.kjegle_rekke, note: '' },
+    ];
+
+    // Mark governing length mode
+    const govKeyToIdx = { Ltb_staal: 1, Ltb_mortel: 2, lambda_enkel: 3, lambda_rekke: 4 };
+    const govIdx = govKeyToIdx[res.governing_key];
+    if (govIdx !== undefined) utilBoxes[govIdx].note = 'STYRENDE';
+
+    const boxesHtml = utilBoxes.map((b, i) => {
+      const isGov = b.note === 'STYRENDE';
+      const borderCls = isGov ? 'border-2 border-blue-400' : 'border border-gray-500';
+      const bgCls = isGov ? 'bg-blue-900/30' : 'bg-gray-800';
+      return `
+        <div class="${bgCls} ${borderCls} rounded-lg p-4 text-center">
+          <div class="text-xs text-gray-400 mb-1">${b.sublabel}</div>
+          <div class="text-sm font-semibold text-gray-300 mb-2">${b.label}</div>
+          <div class="text-2xl font-bold ${utilColorDark(b.util)}">${fmtPct(b.util)}</div>
+          <div class="text-xs mt-1 font-semibold ${utilColorDark(b.util)}">${isGov ? '★ STYRENDE' : utilLabel(b.util)}</div>
+          <!-- Progress bar -->
+          <div class="bg-gray-700 rounded-full h-1.5 mt-2">
+            <div class="h-1.5 rounded-full ${utilBgColor(b.util)}" style="width:${Math.min(b.util, 100).toFixed(1)}%"></div>
+          </div>
+        </div>`;
+    }).join('');
+
+    const stag_ok_html = status.stag_ok
+      ? `<span class="text-green-400 font-semibold">OK — stag kapasitet er tilstrekkelig</span>`
+      : `<span class="text-red-400 font-bold">BRUDD — stag kapasitet er utilstrekkelig!</span>`;
+
+    document.getElementById('calc-steps').innerHTML = `
+      <!-- Primary result -->
+      <div class="text-center mb-6 p-6 bg-blue-900/20 border border-blue-500 rounded-xl">
+        <p class="text-gray-400 text-sm mb-1">Nødvendig innboringsdybde</p>
+        <p class="text-5xl font-bold text-blue-300 mb-2">${fmt(res.L_innborring, 2)} m</p>
+        <p class="text-gray-300 text-sm">Styrende bruddmode: <span class="text-blue-300 font-semibold">${res.governing_label}</span></p>
+      </div>
+
+      <!-- Intermediate lengths -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 text-center text-sm">
+        <div class="bg-gray-800 rounded-lg p-3">
+          <p class="text-gray-400 text-xs">Heft stål–mørtel</p>
+          <p class="text-white font-mono font-semibold">${fmt(im.Ltb_staal)} m</p>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3">
+          <p class="text-gray-400 text-xs">Heft mørtel–berg</p>
+          <p class="text-white font-mono font-semibold">${fmt(im.Ltb_mortel)} m</p>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3">
+          <p class="text-gray-400 text-xs">Bergkjegle, enkelt</p>
+          <p class="text-white font-mono font-semibold">${fmt(im.lambda_enkel)} m</p>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3">
+          <p class="text-gray-400 text-xs">Bergkjegle, rekke</p>
+          <p class="text-white font-mono font-semibold">${fmt(im.lambda_rekke)} m</p>
+        </div>
+      </div>
+
+      <!-- Stag check -->
+      <div class="mb-5 text-center text-sm">
+        Stagkapasitet R<sub>i</sub> = <span class="font-mono text-white">${fmt(im.Ri, 1)} kN</span>
+        &nbsp;(${stagType}, A<sub>t</sub> = ${fmt(im.At, 0)} mm²) — ${stag_ok_html}
+      </div>
+
+      <!-- Utilization boxes -->
+      <h3 class="text-lg font-semibold text-gray-300 mb-3">Utnyttelsesgrader</h3>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+        ${boxesHtml}
+      </div>`;
+  }
+
+  // ── Detailed report ─────────────────────────────────────────────────────
+  function generateDetailedReport(r) {
+    const { results: res, intermediate: im, utilizations: ut, status, inputs } = r;
+    const desc = document.getElementById('calc_description').value.trim();
+    const now = new Date().toLocaleString('no-NO');
+    const stagType = inputs.isPermanent ? 'Permanent' : 'Midlertidig';
+    const factor = inputs.isPermanent ? '0.50' : '0.65';
+    const psi_eff = inputs.psi * Math.sin(inputs.alpha * Math.PI / 180);
+
+    const utilRow = (label, formula, val, val_str, max_str, util, governing) => `
+      <tr>
+        <td class="text-gray-800">${label}</td>
+        <td class="font-mono text-gray-700 text-xs">${formula}</td>
+        <td class="text-center font-mono text-gray-800">${val_str}</td>
+        <td class="text-center font-mono text-gray-500">${max_str}</td>
+        <td class="text-center font-bold ${utilColorLight(util)}">${fmtPct(util)}</td>
+        <td class="text-center text-xs font-semibold ${utilColorLight(util)}">${governing ? '★ STYRENDE' : utilLabel(util)}</td>
+      </tr>`;
+
+    document.getElementById('detailed-report').innerHTML = `
+<div class="report-content bg-white text-gray-900 p-8 rounded-lg">
+
+  ${desc ? `<div class="mb-6 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
+    <p class="text-sm text-gray-700 whitespace-pre-wrap">${desc}</p>
+  </div>` : ''}
+
+  <!-- Title -->
+  <div class="text-center mb-8 border-b-2 border-gray-300 pb-4">
+    <h1 class="text-2xl font-bold text-gray-900">Uttrekking av fjellboltgruppe</h1>
+    <p class="text-gray-600 mt-1">Beregning iht. SVV 220 — Forankringslengde i berg (Kim &amp; Lee)</p>
+    <p class="text-xs text-gray-400 mt-1">${now}</p>
+  </div>
+
+  <!-- ─── 1. INNDATA ─── -->
+  <h2 class="text-xl font-bold text-blue-700 border-b-2 border-blue-300 pb-1 mb-4">1. Inndata</h2>
+  <div class="grid grid-cols-2 gap-6 mb-6">
+    <div>
+      <h4 class="font-semibold text-gray-800 mb-2">Belastning og stag</h4>
+      <table class="w-full text-sm">
+        <tr><td class="text-gray-600 py-0.5">N<sub>Ed,per stag</sub></td><td class="font-mono font-semibold">${inputs.N_Ed} kN</td></tr>
+        <tr><td class="text-gray-600 py-0.5">Stagtype</td><td>${stagType}</td></tr>
+        <tr><td class="text-gray-600 py-0.5">f<sub>tk</sub></td><td class="font-mono">${inputs.f_tk} MPa</td></tr>
+        <tr><td class="text-gray-600 py-0.5">φ (stagdiameter)</td><td class="font-mono">${inputs.phi} mm</td></tr>
+      </table>
+      <h4 class="font-semibold text-gray-800 mt-4 mb-2">Borhull og heft</h4>
+      <table class="w-full text-sm">
+        <tr><td class="text-gray-600 py-0.5">d<sub>borhull,valgt</sub></td><td class="font-mono">${inputs.d_borhull_valgt} mm</td></tr>
+        <tr><td class="text-gray-600 py-0.5">τ<sub>d,stål-mørtel</sub></td><td class="font-mono">${inputs.tau_d_staal_mortel} MPa</td></tr>
+        <tr><td class="text-gray-600 py-0.5">τ<sub>k,mørtel-berg</sub></td><td class="font-mono">${inputs.tau_k_mortel_berg} MPa</td></tr>
+        <tr><td class="text-gray-600 py-0.5">γ<sub>mørtel-berg</sub></td><td class="font-mono">${inputs.gamma_mortel_berg}</td></tr>
+      </table>
+    </div>
+    <div>
+      <h4 class="font-semibold text-gray-800 mb-2">Bergmasse og ankergeometri</h4>
+      <table class="w-full text-sm">
+        <tr><td class="text-gray-600 py-0.5">γ<sub>M,berg</sub></td><td class="font-mono">${inputs.gamma_M}</td></tr>
+        <tr><td class="text-gray-600 py-0.5">τ<sub>k,berg</sub></td><td class="font-mono">${inputs.tau_k_berg} kPa</td></tr>
+        <tr><td class="text-gray-600 py-0.5">ψ (bruddvinkel)</td><td class="font-mono">${inputs.psi}°</td></tr>
+        <tr><td class="text-gray-600 py-0.5">α (ankervinkel)</td><td class="font-mono">${inputs.alpha}°</td></tr>
+        <tr><td class="text-gray-600 py-0.5">η (antall stag)</td><td class="font-mono">${inputs.eta}</td></tr>
+        <tr><td class="text-gray-600 py-0.5">D (senteravstand)</td><td class="font-mono">${inputs.D} mm</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ─── 2. DETALJERTE BEREGNINGER ─── -->
+  <h2 class="text-xl font-bold text-purple-700 border-b-2 border-purple-300 pb-1 mb-4 page-break-before">2. Detaljerte beregninger</h2>
+
+  <!-- 2.1 Stag -->
+  <h3 class="text-base font-bold text-gray-800 mt-4 mb-2">2.1 Stagets installerte kapasitet</h3>
+  <div class="bg-gray-50 rounded p-4 text-sm space-y-1">
+    <p>Tverrsnitsareal:&nbsp;&nbsp; A<sub>t</sub> = π·φ²/4 = π·${inputs.phi}²/4 = <strong>${fmt(im.At, 1)} mm²</strong></p>
+    <p>Kapasitetsfaktor (${stagType}): ${factor}</p>
+    <p>Installert kapasitet:&nbsp;&nbsp; R<sub>i</sub> = ${factor} · f<sub>tk</sub> · A<sub>t</sub> = ${factor} · ${inputs.f_tk} · ${fmt(im.At, 1)} / 1000 = <strong>${fmt(im.Ri, 1)} kN</strong></p>
+    <p>Stagkraft:&nbsp;&nbsp; P<sub>p</sub> = N<sub>Ed</sub> = <strong>${inputs.N_Ed} kN</strong></p>
+    <p>Utnyttelse:&nbsp;&nbsp; P<sub>p</sub>/R<sub>i</sub> = ${inputs.N_Ed}/${fmt(im.Ri, 1)} = <strong class="${utilColorLight(ut.stag)}">${fmtPct(ut.stag)}</strong></p>
+  </div>
+
+  <!-- 2.2 Heft stål-mørtel -->
+  <h3 class="text-base font-bold text-gray-800 mt-4 mb-2">2.2 Brudd mellom stag og mørtel</h3>
+  <div class="bg-gray-50 rounded p-4 text-sm space-y-1">
+    <p>Ekvivalent diameter:&nbsp;&nbsp; d<sub>ekv</sub> = φ = ${inputs.phi} mm</p>
+    <p>Nødvendig innboringslengde:</p>
+    <p class="ml-4">L<sub>tb,stål</sub> = P<sub>p</sub> / (τ<sub>d,stål-mørtel</sub> · d<sub>ekv</sub> · π)</p>
+    <p class="ml-4">= ${inputs.N_Ed} / (${inputs.tau_d_staal_mortel} · ${inputs.phi} · π) = <strong>${fmt(im.Ltb_staal)} m</strong></p>
+  </div>
+
+  <!-- 2.3 Heft mørtel-berg -->
+  <h3 class="text-base font-bold text-gray-800 mt-4 mb-2">2.3 Brudd mellom mørtel og berg</h3>
+  <div class="bg-gray-50 rounded p-4 text-sm space-y-1">
+    <p>Anbefalt min. borhullsdiameter:&nbsp;&nbsp; d<sub>min,anbefalt</sub> = 1.5·φ = 1.5·${inputs.phi} = ${fmt(im.d_min_borhull, 0)} mm</p>
+    <p>Brukt borhullsdiameter:&nbsp;&nbsp; <strong>d<sub>borhull</sub> = ${fmt(im.d_borhull, 0)} mm</strong>${im.d_borhull < im.d_min_borhull ? ' <span style="color:#b45309;font-weight:600"> ⚠ Under anbefalt minimum (1.5·φ) — kontroller!</span>' : ''}</p>
+    <p>Dimensjonerende heftfasthet:&nbsp;&nbsp; τ<sub>d,mørt-berg</sub> = τ<sub>k</sub>/γ = ${inputs.tau_k_mortel_berg}/${inputs.gamma_mortel_berg} = <strong>${fmt(im.tau_d_mortel_berg, 4)} MPa</strong></p>
+    <p>Nødvendig innboringslengde:</p>
+    <p class="ml-4">L<sub>tb,mørt</sub> = P<sub>p</sub> / (τ<sub>d,mørt-berg</sub> · d<sub>borhull</sub> · π)</p>
+    <p class="ml-4">= ${inputs.N_Ed} / (${fmt(im.tau_d_mortel_berg, 4)} · ${fmt(im.d_borhull, 0)} · π) = <strong>${fmt(im.Ltb_mortel)} m</strong></p>
+    <p>Styrende heftlengde:&nbsp;&nbsp; L<sub>tb</sub> = max(${fmt(im.Ltb_staal)}, ${fmt(im.Ltb_mortel)}) = <strong>${fmt(im.Ltb)} m</strong></p>
+  </div>
+
+  <!-- 2.4 Bergkjegle enkelt stag -->
+  <h3 class="text-base font-bold text-gray-800 mt-4 mb-2">2.4 Bergkjegle — enkelt stag</h3>
+  <div class="bg-gray-50 rounded p-4 text-sm space-y-1">
+    <p>Effektiv kjeglevinkel:&nbsp;&nbsp; ψ<sub>eff</sub> = ψ · sin(α) = ${inputs.psi}° · sin(${inputs.alpha}°) = <strong>${fmt(psi_eff, 2)}°</strong></p>
+    <p>Forankringslengde (enkelt stag):</p>
+    <p class="ml-4">λ<sub>enkel</sub> = √(γ<sub>M</sub> · P<sub>p</sub> / (τ<sub>k</sub> · π · tan(ψ<sub>eff</sub>)))</p>
+    <p class="ml-4">= √(${inputs.gamma_M} · ${inputs.N_Ed} / (${inputs.tau_k_berg} · π · tan(${fmt(psi_eff, 2)}°)))</p>
+    <p class="ml-4">= <strong>${fmt(im.lambda_enkel)} m</strong></p>
+  </div>
+
+  <!-- 2.5 Bergkjegle stagrekke -->
+  <h3 class="text-base font-bold text-gray-800 mt-4 mb-2">2.5 Bergkjegle — stagrekke (lign. 10-29)</h3>
+  <div class="bg-gray-50 rounded p-4 text-sm space-y-1">
+    <p>Gjennomsnittlig ankervinkel:&nbsp;&nbsp; ᾱ = α = ${inputs.alpha}°,&nbsp;&nbsp; η = ${inputs.eta},&nbsp;&nbsp; D = ${inputs.D} mm</p>
+    <p>λ<sub>rekke</sub> = [−(η−1)·D + √((η−1)²·D² + π·sin(ψ<sub>eff</sub>)·η·P<sub>p</sub>·γ<sub>M</sub>/τ<sub>k</sub>)] / (π·tan(ψ<sub>eff</sub>))</p>
+    <p class="ml-4">= <strong>${fmt(im.lambda_rekke)} m</strong></p>
+  </div>
+
+  <!-- ─── 3. RESULTATER ─── -->
+  <h2 class="text-xl font-bold text-green-700 border-b-2 border-green-300 pb-1 mb-4 mt-8">3. Beregningsresultat</h2>
+
+  <div class="text-center mb-6 p-5 border-2 border-blue-300 rounded-xl bg-blue-50">
+    <p class="text-gray-600 text-sm">Nødvendig innboringsdybde</p>
+    <p class="text-4xl font-bold text-blue-800 my-2">L<sub>innborring</sub> = ${fmt(res.L_innborring, 2)} m</p>
+    <p class="text-sm text-gray-600">L<sub>innborring</sub> = max(L<sub>tb</sub>, λ<sub>enkel</sub>, λ<sub>rekke</sub>) = max(${fmt(im.Ltb)}, ${fmt(im.lambda_enkel)}, ${fmt(im.lambda_rekke)}) m</p>
+    <p class="mt-2 text-sm font-semibold text-blue-700">Styrende bruddmode: ${res.governing_label}</p>
+  </div>
+
+  <!-- ─── 4. UTNYTTELSE ─── -->
+  <h2 class="text-xl font-bold text-orange-700 border-b-2 border-orange-300 pb-1 mb-4">4. Utnyttelsesgrader</h2>
+  <table class="w-full text-sm mb-6">
+    <thead>
+      <tr class="bg-gray-100">
+        <th class="text-left p-2">Bruddmode</th>
+        <th class="text-left p-2">Formel</th>
+        <th class="text-center p-2">Krav. lengde</th>
+        <th class="text-center p-2">L<sub>innb</sub></th>
+        <th class="text-center p-2">Utnyttelse</th>
+        <th class="text-center p-2">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${utilRow('Stag (stålkapasitet)', 'Pp / Ri',
+        ut.stag, `${inputs.N_Ed} kN`, `${fmt(im.Ri,1)} kN`, ut.stag, false)}
+      ${utilRow('Heft stål–mørtel', 'L<sub>tb,stål</sub> / L<sub>innb</sub>',
+        ut.staal_mortel, `${fmt(im.Ltb_staal)} m`, `${fmt(res.L_innborring,2)} m`, ut.staal_mortel, res.governing_key === 'Ltb_staal')}
+      ${utilRow('Heft mørtel–berg', 'L<sub>tb,mørt</sub> / L<sub>innb</sub>',
+        ut.mortel_berg, `${fmt(im.Ltb_mortel)} m`, `${fmt(res.L_innborring,2)} m`, ut.mortel_berg, res.governing_key === 'Ltb_mortel')}
+      ${utilRow('Bergkjegle, enkelt stag', 'λ<sub>enkel</sub> / L<sub>innb</sub>',
+        ut.kjegle_enkel, `${fmt(im.lambda_enkel)} m`, `${fmt(res.L_innborring,2)} m`, ut.kjegle_enkel, res.governing_key === 'lambda_enkel')}
+      ${utilRow('Bergkjegle, stagrekke', 'λ<sub>rekke</sub> / L<sub>innb</sub>',
+        ut.kjegle_rekke, `${fmt(im.lambda_rekke)} m`, `${fmt(res.L_innborring,2)} m`, ut.kjegle_rekke, res.governing_key === 'lambda_rekke')}
+    </tbody>
+  </table>
+
+  <p class="text-xs text-gray-500 mt-4">
+    Utnyttelse ≤ 85 %: OK (grønn) &nbsp;|&nbsp; 85–100 %: Høyt (gul) &nbsp;|&nbsp; &gt; 100 %: Brudd (rød)<br>
+    Utnyttelse for heft og bergkjegle angir forholdet mellom krevd lengde og styrende innboringslengde. Styrende bruddmode er alltid 100 %.
+  </p>
+
+</div><!-- end report-content -->`;
+  }
+
+  // Init on load
+  updateMinBorehole();
+</script>
+
+</body>
+</html>
