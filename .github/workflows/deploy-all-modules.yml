@@ -23,6 +23,7 @@ on:
       - '2dframeanalysis/**'
       - 'cable_designer/**'
       - 'piling/**'
+      - 'rockbolts/**'
       - 'index.html'
       - 'module-registry/**'
       - '.github/workflows/deploy-all-modules.yml'
@@ -113,7 +114,8 @@ jobs:
                      transversal_forces_unstiffened_web \
                      2dframeanalysis \
                      cable_designer \
-                     piling; do
+                     piling \
+                     rockbolts; do
             if [ -d "$dir" ]; then
               echo "  Copying $dir/"
               cp -r "$dir" ./deploy-staging/
