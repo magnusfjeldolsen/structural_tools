@@ -24,6 +24,7 @@ on:
       - 'cable_designer/**'
       - 'piling/**'
       - 'rockbolts/**'
+      - 'geometry_workspace/**'
       - 'index.html'
       - 'module-registry/**'
       - '.github/workflows/deploy-all-modules.yml'
@@ -115,7 +116,8 @@ jobs:
                      2dframeanalysis \
                      cable_designer \
                      piling \
-                     rockbolts; do
+                     rockbolts \
+                     geometry_workspace; do
             if [ -d "$dir" ]; then
               echo "  Copying $dir/"
               cp -r "$dir" ./deploy-staging/
