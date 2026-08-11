@@ -90,28 +90,69 @@
     <aside class="w-80 shrink-0 bg-slate-800 border-r border-slate-700 flex flex-col min-h-0">
       <div class="panel-scroll overflow-y-auto flex-1 p-3 space-y-3">
 
-        <!-- Verktøy -->
-        <div>
+        <!-- Verktøy: symboler som viser hva som lages -->
+        <div class="relative">
           <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Verktøy</h2>
-          <div class="grid grid-cols-3 gap-1.5" id="tool-buttons">
-            <button class="tool-btn px-2 py-2 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600" data-tool="select" title="V">Velg</button>
-            <button class="tool-btn px-2 py-2 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600" data-tool="rect" title="R">Rektangel</button>
-            <button class="tool-btn px-2 py-2 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600" data-tool="shell" title="S">Skall</button>
-            <button class="tool-btn px-2 py-2 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600" data-tool="polygon" title="P">Polygon</button>
-            <button class="tool-btn px-2 py-2 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600" data-tool="circle" title="C">Sirkel</button>
-            <button class="tool-btn px-2 py-2 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600" data-tool="reference" title="O">Nullpunkt</button>
+          <div class="grid grid-cols-6 gap-1" id="tool-buttons">
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="select" title="Velg og rediger (V)" aria-label="Velg">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <path d="M5 3l14 8-6 1.5L10 19 5 3z" stroke-linejoin="round" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="rect" title="Rektangel (R)" aria-label="Rektangel">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <rect x="3.5" y="7" width="17" height="10" rx="0.5" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="shell" title="Skallelement fra senterlinje (S)" aria-label="Skallelement">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <rect x="3.5" y="8.5" width="17" height="7" rx="0.5" />
+                <path d="M2 12h20" stroke-dasharray="3 2" opacity="0.85" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="polygon" title="Polygon (P)" aria-label="Polygon">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <path d="M12 3.5l8 5.5-3 9H7l-3-9z" stroke-linejoin="round" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="circle" title="Sirkel (C)" aria-label="Sirkel">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <circle cx="12" cy="12" r="8" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="reference" title="Sett nullpunkt (O)" aria-label="Nullpunkt">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <circle cx="12" cy="12" r="5.5" />
+                <path d="M12 2v5M12 17v5M2 12h5M17 12h5" />
+              </svg>
+            </button>
+
           </div>
-          <div class="mt-2 grid grid-cols-2 gap-2">
-            <div>
-              <label class="field-label" for="shell-thickness">Skalltykkelse</label>
-              <input id="shell-thickness" type="number" value="200" step="10" />
-            </div>
-            <div>
-              <label class="field-label" for="grid-step">Rutenett / snap</label>
-              <input id="grid-step" type="number" value="50" step="10" min="0" />
-            </div>
+
+          <!-- Meny for det aktive verktøyet -->
+          <div id="tool-popover"
+               class="hidden absolute left-0 right-0 top-full mt-1 z-30 bg-slate-900 border border-slate-600 rounded-lg shadow-xl shadow-black/40 p-3"></div>
+        </div>
+
+        <!-- Visning -->
+        <div class="flex items-end gap-2">
+          <div class="w-28">
+            <label class="field-label" for="grid-step">Rutenett / snap</label>
+            <input id="grid-step" type="number" value="50" step="10" min="0" />
           </div>
-          <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300">
+          <div class="flex-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] text-slate-300 pb-0.5">
             <label class="flex items-center gap-1.5"><input id="chk-snap" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Snap</label>
             <label class="flex items-center gap-1.5"><input id="chk-grid" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Rutenett</label>
             <label class="flex items-center gap-1.5"><input id="chk-net" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Netto omriss</label>
@@ -119,64 +160,9 @@
           </div>
         </div>
 
-        <!-- Numerisk innlegging -->
-        <details class="bg-slate-750 rounded border border-slate-700" open>
-          <summary class="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-2">
-            <span class="chev">›</span> Legg inn med tall
-          </summary>
-          <div class="p-3 pt-0 space-y-3">
-
-            <div class="space-y-2">
-              <div class="text-xs text-slate-300 font-medium">Rektangel</div>
-              <div class="grid grid-cols-4 gap-1.5">
-                <div><label class="field-label" for="r-x">x</label><input id="r-x" type="number" value="0" /></div>
-                <div><label class="field-label" for="r-y">y</label><input id="r-y" type="number" value="0" /></div>
-                <div><label class="field-label" for="r-b">b</label><input id="r-b" type="number" value="1000" /></div>
-                <div><label class="field-label" for="r-h">h</label><input id="r-h" type="number" value="300" /></div>
-              </div>
-              <div class="flex items-center gap-2">
-                <select id="r-anchor" class="flex-1">
-                  <option value="corner">x,y = nedre venstre hjørne</option>
-                  <option value="center">x,y = senter</option>
-                  <option value="bottom-center">x,y = midt på underkant</option>
-                </select>
-                <button id="btn-add-rect" class="px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded whitespace-nowrap">Legg til</button>
-              </div>
-            </div>
-
-            <div class="space-y-2 pt-2 border-t border-slate-700">
-              <div class="text-xs text-slate-300 font-medium">Skallelement fra senterlinje</div>
-              <div class="grid grid-cols-4 gap-1.5">
-                <div><label class="field-label" for="s-x1">x₁</label><input id="s-x1" type="number" value="0" /></div>
-                <div><label class="field-label" for="s-y1">y₁</label><input id="s-y1" type="number" value="0" /></div>
-                <div><label class="field-label" for="s-x2">x₂</label><input id="s-x2" type="number" value="0" /></div>
-                <div><label class="field-label" for="s-y2">y₂</label><input id="s-y2" type="number" value="3000" /></div>
-              </div>
-              <div class="flex items-end gap-2">
-                <div class="flex-1"><label class="field-label" for="s-t">Tykkelse t</label><input id="s-t" type="number" value="250" /></div>
-                <button id="btn-add-shell" class="px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded whitespace-nowrap">Legg til</button>
-              </div>
-              <p class="text-[11px] text-slate-500 leading-snug">
-                Lager rektangelet skallet faktisk representerer: tykkelse t sentrert om senterlinja.
-              </p>
-            </div>
-
-            <div class="space-y-2 pt-2 border-t border-slate-700">
-              <div class="text-xs text-slate-300 font-medium">Sirkel</div>
-              <div class="grid grid-cols-4 gap-1.5 items-end">
-                <div><label class="field-label" for="c-x">x</label><input id="c-x" type="number" value="0" /></div>
-                <div><label class="field-label" for="c-y">y</label><input id="c-y" type="number" value="0" /></div>
-                <div><label class="field-label" for="c-r">r</label><input id="c-r" type="number" value="200" /></div>
-                <button id="btn-add-circle" class="px-2 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded">Legg til</button>
-              </div>
-            </div>
-
-          </div>
-        </details>
-
-        <!-- Geometriliste -->
+        <!-- Geometriliste med egenskaper -->
         <div>
-          <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center justify-between mb-1">
             <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">
               Geometri <span id="shape-count" class="text-slate-500"></span>
             </h2>
@@ -187,20 +173,18 @@
             </div>
           </div>
           <p class="text-[11px] text-slate-500 mb-2 leading-snug">
+            Klikk et element — i lista eller i lerretet — for å endre egenskapene.
             Rekkefølgen er prioritet: øverst vinner overlapp.
           </p>
           <div id="shape-list" class="space-y-1"></div>
         </div>
-
-        <!-- Redigering av valgt form -->
-        <div id="editor" class="hidden"></div>
 
       </div>
     </aside>
 
     <!-- Lerret -->
     <main class="flex-1 relative min-w-0 bg-slate-900">
-      <div id="canvas-host" class="absolute inset-0"></div>
+      <div id="canvas-host" class="absolute inset-0 overflow-hidden"></div>
 
       <!-- Overlegg: zoomkontroller -->
       <div class="absolute top-3 right-3 flex flex-col gap-1">
@@ -319,20 +303,26 @@
       </p>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Tegning</h3>
+      <p>
+        Hvert symbol i verktøyraden viser prinsipielt hva som lages. Klikker du på et symbol,
+        åpner det en liten meny der du kan legge inn formen med tall — eller du kan bare tegne
+        den i lerretet:
+      </p>
       <ul class="list-disc list-inside space-y-1">
         <li><strong>Rektangel</strong> — klikk to motstående hjørner.</li>
-        <li><strong>Skall</strong> — klikk start og slutt på senterlinja; tykkelsen tas fra feltet.</li>
-        <li><strong>Polygon</strong> — klikk hjørner, avslutt med Enter, dobbeltklikk eller klikk på første punkt.</li>
+        <li><strong>Skall</strong> — klikk start og slutt på senterlinja; tykkelsen tas fra menyen.</li>
+        <li><strong>Polygon</strong> — klikk hjørner, avslutt med Enter, dobbeltklikk eller klikk på første punkt. Menyen tar også imot innlimte koordinater.</li>
         <li><strong>Sirkel</strong> — klikk sentrum, så et punkt på omkretsen (48-kant).</li>
         <li><strong>Nullpunkt</strong> — klikk der referansepunktet skal ligge.</li>
       </ul>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Redigering</h3>
       <ul class="list-disc list-inside space-y-1">
-        <li>Klikk for å markere, Shift+klikk for flere, dra i tomrommet for vindusmarkering.</li>
+        <li>Klikk et element i lista for å åpne egenskapene: navn, rolle, vektfaktor, koordinater og transformasjoner.</li>
+        <li>Klikker du formen i lerretet, åpnes de samme egenskapene i lista.</li>
+        <li>Shift+klikk markerer flere, og du kan dra et vindu i tomrommet.</li>
         <li>Dra en form for å flytte den. Hold Shift for å låse til x eller y.</li>
         <li>Dra et hjørnepunkt for å endre det. Alt+klikk sletter punktet, dobbeltklikk på en kant setter inn et nytt.</li>
-        <li>Koordinatene kan også redigeres direkte i tabellen under formlista.</li>
       </ul>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Navigasjon</h3>

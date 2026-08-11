@@ -18,9 +18,12 @@ const viewport = new Viewport(host, {
 });
 
 const tools = new ToolController(store, viewport, {
-  getThickness: () => Number(document.getElementById('shell-thickness').value) || 200,
+  getThickness: () => ui.getThickness(),
   onStatus: (msg) => ui.status(msg),
-  onToolChange: () => scheduleRender(),
+  onToolChange: (tool) => {
+    ui.onToolChanged(tool);
+    scheduleRender();
+  },
 });
 
 const ui = new UI(store, viewport, tools, {});
@@ -95,6 +98,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     document.getElementById('help-overlay').classList.add('hidden');
     if (typing) e.target.blur();
+    if (!tools.draft) ui.closePopover();
     tools.keydown(e);
     return;
   }

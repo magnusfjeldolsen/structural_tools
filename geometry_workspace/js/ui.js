@@ -1,5 +1,9 @@
 /**
- * ui.js — panelene rundt lerretet: geometriliste, redigering og resultater.
+ * ui.js — panelene rundt lerretet.
+ *
+ * Venstre panel er bygget rundt to ting: en rad med verktøysymboler der hvert
+ * symbol åpner sin egen lille meny, og geometrilista der hvert element kan
+ * åpnes og redigeres direkte.
  */
 
 import {
@@ -83,6 +87,25 @@ function preserveFocus(render) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Verktøymenyer
+ * ------------------------------------------------------------------ */
+
+const TOOL_TITLES = {
+  select: 'Velg og rediger',
+  rect: 'Rektangel',
+  shell: 'Skallelement fra senterlinje',
+  polygon: 'Polygon',
+  circle: 'Sirkel',
+  reference: 'Nullpunkt',
+};
+
+const field = (key, label, value, step = '') =>
+  `<div>
+     <label class="field-label" for="f-${key}">${label}</label>
+     <input id="f-${key}" data-form="${key}" data-focus-key="f-${key}" type="number" ${step} value="${value}" />
+   </div>`;
+
+/* ------------------------------------------------------------------ *
  * UI
  * ------------------------------------------------------------------ */
 
@@ -91,9 +114,29 @@ export class UI {
     this.store = store;
     this.viewport = viewport;
     this.tools = tools;
-    this.onAnalyze = opts.onAnalyze;
     this.analysis = null;
+
+    /** Åpne elementer i geometrilista. */
+    this.expanded = new Set();
+    /** Åpne underseksjoner, nøkler som `${id}:coords`. */
+    this.sections = new Set();
+    this._lastSelectionKey = '';
+
+    /** Sist innlagte tall per verktøy, så menyene husker hva du skrev. */
+    this.form = {
+      rect: { x: 0, y: 0, b: 1000, h: 300, anchor: 'corner' },
+      shell: { x1: 0, y1: 0, x2: 0, y2: 3000, t: 250 },
+      circle: { x: 0, y: 0, r: 200 },
+      polygon: { text: '' },
+      reference: { x: 0, y: 0 },
+    };
+
     this._bind();
+  }
+
+  /** Tykkelsen tegneverktøyet for skall skal bruke. */
+  getThickness() {
+    return this.form.shell.t;
   }
 
   toast(msg, ms = 2200) {
@@ -113,17 +156,23 @@ export class UI {
   _bind() {
     const st = this.store;
 
-    // Verktøyknapper
     $('tool-buttons').addEventListener('click', (e) => {
       const btn = e.target.closest('[data-tool]');
-      if (btn) this.tools.setTool(btn.dataset.tool);
+      if (!btn) return;
+      const tool = btn.dataset.tool;
+      // Klikk på det aktive verktøyet slår menyen av og på
+      if (tool === this.tools.tool && this._popoverTool === tool) this.closePopover();
+      else this.tools.setTool(tool);
     });
 
-    // Rutenett og visning
-    $('grid-step').addEventListener('change', (e) => {
-      const v = Math.max(0, Number(e.target.value) || 0);
-      st.setGrid({ step: v });
+    // Lukk menyen ved klikk utenfor
+    document.addEventListener('pointerdown', (e) => {
+      if (!this._popoverTool) return;
+      if (e.target.closest('#tool-popover') || e.target.closest('#tool-buttons')) return;
+      this.closePopover();
     });
+
+    $('grid-step').addEventListener('change', (e) => st.setGrid({ step: Math.max(0, Number(e.target.value) || 0) }));
     $('chk-snap').addEventListener('change', (e) => st.setGrid({ snap: e.target.checked }));
     $('chk-grid').addEventListener('change', (e) => st.setGrid({ visible: e.target.checked }));
     $('chk-net').addEventListener('change', (e) => this.viewport.setOverlays({ showNet: e.target.checked }));
@@ -131,12 +180,6 @@ export class UI {
       this.viewport.setOverlays({ showPrincipal: e.target.checked })
     );
 
-    // Numerisk innlegging
-    $('btn-add-rect').addEventListener('click', () => this._addRect());
-    $('btn-add-shell').addEventListener('click', () => this._addShell());
-    $('btn-add-circle').addEventListener('click', () => this._addCircle());
-
-    // Listeoperasjoner
     $('btn-delete').addEventListener('click', () => this.deleteSelected());
     $('btn-duplicate').addEventListener('click', () => this.duplicateSelected());
     $('btn-clear').addEventListener('click', () => {
@@ -144,7 +187,6 @@ export class UI {
       if (confirm('Fjerne all geometri?')) st.clear();
     });
 
-    // Modus og referansepunkt
     $('mode-select').addEventListener('change', (e) => st.setMode(e.target.value));
     $('ref-x').addEventListener('change', (e) =>
       st.setReference([Number(e.target.value) || 0, st.state.reference[1]])
@@ -157,24 +199,18 @@ export class UI {
       st.setReference([this.analysis.result.cx, this.analysis.result.cy]);
     });
 
-    // Zoom
     $('btn-fit').addEventListener('click', () => this.viewport.zoomToFit(st.bounds()));
     $('btn-zoom-in').addEventListener('click', () => this.viewport.zoomBy(1 / 1.3));
     $('btn-zoom-out').addEventListener('click', () => this.viewport.zoomBy(1.3));
 
-    // Tittel
     $('model-title').addEventListener('input', (e) => st.setTitle(e.target.value));
-
-    // Kopier
     $('btn-copy').addEventListener('click', () => this._copyResult());
 
-    // Import/eksport
     $('btn-export').addEventListener('click', () => this._export());
     $('btn-import').addEventListener('click', () => $('file-input').click());
     $('file-input').addEventListener('change', (e) => this._import(e));
     $('btn-example').addEventListener('click', () => this.loadExample());
 
-    // Hjelp
     $('btn-help').addEventListener('click', () => $('help-overlay').classList.remove('hidden'));
     $('btn-help-close').addEventListener('click', () => $('help-overlay').classList.add('hidden'));
     $('help-overlay').addEventListener('click', (e) => {
@@ -182,19 +218,136 @@ export class UI {
     });
   }
 
-  /* ---------------- legg til ---------------- */
+  /* ---------------- verktøymeny ---------------- */
 
-  _num(id) {
-    return Number($(id).value) || 0;
+  /** Kalles når verktøyet byttes, også via hurtigtast. */
+  onToolChanged(tool) {
+    if (tool === 'select') this.closePopover();
+    else this.openPopover(tool);
   }
 
+  closePopover() {
+    this._popoverTool = null;
+    const el = $('tool-popover');
+    el.classList.add('hidden');
+    el.innerHTML = '';
+  }
+
+  openPopover(tool) {
+    const el = $('tool-popover');
+    const body = this._popoverBody(tool);
+    if (!body) return this.closePopover();
+    this._popoverTool = tool;
+    el.innerHTML = `
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-xs font-semibold text-sky-400">${TOOL_TITLES[tool]}</h3>
+        <button data-close class="text-slate-500 hover:text-white leading-none text-lg">×</button>
+      </div>
+      ${body}`;
+    el.classList.remove('hidden');
+    this._bindPopover(tool);
+  }
+
+  _popoverBody(tool) {
+    const f = this.form;
+    if (tool === 'rect') {
+      return `
+        <div class="grid grid-cols-4 gap-1.5">
+          ${field('x', 'x', f.rect.x)}${field('y', 'y', f.rect.y)}
+          ${field('b', 'b', f.rect.b)}${field('h', 'h', f.rect.h)}
+        </div>
+        <div class="flex items-center gap-2 mt-2">
+          <select data-form="anchor" class="flex-1">
+            <option value="corner" ${f.rect.anchor === 'corner' ? 'selected' : ''}>x,y = nedre venstre hjørne</option>
+            <option value="center" ${f.rect.anchor === 'center' ? 'selected' : ''}>x,y = senter</option>
+            <option value="bottom-center" ${f.rect.anchor === 'bottom-center' ? 'selected' : ''}>x,y = midt på underkant</option>
+          </select>
+          <button data-add class="px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded whitespace-nowrap">Legg til</button>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">Eller klikk to motstående hjørner i lerretet.</p>`;
+    }
+    if (tool === 'shell') {
+      return `
+        <div class="grid grid-cols-4 gap-1.5">
+          ${field('x1', 'x₁', f.shell.x1)}${field('y1', 'y₁', f.shell.y1)}
+          ${field('x2', 'x₂', f.shell.x2)}${field('y2', 'y₂', f.shell.y2)}
+        </div>
+        <div class="flex items-end gap-2 mt-2">
+          <div class="flex-1">${field('t', 'Tykkelse t', f.shell.t)}</div>
+          <button data-add class="px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded whitespace-nowrap">Legg til</button>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          Lager rektangelet skallet faktisk representerer: tykkelse t sentrert om senterlinja.
+          Tykkelsen brukes også når du klikker senterlinja i lerretet.
+        </p>`;
+    }
+    if (tool === 'circle') {
+      return `
+        <div class="grid grid-cols-3 gap-1.5">
+          ${field('x', 'x', f.circle.x)}${field('y', 'y', f.circle.y)}${field('r', 'r', f.circle.r)}
+        </div>
+        <button data-add class="w-full mt-2 px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded">Legg til</button>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          Eller klikk sentrum og et punkt på omkretsen. Tilnærmes med en 48-kant.
+        </p>`;
+    }
+    if (tool === 'polygon') {
+      return `
+        <p class="text-[11px] text-slate-400 leading-snug mb-2">
+          Klikk hjørner i lerretet. Enter, dobbeltklikk eller klikk på første punkt avslutter.
+        </p>
+        <label class="field-label" for="f-poly">Eller lim inn koordinater, ett punkt per linje</label>
+        <textarea id="f-poly" data-form="text" data-focus-key="f-poly" rows="5"
+                  placeholder="0 0&#10;1000 0&#10;1000 400"
+                  class="w-full text-xs font-mono">${escapeHtml(f.polygon.text)}</textarea>
+        <button data-add class="w-full mt-2 px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded">Legg til polygon</button>`;
+    }
+    if (tool === 'reference') {
+      const ref = this.store.state.reference;
+      return `
+        <div class="grid grid-cols-2 gap-1.5">
+          ${field('x', 'x₀', ref[0])}${field('y', 'y₀', ref[1])}
+        </div>
+        <button data-add class="w-full mt-2 px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 rounded">Sett nullpunkt</button>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          Eller klikk i lerretet. Alle avvik i resultatpanelet måles fra dette punktet.
+        </p>`;
+    }
+    return null;
+  }
+
+  _bindPopover(tool) {
+    const el = $('tool-popover');
+    el.querySelector('[data-close]').addEventListener('click', () => {
+      this.closePopover();
+      this.tools.setTool('select');
+    });
+
+    const target = tool === 'polygon' ? this.form.polygon : this.form[tool];
+    el.querySelectorAll('[data-form]').forEach((input) => {
+      input.addEventListener('input', (e) => {
+        const key = e.target.dataset.form;
+        target[key] = e.target.type === 'number' ? Number(e.target.value) || 0 : e.target.value;
+      });
+    });
+
+    const add = el.querySelector('[data-add]');
+    if (add) {
+      add.addEventListener('click', () => {
+        if (tool === 'rect') this._addRect();
+        else if (tool === 'shell') this._addShell();
+        else if (tool === 'circle') this._addCircle();
+        else if (tool === 'polygon') this._addPastedPolygon();
+        else if (tool === 'reference') this.store.setReference([this.form.reference.x, this.form.reference.y]);
+      });
+    }
+  }
+
+  /* ---------------- legg til ---------------- */
+
   _addRect() {
-    const x = this._num('r-x');
-    const y = this._num('r-y');
-    const b = this._num('r-b');
-    const h = this._num('r-h');
+    const { x, y, b, h, anchor } = this.form.rect;
     if (Math.abs(b) < 1e-9 || Math.abs(h) < 1e-9) return this.toast('Bredde og høyde må være ulik null.');
-    const anchor = $('r-anchor').value;
     let x0 = x;
     let y0 = y;
     if (anchor === 'center') {
@@ -207,20 +360,35 @@ export class UI {
   }
 
   _addShell() {
-    const p1 = [this._num('s-x1'), this._num('s-y1')];
-    const p2 = [this._num('s-x2'), this._num('s-y2')];
-    const t = Math.abs(this._num('s-t'));
-    if (t < 1e-9) return this.toast('Tykkelsen må være større enn null.');
-    const pts = shellPoints(p1, p2, t);
+    const { x1, y1, x2, y2, t } = this.form.shell;
+    const thickness = Math.abs(t);
+    if (thickness < 1e-9) return this.toast('Tykkelsen må være større enn null.');
+    const pts = shellPoints([x1, y1], [x2, y2], thickness);
     if (!pts) return this.toast('Senterlinja har null lengde.');
-    this.store.addShape(pts, { name: 'Skall', meta: { kind: 'shell', p1, p2, t } });
+    this.store.addShape(pts, { name: `Skall t=${thickness}`, meta: { kind: 'shell', p1: [x1, y1], p2: [x2, y2], t: thickness } });
   }
 
   _addCircle() {
-    const r = Math.abs(this._num('c-r'));
-    if (r < 1e-9) return this.toast('Radien må være større enn null.');
-    const c = [this._num('c-x'), this._num('c-y')];
-    this.store.addShape(circlePoints(c[0], c[1], r), { name: 'Sirkel', meta: { kind: 'circle', c, r } });
+    const { x, y, r } = this.form.circle;
+    const radius = Math.abs(r);
+    if (radius < 1e-9) return this.toast('Radien må være større enn null.');
+    this.store.addShape(circlePoints(x, y, radius), { name: 'Sirkel', meta: { kind: 'circle', c: [x, y], r: radius } });
+  }
+
+  _addPastedPolygon() {
+    const pts = [];
+    for (const line of this.form.polygon.text.split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t) continue;
+      const parts = t.split(/[\s,;]+/).map(Number);
+      if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) {
+        return this.toast(`Klarte ikke å tolke linja: «${t}»`);
+      }
+      pts.push([parts[0], parts[1]]);
+    }
+    if (pts.length < 3) return this.toast('Et polygon trenger minst tre punkt.');
+    this.store.addShape(pts, { name: 'Polygon' });
+    this.viewport.zoomToFit(this.store.bounds());
   }
 
   /* ---------------- kommandoer ---------------- */
@@ -251,6 +419,7 @@ export class UI {
     this.store.addShape(plate, { name: 'Bunnplate t=400', meta: { kind: 'shell', p1: [-2000, 0], p2: [2000, 0], t: 400 } });
     this.store.addShape(wall, { name: 'Vegg t=250', meta: { kind: 'shell', p1: [0, 0], p2: [0, 3000], t: 250 } });
     this.store.select([]);
+    this.expanded.clear();
     this.viewport.zoomToFit(this.store.bounds());
     this.toast('Eksempel lastet: vegg og bunnplate med overlapp i hjørnet.');
   }
@@ -289,6 +458,7 @@ export class UI {
     reader.onload = () => {
       try {
         this.store.fromJSON(String(reader.result));
+        this.expanded.clear();
         this.viewport.zoomToFit(this.store.bounds());
         this.toast(`Importerte ${this.store.state.shapes.length} former.`);
       } catch (err) {
@@ -303,12 +473,29 @@ export class UI {
 
   render(analysis) {
     this.analysis = analysis;
+
+    // Marker noe i lerretet → åpne egenskapene for det i lista
+    const sel = this.store.state.selection;
+    const key = sel.join(',');
+    if (key !== this._lastSelectionKey) {
+      this._lastSelectionKey = key;
+      if (sel.length === 1) {
+        this.expanded = new Set([sel[0]]);
+        this._scrollTo = sel[0];
+      }
+    }
+
     preserveFocus(() => {
       this._renderControls();
       this._renderList();
-      this._renderEditor();
       this._renderResults(analysis);
     });
+
+    if (this._scrollTo) {
+      const row = document.querySelector(`[data-row="${CSS.escape(this._scrollTo)}"]`);
+      if (row) row.scrollIntoView({ block: 'nearest' });
+      this._scrollTo = null;
+    }
   }
 
   _renderControls() {
@@ -332,7 +519,7 @@ export class UI {
       btn.dataset.active = String(btn.dataset.tool === this.tools.tool);
     });
 
-    const n = this.store.state.shapes.length;
+    const n = s.shapes.length;
     $('shape-count').textContent = n ? `(${n})` : '';
   }
 
@@ -341,26 +528,28 @@ export class UI {
     const s = this.store.state;
     if (!s.shapes.length) {
       host.innerHTML =
-        '<p class="text-xs text-slate-500 italic py-2">Ingen geometri ennå. Tegn i lerretet, legg inn tall til venstre, eller trykk «Eksempel».</p>';
+        '<p class="text-xs text-slate-500 italic py-2">Ingen geometri ennå. Velg et verktøysymbol over, eller trykk «Eksempel».</p>';
       return;
     }
     const sel = new Set(s.selection);
-    const areaById = new Map((this.analysis?.parts || []).map((p) => [p.id, p.area]));
+    const partById = new Map((this.analysis?.parts || []).map((p) => [p.id, p]));
 
     host.innerHTML = s.shapes
       .map((sh, i) => {
         const active = sel.has(sh.id);
-        const area = areaById.get(sh.id);
+        const open = this.expanded.has(sh.id);
+        const part = partById.get(sh.id);
         return `
-      <div class="rounded border ${active ? 'border-sky-500 bg-slate-700' : 'border-slate-700 bg-slate-750'} px-2 py-1.5"
+      <div class="rounded border ${active ? 'border-sky-500' : 'border-slate-700'} ${open ? 'bg-slate-700' : 'bg-slate-750'}"
            data-row="${sh.id}">
-        <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-1.5 px-2 py-1.5">
           <input type="checkbox" data-act="include" data-id="${sh.id}" ${sh.include !== false ? 'checked' : ''}
                  class="w-3.5 h-3.5 accent-sky-500 shrink-0" title="Ta med i beregningen" />
           <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${sh.color}"></span>
-          <button data-act="select" data-id="${sh.id}"
-                  class="flex-1 text-left text-xs truncate ${active ? 'text-white' : 'text-slate-300'} hover:text-white">
-            ${escapeHtml(sh.name)}
+          <button data-act="toggle" data-id="${sh.id}"
+                  class="flex-1 flex items-center gap-1.5 text-left text-xs truncate ${active ? 'text-white' : 'text-slate-300'} hover:text-white">
+            <span class="chev shrink-0 text-slate-500 ${open ? 'rotate-90' : ''}" style="display:inline-block">›</span>
+            <span class="truncate">${escapeHtml(sh.name)}</span>
           </button>
           ${sh.role === 'void' ? '<span class="text-[10px] px-1 rounded bg-rose-900 text-rose-300 shrink-0">hull</span>' : ''}
           ${Math.abs(sh.factor - 1) > 1e-9 ? `<span class="text-[10px] px-1 rounded bg-amber-900 text-amber-300 shrink-0">×${sh.factor}</span>` : ''}
@@ -372,10 +561,11 @@ export class UI {
                   class="px-1 text-slate-400 hover:text-red-400 shrink-0" title="Slett">×</button>
         </div>
         ${
-          area != null
-            ? `<div class="text-[10px] text-slate-500 pl-6 num">effektivt areal ${fmtArea(area)}</div>`
+          !open && part
+            ? `<div class="text-[10px] text-slate-500 px-2 pb-1 pl-8 num">effektivt areal ${fmtArea(part.area)}</div>`
             : ''
         }
+        ${open ? this._editorHtml(sh, part) : ''}
       </div>`;
       })
       .join('');
@@ -385,8 +575,15 @@ export class UI {
       if (!btn) return;
       const id = btn.dataset.id;
       switch (btn.dataset.act) {
-        case 'select':
-          this.store.select([id], e.shiftKey);
+        case 'toggle':
+          if (this.expanded.has(id)) {
+            this.expanded.delete(id);
+          } else {
+            this.expanded.add(id);
+          }
+          this.store.select(e.shiftKey ? [...this.store.state.selection, id] : [id]);
+          this._lastSelectionKey = this.store.state.selection.join(',');
+          this._renderList();
           break;
         case 'include':
           this.store.updateShape(id, { include: btn.checked });
@@ -398,149 +595,183 @@ export class UI {
           this.store.reorder(id, 1);
           break;
         case 'delete':
+          this.expanded.delete(id);
           this.store.removeShapes([id]);
           break;
+        case 'section': {
+          const key = `${id}:${btn.dataset.section}`;
+          if (this.sections.has(key)) this.sections.delete(key);
+          else this.sections.add(key);
+          this._renderList();
+          break;
+        }
       }
     };
+
+    this._bindEditors();
   }
 
-  _renderEditor() {
-    const host = $('editor');
-    const selected = this.store.selectedShapes();
-    if (selected.length !== 1) {
-      host.classList.add('hidden');
-      host.innerHTML = selected.length > 1
-        ? `<p class="text-xs text-slate-500">${selected.length} former markert.</p>`
-        : '';
-      if (selected.length > 1) host.classList.remove('hidden');
-      return;
-    }
-
-    const sh = selected[0];
-    host.classList.remove('hidden');
+  /** Egenskapspanelet som vises inne i et åpnet listeelement. */
+  _editorHtml(sh, part) {
     const ring = openRing(sh.points);
     const b = boundsOfPoints(ring);
-    const area = Math.abs(signedArea(ring));
+    const grossArea = Math.abs(signedArea(ring));
+    const showCoords = this.sections.has(`${sh.id}:coords`);
+    const showTransform = this.sections.has(`${sh.id}:transform`);
 
-    host.innerHTML = `
-      <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Valgt form</h2>
-      <div class="space-y-2 bg-slate-750 rounded border border-slate-700 p-3">
+    const sectionHead = (key, label) => `
+      <button data-act="section" data-section="${key}" data-id="${sh.id}"
+              class="w-full flex items-center gap-1.5 text-xs text-slate-300 hover:text-white py-1">
+        <span class="chev text-slate-500 ${this.sections.has(`${sh.id}:${key}`) ? 'rotate-90' : ''}" style="display:inline-block">›</span>
+        ${label}
+      </button>`;
+
+    return `
+      <div class="px-2 pb-2 pt-1 space-y-2 border-t border-slate-600">
 
         <div>
-          <label class="field-label" for="ed-name">Navn</label>
-          <input id="ed-name" data-focus-key="ed-name" type="text" value="${escapeAttr(sh.name)}" />
+          <label class="field-label" for="ed-name-${sh.id}">Navn</label>
+          <input id="ed-name-${sh.id}" data-ed="name" data-id="${sh.id}" data-focus-key="ed-name-${sh.id}"
+                 type="text" value="${escapeHtml(sh.name)}" />
         </div>
 
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="field-label" for="ed-role">Rolle</label>
-            <select id="ed-role" data-focus-key="ed-role">
+            <label class="field-label" for="ed-role-${sh.id}">Rolle</label>
+            <select id="ed-role-${sh.id}" data-ed="role" data-id="${sh.id}" data-focus-key="ed-role-${sh.id}">
               <option value="solid" ${sh.role !== 'void' ? 'selected' : ''}>Fast areal</option>
               <option value="void" ${sh.role === 'void' ? 'selected' : ''}>Hull / utsparing</option>
             </select>
           </div>
           <div>
-            <label class="field-label" for="ed-factor">Vektfaktor</label>
-            <input id="ed-factor" data-focus-key="ed-factor" type="number" step="0.01" value="${sh.factor}" />
+            <label class="field-label" for="ed-factor-${sh.id}">Vektfaktor</label>
+            <input id="ed-factor-${sh.id}" data-ed="factor" data-id="${sh.id}" data-focus-key="ed-factor-${sh.id}"
+                   type="number" step="0.01" value="${sh.factor}" />
           </div>
         </div>
-        <p class="text-[11px] text-slate-500 leading-snug">
-          Vektfaktor = E-forhold ved transformert tverrsnitt. La stå på 1 når alt har samme materiale.
-        </p>
 
-        <div class="text-[11px] text-slate-400 num pt-1 border-t border-slate-700 space-y-0.5">
-          <div>Areal (brutto): ${fmtArea(area)}</div>
-          <div>Utstrekning: x ∈ [${fmtLen(b.minX)}, ${fmtLen(b.maxX)}], y ∈ [${fmtLen(b.minY)}, ${fmtLen(b.maxY)}]</div>
+        <div class="text-[11px] text-slate-400 num space-y-0.5">
+          <div>Areal brutto ${fmtArea(grossArea)}${
+            part && Math.abs(part.area - grossArea) > 1e-6
+              ? ` · effektivt <span class="text-cyan-300">${fmtArea(part.area)}</span>`
+              : ''
+          }</div>
+          <div>x ∈ [${fmtLen(b.minX)}, ${fmtLen(b.maxX)}] · y ∈ [${fmtLen(b.minY)}, ${fmtLen(b.maxY)}]</div>
         </div>
 
-        <details class="pt-1 border-t border-slate-700">
-          <summary class="text-xs text-slate-300 py-1"><span class="chev inline-block">›</span> Koordinater (${ring.length})</summary>
-          <div class="max-h-56 overflow-y-auto panel-scroll mt-1 space-y-1">
-            ${ring
-              .map(
-                ([x, y], i) => `
-              <div class="flex items-center gap-1">
-                <span class="text-[10px] text-slate-500 w-5 shrink-0 num">${i + 1}</span>
-                <input data-pt="${i}" data-axis="0" data-focus-key="pt-${i}-0" type="number" value="${round(x)}" />
-                <input data-pt="${i}" data-axis="1" data-focus-key="pt-${i}-1" type="number" value="${round(y)}" />
-                <button data-del-pt="${i}" class="px-1 text-slate-500 hover:text-red-400 shrink-0" title="Slett punkt">×</button>
-              </div>`
-              )
-              .join('')}
-          </div>
-        </details>
+        <div class="border-t border-slate-600 pt-1">
+          ${sectionHead('coords', `Koordinater (${ring.length})`)}
+          ${
+            showCoords
+              ? `<div class="max-h-52 overflow-y-auto panel-scroll space-y-1 pt-1">
+                  ${ring
+                    .map(
+                      ([x, y], i) => `
+                    <div class="flex items-center gap-1">
+                      <span class="text-[10px] text-slate-500 w-4 shrink-0 num">${i + 1}</span>
+                      <input data-pt="${i}" data-axis="0" data-id="${sh.id}" data-focus-key="pt-${sh.id}-${i}-0" type="number" value="${round(x)}" />
+                      <input data-pt="${i}" data-axis="1" data-id="${sh.id}" data-focus-key="pt-${sh.id}-${i}-1" type="number" value="${round(y)}" />
+                      <button data-del-pt="${i}" data-id="${sh.id}" class="px-1 text-slate-500 hover:text-red-400 shrink-0" title="Slett punkt">×</button>
+                    </div>`
+                    )
+                    .join('')}
+                </div>`
+              : ''
+          }
+        </div>
 
-        <details class="pt-1 border-t border-slate-700">
-          <summary class="text-xs text-slate-300 py-1"><span class="chev inline-block">›</span> Transformer</summary>
-          <div class="space-y-2 mt-1">
-            <div class="flex items-end gap-1.5">
-              <div class="flex-1"><label class="field-label" for="tr-dx">Δx</label><input id="tr-dx" data-focus-key="tr-dx" type="number" value="0" /></div>
-              <div class="flex-1"><label class="field-label" for="tr-dy">Δy</label><input id="tr-dy" data-focus-key="tr-dy" type="number" value="0" /></div>
-              <button id="btn-translate" class="px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Flytt</button>
-            </div>
-            <div class="flex items-end gap-1.5">
-              <div class="flex-1"><label class="field-label" for="tr-ang">Rotasjon [°]</label><input id="tr-ang" data-focus-key="tr-ang" type="number" value="0" /></div>
-              <button id="btn-rotate" class="px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Roter om referansepunkt</button>
-            </div>
-            <div class="flex gap-1.5">
-              <button id="btn-mirror-x" class="flex-1 px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Speil om y₀</button>
-              <button id="btn-mirror-y" class="flex-1 px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Speil om x₀</button>
-            </div>
-          </div>
-        </details>
+        <div class="border-t border-slate-600 pt-1">
+          ${sectionHead('transform', 'Transformer')}
+          ${
+            showTransform
+              ? `<div class="space-y-2 pt-1">
+                  <div class="flex items-end gap-1.5">
+                    <div class="flex-1"><label class="field-label" for="tr-dx-${sh.id}">Δx</label>
+                      <input id="tr-dx-${sh.id}" data-focus-key="tr-dx-${sh.id}" type="number" value="0" /></div>
+                    <div class="flex-1"><label class="field-label" for="tr-dy-${sh.id}">Δy</label>
+                      <input id="tr-dy-${sh.id}" data-focus-key="tr-dy-${sh.id}" type="number" value="0" /></div>
+                    <button data-tr="move" data-id="${sh.id}" class="px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Flytt</button>
+                  </div>
+                  <div class="flex items-end gap-1.5">
+                    <div class="flex-1"><label class="field-label" for="tr-ang-${sh.id}">Rotasjon [°] om nullpunkt</label>
+                      <input id="tr-ang-${sh.id}" data-focus-key="tr-ang-${sh.id}" type="number" value="0" /></div>
+                    <button data-tr="rotate" data-id="${sh.id}" class="px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Roter</button>
+                  </div>
+                  <div class="flex gap-1.5">
+                    <button data-tr="mirror-x" data-id="${sh.id}" class="flex-1 px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Speil om y₀</button>
+                    <button data-tr="mirror-y" data-id="${sh.id}" class="flex-1 px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Speil om x₀</button>
+                  </div>
+                </div>`
+              : ''
+          }
+        </div>
       </div>`;
+  }
 
-    // Binding
-    const commitPoints = (pts, transient) =>
-      this.store.setPoints(sh.id, pts, { transient, reason: 'edit' });
+  _bindEditors() {
+    const host = $('shape-list');
+    const setPts = (id, pts) => this.store.setPoints(id, pts, { reason: 'edit' });
 
-    $('ed-name').addEventListener('input', (e) =>
-      this.store.updateShape(sh.id, { name: e.target.value }, { transient: true })
-    );
-    $('ed-name').addEventListener('change', () => this.store.commit('rename'));
-    $('ed-role').addEventListener('change', (e) => this.store.updateShape(sh.id, { role: e.target.value }));
-    $('ed-factor').addEventListener('change', (e) => {
-      const v = Number(e.target.value);
-      this.store.updateShape(sh.id, { factor: Number.isFinite(v) ? v : 1 });
+    host.querySelectorAll('[data-ed]').forEach((input) => {
+      const id = input.dataset.id;
+      const key = input.dataset.ed;
+      if (key === 'name') {
+        input.addEventListener('input', (e) => this.store.updateShape(id, { name: e.target.value }, { transient: true }));
+        input.addEventListener('change', () => this.store.commit('rename'));
+      } else if (key === 'role') {
+        input.addEventListener('change', (e) => this.store.updateShape(id, { role: e.target.value }));
+      } else if (key === 'factor') {
+        input.addEventListener('change', (e) => {
+          const v = Number(e.target.value);
+          this.store.updateShape(id, { factor: Number.isFinite(v) ? v : 1 });
+        });
+      }
     });
 
     host.querySelectorAll('[data-pt]').forEach((input) => {
       input.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
         const i = Number(e.target.dataset.pt);
         const axis = Number(e.target.dataset.axis);
-        const pts = openRing(this.store.getShape(sh.id).points).map((p) => [p[0], p[1]]);
+        const pts = openRing(this.store.getShape(id).points).map((p) => [p[0], p[1]]);
         pts[i][axis] = Number(e.target.value) || 0;
-        commitPoints(pts, false);
+        setPts(id, pts);
       });
     });
 
     host.querySelectorAll('[data-del-pt]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
         const i = Number(e.currentTarget.dataset.delPt);
-        const pts = openRing(this.store.getShape(sh.id).points);
+        const pts = openRing(this.store.getShape(id).points);
         if (pts.length <= 3) return this.toast('Et polygon må ha minst tre hjørner.');
         pts.splice(i, 1);
-        commitPoints(pts, false);
+        setPts(id, pts);
       });
     });
 
-    $('btn-translate').addEventListener('click', () => {
-      const dx = Number($('tr-dx').value) || 0;
-      const dy = Number($('tr-dy').value) || 0;
-      if (!dx && !dy) return;
-      commitPoints(translatePoints(this.store.getShape(sh.id).points, dx, dy), false);
+    host.querySelectorAll('[data-tr]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
+        const kind = e.currentTarget.dataset.tr;
+        const pts = this.store.getShape(id).points;
+        const ref = this.store.state.reference;
+        if (kind === 'move') {
+          const dx = Number($(`tr-dx-${id}`).value) || 0;
+          const dy = Number($(`tr-dy-${id}`).value) || 0;
+          if (!dx && !dy) return;
+          setPts(id, translatePoints(pts, dx, dy));
+        } else if (kind === 'rotate') {
+          const ang = ((Number($(`tr-ang-${id}`).value) || 0) * Math.PI) / 180;
+          if (!ang) return;
+          setPts(id, rotatePoints(pts, ang, ref));
+        } else if (kind === 'mirror-x') {
+          setPts(id, mirrorPoints(pts, 'x', ref[1]));
+        } else if (kind === 'mirror-y') {
+          setPts(id, mirrorPoints(pts, 'y', ref[0]));
+        }
+      });
     });
-    $('btn-rotate').addEventListener('click', () => {
-      const ang = ((Number($('tr-ang').value) || 0) * Math.PI) / 180;
-      if (!ang) return;
-      commitPoints(rotatePoints(this.store.getShape(sh.id).points, ang, this.store.state.reference), false);
-    });
-    $('btn-mirror-x').addEventListener('click', () =>
-      commitPoints(mirrorPoints(this.store.getShape(sh.id).points, 'x', this.store.state.reference[1]), false)
-    );
-    $('btn-mirror-y').addEventListener('click', () =>
-      commitPoints(mirrorPoints(this.store.getShape(sh.id).points, 'y', this.store.state.reference[0]), false)
-    );
   }
 
   _renderResults(analysis) {
@@ -654,8 +885,4 @@ function round(v) {
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-function escapeAttr(s) {
-  return escapeHtml(s);
 }
