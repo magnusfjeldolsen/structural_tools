@@ -118,6 +118,7 @@ export class Viewport {
     this.hover = null;
     this.showNet = true;
     this.showPrincipal = true;
+    this.showOverlap = true;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#0f172a');
@@ -381,9 +382,10 @@ export class Viewport {
     this.refresh();
   }
 
-  setOverlays({ showNet, showPrincipal }) {
+  setOverlays({ showNet, showPrincipal, showOverlap }) {
     if (showNet !== undefined) this.showNet = showNet;
     if (showPrincipal !== undefined) this.showPrincipal = showPrincipal;
+    if (showOverlap !== undefined) this.showOverlap = showOverlap;
     this.refresh();
   }
 
@@ -506,7 +508,24 @@ export class Viewport {
     const g = this.groups.net;
     disposeGroup(g);
     const analysis = this.data.analysis;
-    if (!this.showNet || !analysis || !analysis.netMulti) return;
+    if (!analysis) return;
+
+    // Overlappsonen: der to eller flere skall dekker hverandre. I 'sum'-modus
+    // teller materialet her to ganger, og det er nettopp dette som trekker
+    // tyngdepunktet mot overlappet.
+    if (this.showOverlap && analysis.overlapMulti && analysis.overlapMulti.length) {
+      const doubled = analysis.mode === 'sum';
+      for (const poly of analysis.overlapMulti) {
+        g.add(buildFillMesh(openRing(poly[0]), doubled ? '#f59e0b' : '#64748b', doubled ? 0.28 : 0.14, Z.net - 0.02));
+        const pos = [];
+        for (const ring of poly) {
+          pos.push(...thickPolylinePositions(openRing(ring), true, (1.4 * upp) / 2, Z.net - 0.01));
+        }
+        g.add(buildLineMesh(pos, doubled ? '#f59e0b' : '#64748b', 0.9));
+      }
+    }
+
+    if (!this.showNet || !analysis.netMulti) return;
     const pos = [];
     for (const poly of analysis.netMulti) {
       for (const ring of poly) {

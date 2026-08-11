@@ -176,6 +176,7 @@ export class UI {
     $('chk-snap').addEventListener('change', (e) => st.setGrid({ snap: e.target.checked }));
     $('chk-grid').addEventListener('change', (e) => st.setGrid({ visible: e.target.checked }));
     $('chk-net').addEventListener('change', (e) => this.viewport.setOverlays({ showNet: e.target.checked }));
+    $('chk-overlap').addEventListener('change', (e) => this.viewport.setOverlays({ showOverlap: e.target.checked }));
     $('chk-principal').addEventListener('change', (e) =>
       this.viewport.setOverlays({ showPrincipal: e.target.checked })
     );
@@ -414,6 +415,7 @@ export class UI {
       s.shapes = [];
       s.selection = [];
       s.reference = [0, 0];
+      s.mode = 'sum';
       s.title = 'Vegg på bunnplate — skall i senterflate';
     }, { reason: 'example' });
     this.store.addShape(plate, { name: 'Bunnplate t=400', meta: { kind: 'shell', p1: [-2000, 0], p2: [2000, 0], t: 400 } });
@@ -511,9 +513,9 @@ export class UI {
     setIfIdle($('ref-y'), s.reference[1]);
     setIfIdle($('model-title'), s.title || '');
     $('mode-help').textContent =
-      s.mode === 'priority'
-        ? 'Overlappende areal tilhører formen som ligger øverst i lista, og telles bare én gang. Riktig for skall modellert i senterflaten.'
-        : 'Hver form summeres for seg, som i et klassisk sammensatt tverrsnitt. Overlapp telles dobbelt.';
+      s.mode === 'sum'
+        ? 'Hver skallflate bidrar med hele sitt areal, også der de overlapper. Slik er FEM-modellen faktisk: både vegg- og plateelementet finnes i overlappsonen, så materialet der teller to ganger — og trekker tyngdepunktet mot overlappet.'
+        : 'Overlappet telles bare én gang, slik den støpte betongen fysisk er. Gir det virkelige tverrsnittets tyngdepunkt, ikke skallmodellens.';
 
     document.querySelectorAll('[data-tool]').forEach((btn) => {
       btn.dataset.active = String(btn.dataset.tool === this.tools.tool);
@@ -805,21 +807,19 @@ export class UI {
         </div>
       </div>
       <div class="pt-2 border-t border-slate-700 space-y-1 text-xs num">
-        ${row(
-          analysis.mode === 'priority' ? 'Areal (netto geometri)' : 'Areal (sum av deler)',
-          fmtArea(analysis.mode === 'priority' ? analysis.netArea : analysis.grossArea)
-        )}
         ${
-          analysis.mode === 'priority'
-            ? row('Areal (sum av deler)', fmtArea(analysis.grossArea), 'text-slate-400')
-            : row('Areal (netto geometri)', fmtArea(analysis.netArea), 'text-slate-400')
+          analysis.mode === 'sum'
+            ? row('Areal (skallmodell)', fmtArea(analysis.grossArea)) +
+              row('Areal (fysisk geometri)', fmtArea(analysis.netArea), 'text-slate-400')
+            : row('Areal (fysisk geometri)', fmtArea(analysis.netArea)) +
+              row('Areal (skallmodell)', fmtArea(analysis.grossArea), 'text-slate-400')
         }
         ${
           Math.abs(overlap) > 1e-6
             ? row(
-                analysis.mode === 'priority' ? 'Overlapp fjernet' : 'Overlapp telt dobbelt',
+                analysis.mode === 'sum' ? 'Herav overlapp, telt to ganger' : 'Overlapp trukket fra',
                 fmtArea(overlap),
-                analysis.mode === 'priority' ? 'text-cyan-300' : 'text-amber-300'
+                analysis.mode === 'sum' ? 'text-amber-300' : 'text-cyan-300'
               )
             : ''
         }

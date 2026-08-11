@@ -1306,10 +1306,12 @@
 
           <p class="text-gray-300 mb-6 leading-relaxed">
             Draw composite cross-sections in the XY plane and read off the area-weighted centroid,
-            second moments of area and principal axes. Handles shell elements modelled at their
-            mid-surface, where wall and slab overlap: the overlap is counted once, so the centroid
-            you get is where a virtual bar belongs if it is not to pick up spurious axial force.
-            Rectangles, mid-surface shells, polygons and circles with full CRUD editing.
+            second moments of area and principal axes. Built for shell models: where a wall and a
+            slab modelled at their mid-surfaces overlap, the model holds both elements, so the
+            overlap counts twice and pulls the centroid towards it — which is exactly where a
+            virtual bar must sit if it is not to pick up spurious axial force. The true physical
+            section, with the overlap counted once, is one click away. Rectangles, mid-surface
+            shells, polygons and circles with full CRUD editing.
           </p>
 
           <div class="flex flex-wrap gap-2 mb-6">

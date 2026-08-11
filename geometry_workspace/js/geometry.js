@@ -237,20 +237,25 @@ export function intersectionMulti(a, b) {
  *   Rekkefølgen i lista er prioritet: første element er øverst.
  *
  * mode:
+ *   'sum'      — hver form bidrar med hele sitt areal, også der formene
+ *                overlapper. Dette er standard, fordi det er slik en
+ *                skallmodell faktisk er: både vegg- og plateelementet
+ *                finnes i overlappsonen, og materialet der teller to
+ *                ganger i modellens tverrsnitt. Hull trekkes fra.
  *   'priority' — hver form får kun det arealet ingen form foran den
  *                allerede har krevd. Overlapp telles altså nøyaktig én
- *                gang, og tilhører formen med høyest prioritet. Dette er
- *                riktig modus for skallmodeller der vegg og bunnplate er
- *                modellert i senterflaten og overlapper i hjørnet.
- *   'sum'      — klassisk sammensatt tverrsnitt: hver form summeres for
- *                seg (hull trekkes fra). Overlapp telles dobbelt.
+ *                gang, slik den støpte betongen fysisk er.
  *
  * Returnerer per form den effektive MultiPolygon-en, samt totalene.
  */
-export function analyze(shapes, mode = 'priority') {
+export function analyze(shapes, mode = 'sum') {
   const active = (shapes || []).filter((s) => s.include !== false && s.points && s.points.length >= 3);
   const parts = [];
   let claimed = [];
+  // Området som dekkes av to eller flere faste former — det er dette som
+  // teller dobbelt i 'sum'-modus, og som flytter tyngdepunktet.
+  let solidSeen = [];
+  let overlapMulti = [];
 
   for (const s of active) {
     const own = pointsToMulti(s.points);
@@ -260,6 +265,14 @@ export function analyze(shapes, mode = 'priority') {
     }
     if (mode === 'priority') {
       claimed = claimed.length ? unionMulti([claimed, own]) : own;
+    }
+
+    if (s.role !== 'void') {
+      if (solidSeen.length) {
+        const inter = intersectionMulti(own, solidSeen);
+        if (inter.length) overlapMulti = overlapMulti.length ? unionMulti([overlapMulti, inter]) : inter;
+      }
+      solidSeen = solidSeen.length ? unionMulti([solidSeen, own]) : own;
     }
 
     const isVoid = s.role === 'void';
@@ -292,15 +305,23 @@ export function analyze(shapes, mode = 'priority') {
 
   const weighted = parts.some((p) => Math.abs(Math.abs(p.weight) - 1) > EPS && p.weight !== 0);
 
+  // Området som dekkes av flere former, uten hullene trukket fra ennå
+  const overlapNet = voidMulti.length ? differenceMulti(overlapMulti, voidMulti) : overlapMulti;
+
   return {
     mode,
     parts,
     netMulti,
-    // Summen av formenes egne arealer, uten hensyn til overlapp — differansen
-    // mot netArea viser hvor mye dobbelttelling som er fjernet.
+    // Selve overlappsonen, til opptegning
+    overlapMulti: overlapNet,
+    // Summen av formenes egne arealer, altså skallmodellens areal der
+    // overlappet er med to ganger.
     grossArea: parts.filter((p) => !p.isVoid).reduce((a, p) => a + p.ownArea, 0),
     // Rent geometrisk nettoareal (uten vektfaktorer), altså arealet av netMulti.
     netArea: Math.abs(multiProps(netMulti).A),
+    // Arealet av selve overlappsonen. Merk at dette er mindre enn
+    // grossArea − netArea dersom tre eller flere former dekker samme punkt.
+    overlapArea: Math.abs(multiProps(overlapNet).A),
     weighted,
     total,
     result: derive(total),
