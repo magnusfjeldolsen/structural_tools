@@ -175,7 +175,11 @@ export class Viewport {
     const rect = this.container.getBoundingClientRect();
     this.width = Math.max(rect.width, 1);
     this.height = Math.max(rect.height, 1);
-    this.renderer.setSize(this.width, this.height, false);
+    // updateStyle må stå på: uten den får canvaset CSS-størrelse lik
+    // bufferstørrelsen (width × devicePixelRatio), og på en skjerm med
+    // DPI-skalering blir lerretet da for stort. Da flyter rutenettet ut over
+    // panelene, og getBoundingClientRect gir feil museposisjon.
+    this.renderer.setSize(this.width, this.height, true);
     this._syncCamera();
     this.refresh();
   }
@@ -610,17 +614,20 @@ export class Viewport {
     const g = this.groups.preview;
     disposeGroup(g);
     const p = this.preview;
-    if (!p || !p.points || p.points.length < 2) return;
-    const closed = !!p.closed;
-    g.add(
-      buildLineMesh(
-        thickPolylinePositions(p.points, closed, (1.8 * upp) / 2, Z.preview),
-        p.color || '#22d3ee',
-        0.95
-      )
-    );
-    if (closed && p.points.length >= 3) {
-      g.add(buildFillMesh(p.points, p.color || '#22d3ee', 0.15, Z.preview - 0.01));
+    if (!p) return;
+
+    if (p.points && p.points.length >= 2) {
+      const closed = !!p.closed;
+      g.add(
+        buildLineMesh(
+          thickPolylinePositions(p.points, closed, (1.8 * upp) / 2, Z.preview),
+          p.color || '#22d3ee',
+          0.95
+        )
+      );
+      if (closed && p.points.length >= 3) {
+        g.add(buildFillMesh(p.points, p.color || '#22d3ee', 0.15, Z.preview - 0.01));
+      }
     }
     if (p.cursor) {
       const hw = 5 * upp;
