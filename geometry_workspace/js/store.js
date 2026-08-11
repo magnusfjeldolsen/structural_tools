@@ -31,7 +31,8 @@ function defaultState() {
     shapes: [],
     selection: [],
     reference: [0, 0],
-    mode: 'priority', // 'priority' | 'sum'
+    // Standard er skallmodellens tverrsnitt, der overlapp telles dobbelt
+    mode: 'sum', // 'sum' | 'priority'
     unit: 'mm',
     grid: { step: 50, snap: true, visible: true },
     title: '',
@@ -333,7 +334,7 @@ export class Store {
       }));
       st.selection = [];
       st.reference = data.reference || [0, 0];
-      st.mode = data.mode === 'sum' ? 'sum' : 'priority';
+      st.mode = data.mode === 'priority' ? 'priority' : 'sum';
       st.unit = data.unit || 'mm';
       st.title = data.title || '';
       if (data.grid) Object.assign(st.grid, data.grid);

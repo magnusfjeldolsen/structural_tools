@@ -5,12 +5,18 @@ tverrsnitt, og hvor det ligger i forhold til et valgt referansepunkt.
 
 ## Hvorfor
 
-Når en vegg og en bunnplate modelleres med skallelementer i FEM-Design, ligger begge
-i sin egen senterflate og overlapper derfor i hjørnet. Skal man legge inn en virtuell
-stav langs skjæringslinja uten at den plukker opp aksialkrefter av å ligge forskjøvet
-i forhold til den felles nøytralaksen, må staven ligge i tyngdepunktet til det
-sammensatte tverrsnittet — med overlappet talt bare én gang. Dette verktøyet regner
-ut det punktet i stedet for at man må gjette.
+Når en ringmur og en bunnplate modelleres med skallelementer i FEM-Design, ligger
+begge i sin egen senterflate og overlapper derfor i hjørnet. Skal man legge inn en
+virtuell stav langs skjæringslinja uten at den plukker opp aksialkrefter av å ligge
+forskjøvet i forhold til den felles nøytralaksen, må staven ligge i tyngdepunktet
+slik **modellen** ser det.
+
+Og modellen har begge elementene til stede i overlappsonen, hver med sin fulle
+tykkelse. Materialet der teller derfor to ganger når den virtuelle staven integrerer
+over de valgte skallene, og tyngdepunktet trekkes mot overlappet — litt ned mot plata.
+Det er denne dobbelttellingen som er standard i verktøyet. Det fysiske tverrsnittet,
+der overlappet bare finnes én gang, er tilgjengelig som egen modus når man er ute
+etter den støpte betongens virkelige tyngdepunkt.
 
 ## Filstruktur
 
@@ -44,12 +50,14 @@ tyngdepunktsaksene med Steiners sats. Hovedaksene følger av Mohrs sirkel.
 
 To modi:
 
-- **Netto (`priority`)** — lista er en prioritetsrekkefølge. Hver form får bare det
-  arealet ingen form over den allerede har krevd (`difference` mot unionen av de
-  foregående). Overlapp telles dermed nøyaktig én gang, og nettotyngdepunktet er
+- **Skallmodell (`sum`, standard)** — hver form bidrar med hele sitt areal, også der
+  formene overlapper, og hull trekkes fra. Dette speiler FEM-modellen: begge skallene
+  finnes i overlappsonen, så materialet der teller to ganger. Overlappsonen regnes ut
+  som unionen av parvise snitt mellom de faste formene, og tegnes opp i oransje.
+- **Fysisk tverrsnitt (`priority`)** — lista er en prioritetsrekkefølge. Hver form får
+  bare det arealet ingen form over den allerede har krevd (`difference` mot unionen av
+  de foregående). Overlapp telles dermed nøyaktig én gang, og tyngdepunktet er
   uavhengig av rekkefølgen så lenge alle formene har samme vektfaktor.
-- **Sum (`sum`)** — klassisk sammensatt tverrsnitt der hver del summeres for seg og
-  hull trekkes fra. Overlapp telles dobbelt. Nyttig som sammenligning.
 
 Vektfaktoren på hver form er ment som E-forhold ved transformert tverrsnitt; med
 faktorer ulik 1 er «tyngdepunktet» nøytralaksen til det transformerte tverrsnittet.

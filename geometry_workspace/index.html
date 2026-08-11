@@ -155,7 +155,8 @@
           <div class="flex-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] text-slate-300 pb-0.5">
             <label class="flex items-center gap-1.5"><input id="chk-snap" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Snap</label>
             <label class="flex items-center gap-1.5"><input id="chk-grid" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Rutenett</label>
-            <label class="flex items-center gap-1.5"><input id="chk-net" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Netto omriss</label>
+            <label class="flex items-center gap-1.5"><input id="chk-overlap" type="checkbox" class="w-3.5 h-3.5 accent-amber-500" checked /> Overlapp</label>
+            <label class="flex items-center gap-1.5"><input id="chk-net" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Ytre omriss</label>
             <label class="flex items-center gap-1.5"><input id="chk-principal" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Hovedakser</label>
           </div>
         </div>
@@ -195,7 +196,8 @@
 
       <!-- Overlegg: forklaring -->
       <div class="absolute top-3 left-3 bg-slate-800/85 backdrop-blur rounded border border-slate-700 px-3 py-2 text-[11px] space-y-1 pointer-events-none">
-        <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5 bg-cyan-400"></span> Netto geometri (overlapp fjernet)</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-2.5 bg-amber-500/40 border border-amber-500"></span> Overlapp — telles dobbelt</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5 bg-cyan-400"></span> Ytre omriss (fysisk geometri)</div>
         <div class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span> Tyngdepunkt</div>
         <div class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-full border border-amber-500"></span> Referansepunkt</div>
         <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5 bg-violet-400"></span> Hovedakser</div>
@@ -216,8 +218,8 @@
         <div>
           <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Overlapp</h2>
           <select id="mode-select">
-            <option value="priority">Netto — overlapp telles én gang</option>
-            <option value="sum">Sum — hver form for seg (overlapp dobbelt)</option>
+            <option value="sum">Skallmodell — overlapp telles dobbelt</option>
+            <option value="priority">Fysisk tverrsnitt — overlapp telles én gang</option>
           </select>
           <p id="mode-help" class="text-[11px] text-slate-500 mt-1.5 leading-snug"></p>
         </div>
@@ -258,14 +260,24 @@
           <summary class="text-slate-300 font-medium py-1">Om beregningen</summary>
           <div class="space-y-2 pt-1 leading-snug">
             <p>
-              Tyngdepunktet regnes som arealsenteret av den effektive geometrien:
+              Tyngdepunktet regnes som arealsenteret av tverrsnittet:
               x̄ = ∫x dA / ∫dA, ȳ = ∫y dA / ∫dA, med eksakt polygonintegrasjon (Greens formel).
             </p>
             <p>
-              En virtuell stav som legges i dette punktet får ingen aksialkraft av at den ligger
-              forskjøvet i forhold til den felles nøytralaksen — forutsatt at alle delene har samme
-              E-modul. Har de ulik E, legg inn E-forholdet som vektfaktor på hver form, så regnes
-              det transformerte tverrsnittets nøytralakse i stedet.
+              I skallmodus telles overlappsonen to ganger. Det er ikke en tilnærming, men en
+              gjengivelse av modellen: i FEM-modellen finnes både vegg- og plateelementet i
+              overlappsonen, hver med sin fulle tykkelse, og en virtuell stav integrerer over
+              begge. Skal staven slippe å plukke opp aksialkraft av å ligge forskjøvet, må den
+              ligge i tyngdepunktet slik modellen ser det — ikke i det fysiske tverrsnittets.
+            </p>
+            <p>
+              Bytt til fysisk tverrsnitt når du er ute etter den støpte betongens virkelige
+              tyngdepunkt, for eksempel til en kapasitetskontroll for hånd.
+            </p>
+            <p>
+              Alt over forutsetter samme E-modul i alle delene. Har de ulik E, legg inn
+              E-forholdet som vektfaktor på hver form, så regnes det transformerte tverrsnittets
+              nøytralakse i stedet.
             </p>
             <p>
               Arealmomentene er Ix = ∫y² dA og Iy = ∫x² dA om tyngdepunktsaksene. Er Ixy ≠ 0 er
@@ -296,10 +308,15 @@
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Typisk bruk: virtuell stav i FEM-Design</h3>
       <p>
-        En vegg og en bunnplate modellert med skallelementer ligger i hver sin senterflate, og
+        En ringmur og en bunnplate modellert med skallelementer ligger i hver sin senterflate, og
         overlapper derfor i hjørnet. Tegn begge med <em>Skallelement fra senterlinje</em>, så tegnes
-        rektangelet skallet faktisk representerer. Med modus «Netto» telles overlappet bare én gang,
-        og tyngdepunktet blir det du skal legge staven i for å slippe uønskede aksialkrefter.
+        rektangelet skallet faktisk representerer.
+      </p>
+      <p>
+        Med standardmodus <em>Skallmodell</em> telles overlappsonen to ganger, fordi modellen
+        faktisk har begge elementene der. Det trekker tyngdepunktet mot overlappet — altså litt
+        ned mot plata — og det er dette punktet staven skal ligge i for å slippe uønskede
+        aksialkrefter. Overlappsonen tegnes i oransje så du ser hva som teller dobbelt.
       </p>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Tegning</h3>
