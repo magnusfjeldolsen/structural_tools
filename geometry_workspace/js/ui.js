@@ -17,6 +17,8 @@ import {
   rotatePoints,
   mirrorPoints,
 } from './geometry.js';
+import { SNAP_TYPES } from './snapping.js';
+import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel } from './units.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -114,7 +116,10 @@ export class UI {
     this.store = store;
     this.viewport = viewport;
     this.tools = tools;
+    this.underlayManager = opts.underlayManager || null;
     this.analysis = null;
+    /** Pågående to-punkts kalibrering av bildeunderlaget. */
+    this.calibration = null;
 
     /** Åpne elementer i geometrilista. */
     this.expanded = new Set();
@@ -173,8 +178,28 @@ export class UI {
     });
 
     $('grid-step').addEventListener('change', (e) => st.setGrid({ step: Math.max(0, Number(e.target.value) || 0) }));
-    $('chk-snap').addEventListener('change', (e) => st.setGrid({ snap: e.target.checked }));
     $('chk-grid').addEventListener('change', (e) => st.setGrid({ visible: e.target.checked }));
+
+    $('unit-select').addEventListener('change', (e) => {
+      const to = e.target.value;
+      if (!UNIT_KEYS.includes(to)) return;
+      st.setUnit(to);
+      this.toast(`Enhet satt til ${lengthLabel(to)} — koordinatene er regnet om, geometrien er uendret.`);
+    });
+
+    $('snap-chips').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-snap]');
+      if (!btn) return;
+      st.setSnaps({ [btn.dataset.snap]: !st.state.snaps[btn.dataset.snap] });
+    });
+    $('btn-ortho').addEventListener('click', () => st.setOrtho(!st.state.ortho));
+
+    $('btn-image-pick').addEventListener('click', () => $('image-input').click());
+    $('image-input').addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file && this.underlayManager) this.underlayManager.accept(file, file.name);
+      e.target.value = '';
+    });
     $('chk-net').addEventListener('change', (e) => this.viewport.setOverlays({ showNet: e.target.checked }));
     $('chk-overlap').addEventListener('change', (e) => this.viewport.setOverlays({ showOverlap: e.target.checked }));
     $('chk-principal').addEventListener('change', (e) =>
@@ -489,6 +514,8 @@ export class UI {
 
     preserveFocus(() => {
       this._renderControls();
+      this._renderSnapChips();
+      this._renderUnderlay();
       this._renderList();
       this._renderResults(analysis);
     });
@@ -506,8 +533,9 @@ export class UI {
       if (document.activeElement !== el) el.value = value;
     };
     setIfIdle($('grid-step'), s.grid.step);
-    $('chk-snap').checked = s.grid.snap;
+    setIfIdle($('unit-select'), s.unit);
     $('chk-grid').checked = s.grid.visible;
+    $('btn-ortho').dataset.active = String(!!s.ortho);
     setIfIdle($('mode-select'), s.mode);
     setIfIdle($('ref-x'), s.reference[0]);
     setIfIdle($('ref-y'), s.reference[1]);
@@ -523,6 +551,158 @@ export class UI {
 
     const n = s.shapes.length;
     $('shape-count').textContent = n ? `(${n})` : '';
+  }
+
+  _renderSnapChips() {
+    const snaps = this.store.state.snaps;
+    $('snap-chips').innerHTML = SNAP_TYPES.map((t) => {
+      const on = !!snaps[t.key];
+      return `<button data-snap="${t.key}" title="${t.label}"
+        class="px-2 py-0.5 text-[11px] rounded border transition ${
+          on
+            ? 'bg-slate-700 border-slate-500 text-white'
+            : 'bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-300'
+        }">
+        <span class="inline-block w-2 h-2 rounded-full mr-1 align-middle" style="background:${on ? t.color : '#475569'}"></span>${t.short}
+      </button>`;
+    }).join('');
+  }
+
+  _renderUnderlay() {
+    const host = $('underlay-panel');
+    const u = this.store.state.underlay;
+    const unit = lengthLabel(this.store.state.unit);
+
+    if (!u) {
+      host.innerHTML = `<p class="text-[11px] text-slate-500 leading-snug">
+        Slipp en bildefil på lerretet, lim inn et skjermutklipp med <kbd class="px-1 bg-slate-700 rounded">Ctrl+V</kbd>,
+        eller velg fil. Deretter kalibrerer du målestokken med to punkt du vet avstanden mellom.
+      </p>`;
+      return;
+    }
+
+    const cal = this.calibration;
+    host.innerHTML = `
+      <div class="bg-slate-750 rounded border border-slate-700 p-2.5 space-y-2">
+        <div class="flex items-center gap-2">
+          <span class="flex-1 text-xs text-slate-300 truncate">${escapeHtml(u.name || 'bilde')}</span>
+          <button data-u="remove" class="text-slate-500 hover:text-red-400 text-sm leading-none" title="Fjern bildet">×</button>
+        </div>
+
+        <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-300">
+          <label class="flex items-center gap-1.5"><input data-u="visible" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" ${u.visible ? 'checked' : ''} /> Vis</label>
+          <label class="flex items-center gap-1.5"><input data-u="locked" type="checkbox" class="w-3.5 h-3.5 accent-amber-500" ${u.locked ? 'checked' : ''} /> Lås</label>
+        </div>
+
+        <div>
+          <label class="field-label" for="u-opacity">Gjennomsiktighet</label>
+          <input id="u-opacity" data-u="opacity" data-focus-key="u-opacity" type="range" min="0.05" max="1" step="0.05"
+                 value="${u.opacity}" class="w-full accent-sky-500" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-1.5">
+          <div><label class="field-label" for="u-x">x [${unit}]</label>
+            <input id="u-x" data-u="x" data-focus-key="u-x" type="number" value="${tidy(u.x)}" /></div>
+          <div><label class="field-label" for="u-y">y [${unit}]</label>
+            <input id="u-y" data-u="y" data-focus-key="u-y" type="number" value="${tidy(u.y)}" /></div>
+          <div><label class="field-label" for="u-width">Bredde [${unit}]</label>
+            <input id="u-width" data-u="width" data-focus-key="u-width" type="number" value="${tidy(u.width)}" /></div>
+          <div><label class="field-label" for="u-rot">Rotasjon [°]</label>
+            <input id="u-rot" data-u="rotation" data-focus-key="u-rot" type="number"
+                   value="${tidy(((u.rotation || 0) * 180) / Math.PI)}" /></div>
+        </div>
+
+        ${
+          cal
+            ? `<div class="pt-2 border-t border-slate-600 space-y-1.5">
+                 <div class="text-[11px] text-slate-400 num">Målt avstand: ${fmtLen(cal.measured)} ${unit}</div>
+                 <div class="flex items-end gap-1.5">
+                   <div class="flex-1">
+                     <label class="field-label" for="cal-len">Virkelig lengde [${unit}]</label>
+                     <input id="cal-len" data-focus-key="cal-len" type="number" value="${cal.trueLength ?? ''}" />
+                   </div>
+                   <button data-u="apply-cal" class="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 rounded whitespace-nowrap">Skaler</button>
+                 </div>
+               </div>`
+            : `<button data-u="calibrate" class="w-full px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 rounded">
+                 Kalibrer målestokk (to punkt)
+               </button>`
+        }
+      </div>`;
+
+    host.querySelectorAll('[data-u]').forEach((el) => {
+      const key = el.dataset.u;
+      if (key === 'remove') {
+        el.addEventListener('click', () => {
+          this.store.clearUnderlay();
+          this.calibration = null;
+          if (this.underlayManager) this.underlayManager.clear();
+          this.viewport.setUnderlayImage(null);
+        });
+      } else if (key === 'calibrate') {
+        el.addEventListener('click', () => this.tools.setTool('calibrate'));
+      } else if (key === 'apply-cal') {
+        el.addEventListener('click', () => this._applyCalibration());
+      } else if (key === 'visible' || key === 'locked') {
+        el.addEventListener('change', (e) => this.store.setUnderlay({ [key]: e.target.checked }));
+      } else if (key === 'opacity') {
+        el.addEventListener('input', (e) =>
+          this.store.setUnderlay({ opacity: Number(e.target.value) }, { transient: true })
+        );
+        el.addEventListener('change', () => this.store.commit('underlay'));
+      } else if (key === 'rotation') {
+        el.addEventListener('change', (e) =>
+          this.store.setUnderlay({ rotation: ((Number(e.target.value) || 0) * Math.PI) / 180 })
+        );
+      } else if (key === 'width') {
+        el.addEventListener('change', (e) => {
+          const w = Math.abs(Number(e.target.value)) || 1;
+          const cur = this.store.state.underlay;
+          const aspect = cur.width / Math.max(cur.height, 1e-9);
+          this.store.setUnderlay({ width: w, height: w / aspect });
+        });
+      } else {
+        el.addEventListener('change', (e) => this.store.setUnderlay({ [key]: Number(e.target.value) || 0 }));
+      }
+    });
+  }
+
+  /** Skalerer bildet slik at den målte avstanden blir den oppgitte lengden. */
+  _applyCalibration() {
+    const cal = this.calibration;
+    const trueLength = Number($('cal-len').value);
+    if (!cal || !Number.isFinite(trueLength) || trueLength <= 0) {
+      return this.toast('Skriv inn den virkelige lengden.');
+    }
+    const f = trueLength / cal.measured;
+    const u = this.store.state.underlay;
+    if (!u) return;
+    // Skalerer om det første klikkpunktet, så det blir liggende i ro
+    this.store.setUnderlay({
+      width: u.width * f,
+      height: u.height * f,
+      x: cal.a[0] + (u.x - cal.a[0]) * f,
+      y: cal.a[1] + (u.y - cal.a[1]) * f,
+    });
+    this.calibration = null;
+    // Zoom til bildet, ikke bare til geometrien — det er gjerne tomt ennå
+    const nu = this.store.state.underlay;
+    this.viewport.zoomToFit({
+      minX: nu.x - nu.width / 2,
+      maxX: nu.x + nu.width / 2,
+      minY: nu.y - nu.height / 2,
+      maxY: nu.y + nu.height / 2,
+    });
+    this.toast(`Målestokk satt: bildet skalert ${f.toFixed(4)}×.`);
+  }
+
+  /** Kalles fra verktøyet når to kalibreringspunkt er klikket. */
+  onCalibrationPicked({ a, b, measured }) {
+    this.calibration = { a, b, measured };
+    this.tools.setTool('select');
+    this._renderUnderlay();
+    const input = $('cal-len');
+    if (input) input.focus();
   }
 
   _renderList() {
@@ -793,26 +973,29 @@ export class UI {
     const dx = r.cx - ref[0];
     const dy = r.cy - ref[1];
     const overlap = analysis.grossArea - analysis.netArea;
+    const unit = this.store.state.unit;
+    const uL = lengthLabel(unit);
+    const uA = areaLabel(unit);
 
     main.innerHTML = `
       <div class="grid grid-cols-2 gap-2">
-        ${bigValue('x̄', fmtLen(r.cx))}
-        ${bigValue('ȳ', fmtLen(r.cy))}
+        ${bigValue(`x̄ [${uL}]`, fmtLen(r.cx))}
+        ${bigValue(`ȳ [${uL}]`, fmtLen(r.cy))}
       </div>
       <div class="pt-2 border-t border-slate-700">
         <div class="text-[11px] text-slate-400 mb-1">Fra referansepunkt (${fmtLen(ref[0])}, ${fmtLen(ref[1])})</div>
         <div class="grid grid-cols-2 gap-2">
-          ${bigValue('Δx', fmtLen(dx), 'text-amber-300')}
-          ${bigValue('Δy', fmtLen(dy), 'text-amber-300')}
+          ${bigValue(`Δx [${uL}]`, fmtLen(dx), 'text-amber-300')}
+          ${bigValue(`Δy [${uL}]`, fmtLen(dy), 'text-amber-300')}
         </div>
       </div>
       <div class="pt-2 border-t border-slate-700 space-y-1 text-xs num">
         ${
           analysis.mode === 'sum'
-            ? row('Areal (skallmodell)', fmtArea(analysis.grossArea)) +
-              row('Areal (fysisk geometri)', fmtArea(analysis.netArea), 'text-slate-400')
-            : row('Areal (fysisk geometri)', fmtArea(analysis.netArea)) +
-              row('Areal (skallmodell)', fmtArea(analysis.grossArea), 'text-slate-400')
+            ? row(`Areal, skallmodell [${uA}]`, fmtArea(analysis.grossArea)) +
+              row(`Areal, fysisk [${uA}]`, fmtArea(analysis.netArea), 'text-slate-400')
+            : row(`Areal, fysisk [${uA}]`, fmtArea(analysis.netArea)) +
+              row(`Areal, skallmodell [${uA}]`, fmtArea(analysis.grossArea), 'text-slate-400')
         }
         ${
           Math.abs(overlap) > 1e-6
@@ -827,13 +1010,14 @@ export class UI {
       </div>`;
 
     const deg = (r.theta * 180) / Math.PI;
+    const uI = inertiaLabel(unit);
     inertia.innerHTML = `
       <div class="space-y-1 num">
-        ${row('Ix = ∫y²dA', fmtInertia(r.Ix))}
-        ${row('Iy = ∫x²dA', fmtInertia(r.Iy))}
-        ${row('Ixy', fmtInertia(r.Ixy))}
-        ${row('I₁ (maks)', fmtInertia(r.I1))}
-        ${row('I₂ (min)', fmtInertia(r.I2))}
+        ${row(`Ix = ∫y²dA [${uI}]`, fmtInertia(r.Ix))}
+        ${row(`Iy = ∫x²dA [${uI}]`, fmtInertia(r.Iy))}
+        ${row(`Ixy [${uI}]`, fmtInertia(r.Ixy))}
+        ${row(`I₁ maks [${uI}]`, fmtInertia(r.I1))}
+        ${row(`I₂ min [${uI}]`, fmtInertia(r.I2))}
         ${row('Hovedaksevinkel', `${nf(2)(deg)}°`)}
       </div>
       ${
@@ -881,6 +1065,17 @@ function row(label, value, cls = 'text-slate-200') {
 
 function round(v) {
   return Math.round(v * 1e6) / 1e6;
+}
+
+/**
+ * Avrunding for felt man bare leser av og av og til retter på. Bildets
+ * plassering trenger ikke ni desimaler for å være nyttig.
+ */
+function tidy(v) {
+  if (!Number.isFinite(v)) return 0;
+  const a = Math.abs(v);
+  const dec = a >= 100 ? 1 : a >= 1 ? 3 : 6;
+  return Number(v.toFixed(dec));
 }
 
 function escapeHtml(s) {
