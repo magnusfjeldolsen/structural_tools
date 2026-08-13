@@ -11,14 +11,27 @@
 
 import { openRing, signedArea } from './geometry.js';
 
+/**
+ * Snap-typene, i den rekkefølgen de prøves.
+ *
+ * Hurtigtastene er Alt + siffer. Alt-kombinasjoner er valgt fordi de er blant
+ * de få som er ledige i en nettleser: F-tastene, Ctrl+tall og Ctrl+bokstav er
+ * i stor grad opptatt av nettleseren selv.
+ */
 export const SNAP_TYPES = [
-  { key: 'endpoint', label: 'Endepunkt', short: 'End', color: '#22c55e' },
-  { key: 'intersection', label: 'Skjæringspunkt', short: 'Skjær', color: '#f472b6' },
-  { key: 'midpoint', label: 'Midtpunkt', short: 'Midt', color: '#eab308' },
-  { key: 'center', label: 'Senter', short: 'Senter', color: '#a78bfa' },
-  { key: 'edge', label: 'På linje', short: 'Linje', color: '#38bdf8' },
-  { key: 'grid', label: 'Rutenett', short: 'Rutenett', color: '#64748b' },
+  { key: 'endpoint', label: 'Endepunkt', short: 'End', color: '#22c55e', code: 'Digit1', hint: 'Alt+1' },
+  { key: 'intersection', label: 'Skjæringspunkt', short: 'Skj', color: '#f472b6', code: 'Digit2', hint: 'Alt+2' },
+  { key: 'midpoint', label: 'Midtpunkt', short: 'Mid', color: '#eab308', code: 'Digit3', hint: 'Alt+3' },
+  { key: 'center', label: 'Senter', short: 'Sen', color: '#a78bfa', code: 'Digit4', hint: 'Alt+4' },
+  { key: 'edge', label: 'På linje', short: 'Lin', color: '#38bdf8', code: 'Digit5', hint: 'Alt+5' },
+  { key: 'grid', label: 'Rutenett', short: 'Rut', color: '#94a3b8', code: 'Digit6', hint: 'Alt+6' },
 ];
+
+/** Slår av og på alle snap under ett. */
+export const SNAP_ALL = { code: 'Digit9', hint: 'Alt+9' };
+
+/** Orto er ikke en snap-type, men hører hjemme i samme kontroll. */
+export const ORTHO = { label: 'Orto', short: 'Orto', color: '#f97316', code: 'Digit0', hint: 'Alt+0' };
 
 export const SNAP_KEYS = SNAP_TYPES.map((t) => t.key);
 

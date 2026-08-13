@@ -115,6 +115,14 @@ window.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
   const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
 
+  // Alt+siffer styrer snap. Dette skal virke også midt i et tallfelt, siden
+  // man ofte vil endre snap uten å måtte klikke seg ut av det man skriver.
+  // Alt uten Ctrl, så AltGr (= Ctrl+Alt) på norsk tastatur ikke fanges opp.
+  if (ui.handleSnapShortcut(e)) {
+    e.preventDefault();
+    return;
+  }
+
   if (e.key === 'Escape') {
     document.getElementById('help-overlay').classList.add('hidden');
     if (typing) e.target.blur();
@@ -154,8 +162,7 @@ window.addEventListener('keydown', (e) => {
 
   if (e.key === 'F8') {
     e.preventDefault();
-    store.setOrtho(!store.state.ortho);
-    ui.status(`Orto ${store.state.ortho ? 'på' : 'av'}.`);
+    ui.toggleOrtho();
     return;
   }
   if (e.key === 'Delete' || e.key === 'Backspace') {
