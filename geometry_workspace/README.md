@@ -5,18 +5,15 @@ tverrsnitt, og hvor det ligger i forhold til et valgt referansepunkt.
 
 ## Hvorfor
 
-Når en ringmur og en bunnplate modelleres med skallelementer i FEM-Design, ligger
-begge i sin egen senterflate og overlapper derfor i hjørnet. Skal man legge inn en
-virtuell stav langs skjæringslinja uten at den plukker opp aksialkrefter av å ligge
-forskjøvet i forhold til den felles nøytralaksen, må staven ligge i tyngdepunktet
-slik **modellen** ser det.
+Tegn en vilkårlig sammensatt geometri og få tyngdepunktet, arealmomentene og
+hovedaksene — målt fra et referansepunkt du selv velger. Nyttig når tverrsnittet er
+for uregelmessig til å slås opp i en tabell, og man ellers ville endt med å gjette.
 
-Og modellen har begge elementene til stede i overlappsonen, hver med sin fulle
-tykkelse. Materialet der teller derfor to ganger når den virtuelle staven integrerer
-over de valgte skallene, og tyngdepunktet trekkes mot overlappet — litt ned mot plata.
-Det er denne dobbelttellingen som er standard i verktøyet. Det fysiske tverrsnittet,
-der overlappet bare finnes én gang, er tilgjengelig som egen modus når man er ute
-etter den støpte betongens virkelige tyngdepunkt.
+Overlappende former kan telles én eller to ganger. Det siste høres rart ut, men er
+riktig for skallmodeller: en ringmur og en bunnplate modellert i hver sin senterflate
+overlapper i hjørnet, og modellen har begge elementene til stede der. En virtuell stav
+integrerer over begge, så tyngdepunktet staven må ligge i for å slippe uønskede
+aksialkrefter, er det med overlappet talt to ganger.
 
 ## Filstruktur
 

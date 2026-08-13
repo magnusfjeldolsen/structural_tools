@@ -306,17 +306,22 @@
         og viser hvor det ligger i forhold til et referansepunkt du selv velger.
       </p>
 
-      <h3 class="text-base font-semibold text-sky-400 pt-2">Typisk bruk: virtuell stav i FEM-Design</h3>
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Overlappende former</h3>
       <p>
-        En ringmur og en bunnplate modellert med skallelementer ligger i hver sin senterflate, og
-        overlapper derfor i hjørnet. Tegn begge med <em>Skallelement fra senterlinje</em>, så tegnes
-        rektangelet skallet faktisk representerer.
+        Overlapper to former hverandre, tegnes overlappsonen i oransje, og du velger hvordan den
+        skal telle:
       </p>
-      <p>
-        Med standardmodus <em>Skallmodell</em> telles overlappsonen to ganger, fordi modellen
-        faktisk har begge elementene der. Det trekker tyngdepunktet mot overlappet — altså litt
-        ned mot plata — og det er dette punktet staven skal ligge i for å slippe uønskede
-        aksialkrefter. Overlappsonen tegnes i oransje så du ser hva som teller dobbelt.
+      <ul class="list-disc list-inside space-y-1">
+        <li><strong>Skallmodell</strong> — hver form teller med hele sitt areal, så overlappet
+          teller to ganger og trekker tyngdepunktet mot seg.</li>
+        <li><strong>Fysisk tverrsnitt</strong> — overlappet teller én gang, slik en sammenhengende
+          støpt geometri er.</li>
+      </ul>
+      <p class="text-slate-400">
+        Et konkret tilfelle: en ringmur og en bunnplate modellert med skallelementer ligger i hver
+        sin senterflate og overlapper i hjørnet. Modellen har da begge elementene i overlappsonen,
+        så skallmodus gir tyngdepunktet en virtuell stav må ligge i for å slippe uønskede
+        aksialkrefter. Tegn begge med <em>Skallelement fra senterlinje</em>.
       </p>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Tegning</h3>
