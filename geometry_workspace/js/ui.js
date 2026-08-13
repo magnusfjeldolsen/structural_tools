@@ -514,8 +514,8 @@ export class UI {
     setIfIdle($('model-title'), s.title || '');
     $('mode-help').textContent =
       s.mode === 'sum'
-        ? 'Hver skallflate bidrar med hele sitt areal, også der de overlapper. Slik er FEM-modellen faktisk: både vegg- og plateelementet finnes i overlappsonen, så materialet der teller to ganger — og trekker tyngdepunktet mot overlappet.'
-        : 'Overlappet telles bare én gang, slik den støpte betongen fysisk er. Gir det virkelige tverrsnittets tyngdepunkt, ikke skallmodellens.';
+        ? 'Hver form bidrar med hele sitt areal, også der formene overlapper. Overlappsonen telles altså to ganger, og trekker tyngdepunktet mot seg.'
+        : 'Overlappet telles bare én gang, slik en sammenhengende, støpt geometri fysisk er.';
 
     document.querySelectorAll('[data-tool]').forEach((btn) => {
       btn.dataset.active = String(btn.dataset.tool === this.tools.tool);

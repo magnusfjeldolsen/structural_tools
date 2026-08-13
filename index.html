@@ -1292,44 +1292,6 @@
         </div>
       </div>
 
-      <!-- Row: Geometry Workspace -->
-      <div class="grid md:grid-cols-1 gap-8 mb-8">
-        <div class="tool-card rounded-xl p-8">
-          <div class="flex items-center mb-4">
-            <div class="w-12 h-12 bg-sky-600 rounded-lg flex items-center justify-center mr-4">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 20h16M4 20V8h8v12M12 20V4h8v16" />
-              </svg>
-            </div>
-            <h3 class="text-2xl font-bold text-white">Geometry Workspace — Centroid &amp; Neutral Axis</h3>
-          </div>
-
-          <p class="text-gray-300 mb-6 leading-relaxed">
-            Draw composite cross-sections in the XY plane and read off the area-weighted centroid,
-            second moments of area and principal axes. Built for shell models: where a wall and a
-            slab modelled at their mid-surfaces overlap, the model holds both elements, so the
-            overlap counts twice and pulls the centroid towards it — which is exactly where a
-            virtual bar must sit if it is not to pick up spurious axial force. The true physical
-            section, with the overlap counted once, is one click away. Rectangles, mid-surface
-            shells, polygons and circles with full CRUD editing.
-          </p>
-
-          <div class="flex flex-wrap gap-2 mb-6">
-            <span class="px-3 py-1 bg-sky-500/20 text-sky-300 rounded-full text-sm">Centroid</span>
-            <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">Neutral Axis</span>
-            <span class="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-sm">Section Properties</span>
-            <span class="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-sm">FEM-Design</span>
-          </div>
-
-          <a href="./geometry_workspace/index.html"
-             class="inline-flex items-center px-6 py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg transition group">
-            Launch Tool
-            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-          </a>
-        </div>
-      </div>
     </section>
 
     <!-- Data Processing Tools -->
@@ -1468,7 +1430,7 @@
             <span class="px-3 py-1 bg-teal-500/20 text-teal-300 rounded-full text-sm">Delivery Tracking</span>
           </div>
           
-          <a href="./deliveryhub/index.html" 
+          <a href="./deliveryhub/index.html"
              class="inline-flex items-center px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition group">
             Launch Hub
             <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1476,7 +1438,62 @@
             </svg>
           </a>
         </div>
-        
+
+      </div>
+    </section>
+
+    <!-- Utilities -->
+    <section class="mb-12">
+      <div class="text-center mb-8">
+        <div class="flex items-center justify-center mb-4">
+          <div class="w-12 h-12 bg-sky-600 rounded-lg flex items-center justify-center mr-4">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <h2 class="text-3xl font-semibold text-white">Utilities</h2>
+        </div>
+        <p class="text-gray-300 max-w-2xl mx-auto">General-purpose helpers that support modelling and hand checks</p>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-8 mb-8">
+
+        <!-- Geometry Workspace -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-sky-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 20h16M4 20V8h8v12M12 20V4h8v16" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Geometry Workspace</h3>
+          </div>
+
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            Draw arbitrary composite cross-sections in the XY plane and read off the area-weighted
+            centroid, second moments of area and principal axes, measured from a reference point
+            you choose. Rectangles, mid-surface shells, polygons and circles with full CRUD
+            editing, exact polygon integration and weight factors for transformed sections.
+            Overlapping shapes can be counted once or twice, whichever your model calls for.
+          </p>
+
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-sky-500/20 text-sky-300 rounded-full text-sm">Centroid</span>
+            <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">Neutral Axis</span>
+            <span class="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-sm">Section Properties</span>
+            <span class="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-sm">FEM-Design</span>
+          </div>
+
+          <a href="./geometry_workspace/index.html"
+             class="inline-flex items-center px-6 py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg transition group">
+            Launch Tool
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
       </div>
     </section>
 
