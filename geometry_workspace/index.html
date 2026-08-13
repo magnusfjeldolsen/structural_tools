@@ -164,26 +164,16 @@
             <label class="field-label" for="grid-step">Rutenett</label>
             <input id="grid-step" type="number" value="50" step="10" min="0" />
           </div>
-          <div class="flex-1 grid grid-cols-1 gap-y-0.5 text-[11px] text-slate-300 pb-0.5">
-            <label class="flex items-center gap-1.5"><input id="chk-grid" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Vis rutenett</label>
-            <label class="flex items-center gap-1.5"><input id="chk-overlap" type="checkbox" class="w-3.5 h-3.5 accent-amber-500" checked /> Overlapp</label>
-          </div>
         </div>
 
-        <!-- Snap -->
-        <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Snap</h2>
-            <button id="btn-ortho"
-                    class="tool-btn px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
-                    title="Lås til vannrett/loddrett (F8). Hold Shift for å snu midlertidig.">Orto</button>
-          </div>
-          <div id="snap-chips" class="flex flex-wrap gap-1"></div>
-          <div class="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-300">
-            <label class="flex items-center gap-1.5"><input id="chk-net" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Ytre omriss</label>
-            <label class="flex items-center gap-1.5"><input id="chk-principal" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Hovedakser</label>
-          </div>
+        <!-- Hva som vises -->
+        <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-300">
+          <label class="flex items-center gap-1.5"><input id="chk-grid" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Rutenett</label>
+          <label class="flex items-center gap-1.5"><input id="chk-overlap" type="checkbox" class="w-3.5 h-3.5 accent-amber-500" checked /> Overlapp</label>
+          <label class="flex items-center gap-1.5"><input id="chk-net" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Omriss</label>
+          <label class="flex items-center gap-1.5"><input id="chk-principal" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Hovedakser</label>
         </div>
+
 
         <!-- Bildeunderlag -->
         <div>
@@ -236,6 +226,11 @@
         <div class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-full border border-amber-500"></span> Referansepunkt</div>
         <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5 bg-violet-400"></span> Hovedakser</div>
       </div>
+
+      <!-- Snap-kontroll nederst til høyre -->
+      <div id="snap-bar"
+           class="absolute right-2 flex items-center gap-px p-0.5 bg-slate-800/90 backdrop-blur border border-slate-700 rounded-md shadow-lg shadow-black/30"
+           style="bottom: 2.1rem;"></div>
 
       <!-- Statuslinje -->
       <div class="absolute bottom-0 left-0 right-0 flex items-center gap-4 px-3 py-1.5 bg-slate-800/90 backdrop-blur border-t border-slate-700 text-[11px] text-slate-300">
@@ -399,15 +394,32 @@
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Snap og orto</h3>
       <p>
-        Hver snap-type kan slås av og på for seg: endepunkt, skjæringspunkt, midtpunkt, senter,
-        nærmeste punkt på en linje, og rutenett. Ligger flere innenfor rekkevidde, vinner den
-        øverste i den rekkefølgen — endepunkt slår altså linje. Fargen på markørkrysset viser
-        hvilken type som traff, og typen står i statuslinja.
+        Kontrollen nede til høyre i lerretet slår hver snap-type av og på: endepunkt,
+        skjæringspunkt, midtpunkt, senter, nærmeste punkt på en linje, og rutenett. Ligger flere
+        innenfor rekkevidde, vinner den øverste i den rekkefølgen — endepunkt slår altså linje.
+        Fargen på markørkrysset viser hvilken type som traff, og typen står i statuslinja.
       </p>
       <p>
-        <strong>Orto</strong> (<kbd class="px-1 bg-slate-700 rounded">F8</kbd>) låser tegningen til
-        vannrett eller loddrett fra forrige punkt. Hold <kbd class="px-1 bg-slate-700 rounded">Shift</kbd>
-        for å snu orto midlertidig.
+        Hurtigtastene står i verktøytipset på hver knapp. De bruker
+        <kbd class="px-1 bg-slate-700 rounded">Alt</kbd> + siffer, fordi F-tastene og
+        Ctrl-kombinasjonene stort sett er opptatt av nettleseren. De virker også mens du står
+        i et tallfelt.
+      </p>
+      <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+1</kbd> Endepunkt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+2</kbd> Skjæringspunkt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+3</kbd> Midtpunkt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+4</kbd> Senter</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+5</kbd> På linje</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+6</kbd> Rutenett</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+9</kbd> Alle snap av/på</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+0</kbd> Orto</div>
+      </div>
+      <p>
+        <strong>Orto</strong> (<kbd class="px-1 bg-slate-700 rounded">Alt+0</kbd> eller
+        <kbd class="px-1 bg-slate-700 rounded">F8</kbd>) låser tegningen til vannrett eller loddrett
+        fra forrige punkt. Hold <kbd class="px-1 bg-slate-700 rounded">Shift</kbd> for å snu orto
+        midlertidig.
       </p>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Enheter</h3>
@@ -432,7 +444,9 @@
         <div><kbd class="px-1 bg-slate-700 rounded">C</kbd> Sirkel</div>
         <div><kbd class="px-1 bg-slate-700 rounded">O</kbd> Nullpunkt</div>
         <div><kbd class="px-1 bg-slate-700 rounded">F</kbd> Zoom alt</div>
-        <div><kbd class="px-1 bg-slate-700 rounded">F8</kbd> Orto av/på</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+1…6</kbd> Snap-typer</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+9</kbd> Alle snap av/på</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+0</kbd> Orto av/på</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+V</kbd> Lim inn bilde</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Del</kbd> Slett markerte</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+D</kbd> Dupliser</div>

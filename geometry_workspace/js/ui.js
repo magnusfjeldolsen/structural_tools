@@ -17,7 +17,7 @@ import {
   rotatePoints,
   mirrorPoints,
 } from './geometry.js';
-import { SNAP_TYPES } from './snapping.js';
+import { SNAP_TYPES, SNAP_ALL, ORTHO } from './snapping.js';
 import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel } from './units.js';
 
 const $ = (id) => document.getElementById(id);
@@ -144,6 +144,54 @@ export class UI {
     return this.form.shell.t;
   }
 
+  /* ---------------- snap-brytere ---------------- */
+
+  toggleSnap(key) {
+    const t = SNAP_TYPES.find((s) => s.key === key);
+    if (!t) return;
+    const on = !this.store.state.snaps[key];
+    this.store.setSnaps({ [key]: on });
+    this.status(`${t.label}: ${on ? 'på' : 'av'} (${t.hint})`);
+  }
+
+  /** Alle av hvis noen er på, ellers alle på igjen. */
+  toggleAllSnaps() {
+    const snaps = this.store.state.snaps;
+    const anyOn = SNAP_TYPES.some((t) => snaps[t.key]);
+    if (anyOn) {
+      this._snapMemory = { ...snaps };
+      this.store.setSnaps(Object.fromEntries(SNAP_TYPES.map((t) => [t.key, false])));
+      this.status(`Snap av (${SNAP_ALL.hint})`);
+    } else {
+      const restore = this._snapMemory || { endpoint: true, midpoint: true, edge: true, intersection: true, grid: true };
+      this.store.setSnaps(restore);
+      this.status(`Snap på (${SNAP_ALL.hint})`);
+    }
+  }
+
+  toggleOrtho() {
+    const on = !this.store.state.ortho;
+    this.store.setOrtho(on);
+    this.status(`Orto: ${on ? 'på' : 'av'} (${ORTHO.hint})`);
+  }
+
+  /** Tar imot Alt+siffer. Returnerer true hvis tasten ble brukt. */
+  handleSnapShortcut(e) {
+    if (!e.altKey || e.ctrlKey || e.metaKey) return false;
+    if (e.code === ORTHO.code) {
+      this.toggleOrtho();
+      return true;
+    }
+    if (e.code === SNAP_ALL.code) {
+      this.toggleAllSnaps();
+      return true;
+    }
+    const t = SNAP_TYPES.find((s) => s.code === e.code);
+    if (!t) return false;
+    this.toggleSnap(t.key);
+    return true;
+  }
+
   toast(msg, ms = 2200) {
     const el = $('toast');
     el.textContent = msg;
@@ -187,12 +235,13 @@ export class UI {
       this.toast(`Enhet satt til ${lengthLabel(to)} — koordinatene er regnet om, geometrien er uendret.`);
     });
 
-    $('snap-chips').addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-snap]');
+    $('snap-bar').addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
       if (!btn) return;
-      st.setSnaps({ [btn.dataset.snap]: !st.state.snaps[btn.dataset.snap] });
+      if (btn.hasAttribute('data-ortho')) this.toggleOrtho();
+      else if (btn.hasAttribute('data-snap-all')) this.toggleAllSnaps();
+      else if (btn.dataset.snap) this.toggleSnap(btn.dataset.snap);
     });
-    $('btn-ortho').addEventListener('click', () => st.setOrtho(!st.state.ortho));
 
     $('btn-image-pick').addEventListener('click', () => $('image-input').click());
     $('image-input').addEventListener('change', (e) => {
@@ -535,7 +584,6 @@ export class UI {
     setIfIdle($('grid-step'), s.grid.step);
     setIfIdle($('unit-select'), s.unit);
     $('chk-grid').checked = s.grid.visible;
-    $('btn-ortho').dataset.active = String(!!s.ortho);
     setIfIdle($('mode-select'), s.mode);
     setIfIdle($('ref-x'), s.reference[0]);
     setIfIdle($('ref-y'), s.reference[1]);
@@ -553,19 +601,41 @@ export class UI {
     $('shape-count').textContent = n ? `(${n})` : '';
   }
 
+  /** Den lille snap-kontrollen nede til høyre i lerretet. */
   _renderSnapChips() {
-    const snaps = this.store.state.snaps;
-    $('snap-chips').innerHTML = SNAP_TYPES.map((t) => {
-      const on = !!snaps[t.key];
-      return `<button data-snap="${t.key}" title="${t.label}"
-        class="px-2 py-0.5 text-[11px] rounded border transition ${
+    const st = this.store.state;
+    const chip = (on, color, short, title, attr) =>
+      `<button ${attr} title="${title}"
+        class="px-1 py-0.5 text-[10px] leading-none rounded border transition whitespace-nowrap ${
           on
             ? 'bg-slate-700 border-slate-500 text-white'
-            : 'bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-300'
+            : 'bg-slate-900/60 border-slate-700 text-slate-500 hover:text-slate-300'
         }">
-        <span class="inline-block w-2 h-2 rounded-full mr-1 align-middle" style="background:${on ? t.color : '#475569'}"></span>${t.short}
+        <span class="inline-block w-1.5 h-1.5 rounded-full mr-0.5 align-middle" style="background:${on ? color : '#475569'}"></span>${short}
       </button>`;
-    }).join('');
+
+    const anyOn = SNAP_TYPES.some((t) => st.snaps[t.key]);
+
+    $('snap-bar').innerHTML =
+      chip(
+        anyOn,
+        '#e2e8f0',
+        'Snap',
+        `Slå alle snap av eller på — ${SNAP_ALL.hint}`,
+        'data-snap-all'
+      ) +
+      '<span class="w-px h-4 bg-slate-600 mx-0.5"></span>' +
+      SNAP_TYPES.map((t) =>
+        chip(!!st.snaps[t.key], t.color, t.short, `${t.label} — ${t.hint}`, `data-snap="${t.key}"`)
+      ).join('') +
+      '<span class="w-px h-4 bg-slate-600 mx-0.5"></span>' +
+      chip(
+        !!st.ortho,
+        ORTHO.color,
+        ORTHO.short,
+        `Lås til vannrett/loddrett — ${ORTHO.hint} eller F8. Hold Shift for å snu midlertidig.`,
+        'data-ortho'
+      );
   }
 
   _renderUnderlay() {
