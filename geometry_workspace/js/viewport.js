@@ -11,8 +11,10 @@
 
 import * as THREE from 'three';
 import { openRing } from './geometry.js';
+import { findSnap } from './snapping.js';
 
 const Z = {
+  underlay: -0.5,
   grid: 0,
   axis: 0.05,
   fill: 0.1,
@@ -113,7 +115,8 @@ export class Viewport {
     this.width = 1;
     this.height = 1;
 
-    this.data = { shapes: [], selection: [], analysis: null, reference: [0, 0], grid: null };
+    this.data = { shapes: [], selection: [], analysis: null, reference: [0, 0], grid: null, underlay: null };
+    this.underlayTexture = null;
     this.preview = null;
     this.hover = null;
     this.showNet = true;
@@ -134,7 +137,7 @@ export class Viewport {
     this.renderer.domElement.style.cursor = 'crosshair';
 
     this.groups = {};
-    for (const key of ['grid', 'fill', 'outline', 'net', 'marker', 'preview', 'handle']) {
+    for (const key of ['underlay', 'grid', 'fill', 'outline', 'net', 'marker', 'preview', 'handle']) {
       const g = new THREE.Group();
       this.scene.add(g);
       this.groups[key] = g;
@@ -326,42 +329,17 @@ export class Viewport {
   /* ---------------- snapping ---------------- */
 
   /**
-   * Snapper et verdenspunkt. Prioritet: hjørnepunkt → midtpunkt → rutenett.
-   * Returnerer { point, type }.
+   * Snapper et verdenspunkt. Selve logikken ligger i snapping.js; her legges
+   * bare pikseltoleransen om til verdensenheter.
    */
-  snap(world, { grid = null, snapVertices = true, exclude = null } = {}) {
-    const tolPx = 12;
-    const tol = tolPx * this.unitsPerPixel;
-
-    if (snapVertices) {
-      let best = null;
-      let bestD = tol;
-      const consider = (p, type) => {
-        const d = Math.hypot(p[0] - world[0], p[1] - world[1]);
-        if (d < bestD) {
-          bestD = d;
-          best = { point: [p[0], p[1]], type };
-        }
-      };
-      for (const s of this.data.shapes) {
-        if (s.include === false || (exclude && exclude.has(s.id))) continue;
-        const ring = openRing(s.points);
-        for (let i = 0; i < ring.length; i++) {
-          consider(ring[i], 'vertex');
-          const j = (i + 1) % ring.length;
-          consider([(ring[i][0] + ring[j][0]) / 2, (ring[i][1] + ring[j][1]) / 2], 'midpoint');
-        }
-      }
-      if (best) return best;
-    }
-
-    if (grid && grid.snap && grid.step > 0) {
-      return {
-        point: [Math.round(world[0] / grid.step) * grid.step, Math.round(world[1] / grid.step) * grid.step],
-        type: 'grid',
-      };
-    }
-    return { point: [world[0], world[1]], type: 'free' };
+  snap(world, { snaps = null, gridStep = 0, exclude = null, tolPx = 12 } = {}) {
+    return findSnap(world, {
+      shapes: this.data.shapes || [],
+      snaps: snaps || {},
+      gridStep,
+      tol: tolPx * this.unitsPerPixel,
+      exclude,
+    });
   }
 
   /* ---------------- data inn ---------------- */
@@ -373,6 +351,22 @@ export class Viewport {
 
   setPreview(preview) {
     this.preview = preview;
+    this.refresh();
+  }
+
+  /** Bytter selve bildet i underlaget. Transformen kommer via setData. */
+  setUnderlayImage(image) {
+    if (this.underlayTexture) {
+      this.underlayTexture.dispose();
+      this.underlayTexture = null;
+    }
+    if (image) {
+      const tex = new THREE.Texture(image);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
+      this.underlayTexture = tex;
+      this.underlayAspect = image.naturalWidth / Math.max(image.naturalHeight, 1);
+    }
     this.refresh();
   }
 
@@ -406,11 +400,31 @@ export class Viewport {
 
   _rebuild() {
     const upp = this.unitsPerPixel;
+    this._drawUnderlay();
     this._drawGrid(upp);
     this._drawShapes(upp);
     this._drawNet(upp);
     this._drawMarkers(upp);
     this._drawPreview(upp);
+  }
+
+  _drawUnderlay() {
+    const g = this.groups.underlay;
+    disposeGroup(g);
+    const u = this.data.underlay;
+    if (!u || !u.visible || !this.underlayTexture) return;
+
+    const geom = new THREE.PlaneGeometry(u.width, u.height);
+    const mat = new THREE.MeshBasicMaterial({
+      map: this.underlayTexture,
+      transparent: true,
+      opacity: u.opacity != null ? u.opacity : 0.65,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.position.set(u.x, u.y, Z.underlay);
+    mesh.rotation.z = u.rotation || 0;
+    g.add(mesh);
   }
 
   _drawGrid(upp) {

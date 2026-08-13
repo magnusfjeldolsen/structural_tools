@@ -59,6 +59,10 @@
     details[open] .chev { transform: rotate(90deg); }
     .chev { transition: transform .15s ease; }
     .field-label { font-size: 0.6875rem; color: #94a3b8; margin-bottom: 0.15rem; display: block; }
+    #canvas-host[data-drop-active] { outline: 2px dashed #38bdf8; outline-offset: -6px; }
+    textarea { background: #334155; border: 1px solid #475569; border-radius: 0.375rem;
+               padding: 0.3rem 0.5rem; color: #f1f5f9; }
+    textarea:focus { outline: none; border-color: #38bdf8; }
   </style>
 </head>
 
@@ -146,19 +150,49 @@
                class="hidden absolute left-0 right-0 top-full mt-1 z-30 bg-slate-900 border border-slate-600 rounded-lg shadow-xl shadow-black/40 p-3"></div>
         </div>
 
-        <!-- Visning -->
+        <!-- Enhet og rutenett -->
         <div class="flex items-end gap-2">
-          <div class="w-28">
-            <label class="field-label" for="grid-step">Rutenett / snap</label>
+          <div class="w-20">
+            <label class="field-label" for="unit-select">Enhet</label>
+            <select id="unit-select">
+              <option value="mm">mm</option>
+              <option value="cm">cm</option>
+              <option value="m">m</option>
+            </select>
+          </div>
+          <div class="w-24">
+            <label class="field-label" for="grid-step">Rutenett</label>
             <input id="grid-step" type="number" value="50" step="10" min="0" />
           </div>
-          <div class="flex-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] text-slate-300 pb-0.5">
-            <label class="flex items-center gap-1.5"><input id="chk-snap" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Snap</label>
-            <label class="flex items-center gap-1.5"><input id="chk-grid" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Rutenett</label>
+          <div class="flex-1 grid grid-cols-1 gap-y-0.5 text-[11px] text-slate-300 pb-0.5">
+            <label class="flex items-center gap-1.5"><input id="chk-grid" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Vis rutenett</label>
             <label class="flex items-center gap-1.5"><input id="chk-overlap" type="checkbox" class="w-3.5 h-3.5 accent-amber-500" checked /> Overlapp</label>
+          </div>
+        </div>
+
+        <!-- Snap -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Snap</h2>
+            <button id="btn-ortho"
+                    class="tool-btn px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    title="Lås til vannrett/loddrett (F8). Hold Shift for å snu midlertidig.">Orto</button>
+          </div>
+          <div id="snap-chips" class="flex flex-wrap gap-1"></div>
+          <div class="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-300">
             <label class="flex items-center gap-1.5"><input id="chk-net" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Ytre omriss</label>
             <label class="flex items-center gap-1.5"><input id="chk-principal" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Hovedakser</label>
           </div>
+        </div>
+
+        <!-- Bildeunderlag -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Bildeunderlag</h2>
+            <button id="btn-image-pick" class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Velg fil</button>
+            <input id="image-input" type="file" accept="image/*" class="hidden" />
+          </div>
+          <div id="underlay-panel"></div>
         </div>
 
         <!-- Geometriliste med egenskaper -->
@@ -347,11 +381,46 @@
         <li>Dra et hjørnepunkt for å endre det. Alt+klikk sletter punktet, dobbeltklikk på en kant setter inn et nytt.</li>
       </ul>
 
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Bildeunderlag</h3>
+      <p>
+        Skal du finne tverrsnittsegenskapene til noe du bare har som bilde — et utklipp fra en
+        tegning, en side på nett eller et skjermbilde av en modell — legger du bildet inn som
+        underlag og tegner oppå.
+      </p>
+      <ul class="list-disc list-inside space-y-1">
+        <li>Slipp bildefila rett på lerretet, lim inn et skjermutklipp med
+          <kbd class="px-1 bg-slate-700 rounded">Ctrl+V</kbd>, eller trykk «Velg fil».</li>
+        <li><strong>Kalibrer målestokken:</strong> klikk to punkt i bildet du vet avstanden mellom,
+          skriv inn den virkelige lengden, og bildet skaleres. Uten dette er alle tall meningsløse.</li>
+        <li>Lås bildet når det ligger riktig, så du ikke drar i det mens du tegner. Er det ulåst,
+          flytter du det ved å dra i det.</li>
+        <li>Gjennomsiktighet, posisjon, bredde og rotasjon justeres i panelet.</li>
+      </ul>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Snap og orto</h3>
+      <p>
+        Hver snap-type kan slås av og på for seg: endepunkt, skjæringspunkt, midtpunkt, senter,
+        nærmeste punkt på en linje, og rutenett. Ligger flere innenfor rekkevidde, vinner den
+        øverste i den rekkefølgen — endepunkt slår altså linje. Fargen på markørkrysset viser
+        hvilken type som traff, og typen står i statuslinja.
+      </p>
+      <p>
+        <strong>Orto</strong> (<kbd class="px-1 bg-slate-700 rounded">F8</kbd>) låser tegningen til
+        vannrett eller loddrett fra forrige punkt. Hold <kbd class="px-1 bg-slate-700 rounded">Shift</kbd>
+        for å snu orto midlertidig.
+      </p>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Enheter</h3>
+      <p>
+        Velg mm, cm eller m. Bytter du enhet, regnes alle koordinater om slik at geometrien
+        beholder sin fysiske størrelse — det er tallene som endrer seg, ikke tegningen. Areal og
+        arealmomenter merkes med enheten de er i.
+      </p>
+
       <h3 class="text-base font-semibold text-sky-400 pt-2">Navigasjon</h3>
       <ul class="list-disc list-inside space-y-1">
         <li>Rull for å zoome mot musepekeren.</li>
         <li>Panorer med høyre eller midtre museknapp, eller mellomrom + dra.</li>
-        <li>Snap fanger hjørnepunkt (grønn), midtpunkt (gul) og rutenett (blå).</li>
       </ul>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Hurtigtaster</h3>
@@ -363,6 +432,8 @@
         <div><kbd class="px-1 bg-slate-700 rounded">C</kbd> Sirkel</div>
         <div><kbd class="px-1 bg-slate-700 rounded">O</kbd> Nullpunkt</div>
         <div><kbd class="px-1 bg-slate-700 rounded">F</kbd> Zoom alt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">F8</kbd> Orto av/på</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+V</kbd> Lim inn bilde</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Del</kbd> Slett markerte</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+D</kbd> Dupliser</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+Z</kbd> Angre</div>

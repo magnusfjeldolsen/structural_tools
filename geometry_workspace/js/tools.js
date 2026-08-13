@@ -13,14 +13,16 @@ import {
   pointInRing,
   translatePoints,
 } from './geometry.js';
+import { applyOrtho, snapColor as engineSnapColor } from './snapping.js';
 
 const TOOL_HINTS = {
   select: 'Velg: klikk for å markere, dra for å flytte. Dra et hjørnepunkt for å redigere. Alt+klikk på punkt sletter det, dobbeltklikk på en kant setter inn nytt.',
   rect: 'Rektangel: klikk første hjørne, deretter motstående hjørne. Esc avbryter.',
-  shell: 'Skallelement: klikk start og slutt på senterlinja. Tykkelsen tas fra feltet til venstre.',
+  shell: 'Skallelement: klikk start og slutt på senterlinja. Tykkelsen tas fra menyen.',
   polygon: 'Polygon: klikk hjørner. Enter eller dobbeltklikk avslutter, Esc avbryter.',
   circle: 'Sirkel: klikk sentrum, deretter et punkt på omkretsen.',
   reference: 'Referansepunkt: klikk der nullpunktet skal ligge.',
+  calibrate: 'Kalibrer: klikk to punkt i bildet du vet avstanden mellom, og skriv inn den virkelige lengden.',
 };
 
 export class ToolController {
@@ -56,12 +58,37 @@ export class ToolController {
 
   /* ---------------- hjelpere ---------------- */
 
-  snap(world, exclude = null) {
-    return this.viewport.snap(world, {
-      grid: this.store.state.grid,
-      snapVertices: true,
+  /**
+   * Snapper et punkt. `from` er referansepunktet orto måles fra — settes når
+   * man er midt i å tegne. Shift snur orto av og på midlertidig.
+   */
+  snap(world, { exclude = null, from = null, shift = false } = {}) {
+    const st = this.store.state;
+    const ortho = !!st.ortho !== !!shift;
+    let target = world;
+    if (ortho && from) target = applyOrtho(world, from);
+
+    const hit = this.viewport.snap(target, {
+      snaps: st.snaps,
+      gridStep: st.grid.step,
       exclude,
     });
+
+    // Orto skal ikke kunne brytes av et snap som ligger utenfor aksen
+    if (ortho && from && hit.type !== 'free') {
+      const onAxis = applyOrtho(hit.point, from);
+      const drift = Math.hypot(onAxis[0] - hit.point[0], onAxis[1] - hit.point[1]);
+      if (drift > 1e-9) return { point: target, type: 'ortho' };
+    }
+    if (ortho && from && hit.type === 'free') return { point: target, type: 'ortho' };
+    return hit;
+  }
+
+  /** Punktet en pågående tegning måler orto fra. */
+  orthoOrigin() {
+    if (!this.draft) return null;
+    if (this.draft.points) return this.draft.points[this.draft.points.length - 1];
+    return this.draft.start || null;
   }
 
   /** Topp-prioriterte form under punktet. */
@@ -122,13 +149,30 @@ export class ToolController {
   /* ---------------- hendelser ---------------- */
 
   pointerdown(e) {
-    const snapped = this.snap(e.world);
+    const snapped = this.snap(e.world, { from: this.orthoOrigin(), shift: e.shift });
     const p = snapped.point;
 
     switch (this.tool) {
       case 'reference':
         this.store.setReference(p);
         this.setTool('select');
+        return;
+
+      case 'calibrate':
+        if (!this.draft) {
+          this.draft = { start: p };
+          this.onStatus('Kalibrer: klikk det andre punktet.');
+        } else {
+          const a = this.draft.start;
+          this.draft = null;
+          this.viewport.setPreview(null);
+          const measured = Math.hypot(p[0] - a[0], p[1] - a[1]);
+          if (measured < 1e-9) {
+            this.onStatus('De to punktene er like — prøv igjen.');
+            return;
+          }
+          this.onCalibrated?.({ a, b: p, measured });
+        }
         return;
 
       case 'rect':
@@ -187,6 +231,14 @@ export class ToolController {
 
     const hit = this.hitShape(e.world);
     if (!hit) {
+      // Er bildeunderlaget låst opp, tar et klikk i bildet tak i bildet
+      const u = this.store.state.underlay;
+      if (u && u.visible && !u.locked && this._inUnderlay(e.world, u)) {
+        this.store.select([]);
+        this.drag = { kind: 'underlay', start: e.world, origin: { x: u.x, y: u.y } };
+        this.onStatus('Flytter bildet. Lås det når det ligger riktig.');
+        return;
+      }
       if (!e.shift) this.store.select([]);
       this.drag = { kind: 'marquee', start: e.world, current: e.world };
       return;
@@ -216,18 +268,25 @@ export class ToolController {
     } else if (this.drag && this.drag.kind === 'move') {
       exclude = new Set(this.drag.origin.map((o) => o.id));
     }
-    const snapped = this.snap(e.world, exclude);
+    const from = this.drag && this.drag.kind === 'move' ? this.drag.start : this.orthoOrigin();
+    const snapped = this.snap(e.world, { exclude, from, shift: e.shift });
     const p = snapped.point;
     this.onCursor?.(p, snapped.type);
 
     if (this.drag) {
-      if (this.drag.kind === 'move') {
-        let dx = p[0] - this.drag.start[0];
-        let dy = p[1] - this.drag.start[1];
-        if (e.shift) {
-          if (Math.abs(dx) > Math.abs(dy)) dy = 0;
-          else dx = 0;
-        }
+      if (this.drag.kind === 'underlay') {
+        const u = this.store.state.underlay;
+        this.store.setUnderlay(
+          {
+            x: this.drag.origin.x + (e.world[0] - this.drag.start[0]),
+            y: this.drag.origin.y + (e.world[1] - this.drag.start[1]),
+          },
+          { transient: true }
+        );
+        this.onStatus(`Bilde: x = ${fmt(u.x)}, y = ${fmt(u.y)}`);
+      } else if (this.drag.kind === 'move') {
+        const dx = p[0] - this.drag.start[0];
+        const dy = p[1] - this.drag.start[1];
         for (const o of this.drag.origin) {
           this.store.setPoints(o.id, translatePoints(o.points, dx, dy), { transient: true, reason: 'drag' });
         }
@@ -257,6 +316,9 @@ export class ToolController {
         this.viewport.setPreview({ points: circlePoints(this.draft.start[0], this.draft.start[1], r), closed: true, cursor: p });
       } else if (this.tool === 'polygon') {
         this.viewport.setPreview({ points: [...this.draft.points, p], closed: this.draft.points.length >= 2, cursor: p });
+      } else if (this.tool === 'calibrate') {
+        this.viewport.setPreview({ points: [this.draft.start, p], color: '#f59e0b', cursor: p });
+        this.onStatus(`Kalibrer: målt lengde ${fmt(Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]))}`);
       }
     } else {
       this.viewport.setPreview({ points: [], cursor: p, cursorColor: snapColor(snapped.type) });
@@ -265,6 +327,17 @@ export class ToolController {
         this.viewport.setHover(hit ? hit.id : null);
       }
     }
+  }
+
+  /** Ligger punktet innenfor bildeunderlaget? */
+  _inUnderlay(world, u) {
+    const c = Math.cos(-(u.rotation || 0));
+    const s = Math.sin(-(u.rotation || 0));
+    const dx = world[0] - u.x;
+    const dy = world[1] - u.y;
+    const lx = dx * c - dy * s;
+    const ly = dx * s + dy * c;
+    return Math.abs(lx) <= u.width / 2 && Math.abs(ly) <= u.height / 2;
   }
 
   pointerup(e) {
@@ -283,7 +356,7 @@ export class ToolController {
       }
       this.viewport.setPreview(null);
     } else {
-      this.store.commit('drag');
+      this.store.commit(this.drag.kind === 'underlay' ? 'underlay' : 'drag');
     }
     this.drag = null;
     this.onStatus(TOOL_HINTS[this.tool]);
@@ -298,7 +371,7 @@ export class ToolController {
       const edge = this.hitEdge(e.world);
       if (edge) {
         const ring = openRing(edge.shape.points);
-        ring.splice(edge.index + 1, 0, this.snap(e.world, new Set([edge.shape.id])).point);
+        ring.splice(edge.index + 1, 0, this.snap(e.world, { exclude: new Set([edge.shape.id]) }).point);
         this.store.setPoints(edge.shape.id, ring, { reason: 'vertex-insert' });
       }
     }
@@ -362,8 +435,6 @@ function fmt(v) {
 }
 
 function snapColor(type) {
-  if (type === 'vertex') return '#22c55e';
-  if (type === 'midpoint') return '#eab308';
-  if (type === 'grid') return '#38bdf8';
-  return '#f8fafc';
+  if (type === 'ortho') return '#f97316';
+  return engineSnapColor(type);
 }

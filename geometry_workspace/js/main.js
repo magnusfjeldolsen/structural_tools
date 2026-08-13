@@ -7,6 +7,9 @@ import { store } from './store.js';
 import { Viewport } from './viewport.js';
 import { ToolController } from './tools.js';
 import { UI, fmtLen } from './ui.js';
+import { UnderlayManager, defaultPlacement } from './underlay.js';
+import { snapLabel } from './snapping.js';
+import { lengthLabel } from './units.js';
 
 const host = document.getElementById('canvas-host');
 
@@ -26,22 +29,38 @@ const tools = new ToolController(store, viewport, {
   },
 });
 
-const ui = new UI(store, viewport, tools, {});
+/* ------------------------------------------------------------------ *
+ * Bildeunderlag
+ * ------------------------------------------------------------------ */
+
+const underlay = new UnderlayManager(
+  ({ image, name, restored }) => {
+    viewport.setUnderlayImage(image);
+    if (restored) {
+      // Plasseringen ligger allerede i modellen; bare bildet manglet
+      scheduleRender();
+      return;
+    }
+    store.setUnderlay({ ...defaultPlacement(image, viewport), name });
+    ui.toast(`Bilde lagt inn: ${name}. Kalibrer målestokken med to punkt.`);
+  },
+  (msg) => ui.toast(msg, 3500)
+);
+
+const ui = new UI(store, viewport, tools, { underlayManager: underlay });
+
+underlay.bind(host);
+tools.onCalibrated = (payload) => ui.onCalibrationPicked(payload);
 
 /* ------------------------------------------------------------------ *
  * Avlesning av markørposisjon
  * ------------------------------------------------------------------ */
 
-const SNAP_LABEL = {
-  vertex: 'hjørnepunkt',
-  midpoint: 'midtpunkt',
-  grid: 'rutenett',
-  free: '',
-};
-
 tools.onCursor = (p, type) => {
-  document.getElementById('cursor-readout').textContent = `x ${fmtLen(p[0])}   y ${fmtLen(p[1])}`;
-  document.getElementById('snap-badge').textContent = SNAP_LABEL[type] ? `snap: ${SNAP_LABEL[type]}` : '';
+  const u = lengthLabel(store.state.unit);
+  document.getElementById('cursor-readout').textContent = `x ${fmtLen(p[0])}   y ${fmtLen(p[1])}   ${u}`;
+  const label = type === 'ortho' ? 'orto' : snapLabel(type);
+  document.getElementById('snap-badge').textContent = label ? `snap: ${label.toLowerCase()}` : '';
 };
 
 /* ------------------------------------------------------------------ *
@@ -74,6 +93,7 @@ function update() {
     analysis,
     reference: st.reference,
     grid: st.grid,
+    underlay: st.underlay,
   });
   try {
     ui.render(analysis);
@@ -132,6 +152,12 @@ window.addEventListener('keydown', (e) => {
 
   if (tools.keydown(e)) return;
 
+  if (e.key === 'F8') {
+    e.preventDefault();
+    store.setOrtho(!store.state.ortho);
+    ui.status(`Orto ${store.state.ortho ? 'på' : 'av'}.`);
+    return;
+  }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     e.preventDefault();
     ui.deleteSelected();
@@ -157,6 +183,16 @@ const restored = store.load();
 tools.setTool('select');
 update();
 viewport.zoomToFit(store.bounds());
+
+// Hent fram bildeunderlaget fra forrige økt, hvis modellen viser til ett
+if (store.state.underlay) {
+  underlay.restore().then((img) => {
+    if (!img) {
+      store.clearUnderlay();
+      ui.toast('Fant ikke igjen bildeunderlaget — legg det inn på nytt.');
+    }
+  });
+}
 
 if (!restored || !store.state.shapes.length) {
   ui.status('Tegn geometri, eller trykk «Eksempel» for vegg på bunnplate. Trykk «?» for hjelp.');

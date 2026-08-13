@@ -6,6 +6,8 @@
  */
 
 import { boundsOfShapes, translatePoints } from './geometry.js';
+import { conversionFactor, unitInfo } from './units.js';
+import { SNAP_KEYS } from './snapping.js';
 
 const STORAGE_KEY = 'geometry_workspace_v1';
 const MAX_HISTORY = 60;
@@ -26,6 +28,35 @@ function nextId() {
   return `s${uid++}`;
 }
 
+/**
+ * Oppgraderer lagret tilstand fra eldre versjoner. Tidligere lå snap som et
+ * enkelt av/på-flagg på rutenettet; nå er det én bryter per snap-type.
+ */
+function migrate(data) {
+  const out = { ...data };
+  if (out.grid && out.grid.snap !== undefined) {
+    const on = !!out.grid.snap;
+    out.snaps = {
+      endpoint: on,
+      midpoint: on,
+      edge: on,
+      intersection: on,
+      center: false,
+      grid: on,
+      ...(out.snaps || {}),
+    };
+    out.grid = { step: out.grid.step, visible: out.grid.visible };
+  }
+  if (!out.snaps) {
+    out.snaps = { endpoint: true, midpoint: true, edge: true, intersection: true, center: false, grid: true };
+  }
+  // Fyll ut manglende nøkler hvis nye snap-typer er kommet til
+  for (const key of SNAP_KEYS) if (out.snaps[key] === undefined) out.snaps[key] = key !== 'center';
+  if (out.ortho === undefined) out.ortho = false;
+  if (out.underlay === undefined) out.underlay = null;
+  return out;
+}
+
 function defaultState() {
   return {
     shapes: [],
@@ -34,7 +65,10 @@ function defaultState() {
     // Standard er skallmodellens tverrsnitt, der overlapp telles dobbelt
     mode: 'sum', // 'sum' | 'priority'
     unit: 'mm',
-    grid: { step: 50, snap: true, visible: true },
+    grid: { step: 50, visible: true },
+    snaps: { endpoint: true, midpoint: true, edge: true, intersection: true, center: false, grid: true },
+    ortho: false,
+    underlay: null,
     title: '',
   };
 }
@@ -68,6 +102,9 @@ export class Store {
       mode: this.state.mode,
       unit: this.state.unit,
       grid: this.state.grid,
+      snaps: this.state.snaps,
+      ortho: this.state.ortho,
+      underlay: this.state.underlay,
       title: this.state.title,
     });
   }
@@ -104,7 +141,7 @@ export class Store {
 
   restore(json) {
     const data = JSON.parse(json);
-    Object.assign(this.state, data);
+    Object.assign(this.state, migrate(data));
     this.state.selection = this.state.selection.filter((id) =>
       this.state.shapes.some((s) => s.id === id)
     );
@@ -255,10 +292,62 @@ export class Store {
     }, { reason: 'grid' });
   }
 
-  setUnit(unit) {
+  setSnaps(patch) {
+    this.mutate((st) => {
+      Object.assign(st.snaps, patch);
+    }, { reason: 'snaps', transient: true });
+    this.commit('snaps');
+  }
+
+  setOrtho(on) {
+    this.mutate((st) => {
+      st.ortho = !!on;
+    }, { reason: 'ortho', transient: true });
+    this.commit('ortho');
+  }
+
+  /**
+   * Bytter arbeidsenhet. Alle koordinater regnes om slik at geometrien
+   * beholder sin fysiske størrelse — det er tallene som endrer seg, ikke
+   * tegningen.
+   */
+  setUnit(unit, { convert = true } = {}) {
+    const from = this.state.unit;
+    if (unit === from) return;
+    const k = convert ? conversionFactor(from, unit) : 1;
     this.mutate((st) => {
       st.unit = unit;
+      if (k !== 1) {
+        st.shapes = st.shapes.map((s) => ({ ...s, points: s.points.map(([x, y]) => [x * k, y * k]) }));
+        st.reference = [st.reference[0] * k, st.reference[1] * k];
+        st.grid.step = st.grid.step * k;
+        if (st.underlay) {
+          st.underlay = {
+            ...st.underlay,
+            x: st.underlay.x * k,
+            y: st.underlay.y * k,
+            width: st.underlay.width * k,
+            height: st.underlay.height * k,
+          };
+        }
+      } else {
+        st.grid.step = unitInfo(unit).defaultGrid;
+      }
     }, { reason: 'unit' });
+  }
+
+  /* ---------------- bildeunderlag ---------------- */
+
+  setUnderlay(patch, opts = {}) {
+    this.mutate((st) => {
+      st.underlay = patch ? { ...(st.underlay || {}), ...patch } : null;
+    }, { reason: 'underlay', ...opts });
+  }
+
+  clearUnderlay() {
+    this.mutate((st) => {
+      st.underlay = null;
+    }, { reason: 'underlay' });
   }
 
   setTitle(title) {
@@ -311,6 +400,9 @@ export class Store {
         mode: this.state.mode,
         reference: this.state.reference,
         grid: this.state.grid,
+        snaps: this.state.snaps,
+        ortho: this.state.ortho,
+        underlay: this.state.underlay,
         shapes: this.state.shapes,
       },
       null,
@@ -337,7 +429,11 @@ export class Store {
       st.mode = data.mode === 'priority' ? 'priority' : 'sum';
       st.unit = data.unit || 'mm';
       st.title = data.title || '';
-      if (data.grid) Object.assign(st.grid, data.grid);
+      const m = migrate(data);
+      if (m.grid) Object.assign(st.grid, m.grid);
+      if (m.snaps) Object.assign(st.snaps, m.snaps);
+      st.ortho = !!m.ortho;
+      st.underlay = m.underlay || null;
     }, { reason: 'import' });
     this.syncUid();
   }
