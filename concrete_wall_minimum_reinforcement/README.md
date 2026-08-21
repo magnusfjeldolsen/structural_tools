@@ -1,5 +1,10 @@
 # Wall Minimum Reinforcement
 
+> **Under development.** New tool, may contain errors. Written against the **Norwegian
+> National Annex** (NS-EN 1992-1-1:2004+A1:2014+NA:2018) — the NA values it applies are
+> Norwegian and will not be right in another country. Minimum reinforcement only. Check
+> every result independently before using it in a design.
+
 Minimum reinforcement for concrete walls to NS-EN 1992-1-1 with the Norwegian National
 Annex, and NS-EN 1992-3 for watertight walls. The point of the tool is not the arithmetic —
 it is making the **cost of each crack requirement visible**, so reinforcement is chosen
