@@ -1,8 +1,9 @@
 # Build spec — `concrete_wall_minimum_reinforcement`
 
 Contract for `wall_min_reinf_api.js`. Pure functions, no DOM. Units: mm, N, MPa, mm²/m
-per metre of wall, unless stated. Revision 2 — see the review log at the end for what
-changed and why.
+per metre of wall, unless stated. Revision 3 — see the review log at the end for what
+changed and why. All National Annex values are from **NS-EN 1992-1-1:2004+A1:2014+NA:2018**,
+read from the standard.
 
 ## 1. Inputs
 
@@ -58,15 +59,22 @@ Es          = 200 000
 only. Never substitute one for the other.
 
 When `crackAgeDays < 28`, emit a warning: EC2 permits `fctm(t)`, but several National
-Annexes impose a floor on `fct,eff` for early-age restraint. The user must confirm
-against NA:2010. No floor is applied silently.
+Annexes impose a floor on `fct,eff` for early-age restraint. NA:2018 imposes none for
+reinforced concrete — it amends only 7.3.2(4), which concerns σct,p in prestressed
+members — so no floor is applied. `crackAgeDays` is ignored entirely under `tightness`
+(see §5).
 
 ## 3. Detailing requirements
 
+`tightness = (mode === 'watertight')` — NA.9.6.2 and NA.9.6.3(1) both attach extra
+requirements to a wall where tightness governs, and they are requirements, not options.
+
 ```
 Ac        = 1000·t                                        [mm²/m]
-As_v_min  = 0,002·Ac / layers                             per layer   [9.6.2(1),(2)]
-As_v_max  = 0,04·Ac                (0,08·Ac at laps)                  [9.6.2(1)]
+As_v_min  = (tightness ? 0,004 : 0,002)·Ac / layers       per layer   [NA.9.6.2]
+As_v_max  = 0,04·Ac                                                   [NA.9.6.2]
+            may be doubled at lapped splices ONLY where the laps sit at
+            braced nodes; otherwise laps must be staggered
 s_v_max   = min(3t, 400)                                              [9.6.2(3)]
 s_h_max   = 400                                                       [9.6.3(2)]
 
@@ -77,10 +85,11 @@ As_h_min  = layers === 2 ? As_h_surf
                          : max( 0,25·As_v_prov , 2·k_NA·Ac·fctm/fyk )
 ```
 
-The `layers === 1` branch is the subtle one. 9.6.3(1) asks for `As,hmin` **at each
-surface**, and a single central layer has to serve both — so the code leg doubles. The
-25 % leg does not, because with one layer `As_v_prov` is already the whole-section
-vertical steel and 25 % of it is the whole-section answer. This reproduces the source
+The `layers === 1` branch is the subtle one, and NA.9.6.3(1) settles it: the tabulated
+minimum is *per face in doubly reinforced walls*, and a singly reinforced wall shall carry
+**the corresponding total area**. Doubling the section total means doubling the code leg,
+while the 25 % leg is already whole-section because a single layer holds all the vertical
+steel. Hence `max(0,25·As_v_prov, 2·k_NA·Ac·fctm/fyk)`, which also reproduces the source
 spreadsheet's `J10 = 2·C7`.
 
 ```
@@ -103,8 +112,11 @@ NA uplift: `kc_cover = clamp(cnom/cminDur, 1,0, 1,3)`, `wk = 0,30·kc_cover`.
 
 ## 5. eq. (7.1) coefficients
 
+Under `tightness`, NA.9.6.3(1) fixes all three of these and the corresponding inputs are
+ignored: `kc = 1,0`, `k = 1,0`, `fct,eff = fctm` at 28 days.
+
 ```
-kc  = 1,0 (pureTension) | 0,6 (house) | kcCustom
+kc  = 1,0 (pureTension) | 0,6 (house) | kcCustom          overridden by tightness
 k   = 1,0 (external)  |  ec2h: 1,0 for t ≤ 300, 0,65 for t ≥ 800, linear between
 Act = Ac = 1000·t                       full section in tension (restraint)
 As_min_total = kc·k·fct,eff·Act / σs
@@ -177,7 +189,11 @@ For a section fully in tension, per layer, given `As`:
 ```
 σs        = min( kc·k·fct,eff·Act / (As·layers), fyk )
 c_eff     = layers === 2 ? cover : (t − d)/2
-h_c,ef    = min( 2,5·(h_minus_d), t/2 )                 [7.3.2(3), Fig. 7.1c]
+h_c,ef    = max( min(2,5·(h_minus_d), t/2),
+                 min(h_minus_d + 1,5·d, t/layers) )      [7.3.2(3) + NA.7.3.4(3)]
+            NA.7.3.4(3) floors Ac,eff at hc,eff = (h - d + 1,5ø); the inner
+            min keeps it within the half-section of Fig. 7.1(c) so two faces
+            cannot claim the same concrete
 Ac,eff    = 1000·h_c,ef
 ρ_p,eff   = As / Ac,eff
 αe        = Es/Ecm
@@ -256,7 +272,10 @@ always returned so the UI can show every diameter at once.
 | fck 40 | `fctm` 3,51 (not 0 — the source sheet's SUMIF trap) |
 | fck 35, 3 d, CEM N | `fctEff` ≈ 1,92 |
 | L/H 12 | `R_top` 0,5, full height |
-| L 6000 H 3000, εfree 320µ, εctu 100µ | z ≈ 1140 mm vs 3t = 1050 mm |
+| L 6000 H 3000, εfree 320µ, εctu 100µ | z ≈ 1125 mm vs 3t = 1050 mm |
+| watertight, t 300 | `AsVMin` 600 per face (doubled), `kc` = `k` = 1,0, `fct,eff` = fctm |
+| watertight with crackAgeDays 3 and kcMode house | both ignored; same result as above |
+| t 200, 1 layer, ø8 | NA `hc,eff` floor 112 mm governs over the EC2 100 mm |
 | any input, kc 1,0, B35, t 350, layers 2 | `AsFloor` = 1120 mm²/m per layer |
 
 ---
@@ -286,3 +305,22 @@ always returned so the UI can show every diameter at once.
    is the answer the user most wants to hear when it is true. (§9)
 9. **`governing` was a scalar.** Since `As_req` is a function of the bar diameter, a
    single governing number is meaningless without saying which bar it belongs to. (§10)
+
+---
+
+## Revision 3 — what reading NA:2018 changed
+
+The module was built from secondary sources for the National Annex values. Reading
+NS-EN 1992-1-1:2004+A1:2014+NA:2018 confirmed NA.9.6.3(1), NA.9.6.2, NA.7.3.1(5) with
+Table NA.7.1N and eq. (NA.901), and that the NA amends only 7.3.2(4) — and turned up four
+things that were missing:
+
+1. `As,vmin` doubles to `0,004·Ac` where tightness governs (NA.9.6.2).
+2. Where tightness governs, eq. (7.1) must use `fct,eff = fctm` and `k = kc = 1,0`
+   (NA.9.6.3(1)). The early-age reduction and the 0,6 house rule are not available there.
+3. `Ac,eff` has a floor at `hc,eff = (h − d + 1,5ø)` (NA.7.3.4(3)).
+4. `As,vmax` doubles at laps only where the laps sit at braced nodes (NA.9.6.2).
+
+Footnote 1 to Table NA.7.1N is also the clause behind the "no crack control required"
+option: in X0 the crack width does not affect durability, the 0,40 limit is for
+appearance, and it may be increased where appearance is not a constraint.

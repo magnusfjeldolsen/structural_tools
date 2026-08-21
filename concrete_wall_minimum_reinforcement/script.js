@@ -69,7 +69,15 @@
     $('cnom').className = showCov ? 'fld' : 'fld hidden';
     $('cmindur').className = showCov ? 'fld' : 'fld hidden';
     if (showCov) { $('cnom').style.width = '5rem'; $('cmindur').style.width = '5rem'; }
-    $('kcCustom').disabled = $('kcMode').value !== 'custom';
+    const tight = state.mode === 'watertight';
+    ['kcMode', 'kMode', 'age', 'cement'].forEach(id => {
+      $(id).disabled = tight;
+      $(id).style.opacity = tight ? '.45' : '';
+      $(id).title = tight
+        ? 'Fixed by NA.9.6.3(1) for a tightness-critical wall: eq. (7.1) with fct,eff = fctm and k = kc = 1,0.'
+        : '';
+    });
+    $('kcCustom').disabled = tight || $('kcMode').value !== 'custom';
     if ($('kcMode').value === 'pureTension') $('kcCustom').value = '1.0';
     if ($('kcMode').value === 'house') $('kcCustom').value = '0.6';
   }
@@ -414,6 +422,10 @@
       'wall shrinking along its length, so the tension runs <em>horizontally</em> and the cracks are ' +
       'vertical. \u00a77.3.2 is applied to the horizontal bars only, and typically multiplies them by three.'],
     'mode.watertight': ['Watertight wall',
+      'Turns on the NA\u2019s tightness rules, which are not optional. NA.9.6.2 doubles the vertical ' +
+      'minimum to 0,004\u00b7A<sub>c</sub>, and NA.9.6.3(1) fixes eq. (7.1) at f<sub>ct,eff</sub> = ' +
+      'f<sub>ctm</sub> with k = k<sub>c</sub> = 1,0 \u2014 so the k<sub>c</sub>, k and cracking-age inputs ' +
+      'are locked. ' +
       'EN 1992-3 Tightness Class 1. The crack width stops being your choice and follows the head over the ' +
       'wall thickness: 0,20 mm at h<sub>D</sub>/h \u2264 5, down to 0,05 mm at \u2265 35. Bar sizes use ' +
       'eq. (7.122), with 10 in place of the 8 in (7.7N). Below w<sub>k</sub> 0,20 Table 7.2N runs out and ' +
@@ -424,8 +436,10 @@
       'usual case and why vertical steel is normally detailing-driven.'],
 
     'crack.none': ['No crack control required',
-      'Switches \u00a77.3.2 off entirely and leaves only \u00a79.6. Legitimate where cracking impairs neither ' +
-      'function, durability nor appearance \u2014 and also where movement joints are provided instead, since ' +
+      'Switches \u00a77.3.2 off entirely and leaves only \u00a79.6. The NA supports this: footnote 1 to Table ' +
+      'NA.7.1N says that in X0 the crack width does not affect durability and the 0,40 limit is there for ' +
+      'appearance, so where appearance is not a constraint the value may be increased. Also where movement ' +
+      'joints are provided instead, since ' +
       'EN 1992-3 Table N.1(b) then asks only for 9.6.2 to 9.6.4. This is the cheapest answer the code allows, ' +
       'and it is a decision you own rather than one the tool makes.'],
     'crack.wk040': ['w<sub>k</sub> = 0,40 mm',
@@ -460,8 +474,9 @@
     'f.layers': ['Reinforcement layers',
       'Two layers means one mesh per face. A single central layer sits t/2 from the surface, which eq. (7.7N) ' +
       'punishes hard \u2014 under edge restraint it usually cannot be crack-controlled at all. The detailing ' +
-      'minima change too: 9.6.3(1) wants A<sub>s,hmin</sub> at <em>each</em> surface, so one layer must ' +
-      'provide double.'],
+      'minimum changes too: NA.9.6.3(1) states the horizontal minimum per face for <em>doubly</em> reinforced ' +
+      'walls, and that a singly reinforced wall shall carry the corresponding <em>total</em> area \u2014 so ' +
+      'the one layer has to provide what two faces would have provided between them.'],
     'f.cover': ['Cover to the horizontal bar',
       'Enter c<sub>nom</sub>. 9.6.3 puts the horizontal steel at the surface and in a wall it is normally the ' +
       'outer layer for exactly that reason. Cover sets the lever arm in eq. (7.7N) and the 3,4\u00b7c term in ' +
@@ -480,6 +495,7 @@
       'pass mark on the vertical card. It does not affect the horizontal crack calculation.'],
 
     'f.kc': ['k<sub>c</sub> in eq. (7.1)',
+      'Locked to 1,0 in the watertight mode, where NA.9.6.3(1) fixes it. Otherwise: ' +
       '1,0 is pure tension, which is what edge restraint produces and the right default here. 0,6 is the ' +
       'Norwegian house rule carried over from the source spreadsheet \u2014 there is no clause behind it, so it ' +
       'is offered as a labelled choice rather than a hidden constant. Halving k<sub>c</sub> halves the steel.'],
@@ -488,7 +504,9 @@
       'A wall held by its base is restrained <em>externally</em>, so k = 1,0. The EC2 interpolation on thickness ' +
       '(1,0 at 300 mm to 0,65 at 800 mm) is offered for the internal-restraint case.'],
     'f.age': ['Age at cracking',
-      'Sets f<sub>ct,eff</sub> in eq. (7.1). Early-age restraint cracking normally happens well before 28 days, ' +
+      'Ignored in the watertight mode, where NA.9.6.3(1) requires f<sub>ct,eff</sub> = f<sub>ctm</sub> at ' +
+      '28 days. Otherwise: ' +
+      'sets f<sub>ct,eff</sub> in eq. (7.1). Early-age restraint cracking normally happens well before 28 days, ' +
       'and 7.3.2(2) lets you use f<sub>ctm</sub>(t) \u2014 the largest legitimate reduction on the table, worth ' +
       'about 40 % at three days. Several National Annexes impose a floor, so confirm against NA:2010.'],
     'f.cement': ['Cement class',

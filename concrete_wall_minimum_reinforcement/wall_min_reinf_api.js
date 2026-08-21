@@ -123,14 +123,17 @@
     const Ecm = ecmOf(inp.fck);
     const alphaE = ES / Ecm;
 
-    if (inp.crackAgeDays < 28) {
+    if (inp.crackAgeDays < 28 && inp.mode !== 'watertight') {
       warnings.push('fct,eff is taken as fctm(' + inp.crackAgeDays + ' d) = ' + fctEff.toFixed(2) +
         ' MPa per 7.3.2(2). Several National Annexes impose a floor on fct,eff for early-age ' +
         'restraint — confirm against NA:2010 before relying on this reduction.');
     }
 
-    // --- detailing, §9.6 + NA.9.6.3
-    const AsVMin = 0.002 * Ac / layers;
+    // --- detailing, §9.6 + NA.9.6.2 / NA.9.6.3
+    // NA.9.6.2: "Der det legges særlig vekt på tetthet ... bør armeringen være minst
+    // dobbelt så stor" - the vertical minimum doubles for a tightness-critical wall.
+    const tightness = inp.mode === 'watertight';
+    const AsVMin = (tightness ? 0.004 : 0.002) * Ac / layers;
     const AsVMax = 0.04 * Ac;
     const sVMax = Math.min(3 * t, 400);
     const sHMax = 400;
@@ -149,18 +152,24 @@
 
     // --- crack control, §7.3.2
     const wkInfo = targetWk(inp, t);
-    const kc = inp.kcMode === 'pureTension' ? 1.0 : inp.kcMode === 'house' ? 0.6 : inp.kcCustom;
-    const k = inp.kMode === 'external' ? 1.0 : clamp(lerp(t, 300, 800, 1.0, 0.65), 0.65, 1.0);
+    // NA.9.6.3(1): where tightness governs, the NA fixes the coefficients itself -
+    // eq. (7.1) with fct,eff = fctm (28 d) and both k and kc equal to 1,0. Not negotiable.
+    const kc = tightness ? 1.0
+      : inp.kcMode === 'pureTension' ? 1.0 : inp.kcMode === 'house' ? 0.6 : inp.kcCustom;
+    const k = tightness ? 1.0
+      : inp.kMode === 'external' ? 1.0 : clamp(lerp(t, 300, 800, 1.0, 0.65), 0.65, 1.0);
     const Act = Ac;
-    const AsFloor = kc * k * fctEff * Act / (inp.fyk * layers);
+    // ... and fct,eff is fctm at 28 days, not an early-age value
+    const fctEffUsed = tightness ? fctm : fctEff;
+    const AsFloor = kc * k * fctEffUsed * Act / (inp.fyk * layers);
     const crackActive = inp.crackReq !== 'none' && wkInfo.wk != null;
 
     const bars = [];
     const barsDirect = [];
     if (crackActive) {
       for (const dia of BAR_DIAMETERS) {
-        bars.push(simplifiedBar(dia, inp, { t, Act, kc, k, fctEff, AsFloor, wk: wkInfo.wk, sHMax }));
-        barsDirect.push(directBar(dia, inp, { t, Act, kc, k, fctEff, alphaE, AsFloor, wk: wkInfo.wk, sHMax }));
+        bars.push(simplifiedBar(dia, inp, { t, Act, kc, k, fctEff: fctEffUsed, AsFloor, wk: wkInfo.wk, sHMax }));
+        barsDirect.push(directBar(dia, inp, { t, Act, kc, k, fctEff: fctEffUsed, alphaE, AsFloor, wk: wkInfo.wk, sHMax }));
       }
     }
 
@@ -208,12 +217,13 @@
     pushChecks(checks, {
       inp, t, Ac, layers, AsVMin, AsVMax, AsVProv, AsVTotal, sVMax, sHMax,
       AsHMin, linksNeeded, linksWaived, crackActive, wkInfo, sel, selAlt, hGov, AsFloor, zone,
-      methodEffective
+      methodEffective, tightness
     });
 
-    if (crackActive && wkInfo.wk < 0.2) {
-      warnings.push('wk = ' + wkInfo.wk.toFixed(3) + ' mm is below the range of Table 7.2N. ' +
-        'The simplified route of 7.3.3 cannot answer this — use the direct calculation to 7.3.4.');
+    if (tightness) {
+      warnings.push('NA.9.6.2 and NA.9.6.3: for a wall where tightness governs, the National Annex ' +
+        'doubles the vertical minimum to 0,004·Ac and fixes eq. (7.1) at fct,eff = fctm (28 d) with ' +
+        'k = kc = 1,0. Those three are set for you here and the kc, k and cracking-age inputs are ignored.');
     }
     if (crackActive && layers === 1) {
       warnings.push('A single central layer sits t/2 from the surface, so eq. (7.7N) penalises it ' +
@@ -224,7 +234,7 @@
     return {
       ok: true,
       inputs: inp,
-      material: { fctm, fctEff, Ecm, alphaE, betaCc },
+      material: { fctm, fctEff, fctEffUsed, Ecm, alphaE, betaCc, tightness },
       detailing: {
         Ac, AsVMin, AsVMax, sVMax, sHMax, AsVProv, AsVTotal, kNA, naLeg, quarterLeg,
         AsHMin, AsHMinLeg, links: { needed: linksNeeded, waived: linksWaived }
@@ -290,7 +300,12 @@
   function directBar(dia, inp, ctx) {
     const hMinusD = inp.layers === 2 ? inp.cover + dia / 2 : ctx.t / 2;
     const cEff = inp.layers === 2 ? inp.cover : (ctx.t - dia) / 2;
-    const hcEf = Math.min(2.5 * hMinusD, ctx.t / 2);
+    // NA.7.3.4(3) puts a floor under Ac,eff at hc,eff = (h - d + 1,5ø). Kept inside the t/2
+    // half-section limit of Fig. 7.1(c) so the two faces cannot claim overlapping concrete.
+    const half = ctx.t / inp.layers;
+    const hcEfEc2 = Math.min(2.5 * hMinusD, ctx.t / 2);
+    const hcEfNa = Math.min(hMinusD + 1.5 * dia, half);
+    const hcEf = Math.max(hcEfEc2, hcEfNa);
     const AcEff = 1000 * hcEf;
 
     const wkOf = (As) => {
@@ -374,13 +389,14 @@
       c.inp.vBar.spacing <= c.sVMax ? 'ok' : 'fail',
       'c' + c.inp.vBar.spacing + ' vs max ' + fmt(c.sVMax, 0) + ' mm = min(3t, 400)');
 
-    add('vmin', 'Vertical minimum, 9.6.2(1)',
+    add('vmin', c.tightness ? 'Vertical minimum, NA.9.6.2 (tightness, doubled)' : 'Vertical minimum, NA.9.6.2',
       c.AsVProv >= c.AsVMin ? 'ok' : 'fail',
       'provided ' + fmt(c.AsVProv, 0) + ' vs required ' + fmt(c.AsVMin, 0) + ' mm²/m per layer');
 
     add('vmax', 'Vertical maximum, 9.6.2(1)',
       c.AsVTotal <= c.AsVMax ? 'ok' : 'fail',
-      fmt(c.AsVTotal, 0) + ' vs 0,04·Ac = ' + fmt(c.AsVMax, 0) + ' mm²/m (0,08·Ac at laps)');
+      fmt(c.AsVTotal, 0) + ' vs 0,04·Ac = ' + fmt(c.AsVMax, 0) + ' mm²/m. NA.9.6.2 allows double ' +
+        'at lapped splices only where the laps sit at braced nodes; otherwise the laps must be staggered.');
 
     add('hspacing', 'Horizontal bar spacing, 9.6.3(2)',
       c.hGov.ccMax <= c.sHMax ? 'ok' : 'warn',

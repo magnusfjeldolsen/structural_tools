@@ -35,16 +35,23 @@ And the same wall under different requirements, at ø16:
 
 ## What it implements
 
+All Norwegian NA values below were read from **NS-EN 1992-1-1:2004+A1:2014+NA:2018**
+directly, not from secondary sources.
+
 **Detailing, §9.6**
-- 9.6.2(1),(2): `As,vmin = 0,002·Ac`, half per face; `As,vmax = 0,04·Ac`
+- NA.9.6.2: `As,vmin = 0,002·Ac`, half per face; `As,vmax = 0,04·Ac`, which may be doubled at
+  lapped splices *only* where the laps sit at braced nodes — otherwise laps must be staggered
 - 9.6.2(3): vertical spacing ≤ min(3t, 400)
 - 9.6.3(2): horizontal spacing ≤ 400
 - 9.6.4: links trigger at 0,02·Ac, and the 4 links/m² rule with its ø ≤ 16 / cover > 2ø waiver
 - 9.6.1(1): scope warning at length/thickness < 4
 
-**NA.9.6.3** — `As,hmin = max(0,25·As,v ; k·Ac·fctm/fyk)`, k = 0,30 exterior / 0,15 interior,
-overridable. For a single central layer the code leg doubles, since 9.6.3(1) asks for the
-amount at each surface and one layer serves both.
+**NA.9.6.3(1)** — the minimum area **per face in doubly reinforced walls** is the greater of
+25 % of the vertical reinforcement *on the same side* and `k·Ac·fctm/fyk`, with k = 0,30 for
+exterior walls and 0,15 for interior. A **singly reinforced wall shall carry the
+corresponding total area** — so the single layer provides what the two faces would have
+provided between them, which works out as `max(0,25·As,v ; 2·k·Ac·fctm/fyk)` since its one
+layer already holds all the vertical steel.
 
 The two k values are worth understanding rather than accepting. EC2's own recommendation is
 a flat `As,hmin = 0,001·Ac`. The Norwegian NA replaces it with a strength-dependent form,
@@ -61,6 +68,38 @@ So 0,15 is not a halving of 0,30 — it *is* the EC2 baseline, re-expressed so t
 scales with the force that cracks the section. 0,30 is a deliberate doubling for walls
 exposed to outdoor climate, where the imposed strain is roughly twice as large. Anything
 weather-exposed or cast against soil is normally taken as exterior.
+
+**Tightness — the NA's own rules, not options.** Where tightness governs (EN 1992-3),
+NA.9.6.2 requires the vertical minimum to be **at least double**, so `0,004·Ac`; and
+NA.9.6.3(1) requires the horizontal minimum to come from eq. (7.1) with
+**`fct,eff = fctm`** (28 days) and **`k = kc = 1,0`**. In the watertight mode the tool applies
+all three and locks the kc, k and cracking-age inputs, because they are no longer the
+designer's to choose.
+
+**NA.7.3.4(3)** — `k3 = 3,4`, `k4 = 0,425`, and `Ac,eff` not less than that corresponding to
+`hc,eff = (h − d + 1,5ø)`. That floor is a relaxation and it binds mainly on single-layer
+walls, where the EC2 `h/2` cap would otherwise be the smaller of the two.
+
+**NA.7.3.1(5)** — `wmax` from Table NA.7.1N with `kc = cnom/cmin,dur ≤ 1,3` (eq. NA.901).
+Footnote 1 to that table is what licenses the "no crack control required" option: in X0 the
+crack width does not affect durability, the 0,40 limit is there for appearance, and where
+appearance is not a constraint the value may be increased.
+
+**Tightness — the NA's own rules, not options.** Where tightness governs (EN 1992-3),
+NA.9.6.2 requires the vertical minimum to be **at least double**, so `0,004·Ac`; and
+NA.9.6.3(1) requires the horizontal minimum to come from eq. (7.1) with
+**`fct,eff = fctm`** (28 days) and **`k = kc = 1,0`**. In the watertight mode the tool applies
+all three and locks the kc, k and cracking-age inputs, because they are no longer the
+designer's to choose.
+
+**NA.7.3.4(3)** — `k3 = 3,4`, `k4 = 0,425`, and `Ac,eff` not less than that corresponding to
+`hc,eff = (h − d + 1,5ø)`. That floor is a relaxation and it binds mainly on single-layer
+walls, where the EC2 `h/2` cap would otherwise be the smaller of the two.
+
+**NA.7.3.1(5)** — `wmax` from Table NA.7.1N with `kc = cnom/cmin,dur ≤ 1,3` (eq. NA.901).
+Footnote 1 to that table is what licenses the "no crack control required" option: in X0 the
+crack width does not affect durability, the 0,40 limit is there for appearance, and where
+appearance is not a constraint the value may be increased.
 
 **Crack control, §7.3.2** — `As,min·σs = kc·k·fct,eff·Act`, with an absolute floor at
 `σs = fyk` that no crack-width relaxation can go below. Two routes, both computed always:
@@ -110,7 +149,8 @@ number on the adjacent row, and says plainly which is which.
   §7.3.2 active the crack requirement normally sits well above both legs, and the choice
   stops mattering — for t = 400, B35, ø12 it is c145 against c290 with no crack control,
   and c60 either way at wk 0,30.
-- Values taken from the Norwegian NA should be confirmed against your own copy of NA:2010.
+- The NA does **not** amend 7.3.2(2), so `kc`, `k`, `fct,eff` and `Act` are the EC2 values
+  outside the tightness case.
 
 ## Files
 
