@@ -116,6 +116,7 @@
     paintHeadline(r);
     paintGovBars(r);
     paintHeroTable(r, dias);
+    paintVertTable(r, dias);
     paintMatrix(r, dias);
     paintChecks(r);
     paintWarnings(r);
@@ -221,8 +222,8 @@
       });
       $('heroTable').innerHTML =
         row('th', 'ø [mm]', cells.map(c => '<b>' + c.d + '</b>')) +
-        row('td', 'A<sub>s</sub> required', cells.map(() => fmt(r.detailing.AsHMin, 0))) +
-        row('td', 'max spacing', cells.map(c => '<b class="text-sky-300">c' + fmt(Math.floor(c.cc / 5) * 5, 0) + '</b>'));
+        row('td', 'A<sub>s</sub> req [mm²/m]', cells.map(() => fmt(r.detailing.AsHMin, 0))) +
+        row('td', 'c/c max', cells.map(c => '<b class="text-sky-300">c' + fmt(Math.floor(c.cc / 5) * 5, 0) + '</b>'));
       $('heroNote').textContent = 'Detailing minimum only. Spacing is additionally capped at c400 by 9.6.3(2).';
       wireColumns();
       return;
@@ -243,9 +244,9 @@
       row('th', 'ø [mm]', dias.map(d => '<b>' + d + '</b>'), dias) +
       (direct ? '' : row('td', 'φ*<sub>s</sub> needed', S.map(b => cell(b, 'phiStarReq', 1)))) +
       row('td', 'σ<sub>s</sub> [MPa]', S.map(b => cell(b, 'sigmaS', 0))) +
-      row('td', 'A<sub>s</sub> required [mm²/m]', S.map(b => cell(b, 'AsReq', 0))) +
-      row('td', 'max spacing · ' + (direct ? '7.3.4 direct' : '7.3.3'), S.map(ccCell)) +
-      row('td', 'max spacing · ' + (direct ? '7.3.3' : '7.3.4 direct'), D.map(ccCell)) +
+      row('td', 'A<sub>s</sub> req [mm²/m]', S.map(b => cell(b, 'AsReq', 0))) +
+      row('td', 'c/c max · ' + (direct ? '7.3.4' : '7.3.3'), S.map(ccCell)) +
+      row('td', 'c/c max · ' + (direct ? '7.3.3' : '7.3.4'), D.map(ccCell)) +
       row('td', 'verdict', S.map(b => {
         if (!b || b.status === 'outOfTable') return '<span class="text-rose-400" title="beyond Table 7.2N">bar too large</span>';
         if (b.status === 'wkOutOfRange') return '<span class="text-slate-600">—</span>';
@@ -262,7 +263,7 @@
       note += ' For ø' + state.selectedDia + ' the direct route of 7.3.4 asks for ' + fmt(selD.AsReq, 0) +
         ' mm²/m against ' + fmt(sel.AsReq, 0) + ' from the simplified route.';
     }
-    $('heroNote').innerHTML = note;
+    $('heroNote').innerHTML = note + ' Spacings round down to 5 mm.';
     wireColumns();
   }
 
@@ -283,6 +284,50 @@
       el.addEventListener('click', () => {
         state.selectedDia = parseFloat(el.dataset.col);
         state.diaAuto = false;
+        render();
+      });
+    });
+  }
+
+  /* Same shape as the horizontal table, but the vertical requirement does not vary with
+     bar size - 9.6.2(1) is a flat area - so the interesting column is the spacing. */
+  function paintVertTable(r, dias) {
+    const need = r.governing.vertical.As;
+    const cap = r.detailing.sVMax;
+    const chosen = r.inputs.vBar.dia;
+
+    const cells = dias.map(d => {
+      const byArea = 1000 * Math.PI * d * d / 4 / need;
+      const cc = Math.floor(Math.min(byArea, cap) / 5) * 5;
+      return { d, cc, capped: byArea > cap };
+    });
+
+    const hdr = (c) => '<th data-vcol="' + c.d + '" style="cursor:pointer"' +
+      (c.d === chosen ? ' class="c-pick"' : '') + '><b>' + c.d + '</b></th>';
+    const td = (c, html, extra) => '<td data-vcol="' + c.d + '" style="cursor:pointer"' +
+      (c.d === chosen ? ' class="c-pick"' : '') + (extra || '') + '>' + html + '</td>';
+
+    const lead = (txt) => '<td style="text-align:left;color:#7f92ad">' + txt + '</td>';
+
+    let html = '<tr><th style="text-align:left;color:#7f92ad;font-weight:500">\u00f8 [mm]</th>' +
+      cells.map(hdr).join('') + '</tr>';
+    html += '<tr>' + lead('A<sub>s</sub> req [mm\u00b2/m]') +
+      cells.map(c => td(c, fmt(need, 0))).join('') + '</tr>';
+    html += '<tr>' + lead('c/c max') +
+      cells.map(c => td(c,
+        '<b class="' + (c.capped ? 'text-slate-400' : 'text-sky-300') + '">c' + c.cc + '</b>',
+        c.capped ? ' title="capped by 9.6.2(3), min(3t, 400)"' : '')).join('') + '</tr>';
+    $('vertTable').innerHTML = html;
+
+    const anyCapped = cells.some(c => c.capped);
+    $('vertNote').innerHTML = '<b class="text-slate-400">' + esc(r.governing.vertical.clause) + '</b> \u00b7 ' +
+      'one area for every bar, so only the spacing moves. Capped at c' + fmt(cap, 0) +
+      ' by 9.6.2(3)' + (anyCapped ? '; greyed values sit at that cap' : '') +
+      '. Spacings round down to 5 mm.';
+
+    $('vertTable').querySelectorAll('[data-vcol]').forEach(el => {
+      el.addEventListener('click', () => {
+        $('vdia').value = el.dataset.vcol;
         render();
       });
     });
@@ -355,6 +400,187 @@
       '<div class="border-l-2 border-amber-500/50 pl-2 leading-snug">' + esc(w) + '</div>').join('');
   }
 
+
+  // ---------------------------------------------------------------- tooltips
+  /* One place for every explanation. Keys are attached to elements by TIP_TARGETS
+     below, so the markup stays free of prose. */
+  const TIPS = {
+    'mode.ordinary': ['Ordinary wall',
+      'A wall with no significant restraint \u2014 above ground, free to shrink. Only the detailing minima ' +
+      'run: 9.6.2 for the vertical bars, NA.9.6.3 for the horizontal. \u00a77.3.2 is switched off, so the ' +
+      'horizontal steel falls to the code floor.'],
+    'mode.onBase': ['Wall on base',
+      'A wall cast on a hardened foundation \u2014 basement, retaining wall, lift shaft. The base stops the ' +
+      'wall shrinking along its length, so the tension runs <em>horizontally</em> and the cracks are ' +
+      'vertical. \u00a77.3.2 is applied to the horizontal bars only, and typically multiplies them by three.'],
+    'mode.watertight': ['Watertight wall',
+      'EN 1992-3 Tightness Class 1. The crack width stops being your choice and follows the head over the ' +
+      'wall thickness: 0,20 mm at h<sub>D</sub>/h \u2264 5, down to 0,05 mm at \u2265 35. Bar sizes use ' +
+      'eq. (7.122), with 10 in place of the 8 in (7.7N). Below w<sub>k</sub> 0,20 Table 7.2N runs out and ' +
+      'the direct calculation of 7.3.4 takes over automatically.'],
+    'rtb': ['Restrained top and bottom',
+      'For a wall cast <em>between</em> two slabs the vertical direction is restrained as well, so \u00a77.3.2 ' +
+      'is applied to the vertical bars too. Leave it off for a wall free to shorten vertically, which is the ' +
+      'usual case and why vertical steel is normally detailing-driven.'],
+
+    'crack.none': ['No crack control required',
+      'Switches \u00a77.3.2 off entirely and leaves only \u00a79.6. Legitimate where cracking impairs neither ' +
+      'function, durability nor appearance \u2014 and also where movement joints are provided instead, since ' +
+      'EN 1992-3 Table N.1(b) then asks only for 9.6.2 to 9.6.4. This is the cheapest answer the code allows, ' +
+      'and it is a decision you own rather than one the tool makes.'],
+    'crack.wk040': ['w<sub>k</sub> = 0,40 mm',
+      'Exposure class X0 under the quasi-permanent combination, per NA Table NA.7.1N.'],
+    'crack.wk030': ['w<sub>k</sub> = 0,30 mm',
+      'XC1\u2013XC4, XD1\u2013XD2 and XS1\u2013XS2 quasi-permanent; XD3, XS3 and XSA frequent. The Norwegian NA ' +
+      'scales this by k<sub>c</sub> = c<sub>nom</sub>/c<sub>min,dur</sub> capped at 1,3 \u2014 tick the box ' +
+      'alongside to use it, so extra cover buys a wider permitted crack.'],
+    'crack.wk020': ['w<sub>k</sub> = 0,20 mm',
+      'Tighter than the NA asks for in ordinary exposure. Use it when a client or specification demands it, ' +
+      'and watch what it costs in the table on the right.'],
+    'crack.watertight': ['EN 1992-3 Class 1',
+      'w<sub>k1</sub> interpolated on the hydrostatic head over the wall thickness. Enter the head beside.'],
+    'crack.custom': ['Custom crack width',
+      'Any target you like. Below 0,20 mm Table 7.2N cannot answer and the tool switches to the direct ' +
+      'calculation of 7.3.4 on its own.'],
+    'uplift': ['NA cover uplift',
+      'NA.7.3.1(5): the permitted crack width scales with cover, k<sub>c</sub> = ' +
+      'c<sub>nom</sub>/c<sub>min,dur</sub>, capped at 1,3. With 35 over 25 that is 0,30 \u00d7 1,3 = 0,39 mm.'],
+
+    'f.t': ['Wall thickness',
+      'Drives everything: A<sub>c</sub> = 1000 \u00b7 t for both the NA.9.6.3 leg and A<sub>ct</sub> in ' +
+      'eq. (7.1), the 3t zone height, and the min(3t, 400) spacing cap of 9.6.2(3).'],
+    'f.fck': ['Concrete class',
+      'Sets f<sub>ctm</sub> = 0,30 \u00b7 f<sub>ck</sub><sup>2/3</sup> from the closed form of Table 3.1, not ' +
+      'a lookup \u2014 so every class works, including the ones a three-row spreadsheet table would silently ' +
+      'return zero for. Stronger concrete cracks at a higher force, so it needs <em>more</em> minimum steel.'],
+    'f.fyk': ['Steel grade',
+      'Divides the NA.9.6.3 leg, and sets the absolute floor A<sub>s</sub> \u2265 ' +
+      'k<sub>c</sub>\u00b7k\u00b7f<sub>ct,eff</sub>\u00b7A<sub>ct</sub>/f<sub>yk</sub> below which the bars ' +
+      'yield the instant the section cracks.'],
+    'f.layers': ['Reinforcement layers',
+      'Two layers means one mesh per face. A single central layer sits t/2 from the surface, which eq. (7.7N) ' +
+      'punishes hard \u2014 under edge restraint it usually cannot be crack-controlled at all. The detailing ' +
+      'minima change too: 9.6.3(1) wants A<sub>s,hmin</sub> at <em>each</em> surface, so one layer must ' +
+      'provide double.'],
+    'f.cover': ['Cover to the horizontal bar',
+      'Enter c<sub>nom</sub>. 9.6.3 puts the horizontal steel at the surface and in a wall it is normally the ' +
+      'outer layer for exactly that reason. Cover sets the lever arm in eq. (7.7N) and the 3,4\u00b7c term in ' +
+      'the crack spacing (7.11).'],
+    'f.side': ['Exterior or interior',
+      'NA.9.6.3 uses k = 0,30 for a wall exposed to outdoor climate and 0,15 for one indoors \u2014 an exterior ' +
+      'wall sees roughly twice the restrained strain. A basement wall with earth on one side is normally taken ' +
+      'as exterior.'],
+    'f.vbar': ['Vertical steel you intend to provide',
+      'Feeds the \u201c25 % of the vertical reinforcement\u201d leg of NA.9.6.3, the 9.6.4 links trigger, and the ' +
+      'pass mark on the vertical card. It does not affect the horizontal crack calculation.'],
+
+    'f.kc': ['k<sub>c</sub> in eq. (7.1)',
+      '1,0 is pure tension, which is what edge restraint produces and the right default here. 0,6 is the ' +
+      'Norwegian house rule carried over from the source spreadsheet \u2014 there is no clause behind it, so it ' +
+      'is offered as a labelled choice rather than a hidden constant. Halving k<sub>c</sub> halves the steel.'],
+    'f.k': ['k in eq. (7.1)',
+      'k allows for non-uniform self-equilibrating stresses, which arise only from <em>internal</em> restraint. ' +
+      'A wall held by its base is restrained <em>externally</em>, so k = 1,0. The EC2 interpolation on thickness ' +
+      '(1,0 at 300 mm to 0,65 at 800 mm) is offered for the internal-restraint case.'],
+    'f.age': ['Age at cracking',
+      'Sets f<sub>ct,eff</sub> in eq. (7.1). Early-age restraint cracking normally happens well before 28 days, ' +
+      'and 7.3.2(2) lets you use f<sub>ctm</sub>(t) \u2014 the largest legitimate reduction on the table, worth ' +
+      'about 40 % at three days. Several National Annexes impose a floor, so confirm against NA:2010.'],
+    'f.cement': ['Cement class',
+      'Only matters when cracking is taken before 28 days: it sets s in \u03b2<sub>cc</sub>(t), eq. (3.2). ' +
+      'R gains strength fastest, S slowest.'],
+    'f.LH': ['Wall length and height',
+      'Optional. Give both and the EN 1992-3 Table L.1 restraint curve checks the 3t zone height for you. ' +
+      'Restraint at the base is always 0,5; what L/H changes is the top, and above L/H \u2248 4 the whole ' +
+      'height is restrained \u2014 which is where the 3t rule of thumb goes wrong.'],
+    'f.eps': ['Free strain and strain capacity',
+      'In microstrain. Their ratio is the restraint factor below which no crack forms, and that threshold read ' +
+      'off the Table L.1 curve is what fixes the height of the cracked zone. Typical Norwegian early-thermal ' +
+      'values are around 320 and 100.'],
+
+    'method.simplified': ['7.3.3 simplified',
+      'Table 7.2N with the eq. (7.7N) size adjustment \u2014 the familiar route, and what the office spreadsheet ' +
+      'does. Note 1 to the table says it is derived for <em>bending</em> (k<sub>2</sub> = 0,5, ' +
+      'k<sub>c</sub> = 0,4, h<sub>cr</sub> = 0,5h), so for a wall in uniform tension it runs roughly 10\u201315 % ' +
+      'light. Compliant under 7.3.1(9), but read the row below it.'],
+    'method.direct': ['7.3.4 direct',
+      'The crack width computed from (7.8), (7.9) and (7.11) with k<sub>2</sub> = 1,0 for pure tension, solved ' +
+      'for the area that hits your target. More faithful for restraint cracking, and the only route available ' +
+      'below w<sub>k</sub> 0,20.'],
+
+    'dir.h': ['Horizontal bars',
+      'The direction that carries edge restraint. Each column has its own threshold, because the permitted ' +
+      'steel stress depends on the bar size.'],
+    'dir.v': ['Vertical bars',
+      'One threshold for every column \u2014 0,002\u00b7A<sub>c</sub> split between the faces \u2014 and the ' +
+      'spacing cap tightens to min(3t, 400).'],
+    'diaPicker': ['Bar size',
+      'The tool starts on the cheapest buildable bar. Pick another and the headline follows it; press ' +
+      '\u201cauto\u201d to hand the choice back.']
+  };
+
+  /* selector -> [tip key, attach to the parent instead of the element itself] */
+  const TIP_TARGETS = [
+    ['[data-mode="ordinary"]', 'mode.ordinary'], ['[data-mode="onBase"]', 'mode.onBase'],
+    ['[data-mode="watertight"]', 'mode.watertight'],
+    ['[data-crack="none"]', 'crack.none'], ['[data-crack="wk040"]', 'crack.wk040'],
+    ['[data-crack="wk030"]', 'crack.wk030'], ['[data-crack="wk020"]', 'crack.wk020'],
+    ['[data-crack="watertight"]', 'crack.watertight'], ['[data-crack="custom"]', 'crack.custom'],
+    ['[data-method="simplified"]', 'method.simplified'], ['[data-method="direct"]', 'method.direct'],
+    ['[data-dir="h"]', 'dir.h'], ['[data-dir="v"]', 'dir.v'],
+    ['#rtb', 'rtb', 'parent'], ['#upliftWrap', 'uplift'],
+    ['#t', 'f.t', 'parent'], ['#fck', 'f.fck', 'parent'], ['#fyk', 'f.fyk', 'parent'],
+    ['#layers', 'f.layers', 'parent'], ['#cover', 'f.cover', 'parent'], ['#side', 'f.side', 'parent'],
+    ['#vdia', 'f.vbar', 'parent'], ['#vcc', 'f.vbar', 'parent'],
+    ['#kcMode', 'f.kc', 'parent'], ['#kcCustom', 'f.kc', 'parent'], ['#kMode', 'f.k', 'parent'],
+    ['#age', 'f.age', 'parent'], ['#cement', 'f.cement', 'parent'],
+    ['#wallL', 'f.LH', 'parent'], ['#wallH', 'f.LH', 'parent'], ['#epsFree', 'f.eps', 'parent'],
+    ['#diaPicker', 'diaPicker']
+  ];
+
+  function initTips() {
+    for (const [sel, key, mode] of TIP_TARGETS) {
+      document.querySelectorAll(sel).forEach(el => {
+        const host = mode === 'parent' ? el.parentElement : el;
+        if (!host) return;
+        host.dataset.tip = key;
+        const lbl = host.querySelector ? host.querySelector('.lbl') : null;
+        if (lbl) lbl.dataset.tip = key;                    // dotted underline affordance
+      });
+    }
+
+    const box = $('tip');
+    let hideTimer = null;
+
+    const show = (host) => {
+      const t = TIPS[host.dataset.tip];
+      if (!t) return;
+      clearTimeout(hideTimer);
+      box.innerHTML = '<b>' + t[0] + '</b>' + t[1];
+      box.classList.add('on');
+      const r = host.getBoundingClientRect();
+      const b = box.getBoundingClientRect();
+      let x = Math.min(Math.max(8, r.left), window.innerWidth - b.width - 8);
+      let y = r.bottom + 8;
+      if (y + b.height > window.innerHeight - 8) y = Math.max(8, r.top - b.height - 8);
+      box.style.left = x + 'px';
+      box.style.top = y + 'px';
+    };
+    const hide = () => { hideTimer = setTimeout(() => box.classList.remove('on'), 60); };
+
+    document.addEventListener('mouseover', (e) => {
+      const host = e.target.closest('[data-tip]');
+      if (host) show(host); else hide();
+    });
+    document.addEventListener('focusin', (e) => {
+      const host = e.target.closest('[data-tip]');
+      if (host) show(host);
+    });
+    document.addEventListener('focusout', hide);
+    window.addEventListener('scroll', () => box.classList.remove('on'), true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') box.classList.remove('on'); });
+  }
+
   // ------------------------------------------------------------------ wiring
 
   function init() {
@@ -400,6 +626,7 @@
         el.addEventListener('change', render);
       });
 
+    initTips();
     render();
   }
 

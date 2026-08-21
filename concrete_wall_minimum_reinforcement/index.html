@@ -47,7 +47,8 @@
     .pill.on { background:#0ea5e9; border-color:#0ea5e9; color:#04121f; font-weight:600; }
     .pill.sm { padding:.18rem .45rem; font-size:.74rem; }
     table.grid { border-collapse:separate; border-spacing:2px; font-variant-numeric:tabular-nums; }
-    table.grid th, table.grid td { padding:.28rem .4rem; font-size:.78rem; text-align:right; border-radius:.25rem; }
+    table.grid th, table.grid td { padding:.28rem .4rem; font-size:.78rem; text-align:right;
+                                  border-radius:.25rem; white-space:nowrap; }
     table.grid th { color:#7f92ad; font-weight:600; }
     .c-ok   { background:#064e3b; color:#6ee7b7; }
     .c-near { background:#4d3908; color:#fcd34d; }
@@ -63,6 +64,16 @@
     details > summary::-webkit-details-marker { display:none; }
     .barbg { background:#1c2537; border-radius:2px; height:8px; overflow:hidden; }
     .barfg { height:100%; border-radius:2px; }
+    #tip { position:fixed; z-index:60; max-width:22rem; background:#0d1526; border:1px solid #33496b;
+           border-radius:.4rem; padding:.5rem .6rem; box-shadow:0 10px 30px rgba(0,0,0,.6);
+           font-size:.75rem; line-height:1.45; color:#bccbdf; pointer-events:none;
+           opacity:0; transition:opacity .1s; }
+    #tip.on { opacity:1; }
+    #tip b { display:block; color:#e6edf6; font-size:.78rem; margin-bottom:.25rem; }
+    #tip em { color:#7dd3fc; font-style:normal; }
+    .lbl[data-tip] { text-decoration:underline dotted #44607f; text-underline-offset:3px; cursor:help; }
+    .tiphint { font-size:.68rem; color:#5c6b82; }
+    @media (max-width:1280px){ .herosplit { grid-template-columns:1fr !important; } }
     @media (max-width:900px){ .twocol { grid-template-columns:1fr !important; } }
   </style>
 </head>
@@ -90,6 +101,7 @@
         <input type="checkbox" id="rtb" class="accent-sky-500"> also restrained top and bottom
       </label>
       <span id="modeHint" class="text-xs text-slate-500 ml-auto"></span>
+      <span class="tiphint w-full">Hover any control to see what it changes in the calculation.</span>
     </div>
 
     <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-3">
@@ -106,7 +118,7 @@
       <div><span class="lbl">Wall side</span>
         <select id="side" class="fld"><option value="exterior" selected>Exterior (yttervegg)</option><option value="interior">Interior (innervegg)</option></select></div>
       <div><span class="lbl">Vert. bar ø</span>
-        <select id="vdia" class="fld"><option>8</option><option>10</option><option selected>12</option><option>16</option><option>20</option><option>25</option></select></div>
+        <select id="vdia" class="fld"><option>8</option><option>10</option><option selected>12</option><option>16</option><option>20</option><option>25</option><option>32</option></select></div>
       <div><span class="lbl">Vert. bar cc</span><input id="vcc" class="fld" value="250"></div>
     </div>
 
@@ -189,15 +201,25 @@
     <div class="space-y-3">
       <div class="panel p-3">
         <div class="flex items-baseline justify-between mb-2">
-          <span class="lbl mb-0">Required area and spacing, per bar size · each face</span>
+          <span class="lbl mb-0">Required area and spacing, per bar size</span>
           <div class="flex items-center gap-1">
             <span class="text-xs text-slate-500 mr-1">click a column to select</span>
             <button class="pill sm on" data-method="simplified">7.3.3 simplified</button>
             <button class="pill sm" data-method="direct">7.3.4 direct</button>
           </div>
         </div>
-        <div class="overflow-x-auto"><table class="grid w-full" id="heroTable"></table></div>
-        <div id="heroNote" class="text-xs text-slate-500 mt-2"></div>
+        <div class="grid gap-4 herosplit" style="grid-template-columns:1.15fr 1fr">
+          <div>
+            <div class="lbl">Horizontal · each face</div>
+            <div class="overflow-x-auto"><table class="grid w-full" id="heroTable"></table></div>
+            <div id="heroNote" class="text-xs text-slate-500 mt-2"></div>
+          </div>
+          <div>
+            <div class="lbl">Vertical · each face</div>
+            <div class="overflow-x-auto"><table class="grid w-full" id="vertTable"></table></div>
+            <div id="vertNote" class="text-xs text-slate-500 mt-2"></div>
+          </div>
+        </div>
       </div>
 
       <div class="panel p-3">
@@ -231,6 +253,8 @@
     National Annex should be confirmed against your own copy of NA:2010. Always check results independently.
   </p>
 </div>
+
+<div id="tip" role="tooltip"></div>
 
 <script src="wall_min_reinf_api.js"></script>
 <script src="script.js"></script>
