@@ -198,9 +198,11 @@ the face of the tool rather than inferred from a column header.
 the governing mechanism for a wall on a base, and `k` only reduces *internal*
 self-equilibrating stresses), but it should be a visible, explained default.
 
-**I4 — the 3 × t zone height is a house rule, not a code rule.** EN 1992-3 Annex L
-Fig. L.1(a) ties the high-restraint zone of a wall on a base to the **wall height and
-L/H ratio**, not the thickness. Keep 3t if that is office practice, but label it as such.
+**I4 — the 3 × t zone height is a house rule, not a code rule.** EN 1992-3 Annex L ties
+the restrained zone of a wall on a base to the **wall height and L/H ratio**, not the
+thickness. 3t turns out to be a decent proxy for stocky walls and unconservative for long
+ones — see §5.1. Keep it as the default, label it as practice, and let the L/H curve
+second-guess it.
 
 **I5 — `fct,eff` frozen at 28 days.** The bottom-of-wall horizontal steel exists to control
 *early-age restraint cracking*, which is exactly the case where EC2 permits `fctm(t)`.
@@ -273,8 +275,10 @@ Two rules follow, and both must be coded rather than left to the reader:
 
 ```
 ┌─ Wall ─────────────────────────────────────────────────────────────────┐
+│ Mode [2 · Wall on base ▾]   □ also restrained top and bottom           │
 │ t [350] mm   Concrete [B35▾]   fyk [500]   Layers [Double▾]            │
 │ cover c [35]  Wall [Exterior▾]  NEd [0] kN/m   Cracking at [28 d▾]     │
+│ kc [1,0] pure tension▾   zone 3t = 1050 mm   L [ ] H [ ] (optional)    │
 └────────────────────────────────────────────────────────────────────────┘
 ┌─ What governs (horizontal, per face) ─┐ ┌─ Crack requirement ──────────┐
 │ ▇▇▇▇▇        9.6.2   As,v     350     │ │ ○ none required     →   672  │
@@ -312,6 +316,8 @@ Per face (or per layer for single-layer walls):
 3. `As,crack = kc·k·fct,eff·Act/(σs·n_faces)` per the ø-indexed loop above
 4. 9.6.4 links trigger and its ø ≤ 16 / cover > 2ø waiver
 5. 9.6.1 scope warnings (L/t < 4, out-of-plane bending → §9.3)
+6. zone height: 3 × t by default, with the EN 1992-3 Table L.1 second opinion when L and H
+   are given (§5.1)
 
 Governing = max of whichever are switched on. The "what governs" bar shows all of them
 side by side, so the cost of the crack requirement reads as a ratio, not a bare number.
@@ -353,30 +359,146 @@ Reuse `ec2concrete/ec2ConcreteUtils.js` for `fctm` / `fctm(t)` — kills trap T1
 - **Single layer**: 200 mm wall, wk = 0,3, full restraint → engine must return
   "not achievable", not a number.
 - **Spacing caps**: t = 100 → `s_v,max = 300`; t = 200 → 400 (not 600).
+- **Table L.1**: L/H = 2 → R_top 0; L/H = 3 → 0,05; L/H = 4 → 0,3; L/H = 12 → 0,5
+  (clamped, not extrapolated); L/H = 3,5 → 0,175 by interpolation.
+- **Zone height**: t = 250, H = 3000, L = 25000 → must report full height and flag that
+  3t (750 mm) is unconservative.
 
 ---
 
-## Part 4 — Open questions
+## Part 4 — Decisions taken
 
-1. **NA wording confirmation.** `NA.9.6.3` k = 0,30 exterior / 0,15 interior is confirmed
-   by three independent sources but not from the standard itself. Same for the
-   `NA.7.3.1(5)` rule `wmax = 0,30·kc`, `kc = cnom/cmin,dur ≤ 1,3`. One look at your copy
-   of NA:2010 settles both.
-2. **Keep the 0,6?** Recommendation: drop it, and replace it with eq. (7.2) driven by the
-   real `NEd` plus an early-age `fct,eff`, which reaches similar numbers with a clause
-   behind each step. If office practice is committed to 0,6, it stays — but as a named,
-   labelled "reduced restraint (house rule)" option, never as a default.
-3. **Zone height.** Keep 3t, or also offer the EN 1992-3 Annex L restraint-factor curve
-   for a wall on a base?
-4. **Scope.** Bottom-zone horizontal restraint steel only, or also full-height vertical
-   and the in-plane shear-wall case?
+**Q1 — `k_NA` is an exposure toggle.** 0,30 for `yttervegg`, 0,15 for `innervegg`. The
+physical logic is that an exterior wall sees a far larger seasonal range and dries from
+one side, so the restrained strain is roughly double. Implementation: a two-way toggle
+with a hint line, plus a numeric override for the awkward cases (a basement wall with
+earth on one side and heated space on the other is normally taken as `yttervegg`).
+
+**Q2 — `kc` is an overwritable default input.** The field ships with a computed default
+and a preset menu, and the user can type over any of it:
+
+| preset | `kc` | basis |
+|---|---|---|
+| pure tension (edge restraint) | 1,0 | 7.3.2(2), the default for a wall on a base |
+| from `NEd` | eq. (7.2) | live from the axial force field; 0,4 at `NEd` = 0 |
+| reduced restraint (house rule) | 0,6 | the sheet's value, labelled as practice |
+| custom | — | free entry |
+
+Whatever is active is printed next to the result with its basis, so a check print always
+says where the number came from.
+
+**Q3 — keep 3 × t as the default; the L/H curve is the second opinion.** See §5.1.
+
+**Q4 — vertical and horizontal are genuinely different problems, and modes are the right
+shape.** See §5.2.
+
+---
+
+## Part 5 — The two answers that needed working out
+
+### 5.1 The restraint curve, and whether 3 × t holds up
+
+**EN 1992-3 Table L.1 — restraint factors for the central zone of a wall on a base:**
+
+| L/H | R at base | R at top |
+|---|---|---|
+| 1 | 0,5 | 0 |
+| 2 | 0,5 | 0 |
+| 3 | 0,5 | 0,05 |
+| 4 | 0,5 | 0,3 |
+| > 8 | 0,5 | 0,5 |
+
+R at the base is **always 0,5** — the base holds the wall completely, and the 0,5 is the
+creep relief on a load that builds up slowly. What changes with L/H is the **top**: a
+stocky wall (L/H ≤ 2) is free at the top and R decays to zero, while a long wall
+(L/H > 8) is held just as hard at the top as at the base. R is taken to vary linearly
+between the two.
+
+**Where R enters is the part that is easy to get wrong.** R does *not* appear in eq. (7.1).
+Eq. (7.1) is an equilibrium statement at the instant of cracking: once the concrete
+reaches `fct,eff` a crack forms and the steel has to catch the released force, and it
+makes no difference what caused the strain. So `As,min` is independent of R.
+
+R appears one step earlier, in **whether that zone cracks at all**. EN 1992-3 Annex M,
+eq. (M.3), for a wall restrained along one edge: `εsm − εcm = Rax·εfree`. A crack forms
+only where `Rax·εfree` exceeds the concrete's tensile strain capacity `εctu`, i.e. where
+
+```
+R(z) > R_crit = εctu / εfree
+```
+
+For a typical Norwegian basement wall — early-thermal rise ~25–30 °C, `αc` = 10·10⁻⁶/°C,
+plus autogenous shrinkage — `εfree` ≈ 300–350 με and `εctu` ≈ 75–110 με, so
+`R_crit` ≈ 0,25–0,35. Reading that back off the linear R(z) gives the height over which
+the extra horizontal steel is actually needed. For H = 3,0 m:
+
+| L/H | R_crit = 0,25 | R_crit = 0,31 | R_crit = 0,35 |
+|---|---|---|---|
+| 1–2 | 1500 mm | 1140 mm | 900 mm |
+| 3 | 1667 mm | 1267 mm | 1000 mm |
+| 4 | full height | 2850 mm | 2250 mm |
+| ≥ 6 | full height | full height | full height |
+
+**So 3 × t is a good rule where it came from and a trap where it did not.** For a 350 mm
+wall, 3t = 1050 mm, and for L/H ≤ 3 the curve lands at 900–1670 mm — 3t sits right in the
+band. That is almost certainly why the rule exists: the ordinary Norwegian basement wall
+is stocky, and for stocky walls it happens to be right.
+
+But the rule keys off **thickness**, and the physics keys off **length over height**. At
+L/H ≥ 4 the restrained zone runs the full height of the wall, and long retaining and
+basement walls are exactly where that bites. A 250 mm × 3 m × 25 m wall gets 750 mm of
+extra steel under the 3t rule and needs it over all 3000 mm.
+
+Implementation, and deliberately modest:
+
+- default the zone height to **3 × t**, labelled *"practice (NO) — not an EC2 rule"*
+- take `L` and `H` as two optional fields. When both are filled, show a second line:
+  *"EN 1992-3 Table L.1: L/H = 8,0 → R = 0,50 at base and top → extra reinforcement over
+  the full height, 3000 mm, not 750 mm"*
+- expose `εfree` and `εctu` as advanced fields with the Norwegian defaults above, because
+  `R_crit` is the whole ballgame and pretending otherwise would be dishonest
+- do **not** grow this into an early-thermal crack calculator. It reports a height and a
+  warning; it does not compute `T1`.
+
+### 5.2 Vertical vs horizontal, and the mode list
+
+They are different problems, and the sheet is right to treat only the horizontal bars as
+crack-driven:
+
+- **Horizontal bars** carry the edge restraint. The wall wants to shorten along its length
+  and the base will not let it, so the tension is horizontal and the cracks are vertical.
+  7.3.2 governs here, typically by a factor of 3 over the detailing minimum.
+- **Vertical bars** are almost never restraint-critical. The wall is free to shorten
+  vertically — only the bottom is held, over a short distance — so 9.6.2's `0,002·Ac` and
+  whatever out-of-plane bending the wall carries are what govern. The exception is a wall
+  cast **between** two slabs, where the vertical direction is restrained top and bottom
+  too, and that is a separate situation rather than a different formula.
+
+So modes are structural situations, and each one switches on a set of requirements:
+
+| mode | vertical | horizontal | notes |
+|---|---|---|---|
+| **1. Ordinary wall** (above ground) | 9.6.2 | NA.9.6.3 | detailing only; the fast path |
+| **2. Wall on base** (basement, retaining) | 9.6.2 | NA.9.6.3 + **7.3.2 edge restraint** in the bottom zone | the sheet's *vanlig vegg* |
+| **3. Watertight** (lift pit, tank) | 9.6.2 | NA.9.6.3 + **7.3.2** with EN 1992-3 `wk1` from `hD/h` and the (7.122) bar rule | the sheet's *vanntett vegg* |
+| **4. Restrained top and bottom** (cast between slabs) | 9.6.2 + **7.3.2** | as mode 2 | a checkbox on modes 1–3, not its own mode |
+
+Modes 1–3 plus the mode 4 checkbox are v1. Mode 2 is the default, because it is what
+people open the tool for.
+
+**Out of scope, stated explicitly in the README**: in-plane shear walls and coupling
+beams. That is a strength problem driven by analysis forces, not a minimum-reinforcement
+problem, and folding it in would blur what this tool is for.
+
+Every mode still ends at the same place — the ø-indexed table of §3.1 — so switching
+modes changes which requirement wins, never the shape of the answer.
 
 ---
 
 ## Sources
 
 - BS EN 1992-1-1:2004 §3.1.2, §7.3.2, §7.3.3 (Tables 7.2N / 7.3N, eq. 7.6N / 7.7N), §9.6
-- [EN 1992-3:2006](https://www.phd.eng.br/wp-content/uploads/2015/12/en.1992.3.2006.pdf) §7.3.1 (Table 7.105), §7.3.3 (eq. 7.122), Annex L, Annex M, Annex N
+- [EN 1992-3:2006](https://www.phd.eng.br/wp-content/uploads/2015/12/en.1992.3.2006.pdf) §7.3.1 (Table 7.105), §7.3.3 (eq. 7.122), Annex L (Fig. L.1a, **Table L.1**), Annex M (eq. M.3), Annex N (Table N.1)
 - [SCIA — Norwegian National Annex to EN 1992-1-1](https://help.scia.net/25.0/en/national_annexes/en1992/norway.htm) — NA.7.3.1 and NA.9.6.3 parameters
 - [Statens vegvesen / Rambøll, prefabricated culvert design example](https://www.vegvesen.no/globalassets/fag/teknologi/bruer/prefabrikkerte-kulvertelementer-til-v425/beregningseksempel-2015.pdf) §3.1.4
 - [Norwegian retaining-wall worked example (jet-as.no)](https://jet-as.no/onewebmedia/Regneeksempel%20for%20st%C3%B8ttemur%20revidert.pdf) §9, §10
