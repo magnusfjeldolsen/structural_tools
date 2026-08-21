@@ -1,0 +1,21 @@
+/* Print layout: one page, inputs then the answer then the table. */
+@media print {
+  body { background:#fff !important; color:#000 !important; }
+  .panel { background:#fff !important; border:1px solid #999 !important; break-inside:avoid; }
+  a[href]:after { content:""; }
+  .lbl { color:#444 !important; }
+  .fld, .pill { background:#fff !important; color:#000 !important; border-color:#999 !important; }
+  .pill:not(.on) { display:none; }
+  .pill.on { border:1px solid #000 !important; font-weight:700; }
+  .text-white, .text-slate-200, .text-slate-300 { color:#000 !important; }
+  .text-slate-400, .text-slate-500, .text-slate-600 { color:#444 !important; }
+  .text-sky-300, .text-sky-400 { color:#000 !important; }
+  .c-ok   { background:#e8f6ee !important; color:#065f46 !important; }
+  .c-near { background:#fdf6e3 !important; color:#7c5800 !important; }
+  .c-bad  { background:#fdeaee !important; color:#9f1239 !important; }
+  .c-cap, .c-veto { background:#f1f1f1 !important; color:#666 !important; background-image:none !important; }
+  details { display:block; }
+  details > summary { display:none; }
+  #cookie-settings-btn { display:none !important; }
+  .twocol { grid-template-columns:1fr !important; }
+}
