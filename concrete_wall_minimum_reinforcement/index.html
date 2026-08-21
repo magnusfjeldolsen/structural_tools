@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-BFVZQQ2LYN');
+  </script>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wall Minimum Reinforcement Calculator | Eurocode 2 + Norwegian NA</title>
+  <meta name="description" content="Minimum reinforcement for concrete walls to EC2 and the Norwegian National Annex. Vertical and horizontal minima to 9.6.2 and NA.9.6.3, restraint crack control to 7.3.2 with Table 7.2N and direct calculation to 7.3.4, watertight walls to EN 1992-3, and a bar-by-bar spacing matrix showing what each crack requirement actually costs.">
+  <meta name="keywords" content="minimum reinforcement wall, minimumsarmering vegg, EC2 9.6.2, NA.9.6.3, 7.3.2 crack control, restraint cracking, edge restraint, yttervegg, innervegg, vanntett vegg, heisgrube, Table 7.2N, EN 1992-3, basement wall reinforcement, retaining wall minimum reinforcement">
+  <meta name="author" content="Magnus Fjeld Olsen">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://magnusfjeldolsen.github.io/structural_tools/concrete_wall_minimum_reinforcement/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://magnusfjeldolsen.github.io/structural_tools/concrete_wall_minimum_reinforcement/">
+  <meta property="og:title" content="Wall Minimum Reinforcement Calculator">
+  <meta property="og:description" content="Minimum reinforcement for concrete walls to EC2 + Norwegian NA, showing what each crack requirement actually costs in steel.">
+  <meta property="og:site_name" content="Structural Engineering Tools">
+
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="print.css" media="print">
+
+  <script>tailwind = window.tailwind || {}; tailwind.config = { darkMode: 'class' };</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body { background:#0b1120; }
+    .panel { background:#131c2e; border:1px solid #22304a; border-radius:.6rem; }
+    .lbl { font-size:.68rem; letter-spacing:.04em; text-transform:uppercase; color:#7f92ad; display:block; margin-bottom:.2rem; }
+    .fld { width:100%; background:#0b1120; border:1px solid #2c3d5a; border-radius:.35rem;
+           padding:.3rem .45rem; color:#e6edf6; font-size:.86rem; font-variant-numeric:tabular-nums; }
+    .fld:focus { outline:none; border-color:#38bdf8; box-shadow:0 0 0 2px rgba(56,189,248,.2); }
+    .pill { padding:.28rem .6rem; border-radius:.35rem; font-size:.8rem; border:1px solid #2c3d5a;
+            background:#0b1120; color:#a8b8cd; cursor:pointer; white-space:nowrap; }
+    .pill:hover { border-color:#44607f; color:#d8e4f2; }
+    .pill.on { background:#0ea5e9; border-color:#0ea5e9; color:#04121f; font-weight:600; }
+    .pill.sm { padding:.18rem .45rem; font-size:.74rem; }
+    table.grid { border-collapse:separate; border-spacing:2px; font-variant-numeric:tabular-nums; }
+    table.grid th, table.grid td { padding:.28rem .4rem; font-size:.78rem; text-align:right;
+                                  border-radius:.25rem; white-space:nowrap; }
+    table.grid th { color:#7f92ad; font-weight:600; }
+    .c-ok   { background:#064e3b; color:#6ee7b7; }
+    .c-near { background:#4d3908; color:#fcd34d; }
+    .c-bad  { background:#4c1023; color:#fda4af; }
+    .c-cap  { background:#1c2537; color:#5c6b82; }
+    .c-veto { background:#1c2537; color:#5c6b82;
+              background-image:repeating-linear-gradient(45deg,transparent,transparent 3px,#334155 3px,#334155 4px); }
+    .c-pick { outline:2px solid #38bdf8; outline-offset:-2px; }
+    .num { font-variant-numeric:tabular-nums; }
+    .chk-ok   { color:#34d399; } .chk-warn { color:#fbbf24; }
+    .chk-fail { color:#fb7185; } .chk-info { color:#7f92ad; }
+    details > summary { cursor:pointer; list-style:none; }
+    details > summary::-webkit-details-marker { display:none; }
+    .barbg { background:#1c2537; border-radius:2px; height:8px; overflow:hidden; }
+    .barfg { height:100%; border-radius:2px; }
+    #tip { position:fixed; z-index:60; max-width:22rem; background:#0d1526; border:1px solid #33496b;
+           border-radius:.4rem; padding:.5rem .6rem; box-shadow:0 10px 30px rgba(0,0,0,.6);
+           font-size:.75rem; line-height:1.45; color:#bccbdf; pointer-events:none;
+           opacity:0; transition:opacity .1s; }
+    #tip.on { opacity:1; }
+    #tip b { display:block; color:#e6edf6; font-size:.78rem; margin-bottom:.25rem; }
+    #tip em { color:#7dd3fc; font-style:normal; }
+    .lbl[data-tip] { text-decoration:underline dotted #44607f; text-underline-offset:3px; cursor:help; }
+    .tiphint { font-size:.68rem; color:#5c6b82; }
+    @media (max-width:1280px){ .herosplit { grid-template-columns:1fr !important; } }
+    @media (max-width:900px){ .twocol { grid-template-columns:1fr !important; } }
+  </style>
+</head>
+<body class="text-gray-100 min-h-screen">
+
+<div class="max-w-[1400px] mx-auto px-3 py-4">
+
+  <div class="flex items-baseline justify-between mb-3">
+    <div>
+      <h1 class="text-xl font-semibold text-white">Wall Minimum Reinforcement</h1>
+      <p class="text-xs text-slate-400">NS-EN 1992-1-1 §9.6 + NA.9.6.3 · §7.3.2 crack control · EN 1992-3 for watertight walls</p>
+    </div>
+    <a href="../index.html" class="text-sky-400 hover:text-sky-300 text-sm">← Back to tools</a>
+  </div>
+
+  <div class="mb-3 p-3 rounded-lg" style="background:rgba(234,179,8,.09);border:1px solid rgba(234,179,8,.28)">
+    <p class="text-amber-300 text-sm font-medium mb-1">
+      &#9888;&#65039; Under development &mdash; this tool is new and may contain errors.
+    </p>
+    <p class="text-amber-200/70 text-xs leading-relaxed">
+      Written against the <b>Norwegian National Annex</b>, NS-EN 1992-1-1:2004+A1:2014+NA:2018, so the
+      values it applies for NA.9.6.2, NA.9.6.3, NA.7.3.1(5) and NA.7.3.4(3) are Norwegian and will not
+      be right in another country. It covers minimum reinforcement only, not bending, shear or in-plane
+      forces. Check every result independently before using it in a design.
+    </p>
+  </div>
+
+  <!-- ============ INPUTS ============ -->
+  <div class="panel p-3 mb-3">
+
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <span class="lbl mb-0 mr-1">Situation</span>
+      <button class="pill" data-mode="ordinary">Ordinary wall</button>
+      <button class="pill on" data-mode="onBase">Wall on base</button>
+      <button class="pill" data-mode="watertight">Watertight</button>
+      <label class="flex items-center gap-1.5 text-xs text-slate-300 ml-2">
+        <input type="checkbox" id="rtb" class="accent-sky-500"> also restrained top and bottom
+      </label>
+      <span id="modeHint" class="text-xs text-slate-500 ml-auto"></span>
+      <span class="tiphint w-full">Hover any control to see what it changes in the calculation.</span>
+    </div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-3">
+      <div><span class="lbl">Thickness t</span><input id="t" class="fld" value="350"></div>
+      <div><span class="lbl">Concrete</span>
+        <select id="fck" class="fld">
+          <option>20</option><option>25</option><option>30</option><option selected>35</option>
+          <option>40</option><option>45</option><option>50</option><option>55</option><option>60</option>
+        </select></div>
+      <div><span class="lbl">f<sub>yk</sub></span><input id="fyk" class="fld" value="500"></div>
+      <div><span class="lbl">Layers</span>
+        <select id="layers" class="fld"><option value="2" selected>2 — one per face</option><option value="1">1 — central</option></select></div>
+      <div><span class="lbl">Cover c<sub>nom</sub></span><input id="cover" class="fld" value="35"></div>
+      <div><span class="lbl">Wall side</span>
+        <select id="side" class="fld"><option value="exterior" selected>Exterior (yttervegg)</option><option value="interior">Interior (innervegg)</option></select></div>
+      <div><span class="lbl">Vert. bar ø</span>
+        <select id="vdia" class="fld"><option>8</option><option>10</option><option selected>12</option><option>16</option><option>20</option><option>25</option><option>32</option></select></div>
+      <div><span class="lbl">Vert. bar cc</span><input id="vcc" class="fld" value="250"></div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="lbl mb-0 mr-1">Crack requirement</span>
+      <button class="pill" data-crack="none">None required</button>
+      <button class="pill" data-crack="wk040">w<sub>k</sub> 0,40</button>
+      <button class="pill on" data-crack="wk030">w<sub>k</sub> 0,30</button>
+      <button class="pill" data-crack="wk020">w<sub>k</sub> 0,20</button>
+      <button class="pill" data-crack="watertight">Watertight</button>
+      <button class="pill" data-crack="custom">Custom</button>
+
+      <label class="flex items-center gap-1.5 text-xs text-slate-300 ml-2" id="upliftWrap">
+        <input type="checkbox" id="uplift" class="accent-sky-500"> NA 0,30·k<sub>c</sub>
+      </label>
+      <input id="cnom" class="fld hidden" style="width:5rem" value="35" title="cnom">
+      <input id="cmindur" class="fld hidden" style="width:5rem" value="25" title="cmin,dur">
+      <div id="hDWrap" class="hidden items-center gap-1.5"><span class="lbl mb-0">h<sub>D</sub></span><input id="hD" class="fld" style="width:6rem" value="2000"></div>
+      <div id="wkWrap" class="hidden items-center gap-1.5"><span class="lbl mb-0">w<sub>k</sub></span><input id="wkCustom" class="fld" style="width:5rem" value="0.30"></div>
+      <span id="wkOut" class="text-xs text-slate-400 ml-auto"></span>
+    </div>
+
+    <details class="mt-3 border-t border-slate-800 pt-2">
+      <summary class="text-xs text-sky-400 hover:text-sky-300 select-none">Assumptions &amp; restraint zone ▾</summary>
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mt-2">
+        <div><span class="lbl">k<sub>c</sub> (7.1)</span>
+          <select id="kcMode" class="fld">
+            <option value="pureTension" selected>1,0 pure tension</option>
+            <option value="house">0,6 house rule (NO)</option>
+            <option value="custom">custom</option>
+          </select></div>
+        <div><span class="lbl">k<sub>c</sub> value</span><input id="kcCustom" class="fld" value="1.0" disabled></div>
+        <div><span class="lbl">k (7.1)</span>
+          <select id="kMode" class="fld"><option value="external" selected>1,0 external restraint</option><option value="ec2h">EC2 h-interpolation</option></select></div>
+        <div><span class="lbl">Cracking at</span>
+          <select id="age" class="fld"><option value="28" selected>28 days</option><option value="7">7 days</option><option value="3">3 days</option></select></div>
+        <div><span class="lbl">Cement</span>
+          <select id="cement" class="fld"><option value="N" selected>CEM N</option><option value="R">CEM R</option><option value="S">CEM S</option></select></div>
+        <div><span class="lbl">Wall length L</span><input id="wallL" class="fld" placeholder="optional"></div>
+        <div><span class="lbl">Wall height H</span><input id="wallH" class="fld" placeholder="optional"></div>
+        <div><span class="lbl">ε<sub>free</sub> / ε<sub>ctu</sub> [µ]</span>
+          <div class="flex gap-1"><input id="epsFree" class="fld" value="320"><input id="epsCtu" class="fld" value="100"></div></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ============ HEADLINE ============ -->
+  <div class="grid twocol gap-3" style="grid-template-columns: 340px 1fr;">
+
+    <div class="space-y-3">
+      <div class="panel p-3">
+        <div class="flex items-center justify-between mb-1">
+          <span class="lbl mb-0">Horizontal · each face</span>
+          <div class="flex gap-1" id="diaPicker"></div>
+        </div>
+        <div id="hAnswer" class="text-3xl font-bold text-white leading-none mb-1">—</div>
+        <div id="hArea" class="text-sm text-slate-300 num"></div>
+        <div id="hClause" class="text-xs mt-1"></div>
+        <div id="hZone" class="text-xs text-slate-400 mt-2 pt-2 border-t border-slate-800"></div>
+      </div>
+
+      <div class="panel p-3">
+        <span class="lbl">Vertical · each face</span>
+        <div id="vAnswer" class="text-2xl font-bold text-white leading-none mb-1">—</div>
+        <div id="vArea" class="text-sm text-slate-300 num"></div>
+        <div id="vClause" class="text-xs mt-1"></div>
+      </div>
+
+      <div class="panel p-3">
+        <span class="lbl">What governs · horizontal</span>
+        <div id="govBars" class="space-y-1.5 mt-1"></div>
+      </div>
+
+      <div class="panel p-3">
+        <span class="lbl">Checks</span>
+        <div id="checks" class="space-y-1.5 mt-1 text-xs"></div>
+      </div>
+    </div>
+
+    <div class="space-y-3">
+      <div class="panel p-3">
+        <div class="flex items-baseline justify-between mb-2">
+          <span class="lbl mb-0">Required area and spacing, per bar size</span>
+          <div class="flex items-center gap-1">
+            <span class="text-xs text-slate-500 mr-1">click a column to select</span>
+            <button class="pill sm on" data-method="simplified">7.3.3 simplified</button>
+            <button class="pill sm" data-method="direct">7.3.4 direct</button>
+          </div>
+        </div>
+        <div class="grid gap-4 herosplit" style="grid-template-columns:1.15fr 1fr">
+          <div>
+            <div class="lbl">Horizontal · each face</div>
+            <div class="overflow-x-auto"><table class="grid w-full" id="heroTable"></table></div>
+            <div id="heroNote" class="text-xs text-slate-500 mt-2"></div>
+          </div>
+          <div>
+            <div class="lbl">Vertical · each face</div>
+            <div class="overflow-x-auto"><table class="grid w-full" id="vertTable"></table></div>
+            <div id="vertNote" class="text-xs text-slate-500 mt-2"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel p-3">
+        <div class="flex items-center justify-between mb-2">
+          <span class="lbl mb-0">A<sub>s</sub> provided [mm²/m] · green = meets the requirement for that bar</span>
+          <div class="flex gap-1">
+            <button class="pill sm on" data-dir="h">Horizontal</button>
+            <button class="pill sm" data-dir="v">Vertical</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto"><table class="grid w-full" id="matrix"></table></div>
+        <div class="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
+          <span><span class="inline-block w-3 h-3 rounded-sm align-middle c-ok"></span> meets</span>
+          <span><span class="inline-block w-3 h-3 rounded-sm align-middle c-near"></span> within 5 %</span>
+          <span><span class="inline-block w-3 h-3 rounded-sm align-middle c-bad"></span> short</span>
+          <span><span class="inline-block w-3 h-3 rounded-sm align-middle c-cap"></span> spacing above the code maximum</span>
+          <span>◇ cheapest option in that column</span>
+        </div>
+      </div>
+
+      <div class="panel p-3" id="warnPanel">
+        <span class="lbl">Notes</span>
+        <div id="warnings" class="space-y-2 mt-1 text-xs text-slate-300"></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="text-xs text-slate-600 mt-4 leading-relaxed">
+    Minimum reinforcement only. This tool does not design for bending, shear or in-plane forces, and a wall
+    governed by out-of-plane bending follows the slab rules of §9.3 rather than §9.6. Values from the Norwegian
+    National Annex should be confirmed against your own copy of NA:2010. Always check results independently.
+  </p>
+</div>
+
+<div id="tip" role="tooltip"></div>
+
+<script src="wall_min_reinf_api.js"></script>
+<script src="script.js"></script>
+<script src="../assets/js/common.js"></script>
+<script src="../assets/js/cookie-consent.js"></script>
+</body>
+</html>

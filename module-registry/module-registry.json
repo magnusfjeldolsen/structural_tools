@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-08-21T07:47:44.838Z",
-    "total_modules": 27,
+    "generated": "2026-08-21T13:04:36.263Z",
+    "total_modules": 28,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
@@ -368,6 +368,30 @@
       ],
       "url": "./THP/index.html",
       "category": "steel"
+    },
+    {
+      "id": "concrete_wall_minimum_reinforcement",
+      "title": "Wall Minimum Reinforcement Calculator | Eurocode 2 + Norwegian NA",
+      "description": "Minimum reinforcement for concrete walls to EC2 and the Norwegian National Annex. Vertical and horizontal minima to 9.6.2 and NA.9.6.3, restraint crack control to 7.3.2 with Table 7.2N and direct calculation to 7.3.4, watertight walls to EN 1992-3, and a bar-by-bar spacing matrix showing what each crack requirement actually costs.",
+      "keywords": [
+        "minimum reinforcement wall",
+        "minimumsarmering vegg",
+        "ec2 9.6.2",
+        "na.9.6.3",
+        "7.3.2 crack control",
+        "restraint cracking",
+        "edge restraint",
+        "yttervegg",
+        "innervegg",
+        "vanntett vegg",
+        "heisgrube",
+        "table 7.2n",
+        "en 1992-3",
+        "basement wall reinforcement",
+        "retaining wall minimum reinforcement"
+      ],
+      "url": "./concrete_wall_minimum_reinforcement/index.html",
+      "category": "concrete"
     },
     {
       "id": "weld_capacity",
