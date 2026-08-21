@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="no" class="dark">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-BFVZQQ2LYN');
+  </script>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Geometri-workspace for å finne tyngdepunkt og nøytralakse i sammensatte tverrsnitt. Tegn rektangler, skallelementer og polygoner i XY-planet, håndter overlapp, og les av tyngdepunkt, arealmomenter og hovedakser.">
+  <meta name="keywords" content="tyngdepunkt, nøytralakse, arealsenter, sammensatt tverrsnitt, arealmoment, treghetsmoment, hovedakser, FEM-Design, virtual bar, skallelement, geometri">
+  <title>Geometri-workspace — Tyngdepunkt og nøytralakse</title>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Geometri-workspace — Tyngdepunkt og nøytralakse">
+  <meta property="og:description" content="Tegn sammensatte tverrsnitt i XY-planet og finn tyngdepunktet, også når skallelementer overlapper.">
+  <meta property="og:type" content="website">
+
+  <!-- Tailwind CSS -->
+  <script>tailwind = window.tailwind || {}; tailwind.config = { darkMode: 'class' };</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Boolske polygonoperasjoner (vendored, fungerer uten nett) -->
+  <script src="vendor/polygon-clipping.umd.js"></script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    }
+  }
+  </script>
+
+  <style>
+    html, body { height: 100%; }
+    body { overflow: hidden; }
+    .panel-scroll { scrollbar-width: thin; scrollbar-color: #475569 transparent; }
+    .panel-scroll::-webkit-scrollbar { width: 8px; }
+    .panel-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    input[type="number"], input[type="text"], select {
+      background: #334155; border: 1px solid #475569; border-radius: 0.375rem;
+      padding: 0.3rem 0.5rem; color: #f1f5f9; width: 100%; font-size: 0.8125rem;
+    }
+    input:focus, select:focus { outline: none; border-color: #38bdf8; }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+    .tool-btn { transition: all .12s ease; }
+    .tool-btn[data-active="true"] { background: #0284c7; color: #fff; border-color: #0ea5e9; }
+    .num { font-variant-numeric: tabular-nums; }
+    details > summary { cursor: pointer; list-style: none; }
+    details > summary::-webkit-details-marker { display: none; }
+    details[open] .chev { transform: rotate(90deg); }
+    .chev { transition: transform .15s ease; }
+    .field-label { font-size: 0.6875rem; color: #94a3b8; margin-bottom: 0.15rem; display: block; }
+    #canvas-host[data-drop-active] { outline: 2px dashed #38bdf8; outline-offset: -6px; }
+    textarea { background: #334155; border: 1px solid #475569; border-radius: 0.375rem;
+               padding: 0.3rem 0.5rem; color: #f1f5f9; }
+    textarea:focus { outline: none; border-color: #38bdf8; }
+  </style>
+</head>
+
+<body class="bg-slate-900 text-slate-100 font-sans">
+
+<div class="flex flex-col h-screen">
+
+  <!-- Topplinje -->
+  <header class="flex items-center gap-4 px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0 overflow-hidden">
+    <a href="../index.html" class="text-sky-400 hover:text-sky-300 text-sm whitespace-nowrap shrink-0">← Verktøy</a>
+    <div class="flex items-baseline gap-3 min-w-0">
+      <h1 class="text-base font-semibold text-white whitespace-nowrap">Geometri-workspace</h1>
+      <span class="text-xs text-slate-400 truncate hidden md:inline">Tyngdepunkt og nøytralakse for sammensatte tverrsnitt</span>
+    </div>
+    <input id="model-title" type="text" placeholder="Navn på modell (valgfritt)"
+           class="max-w-xs min-w-0 ml-auto hidden lg:block" />
+    <div class="flex items-center gap-1 ml-auto lg:ml-0 shrink-0">
+      <button id="btn-example" class="px-2.5 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Eksempel</button>
+      <button id="btn-import" class="px-2.5 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Importer</button>
+      <button id="btn-export" class="px-2.5 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Eksporter</button>
+      <button id="btn-help" class="px-2.5 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">?</button>
+      <input id="file-input" type="file" accept="application/json,.json" class="hidden" />
+    </div>
+  </header>
+
+  <div class="flex flex-1 min-h-0">
+
+    <!-- Venstre panel: verktøy og geometri -->
+    <aside class="w-80 shrink-0 bg-slate-800 border-r border-slate-700 flex flex-col min-h-0">
+      <div class="panel-scroll overflow-y-auto flex-1 p-3 space-y-3">
+
+        <!-- Verktøy: symboler som viser hva som lages -->
+        <div class="relative">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Verktøy</h2>
+          <div class="grid grid-cols-6 gap-1" id="tool-buttons">
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="select" title="Velg og rediger (V)" aria-label="Velg">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <path d="M5 3l14 8-6 1.5L10 19 5 3z" stroke-linejoin="round" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="rect" title="Rektangel (R)" aria-label="Rektangel">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <rect x="3.5" y="7" width="17" height="10" rx="0.5" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="shell" title="Skallelement fra senterlinje (S)" aria-label="Skallelement">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <rect x="3.5" y="8.5" width="17" height="7" rx="0.5" />
+                <path d="M2 12h20" stroke-dasharray="3 2" opacity="0.85" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="polygon" title="Polygon (P)" aria-label="Polygon">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <path d="M12 3.5l8 5.5-3 9H7l-3-9z" stroke-linejoin="round" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="circle" title="Sirkel (C)" aria-label="Sirkel">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <circle cx="12" cy="12" r="8" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="reference" title="Sett nullpunkt (O)" aria-label="Nullpunkt">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <circle cx="12" cy="12" r="5.5" />
+                <path d="M12 2v5M12 17v5M2 12h5M17 12h5" />
+              </svg>
+            </button>
+
+          </div>
+
+          <!-- Meny for det aktive verktøyet -->
+          <div id="tool-popover"
+               class="hidden absolute left-0 right-0 top-full mt-1 z-30 bg-slate-900 border border-slate-600 rounded-lg shadow-xl shadow-black/40 p-3"></div>
+        </div>
+
+        <!-- Enhet og rutenett -->
+        <div class="flex items-end gap-2">
+          <div class="w-20">
+            <label class="field-label" for="unit-select">Enhet</label>
+            <select id="unit-select">
+              <option value="mm">mm</option>
+              <option value="cm">cm</option>
+              <option value="m">m</option>
+            </select>
+          </div>
+          <div class="w-24">
+            <label class="field-label" for="grid-step">Rutenett</label>
+            <input id="grid-step" type="number" value="50" step="10" min="0" />
+          </div>
+        </div>
+
+        <!-- Hva som vises -->
+        <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-300">
+          <label class="flex items-center gap-1.5"><input id="chk-grid" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Rutenett</label>
+          <label class="flex items-center gap-1.5"><input id="chk-overlap" type="checkbox" class="w-3.5 h-3.5 accent-amber-500" checked /> Overlapp</label>
+          <label class="flex items-center gap-1.5"><input id="chk-net" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Omriss</label>
+          <label class="flex items-center gap-1.5"><input id="chk-principal" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Hovedakser</label>
+        </div>
+
+
+        <!-- Bildeunderlag -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Bildeunderlag</h2>
+            <button id="btn-image-pick" class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Velg fil</button>
+            <input id="image-input" type="file" accept="image/*" class="hidden" />
+          </div>
+          <div id="underlay-panel"></div>
+        </div>
+
+        <!-- Geometriliste med egenskaper -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Geometri <span id="shape-count" class="text-slate-500"></span>
+            </h2>
+            <div class="flex gap-1">
+              <button id="btn-duplicate" class="px-2 py-1 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Dupliser</button>
+              <button id="btn-delete" class="px-2 py-1 text-[11px] bg-slate-700 hover:bg-red-700 rounded border border-slate-600">Slett</button>
+              <button id="btn-clear" class="px-2 py-1 text-[11px] bg-slate-700 hover:bg-red-700 rounded border border-slate-600">Tøm</button>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-500 mb-2 leading-snug">
+            Klikk et element — i lista eller i lerretet — for å endre egenskapene.
+            Rekkefølgen er prioritet: øverst vinner overlapp.
+          </p>
+          <div id="shape-list" class="space-y-1"></div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- Lerret -->
+    <main class="flex-1 relative min-w-0 bg-slate-900">
+      <div id="canvas-host" class="absolute inset-0 overflow-hidden"></div>
+
+      <!-- Overlegg: zoomkontroller -->
+      <div class="absolute top-3 right-3 flex flex-col gap-1">
+        <button id="btn-fit" class="px-2.5 py-1.5 text-xs bg-slate-800/90 hover:bg-slate-700 rounded border border-slate-600 backdrop-blur">Zoom alt</button>
+        <button id="btn-zoom-in" class="px-2.5 py-1.5 text-xs bg-slate-800/90 hover:bg-slate-700 rounded border border-slate-600 backdrop-blur">+</button>
+        <button id="btn-zoom-out" class="px-2.5 py-1.5 text-xs bg-slate-800/90 hover:bg-slate-700 rounded border border-slate-600 backdrop-blur">−</button>
+      </div>
+
+      <!-- Overlegg: forklaring -->
+      <div class="absolute top-3 left-3 bg-slate-800/85 backdrop-blur rounded border border-slate-700 px-3 py-2 text-[11px] space-y-1 pointer-events-none">
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-2.5 bg-amber-500/40 border border-amber-500"></span> Overlapp — telles dobbelt</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5 bg-cyan-400"></span> Ytre omriss (fysisk geometri)</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span> Tyngdepunkt</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-full border border-amber-500"></span> Referansepunkt</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5 bg-violet-400"></span> Hovedakser</div>
+      </div>
+
+      <!-- Snap-kontroll nederst til høyre -->
+      <div id="snap-bar"
+           class="absolute right-2 flex items-center gap-px p-0.5 bg-slate-800/90 backdrop-blur border border-slate-700 rounded-md shadow-lg shadow-black/30"
+           style="bottom: 2.1rem;"></div>
+
+      <!-- Statuslinje -->
+      <div class="absolute bottom-0 left-0 right-0 flex items-center gap-4 px-3 py-1.5 bg-slate-800/90 backdrop-blur border-t border-slate-700 text-[11px] text-slate-300">
+        <span id="status" class="truncate flex-1"></span>
+        <span id="snap-badge" class="text-slate-400"></span>
+        <span id="cursor-readout" class="num text-slate-400 whitespace-nowrap"></span>
+      </div>
+    </main>
+
+    <!-- Høyre panel: resultater -->
+    <aside class="w-80 shrink-0 bg-slate-800 border-l border-slate-700 flex flex-col min-h-0">
+      <div class="panel-scroll overflow-y-auto flex-1 p-3 space-y-3">
+
+        <div>
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Overlapp</h2>
+          <select id="mode-select">
+            <option value="sum">Skallmodell — overlapp telles dobbelt</option>
+            <option value="priority">Fysisk tverrsnitt — overlapp telles én gang</option>
+          </select>
+          <p id="mode-help" class="text-[11px] text-slate-500 mt-1.5 leading-snug"></p>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Referansepunkt</h2>
+            <button id="btn-ref-centroid" class="text-[11px] text-sky-400 hover:text-sky-300">= tyngdepunkt</button>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="field-label" for="ref-x">x₀</label><input id="ref-x" type="number" value="0" /></div>
+            <div><label class="field-label" for="ref-y">y₀</label><input id="ref-y" type="number" value="0" /></div>
+          </div>
+        </div>
+
+        <!-- Hovedresultat -->
+        <div class="bg-slate-900 rounded-lg border border-slate-700 p-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Tyngdepunkt</h2>
+          <div id="result-main" class="space-y-2"></div>
+          <button id="btn-copy" class="mt-3 w-full px-3 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">
+            Kopier koordinater
+          </button>
+        </div>
+
+        <!-- Arealmomenter -->
+        <div>
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Arealmomenter om tyngdepunkt</h2>
+          <div id="result-inertia" class="space-y-1 text-xs"></div>
+        </div>
+
+        <!-- Bidrag per form -->
+        <div>
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Bidrag per form</h2>
+          <div id="result-parts" class="space-y-1 text-xs"></div>
+        </div>
+
+        <details class="text-xs text-slate-400">
+          <summary class="text-slate-300 font-medium py-1">Om beregningen</summary>
+          <div class="space-y-2 pt-1 leading-snug">
+            <p>
+              Tyngdepunktet regnes som arealsenteret av tverrsnittet:
+              x̄ = ∫x dA / ∫dA, ȳ = ∫y dA / ∫dA, med eksakt polygonintegrasjon (Greens formel).
+            </p>
+            <p>
+              I skallmodus telles overlappsonen to ganger. Det er ikke en tilnærming, men en
+              gjengivelse av modellen: i FEM-modellen finnes både vegg- og plateelementet i
+              overlappsonen, hver med sin fulle tykkelse, og en virtuell stav integrerer over
+              begge. Skal staven slippe å plukke opp aksialkraft av å ligge forskjøvet, må den
+              ligge i tyngdepunktet slik modellen ser det — ikke i det fysiske tverrsnittets.
+            </p>
+            <p>
+              Bytt til fysisk tverrsnitt når du er ute etter den støpte betongens virkelige
+              tyngdepunkt, for eksempel til en kapasitetskontroll for hånd.
+            </p>
+            <p>
+              Alt over forutsetter samme E-modul i alle delene. Har de ulik E, legg inn
+              E-forholdet som vektfaktor på hver form, så regnes det transformerte tverrsnittets
+              nøytralakse i stedet.
+            </p>
+            <p>
+              Arealmomentene er Ix = ∫y² dA og Iy = ∫x² dA om tyngdepunktsaksene. Er Ixy ≠ 0 er
+              hovedaksene rotert, og bøyning om x eller y alene gir skjev bøyning.
+            </p>
+          </div>
+        </details>
+
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<!-- Hjelpedialog -->
+<div id="help-overlay" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6">
+  <div class="bg-slate-800 rounded-xl border border-slate-700 max-w-2xl w-full max-h-[80vh] overflow-y-auto panel-scroll p-6 space-y-4">
+    <div class="flex items-start justify-between">
+      <h2 class="text-xl font-semibold text-white">Slik bruker du workspacet</h2>
+      <button id="btn-help-close" class="text-slate-400 hover:text-white text-2xl leading-none">×</button>
+    </div>
+
+    <div class="space-y-3 text-sm text-slate-300 leading-relaxed">
+      <p>
+        Verktøyet finner det arealvektede tyngdepunktet i et sammensatt tverrsnitt tegnet i XY-planet,
+        og viser hvor det ligger i forhold til et referansepunkt du selv velger.
+      </p>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Overlappende former</h3>
+      <p>
+        Overlapper to former hverandre, tegnes overlappsonen i oransje, og du velger hvordan den
+        skal telle:
+      </p>
+      <ul class="list-disc list-inside space-y-1">
+        <li><strong>Skallmodell</strong> — hver form teller med hele sitt areal, så overlappet
+          teller to ganger og trekker tyngdepunktet mot seg.</li>
+        <li><strong>Fysisk tverrsnitt</strong> — overlappet teller én gang, slik en sammenhengende
+          støpt geometri er.</li>
+      </ul>
+      <p class="text-slate-400">
+        Et konkret tilfelle: en ringmur og en bunnplate modellert med skallelementer ligger i hver
+        sin senterflate og overlapper i hjørnet. Modellen har da begge elementene i overlappsonen,
+        så skallmodus gir tyngdepunktet en virtuell stav må ligge i for å slippe uønskede
+        aksialkrefter. Tegn begge med <em>Skallelement fra senterlinje</em>.
+      </p>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Tegning</h3>
+      <p>
+        Hvert symbol i verktøyraden viser prinsipielt hva som lages. Klikker du på et symbol,
+        åpner det en liten meny der du kan legge inn formen med tall — eller du kan bare tegne
+        den i lerretet:
+      </p>
+      <ul class="list-disc list-inside space-y-1">
+        <li><strong>Rektangel</strong> — klikk to motstående hjørner.</li>
+        <li><strong>Skall</strong> — klikk start og slutt på senterlinja; tykkelsen tas fra menyen.</li>
+        <li><strong>Polygon</strong> — klikk hjørner, avslutt med Enter, dobbeltklikk eller klikk på første punkt. Menyen tar også imot innlimte koordinater.</li>
+        <li><strong>Sirkel</strong> — klikk sentrum, så et punkt på omkretsen (48-kant).</li>
+        <li><strong>Nullpunkt</strong> — klikk der referansepunktet skal ligge.</li>
+      </ul>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Redigering</h3>
+      <ul class="list-disc list-inside space-y-1">
+        <li>Klikk et element i lista for å åpne egenskapene: navn, rolle, vektfaktor, koordinater og transformasjoner.</li>
+        <li>Klikker du formen i lerretet, åpnes de samme egenskapene i lista.</li>
+        <li>Shift+klikk markerer flere, og du kan dra et vindu i tomrommet.</li>
+        <li>Dra en form for å flytte den. Hold Shift for å låse til x eller y.</li>
+        <li>Dra et hjørnepunkt for å endre det. Alt+klikk sletter punktet, dobbeltklikk på en kant setter inn et nytt.</li>
+      </ul>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Bildeunderlag</h3>
+      <p>
+        Skal du finne tverrsnittsegenskapene til noe du bare har som bilde — et utklipp fra en
+        tegning, en side på nett eller et skjermbilde av en modell — legger du bildet inn som
+        underlag og tegner oppå.
+      </p>
+      <ul class="list-disc list-inside space-y-1">
+        <li>Slipp bildefila rett på lerretet, lim inn et skjermutklipp med
+          <kbd class="px-1 bg-slate-700 rounded">Ctrl+V</kbd>, eller trykk «Velg fil».</li>
+        <li><strong>Kalibrer målestokken:</strong> klikk to punkt i bildet du vet avstanden mellom,
+          skriv inn den virkelige lengden, og bildet skaleres. Uten dette er alle tall meningsløse.</li>
+        <li>Lås bildet når det ligger riktig, så du ikke drar i det mens du tegner. Er det ulåst,
+          flytter du det ved å dra i det.</li>
+        <li>Gjennomsiktighet, posisjon, bredde og rotasjon justeres i panelet.</li>
+      </ul>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Snap og orto</h3>
+      <p>
+        Kontrollen nede til høyre i lerretet slår hver snap-type av og på: endepunkt,
+        skjæringspunkt, midtpunkt, senter, nærmeste punkt på en linje, og rutenett. Ligger flere
+        innenfor rekkevidde, vinner den øverste i den rekkefølgen — endepunkt slår altså linje.
+        Fargen på markørkrysset viser hvilken type som traff, og typen står i statuslinja.
+      </p>
+      <p>
+        Hurtigtastene står i verktøytipset på hver knapp. De bruker
+        <kbd class="px-1 bg-slate-700 rounded">Alt</kbd> + siffer, fordi F-tastene og
+        Ctrl-kombinasjonene stort sett er opptatt av nettleseren. De virker også mens du står
+        i et tallfelt.
+      </p>
+      <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+1</kbd> Endepunkt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+2</kbd> Skjæringspunkt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+3</kbd> Midtpunkt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+4</kbd> Senter</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+5</kbd> På linje</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+6</kbd> Rutenett</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+9</kbd> Alle snap av/på</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+0</kbd> Orto</div>
+      </div>
+      <p>
+        <strong>Orto</strong> (<kbd class="px-1 bg-slate-700 rounded">Alt+0</kbd> eller
+        <kbd class="px-1 bg-slate-700 rounded">F8</kbd>) låser tegningen til vannrett eller loddrett
+        fra forrige punkt. Hold <kbd class="px-1 bg-slate-700 rounded">Shift</kbd> for å snu orto
+        midlertidig.
+      </p>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Enheter</h3>
+      <p>
+        Velg mm, cm eller m. Bytter du enhet, regnes alle koordinater om slik at geometrien
+        beholder sin fysiske størrelse — det er tallene som endrer seg, ikke tegningen. Areal og
+        arealmomenter merkes med enheten de er i.
+      </p>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Navigasjon</h3>
+      <ul class="list-disc list-inside space-y-1">
+        <li>Rull for å zoome mot musepekeren.</li>
+        <li>Panorer med høyre eller midtre museknapp, eller mellomrom + dra.</li>
+      </ul>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Hurtigtaster</h3>
+      <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+        <div><kbd class="px-1 bg-slate-700 rounded">V</kbd> Velg</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">R</kbd> Rektangel</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">S</kbd> Skall</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">P</kbd> Polygon</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">C</kbd> Sirkel</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">O</kbd> Nullpunkt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">F</kbd> Zoom alt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+1…6</kbd> Snap-typer</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+9</kbd> Alle snap av/på</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Alt+0</kbd> Orto av/på</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+V</kbd> Lim inn bilde</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Del</kbd> Slett markerte</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+D</kbd> Dupliser</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+Z</kbd> Angre</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+Shift+Z</kbd> Gjør om</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Esc</kbd> Avbryt</div>
+      </div>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Enheter</h3>
+      <p>
+        Verktøyet er enhetsløst — bruk konsekvent samme lengdeenhet overalt (typisk mm).
+        Areal blir da mm² og arealmomenter mm⁴.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden fixed bottom-16 left-1/2 -translate-x-1/2 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm shadow-lg z-50"></div>
+
+<noscript>
+  <div class="fixed inset-0 bg-slate-900 flex items-center justify-center p-8 text-center">
+    Dette verktøyet krever JavaScript.
+  </div>
+</noscript>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

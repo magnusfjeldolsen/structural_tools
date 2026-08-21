@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-06-19T07:21:27.770Z",
-    "total_modules": 26,
+    "generated": "2026-08-21T07:47:44.838Z",
+    "total_modules": 27,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
@@ -227,6 +227,26 @@
       ],
       "url": "./rockbolts/index.html",
       "category": "other"
+    },
+    {
+      "id": "geometry_workspace",
+      "title": "Geometri-workspace — Tyngdepunkt og nøytralakse",
+      "description": "Geometri-workspace for å finne tyngdepunkt og nøytralakse i sammensatte tverrsnitt. Tegn rektangler, skallelementer og polygoner i XY-planet, håndter overlapp, og les av tyngdepunkt, arealmomenter og hovedakser.",
+      "keywords": [
+        "tyngdepunkt",
+        "nøytralakse",
+        "arealsenter",
+        "sammensatt tverrsnitt",
+        "arealmoment",
+        "treghetsmoment",
+        "hovedakser",
+        "fem-design",
+        "virtual bar",
+        "skallelement",
+        "geometri"
+      ],
+      "url": "./geometry_workspace/index.html",
+      "category": "structural-analysis"
     },
     {
       "id": "piling",
