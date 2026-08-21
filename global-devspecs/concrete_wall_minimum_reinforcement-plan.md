@@ -68,10 +68,13 @@ Plus four ø × cc matrices (`As = 1000/cc · πø²/4`) and two `cc_max` rows.
 - exterior wall: `As,hmin = max(0,25·As,v ; `**`0,30`**`·Ac·fctm/fyk)`
 - interior wall: `As,hmin = max(0,25·As,v ; `**`0,15`**`·Ac·fctm/fyk)`
 
-Confirmed four ways: SCIA's published Norway NA parameter set; SCIA's *Theoretical
-Background — National Annexes to EN 1992*, which cites NS EN 1992-1-1:2004/NA:2010 by name
-and gives both legs verbatim (and confirms 9.6.2(1) is left at the EC2 default, so
-`As,vmin = 0,002·Ac` is unchanged in Norway); the Statens vegvesen /
+**Verified against the standard itself** — NS-EN 1992-1-1:2004+A1:2014+NA:2018, NA.9.6.3(1).
+The clause states the minimum area per face **in doubly reinforced walls** as the greater of
+25 % of the vertical reinforcement *on the same side* and, for exterior walls
+`0,3·Ac·fctm/fyk`, for interior walls `0,15·Ac·fctm/fyk`; and adds that singly reinforced
+walls shall carry the corresponding total area. A second paragraph covers tightness — see
+§2.7 below. Previously corroborated by: SCIA's published Norway NA parameter set; SCIA's
+*Theoretical Background — National Annexes to EN 1992*; the Statens vegvesen /
 Rambøll culvert design example (`As.hmin.vegg = max(0,25·As.vmin ; 0,3·Ac·fctm/fyk)`,
 explicitly *"defineres som yttervegg"*); and a Norwegian retaining-wall report using the
 same expression with `Ac = b·t` and comparing the result against the distribution
@@ -125,8 +128,33 @@ for a fully tensioned section `h − d` is the distance from the bar centroid to
 
 **Norwegian NA.7.3.1(5)** crack width limits: X0 → 0,40 (quasi-permanent);
 XC1–XC4 / XD1–XD2 / XS1–XS2 → `0,30·kc` (quasi-permanent); XD3 / XS3 / XSA → `0,30·kc`
-(frequent); with `kc = cnom/cmin,dur ≤ 1,3`. *(Taken from SCIA's published NA parameter
-set — worth one confirmation against your own copy of NA:2010 before it ships.)*
+(frequent); with `kc = cnom/cmin,dur ≤ 1,3`. **Verified in NA.7.3.1(5), Table NA.7.1N and
+eq. (NA.901) of NA:2018.** Footnote 1 to that table adds that in X0 the crack width does
+not affect durability — the 0,40 limit is for appearance, and may be increased where
+appearance is not a constraint.
+
+### 2.7 What NA:2018 adds that neither the sheet nor the first draft of this plan had
+
+Read from the standard after the module was built; all four are now implemented.
+
+1. **NA.9.6.2** — where tightness governs, the vertical minimum is **at least double**,
+   i.e. `0,004·Ac`. The sheet does not have this.
+2. **NA.9.6.3(1), second paragraph** — where tightness governs, the horizontal minimum comes
+   from eq. (7.1) with **`fct,eff = fctm`** and **`k = kc = 1,0`**. This is the NA blessing the
+   sheet's *vanntett vegg* row exactly, and it also rules out the early-age `fctm(t)`
+   reduction for that case.
+3. **NA.7.3.4(3)** — `k3 = 3,4`, `k4 = 0,425`, and `Ac,eff` shall not be less than that
+   corresponding to `hc,eff = (h − d + 1,5ø)`. A relaxation, binding mainly on single-layer
+   walls.
+4. **NA.9.6.2** — `As,vmax` may be doubled at lapped splices **only where the laps sit at
+   braced nodes**; otherwise laps must be staggered. The blanket "0,08·Ac at laps" reading is
+   too generous.
+
+Also confirmed: the NA amends **only 7.3.2(4)** (σct,p for prestress), so `kc`, `k`,
+`fct,eff` and `Act` in eq. (7.1) are the EC2 values; and footnote 1 to Table NA.7.1N states
+that in X0 the crack width does not affect durability and the 0,40 limit is for appearance,
+which may be increased where appearance is not a constraint — the clause that licenses the
+tool's "no crack control required" option.
 
 ### 2.2 What the sheet gets right
 
@@ -371,9 +399,12 @@ Reuse `ec2concrete/ec2ConcreteUtils.js` for `fctm` / `fctm(t)` — kills trap T1
 
 ## Part 4 — Decisions taken
 
-**Q1 — `k_NA` is an exposure toggle.** 0,30 for `yttervegg`, 0,15 for `innervegg`. The
+**Q1 — `k_NA` is an exposure toggle.** 0,30 for `yttervegg`, 0,15 for `innervegg`.
+**Since verified word for word in NA.9.6.3(1) of NS-EN 1992-1-1:2004+A1:2014+NA:2018.** The
 physical logic is that an exterior wall sees a far larger seasonal range and dries from
-one side, so the restrained strain is roughly double. Implementation: a two-way toggle
+one side, so the restrained strain is roughly double; note also that the interior leg
+reproduces EC2’s own recommended `0,001·Ac` to within a tenth of a per cent across B25 to
+B45, so 0,15 is the baseline and 0,30 is the deliberate uplift. Implementation: a two-way toggle
 with a hint line, plus a numeric override for the awkward cases (a basement wall with
 earth on one side and heated space on the other is normally taken as `yttervegg`).
 
@@ -502,6 +533,7 @@ modes changes which requirement wins, never the shape of the answer.
 
 - BS EN 1992-1-1:2004 §3.1.2, §7.3.2, §7.3.3 (Tables 7.2N / 7.3N, eq. 7.6N / 7.7N), §9.6
 - [EN 1992-3:2006](https://www.phd.eng.br/wp-content/uploads/2015/12/en.1992.3.2006.pdf) §7.3.1 (Table 7.105), §7.3.3 (eq. 7.122), Annex L (Fig. L.1a, **Table L.1**), Annex M (eq. M.3), Annex N (Table N.1)
+- **NS-EN 1992-1-1:2004+A1:2014+NA:2018**, National Annex NA — NA.7.3.1(5) with Table NA.7.1N and eq. (NA.901), NA.7.3.2(4), NA.7.3.4(3), NA.9.6.2, NA.9.6.3(1). Read directly; the authority for every NA value in this module
 - [SCIA — Norwegian National Annex to EN 1992-1-1](https://help.scia.net/25.0/en/national_annexes/en1992/norway.htm) — NA.7.3.1 and NA.9.6.3 parameters
 - [SCIA — Theoretical Background, National Annexes to EN 1992](https://help.scia.net/download/18.0/en/Theory_NA_EN_1992_enu.pdf) — Norway section, citing NS EN 1992-1-1:2004/NA:2010
 - [Statens vegvesen / Rambøll, prefabricated culvert design example](https://www.vegvesen.no/globalassets/fag/teknologi/bruer/prefabrikkerte-kulvertelementer-til-v425/beregningseksempel-2015.pdf) §3.1.4
