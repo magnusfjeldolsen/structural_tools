@@ -99,6 +99,7 @@ jobs:
                      concrete_base_plate_compressive_design \
                      concrete_dowels \
                      concrete_minimum_reinforcement \
+                     concrete_wall_minimum_reinforcement \
                      concrete_slab_design \
                      steel_beam_relative_deisgn \
                      steel_cross_section_database \
