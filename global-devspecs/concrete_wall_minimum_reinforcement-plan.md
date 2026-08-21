@@ -68,7 +68,10 @@ Plus four ø × cc matrices (`As = 1000/cc · πø²/4`) and two `cc_max` rows.
 - exterior wall: `As,hmin = max(0,25·As,v ; `**`0,30`**`·Ac·fctm/fyk)`
 - interior wall: `As,hmin = max(0,25·As,v ; `**`0,15`**`·Ac·fctm/fyk)`
 
-Confirmed three ways: SCIA's published Norway NA parameter set; the Statens vegvesen /
+Confirmed four ways: SCIA's published Norway NA parameter set; SCIA's *Theoretical
+Background — National Annexes to EN 1992*, which cites NS EN 1992-1-1:2004/NA:2010 by name
+and gives both legs verbatim (and confirms 9.6.2(1) is left at the EC2 default, so
+`As,vmin = 0,002·Ac` is unchanged in Norway); the Statens vegvesen /
 Rambøll culvert design example (`As.hmin.vegg = max(0,25·As.vmin ; 0,3·Ac·fctm/fyk)`,
 explicitly *"defineres som yttervegg"*); and a Norwegian retaining-wall report using the
 same expression with `Ac = b·t` and comparing the result against the distribution
@@ -500,5 +503,6 @@ modes changes which requirement wins, never the shape of the answer.
 - BS EN 1992-1-1:2004 §3.1.2, §7.3.2, §7.3.3 (Tables 7.2N / 7.3N, eq. 7.6N / 7.7N), §9.6
 - [EN 1992-3:2006](https://www.phd.eng.br/wp-content/uploads/2015/12/en.1992.3.2006.pdf) §7.3.1 (Table 7.105), §7.3.3 (eq. 7.122), Annex L (Fig. L.1a, **Table L.1**), Annex M (eq. M.3), Annex N (Table N.1)
 - [SCIA — Norwegian National Annex to EN 1992-1-1](https://help.scia.net/25.0/en/national_annexes/en1992/norway.htm) — NA.7.3.1 and NA.9.6.3 parameters
+- [SCIA — Theoretical Background, National Annexes to EN 1992](https://help.scia.net/download/18.0/en/Theory_NA_EN_1992_enu.pdf) — Norway section, citing NS EN 1992-1-1:2004/NA:2010
 - [Statens vegvesen / Rambøll, prefabricated culvert design example](https://www.vegvesen.no/globalassets/fag/teknologi/bruer/prefabrikkerte-kulvertelementer-til-v425/beregningseksempel-2015.pdf) §3.1.4
 - [Norwegian retaining-wall worked example (jet-as.no)](https://jet-as.no/onewebmedia/Regneeksempel%20for%20st%C3%B8ttemur%20revidert.pdf) §9, §10

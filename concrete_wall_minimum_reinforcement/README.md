@@ -46,6 +46,22 @@ And the same wall under different requirements, at ø16:
 overridable. For a single central layer the code leg doubles, since 9.6.3(1) asks for the
 amount at each surface and one layer serves both.
 
+The two k values are worth understanding rather than accepting. EC2's own recommendation is
+a flat `As,hmin = 0,001·Ac`. The Norwegian NA replaces it with a strength-dependent form,
+and the interior value reproduces the EC2 figure almost exactly:
+
+| class | fctm | `0,15·fctm/fyk` (interior) | `0,30·fctm/fyk` (exterior) | EC2 recommended |
+|---|---|---|---|---|
+| B25 | 2,57 | 0,077 % | 0,154 % | 0,100 % |
+| B30 | 2,90 | 0,087 % | 0,174 % | 0,100 % |
+| B35 | 3,21 | 0,096 % | 0,193 % | 0,100 % |
+| B45 | 3,80 | 0,114 % | 0,228 % | 0,100 % |
+
+So 0,15 is not a halving of 0,30 — it *is* the EC2 baseline, re-expressed so the minimum
+scales with the force that cracks the section. 0,30 is a deliberate doubling for walls
+exposed to outdoor climate, where the imposed strain is roughly twice as large. Anything
+weather-exposed or cast against soil is normally taken as exterior.
+
 **Crack control, §7.3.2** — `As,min·σs = kc·k·fct,eff·Act`, with an absolute floor at
 `σs = fyk` that no crack-width relaxation can go below. Two routes, both computed always:
 
@@ -90,6 +106,10 @@ number on the adjacent row, and says plainly which is which.
   wall they are normally the outer layer for exactly that reason.
 - **fctm** uses the closed form `0,30·fck^(2/3)`, not the rounded Table 3.1 value, so results
   sit about 0,3 % above a hand check using fctm = 3,2 for B35.
+- **Exterior vs interior** only decides the answer when crack control is switched off. With
+  §7.3.2 active the crack requirement normally sits well above both legs, and the choice
+  stops mattering — for t = 400, B35, ø12 it is c145 against c290 with no crack control,
+  and c60 either way at wk 0,30.
 - Values taken from the Norwegian NA should be confirmed against your own copy of NA:2010.
 
 ## Files

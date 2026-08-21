@@ -466,10 +466,15 @@
       'Enter c<sub>nom</sub>. 9.6.3 puts the horizontal steel at the surface and in a wall it is normally the ' +
       'outer layer for exactly that reason. Cover sets the lever arm in eq. (7.7N) and the 3,4\u00b7c term in ' +
       'the crack spacing (7.11).'],
-    'f.side': ['Exterior or interior',
-      'NA.9.6.3 uses k = 0,30 for a wall exposed to outdoor climate and 0,15 for one indoors \u2014 an exterior ' +
-      'wall sees roughly twice the restrained strain. A basement wall with earth on one side is normally taken ' +
-      'as exterior.'],
+    'f.side': ['Exterior or interior wall',
+      'NA.9.6.3 replaces EC2\u2019s recommended A<sub>s,hmin</sub> = 0,001\u00b7A<sub>c</sub> with ' +
+      'k\u00b7A<sub>c</sub>\u00b7f<sub>ctm</sub>/f<sub>yk</sub>: k = 0,30 exposed to outdoor climate, ' +
+      '0,15 indoors. The 0,15 is not an arbitrary halving \u2014 across B25 to B45 it lands on 0,08\u20130,11 % ' +
+      'of the section, which <em>is</em> the EC2 recommendation, just re-expressed so it scales with the ' +
+      'cracking force instead of being a flat 0,1 %. Exterior is double that. Anything weather-exposed or cast ' +
+      'against soil \u2014 facade, basement, retaining wall, lift pit, culvert \u2014 is normally taken as ' +
+      'exterior. It only decides the answer when crack control is off; with \u00a77.3.2 active the crack ' +
+      'requirement is usually well above both legs and the choice stops mattering.'],
     'f.vbar': ['Vertical steel you intend to provide',
       'Feeds the \u201c25 % of the vertical reinforcement\u201d leg of NA.9.6.3, the 9.6.4 links trigger, and the ' +
       'pass mark on the vertical card. It does not affect the horizontal crack calculation.'],
