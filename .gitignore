@@ -27,4 +27,13 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
-yarn-debug.log*2dfea/server.log
+yarn-debug.log*
+yarn-error.log*
+
+# Local-only reference material (never push: source spreadsheets, client docs)
+local_docs/
+local-docs/
+
+# Scratch
+2dfea/temp/
+temp/
