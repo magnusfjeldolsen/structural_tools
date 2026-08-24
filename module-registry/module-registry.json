@@ -1,12 +1,31 @@
 {
   "_meta": {
-    "generated": "2026-08-24T10:33:48.598Z",
+    "generated": "2026-08-24T12:42:35.914Z",
     "total_modules": 28,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
   },
   "modules": [
+    {
+      "id": "clustering",
+      "title": "1D Clustering Tool | Paste Table Data, Cluster and Visualise",
+      "description": "Paste a table straight out of Excel and split one numeric column into natural groups. Exact 1D k-means, clusters numbered low to high, an interactive scatter plot coloured by cluster with per-point detail on hover, and copy-back-to-sheet output.",
+      "keywords": [
+        "1d clustering",
+        "k-means",
+        "natural breaks",
+        "jenks",
+        "cluster csv",
+        "paste excel data",
+        "group numeric column",
+        "utilisation grouping",
+        "data binning",
+        "structural engineering data tool"
+      ],
+      "url": "./clustering/index.html",
+      "category": "structural-analysis"
+    },
     {
       "id": "2dfea",
       "title": "2D FEM - Interactive GUI",
@@ -152,14 +171,6 @@
       ],
       "url": "./concrete_slab_design/index.html",
       "category": "concrete"
-    },
-    {
-      "id": "clustering",
-      "title": "CSV Clustering Tool - Structural Tools",
-      "description": "",
-      "keywords": [],
-      "url": "./clustering/index.html",
-      "category": "other"
     },
     {
       "id": "deliveryhub",
