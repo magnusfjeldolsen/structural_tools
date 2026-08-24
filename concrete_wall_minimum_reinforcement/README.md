@@ -38,6 +38,21 @@ And the same wall under different requirements, at ø16:
 | wk 0,30, cracking at 3 d | 1635 |
 | kc = 0,6 house rule | 1307 |
 
+## Defaults, and how little you should have to type
+
+The page opens on the commonest case and computes the rest, so a first answer needs no
+interaction at all: **ordinary wall**, **no crack requirement**, **exterior wall**,
+**ø12**, two layers, t = 350, B35, fₕₖ = 500, cover 35.
+
+The **vertical bar c/c is derived, not entered**. Left on *auto* it is the widest spacing of
+the chosen bar that still meets the governing vertical requirement — the minimum
+reinforcement — rounded down to 5 mm and capped by 9.6.2(3). ø12 in a 350 wall gives c320.
+Type any spacing to take over; the *auto* chip hands it back.
+
+Browsers restore form state across reloads, which for a calculator silently changes the
+answer. Every control is therefore written back to its default on load, so a fresh visit
+always starts from the values above. Only the report's project metadata persists.
+
 ## Printable record
 
 **Print / PDF** in the header renders a separate one-page A4 sheet and opens the browser
@@ -157,6 +172,11 @@ number on the adjacent row, and says plainly which is which.
   rule, and the tool labels it as such. Enter L and H to get the EN 1992-3 Table L.1 second
   opinion, which keys off L/H rather than thickness and will flag long walls where 3t is
   unconservative.
+- **k in NA.9.6.3(1)** is shown in its own read-only field next to the wall side, spelled
+  out as *0,30 — exterior wall (yttervegg)*, because it doubles the horizontal minimum and
+  was previously invisible. Override it under Assumptions.
+- **The c/c rows in both matrices are editable.** Type 225, or anything else you want to
+  check, and that row appears in both directions.
 - **Cover** is the cover to the horizontal bar. 9.6.3 puts those at the surface, and in a
   wall they are normally the outer layer for exactly that reason.
 - **fctm** uses the closed form `0,30·fck^(2/3)`, not the rounded Table 3.1 value, so results
