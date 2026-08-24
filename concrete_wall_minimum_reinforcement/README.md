@@ -38,6 +38,17 @@ And the same wall under different requirements, at ø16:
 | wk 0,30, cracking at 3 d | 1635 |
 | kc = 0,6 house rule | 1307 |
 
+## Printable record
+
+**Print / PDF** in the header renders a separate one-page A4 sheet and opens the browser
+print dialog; choose *Save as PDF* to file it. The sheet is not the screen scraped onto
+paper — it is built from the same result object and laid out for A4 portrait at 11/12 mm
+margins. It carries the project metadata strip (remembered in `localStorage`), what to
+provide, every input, the governing requirement per direction, **every requirement
+considered so the reader can see what did not govern**, the alternatives by bar size, the
+detailing limits, and a clause reference against each number. It fits one page in every
+mode — the tallest case, watertight, measures 259 mm against the 275 mm available.
+
 ## What it implements
 
 All Norwegian NA values below were read from **NS-EN 1992-1-1:2004+A1:2014+NA:2018**
