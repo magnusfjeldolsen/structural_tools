@@ -73,6 +73,46 @@
     #tip em { color:#7dd3fc; font-style:normal; }
     .lbl[data-tip] { text-decoration:underline dotted #44607f; text-underline-offset:3px; cursor:help; }
     .tiphint { font-size:.68rem; color:#5c6b82; }
+    #reportRoot { display:none; }
+
+    @media print {
+      @page { size: A4 portrait; margin: 11mm 12mm; }
+      html, body { background:#fff !important; color:#000 !important; }
+      body > div.max-w-\[1400px\], #tip, #cookie-settings-btn { display:none !important; }
+      #reportRoot { display:block; }
+    }
+
+    /* The sheet is styled here rather than in print.css so the on-screen preview,
+       if ever enabled for debugging, matches what the printer produces. */
+    #reportRoot { color:#000; font-family:ui-sans-serif,system-ui,"Segoe UI",Arial,sans-serif;
+                  font-size:8.4pt; line-height:1.32; }
+    #reportRoot h1 { font-size:13pt; font-weight:700; margin:0; }
+    #reportRoot h2 { font-size:8.4pt; font-weight:700; margin:0 0 1.5mm 0;
+                     text-transform:uppercase; letter-spacing:.06em; color:#333;
+                     border-bottom:.5pt solid #999; padding-bottom:.8mm; }
+    #reportRoot .rp-head { display:flex; justify-content:space-between;
+                           align-items:flex-start; border-bottom:1pt solid #000;
+                           padding-bottom:2mm; margin-bottom:2.5mm; }
+    #reportRoot .rp-meta { text-align:right; font-size:7.6pt; color:#333; }
+    #reportRoot .rp-warn { border:.5pt solid #a06a00; background:#fff8e6; color:#5a3c00;
+                           padding:1.5mm 2mm; font-size:7.2pt; margin-bottom:3mm; }
+    #reportRoot section { margin-bottom:3mm; break-inside:avoid; }
+    #reportRoot table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+    #reportRoot th, #reportRoot td { border:.4pt solid #b0b0b0; padding:.9mm 1.4mm;
+                                     text-align:right; vertical-align:top; }
+    #reportRoot th { background:#eee; font-weight:600; text-align:right; }
+    #reportRoot td.l, #reportRoot th.l { text-align:left; }
+    #reportRoot .ref { color:#444; font-size:7pt; }
+    #reportRoot .gov { background:#e9f2e9; font-weight:700; }
+    #reportRoot .kv { display:grid; grid-template-columns:repeat(3,minmax(0,auto) minmax(0,1fr));
+                      gap:.7mm 2.5mm; }
+    #reportRoot .kv b { font-weight:400; color:#444; white-space:nowrap; }
+    #reportRoot .kv span { font-weight:600; }
+    #reportRoot .rp-foot { border-top:.5pt solid #999; padding-top:1.5mm;
+                           font-size:6.8pt; color:#555; display:flex;
+                           justify-content:space-between; gap:4mm; }
+    #reportRoot .prov { font-size:11pt; font-weight:700; }
+
     @media (max-width:1280px){ .herosplit { grid-template-columns:1fr !important; } }
     @media (max-width:900px){ .twocol { grid-template-columns:1fr !important; } }
   </style>
@@ -86,7 +126,20 @@
       <h1 class="text-xl font-semibold text-white">Wall Minimum Reinforcement</h1>
       <p class="text-xs text-slate-400">NS-EN 1992-1-1 §9.6 + NA.9.6.3 · §7.3.2 crack control · EN 1992-3 for watertight walls</p>
     </div>
-    <a href="../index.html" class="text-sky-400 hover:text-sky-300 text-sm">← Back to tools</a>
+    <div class="flex items-center gap-2">
+      <button id="printBtn" class="pill" title="Opens the browser print dialog. Choose &quot;Save as PDF&quot; for a one-page A4 record.">
+        ⎙ Print / PDF
+      </button>
+      <a href="../index.html" class="text-sky-400 hover:text-sky-300 text-sm">← Back to tools</a>
+    </div>
+  </div>
+
+  <div class="panel p-2 mb-3 grid grid-cols-2 sm:grid-cols-5 gap-2" id="metaStrip">
+    <div><span class="lbl">Project</span><input id="mProject" class="fld" placeholder="—"></div>
+    <div><span class="lbl">Part / element</span><input id="mPart" class="fld" placeholder="—"></div>
+    <div><span class="lbl">Designer</span><input id="mBy" class="fld" placeholder="—"></div>
+    <div><span class="lbl">Date</span><input id="mDate" class="fld" placeholder="yyyy-mm-dd"></div>
+    <div><span class="lbl">Rev.</span><input id="mRev" class="fld" placeholder="—"></div>
   </div>
 
   <div class="mb-3 p-3 rounded-lg" style="background:rgba(234,179,8,.09);border:1px solid rgba(234,179,8,.28)">
@@ -267,6 +320,9 @@
 </div>
 
 <div id="tip" role="tooltip"></div>
+
+<!-- One-page A4 record. Hidden on screen, and the only thing that prints. -->
+<div id="reportRoot" aria-hidden="true"></div>
 
 <script src="wall_min_reinf_api.js"></script>
 <script src="script.js"></script>

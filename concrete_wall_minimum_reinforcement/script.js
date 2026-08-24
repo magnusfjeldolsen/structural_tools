@@ -128,6 +128,7 @@
     paintMatrix(r, dias);
     paintChecks(r);
     paintWarnings(r);
+    buildReport(r);
   }
 
   function paintDiaPicker(dias, r) {
@@ -604,6 +605,220 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') box.classList.remove('on'); });
   }
 
+
+  // ------------------------------------------------------------------ report
+  /* A single A4 page a reader can file: what went in, what governs, what to
+     provide, and the clause behind each number. Rebuilt on every render so
+     Ctrl+P is always current. */
+
+  const MODE_NAME = {
+    ordinary: 'Ordinary wall, no significant restraint',
+    onBase: 'Wall cast on a base \u2014 edge restraint',
+    watertight: 'Watertight wall \u2014 EN 1992-3 Tightness Class 1'
+  };
+
+  function meta(id, dflt) {
+    const v = ($(id).value || '').trim();
+    return v || (dflt || '\u2014');
+  }
+
+  function buildReport(r) {
+    const d = r.detailing, c = r.crack, g = r.governing;
+    const perFace = r.inputs.layers === 2 ? 'each face' : 'single central layer';
+    const list = c.methodEffective === 'direct' ? c.barsDirect : c.bars;
+    const sel = list.find(b => b.dia === state.selectedDia);
+    const routeName = c.methodEffective === 'direct' ? '7.3.4 direct' : '7.3.3 simplified';
+    const cc = (x) => (x == null || !isFinite(x)) ? '\u2014' : 'c' + Math.floor(Math.min(x, 400) / 5) * 5;
+    const vccMax = Math.floor(Math.min(
+      1000 * Math.PI * Math.pow(r.inputs.vBar.dia, 2) / 4 / g.vertical.As, d.sVMax) / 5) * 5;
+
+    // ---- inputs
+    const kv = [
+      ['Situation', MODE_NAME[r.inputs.mode] + (r.inputs.restrainedTopBottom ? ', also restrained top and bottom' : '')],
+      ['Thickness t', fmt(r.inputs.t, 0) + ' mm'],
+      ['Concrete', 'B' + fmt(r.inputs.fck, 0) + ', f<sub>ctm</sub> = ' + fmt(r.material.fctm, 2) + ' MPa'],
+      ['Steel f<sub>yk</sub>', fmt(r.inputs.fyk, 0) + ' MPa'],
+      ['Layers', r.inputs.layers === 2 ? '2, one per face' : '1, central'],
+      ['Cover c<sub>nom</sub>', fmt(r.inputs.cover, 0) + ' mm'],
+      ['Wall side', r.inputs.exposureSide === 'exterior' ? 'Exterior, k = ' + fmt(d.kNA, 2) : 'Interior, k = ' + fmt(d.kNA, 2)],
+      ['Vertical bars', '\u00f8' + r.inputs.vBar.dia + ' c' + r.inputs.vBar.spacing + ' (' + fmt(d.AsVProv, 0) + ' mm\u00b2/m)']
+    ];
+    if (c.active) {
+      kv.push(['Crack requirement', esc(c.wkSource)]);
+      kv.push(['f<sub>ct,eff</sub>', fmt(r.material.fctEffUsed != null ? r.material.fctEffUsed : r.material.fctEff, 2) +
+        ' MPa' + (r.material.tightness ? ' (f<sub>ctm</sub>, fixed by NA.9.6.3)' :
+          r.inputs.crackAgeDays < 28 ? ' at ' + r.inputs.crackAgeDays + ' d, CEM ' + r.inputs.cementClass : '')]);
+      kv.push(['k<sub>c</sub> / k', fmt(c.kc, 2) + ' / ' + fmt(c.k, 2) + (r.material.tightness ? ' (NA.9.6.3)' : '')]);
+      kv.push(['Crack route', routeName]);
+    } else {
+      kv.push(['Crack requirement', 'None \u2014 \u00a77.3.2 not applied']);
+    }
+    const inputsHtml = '<div class="kv">' + kv.map(x =>
+      '<b>' + x[0] + '</b><span>' + x[1] + '</span>').join('') + '</div>';
+
+    // ---- what governs
+    const govRows = [];
+    const hReqName = g.horizontal.blocked ? 'no valid answer for \u00f8' + g.horizontal.dia
+      : g.horizontal.clause.indexOf('7.3.2') === 0
+        ? 'Crack control, w\u2096 = ' + fmt(c.wk, 2) + ' mm, ' + routeName
+        : g.horizontal.clause === 'NA.9.6.3' ? 'Detailing minimum, NA.9.6.3'
+        : 'Detailing minimum, 25 % of the vertical steel';
+    govRows.push(['Horizontal', perFace, esc(hReqName),
+      g.horizontal.As == null ? '\u2014' : fmt(g.horizontal.As, 0),
+      '\u00f8' + g.horizontal.dia, cc(g.horizontal.ccMax),
+      c.active && !g.horizontal.blocked && g.horizontal.clause.indexOf('7.3.2') === 0
+        ? 'EC2 7.3.2(2) eq. (7.1); ' + (c.methodEffective === 'direct'
+            ? 'eq. (7.8), (7.9), (7.11) + NA.7.3.4(3)' : '7.3.3(2) Table 7.2N + eq. (7.7N)')
+        : 'NA.9.6.3(1)']);
+    const vReqName = g.vertical.clause.indexOf('7.3.2') === 0
+      ? 'Crack control, w\u2096 = ' + fmt(c.wk, 2) + ' mm (restrained top and bottom)'
+      : 'Detailing minimum' + (r.material.tightness ? ', doubled for tightness' : '');
+    govRows.push(['Vertical', perFace, esc(vReqName), fmt(g.vertical.As, 0),
+      '\u00f8' + r.inputs.vBar.dia, 'c' + vccMax,
+      g.vertical.clause.indexOf('7.3.2') === 0 ? 'EC2 7.3.2(2) eq. (7.1)' : 'NA.9.6.2']);
+
+    const govHtml = '<table><tr>' +
+      ['Direction', 'Applies to', 'Governing requirement', 'A<sub>s,req</sub> [mm\u00b2/m]', 'Bar', 'Max c/c', 'Reference']
+        .map((h, i) => '<th class="' + (i < 3 || i === 6 ? 'l' : '') + '">' + h + '</th>').join('') + '</tr>' +
+      govRows.map(row => '<tr>' + row.map((v, i) =>
+        '<td class="' + (i < 3 ? 'l' : i === 6 ? 'l ref' : '') + (i === 3 ? ' gov' : '') + '">' + v + '</td>').join('') + '</tr>').join('') +
+      '</table>';
+
+    // ---- every requirement considered, so the reader sees what did not govern
+    const considered = [];
+    considered.push(['Vertical minimum' + (r.material.tightness ? ', doubled for tightness' : ''),
+      '\u2014', fmt(d.AsVMin, 0), 'NS-EN 1992-1-1 NA.9.6.2']);
+    considered.push(['Horizontal minimum, greater of 25 % of A<sub>s,v</sub> (' + fmt(d.quarterLeg, 0) +
+      ') and k\u00b7A<sub>c</sub>\u00b7f<sub>ctm</sub>/f<sub>yk</sub> (' + fmt(d.naLeg, 0) + ')',
+      fmt(d.AsHMin, 0), '\u2014', 'NS-EN 1992-1-1 NA.9.6.3(1)']);
+    if (c.active) {
+      const sB = c.bars.find(b => b.dia === state.selectedDia);
+      const dB = c.barsDirect.find(b => b.dia === state.selectedDia);
+      considered.push(['Crack control, simplified route, \u00f8' + state.selectedDia +
+        (sB && sB.sigmaS ? ' at \u03c3<sub>s</sub> = ' + fmt(sB.sigmaS, 0) + ' MPa' : ''),
+        sB && sB.AsReq != null ? fmt(sB.AsReq, 0) : 'not available', '\u2014',
+        'EC2 7.3.3(2), Table 7.2N, eq. (7.7N)']);
+      considered.push(['Crack control, direct calculation, \u00f8' + state.selectedDia +
+        (dB && dB.sigmaS ? ' at \u03c3<sub>s</sub> = ' + fmt(dB.sigmaS, 0) + ' MPa' : ''),
+        dB && dB.AsReq != null ? fmt(dB.AsReq, 0) : 'not available', '\u2014',
+        'EC2 7.3.4, eq. (7.8), (7.9), (7.11); NA.7.3.4(3)']);
+      considered.push(['Yield floor, A<sub>s</sub> \u2265 k<sub>c</sub>k f<sub>ct,eff</sub>A<sub>ct</sub>/f<sub>yk</sub>',
+        fmt(c.AsFloor, 0), '\u2014', 'EC2 7.3.2(2)']);
+    }
+    const consHtml = '<table><tr><th class="l">Requirement considered</th>' +
+      '<th>Horiz. [mm\u00b2/m]</th><th>Vert. [mm\u00b2/m]</th><th class="l">Reference</th></tr>' +
+      considered.map(row => '<tr>' + row.map((v, i) =>
+        '<td class="' + (i === 0 ? 'l' : i === 3 ? 'l ref' : '') + '">' + v + '</td>').join('') + '</tr>').join('') + '</table>';
+
+    // ---- bar-by-bar options
+    const dias = r.constants.BAR_DIAMETERS;
+    const optRow = (label, cells) => '<tr><td class="l">' + label + '</td>' + cells.join('') + '</tr>';
+    const hCells = (fn) => dias.map(dd => {
+      const b = list.find(x => x.dia === dd);
+      return '<td' + (dd === state.selectedDia ? ' class="gov"' : '') + '>' + fn(b) + '</td>';
+    });
+    let optHtml = '<table><tr><th class="l">\u00f8 [mm]</th>' +
+      dias.map(dd => '<th' + (dd === state.selectedDia ? ' class="gov"' : '') + '>' + dd + '</th>').join('') + '</tr>';
+    if (c.active) {
+      optHtml += optRow('Horizontal A<sub>s,req</sub> [mm\u00b2/m]',
+        hCells(b => b && b.AsReq != null ? fmt(Math.max(b.AsReq, d.AsHMin), 0) : '\u2014'));
+      optHtml += optRow('Horizontal max c/c', hCells(b => b && b.AsReq != null ? cc(b.ccMax) : '\u2014'));
+    } else {
+      optHtml += optRow('Horizontal A<sub>s,req</sub> [mm\u00b2/m]', dias.map(() => '<td>' + fmt(d.AsHMin, 0) + '</td>'));
+      optHtml += optRow('Horizontal max c/c',
+        dias.map(dd => '<td>' + cc(1000 * Math.PI * dd * dd / 4 / d.AsHMin) + '</td>'));
+    }
+    optHtml += optRow('Vertical A<sub>s,req</sub> [mm\u00b2/m]', dias.map(() => '<td>' + fmt(g.vertical.As, 0) + '</td>'));
+    optHtml += optRow('Vertical max c/c',
+      dias.map(dd => '<td>' + cc(Math.min(1000 * Math.PI * dd * dd / 4 / g.vertical.As, d.sVMax)) + '</td>'));
+    optHtml += '</table>';
+
+    // ---- provide
+    const hProvide = g.horizontal.blocked
+      ? 'Horizontal: \u00f8' + g.horizontal.dia + ' cannot satisfy this crack width \u2014 choose a smaller bar'
+      : 'Horizontal: \u00f8' + g.horizontal.dia + ' at ' + cc(g.horizontal.ccMax) + ' or closer, ' + perFace;
+    const vProvide = 'Vertical: \u00f8' + r.inputs.vBar.dia + ' at c' + vccMax + ' or closer, ' + perFace +
+      ' <span style="font-weight:400;font-size:8pt">(drawing shows c' + r.inputs.vBar.spacing + ' \u2014 ' +
+      (d.AsVProv >= g.vertical.As && r.inputs.vBar.spacing <= d.sVMax ? 'OK' : 'does not meet the minimum') + ')</span>';
+    const zoneTxt = c.active
+      ? 'Horizontal steel to this requirement over <b>' + fmt(r.zone.practice, 0) +
+        ' mm</b> (3t) from the base' +
+        (r.zone.tableL1 && r.zone.tableL1.note === 'fullHeight'
+          ? '; EN 1992-3 Table L.1 at L/H = ' + fmt(r.zone.tableL1.LH, 1) + ' indicates the <b>full height</b>'
+          : r.zone.tableL1 && r.zone.tableL1.note === 'partial'
+            ? '; EN 1992-3 Table L.1 indicates ' + fmt(r.zone.tableL1.height, 0) + ' mm'
+            : '') + '. Outside that zone the NA.9.6.3 minimum of ' + fmt(d.AsHMin, 0) + ' mm\u00b2/m applies.'
+      : 'Detailing minima apply over the full wall.';
+
+    // ---- spacing caps and other checks worth carrying onto the sheet
+    const caps = 'Max spacing: vertical c' + fmt(d.sVMax, 0) + ' = min(3t, 400) per 9.6.2(3); horizontal c' +
+      fmt(d.sHMax, 0) + ' per 9.6.3(2). A<sub>s,vmax</sub> = 0,04\u00b7A<sub>c</sub> = ' + fmt(d.AsVMax, 0) +
+      ' mm\u00b2/m per NA.9.6.2.' +
+      (d.links.needed ? ' Vertical steel exceeds 0,02\u00b7A<sub>c</sub> \u2014 links required per 9.6.4(1).'
+        : d.links.waived ? ' 9.6.4(2) links waived: \u00f8 \u2264 16 mm with cover > 2\u00f8.'
+        : ' 9.6.4(2): 4 links/m\u00b2 required unless \u00f8 \u2264 16 mm with cover > 2\u00f8.');
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    $('reportRoot').innerHTML =
+      '<div class="rp-head">' +
+        '<div><h1>Wall minimum reinforcement</h1>' +
+        '<div style="font-size:7.6pt;color:#333">NS-EN 1992-1-1:2004+A1:2014+NA:2018' +
+        (r.inputs.mode === 'watertight' ? ' with NS-EN 1992-3' : '') + '</div></div>' +
+        '<div class="rp-meta">' +
+          '<div><b>Project</b> ' + esc(meta('mProject')) + '</div>' +
+          '<div><b>Part</b> ' + esc(meta('mPart')) + '</div>' +
+          '<div><b>By</b> ' + esc(meta('mBy')) + ' &nbsp; <b>Rev</b> ' + esc(meta('mRev')) + '</div>' +
+          '<div><b>Date</b> ' + esc(meta('mDate', today)) + '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="rp-warn"><b>Under development \u2014 may contain errors.</b> Minimum reinforcement only: ' +
+      'no bending, shear or in-plane design. Norwegian nationally determined parameters are applied ' +
+      '(NA.9.6.2, NA.9.6.3, NA.7.3.1(5), NA.7.3.4(3)) and are not valid outside Norway. ' +
+      'Check every value independently before use.</div>' +
+
+      '<section><h2>Provide</h2>' +
+        '<div class="prov">' + hProvide + '</div>' +
+        '<div class="prov">' + vProvide + '</div>' +
+        '<div style="margin-top:1.2mm">' + zoneTxt + '</div></section>' +
+
+      '<section><h2>Input</h2>' + inputsHtml + '</section>' +
+
+      '<section><h2>Governing minimum reinforcement</h2>' + govHtml + '</section>' +
+
+      '<section><h2>Requirements considered</h2>' + consHtml + '</section>' +
+
+      '<section><h2>Alternatives by bar size</h2>' + optHtml +
+        '<div class="ref" style="margin-top:1.2mm">Spacings rounded down to 5 mm and capped at the code ' +
+        'maximum. Because 7.3.3(2) ties the permitted steel stress to the bar diameter through Table 7.2N, ' +
+        'the required area is itself a function of the bar chosen.</div></section>' +
+
+      '<section><h2>Detailing limits</h2><div>' + caps + '</div></section>' +
+
+      '<div class="rp-foot">' +
+        '<div>Generated by Wall Minimum Reinforcement \u00b7 ' +
+        'magnusfjeldolsen.github.io/structural_tools/concrete_wall_minimum_reinforcement/</div>' +
+        '<div>' + today + '</div>' +
+      '</div>';
+  }
+
+  const META_IDS = ['mProject', 'mPart', 'mBy', 'mDate', 'mRev'];
+
+  function initMeta() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem('wmr.meta') || '{}'); } catch (e) { saved = {}; }
+    META_IDS.forEach(id => { if (saved[id]) $(id).value = saved[id]; });
+    if (!$('mDate').value) $('mDate').value = new Date().toISOString().slice(0, 10);
+    META_IDS.forEach(id => $(id).addEventListener('input', () => {
+      const o = {};
+      META_IDS.forEach(k => { o[k] = $(k).value; });
+      try { localStorage.setItem('wmr.meta', JSON.stringify(o)); } catch (e) { /* private mode */ }
+      render();
+    }));
+    $('printBtn').addEventListener('click', () => window.print());
+  }
+
   // ------------------------------------------------------------------ wiring
 
   function init() {
@@ -650,6 +865,7 @@
       });
 
     initTips();
+    initMeta();
     render();
   }
 
