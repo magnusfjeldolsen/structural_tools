@@ -222,7 +222,8 @@
       scan.elbowK + ') is where the gain flattens. Advisory only.' +
       (state.k > API().RAMP_MAX_DISTINCT
         ? ' <span class="warn">Above k = ' + API().RAMP_MAX_DISTINCT +
-          ' the colour steps stop being reliably distinct — read the bands off the break lines and legend.</span>'
+          ' neighbouring hues stop being reliably separable — read the bands off the break lines, ' +
+          'the C1…Ck labels and the legend rather than the colour alone.</span>'
         : '');
   }
 
@@ -237,7 +238,7 @@
 
     const svg = $('chart');
     const W = svg.clientWidth || svg.parentElement.clientWidth || 900;
-    const H = Math.max(260, Math.min(460, 60 + R.values.length * 0.9));
+    const H = Math.max(430, Math.min(760, 200 + R.values.length * 1.8));
     svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     svg.setAttribute('height', H);
 
@@ -277,16 +278,21 @@
     g += '<g>' + xt.map(t => '<text x="' + px(t).toFixed(1) + '" y="' + (H - M.b + 14) + '" text-anchor="middle">' +
       esc(fmt(t)) + '</text>').join('') + '</g>';
 
-    // cluster breaks + band labels
-    R.res.breaks.forEach((b, i) => {
+    // Cluster breaks carry their value just inside the left edge; the band labels live in
+    // the right margin. Keeping them on opposite sides is what stops them colliding when
+    // the bands are thin.
+    R.res.breaks.forEach((b) => {
       const yy = py(b).toFixed(1);
       g += '<line class="brk" x1="' + M.l + '" x2="' + (W - M.r) + '" y1="' + yy + '" y2="' + yy + '"/>';
-      g += '<text x="' + (W - M.r + 5) + '" y="' + (+yy + 3) + '">' + esc(fmt(b)) + '</text>';
+      g += '<text x="' + (M.l + 5) + '" y="' + (+yy - 3) + '" style="fill:#8fa3bd">' + esc(fmt(b)) + '</text>';
     });
-    R.stats.forEach((s, i) => {
-      if (!s.n) return;
-      const mid = py((s.min + s.max) / 2);
-      g += '<text x="' + (W - M.r + 5) + '" y="' + (mid - 8).toFixed(1) + '" style="fill:#c3d3e6;font-weight:600">C' + s.id + '</text>';
+    R.stats.forEach((st) => {
+      if (!st.n) return;
+      const top = py(st.max), bot = py(st.min);
+      if (bot - top < 11 && R.stats.length > 8) return;      // no room, legend carries it
+      const mid = (top + bot) / 2;
+      g += '<text x="' + (W - M.r + 6) + '" y="' + (mid + 3.5).toFixed(1) +
+        '" style="fill:' + R.ramp[st.id - 1] + ';font-weight:700">C' + st.id + '</text>';
     });
 
     // points

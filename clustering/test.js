@@ -108,13 +108,18 @@ eq('elbow scan length', el.rows.length, 6);
 eq('wcss falls as k rises', el.rows.every((r, i) => i === 0 || r.wcss <= el.rows[i - 1].wcss + 1e-9), true);
 eq('elbow finds the three real groups', el.elbowK, 3);
 
-// ---- ramp matches the validated table in SPEC.md 5.2
-eq('ramp k=2', A.rampFor(2), ['#cde2fb', '#184f95']);
-eq('ramp k=3', A.rampFor(3), ['#cde2fb', '#5598e7', '#184f95']);
-eq('ramp k=4', A.rampFor(4), ['#cde2fb', '#86b6ef', '#2a78d6', '#184f95']);
-eq('ramp k=5', A.rampFor(5), ['#cde2fb', '#86b6ef', '#5598e7', '#256abf', '#184f95']);
-eq('ramp k=6', A.rampFor(6), ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95']);
-eq('ramp length always equals k', [2, 3, 6, 9].every(k => A.rampFor(k).length === k), true);
+// ---- spectral ramp matches the validated values in SPEC.md 5.2
+eq('ramp k=3', A.rampFor(3), ['#7853d5', '#00cd89', '#e54e3f']);
+eq('ramp k=5', A.rampFor(5), ['#7853d5', '#00a0cc', '#00cd89', '#e7c100', '#e54e3f']);
+eq('ramp k=6', A.rampFor(6), ['#7853d5', '#0093d6', '#00c0b4', '#84d447', '#f0af00', '#e54e3f']);
+eq('ramp k=8', A.rampFor(8),
+  ['#7853d5', '#0a7eed', '#00a9c7', '#00c4ab', '#66d45a', '#dece00', '#f49600', '#e54e3f']);
+eq('ramp length always equals k', [1, 2, 3, 6, 9, 12].every(k => A.rampFor(k).length === k), true);
+eq('ramp ends violet at the low end and red at the high end',
+  [A.rampFor(7)[0], A.rampFor(7)[6]], ['#7853d5', '#e54e3f']);
+eq('every step is a valid hex colour',
+  A.rampFor(12).every(c => /^#[0-9a-f]{6}$/.test(c)), true);
+eq('ramp is deterministic', A.rampFor(9).join(), A.rampFor(9).join());
 
 // ---- quoted delimiters survive
 eq('quoted delimiter', A.splitRow('a;"b;c";d', ';'), ['a', 'b;c', 'd']);
