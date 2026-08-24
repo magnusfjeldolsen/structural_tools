@@ -58,17 +58,26 @@ Row order on x, the clustered value on y, one point per row. Cluster breaks are 
 as dashed rules with their values, so the partition is legible as bands. Hovering a
 point shows **its whole row**; clicking pins it, Esc unpins.
 
-Colour is an **ordinal ramp, not a categorical palette** — clusters are ordered by
-value, so swapping two of them changes the meaning, which is the `dataviz` skill's own
-test for ordinal. One blue hue, monotone lightness steps, sampled from the reference
-palette and validated with
-`validate_palette.js --ordinal --mode dark --surface #131c2e`: all four checks pass for
-k = 2…6 (monotone lightness, adjacent ΔL ≥ 0,06, light-end contrast 2,10:1, single hue).
+Colour is a **spectral ramp** — violet for the lowest band through blue, cyan, green
+and yellow to red for the highest. Built in **OKLCH** rather than HSL, with hue swept
+and lightness following each hue's natural peak, which is what keeps the steps evenly
+spaced instead of banding at bright yellow and dark blue the way a naive rainbow does.
+Chroma is fitted per step to the most saturated value that still lands inside sRGB.
 
-**Above k = 6 the ramp cannot keep its steps 0,06 apart** — the eleven documented steps
-span ΔL ≈ 0,47 in total. Beyond six, colour degrades to a magnitude cue and identity is
-carried by the break lines and the legend, which are present at every k. The tool says
-so rather than pretending otherwise.
+Run through `validate_palette.js --mode dark --pairs all`, it passes contrast and
+chroma at every k, passes CVD and normal-vision separation to k = 5, and holds
+normal-vision separation to k = 6. Two things it does not pass, worth stating plainly:
+
+- The **lightness band** fails by construction — a real spectrum has a bright yellow,
+  and forcing yellow into the dark band turns it olive.
+- **Red↔green cannot clear the colour-vision gate at any k.** They are the poles of the
+  spectrum and the axis of protan/deutan confusion. That is a real cost for roughly
+  8 % of male readers, and it is the price of a rainbow.
+
+So identity never rests on colour alone: cluster breaks are drawn as labelled dashed
+rules, the bands carry **C1…Ck** labels in the right margin, the legend gives every
+cluster its count and range, and the results table has a `Cluster` column. Above k = 6
+the tool says outright that neighbouring hues are no longer reliably separable.
 
 ## Choosing k
 

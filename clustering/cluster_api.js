@@ -17,12 +17,24 @@
     { key: 'pipe', char: '|', label: 'Pipe' }
   ];
 
-  /* Blue ramp from the dataviz reference palette, light -> dark. Clusters are ordered
-     by value, so this is an ordinal encoding, not a categorical one. Every subsample
-     used below passes validate_palette.js --ordinal --mode dark --surface #131c2e. */
-  const RAMP = ['#cde2fb', '#b7d3f6', '#9ec5f4', '#86b6ef', '#6da7ec', '#5598e7',
-    '#3987e5', '#2a78d6', '#256abf', '#1c5cab', '#184f95'];
-  const RAMP_MAX_DISTINCT = 6;   // above this, adjacent steps fall under the 0,06 dL floor
+  /* Spectral ramp: violet -> blue -> cyan -> green -> yellow -> orange -> red, built in
+     OKLCH so the hue sweep is even, with lightness following each hue's natural peak the
+     way a real spectrum does. Doing it in OKLCH rather than HSL is what keeps the steps
+     evenly spaced instead of banding at yellow and cyan.
+
+     Validated with validate_palette.js --mode dark --surface #131c2e --pairs all:
+       k=3  CVD 12.0  normal 29.6  contrast PASS
+       k=5  CVD  9.1  normal 18.7  contrast PASS
+       k=6  CVD  3.8  normal 15.4  contrast PASS
+       k=8  CVD  3.7  normal 10.0  contrast PASS
+     The lightness-band check fails at every k by construction: a real spectrum has a
+     bright yellow, and forcing yellow inside the dark band turns it olive. Past k=6 the
+     colours are no longer separable on their own, which is why the break lines, the band
+     labels and the legend carry identity at every k. */
+  const HUE_START = 292, HUE_END = 29;
+  const L_KNOTS = [[292, 0.55], [264, 0.58], [225, 0.66], [195, 0.72], [160, 0.75],
+    [128, 0.80], [105, 0.84], [75, 0.78], [50, 0.70], [29, 0.63]];
+  const RAMP_MAX_DISTINCT = 6;   // beyond this the hues stop being reliably separable
 
   // ------------------------------------------------------------------ parsing
 
@@ -343,16 +355,61 @@
     return { rows, elbowK };
   }
 
-  /** Evenly spaced steps of the validated ordinal ramp, light (low) to dark (high). */
+  // ---------------------------------------------------------------- the ramp
+
+  function oklchToLinear(L, C, hDeg) {
+    const h = hDeg * Math.PI / 180;
+    const a = C * Math.cos(h), b = C * Math.sin(h);
+    const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+    const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+    const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+    const l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
+    return [
+      4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+      -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+      -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+    ];
+  }
+  const inGamut = (rgb) => rgb.every(v => v >= -5e-4 && v <= 1.0005);
+  const toSrgb = (v) => {
+    v = Math.min(1, Math.max(0, v));
+    return v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+  };
+  const toHex = (rgb) => '#' + rgb.map(v =>
+    Math.round(toSrgb(v) * 255).toString(16).padStart(2, '0')).join('');
+
+  /** Highest chroma that still lands inside sRGB at this lightness and hue. */
+  function fitChroma(L, hue) {
+    let lo = 0, hi = 0.19;
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + hi) / 2;
+      if (inGamut(oklchToLinear(L, mid, hue))) lo = mid; else hi = mid;
+    }
+    return lo;
+  }
+
+  function lightnessAt(hue) {
+    for (let i = 0; i < L_KNOTS.length - 1; i++) {
+      const a = L_KNOTS[i], b = L_KNOTS[i + 1];
+      if (hue <= a[0] && hue >= b[0]) return a[1] + (a[0] - hue) / (a[0] - b[0]) * (b[1] - a[1]);
+    }
+    return L_KNOTS[L_KNOTS.length - 1][1];
+  }
+
+  /** k colours across the spectrum, cluster 1 (lowest values) at the violet end. */
   function rampFor(k) {
-    if (k <= 1) return [RAMP[0]];
     const out = [];
-    for (let i = 0; i < k; i++) out.push(RAMP[Math.round(i * (RAMP.length - 1) / (k - 1))]);
+    for (let i = 0; i < k; i++) {
+      const t = k <= 1 ? 0 : i / (k - 1);
+      const hue = HUE_START + t * (HUE_END - HUE_START);
+      const L = lightnessAt(hue);
+      out.push(toHex(oklchToLinear(L, fitChroma(L, hue), hue)));
+    }
     return out;
   }
 
   return {
-    DELIMITERS, RAMP, RAMP_MAX_DISTINCT, EXACT_LIMIT,
+    DELIMITERS, RAMP_MAX_DISTINCT, EXACT_LIMIT,
     detectDelimiter, detectDecimal, toNumber, parseGrid, splitRow,
     detectHeaderRow, buildTable, profileColumns, colLetter,
     clusterValues, clusterStats, elbowScan, rampFor

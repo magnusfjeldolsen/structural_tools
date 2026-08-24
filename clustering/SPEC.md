@@ -186,36 +186,61 @@ Scatter: **x = row order** (or the label column's value when it is numeric),
 distribution, not a summary. Horizontal rules at the cluster breaks make the
 partition legible as bands.
 
-### 5.2 Colour — ordinal, not categorical
+### 5.2 Colour — a spectral ramp
 
-Clusters are ordered by value, and swapping two of them changes the meaning, so by
-the skill's own test this is an **ordinal** encoding, not a categorical one: one
-hue, monotone lightness steps. This is also why the scatter is not subject to the
-categorical all-pairs series cap.
+**Requested explicitly: the full rainbow, not a single hue.** The reason is sound — a
+one-hue ordinal ramp tops out at six visibly distinct steps on this surface, and with
+k up to 12 that leaves neighbouring clusters indistinguishable.
 
-Blue ramp from `references/palette.md`, sampled evenly across the 11 documented
-steps. Validated with `validate_palette.js --ordinal --mode dark --surface #131c2e`:
+Built in **OKLCH**, not HSL: hue swept from violet (292°) to red (29°), with lightness
+following each hue's natural peak the way a real spectrum does. Doing it in a
+perceptual space is what keeps the steps evenly spaced instead of banding at bright
+yellow and dark blue, which is the classic rainbow's failure.
 
-| k | steps | result |
-|---|---|---|
-| 2 | `#cde2fb,#184f95` | PASS |
-| 3 | `#cde2fb,#5598e7,#184f95` | PASS |
-| 4 | `#cde2fb,#86b6ef,#2a78d6,#184f95` | PASS |
-| 5 | `#cde2fb,#86b6ef,#5598e7,#256abf,#184f95` | PASS |
-| 6 | `#cde2fb,#9ec5f4,#6da7ec,#3987e5,#256abf,#184f95` | PASS |
+Chroma is set per step to the highest value that still lands inside sRGB at that
+lightness and hue, so no step reads grey.
 
-All four ordinal checks pass in every case — monotone lightness, adjacent ΔL ≥ 0,06,
-light-end contrast 2,10:1 against the surface, single hue (spread 4°).
+| k | steps |
+|---|---|
+| 3 | `#7853d5` `#00cd89` `#e54e3f` |
+| 5 | `#7853d5` `#00a0cc` `#00cd89` `#e7c100` `#e54e3f` |
+| 6 | `#7853d5` `#0093d6` `#00c0b4` `#84d447` `#f0af00` `#e54e3f` |
+| 8 | `#7853d5` `#0a7eed` `#00a9c7` `#00c4ab` `#66d45a` `#dece00` `#f49600` `#e54e3f` |
 
-**Above k = 6 the ramp cannot keep adjacent steps 0,06 apart** — the 11 documented
-steps span ΔL ≈ 0,47 in total, so six is the maximum that stays visibly distinct.
-Beyond six the ramp is interpolated and colour degrades to a pure magnitude cue;
-identity is then carried entirely by the break lines and the labelled legend, which
-are present at every k. The UI states this rather than pretending otherwise.
+**What the validator says**, run as
+`validate_palette.js --mode dark --surface #131c2e --pairs all`:
 
-Low values take the light end, high values the dark end — the reverse of the
-light-mode convention, because on a dark surface the light step is the prominent
-one and the high band is the one the reader is usually hunting for.
+| k | CVD ΔE | normal-vision ΔE | contrast | chroma |
+|---|---|---|---|---|
+| 3 | 12,0 PASS | 29,6 PASS | PASS | PASS |
+| 5 | 9,1 PASS | 18,7 PASS | PASS | PASS |
+| 6 | 3,8 FAIL | 15,4 PASS | PASS | PASS |
+| 8 | 3,7 FAIL | 10,0 FAIL | PASS | PASS |
+
+Two failures are worth naming rather than burying:
+
+1. **The lightness-band check fails at every k, by construction.** A real spectrum has a
+   bright yellow; forcing yellow inside the dark band's L ≤ 0,67 turns it olive, which
+   is exactly the muddiness the single-hue ramp was rejected for. The band exists so no
+   series shouts louder than another — here the clusters are *ordered*, position already
+   encodes that order, and a spectrum that reads as a spectrum is the point.
+2. **Red↔green cannot pass CVD at any k ≥ 3.** They are the poles of the spectrum and
+   the axis of protan/deutan confusion. No rainbow can clear that gate; this is the
+   cost of the request, and it is a real cost for roughly 8 % of male readers.
+
+The mitigation is the secondary encoding the skill requires whenever CVD is in or below
+the warn band, and it is present at every k:
+
+- cluster breaks drawn as labelled dashed rules, with the break value inside the left edge
+- band labels **C1…Ck** in the right margin, in the band's own colour
+- a legend giving every cluster its count and range
+- a `Cluster` column in the results table
+
+Above **k = 6** the tool states in the interface that neighbouring hues are no longer
+reliably separable and that the bands should be read off the rules, labels and legend.
+
+Cluster 1 (lowest values) is violet, cluster k (highest) is red — cold-to-hot, the
+convention every reader already has.
 
 ### 5.3 Marks and anatomy
 
