@@ -73,6 +73,21 @@
     #tip em { color:#7dd3fc; font-style:normal; }
     .lbl[data-tip] { text-decoration:underline dotted #44607f; text-underline-offset:3px; cursor:help; }
     .tiphint { font-size:.68rem; color:#5c6b82; }
+    /* Unit suffix inside a field, so thickness, concrete and steel all read the same way. */
+    .fldwrap { position:relative; }
+    .fldwrap .unit { position:absolute; right:.45rem; top:50%; transform:translateY(-50%);
+                     font-size:.7rem; color:#5c6b82; pointer-events:none; }
+    .fldwrap input { padding-right:2.4rem; }
+    .fld.ro { color:#a8b8cd; background:#0d1526; cursor:default; }
+    .fld.autoval { border-color:#0e7490; }
+    .ccin { width:3.3rem; background:#0b1120; border:1px solid #2c3d5a; border-radius:.25rem;
+            padding:.1rem .3rem; color:#a8b8cd; font-size:.78rem; text-align:right;
+            font-variant-numeric:tabular-nums; }
+    .ccin:hover { border-color:#44607f; }
+    .ccin:focus { outline:none; border-color:#38bdf8; color:#e6edf6; }
+    .derived { font-size:.72rem; color:#7f92ad; }
+    .derived b { color:#c3d3e6; font-weight:600; }
+
     #reportRoot { display:none; }
 
     @media print {
@@ -155,12 +170,12 @@
   </div>
 
   <!-- ============ INPUTS ============ -->
-  <div class="panel p-3 mb-3">
+  <div class="panel p-3 mb-3" id="inputPanel">
 
     <div class="flex flex-wrap items-center gap-2 mb-3">
       <span class="lbl mb-0 mr-1">Situation</span>
-      <button class="pill" data-mode="ordinary">Ordinary wall</button>
-      <button class="pill on" data-mode="onBase">Wall on base</button>
+      <button type="button" class="pill on" data-mode="ordinary">Ordinary wall</button>
+      <button type="button" class="pill" data-mode="onBase">Wall on base</button>
       <button class="pill" data-mode="watertight">Watertight</button>
       <label class="flex items-center gap-1.5 text-xs text-slate-300 ml-2">
         <input type="checkbox" id="rtb" class="accent-sky-500"> also restrained top and bottom
@@ -169,29 +184,44 @@
       <span class="tiphint w-full">Hover any control to see what it changes in the calculation.</span>
     </div>
 
-    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-3">
-      <div><span class="lbl">Thickness t</span><input id="t" class="fld" value="350"></div>
-      <div><span class="lbl">Concrete</span>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      <div><span class="lbl">Wall thickness</span>
+        <div class="fldwrap"><input id="t" class="fld" inputmode="numeric" value="350"><span class="unit">mm</span></div></div>
+      <div><span class="lbl">Concrete class</span>
         <select id="fck" class="fld">
-          <option>20</option><option>25</option><option>30</option><option selected>35</option>
-          <option>40</option><option>45</option><option>50</option><option>55</option><option>60</option>
+          <option value="20">B20</option><option value="25">B25</option><option value="30">B30</option>
+          <option value="35" selected>B35</option><option value="40">B40</option><option value="45">B45</option>
+          <option value="50">B50</option><option value="55">B55</option><option value="60">B60</option>
         </select></div>
-      <div><span class="lbl">f<sub>yk</sub></span><input id="fyk" class="fld" value="500"></div>
-      <div><span class="lbl">Layers</span>
+      <div><span class="lbl">Steel f<sub>yk</sub></span>
+        <div class="fldwrap"><input id="fyk" class="fld" inputmode="numeric" value="500"><span class="unit">MPa</span></div></div>
+      <div><span class="lbl">Reinforcement layers</span>
         <select id="layers" class="fld"><option value="2" selected>2 — one per face</option><option value="1">1 — central</option></select></div>
-      <div><span class="lbl">Cover c<sub>nom</sub></span><input id="cover" class="fld" value="35"></div>
-      <div><span class="lbl">Wall side</span>
-        <select id="side" class="fld"><option value="exterior" selected>Exterior (yttervegg)</option><option value="interior">Interior (innervegg)</option></select></div>
-      <div><span class="lbl">Vert. bar ø</span>
-        <select id="vdia" class="fld"><option>8</option><option>10</option><option selected>12</option><option>16</option><option>20</option><option>25</option><option>32</option></select></div>
-      <div><span class="lbl">Vert. bar cc</span><input id="vcc" class="fld" value="250"></div>
+      <div><span class="lbl">Cover c<sub>nom</sub></span>
+        <div class="fldwrap"><input id="cover" class="fld" inputmode="numeric" value="35"><span class="unit">mm</span></div></div>
     </div>
+    <div id="matLine" class="derived mt-1.5"></div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+      <div><span class="lbl">Wall side</span>
+        <select id="side" class="fld"><option value="exterior" selected>Exterior wall (yttervegg)</option><option value="interior">Interior wall (innervegg)</option></select></div>
+      <div><span class="lbl">k · NA.9.6.3(1)</span>
+        <input id="kNaBox" class="fld ro" readonly tabindex="-1" value="—"></div>
+      <div><span class="lbl">Vertical bar ø</span>
+        <select id="vdia" class="fld"><option>8</option><option>10</option><option selected>12</option><option>16</option><option>20</option><option>25</option><option>32</option></select></div>
+      <div>
+        <span class="lbl">Vertical bar c/c
+          <button type="button" class="pill sm" id="vccAuto" style="padding:0 .3rem;font-size:.62rem;vertical-align:middle">auto</button>
+        </span>
+        <div class="fldwrap"><input id="vcc" class="fld" inputmode="numeric" value="320"><span class="unit">mm</span></div></div>
+    </div>
+    <div id="vLine" class="derived mt-1.5 mb-3"></div>
 
     <div class="flex flex-wrap items-center gap-2">
       <span class="lbl mb-0 mr-1">Crack requirement</span>
-      <button class="pill" data-crack="none">None required</button>
+      <button type="button" class="pill on" data-crack="none">None required</button>
       <button class="pill" data-crack="wk040">w<sub>k</sub> 0,40</button>
-      <button class="pill on" data-crack="wk030">w<sub>k</sub> 0,30</button>
+      <button type="button" class="pill" data-crack="wk030">w<sub>k</sub> 0,30</button>
       <button class="pill" data-crack="wk020">w<sub>k</sub> 0,20</button>
       <button class="pill" data-crack="watertight">Watertight</button>
       <button class="pill" data-crack="custom">Custom</button>
@@ -220,6 +250,8 @@
           <select id="kMode" class="fld"><option value="external" selected>1,0 external restraint</option><option value="ec2h">EC2 h-interpolation</option></select></div>
         <div><span class="lbl">Cracking at</span>
           <select id="age" class="fld"><option value="28" selected>28 days</option><option value="7">7 days</option><option value="3">3 days</option></select></div>
+        <div><span class="lbl">k override · NA.9.6.3</span>
+          <input id="kNaOverride" class="fld" placeholder="0,30 / 0,15"></div>
         <div><span class="lbl">Cement</span>
           <select id="cement" class="fld"><option value="N" selected>CEM N</option><option value="R">CEM R</option><option value="S">CEM S</option></select></div>
         <div><span class="lbl">Wall length L</span><input id="wallL" class="fld" placeholder="optional"></div>
@@ -288,14 +320,24 @@
       </div>
 
       <div class="panel p-3">
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center justify-between mb-2 gap-3 flex-wrap">
           <span class="lbl mb-0">A<sub>s</sub> provided [mm²/m] · green = meets the requirement for that bar</span>
-          <div class="flex gap-1">
-            <button class="pill sm on" data-dir="h">Horizontal</button>
-            <button class="pill sm" data-dir="v">Vertical</button>
+          <div class="flex items-center gap-1">
+            <span class="text-xs text-slate-500 mr-1">c/c values are editable — type any spacing</span>
+            <button type="button" class="pill sm" id="addRow">+ row</button>
+            <button type="button" class="pill sm" id="resetRows">reset</button>
           </div>
         </div>
-        <div class="overflow-x-auto"><table class="grid w-full" id="matrix"></table></div>
+        <div class="grid gap-4 herosplit" style="grid-template-columns:1fr 1fr">
+          <div>
+            <div class="lbl" id="matHeadH">Horizontal · each face</div>
+            <div class="overflow-x-auto"><table class="grid w-full" id="matrixH"></table></div>
+          </div>
+          <div>
+            <div class="lbl" id="matHeadV">Vertical · each face</div>
+            <div class="overflow-x-auto"><table class="grid w-full" id="matrixV"></table></div>
+          </div>
+        </div>
         <div class="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
           <span><span class="inline-block w-3 h-3 rounded-sm align-middle c-ok"></span> meets</span>
           <span><span class="inline-block w-3 h-3 rounded-sm align-middle c-near"></span> within 5 %</span>
