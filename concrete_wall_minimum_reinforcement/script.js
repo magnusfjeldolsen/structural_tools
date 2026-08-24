@@ -6,13 +6,29 @@
   const $ = (id) => document.getElementById(id);
   const API = () => window.WallMinReinf;
 
+  const DEFAULT_SPACINGS = [75, 100, 125, 150, 200, 250, 300, 400];
+
+  /* Everything the page opens with. initDefaults() writes these into the DOM on every
+     load, so a browser restoring old form values cannot change what a fresh visit sees. */
+  const DEFAULTS = {
+    mode: 'ordinary', crackReq: 'none', selectedDia: 12, diaAuto: false, vAuto: true,
+    fields: {
+      t: '350', fck: '35', fyk: '500', layers: '2', cover: '35', side: 'exterior',
+      vdia: '12', wkCustom: '0.30', cnom: '35', cmindur: '25', hD: '2000',
+      kcMode: 'pureTension', kcCustom: '1.0', kMode: 'external', kNaOverride: '',
+      age: '28', cement: 'N', wallL: '', wallH: '', epsFree: '320', epsCtu: '100'
+    },
+    checks: { rtb: false, uplift: false }
+  };
+
   const state = {
-    mode: 'onBase',
-    crackReq: 'wk030',
-    selectedDia: 16,
-    diaAuto: true,          // until the user picks a bar themselves
+    mode: DEFAULTS.mode,
+    crackReq: DEFAULTS.crackReq,
+    selectedDia: DEFAULTS.selectedDia,
+    diaAuto: DEFAULTS.diaAuto,   // false: ø12 is the standard choice, auto is opt-in
+    vAuto: DEFAULTS.vAuto,       // vertical c/c follows the minimum until typed over
     method: 'simplified',
-    matrixDir: 'h'
+    spacings: DEFAULT_SPACINGS.slice()
   };
 
   const n = (v) => {
@@ -21,6 +37,8 @@
   };
   const fmt = (v, dp) => (v == null || !isFinite(v)) ? '—' : v.toFixed(dp).replace('.', ',');
   const esc = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const group = (v) => (v == null || !isFinite(v)) ? '—'
+    : Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
   // ------------------------------------------------------------------ inputs
 
@@ -34,7 +52,8 @@
       layers: n($('layers').value),
       cover: n($('cover').value),
       exposureSide: $('side').value,
-      vBar: { dia: n($('vdia').value), spacing: n($('vcc').value) },
+      kNaOverride: ($('kNaOverride').value || '').trim() === '' ? null : n($('kNaOverride').value),
+      vBar: { dia: n($('vdia').value), spacing: n($('vcc').value) || 250 },
       crackReq: state.crackReq,
       wkCustom: n($('wkCustom').value),
       naCoverUplift: { on: $('uplift').checked, cnom: n($('cnom').value), cminDur: n($('cmindur').value) },
@@ -96,9 +115,25 @@
     return null;
   }
 
+  /* The widest spacing of the chosen vertical bar that still meets the governing vertical
+     requirement, rounded down to 5 mm and capped by 9.6.2(3). The vertical requirement is a
+     flat area, independent of the bar, so one extra pass settles it. */
+  function autoVcc(r) {
+    const dia = r.inputs.vBar.dia;
+    const byArea = 1000 * Math.PI * dia * dia / 4 / r.governing.vertical.As;
+    return Math.max(50, Math.floor(Math.min(byArea, r.detailing.sVMax) / 5) * 5);
+  }
+
   function render() {
     syncVisibility();
     let r = API().calculate(readInputs());
+    if (state.vAuto) {
+      const cc = autoVcc(r);
+      if (String(cc) !== $('vcc').value) {
+        $('vcc').value = cc;
+        r = API().calculate(readInputs());
+      }
+    }
     if (state.diaAuto) {
       const best = autoDia(r);
       if (best != null && best !== state.selectedDia) {
@@ -120,6 +155,7 @@
       b.style.opacity = forced && b.dataset.method === 'simplified' ? '.35' : '';
       b.title = forced ? 'Table 7.2N does not span this crack width — the direct route is the only one available' : '';
     });
+    paintDerived(r);
     paintDiaPicker(dias, r);
     paintHeadline(r);
     paintGovBars(r);
@@ -131,9 +167,38 @@
     buildReport(r);
   }
 
+  /* Thickness, concrete and steel each stated the same way, with what they produce. */
+  function paintDerived(r) {
+    const i = r.inputs;
+    $('matLine').innerHTML =
+      't = <b>' + fmt(i.t, 0) + ' mm</b>' +
+      ' &nbsp;\u00b7&nbsp; A<sub>c</sub> = <b>' + group(r.detailing.Ac) + ' mm\u00b2/m</b>' +
+      ' &nbsp;\u00b7&nbsp; <b>B' + fmt(i.fck, 0) + '</b> \u2192 f<sub>ctm</sub> = <b>' + fmt(r.material.fctm, 2) + ' MPa</b>' +
+      ' &nbsp;\u00b7&nbsp; <b>f<sub>yk</sub> = ' + fmt(i.fyk, 0) + ' MPa</b>' +
+      (i.fyk === 500 ? ' (B500NC)' : '') +
+      ' &nbsp;\u00b7&nbsp; ' + (i.layers === 2 ? 'two layers, one per face' : 'one central layer') +
+      ' &nbsp;\u00b7&nbsp; cover <b>' + fmt(i.cover, 0) + ' mm</b>';
+
+    const side = i.exposureSide === 'exterior' ? 'exterior wall (yttervegg)' : 'interior wall (innervegg)';
+    const overridden = i.kNaOverride != null;
+    $('kNaBox').value = fmt(r.detailing.kNA, 2) + '  \u2014  ' + (overridden ? 'user override' : side);
+    $('kNaBox').classList.toggle('autoval', overridden);
+
+    $('vLine').innerHTML =
+      'A<sub>s,hmin</sub> = max(25 % of A<sub>s,v</sub> = <b>' + fmt(r.detailing.quarterLeg, 0) +
+      '</b>; k\u00b7A<sub>c</sub>\u00b7f<sub>ctm</sub>/f<sub>yk</sub> = <b>' + fmt(r.detailing.naLeg, 0) +
+      '</b>) = <b>' + fmt(r.detailing.AsHMin, 0) + ' mm\u00b2/m</b> per face' +
+      ' &nbsp;\u00b7&nbsp; vertical \u00f8' + i.vBar.dia + ' c' + fmt(i.vBar.spacing, 0) + ' gives <b>' +
+      fmt(r.detailing.AsVProv, 0) + '</b> against <b>' + fmt(r.governing.vertical.As, 0) + '</b> required' +
+      (state.vAuto ? ' &nbsp;\u00b7&nbsp; <span class="text-sky-400">c/c set automatically to the minimum</span>' : '');
+    $('vcc').classList.toggle('autoval', state.vAuto);
+    $('vccAuto').classList.toggle('on', state.vAuto);
+  }
+
   function paintDiaPicker(dias, r) {
-    $('diaPicker').innerHTML = (state.diaAuto ? '' :
-      '<button class="pill sm" data-dia="auto" title="return to the automatic pick">auto</button>') +
+    $('diaPicker').innerHTML =
+      '<button class="pill sm ' + (state.diaAuto ? 'on' : '') + '" data-dia="auto"' +
+      ' title="let the tool pick the cheapest buildable bar">auto</button>' +
       dias.map(d => {
       const list = r.crack.methodEffective === 'direct' ? r.crack.barsDirect : r.crack.bars;
       const b = list.find(x => x.dia === d);
@@ -343,8 +408,12 @@
   }
 
   function paintMatrix(r, dias) {
-    const spacings = r.constants.SPACINGS;
-    const vertical = state.matrixDir === 'v';
+    paintOneMatrix('matrixH', r, dias, false);
+    paintOneMatrix('matrixV', r, dias, true);
+  }
+
+  function paintOneMatrix(id, r, dias, vertical) {
+    const spacings = state.spacings;
     const cap = vertical ? r.detailing.sVMax : r.detailing.sHMax;
 
     const need = dias.map(d => {
@@ -352,43 +421,63 @@
       if (!r.crack.active) return r.detailing.AsHMin;
       const list = r.crack.methodEffective === 'direct' ? r.crack.barsDirect : r.crack.bars;
       const b = list.find(x => x.dia === d);
-      if (!b || b.AsReq == null) return null;                 // bar not permitted at this wk
+      if (!b || b.AsReq == null) return null;               // bar not permitted at this wk
       return Math.max(b.AsReq, r.detailing.AsHMin);
     });
 
-    // cheapest (largest) spacing that still works, per column
+    // cheapest (widest) spacing that still works, per column
     const best = dias.map((d, i) => {
       if (need[i] == null) return null;
       let pick = null;
-      for (const s of spacings) {
-        if (s > cap) continue;
-        if (API().area(d, s) >= need[i]) pick = s;
+      for (const sp of spacings) {
+        if (sp > cap) continue;
+        if (API().area(d, sp) >= need[i]) pick = sp;
       }
       return pick;
     });
 
-    let html = '<tr><th style="text-align:left">c/c ↓  ø →</th>' +
+    let html = '<tr><th style="text-align:left">c/c \u2193  \u00f8 \u2192</th>' +
       dias.map(d => '<th>' + d + '</th>').join('') + '</tr>';
     html += '<tr><td style="text-align:left;color:#7f92ad">required</td>' +
-      need.map(v => '<td style="color:#cbd5e1">' + (v == null ? '—' : fmt(v, 0)) + '</td>').join('') + '</tr>';
+      need.map(v => '<td style="color:#cbd5e1">' + (v == null ? '\u2014' : fmt(v, 0)) + '</td>').join('') + '</tr>';
 
-    for (const s of spacings) {
-      html += '<tr><td style="text-align:left;color:#7f92ad">c' + s + '</td>';
+    spacings.forEach((sp, rowIx) => {
+      html += '<tr><td style="text-align:left;padding-right:.2rem">' +
+        '<input class="ccin" data-row="' + rowIx + '" data-grid="' + id + '" value="' + sp + '" inputmode="numeric">' +
+        '</td>';
       dias.forEach((d, i) => {
-        const As = API().area(d, s);
+        const As = API().area(d, sp);
         let cls = 'c-ok', title = '';
-        if (s > cap) { cls = 'c-cap'; title = 'spacing exceeds the code maximum c' + cap; }
-        else if (need[i] == null) { cls = 'c-veto'; title = 'ø' + d + ' is not permitted at this crack width'; }
+        if (sp > cap) { cls = 'c-cap'; title = 'spacing exceeds the code maximum c' + cap; }
+        else if (need[i] == null) { cls = 'c-veto'; title = '\u00f8' + d + ' is not permitted at this crack width'; }
         else if (As >= need[i]) cls = 'c-ok';
         else if (As >= 0.95 * need[i]) cls = 'c-near';
         else cls = 'c-bad';
-        const mark = (best[i] === s && s <= cap) ? ' ◇' : '';
-        html += '<td class="' + cls + (best[i] === s && s <= cap ? ' c-pick' : '') + '" title="' + title + '">' +
-          fmt(As, 0) + mark + '</td>';
+        const isBest = best[i] === sp && sp <= cap;
+        html += '<td class="' + cls + (isBest ? ' c-pick' : '') + '" title="' + title + '">' +
+          fmt(As, 0) + (isBest ? ' \u25c7' : '') + '</td>';
       });
       html += '</tr>';
-    }
-    $('matrix').innerHTML = html;
+    });
+    $(id).innerHTML = html;
+
+    $(id).querySelectorAll('.ccin').forEach(el => {
+      el.addEventListener('change', () => {
+        const v = Math.round(n(el.value));
+        if (!isFinite(v) || v < 25 || v > 900) { render(); return; }
+        const next = state.spacings.slice();
+        next[parseInt(el.dataset.row, 10)] = v;
+        state.spacings = dedupeSorted(next);
+        render();
+      });
+      el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); });
+    });
+  }
+
+  function dedupeSorted(arr) {
+    return arr.filter(v => isFinite(v) && v > 0)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .sort((a, b) => a - b);
   }
 
   function paintChecks(r) {
@@ -538,6 +627,21 @@
     'dir.v': ['Vertical bars',
       'One threshold for every column \u2014 0,002\u00b7A<sub>c</sub> split between the faces \u2014 and the ' +
       'spacing cap tightens to min(3t, 400).'],
+    'f.kNA': ['k in NA.9.6.3(1)',
+      'The factor in the code leg of the horizontal minimum, k·A<sub>c</sub>·f<sub>ctm</sub>/f<sub>yk</sub>. ' +
+      'NA.9.6.3(1) sets it at <em>0,30 for an exterior wall</em> and <em>0,15 for an interior one</em>. ' +
+      'The 0,15 is not a halving — across B25 to B45 it works out at 0,08 to 0,11 % of the section, which is ' +
+      'EC2’s own recommended 0,001·A<sub>c</sub> re-expressed so it scales with the cracking force. 0,30 is ' +
+      'the deliberate doubling for outdoor exposure. Override it under Assumptions if your case needs it.'],
+    'f.vcc': ['Vertical bar spacing',
+      'Left on <em>auto</em> this is the widest spacing of the chosen bar that still meets the governing vertical ' +
+      'requirement — the minimum reinforcement, in other words — rounded down to 5 mm and capped by ' +
+      '9.6.2(3). Type any spacing to take over; the auto button hands it back. What you set here also feeds the ' +
+      '“25 % of the vertical reinforcement” leg of NA.9.6.3.'],
+    'f.rows': ['Spacing rows',
+      'The c/c values down the left of both matrices are editable. Type 225, or any other spacing you want to ' +
+      'check, and that row appears in both directions. <b>+ row</b> adds one, <b>reset</b> restores the standard ' +
+      'set. Rows sort themselves and duplicates are dropped.'],
     'diaPicker': ['Bar size',
       'The tool starts on the cheapest buildable bar. Pick another and the headline follows it; press ' +
       '\u201cauto\u201d to hand the choice back.']
@@ -551,7 +655,9 @@
     ['[data-crack="wk030"]', 'crack.wk030'], ['[data-crack="wk020"]', 'crack.wk020'],
     ['[data-crack="watertight"]', 'crack.watertight'], ['[data-crack="custom"]', 'crack.custom'],
     ['[data-method="simplified"]', 'method.simplified'], ['[data-method="direct"]', 'method.direct'],
-    ['[data-dir="h"]', 'dir.h'], ['[data-dir="v"]', 'dir.v'],
+    ['#matHeadH', 'dir.h'], ['#matHeadV', 'dir.v'],
+    ['#kNaBox', 'f.kNA', 'parent'], ['#vcc', 'f.vcc', 'parent'], ['#vccAuto', 'f.vcc'],
+    ['#addRow', 'f.rows'], ['#resetRows', 'f.rows'], ['#kNaOverride', 'f.kNA', 'parent'],
     ['#rtb', 'rtb', 'parent'], ['#upliftWrap', 'uplift'],
     ['#t', 'f.t', 'parent'], ['#fck', 'f.fck', 'parent'], ['#fyk', 'f.fyk', 'parent'],
     ['#layers', 'f.layers', 'parent'], ['#cover', 'f.cover', 'parent'], ['#side', 'f.side', 'parent'],
@@ -841,11 +947,19 @@
       render();
     }));
 
-    document.querySelectorAll('[data-dir]').forEach(b => b.addEventListener('click', () => {
-      state.matrixDir = b.dataset.dir;
-      document.querySelectorAll('[data-dir]').forEach(x => x.classList.toggle('on', x === b));
+    $('addRow').addEventListener('click', () => {
+      const last = state.spacings[state.spacings.length - 1] || 100;
+      state.spacings = dedupeSorted(state.spacings.concat([Math.min(900, last + 50)]));
       render();
-    }));
+    });
+    $('resetRows').addEventListener('click', () => {
+      state.spacings = DEFAULT_SPACINGS.slice();
+      render();
+    });
+
+    $('vccAuto').addEventListener('click', () => { state.vAuto = true; render(); });
+    $('vcc').addEventListener('input', () => { state.vAuto = false; });
+    $('vdia').addEventListener('change', () => { render(); });
 
     $('diaPicker').addEventListener('click', (e) => {
       const b = e.target.closest('[data-dia]');
@@ -857,16 +971,33 @@
     });
 
     ['t', 'fck', 'fyk', 'layers', 'cover', 'side', 'vdia', 'vcc', 'rtb', 'uplift', 'cnom', 'cmindur',
-      'hD', 'wkCustom', 'kcMode', 'kcCustom', 'kMode', 'age', 'cement', 'wallL', 'wallH', 'epsFree', 'epsCtu']
+      'hD', 'wkCustom', 'kcMode', 'kcCustom', 'kMode', 'kNaOverride', 'age', 'cement', 'wallL', 'wallH',
+      'epsFree', 'epsCtu']
       .forEach(id => {
         const el = $(id);
         el.addEventListener('input', render);
         el.addEventListener('change', render);
       });
 
+    initDefaults();
     initTips();
     initMeta();
     render();
+  }
+
+  /* Browsers restore form state across reloads. For a calculator that silently changes
+     the answer, so every control is written back to its default on load. */
+  function initDefaults() {
+    Object.keys(DEFAULTS.fields).forEach(id => { if ($(id)) $(id).value = DEFAULTS.fields[id]; });
+    Object.keys(DEFAULTS.checks).forEach(id => { if ($(id)) $(id).checked = DEFAULTS.checks[id]; });
+    state.mode = DEFAULTS.mode;
+    state.crackReq = DEFAULTS.crackReq;
+    state.selectedDia = DEFAULTS.selectedDia;
+    state.diaAuto = DEFAULTS.diaAuto;
+    state.vAuto = DEFAULTS.vAuto;
+    state.spacings = DEFAULT_SPACINGS.slice();
+    document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === state.mode));
+    document.querySelectorAll('[data-crack]').forEach(b => b.classList.toggle('on', b.dataset.crack === state.crackReq));
   }
 
   function setCrack(v) {
