@@ -98,6 +98,7 @@
     state.grid = []; state.table = null; state.profiles = []; state.result = null;
     state.valueCol = -1; state.labelCol = -1; state.pinned = null;
     $('structure').hidden = true; $('chartPanel').hidden = true; $('resultPanel').hidden = true;
+    $('statsPanel').hidden = true;
     $('pasteBox').style.minHeight = '';
     $('dataStatus').textContent = '';
   }
@@ -195,7 +196,9 @@
     const stats = API().clusterStats(values, res.assign, state.k);
     const ramp = API().rampFor(state.k);
 
-    state.result = { values, rowIx, res, stats, ramp, skipped: state.table.rows.length - values.length };
+    const overall = API().overallStats(values, stats);
+    state.result = { values, rowIx, res, stats, ramp, overall,
+      skipped: state.table.rows.length - values.length };
     $('kBadge').textContent = res.method === 'exact'
       ? '· exact optimum' : '· fast approximation, ' + values.length + ' values';
 
@@ -203,6 +206,7 @@
     paintChart();
     paintLegend();
     paintResults();
+    paintStats();
   }
 
   function paintElbow(values) {
@@ -384,6 +388,117 @@
     $('chart').querySelectorAll('circle.hi').forEach(c => c.classList.remove('hi'));
   }
 
+
+  // ------------------------------------------------------------- statistics
+
+  /* Columns are ordered so the eye runs from "how big" through "where" to "what shape",
+     and every derived one carries its definition in the header tooltip rather than in a
+     paragraph nobody reads. */
+  const STAT_COLS = [
+    { k: 'id', h: 'Cluster', t: 'Numbered low to high by value.' },
+    { k: 'n', h: 'n', num: true, t: 'Rows in this cluster.' },
+    { k: 'share', h: '% rows', num: true, t: 'Share of all clustered rows.' },
+    { k: 'min', h: 'min', num: true },
+    { k: 'max', h: 'max', num: true },
+    { k: 'mean', h: 'mean', num: true },
+    { k: 'median', h: 'median', num: true },
+    { k: 'sd', h: 'sd', num: true, t: 'Sample standard deviation within the cluster.' },
+    { k: 'width', h: 'width', num: true, t: 'max \u2212 min: how much of the value axis the cluster occupies.' },
+    { k: 'gapNext', h: 'gap \u2192', num: true, t: 'Distance from this cluster\u2019s max to the next cluster\u2019s min. A large gap means a clean break.' },
+    { k: 'density', h: 'density', num: true, t: 'Share of rows divided by share of the value axis. Dimensionless, so it does not care about units. 1,0 = exactly as dense as an even spread; 5,0 = five times denser; below 1,0 = sparser than even. Blank when the band has zero width.' },
+    { k: 'silhouette', h: 'silhouette', num: true, t: 'How much closer a point sits to its own cluster than to the nearest other one, averaged. 1 = perfectly separated, 0 = on the boundary, negative = probably in the wrong cluster. Singletons count as 0.' }
+  ];
+
+  function statCell(col, st) {
+    const v = st[col.k];
+    if (col.k === 'id') {
+      return '<span class="swatch" style="background:' + state.result.ramp[st.id - 1] + '"></span>C' + st.id;
+    }
+    if (v == null) return '<span class="muted">\u2014</span>';
+    if (col.k === 'n') return String(v);
+    if (col.k === 'share') return fmt(v * 100, 0) + ' %';
+    if (col.k === 'density') return fmt(v, 2) + '\u00d7';
+    if (col.k === 'silhouette') return fmt(v, 3);
+    return fmt(v, sigDp());
+  }
+
+  /** Decimal places that suit the spread of the data rather than a fixed guess. */
+  function sigDp() {
+    const w = state.result ? state.result.overall.width : 1;
+    if (!(w > 0)) return 2;
+    const mag = Math.floor(Math.log10(w));
+    return Math.min(6, Math.max(0, 2 - mag));
+  }
+
+  function paintStats() {
+    const R = state.result;
+    if (!R) { $('statsPanel').hidden = true; return; }
+    $('statsPanel').hidden = false;
+    const o = R.overall;
+
+    let html = '<tr>' + STAT_COLS.map(c =>
+      '<th class="' + (c.num ? 'n' : '') + '"' + (c.t ? ' title="' + esc(c.t) + '"' : '') + '>' +
+      esc(c.h) + '</th>').join('') + '</tr>';
+
+    R.stats.forEach(st => {
+      html += '<tr>' + STAT_COLS.map(c =>
+        '<td class="' + (c.num ? 'n' : '') + '">' + statCell(c, st) + '</td>').join('') + '</tr>';
+    });
+
+    const totals = {
+      id: null, n: o.n, share: 1, min: o.min, max: o.max, mean: o.mean,
+      median: o.median, sd: o.sd, width: o.width, gapNext: null,
+      density: null, silhouette: o.silhouette
+    };
+    html += '<tr class="total">' + STAT_COLS.map(c => {
+      if (c.k === 'id') return '<td>All</td>';
+      const st = totals;
+      if (st[c.k] == null) return '<td class="n"><span class="muted">\u2014</span></td>';
+      return '<td class="n">' + statCell(c, Object.assign({ id: 1 }, st)) + '</td>';
+    }).join('') + '</tr>';
+
+    $('statsTable').innerHTML = html;
+
+    $('statsSummary').innerHTML = o.explained != null
+      ? 'k = ' + state.k + ' accounts for <b>' + fmt(o.explained * 100, 1) +
+        ' %</b> of the total spread \u00b7 mean silhouette <b>' + fmt(o.silhouette, 3) + '</b>'
+      : '';
+
+    const worst = R.stats.filter(s => s.n > 0)
+      .reduce((a, b) => (a == null || b.silhouette < a.silhouette ? b : a), null);
+    const widest = R.stats.filter(s => s.n > 0)
+      .reduce((a, b) => (a == null || b.width > a.width ? b : a), null);
+    const notes = [];
+    if (worst && worst.silhouette < 0.5) {
+      notes.push('<span class="warn">C' + worst.id + ' is the weakest band at silhouette ' +
+        fmt(worst.silhouette, 3) + ' \u2014 it is effectively touching its neighbour. Worth checking k.</span>');
+    }
+    const loose = R.stats.filter(s => s.n > 1 && s.density != null && s.density < 1);
+    if (loose.length) {
+      notes.push('<span class="warn">' + loose.map(s => 'C' + s.id).join(', ') +
+        (loose.length > 1 ? ' are ' : ' is ') + 'sparser than an even spread \u2014 mostly empty span ' +
+        'with a few points across it, which often means a hidden split.</span>');
+    }
+    if (!notes.length && widest) {
+      notes.push('Widest band is C' + widest.id + ' at ' + fmt(widest.width, sigDp()) +
+        '; raise k if you want it broken up.');
+    }
+    notes.push('<a href="#explainPanel" class="text-sky-400 hover:text-sky-300">What do these mean?</a>');
+    $('statsNote').innerHTML = notes.join(' ');
+
+    $('copyStatsBtn').onclick = () => {
+      const head = STAT_COLS.map(c => c.h).join('\t');
+      const body = R.stats.map(st => STAT_COLS.map(c => {
+        if (c.k === 'id') return 'C' + st.id;
+        const v = st[c.k];
+        if (v == null) return '';
+        if (c.k === 'share') return fmt(v * 100, 0);
+        return typeof v === 'number' ? fmt(v, c.k === 'n' ? 0 : 6) : String(v);
+      }).join('\t')).join('\n');
+      copyText(head + '\n' + body, $('copyStatsBtn'));
+    };
+  }
+
   // ------------------------------------------------------------------ output
 
   function outputRows() {
@@ -495,19 +610,7 @@
     });
     window.addEventListener('resize', () => { if (state.result) paintChart(); });
 
-    $('copyBtn').addEventListener('click', async () => {
-      const tsv = serialise('\t');
-      try {
-        await navigator.clipboard.writeText(tsv);
-        flash($('copyBtn'), 'Copied');
-      } catch (err) {
-        const ta = document.createElement('textarea');
-        ta.value = tsv; document.body.appendChild(ta); ta.select();
-        try { document.execCommand('copy'); flash($('copyBtn'), 'Copied'); }
-        catch (e2) { flash($('copyBtn'), 'Copy failed'); }
-        document.body.removeChild(ta);
-      }
-    });
+    $('copyBtn').addEventListener('click', () => copyText(serialise('\t'), $('copyBtn')));
 
     $('csvBtn').addEventListener('click', () => {
       const sep = state.decimal === ',' ? ';' : ',';
@@ -518,6 +621,19 @@
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     });
+  }
+
+  async function copyText(text, btn) {
+    try {
+      await navigator.clipboard.writeText(text);
+      flash(btn, 'Copied');
+    } catch (err) {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); flash(btn, 'Copied'); }
+      catch (e2) { flash(btn, 'Copy failed'); }
+      document.body.removeChild(ta);
+    }
   }
 
   function flash(btn, msg) {

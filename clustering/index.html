@@ -116,9 +116,22 @@
                    padding:.3rem .5rem; font-weight:600; z-index:1; }
     table.res td { padding:.22rem .5rem; border-bottom:1px solid #1a2536; color:#c3d3e6;
                    white-space:nowrap; }
+    table.res td.n, table.res th.n { text-align:right; }
+    table.res tr.total td { border-top:1px solid #33496b; background:#161f33; color:#e6edf6;
+                            font-weight:600; }
+    table.res th[title] { cursor:help; text-decoration:underline dotted #44607f;
+                          text-underline-offset:3px; }
     .swatch { display:inline-block; width:.6rem; height:.6rem; border-radius:2px; margin-right:.35rem;
               vertical-align:middle; }
     .muted { color:#7f92ad; font-size:.75rem; }
+    .defs { display:grid; grid-template-columns:9.5rem 1fr; gap:.45rem 1rem; margin-top:.5rem; }
+    .defs dt { color:#e6edf6; font-size:.78rem; font-weight:600; font-variant-numeric:tabular-nums; }
+    .defs dd { margin:0; color:#a8b8cd; font-size:.78rem; line-height:1.5; }
+    .defs dd b { color:#d8e4f2; }
+    .defs code { background:#0b1120; border:1px solid #22304a; border-radius:.2rem;
+                 padding:0 .25rem; font-size:.74rem; }
+    @media (max-width:700px){ .defs { grid-template-columns:1fr; gap:.15rem; }
+                              .defs dd { margin-bottom:.5rem; } }
     .warn { color:#fbbf24; }
     @media (max-width:1000px){ .two { grid-template-columns:1fr !important; } }
   </style>
@@ -225,6 +238,86 @@
       <span class="muted ml-auto" id="resultStatus"></span>
     </div>
     <div class="out"><table class="res" id="resTable"></table></div>
+  </div>
+
+  <!-- ============ 5. CLUSTER STATISTICS ============ -->
+  <div class="panel p-3 mb-3" id="statsPanel" hidden>
+    <div class="flex flex-wrap items-center gap-2 mb-2">
+      <span class="lbl mb-0 mr-1">Cluster statistics</span>
+      <button class="pill" id="copyStatsBtn">Copy stats (TSV)</button>
+      <span class="muted ml-auto" id="statsSummary"></span>
+    </div>
+    <div class="out" style="max-height:none"><table class="res" id="statsTable"></table></div>
+    <div class="muted mt-2 leading-relaxed" id="statsNote"></div>
+  </div>
+
+  <!-- ============ 6. HOW TO READ THE STATISTICS ============ -->
+  <div class="panel p-3 mb-3" id="explainPanel">
+    <span class="lbl">How to read the statistics</span>
+
+    <dl class="defs">
+      <dt>n · % rows</dt>
+      <dd>How many rows landed in each band. Wildly uneven counts usually mean either that the data
+          really is lopsided, or that k is wrong — a band of one or two points next to a band of
+          hundreds is a hint to drop k.</dd>
+
+      <dt>min · max</dt>
+      <dd>The actual limits of the band. These are the numbers you would write into a spec or a
+          drawing note: <i>group 3 covers 0,66 to 0,71</i>.</dd>
+
+      <dt>mean · median</dt>
+      <dd>Where the band sits. If they differ noticeably the band is skewed — a mean above the
+          median means a tail of high values pulling it up, and the median is then the fairer
+          summary.</dd>
+
+      <dt>sd</dt>
+      <dd>Spread inside the band, in the data’s own units. Useful for comparing like with like;
+          for comparing bands of different size, use density instead.</dd>
+
+      <dt>width</dt>
+      <dd><code>max − min</code>: how much of the value axis the band occupies. A band far wider
+          than its neighbours is doing more work than they are and is the first candidate for
+          splitting if you raise k.</dd>
+
+      <dt>gap →</dt>
+      <dd>The empty space between this band and the next. <b>This is the number that says whether a
+          split is real.</b> A gap much larger than the widths either side of it is a genuine break in
+          the data. A gap smaller than the bands’ own widths means the cut runs through a continuum
+          rather than between two groups — defensible, but a choice rather than a discovery.</dd>
+
+      <dt>density</dt>
+      <dd>The band’s share of the rows divided by its share of the value axis. Deliberately
+          <b>dimensionless</b>: points-per-unit would mean nothing without knowing the units and would
+          change the moment someone switched from kN to MN, whereas a ratio of shares does not.
+          <b>1,0×</b> is exactly as dense as an even spread across the same axis. <b>5,0×</b> is
+          five times as concentrated — a tight, well-defined group. <b>Below 1,0×</b> is sparser
+          than even: mostly empty space with a few points strung across it, which often means the band
+          is really two groups with a hole in the middle. A single point has no width, so it reports
+          <span class="muted">—</span>.</dd>
+
+      <dt>silhouette</dt>
+      <dd>For every point, how much closer it sits to its own band than to the nearest other one,
+          averaged over the band. Runs from −1 to 1.
+          <b>Above 0,7</b> strongly separated · <b>0,5 to 0,7</b> reasonable ·
+          <b>below 0,5</b> weak, the bands are effectively touching ·
+          <b>negative</b> the points are on average closer to a different band than their own, which
+          means k is wrong or the data has no group structure in this column. A lone point scores 0
+          by convention, since it has nothing to be close to.</dd>
+
+      <dt>% of total spread <span class="muted">(All row)</span></dt>
+      <dd><code>1 − within-cluster spread / total spread</code>: how much of the original variation
+          the split accounts for. <b>It always rises as k rises</b>, all the way to 100 % when every
+          point is its own cluster, so it can never justify a k on its own — read it next to the
+          elbow strip and the silhouette.</dd>
+    </dl>
+
+    <div class="mt-3 pt-2 border-t border-slate-800 muted leading-relaxed">
+      <b class="text-slate-300">Three questions these answer.</b>
+      <i>Is k right?</i> Silhouette and the elbow strip — not the percentage of spread, which rises
+      with k by construction.
+      <i>Is this band a real group?</i> Compare its <b>gap →</b> against the widths on either side.
+      <i>Is this band too loose?</i> Density near or below 1,0× together with a large width.
+    </div>
   </div>
 
   <p class="text-xs text-slate-600 mt-4 leading-relaxed">

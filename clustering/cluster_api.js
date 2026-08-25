@@ -316,15 +316,120 @@
     return { assign, breaks, centroids, wcss: res.wcss, method, k };
   }
 
+  /** Mean |x - xi| over a sorted group, via prefix sums. O(log m). */
+  function meanAbsDist(x, sorted, prefix, excludeSelf) {
+    const m = sorted.length;
+    if (!m) return Infinity;
+    let lo = 0, hi = m;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (sorted[mid] <= x) lo = mid + 1; else hi = mid; }
+    const below = lo, sumBelow = prefix[lo], sumAll = prefix[m];
+    const total = (below * x - sumBelow) + ((sumAll - sumBelow) - (m - below) * x);
+    const denom = excludeSelf ? m - 1 : m;
+    return denom > 0 ? total / denom : 0;
+  }
+
+  /**
+   * Per-cluster descriptive and shape statistics.
+   *
+   * `density` is the one worth explaining: the cluster's share of the rows divided by
+   * its share of the value axis. It is dimensionless, so it survives any change of
+   * units, and 1,0 means "exactly as dense as an even spread would be". Raw points per
+   * unit would say nothing without knowing the units.
+   *
+   * `silhouette` is the standard cluster-quality number: for each point, how much
+   * closer it sits to its own cluster than to the nearest other one, in [-1, 1].
+   * Singletons are 0 by convention.
+   */
   function clusterStats(values, assign, k) {
+    const N = values.length;
+    const groups = [];
+    for (let j = 0; j < k; j++) groups.push([]);
+    values.forEach((v, i) => { const c = assign[i]; if (c >= 1 && c <= k) groups[c - 1].push(v); });
+    groups.forEach(g => g.sort((a, b) => a - b));
+
+    const prefixes = groups.map(g => {
+      const pre = new Float64Array(g.length + 1);
+      for (let i = 0; i < g.length; i++) pre[i + 1] = pre[i] + g[i];
+      return pre;
+    });
+
+    const allMin = N ? Math.min.apply(null, values) : null;
+    const allMax = N ? Math.max.apply(null, values) : null;
+    const totalWidth = (allMax != null && allMin != null) ? allMax - allMin : 0;
+
     const out = [];
-    for (let j = 1; j <= k; j++) {
-      const v = values.filter((_, i) => assign[i] === j);
-      if (!v.length) { out.push({ id: j, n: 0, min: null, max: null, mean: null, range: null }); continue; }
-      const min = Math.min.apply(null, v), max = Math.max.apply(null, v);
-      out.push({ id: j, n: v.length, min, max, mean: v.reduce((a, b) => a + b, 0) / v.length, range: max - min });
+    for (let j = 0; j < k; j++) {
+      const g = groups[j], n = g.length;
+      if (!n) {
+        out.push({ id: j + 1, n: 0, share: 0, min: null, max: null, mean: null, median: null,
+          sd: null, range: null, width: null, spanShare: null, density: null,
+          gapNext: null, silhouette: null, wcss: 0 });
+        continue;
+      }
+      const min = g[0], max = g[n - 1];
+      const mean = prefixes[j][n] / n;
+      const median = n % 2 ? g[(n - 1) / 2] : (g[n / 2 - 1] + g[n / 2]) / 2;
+      let ss = 0;
+      for (const v of g) ss += (v - mean) * (v - mean);
+      const sd = n > 1 ? Math.sqrt(ss / (n - 1)) : 0;
+      const width = max - min;
+      const share = n / N;
+      const spanShare = totalWidth > 0 ? width / totalWidth : null;
+      // a zero-width band has no meaningful density - report it rather than dividing by zero
+      const density = (spanShare != null && spanShare > 0) ? share / spanShare : null;
+
+      let sil = 0;
+      if (n > 1) {
+        let acc = 0;
+        for (const x of g) {
+          const a = meanAbsDist(x, g, prefixes[j], true);
+          let b = Infinity;
+          for (let o = 0; o < k; o++) {
+            if (o === j || !groups[o].length) continue;
+            const d = meanAbsDist(x, groups[o], prefixes[o], false);
+            if (d < b) b = d;
+          }
+          if (!isFinite(b)) { acc += 0; continue; }
+          const denom = Math.max(a, b);
+          acc += denom > 0 ? (b - a) / denom : 0;
+        }
+        sil = acc / n;
+      }
+
+      out.push({ id: j + 1, n, share, min, max, mean, median, sd,
+        range: width, width, spanShare, density, gapNext: null, silhouette: sil, wcss: ss });
+    }
+
+    for (let j = 0; j < k - 1; j++) {
+      if (out[j].max == null || out[j + 1].min == null) continue;
+      out[j].gapNext = out[j + 1].min - out[j].max;
     }
     return out;
+  }
+
+  /** Whole-dataset counterparts, for the total row under the per-cluster table. */
+  function overallStats(values, stats) {
+    const N = values.length;
+    if (!N) return null;
+    const sorted = values.slice().sort((a, b) => a - b);
+    const mean = values.reduce((a, b) => a + b, 0) / N;
+    let ss = 0;
+    for (const v of values) ss += (v - mean) * (v - mean);
+    const withN = stats.filter(s => s.n > 0);
+    const wcss = stats.reduce((a, s) => a + (s.wcss || 0), 0);
+    return {
+      n: N,
+      min: sorted[0],
+      max: sorted[N - 1],
+      mean,
+      median: N % 2 ? sorted[(N - 1) / 2] : (sorted[N / 2 - 1] + sorted[N / 2]) / 2,
+      sd: N > 1 ? Math.sqrt(ss / (N - 1)) : 0,
+      width: sorted[N - 1] - sorted[0],
+      wcss,
+      // how much of the raw spread the clustering removed
+      explained: ss > 0 ? 1 - wcss / ss : null,
+      silhouette: withN.length ? withN.reduce((a, s) => a + s.silhouette * s.n, 0) / N : null
+    };
   }
 
   /**
@@ -412,6 +517,6 @@
     DELIMITERS, RAMP_MAX_DISTINCT, EXACT_LIMIT,
     detectDelimiter, detectDecimal, toNumber, parseGrid, splitRow,
     detectHeaderRow, buildTable, profileColumns, colLetter,
-    clusterValues, clusterStats, elbowScan, rampFor
+    clusterValues, clusterStats, overallStats, elbowScan, rampFor
   };
 });
