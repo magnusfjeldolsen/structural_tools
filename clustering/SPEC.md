@@ -295,6 +295,55 @@ the original row order, with the cluster column tinted by the same ramp.
 
 ---
 
+## 5b. Cluster distribution tabs
+
+Clicking a cluster opens it as a tab in the page: histogram on top, every point as a
+jittered strip below on the same x axis, one draggable threshold crossing both.
+
+Readout: count and share at-or-below and above, mean of each side, and the threshold's
+percentile within the band.
+
+### 5b.1 Where the work goes, and why
+
+| work | cost | where | cancellable |
+|---|---|---|---|
+| threshold count | `O(log n)` binary search on the presorted band | main thread | never needs to be |
+| rebinning | `O(n)` single pass over sorted values | main thread | no |
+| scatter repaint | `O(n)` canvas arcs | main thread | no |
+| **clustering** | **`O(k·n²)` Fisher–Jenks** | **worker** | **yes, by termination** |
+
+Measured: **0,8 ms** for a threshold update on a 20 000-point cluster; **53 ms** to cluster
+50 000 values in the worker; **142 ms** of main-thread parse and profile for a 50 000-row
+paste; 45–65 ms for a 50 000-point scatter repaint.
+
+The slider deliberately has **no worker and no cancellation**. On presorted data the count
+is a handful of comparisons, so a cancellation path would be machinery guarding nothing.
+Events are collapsed through `requestAnimationFrame` and only the overlay canvas repaints.
+
+### 5b.2 Panic
+
+A worker mid-computation cannot read its own message queue, so a newer job cannot ask it
+to stop. `pool.panic()` therefore **terminates the worker and respawns it**, costing a few
+milliseconds against the hundreds that finishing an unwanted Fisher–Jenks pass would take.
+Independently, every job carries a generation token and replies from a superseded
+generation are dropped on receipt, which covers the cheap jobs that finish before the next
+request lands.
+
+Verified: ten k-changes issued in one tick abandoned 18 passes and settled on the correct
+final k with no stale render.
+
+Where `Worker` is unavailable — `file://`, older browsers — the same functions run inline
+and the badge says so.
+
+### 5b.3 Rendering at scale
+
+Both charts are `<canvas>`, each a static layer plus an overlay. Hover and the threshold
+line repaint only the overlay, so the expensive layer is drawn once. The results table
+renders `ROW_CAP = 500` rows; exports are never capped.
+
+`suggestBins` uses Freedman–Diaconis but floors at `min(n, 8)`: FD returns 1 for a handful
+of points, which draws as a single slab and says nothing.
+
 ## 6. Output
 
 - **Copy to clipboard as TSV** — the inverse of the paste-in path, so the result

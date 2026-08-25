@@ -460,6 +460,91 @@
     return { rows, elbowK };
   }
 
+
+  // ------------------------------------------------------- distribution view
+
+  /** Freedman–Diaconis bin count, falling back to Sturges when the IQR is zero. */
+  function suggestBins(sorted) {
+    const n = sorted.length;
+    if (n < 2) return 1;
+    const q = (p) => {
+      const i = (n - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+      return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+    };
+    const iqr = q(0.75) - q(0.25);
+    const range = sorted[n - 1] - sorted[0];
+    if (!(range > 0)) return 1;
+    // Freedman-Diaconis is right on shape but can return 1 or 2 for a handful of points,
+    // which draws as a single slab and tells the reader nothing. Floor it at something
+    // that still resolves structure without inventing it.
+    const floor = Math.min(n, 8);
+    if (iqr > 0) {
+      const w = 2 * iqr / Math.cbrt(n);
+      if (w > 0) return Math.max(floor, Math.min(120, Math.round(range / w)));
+    }
+    return Math.max(floor, Math.min(120, Math.ceil(Math.log2(n) + 1)));
+  }
+
+  /**
+   * Bin a SORTED array. Walking the sorted array once beats bucketing an unsorted one
+   * because it needs no random writes, and the caller has the sorted copy anyway.
+   */
+  function histogram(sorted, bins) {
+    const n = sorted.length;
+    if (!n) return { bins: [], lo: 0, hi: 0, width: 0, max: 0 };
+    const lo = sorted[0], hi = sorted[n - 1];
+    const count = Math.max(1, Math.min(500, Math.round(bins) || 1));
+    const width = (hi - lo) / count || 1;
+    const out = new Array(count);
+    for (let i = 0; i < count; i++) out[i] = { i, lo: lo + i * width, hi: lo + (i + 1) * width, n: 0 };
+    let b = 0;
+    for (let i = 0; i < n; i++) {
+      while (b < count - 1 && sorted[i] >= out[b].hi) b++;
+      out[b].n++;
+    }
+    let max = 0;
+    for (const bin of out) if (bin.n > max) max = bin.n;
+    return { bins: out, lo, hi, width, max };
+  }
+
+  /** Index of the first element strictly greater than x, in a sorted array. */
+  function upperBound(sorted, x) {
+    let lo = 0, hi = sorted.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] <= x) lo = m + 1; else hi = m; }
+    return lo;
+  }
+
+  /**
+   * How much of the cluster sits either side of a threshold.
+   *
+   * O(log n) on a presorted array, which is the whole reason the slider never needs a
+   * worker or a cancellation path: at 60 Hz on a million points this is still a handful
+   * of comparisons per frame. Means come from prefix sums, so they are O(1).
+   */
+  function thresholdStats(sorted, prefix, x) {
+    const n = sorted.length;
+    if (!n) return null;
+    const atOrBelow = upperBound(sorted, x);
+    const above = n - atOrBelow;
+    const sumBelow = prefix[atOrBelow], sumAll = prefix[n];
+    return {
+      threshold: x,
+      below: atOrBelow,
+      above,
+      belowShare: atOrBelow / n,
+      aboveShare: above / n,
+      meanBelow: atOrBelow ? sumBelow / atOrBelow : null,
+      meanAbove: above ? (sumAll - sumBelow) / above : null,
+      percentile: atOrBelow / n
+    };
+  }
+
+  const prefixSums = (sorted) => {
+    const pre = new Float64Array(sorted.length + 1);
+    for (let i = 0; i < sorted.length; i++) pre[i + 1] = pre[i] + sorted[i];
+    return pre;
+  };
+
   // ---------------------------------------------------------------- the ramp
 
   function oklchToLinear(L, C, hDeg) {
@@ -517,6 +602,7 @@
     DELIMITERS, RAMP_MAX_DISTINCT, EXACT_LIMIT,
     detectDelimiter, detectDecimal, toNumber, parseGrid, splitRow,
     detectHeaderRow, buildTable, profileColumns, colLetter,
-    clusterValues, clusterStats, overallStats, elbowScan, rampFor
+    clusterValues, clusterStats, overallStats, elbowScan, rampFor,
+    suggestBins, histogram, thresholdStats, upperBound, prefixSums
   };
 });
