@@ -79,6 +79,47 @@ rules, the bands carry **C1…Ck** labels in the right margin, the legend gives 
 cluster its count and range, and the results table has a `Cluster` column. Above k = 6
 the tool says outright that neighbouring hues are no longer reliably separable.
 
+## Cluster distribution tabs
+
+Click a cluster — in the legend, in the statistics table, or double-click a point in the
+plot — and it opens as its own tab in the page. The tab shows that band's histogram with
+every point on a shared x axis underneath, and a threshold you can drag across both.
+The readout gives the count and percentage at or below and above the line, the mean of
+each side, and where the threshold sits as a percentile of the band. Answers "how much of
+this group is over 0,9?" directly.
+
+## Why the slider is not on a worker
+
+The threshold count is a **binary search on a presorted band**, so it costs the same at
+ten points as at a million — measured at **0,8 ms on a 20 000-point cluster**, comfortably
+inside a 60 Hz frame. It never needs interrupting, so it has no cancellation path and no
+worker. Slider events are collapsed through `requestAnimationFrame`, so several inside one
+frame become one repaint, and only the overlay canvas is redrawn — the histogram and the
+strip underneath are untouched.
+
+## What is on a worker, and what "panic" means
+
+The clustering pass is the expensive one: Fisher–Jenks is `O(k·n²)` and locks a tab for
+hundreds of milliseconds. It runs in `cluster_worker.js`.
+
+A worker that is already computing cannot read its own message queue, so a newer request
+cannot politely interrupt it. When one arrives, the pool **terminates the worker outright**
+and respawns — a few milliseconds against the hundreds that would be spent finishing an
+answer nobody wants. Replies that arrive from a superseded generation are dropped on
+receipt. Bursting ten k-changes in one tick abandons 18 passes and still settles on the
+right answer.
+
+If workers are unavailable — `file://`, or an old browser — the same code runs on the page
+and the badge says so, rather than the tool refusing to work.
+
+## Large pastes
+
+Charts are `<canvas>`, so 50 000 rows draw as 50 000 arcs rather than 50 000 DOM nodes.
+Measured at 50 000 rows: **142 ms** of main-thread work to parse and profile the paste,
+**53 ms** of clustering in the worker, and a scatter repaint of 45–65 ms. The results table
+renders the first 500 rows — a 50 000-row DOM table is unreadable and would freeze the tab
+— while copy and download are never capped.
+
 ## Choosing k
 
 A strip of bars shows within-cluster spread for k = 1…10, with the elbow marked.
