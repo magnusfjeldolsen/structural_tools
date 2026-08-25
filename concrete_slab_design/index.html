@@ -31,9 +31,12 @@
   <link rel="stylesheet" href="../assets/css/common.css">
   <link rel="stylesheet" href="../assets/css/forms.css">
   <link rel="stylesheet" href="../assets/css/components.css">
-  <link rel="stylesheet" href="../assets/css/print.css">
-  <!-- Report print styles for detailed calculation reports -->
-  <link rel="stylesheet" href="../assets/css/report-print.css">
+  <!-- A4 report layout. Deliberately replaces BOTH shared print sheets for this module:
+       assets/css/print.css prints a dark background and sets its own @page margin, and
+       assets/css/report-print.css reshapes the live page class by class - which let the
+       page header and the back-link print, and pushed content past the right edge of the
+       paper. Local print.css owns printing here; see the comment at the top of it. -->
+  <link rel="stylesheet" href="print.css" media="print">
   
   <!-- Tailwind CSS -->
   <script>
@@ -265,6 +268,9 @@
   <!-- Cookie Consent Scripts -->
   <script src="../assets/js/common.js"></script>
   <script src="../assets/js/cookie-consent.js"></script>
+
+<!-- The report is moved in here before printing; see printReport() in script.js -->
+<div id="slabPrintRoot" aria-hidden="true" hidden></div>
 
 </body>
 </html>
