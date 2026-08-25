@@ -653,10 +653,64 @@ function toggleReport() {
     report.classList.toggle('hidden');
 }
 
-// Print report function
+// ---------------------------------------------------------------- printing
+//
+// The report is moved into #slabPrintRoot - a direct child of <body> - so print.css
+// only has to hide every other child of <body>. Nothing about the app's markup can
+// then affect the PDF, which is what went wrong with the shared report sheet: it
+// enumerated Tailwind classes, missed the page header and the back-link, and pushed
+// the content past the right edge of the paper.
+//
+// A clone is used rather than the node itself, so the on-screen report is left exactly
+// as it was even if printing is cancelled.
+
+function buildPrintHeader() {
+    const title = (document.getElementById('calc_title')?.value || '').trim();
+    const head = document.createElement('div');
+    head.className = 'print-head';
+    // The body of the report already states the standard and the date, so the running
+    // header carries only what identifies the sheet at a glance.
+    const esc = (t) => t.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    head.innerHTML =
+        '<div><b>' + (title ? esc(title) : 'Concrete slab — ULS moment capacity') + '</b></div>' +
+        '<div>NS-EN 1992-1-1</div>';
+    return head;
+}
+
+function stageReportForPrint() {
+    const root = document.getElementById('slabPrintRoot');
+    const report = document.getElementById('detailed-report');
+    if (!root || !report) return false;
+    const content = report.querySelector('.report-content');
+    if (!content) return false;                 // nothing calculated yet
+
+    root.innerHTML = '';
+    root.appendChild(buildPrintHeader());
+    const clone = content.cloneNode(true);
+    clone.classList.remove('hidden');
+    root.appendChild(clone);
+    root.hidden = false;                        // print.css governs visibility from here
+    return true;
+}
+
+function clearPrintStage() {
+    const root = document.getElementById('slabPrintRoot');
+    if (!root) return;
+    root.innerHTML = '';
+    root.hidden = true;
+}
+
 function printReport() {
+    if (!stageReportForPrint()) {
+        alert('Run a calculation first — there is no report to print yet.');
+        return;
+    }
     window.print();
 }
+
+// Ctrl+P must produce the same document as the button.
+window.addEventListener('beforeprint', stageReportForPrint);
+window.addEventListener('afterprint', clearPrintStage);
 
 // Generate detailed calculation report
 function generateDetailedReport(result) {
