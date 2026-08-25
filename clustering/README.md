@@ -104,8 +104,17 @@ on the boundary, negative means probably in the wrong cluster. Computed with pre
 over the sorted groups, so the whole table costs `O(n·k·log n)` rather than `O(n²)`.
 
 The "All" row adds the share of total spread the clustering accounts for, `1 − WCSS/TSS`.
-If the weakest cluster drops below a silhouette of 0,5 the note says so and suggests
-checking k. Copy the whole table as TSV with one button.
+Copy the whole table as TSV with one button.
+
+**Every metric is explained at the bottom of the page** — what it measures, how to read a
+typical value, and which of three questions it answers: *is k right?* (silhouette and the
+elbow, never the percentage of spread, which rises with k by construction), *is this band
+a real group?* (its gap against the widths either side), *is this band too loose?*
+(density near 1,0× with a large width).
+
+The note under the table is dynamic rather than boilerplate: it names the weakest band if
+one is below 0,5 silhouette, names any band sparser than an even spread, and otherwise
+points at the widest band as the next candidate for splitting.
 
 ## Output
 

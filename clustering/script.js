@@ -466,15 +466,25 @@
 
     const worst = R.stats.filter(s => s.n > 0)
       .reduce((a, b) => (a == null || b.silhouette < a.silhouette ? b : a), null);
-    $('statsNote').innerHTML =
-      '<b>density</b> is the cluster\u2019s share of the rows divided by its share of the value axis \u2014 ' +
-      'dimensionless, so it is unaffected by units. 1,0\u00d7 is exactly as dense as an even spread, ' +
-      'higher is tighter, lower is more strung out. <b>silhouette</b> runs from 1 (cleanly separated) ' +
-      'through 0 (sitting on the boundary) to negative (likely in the wrong cluster).' +
-      (worst && worst.silhouette < 0.5
-        ? ' <span class="warn">C' + worst.id + ' has the weakest separation at ' +
-          fmt(worst.silhouette, 3) + ' \u2014 worth checking whether k is right.</span>'
-        : '');
+    const widest = R.stats.filter(s => s.n > 0)
+      .reduce((a, b) => (a == null || b.width > a.width ? b : a), null);
+    const notes = [];
+    if (worst && worst.silhouette < 0.5) {
+      notes.push('<span class="warn">C' + worst.id + ' is the weakest band at silhouette ' +
+        fmt(worst.silhouette, 3) + ' \u2014 it is effectively touching its neighbour. Worth checking k.</span>');
+    }
+    const loose = R.stats.filter(s => s.n > 1 && s.density != null && s.density < 1);
+    if (loose.length) {
+      notes.push('<span class="warn">' + loose.map(s => 'C' + s.id).join(', ') +
+        (loose.length > 1 ? ' are ' : ' is ') + 'sparser than an even spread \u2014 mostly empty span ' +
+        'with a few points across it, which often means a hidden split.</span>');
+    }
+    if (!notes.length && widest) {
+      notes.push('Widest band is C' + widest.id + ' at ' + fmt(widest.width, sigDp()) +
+        '; raise k if you want it broken up.');
+    }
+    notes.push('<a href="#explainPanel" class="text-sky-400 hover:text-sky-300">What do these mean?</a>');
+    $('statsNote').innerHTML = notes.join(' ');
 
     $('copyStatsBtn').onclick = () => {
       const head = STAT_COLS.map(c => c.h).join('\t');
