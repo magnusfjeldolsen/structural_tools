@@ -1,0 +1,217 @@
+/*
+ * Print / PDF layout for the concrete slab design report.
+ *
+ * Deliberately NOT the shared assets/css/report-print.css. That file reshapes the live
+ * dark page into a document by hiding things class by class — `body > main > *:not(...)`,
+ * `[class*="bg-gray-"]`, and so on — which means any change to the markup silently breaks
+ * the PDF, and it left the page header and the back-link visible while pushing the content
+ * past the right edge of the paper.
+ *
+ * Here the report is moved into #slabPrintRoot, a direct child of <body>, before printing.
+ * The whole of print then needs one structural rule, and nothing about the app's markup can
+ * affect it.
+ */
+
+@media print {
+
+  /* ---- page box -------------------------------------------------------------
+     A4 portrait, symmetric margins. 210 − 20 − 16 = 174 mm of content, which is
+     what every width below is measured against. */
+  @page {
+    size: A4 portrait;
+    margin: 18mm 16mm 20mm 20mm;
+  }
+
+  html, body {
+    background: #fff !important;
+    color: #111 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 9.5pt !important;
+    line-height: 1.45 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ---- one structural rule ---------------------------------------------------
+     Everything the app draws is hidden; only the print root shows. Nothing here
+     depends on Tailwind class names or on how deeply the report is nested. */
+  body > * { display: none !important; }
+  body > #slabPrintRoot { display: block !important; }
+
+  #slabPrintRoot {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #111 !important;
+  }
+
+  /* The report block is authored with Tailwind utilities for the screen; on paper it
+     is a plain document. */
+  #slabPrintRoot .report-content {
+    background: #fff !important;
+    color: #111 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  #slabPrintRoot * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* ---- running header --------------------------------------------------------
+     Printed once at the top of the document, not per page: Chrome cannot put live
+     content in the page margin boxes, and pretending otherwise is how the old sheet
+     ended up with @top-left rules that do nothing. */
+  #slabPrintRoot .print-head {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 0.6pt solid #999;
+    padding-bottom: 2mm;
+    margin-bottom: 4mm;
+    font-size: 8pt;
+    color: #444;
+  }
+  #slabPrintRoot .print-head b { font-size: 10pt; color: #111; }
+
+  /* ---- typography ------------------------------------------------------------
+     Sized so a 174 mm column holds roughly the same number of characters per line as
+     the on-screen report, which is what makes the PDF read like the page. */
+  #slabPrintRoot h1 { font-size: 15pt !important; margin: 0 0 3mm !important; }
+  #slabPrintRoot h2 { font-size: 12.5pt !important; margin: 0 0 2.5mm !important; }
+  #slabPrintRoot h3 { font-size: 10.5pt !important; margin: 5mm 0 2mm !important;
+                      letter-spacing: .02em; }
+  #slabPrintRoot h4 { font-size: 9.5pt !important; margin: 3mm 0 1.5mm !important; }
+  #slabPrintRoot h1, #slabPrintRoot h2, #slabPrintRoot h3, #slabPrintRoot h4 {
+    page-break-after: avoid; break-after: avoid;
+  }
+  #slabPrintRoot p { margin: 0 0 1.5mm !important; }
+
+  /* No single line of a paragraph stranded on its own at a page boundary. */
+  #slabPrintRoot p, #slabPrintRoot li, #slabPrintRoot div { orphans: 3; widows: 3; }
+
+  /* Tailwind text sizes, re-expressed in points */
+  #slabPrintRoot .text-xs   { font-size: 8pt !important; }
+  #slabPrintRoot .text-sm   { font-size: 8.5pt !important; }
+  #slabPrintRoot .text-base { font-size: 9.5pt !important; }
+  #slabPrintRoot .text-lg   { font-size: 10.5pt !important; }
+  #slabPrintRoot .text-xl   { font-size: 11.5pt !important; }
+  #slabPrintRoot .text-2xl  { font-size: 12.5pt !important; }
+  #slabPrintRoot .text-3xl  { font-size: 15pt !important; }
+  #slabPrintRoot .text-4xl  { font-size: 17pt !important; }
+
+  /* Ink: keep the section colours, force everything else to near-black so a colour
+     scheme meant for a dark background does not print as pale grey. */
+  #slabPrintRoot,
+  #slabPrintRoot p,
+  #slabPrintRoot div,
+  #slabPrintRoot span,
+  #slabPrintRoot li,
+  #slabPrintRoot td,
+  #slabPrintRoot th        { color: #111 !important; }
+  #slabPrintRoot .text-gray-600,
+  #slabPrintRoot .text-gray-700 { color: #555 !important; }
+  #slabPrintRoot .text-blue-700,
+  #slabPrintRoot .text-blue-600,
+  #slabPrintRoot .text-blue-900 { color: #1d4ed8 !important; }
+  #slabPrintRoot .text-green-700,
+  #slabPrintRoot .text-green-600,
+  #slabPrintRoot .text-green-900 { color: #15803d !important; }
+  #slabPrintRoot .text-purple-700 { color: #6b21a8 !important; }
+  #slabPrintRoot .text-yellow-700,
+  #slabPrintRoot .text-yellow-900 { color: #a16207 !important; }
+  #slabPrintRoot .text-red-700,
+  #slabPrintRoot .text-red-900 { color: #b91c1c !important; }
+
+  /* ---- layout ----------------------------------------------------------------
+     Grids stay as authored; 174 mm is wide enough for two 84 mm columns. */
+  #slabPrintRoot .grid { display: grid !important; width: 100% !important; }
+  #slabPrintRoot .grid-cols-2 { grid-template-columns: 1fr 1fr !important; }
+  #slabPrintRoot .grid-cols-3 { grid-template-columns: 1fr 1fr 1fr !important; }
+  #slabPrintRoot .grid-cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr !important; }
+  #slabPrintRoot .gap-2 { gap: 2mm !important; }
+  #slabPrintRoot .gap-3 { gap: 3mm !important; }
+  #slabPrintRoot .gap-4 { gap: 5mm !important; }
+  #slabPrintRoot .gap-6 { gap: 7mm !important; }
+
+  #slabPrintRoot .mb-2 { margin-bottom: 1.5mm !important; }
+  #slabPrintRoot .mb-3 { margin-bottom: 2mm !important; }
+  #slabPrintRoot .mb-4 { margin-bottom: 3mm !important; }
+  #slabPrintRoot .mb-6 { margin-bottom: 5mm !important; }
+  #slabPrintRoot .mt-6 { margin-top: 5mm !important; }
+  #slabPrintRoot .p-8, #slabPrintRoot .p-6, #slabPrintRoot .p-4 { padding: 0 !important; }
+
+  /* Panels keep a light tint so the structure survives, rather than being flattened
+     to white the way the shared sheet did. */
+  #slabPrintRoot .bg-gray-50,
+  #slabPrintRoot .bg-blue-50,
+  #slabPrintRoot .bg-green-50,
+  #slabPrintRoot .bg-yellow-50,
+  #slabPrintRoot .bg-red-50 {
+    background: #f6f7f9 !important;
+    padding: 2mm 2.5mm !important;
+    border-radius: 0 !important;
+  }
+  #slabPrintRoot .border-l-4 { border-left: 1.2pt solid #1d4ed8 !important; }
+  #slabPrintRoot .border-b-2 { border-bottom: 0.8pt solid #bbb !important; }
+  #slabPrintRoot .rounded-lg,
+  #slabPrintRoot .rounded { border-radius: 0 !important; }
+
+  /* ---- tables ---------------------------------------------------------------- */
+  #slabPrintRoot table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 3mm !important;
+    font-size: 8.5pt !important;
+  }
+  #slabPrintRoot th, #slabPrintRoot td {
+    border: 0.5pt solid #bbb !important;
+    padding: 1mm 1.5mm !important;
+    text-align: left !important;
+  }
+  #slabPrintRoot thead { display: table-header-group; }   /* repeat on every page */
+  #slabPrintRoot th { background: #eef0f3 !important; font-weight: 600 !important; }
+
+  /* ---- formulas -------------------------------------------------------------- */
+  #slabPrintRoot .font-mono, #slabPrintRoot code {
+    font-family: "Cascadia Mono", Consolas, "Courier New", monospace !important;
+    font-size: 8.5pt !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+  #slabPrintRoot .whitespace-pre-wrap { white-space: pre-wrap !important; }
+
+  /* Long formula lines must wrap rather than run off the right edge - the single most
+     visible fault in the previous sheet. */
+  #slabPrintRoot * {
+    overflow-wrap: break-word !important;
+    word-break: normal;
+    max-width: 100% !important;
+  }
+
+  /* ---- page breaks ----------------------------------------------------------- */
+  #slabPrintRoot .calc-step,
+  #slabPrintRoot .bg-gray-50,
+  #slabPrintRoot .bg-blue-50,
+  #slabPrintRoot table,
+  #slabPrintRoot img,
+  #slabPrintRoot svg {
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  #slabPrintRoot .page-break-before { page-break-before: always; break-before: page; }
+
+  #slabPrintRoot img, #slabPrintRoot svg, #slabPrintRoot canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  #slabPrintRoot a { color: #1d4ed8 !important; text-decoration: none !important; }
+  #slabPrintRoot a[href]::after { content: "" !important; }
+}
