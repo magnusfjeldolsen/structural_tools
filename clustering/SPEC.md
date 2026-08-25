@@ -163,6 +163,33 @@ and fixes C3. Output column is `Cluster` (integer), plus `ClusterMin`,
 For each cluster: `n`, `min`, `max`, `mean`, `range`, and the break value to the
 next cluster (the midpoint between this cluster's max and the next cluster's min).
 
+### 4.3b Per-cluster statistics table
+
+Below the results table, one row per cluster plus an "All" row:
+
+| column | meaning |
+|---|---|
+| n, % rows | size and share |
+| min, max, mean, median, sd | the usual descriptives |
+| width | `max − min`, how much of the value axis the band occupies |
+| gap → | distance from this cluster's max to the next cluster's min — a large gap is a clean break |
+| **density** | share of rows ÷ share of the value axis |
+| **silhouette** | mean of `(b − a)/max(a, b)` per point, a = mean distance within its own cluster, b = mean distance to the nearest other |
+
+`density` is deliberately **dimensionless**. Raw points-per-unit says nothing without
+knowing the units, and changes if the column is rescaled; a share-over-share ratio does
+not. `1,0×` means exactly as dense as an even spread across the same axis, higher is
+tighter, below `1,0×` is more strung out. A zero-width band — any singleton — reports
+`—` rather than dividing by zero.
+
+`silhouette` is computed with prefix sums over the sorted groups, so a mean absolute
+distance to any cluster costs `O(log m)` rather than a scan: the whole table is
+`O(n·k·log n)`, not `O(n²)`. Singletons score 0 by convention.
+
+The "All" row carries the overall descriptives plus **the share of total spread the
+clustering accounts for**, `1 − WCSS/TSS`, and the n-weighted mean silhouette. When the
+weakest cluster falls below a silhouette of 0,5 the note says so and suggests checking k.
+
 ### 4.4 Choosing k
 
 A compact strip showing within-cluster sum of squares for k = 1…10, normalised to

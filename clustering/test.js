@@ -108,6 +108,38 @@ eq('elbow scan length', el.rows.length, 6);
 eq('wcss falls as k rises', el.rows.every((r, i) => i === 0 || r.wcss <= el.rows[i - 1].wcss + 1e-9), true);
 eq('elbow finds the three real groups', el.elbowK, 3);
 
+// ---- per-cluster statistics
+const sv = [0.16, 0.18, 0.21, 0.41, 0.42, 0.44, 0.45, 0.66, 0.68, 0.70, 0.71, 0.91, 0.93, 0.95, 0.97];
+const sr = A.clusterValues(sv, 4);
+const ss = A.clusterStats(sv, sr.assign, 4);
+eq('stats: one row per cluster', ss.length, 4);
+eq('stats: counts sum to n', ss.reduce((a, b) => a + b.n, 0), sv.length);
+eq('stats: shares sum to 1', Math.abs(ss.reduce((a, b) => a + b.share, 0) - 1) < 1e-12, true);
+near('stats: mean of the low band', ss[0].mean, (0.16 + 0.18 + 0.21) / 3, 1e-12);
+near('stats: median of a 4-point band', ss[1].median, (0.42 + 0.44) / 2, 1e-12);
+near('stats: width is max - min', ss[0].width, 0.21 - 0.16, 1e-12);
+near('stats: gap to the next cluster', ss[0].gapNext, 0.41 - 0.21, 1e-12);
+eq('stats: last cluster has no gap', ss[3].gapNext, null);
+eq('stats: sd of a singleton is 0', A.clusterStats([1, 5], [1, 2], 2)[0].sd, 0);
+eq('stats: zero-width band reports no density', A.clusterStats([1, 5], [1, 2], 2)[0].density, null);
+eq('stats: singleton silhouette is 0 by convention', A.clusterStats([1, 5], [1, 2], 2)[0].silhouette, 0);
+eq('stats: tight clusters are denser than an even spread', ss.every(x => x.density > 1), true);
+eq('stats: well separated data scores a high silhouette', ss.every(x => x.silhouette > 0.7), true);
+eq('stats: density is unit-free', (() => {
+  const scaled = sv.map(v => v * 1000);
+  const r2 = A.clusterValues(scaled, 4);
+  const s2 = A.clusterStats(scaled, r2.assign, 4);
+  return s2.every((x, i) => Math.abs(x.density - ss[i].density) < 1e-9);
+})(), true);
+
+const ov = A.overallStats(sv, ss);
+eq('overall: n', ov.n, sv.length);
+near('overall: width', ov.width, 0.97 - 0.16, 1e-12);
+eq('overall: clustering explains most of the spread', ov.explained > 0.98, true);
+eq('overall: silhouette is the n-weighted mean', Math.abs(ov.silhouette -
+  ss.reduce((a, x) => a + x.silhouette * x.n, 0) / sv.length) < 1e-12, true);
+eq('overall: empty input returns null', A.overallStats([], []), null);
+
 // ---- spectral ramp matches the validated values in SPEC.md 5.2
 eq('ramp k=3', A.rampFor(3), ['#7853d5', '#00cd89', '#e54e3f']);
 eq('ramp k=5', A.rampFor(5), ['#7853d5', '#00a0cc', '#00cd89', '#e7c100', '#e54e3f']);
