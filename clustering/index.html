@@ -116,6 +116,11 @@
                    padding:.3rem .5rem; font-weight:600; z-index:1; }
     table.res td { padding:.22rem .5rem; border-bottom:1px solid #1a2536; color:#c3d3e6;
                    white-space:nowrap; }
+    table.res td.n, table.res th.n { text-align:right; }
+    table.res tr.total td { border-top:1px solid #33496b; background:#161f33; color:#e6edf6;
+                            font-weight:600; }
+    table.res th[title] { cursor:help; text-decoration:underline dotted #44607f;
+                          text-underline-offset:3px; }
     .swatch { display:inline-block; width:.6rem; height:.6rem; border-radius:2px; margin-right:.35rem;
               vertical-align:middle; }
     .muted { color:#7f92ad; font-size:.75rem; }
@@ -225,6 +230,17 @@
       <span class="muted ml-auto" id="resultStatus"></span>
     </div>
     <div class="out"><table class="res" id="resTable"></table></div>
+  </div>
+
+  <!-- ============ 5. CLUSTER STATISTICS ============ -->
+  <div class="panel p-3 mb-3" id="statsPanel" hidden>
+    <div class="flex flex-wrap items-center gap-2 mb-2">
+      <span class="lbl mb-0 mr-1">Cluster statistics</span>
+      <button class="pill" id="copyStatsBtn">Copy stats (TSV)</button>
+      <span class="muted ml-auto" id="statsSummary"></span>
+    </div>
+    <div class="out" style="max-height:none"><table class="res" id="statsTable"></table></div>
+    <div class="muted mt-2 leading-relaxed" id="statsNote"></div>
   </div>
 
   <p class="text-xs text-slate-600 mt-4 leading-relaxed">

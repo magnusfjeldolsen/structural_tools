@@ -86,6 +86,27 @@ Compressed to a 0,4 power so the shape reads — the raw curve collapses so stee
 every bar past k = 2 would be flat. Clicking a bar sets k. It is advisory and labelled
 as such.
 
+## Cluster statistics
+
+A second table below the results gives one row per cluster and an "All" row: n and
+share, min, max, mean, median, sd, band width, the gap to the next cluster, and two
+derived numbers worth explaining.
+
+**density** is the cluster's share of the rows divided by its share of the value axis.
+Deliberately dimensionless — raw points-per-unit means nothing without knowing the
+units and changes the moment the column is rescaled, whereas a share-over-share ratio
+does not. `1,0×` is exactly as dense as an even spread, higher is tighter, below `1,0×`
+is more strung out. Zero-width bands report `—` rather than dividing by zero.
+
+**silhouette** is the standard cluster-quality number: how much closer a point sits to
+its own cluster than to the nearest other one, in [−1, 1]. 1 is cleanly separated, 0 is
+on the boundary, negative means probably in the wrong cluster. Computed with prefix sums
+over the sorted groups, so the whole table costs `O(n·k·log n)` rather than `O(n²)`.
+
+The "All" row adds the share of total spread the clustering accounts for, `1 − WCSS/TSS`.
+If the weakest cluster drops below a silhouette of 0,5 the note says so and suggests
+checking k. Copy the whole table as TSV with one button.
+
 ## Output
 
 - **Copy for Excel (TSV)** — the inverse of the paste-in path
@@ -104,4 +125,4 @@ They are never silently dropped.
 | `script.js` | form reading, chart painting, hover |
 | `index.html` | single-page UI |
 | `SPEC.md` | the contract, with the defect list it was written against |
-| `test.js` | 49 verification vectors — `node test.js` |
+| `test.js` | 70 verification vectors — `node test.js` |
