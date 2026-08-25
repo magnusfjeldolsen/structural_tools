@@ -153,6 +153,39 @@ eq('every step is a valid hex colour',
   A.rampFor(12).every(c => /^#[0-9a-f]{6}$/.test(c)), true);
 eq('ramp is deterministic', A.rampFor(9).join(), A.rampFor(9).join());
 
+// ---- histogram and threshold (the distribution view)
+const dv = [1, 2, 2, 3, 3, 3, 4, 4, 5, 9];
+const dpre = A.prefixSums(dv);
+eq('prefix sums', Array.from(dpre), [0, 1, 3, 5, 8, 11, 14, 18, 22, 27, 36]);
+eq('upperBound below everything', A.upperBound(dv, 0), 0);
+eq('upperBound is inclusive of equals', A.upperBound(dv, 3), 6);
+eq('upperBound above everything', A.upperBound(dv, 99), dv.length);
+
+const hh = A.histogram(dv, 4);
+eq('histogram bin count', hh.bins.length, 4);
+eq('every value lands in exactly one bin', hh.bins.reduce((a, b) => a + b.n, 0), dv.length);
+eq('histogram spans the data', [hh.lo, hh.hi], [1, 9]);
+eq('tallest bin is reported', hh.max, Math.max.apply(null, hh.bins.map(b => b.n)));
+eq('histogram of one value does not divide by zero', A.histogram([5, 5, 5], 4).bins.length, 4);
+eq('empty histogram is empty', A.histogram([], 4).bins.length, 0);
+eq('bin count is clamped', A.histogram(dv, 9999).bins.length, 500);
+
+const ts = A.thresholdStats(dv, dpre, 3);
+eq('threshold splits at or below / above', [ts.below, ts.above], [6, 4]);
+near('shares sum to one', ts.belowShare + ts.aboveShare, 1, 1e-12);
+near('mean below', ts.meanBelow, 14 / 6, 1e-12);
+near('mean above', ts.meanAbove, (36 - 14) / 4, 1e-12);
+eq('threshold above the top leaves nothing above', A.thresholdStats(dv, dpre, 99).above, 0);
+eq('nothing above means no mean above', A.thresholdStats(dv, dpre, 99).meanAbove, null);
+eq('threshold below the bottom leaves nothing below', A.thresholdStats(dv, dpre, -1).below, 0);
+eq('empty series has no threshold stats', A.thresholdStats([], A.prefixSums([]), 1), null);
+eq('percentile matches the below share', A.thresholdStats(dv, dpre, 4).percentile,
+  A.thresholdStats(dv, dpre, 4).belowShare);
+
+eq('suggestBins is sane on a spread', A.suggestBins(dv) >= 1 && A.suggestBins(dv) <= 120, true);
+eq('suggestBins on identical values', A.suggestBins([2, 2, 2]), 1);
+eq('suggestBins on a single value', A.suggestBins([7]), 1);
+
 // ---- quoted delimiters survive
 eq('quoted delimiter', A.splitRow('a;"b;c";d', ';'), ['a', 'b;c', 'd']);
 
