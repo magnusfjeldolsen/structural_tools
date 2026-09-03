@@ -78,13 +78,20 @@ export function defaultConnector() {
 export const DEFAULT_MATERIAL = { name: 'S355', E: 210000 };
 
 /**
- * Standard lastdata (v3, §3/§4 i joints-planen). To lasttilstander —
- * superposisjon: `before` virker på tverrsnittet av bare `existing`-formene,
- * `after` på det sammensatte tverrsnittet. V og N i kN, M i kNm, L (forankrings-
- * lengden ΔN skal innføres over) i arbeidsenheten.
+ * Standard lastdata (v4, §1 i samvirkeplanen — biaksiell last). To
+ * lasttilstander — superposisjon: `before` virker på tverrsnittet av bare
+ * `existing`-formene, `after` på det sammensatte tverrsnittet. Hver tilstand
+ * er `{Vy, Vx, N, Mx, My}` — `Vy`/`N` i kN, `Mx`/`My` i kNm — se
+ * fortegnskonvensjonene i `reinforcement.js` (§9 i samvirkeplanen: `M_y` er
+ * her `∫σx dA`, IKKE den vanlige `−∫σx dA`). `L` (forankringslengden ΔN skal
+ * innføres over) er i arbeidsenheten.
  */
 export function defaultLoads() {
-  return { before: { V: 0, N: 0, M: 0 }, after: { V: 0, N: 0, M: 0 }, L: 1000 };
+  return {
+    before: { Vy: 0, Vx: 0, N: 0, Mx: 0, My: 0 },
+    after: { Vy: 0, Vx: 0, N: 0, Mx: 0, My: 0 },
+    L: 1000,
+  };
 }
 
 function num(v, fallback = 0) {
@@ -93,24 +100,41 @@ function num(v, fallback = 0) {
 }
 
 /**
- * Oppgraderer lastdata fra det flate v1/v2-formatet `{V,N,M,L}` til v3 sine to
- * lasttilstander. Gammel `V`/`N`/`M` legges i `after` — det er den tolkningen
- * som stemmer med hva feltene betydde før: last som virker på HELE (sammensatte)
- * tverrsnittet var alt verktøyet kjente til den gangen. `before` blir 0/0/0.
- * Er dataene allerede v3 (har `before`/`after`), fylles bare manglende felt ut.
+ * Én lasttilstand (`before` eller `after`) oppgradert til v4 sitt biaksielle
+ * `{Vy, Vx, N, Mx, My}`. To eldre former gjenkjennes:
+ *  - v4 selv (har allerede `Vy`, `Vx`, `Mx` eller `My`) — fyller bare ut det
+ *    som mangler.
+ *  - v3, enakslet `{V, N, M}` — gammel `V` blir `Vy`, gammel `M` blir `Mx`,
+ *    og `Vx`/`My` settes til 0 (ingen skjev bøyning fantes i den modellen).
+ */
+function migrateLoadState(s) {
+  const src = s || {};
+  const isBiaxial = src.Vy !== undefined || src.Vx !== undefined || src.Mx !== undefined || src.My !== undefined;
+  if (isBiaxial) {
+    return { Vy: num(src.Vy), Vx: num(src.Vx), N: num(src.N), Mx: num(src.Mx), My: num(src.My) };
+  }
+  return { Vy: num(src.V), Vx: 0, N: num(src.N), Mx: num(src.M), My: 0 };
+}
+
+/**
+ * Oppgraderer lastdata fra det flate v1/v2-formatet `{V,N,M,L}`, eller v3 sine
+ * enakslede `{before,after}`, til v4 sine biaksielle lasttilstander. Gammel
+ * flat `V`/`N`/`M` (v1/v2) legges i `after` — det er den tolkningen som
+ * stemmer med hva feltene betydde før: last som virker på HELE (sammensatte)
+ * tverrsnittet var alt verktøyet kjente til den gangen. `before` blir 0.
  */
 function migrateLoads(loads) {
   const l = loads || {};
   if (l.before || l.after) {
     return {
-      before: { V: num(l.before && l.before.V), N: num(l.before && l.before.N), M: num(l.before && l.before.M) },
-      after: { V: num(l.after && l.after.V), N: num(l.after && l.after.N), M: num(l.after && l.after.M) },
+      before: migrateLoadState(l.before),
+      after: migrateLoadState(l.after),
       L: Number.isFinite(l.L) ? l.L : 1000,
     };
   }
   return {
-    before: { V: 0, N: 0, M: 0 },
-    after: { V: num(l.V), N: num(l.N), M: num(l.M) },
+    before: { Vy: 0, Vx: 0, N: 0, Mx: 0, My: 0 },
+    after: migrateLoadState(l),
     L: Number.isFinite(l.L) ? l.L : 1000,
   };
 }
@@ -211,7 +235,10 @@ function migrateShape(s) {
  *    `stage`/`material` på formene, ingen grensesnitt/skjøter.
  *  - v2: `interfaces` (flat `groupIds`-modell) og flat `loads` {V,N,M,L}.
  *  - v3: `joints` (§4 — `a`,`b`,`bondWidth`,`share`,`connector`, INGEN
- *    `groupIds`) og lastdata med to tilstander, `{before,after,L}` (§3).
+ *    `groupIds`) og lastdata med to tilstander, `{before,after,L}`, ENAKSLET
+ *    `{V,N,M}` per tilstand (§3 i joints-planen).
+ *  - v4: lastdata er BIAKSIELL — hver tilstand er `{Vy,Vx,N,Mx,My}` i stedet
+ *    for `{V,N,M}` (§1 i samvirkeplanen). Gammel `V` → `Vy`, gammel `M` → `Mx`.
  */
 function migrate(data) {
   const out = { ...data };
@@ -243,7 +270,7 @@ function migrate(data) {
   delete out.interfaces;
 
   out.loads = migrateLoads(out.loads);
-  out.version = 3;
+  out.version = 4;
   return out;
 }
 
@@ -866,10 +893,10 @@ export class Store {
   }
 
   /**
-   * Globale lastdata for forsterkningsberegningen (v3, §3). `patch.before` og
-   * `patch.after` slås sammen felt-for-felt inn i den eksisterende
-   * lasttilstanden, slik at `setLoads({ after: { V: 100 } })` ikke nullstiller
-   * `after.N`/`after.M`.
+   * Globale lastdata for forsterkningsberegningen (v4, biaksiell — §1 i
+   * samvirkeplanen). `patch.before` og `patch.after` slås sammen felt-for-felt
+   * inn i den eksisterende lasttilstanden `{Vy,Vx,N,Mx,My}`, slik at
+   * `setLoads({ after: { Vy: 100 } })` ikke nullstiller `after.N`/`after.Mx`.
    */
   setLoads(patch) {
     this.mutate((st) => {
@@ -919,7 +946,7 @@ export class Store {
     return JSON.stringify(
       {
         format: 'structural_tools.geometry_workspace',
-        version: 3,
+        version: 4,
         title: this.state.title,
         unit: this.state.unit,
         mode: this.state.mode,
