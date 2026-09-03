@@ -29,8 +29,43 @@ function nextId() {
 }
 
 /**
+ * Standardmateriale for en form. E er i N/mm², uavhengig av arbeidsenheten,
+ * fordi mekanikken alltid regnes i N og mm.
+ *
+ * MERK: dette er en innebygd standard slik at datamodellen står støtt alene.
+ * Presetlista og materialvelgeren hører hjemme i `js/materials.js` — agent C
+ * kobler dette feltet mot den modulen.
+ */
+export const DEFAULT_MATERIAL = { name: 'S355', E: 210000 };
+
+/** Standard lastdata. V og N i kN, M i kNm, L i arbeidsenheten. */
+export function defaultLoads() {
+  return { V: 0, N: 0, M: 0, L: 1000 };
+}
+
+/**
+ * Oppgraderer én form til gjeldende datamodell. `stage` skiller eksisterende
+ * tverrsnitt fra den nye delen som limes eller skrus på, og `material.E`
+ * brukes av forsterkningsberegningen. `factor` er fortsatt bare en vektfaktor
+ * for tyngdepunktsberegningen — de to er uavhengige.
+ */
+function migrateShape(s) {
+  const mat = s && s.material;
+  return {
+    ...s,
+    stage: s && s.stage === 'new' ? 'new' : 'existing',
+    material: {
+      name: mat && mat.name ? String(mat.name) : DEFAULT_MATERIAL.name,
+      E: mat && Number.isFinite(mat.E) ? mat.E : DEFAULT_MATERIAL.E,
+    },
+  };
+}
+
+/**
  * Oppgraderer lagret tilstand fra eldre versjoner. Tidligere lå snap som et
  * enkelt av/på-flagg på rutenettet; nå er det én bryter per snap-type.
+ * Fra versjon 2 har hver form `stage` og `material`, og modellen har
+ * `interfaces` og `loads`.
  */
 function migrate(data) {
   const out = { ...data };
@@ -54,6 +89,9 @@ function migrate(data) {
   for (const key of SNAP_KEYS) if (out.snaps[key] === undefined) out.snaps[key] = key !== 'center';
   if (out.ortho === undefined) out.ortho = false;
   if (out.underlay === undefined) out.underlay = null;
+  if (Array.isArray(out.shapes)) out.shapes = out.shapes.map(migrateShape);
+  if (!Array.isArray(out.interfaces)) out.interfaces = [];
+  out.loads = { ...defaultLoads(), ...(out.loads || {}) };
   return out;
 }
 
@@ -70,6 +108,9 @@ function defaultState() {
     ortho: false,
     underlay: null,
     title: '',
+    // Grensesnitt mellom eksisterende og ny del. Fylles av agent C.
+    interfaces: [],
+    loads: defaultLoads(),
   };
 }
 
@@ -106,6 +147,8 @@ export class Store {
       ortho: this.state.ortho,
       underlay: this.state.underlay,
       title: this.state.title,
+      interfaces: this.state.interfaces,
+      loads: this.state.loads,
     });
   }
 
@@ -137,6 +180,27 @@ export class Store {
     this._pending = null;
     this.persist();
     this.emit(reason);
+  }
+
+  /**
+   * Forkaster en transient sekvens og setter tilstanden tilbake til slik den
+   * var da sekvensen startet. Brukes av Esc i flytte-, kopi- og
+   * roteringsverktøyet, slik at et avbrutt verktøy ikke legger igjen spor —
+   * verken i geometrien eller i historikken.
+   */
+  rollback(reason = 'cancel') {
+    if (this._pending === null) return false;
+    const json = this._pending;
+    this._pending = null;
+    this.restore(json);
+    this.persist();
+    this.emit(reason);
+    return true;
+  }
+
+  /** Er en transient sekvens i gang? */
+  get isTransient() {
+    return this._pending !== null;
   }
 
   restore(json) {
@@ -187,6 +251,12 @@ export class Store {
       include: true,
       color: opts.color || PALETTE[this.state.shapes.length % PALETTE.length],
       meta: opts.meta || null,
+      // Nytt tegnet materiale hører som standard til det eksisterende
+      // tverrsnittet; brukeren merker selv av hva som er ny del.
+      stage: opts.stage === 'new' ? 'new' : 'existing',
+      material: opts.material
+        ? { name: opts.material.name, E: opts.material.E }
+        : { ...DEFAULT_MATERIAL },
     };
     this.mutate((st) => {
       st.shapes.unshift(shape); // nyeste øverst = høyest prioritet
@@ -210,6 +280,66 @@ export class Store {
     this.updateShape(id, { points: points.map((p) => [p[0], p[1]]) }, opts);
   }
 
+  /**
+   * Setter punkter på flere former under ett. Flytte-, roterings- og
+   * speilverktøyet bruker denne med `transient: true` under forhåndsvisningen,
+   * og avslutter med commit(), slik at hele kommandoen blir ett undo-steg.
+   */
+  setManyPoints(entries, opts = {}) {
+    this.mutate((st) => {
+      for (const { id, points } of entries) {
+        const s = st.shapes.find((x) => x.id === id);
+        if (s) s.points = points.map((p) => [p[0], p[1]]);
+      }
+    }, opts);
+  }
+
+  /**
+   * Flytter formene, og eventuelt nullpunktet med samme vektor. Sentrering
+   * bruker `withReference`, slik at referansemålene i resultatpanelet ikke
+   * endrer seg utilsiktet av at geometrien blir flyttet.
+   */
+  moveShapes(ids, dx, dy, { withReference = false, reason = 'move' } = {}) {
+    const set = new Set(ids);
+    this.mutate((st) => {
+      for (const s of st.shapes) {
+        if (set.has(s.id)) s.points = translatePoints(s.points, dx, dy);
+      }
+      if (withReference) st.reference = [st.reference[0] + dx, st.reference[1] + dy];
+    }, { reason });
+  }
+
+  /**
+   * Legger igjen kopier av formene. `variants` er én oppføring per kopi, og
+   * kan være enten en forskyvning `[dx, dy]` eller en funksjon
+   * `(points, shape) => points` for kopier som også speiles eller roteres.
+   * Hele rekka blir ett undo-steg, slik at en rekke-kopi angres under ett.
+   */
+  copyShapes(ids, variants, { select = true, reason = 'copy' } = {}) {
+    const set = new Set(ids);
+    const copies = [];
+    this.mutate((st) => {
+      const src = st.shapes.filter((s) => set.has(s.id));
+      for (const v of variants) {
+        const apply = typeof v === 'function' ? v : (pts) => translatePoints(pts, v[0], v[1]);
+        for (const s of src) {
+          const copy = {
+            ...s,
+            id: nextId(),
+            name: `${s.name} (kopi)`,
+            points: apply(s.points, s).map((p) => [p[0], p[1]]),
+            // Egen materialobjekt, ellers ville kopien dele det med originalen
+            material: { ...s.material },
+          };
+          copies.push(copy);
+          st.shapes.unshift(copy);
+        }
+      }
+      if (select && copies.length) st.selection = copies.map((c) => c.id);
+    }, { reason });
+    return copies;
+  }
+
   removeShapes(ids) {
     const set = new Set(ids);
     this.mutate((st) => {
@@ -229,6 +359,8 @@ export class Store {
           id: nextId(),
           name: `${s.name} (kopi)`,
           points: translatePoints(s.points, dx, dy),
+          // Egen materialobjekt, ellers ville kopien dele det med originalen
+          material: { ...s.material },
         };
         copies.push(copy);
         st.shapes.unshift(copy);
@@ -321,6 +453,13 @@ export class Store {
         st.shapes = st.shapes.map((s) => ({ ...s, points: s.points.map(([x, y]) => [x * k, y * k]) }));
         st.reference = [st.reference[0] * k, st.reference[1] * k];
         st.grid.step = st.grid.step * k;
+        // Grensesnittlinjene er geometri, og L er en lengde i arbeidsenheten
+        st.interfaces = st.interfaces.map((f) => ({
+          ...f,
+          a: [f.a[0] * k, f.a[1] * k],
+          b: [f.b[0] * k, f.b[1] * k],
+        }));
+        if (Number.isFinite(st.loads.L)) st.loads.L = st.loads.L * k;
         if (st.underlay) {
           st.underlay = {
             ...st.underlay,
@@ -356,10 +495,19 @@ export class Store {
     }, { reason: 'title', transient: true });
   }
 
+  /** Globale lastdata for forsterkningsberegningen. */
+  setLoads(patch) {
+    this.mutate((st) => {
+      Object.assign(st.loads, patch);
+    }, { reason: 'loads', transient: true });
+    this.commit('loads');
+  }
+
   clear() {
     this.mutate((st) => {
       st.shapes = [];
       st.selection = [];
+      st.interfaces = [];
     }, { reason: 'clear' });
   }
 
@@ -394,7 +542,7 @@ export class Store {
     return JSON.stringify(
       {
         format: 'structural_tools.geometry_workspace',
-        version: 1,
+        version: 2,
         title: this.state.title,
         unit: this.state.unit,
         mode: this.state.mode,
@@ -404,6 +552,8 @@ export class Store {
         ortho: this.state.ortho,
         underlay: this.state.underlay,
         shapes: this.state.shapes,
+        interfaces: this.state.interfaces,
+        loads: this.state.loads,
       },
       null,
       2
@@ -414,16 +564,21 @@ export class Store {
     const data = JSON.parse(text);
     if (!data || !Array.isArray(data.shapes)) throw new Error('Ugyldig fil: mangler "shapes"');
     this.mutate((st) => {
-      st.shapes = data.shapes.map((s, i) => ({
-        id: s.id || `s${i + 1}`,
-        name: s.name || `Form ${i + 1}`,
-        points: (s.points || []).map((p) => [Number(p[0]), Number(p[1])]),
-        role: s.role === 'void' ? 'void' : 'solid',
-        factor: Number.isFinite(s.factor) ? s.factor : 1,
-        include: s.include !== false,
-        color: s.color || PALETTE[i % PALETTE.length],
-        meta: s.meta || null,
-      }));
+      st.shapes = data.shapes.map((s, i) =>
+        // migrateShape fyller inn stage og material for filer fra versjon 1
+        migrateShape({
+          id: s.id || `s${i + 1}`,
+          name: s.name || `Form ${i + 1}`,
+          points: (s.points || []).map((p) => [Number(p[0]), Number(p[1])]),
+          role: s.role === 'void' ? 'void' : 'solid',
+          factor: Number.isFinite(s.factor) ? s.factor : 1,
+          include: s.include !== false,
+          color: s.color || PALETTE[i % PALETTE.length],
+          meta: s.meta || null,
+          stage: s.stage,
+          material: s.material,
+        })
+      );
       st.selection = [];
       st.reference = data.reference || [0, 0];
       st.mode = data.mode === 'priority' ? 'priority' : 'sum';
@@ -434,6 +589,8 @@ export class Store {
       if (m.snaps) Object.assign(st.snaps, m.snaps);
       st.ortho = !!m.ortho;
       st.underlay = m.underlay || null;
+      st.interfaces = m.interfaces;
+      st.loads = m.loads;
     }, { reason: 'import' });
     this.syncUid();
   }

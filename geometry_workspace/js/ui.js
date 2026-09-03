@@ -16,7 +16,17 @@ import {
   translatePoints,
   rotatePoints,
   mirrorPoints,
+  centroidOfPoints,
+  centroidOfShapes,
 } from './geometry.js';
+import {
+  describeShape,
+  rectPointsFromParams,
+  rectAnchorPoint,
+  circlePointsFromParams,
+  RECT_ANCHORS,
+  isRectAnchor,
+} from './shapes.js';
 import { SNAP_TYPES, SNAP_ALL, ORTHO } from './snapping.js';
 import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel } from './units.js';
 
@@ -99,7 +109,25 @@ const TOOL_TITLES = {
   polygon: 'Polygon',
   circle: 'Sirkel',
   reference: 'Nullpunkt',
+  move: 'Flytt utvalg',
+  copy: 'Kopier utvalg',
+  rotate: 'Roter utvalg',
+  mirror: 'Speil utvalg',
 };
+
+/** Overskriften på parameterseksjonen, etter hva formen viser seg å være. */
+const PARAM_TITLES = {
+  rect: 'Rektangel — b, h og rotasjon',
+  circle: 'Sirkel — senter og radius',
+  shell: 'Skall — senterlinje og tykkelse',
+};
+
+/** Sentrene en rotasjon eller speiling kan gjøres om. */
+const CENTER_OPTIONS = [
+  { key: 'reference', label: 'nullpunktet' },
+  { key: 'centroid', label: 'utvalgets tyngdepunkt' },
+  { key: 'pick', label: 'et klikket punkt' },
+];
 
 const field = (key, label, value, step = '') =>
   `<div>
@@ -125,6 +153,10 @@ export class UI {
     this.expanded = new Set();
     /** Åpne underseksjoner, nøkler som `${id}:coords`. */
     this.sections = new Set();
+    /** Formene som viser koordinatene relativt til sitt eget tyngdepunkt. */
+    this.relCoords = new Set();
+    /** Valgt ankerpunkt per form i det parametriske panelet. */
+    this.anchors = new Map();
     this._lastSelectionKey = '';
 
     /** Sist innlagte tall per verktøy, så menyene husker hva du skrev. */
@@ -134,9 +166,27 @@ export class UI {
       circle: { x: 0, y: 0, r: 200 },
       polygon: { text: '' },
       reference: { x: 0, y: 0 },
+      move: { dx: 0, dy: 0 },
+      copy: { dx: 0, dy: 0, n: 1 },
+      rotate: { angle: 90, center: 'pick' },
+      mirror: { keep: true },
+      // Transformasjonspanelet i venstre panel, som virker på hele utvalget
+      placement: { dx: 0, dy: 0, angle: 90, center: 'reference', keep: false },
     };
 
     this._bind();
+    this._syncToolOptions();
+  }
+
+  /**
+   * Speiler menyvalgene over i verktøyene, slik at antall kopier, «behold
+   * original» og valgt rotasjonssenter gjelder også når kommandoen kjøres
+   * ved å klikke i lerretet.
+   */
+  _syncToolOptions() {
+    this.tools.options.copies = Math.max(1, Math.round(this.form.copy.n) || 1);
+    this.tools.options.keepOriginal = !!this.form.mirror.keep;
+    this.tools.options.rotateCenter = this.form.rotate.center;
   }
 
   /** Tykkelsen tegneverktøyet for skall skal bruke. */
@@ -388,7 +438,70 @@ export class UI {
           Eller klikk i lerretet. Alle avvik i resultatpanelet måles fra dette punktet.
         </p>`;
     }
+    if (tool === 'move') {
+      return `
+        ${this._selectionNote()}
+        <div class="grid grid-cols-2 gap-1.5">
+          ${field('dx', 'Δx', f.move.dx)}${field('dy', 'Δy', f.move.dy)}
+        </div>
+        <button data-add class="w-full mt-2 px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded">Flytt utvalg</button>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          Eller klikk basispunkt og deretter sluttpunkt i lerretet. Begge snappes, og orto virker.
+        </p>`;
+    }
+    if (tool === 'copy') {
+      return `
+        ${this._selectionNote()}
+        <div class="grid grid-cols-3 gap-1.5">
+          ${field('dx', 'Δx', f.copy.dx)}${field('dy', 'Δy', f.copy.dy)}${field('n', 'Antall', f.copy.n, 'min="1" step="1"')}
+        </div>
+        <button data-add class="w-full mt-2 px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded">Kopier utvalg</button>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          Antall over én gir en rekke med jevn avstand langs vektoren. Klikker du i lerretet, blir
+          verktøyet stående med samme basispunkt, så du kan sette flere kopier etter hverandre.
+        </p>`;
+    }
+    if (tool === 'rotate') {
+      return `
+        ${this._selectionNote()}
+        <div class="flex items-end gap-1.5">
+          <div class="flex-1">${field('angle', 'Vinkel [°]', f.rotate.angle, 'step="1"')}</div>
+          <button data-add class="px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded whitespace-nowrap">Roter utvalg</button>
+        </div>
+        <div class="mt-2">
+          <label class="field-label" for="f-center">Senteret er</label>
+          <select id="f-center" data-form="center">
+            ${CENTER_OPTIONS.map(
+              (o) => `<option value="${o.key}" ${f.rotate.center === o.key ? 'selected' : ''}>${o.label}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          Positiv vinkel er mot klokka. I lerretet klikker du senter, så et referansepunkt for
+          startvinkelen, og til slutt der det skal ende — hold Shift for å låse til 15°.
+        </p>`;
+    }
+    if (tool === 'mirror') {
+      return `
+        ${this._selectionNote()}
+        <label class="flex items-center gap-1.5 text-[11px] text-slate-300">
+          <input data-form="keep" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" ${f.mirror.keep ? 'checked' : ''} />
+          Behold originalen
+        </label>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          Klikk to punkt i lerretet — de definerer speilaksen. Aksen kan ligge hvor som helst og
+          ha hvilken som helst retning. Faste akser gjennom nullpunktet ligger i «Plassering».
+        </p>`;
+    }
     return null;
+  }
+
+  /** Liten linje som sier hva transformasjonen kommer til å virke på. */
+  _selectionNote() {
+    const n = this.store.state.selection.length;
+    return `<p id="sel-note" class="text-[11px] ${n ? 'text-slate-400' : 'text-amber-300'} mb-2 leading-snug">${
+      n ? `Virker på ${n} markert${n === 1 ? ' form' : 'e former'}.` : 'Ingen form er markert ennå.'
+    }</p>`;
   }
 
   _bindPopover(tool) {
@@ -400,9 +513,13 @@ export class UI {
 
     const target = tool === 'polygon' ? this.form.polygon : this.form[tool];
     el.querySelectorAll('[data-form]').forEach((input) => {
-      input.addEventListener('input', (e) => {
+      const evt = input.type === 'checkbox' || input.tagName === 'SELECT' ? 'change' : 'input';
+      input.addEventListener(evt, (e) => {
         const key = e.target.dataset.form;
-        target[key] = e.target.type === 'number' ? Number(e.target.value) || 0 : e.target.value;
+        if (e.target.type === 'checkbox') target[key] = e.target.checked;
+        else if (e.target.type === 'number') target[key] = Number(e.target.value) || 0;
+        else target[key] = e.target.value;
+        this._syncToolOptions();
       });
     });
 
@@ -414,8 +531,56 @@ export class UI {
         else if (tool === 'circle') this._addCircle();
         else if (tool === 'polygon') this._addPastedPolygon();
         else if (tool === 'reference') this.store.setReference([this.form.reference.x, this.form.reference.y]);
+        else if (tool === 'move') this._runMove(this.form.move.dx, this.form.move.dy);
+        else if (tool === 'copy') this._runCopy(this.form.copy.dx, this.form.copy.dy, this.form.copy.n);
+        else if (tool === 'rotate') this._runRotate(this.form.rotate.angle, this.form.rotate.center);
       });
     }
+  }
+
+  /* ---------------- transformasjoner fra tall ---------------- */
+
+  /** Rotasjons-/speilsenteret som svarer til valget i menyen. */
+  _centerFor(key) {
+    if (key === 'reference') return this.store.state.reference.slice();
+    if (key === 'centroid') return centroidOfShapes(this.store.selectedShapes());
+    return null;
+  }
+
+  _runMove(dx, dy) {
+    const res = this.tools.moveSelection(dx, dy);
+    this.toast(res.msg);
+  }
+
+  _runCopy(dx, dy, n) {
+    const ids = this.store.state.selection;
+    if (!ids.length) return this.toast('Ingen form er markert.');
+    if (!dx && !dy) return this.toast('Δx og Δy er begge null — kopien ville havnet oppå originalen.');
+    const count = Math.max(1, Math.round(n) || 1);
+    const offsets = [];
+    for (let i = 1; i <= count; i++) offsets.push([dx * i, dy * i]);
+    this.store.copyShapes(ids, offsets, { reason: 'copy' });
+    this.toast(`${count === 1 ? 'Kopi' : `${count} kopier`} lagt inn.`);
+  }
+
+  _runRotate(angle, centerKey) {
+    if (centerKey === 'pick') {
+      this.tools.setTool('rotate');
+      return this.toast('Klikk rotasjonssenteret i lerretet.');
+    }
+    const c = this._centerFor(centerKey);
+    if (!c) return this.toast('Fant ikke noe senter å rotere om.');
+    const res = this.tools.rotateSelection(angle, c);
+    this.toast(res.msg);
+  }
+
+  /** Speiler utvalget om en vannrett eller loddrett akse gjennom senteret. */
+  _runMirror(axis, centerKey, keep) {
+    const c = this._centerFor(centerKey);
+    if (!c) return this.toast('Fant ikke noe senter å speile om.');
+    const b = axis === 'horizontal' ? [c[0] + 1, c[1]] : [c[0], c[1] + 1];
+    const res = this.tools.mirrorSelection(c, b, { keepOriginal: keep });
+    this.toast(res.msg);
   }
 
   /* ---------------- legg til ---------------- */
@@ -464,6 +629,142 @@ export class UI {
     if (pts.length < 3) return this.toast('Et polygon trenger minst tre punkt.');
     this.store.addShape(pts, { name: 'Polygon' });
     this.viewport.zoomToFit(this.store.bounds());
+  }
+
+  /* ---------------- plassering ---------------- */
+
+  /**
+   * Transformasjonspanelet som virker på hele utvalget under ett, pluss de to
+   * sentreringsknappene. Det per form finnes fortsatt inne i geometrilista.
+   */
+  _renderPlacement() {
+    const host = $('placement-panel');
+    const f = this.form.placement;
+    const n = this.store.state.selection.length;
+    const unit = lengthLabel(this.store.state.unit);
+
+    const btn = (attr, label, cls = 'bg-slate-700 hover:bg-slate-600') =>
+      `<button ${attr} class="flex-1 px-2 py-1.5 text-[11px] ${cls} rounded border border-slate-600">${label}</button>`;
+
+    host.innerHTML = `
+      <div class="space-y-2">
+        <div class="flex gap-1.5">
+          ${btn('data-pl="center-selection"', 'Sentrer utvalg i origo')}
+          ${btn('data-pl="center-all"', 'Sentrer alt i origo')}
+        </div>
+        <p class="text-[11px] text-slate-500 leading-snug">
+          Sentreringen flytter nullpunktet med samme vektor, slik at avvikene i resultatpanelet
+          ikke endrer seg av flyttingen.
+        </p>
+
+        <div class="border-t border-slate-700 pt-2 space-y-2">
+          <div class="text-[11px] ${n ? 'text-slate-400' : 'text-amber-300'}">
+            ${n ? `Transformer ${n} markert${n === 1 ? ' form' : 'e former'} under ett` : 'Marker former for å transformere dem'}
+          </div>
+
+          <div class="flex items-end gap-1.5">
+            <div class="flex-1">
+              <label class="field-label" for="pl-dx">Δx [${unit}]</label>
+              <input id="pl-dx" data-pl-form="dx" data-focus-key="pl-dx" type="number" value="${f.dx}" />
+            </div>
+            <div class="flex-1">
+              <label class="field-label" for="pl-dy">Δy [${unit}]</label>
+              <input id="pl-dy" data-pl-form="dy" data-focus-key="pl-dy" type="number" value="${f.dy}" />
+            </div>
+            <button data-pl="move" class="px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Flytt</button>
+          </div>
+
+          <div>
+            <label class="field-label" for="pl-center">Senter for rotasjon og speiling</label>
+            <select id="pl-center" data-pl-form="center" data-focus-key="pl-center">
+              ${CENTER_OPTIONS.filter((o) => o.key !== 'pick')
+                .map((o) => `<option value="${o.key}" ${f.center === o.key ? 'selected' : ''}>${o.label}</option>`)
+                .join('')}
+            </select>
+          </div>
+
+          <div class="flex items-end gap-1.5">
+            <div class="flex-1">
+              <label class="field-label" for="pl-angle">Vinkel [°]</label>
+              <input id="pl-angle" data-pl-form="angle" data-focus-key="pl-angle" type="number" step="1" value="${f.angle}" />
+            </div>
+            <button data-pl="rotate" class="px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Roter</button>
+          </div>
+
+          <div class="flex gap-1.5">
+            ${btn('data-pl="mirror-h"', 'Speil om vannrett akse')}
+            ${btn('data-pl="mirror-v"', 'Speil om loddrett akse')}
+          </div>
+
+          <label class="flex items-center gap-1.5 text-[11px] text-slate-300">
+            <input data-pl-form="keep" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" ${f.keep ? 'checked' : ''} />
+            Behold originalen ved speiling
+          </label>
+        </div>
+      </div>`;
+
+    host.querySelectorAll('[data-pl-form]').forEach((input) => {
+      const key = input.dataset.plForm;
+      const evt = input.type === 'checkbox' || input.tagName === 'SELECT' ? 'change' : 'input';
+      input.addEventListener(evt, (e) => {
+        if (e.target.type === 'checkbox') f[key] = e.target.checked;
+        else if (e.target.type === 'number') f[key] = Number(e.target.value) || 0;
+        else f[key] = e.target.value;
+      });
+    });
+
+    host.querySelectorAll('[data-pl]').forEach((el) => {
+      el.addEventListener('click', () => {
+        switch (el.dataset.pl) {
+          case 'center-selection':
+            this._centerSelection();
+            break;
+          case 'center-all':
+            this._centerAll();
+            break;
+          case 'move':
+            this._runMove(f.dx, f.dy);
+            break;
+          case 'rotate':
+            this._runRotate(f.angle, f.center);
+            break;
+          case 'mirror-h':
+            this._runMirror('horizontal', f.center, f.keep);
+            break;
+          case 'mirror-v':
+            this._runMirror('vertical', f.center, f.keep);
+            break;
+        }
+      });
+    });
+  }
+
+  /**
+   * Flytter de markerte formene slik at deres arealvektede tyngdepunkt havner
+   * i (0, 0). Vektfaktorer og overlapphåndtering holdes utenfor her — dette
+   * er ren plassering av geometri, ikke en beregning.
+   */
+  _centerSelection() {
+    const sel = this.store.state.selection;
+    if (!sel.length) return this.toast('Ingen form er markert.');
+    const c = centroidOfShapes(this.store.selectedShapes());
+    if (!c) return this.toast('Fant ikke noe tyngdepunkt i utvalget.');
+    this.store.moveShapes(sel, -c[0], -c[1], { withReference: true, reason: 'center' });
+    this.toast(`Utvalget sentrert: flyttet Δx = ${fmtLen(-c[0])}, Δy = ${fmtLen(-c[1])}.`);
+  }
+
+  /**
+   * Flytter hele modellen slik at det sammensatte tyngdepunktet havner i
+   * (0, 0) — samme punkt som resultatpanelet viser, altså med vektfaktorer og
+   * valgt overlappmodus.
+   */
+  _centerAll() {
+    if (!this.analysis || !this.analysis.result.valid) return this.toast('Ingen geometri å sentrere.');
+    const { cx, cy } = this.analysis.result;
+    const ids = this.store.state.shapes.map((s) => s.id);
+    if (!ids.length) return this.toast('Ingen geometri å sentrere.');
+    this.store.moveShapes(ids, -cx, -cy, { withReference: true, reason: 'center' });
+    this.toast(`Modellen sentrert: flyttet Δx = ${fmtLen(-cx)}, Δy = ${fmtLen(-cy)}.`);
   }
 
   /* ---------------- kommandoer ---------------- */
@@ -558,6 +859,8 @@ export class UI {
       if (sel.length === 1) {
         this.expanded = new Set([sel[0]]);
         this._scrollTo = sel[0];
+        // Er formen parametrisk, er det de tallene man vil ha fram først
+        if (describeShape(this.store.getShape(sel[0]))) this.sections.add(`${sel[0]}:params`);
       }
     }
 
@@ -565,6 +868,7 @@ export class UI {
       this._renderControls();
       this._renderSnapChips();
       this._renderUnderlay();
+      this._renderPlacement();
       this._renderList();
       this._renderResults(analysis);
     });
@@ -599,6 +903,11 @@ export class UI {
 
     const n = s.shapes.length;
     $('shape-count').textContent = n ? `(${n})` : '';
+
+    // Verktøymenyen for flytt/kopi/roter/speil sier hvor mange former den
+    // virker på; den må holdes à jour når utvalget endrer seg.
+    const note = $('sel-note');
+    if (note) note.outerHTML = this._selectionNote();
   }
 
   /** Den lille snap-kontrollen nede til høyre i lerretet. */
@@ -850,6 +1159,11 @@ export class UI {
           this.expanded.delete(id);
           this.store.removeShapes([id]);
           break;
+        case 'relcoords':
+          if (this.relCoords.has(id)) this.relCoords.delete(id);
+          else this.relCoords.add(id);
+          this._renderList();
+          break;
         case 'section': {
           const key = `${id}:${btn.dataset.section}`;
           if (this.sections.has(key)) this.sections.delete(key);
@@ -863,6 +1177,98 @@ export class UI {
     this._bindEditors();
   }
 
+  /**
+   * Ankerpunktet den parametriske redigeringen skalerer om. Valget er en
+   * ren visningspreferanse, så det ligger i UI-et — men det skrives også til
+   * `meta` når geometrien endres, slik at det overlever en runde på disk.
+   */
+  _anchorOf(sh) {
+    const fromUi = this.anchors.get(sh.id);
+    if (isRectAnchor(fromUi)) return fromUi;
+    const fromMeta = sh.meta && sh.meta.anchor;
+    return isRectAnchor(fromMeta) ? fromMeta : 'center';
+  }
+
+  /**
+   * Parameterfeltene for en form som lar seg beskrive parametrisk. Tallene
+   * utledes alltid fra punktene, aldri fra `meta` — har brukeren dratt i et
+   * hjørne, viser panelet den nye virkeligheten, eller forsvinner helt hvis
+   * formen ikke lenger er et rektangel.
+   */
+  _paramsHtml(sh, desc) {
+    const unit = lengthLabel(this.store.state.unit);
+    const f = (key, label, value, attrs = '') => `
+      <div>
+        <label class="field-label" for="pr-${key}-${sh.id}">${label}</label>
+        <input id="pr-${key}-${sh.id}" data-par="${key}" data-kind="${desc.kind}" data-id="${sh.id}"
+               data-focus-key="pr-${key}-${sh.id}" type="number" ${attrs} value="${round(value)}" />
+      </div>`;
+
+    if (desc.kind === 'rect') {
+      const anchor = this._anchorOf(sh);
+      const a = rectAnchorPoint(desc, anchor);
+      return `
+        <div class="space-y-2 pt-1">
+          <div class="grid grid-cols-2 gap-2">
+            ${f('b', `Bredde b [${unit}]`, desc.b)}
+            ${f('h', `Høyde h [${unit}]`, desc.h)}
+          </div>
+          <div>
+            <label class="field-label" for="pr-anchor-${sh.id}">Ankerpunkt — b og h vokser fra dette</label>
+            <select id="pr-anchor-${sh.id}" data-anchor data-id="${sh.id}" data-focus-key="pr-anchor-${sh.id}">
+              ${RECT_ANCHORS.map(
+                (o) => `<option value="${o.key}" ${anchor === o.key ? 'selected' : ''}>x, y = ${o.label}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            ${f('x', `x [${unit}]`, a[0])}
+            ${f('y', `y [${unit}]`, a[1])}
+            ${f('angle', 'Rotasjon [°]', desc.angle, 'step="1"')}
+          </div>
+          <p class="text-[11px] text-slate-500 leading-snug">
+            Rotasjonen måles mot klokka fra x-aksen, og b er siden langs den retningen.
+            Endrer du b eller h, står ankerpunktet stille.
+          </p>
+        </div>`;
+    }
+
+    if (desc.kind === 'circle') {
+      return `
+        <div class="space-y-2 pt-1">
+          <div class="grid grid-cols-3 gap-2">
+            ${f('x', `x [${unit}]`, desc.c[0])}
+            ${f('y', `y [${unit}]`, desc.c[1])}
+            ${f('r', `Radius r [${unit}]`, desc.r)}
+          </div>
+          <p class="text-[11px] text-slate-500 leading-snug">
+            Tilnærmet med en ${desc.segments}-kant, så arealet er marginalt mindre enn πr².
+          </p>
+        </div>`;
+    }
+
+    if (desc.kind === 'shell') {
+      return `
+        <div class="space-y-2 pt-1">
+          <div class="grid grid-cols-2 gap-2">
+            ${f('x1', `x₁ [${unit}]`, desc.p1[0])}
+            ${f('y1', `y₁ [${unit}]`, desc.p1[1])}
+            ${f('x2', `x₂ [${unit}]`, desc.p2[0])}
+            ${f('y2', `y₂ [${unit}]`, desc.p2[1])}
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            ${f('t', `Tykkelse t [${unit}]`, desc.t)}
+            <div class="self-end text-[11px] text-slate-400 num pb-1.5">lengde ${fmtLen(desc.length)} ${unit}</div>
+          </div>
+          <p class="text-[11px] text-slate-500 leading-snug">
+            Senterlinje og tykkelse — rektangelet er tykkelsen sentrert om linja, slik skallet
+            faktisk er modellert.
+          </p>
+        </div>`;
+    }
+    return '';
+  }
+
   /** Egenskapspanelet som vises inne i et åpnet listeelement. */
   _editorHtml(sh, part) {
     const ring = openRing(sh.points);
@@ -870,6 +1276,12 @@ export class UI {
     const grossArea = Math.abs(signedArea(ring));
     const showCoords = this.sections.has(`${sh.id}:coords`);
     const showTransform = this.sections.has(`${sh.id}:transform`);
+    const showParams = this.sections.has(`${sh.id}:params`);
+    const desc = describeShape(sh);
+    // Koordinatene kan leses absolutt eller i forhold til formens eget
+    // tyngdepunkt — det siste er nyttig når man vil se formen for seg selv.
+    const rel = this.relCoords.has(sh.id);
+    const c = rel ? centroidOfPoints(ring) : [0, 0];
 
     const sectionHead = (key, label) => `
       <button data-act="section" data-section="${key}" data-id="${sh.id}"
@@ -911,22 +1323,44 @@ export class UI {
           <div>x ∈ [${fmtLen(b.minX)}, ${fmtLen(b.maxX)}] · y ∈ [${fmtLen(b.minY)}, ${fmtLen(b.maxY)}]</div>
         </div>
 
+        ${
+          desc
+            ? `<div class="border-t border-slate-600 pt-1">
+                 ${sectionHead('params', PARAM_TITLES[desc.kind])}
+                 ${showParams ? this._paramsHtml(sh, desc) : ''}
+               </div>`
+            : ''
+        }
+
         <div class="border-t border-slate-600 pt-1">
           ${sectionHead('coords', `Koordinater (${ring.length})`)}
           ${
             showCoords
-              ? `<div class="max-h-52 overflow-y-auto panel-scroll space-y-1 pt-1">
-                  ${ring
-                    .map(
-                      ([x, y], i) => `
-                    <div class="flex items-center gap-1">
-                      <span class="text-[10px] text-slate-500 w-4 shrink-0 num">${i + 1}</span>
-                      <input data-pt="${i}" data-axis="0" data-id="${sh.id}" data-focus-key="pt-${sh.id}-${i}-0" type="number" value="${round(x)}" />
-                      <input data-pt="${i}" data-axis="1" data-id="${sh.id}" data-focus-key="pt-${sh.id}-${i}-1" type="number" value="${round(y)}" />
-                      <button data-del-pt="${i}" data-id="${sh.id}" class="px-1 text-slate-500 hover:text-red-400 shrink-0" title="Slett punkt">×</button>
-                    </div>`
-                    )
-                    .join('')}
+              ? `<div class="pt-1">
+                  <div class="flex items-center justify-between gap-2 mb-1">
+                    <span class="text-[10px] text-slate-500 leading-snug">${
+                      rel
+                        ? `relativt til tyngdepunktet (${fmtLen(c[0])}, ${fmtLen(c[1])})`
+                        : 'absolutte koordinater'
+                    }</span>
+                    <button data-act="relcoords" data-id="${sh.id}"
+                            class="px-1.5 py-0.5 text-[10px] rounded border border-slate-600 bg-slate-700 hover:bg-slate-600 shrink-0">
+                      ${rel ? 'Vis absolutt' : 'Vis relativt'}
+                    </button>
+                  </div>
+                  <div class="max-h-52 overflow-y-auto panel-scroll space-y-1">
+                    ${ring
+                      .map(
+                        ([x, y], i) => `
+                      <div class="flex items-center gap-1">
+                        <span class="text-[10px] text-slate-500 w-4 shrink-0 num">${i + 1}</span>
+                        <input data-pt="${i}" data-axis="0" data-id="${sh.id}" data-rel="${rel ? 1 : 0}" data-focus-key="pt-${sh.id}-${i}-0" type="number" value="${round(x - c[0])}" />
+                        <input data-pt="${i}" data-axis="1" data-id="${sh.id}" data-rel="${rel ? 1 : 0}" data-focus-key="pt-${sh.id}-${i}-1" type="number" value="${round(y - c[1])}" />
+                        <button data-del-pt="${i}" data-id="${sh.id}" class="px-1 text-slate-500 hover:text-red-400 shrink-0" title="Slett punkt">×</button>
+                      </div>`
+                      )
+                      .join('')}
+                  </div>
                 </div>`
               : ''
           }
@@ -986,9 +1420,23 @@ export class UI {
         const i = Number(e.target.dataset.pt);
         const axis = Number(e.target.dataset.axis);
         const pts = openRing(this.store.getShape(id).points).map((p) => [p[0], p[1]]);
-        pts[i][axis] = Number(e.target.value) || 0;
+        // I relativ modus er tallet målt fra tyngdepunktet slik formen står nå
+        const base = e.target.dataset.rel === '1' ? centroidOfPoints(pts)[axis] : 0;
+        pts[i][axis] = base + (Number(e.target.value) || 0);
         setPts(id, pts);
       });
+    });
+
+    // Ankervalget endrer ikke geometrien, bare hvilket punkt x og y viser til
+    host.querySelectorAll('[data-anchor]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        this.anchors.set(e.target.dataset.id, e.target.value);
+        this._renderList();
+      });
+    });
+
+    host.querySelectorAll('[data-par]').forEach((input) => {
+      input.addEventListener('change', (e) => this._applyParams(e.target.dataset.id, e.target.dataset.kind));
     });
 
     host.querySelectorAll('[data-del-pt]').forEach((btn) => {
@@ -1024,6 +1472,60 @@ export class UI {
         }
       });
     });
+  }
+
+  /**
+   * Bygger formen på nytt fra parameterfeltene. `meta` skrives med, slik at
+   * verktøyet husker hva formen er ment som — men den er bare en huskelapp:
+   * neste gang panelet åpnes, leses tallene av punktene på nytt.
+   */
+  _applyParams(id, kind) {
+    const sh = this.store.getShape(id);
+    if (!sh) return;
+    const val = (key) => {
+      const el = $(`pr-${key}-${id}`);
+      return el ? Number(el.value) || 0 : 0;
+    };
+
+    if (kind === 'rect') {
+      const anchor = this._anchorOf(sh);
+      const b = Math.abs(val('b'));
+      const h = Math.abs(val('h'));
+      if (b < 1e-9 || h < 1e-9) return this.toast('Bredde og høyde må være større enn null.');
+      const angle = val('angle');
+      const x = val('x');
+      const y = val('y');
+      const pts = rectPointsFromParams({ b, h, angle, anchor, x, y });
+      if (!pts) return;
+      this.store.updateShape(
+        id,
+        { points: pts, meta: { kind: 'rect', b, h, angle, anchor, origin: [x, y] } },
+        { reason: 'params' }
+      );
+      return;
+    }
+
+    if (kind === 'circle') {
+      const r = Math.abs(val('r'));
+      if (r < 1e-9) return this.toast('Radien må være større enn null.');
+      const x = val('x');
+      const y = val('y');
+      const segments = describeShape(sh)?.segments || 48;
+      const pts = circlePointsFromParams({ x, y, r, segments });
+      if (!pts) return;
+      this.store.updateShape(id, { points: pts, meta: { kind: 'circle', c: [x, y], r } }, { reason: 'params' });
+      return;
+    }
+
+    if (kind === 'shell') {
+      const t = Math.abs(val('t'));
+      if (t < 1e-9) return this.toast('Tykkelsen må være større enn null.');
+      const p1 = [val('x1'), val('y1')];
+      const p2 = [val('x2'), val('y2')];
+      const pts = shellPoints(p1, p2, t);
+      if (!pts) return this.toast('Senterlinja har null lengde.');
+      this.store.updateShape(id, { points: pts, meta: { kind: 'shell', p1, p2, t } }, { reason: 'params' });
+    }
   }
 
   _renderResults(analysis) {

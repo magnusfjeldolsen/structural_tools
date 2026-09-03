@@ -12,6 +12,8 @@ import {
   openRing,
   pointInRing,
   translatePoints,
+  rotatePoints,
+  mirrorPointsAboutLine,
 } from './geometry.js';
 import { applyOrtho, snapColor as engineSnapColor } from './snapping.js';
 
@@ -23,7 +25,20 @@ const TOOL_HINTS = {
   circle: 'Sirkel: klikk sentrum, deretter et punkt på omkretsen.',
   reference: 'Referansepunkt: klikk der nullpunktet skal ligge.',
   calibrate: 'Kalibrer: klikk to punkt i bildet du vet avstanden mellom, og skriv inn den virkelige lengden.',
+  move: 'Flytt: klikk basispunkt, deretter sluttpunkt. Virker på utvalget. Esc avbryter.',
+  copy: 'Kopi: klikk basispunkt, deretter der kopien skal ligge. Verktøyet blir stående, så du kan sette flere. Esc avslutter.',
+  rotate: 'Roter: klikk rotasjonssenter, så et referansepunkt, og til slutt der det skal ende. Shift låser til 15°. Esc avbryter.',
+  mirror: 'Speil: klikk to punkt som definerer speilaksen. Esc avbryter.',
 };
+
+/** Verktøyene som transformerer et eksisterende utvalg i stedet for å tegne. */
+const TRANSFORM_TOOLS = new Set(['move', 'copy', 'rotate', 'mirror']);
+
+/** Verbet som brukes når utvalget er tomt. */
+const TRANSFORM_VERB = { move: 'flytte', copy: 'kopiere', rotate: 'rotere', mirror: 'speile' };
+
+/** Trinnet Shift låser rotasjonsvinkelen til. */
+const ANGLE_STEP_DEG = 15;
 
 export class ToolController {
   constructor(store, viewport, opts = {}) {
@@ -35,6 +50,13 @@ export class ToolController {
     this.tool = 'select';
     this.draft = null;
     this.drag = null;
+    /**
+     * Innstillinger for transformasjonsverktøyene, satt fra menyene i ui.js.
+     * `copies` er antall kopier i en rekke-kopi, `keepOriginal` gjelder
+     * speiling, og `rotateCenter` sier hvor roteringen skal skje om når man
+     * kjører den fra menyen i stedet for å klikke senteret.
+     */
+    this.options = { copies: 1, keepOriginal: true, rotateCenter: 'pick' };
   }
 
   setTool(name) {
@@ -50,6 +72,9 @@ export class ToolController {
   }
 
   cancel() {
+    // Er en transformasjon halvveis, settes geometrien tilbake dit den sto
+    // da kommandoen startet — Esc skal ikke legge igjen spor.
+    if (this.draft && this.draft.origin) this.store.rollback('cancel');
     this.draft = null;
     this.drag = null;
     this.viewport.setPreview(null);
@@ -88,7 +113,23 @@ export class ToolController {
   orthoOrigin() {
     if (!this.draft) return null;
     if (this.draft.points) return this.draft.points[this.draft.points.length - 1];
-    return this.draft.start || null;
+    // Under rotasjon er det vinkelen som styrer, ikke aksene — orto ville
+    // bare låst markøren til et kryss om senteret.
+    if (this.draft.stage === 'angle') return null;
+    return this.draft.base || this.draft.start || null;
+  }
+
+  /**
+   * Formene som er i bevegelse under en transformasjon skal ikke snappe mot
+   * seg selv — samme regel som drag følger. Ved kopiering, og ved speiling
+   * der originalen beholdes, står originalen stille, og da vil man tvert imot
+   * gjerne kunne snappe mot den.
+   */
+  transformExclude() {
+    if (!this.draft || !this.draft.origin) return null;
+    if (this.tool === 'copy') return null;
+    if (this.tool === 'mirror' && this.options.keepOriginal) return null;
+    return new Set(this.draft.origin.map((o) => o.id));
   }
 
   /** Topp-prioriterte form under punktet. */
@@ -149,8 +190,17 @@ export class ToolController {
   /* ---------------- hendelser ---------------- */
 
   pointerdown(e) {
-    const snapped = this.snap(e.world, { from: this.orthoOrigin(), shift: e.shift });
+    const snapped = this.snap(e.world, {
+      exclude: this.transformExclude(),
+      from: this.orthoOrigin(),
+      shift: e.shift,
+    });
     const p = snapped.point;
+
+    if (TRANSFORM_TOOLS.has(this.tool)) {
+      this._transformPointerDown(p, e);
+      return;
+    }
 
     switch (this.tool) {
       case 'reference':
@@ -262,7 +312,7 @@ export class ToolController {
     // Geometri som er i bevegelse skal ikke snappe mot seg selv. Grepet
     // (pointerdown) snapper mot alt, slik at man kan ta tak i et eksakt
     // hjørne; selve slippunktet snapper bare mot det som står stille.
-    let exclude = null;
+    let exclude = this.transformExclude();
     if (this.drag && this.drag.kind === 'vertex') {
       exclude = new Set([this.drag.shapeId]);
     } else if (this.drag && this.drag.kind === 'move') {
@@ -272,6 +322,14 @@ export class ToolController {
     const snapped = this.snap(e.world, { exclude, from, shift: e.shift });
     const p = snapped.point;
     this.onCursor?.(p, snapped.type);
+
+    // Transformasjonsverktøyene har ingen drag — de styres av klikkene, og
+    // følger markøren mellom dem.
+    if (TRANSFORM_TOOLS.has(this.tool)) {
+      if (this.draft) this._transformPreview(p, e);
+      else this.viewport.setPreview({ points: [], cursor: p, cursorColor: snapColor(snapped.type) });
+      return;
+    }
 
     if (this.drag) {
       if (this.drag.kind === 'underlay') {
@@ -327,6 +385,249 @@ export class ToolController {
         this.viewport.setHover(hit ? hit.id : null);
       }
     }
+  }
+
+  /* ---------------- flytt / kopi / roter / speil ---------------- */
+
+  /**
+   * Utvalget slik det står nå. Punktene tas vare på, slik at
+   * forhåndsvisningen alltid regnes fra utgangspunktet og ikke akkumulerer,
+   * og slik at Esc kan sette alt tilbake.
+   */
+  _captureSelection() {
+    const shapes = this.store.selectedShapes();
+    if (!shapes.length) return null;
+    return shapes.map((s) => ({ id: s.id, points: s.points.map((q) => [q[0], q[1]]) }));
+  }
+
+  /** Ider til formene kommandoen virker på. */
+  _transformIds() {
+    return this.draft && this.draft.origin ? this.draft.origin.map((o) => o.id) : [];
+  }
+
+  /**
+   * Klikkene i flytt/kopi/roter/speil. Alle fire følger samme mønster:
+   * først et punkt som definerer utgangspunktet, så ett som definerer
+   * resultatet — rotasjonen har ett klikk ekstra, siden både senteret og
+   * startvinkelen må pekes ut.
+   */
+  _transformPointerDown(p, e) {
+    const tool = this.tool;
+
+    if (!this.draft) {
+      const origin = this._captureSelection();
+      if (!origin) {
+        this.onStatus(`Ingen form er markert — marker det du vil ${TRANSFORM_VERB[tool]} først.`);
+        return;
+      }
+      // Avslutt et hengende transient steg (typisk modellnavnet som skrives),
+      // slik at Esc bare ruller tilbake vår egen kommando.
+      this.store.commit('edit');
+
+      if (tool === 'rotate') {
+        this.draft = { stage: 'reference', origin, center: p };
+        this.onStatus('Roter: klikk et referansepunkt som gir startvinkelen.');
+      } else {
+        this.draft = { stage: 'target', origin, base: p };
+        this.onStatus(
+          tool === 'mirror'
+            ? 'Speil: klikk det andre punktet på speilaksen.'
+            : `${tool === 'copy' ? 'Kopi' : 'Flytt'}: klikk sluttpunktet.`
+        );
+      }
+      return;
+    }
+
+    if (tool === 'rotate' && this.draft.stage === 'reference') {
+      const c = this.draft.center;
+      if (Math.hypot(p[0] - c[0], p[1] - c[1]) < 1e-9) {
+        this.onStatus('Referansepunktet kan ikke ligge i senteret — klikk et punkt utenfor.');
+        return;
+      }
+      this.draft.stage = 'angle';
+      this.draft.base = p;
+      this.draft.startAngle = Math.atan2(p[1] - c[1], p[0] - c[0]);
+      this.onStatus('Roter: beveg markøren og klikk der det skal ende. Shift låser til 15°.');
+      return;
+    }
+
+    this._finishTransform(p, e);
+  }
+
+  /** Vinkelen rotasjonen står i akkurat nå, i radianer. */
+  _rotationAngle(p, shift) {
+    const d = this.draft;
+    const now = Math.atan2(p[1] - d.center[1], p[0] - d.center[0]);
+    let ang = now - d.startAngle;
+    if (shift) {
+      const step = (ANGLE_STEP_DEG * Math.PI) / 180;
+      ang = Math.round(ang / step) * step;
+    }
+    return ang;
+  }
+
+  /** Punktene utvalget skal ha for gjeldende markørposisjon. */
+  _transformedPoints(p, shift) {
+    const d = this.draft;
+    if (this.tool === 'rotate') {
+      const ang = this._rotationAngle(p, shift);
+      return d.origin.map((o) => ({ id: o.id, points: rotatePoints(o.points, ang, d.center) }));
+    }
+    if (this.tool === 'mirror') {
+      return d.origin.map((o) => ({ id: o.id, points: mirrorPointsAboutLine(o.points, d.base, p) }));
+    }
+    const dx = p[0] - d.base[0];
+    const dy = p[1] - d.base[1];
+    return d.origin.map((o) => ({ id: o.id, points: translatePoints(o.points, dx, dy) }));
+  }
+
+  /**
+   * Forhåndsvisningen. Flytt og rotasjon endrer geometrien transient, slik
+   * at tyngdepunktet oppdaterer seg mens man drar, og originalplasseringen
+   * tegnes som spøkelseskontur. Kopi og speiling lar geometrien stå og viser
+   * resultatet som spøkelse i stedet.
+   */
+  _transformPreview(p, e) {
+    const d = this.draft;
+    const tool = this.tool;
+
+    if (d.stage === 'reference') {
+      this.viewport.setPreview({
+        points: [],
+        cursor: p,
+        cursorColor: '#f97316',
+        cross: d.center,
+        line: [d.center, p],
+      });
+      this.onStatus('Roter: klikk et referansepunkt som gir startvinkelen.');
+      return;
+    }
+
+    const next = this._transformedPoints(p, e.shift);
+
+    if (tool === 'move' || tool === 'rotate') {
+      this.store.setManyPoints(next, { transient: true, reason: 'transform' });
+      this.viewport.setPreview({
+        points: [],
+        cursor: p,
+        cursorColor: '#f97316',
+        ghosts: d.origin.map((o) => o.points),
+        cross: tool === 'rotate' ? d.center : null,
+        line: [tool === 'rotate' ? d.center : d.base, p],
+      });
+    } else {
+      this.viewport.setPreview({
+        points: [],
+        cursor: p,
+        cursorColor: '#f97316',
+        ghosts: next.map((o) => o.points),
+        line: [d.base, p],
+      });
+    }
+
+    if (tool === 'rotate') {
+      const deg = (this._rotationAngle(p, e.shift) * 180) / Math.PI;
+      this.onStatus(`Roterer: ${deg.toFixed(2)}°${e.shift ? ' (låst til 15°)' : ''}`);
+    } else if (tool === 'mirror') {
+      const ang = (Math.atan2(p[1] - d.base[1], p[0] - d.base[0]) * 180) / Math.PI;
+      this.onStatus(
+        `Speilakse: ${ang.toFixed(2)}°${this.options.keepOriginal ? ' — originalen beholdes' : ''}`
+      );
+    } else {
+      const dx = p[0] - d.base[0];
+      const dy = p[1] - d.base[1];
+      const label = tool === 'copy' ? 'Kopi' : 'Flytter';
+      this.onStatus(`${label}: Δx = ${fmt(dx)}, Δy = ${fmt(dy)}, lengde ${fmt(Math.hypot(dx, dy))}`);
+    }
+  }
+
+  /** Siste klikk: gjør transformasjonen om til ett undo-steg. */
+  _finishTransform(p, e) {
+    const d = this.draft;
+    const ids = this._transformIds();
+    const tool = this.tool;
+
+    if (tool === 'copy') {
+      const dx = p[0] - d.base[0];
+      const dy = p[1] - d.base[1];
+      if (Math.hypot(dx, dy) < 1e-9) {
+        this.onStatus('Kopien ville havnet oppå originalen — klikk et annet punkt.');
+        return;
+      }
+      // Rekke-kopi: n kopier med jevn avstand langs den samme vektoren
+      const n = Math.max(1, Math.round(this.options.copies || 1));
+      const offsets = [];
+      for (let i = 1; i <= n; i++) offsets.push([dx * i, dy * i]);
+      // Originalen blir stående markert, så neste klikk kopierer den samme
+      this.store.copyShapes(ids, offsets, { select: false, reason: 'copy' });
+      this.viewport.setPreview(null);
+      this.onStatus(
+        `${n === 1 ? 'Kopi satt' : `${n} kopier satt`}. Klikk for én til, eller Esc for å avslutte.`
+      );
+      return;
+    }
+
+    const next = this._transformedPoints(p, e.shift);
+
+    if (tool === 'mirror' && this.options.keepOriginal) {
+      const byId = new Map(next.map((o) => [o.id, o.points]));
+      this.store.copyShapes(ids, [(pts, s) => byId.get(s.id) || pts], { reason: 'mirror' });
+    } else if (tool === 'mirror') {
+      this.store.setManyPoints(next, { reason: 'mirror' });
+    } else {
+      // Flytt og roter ligger allerede transient på plass; siste posisjon
+      // settes på nytt fordi klikkpunktet kan avvike litt fra siste bevegelse
+      this.store.setManyPoints(next, { transient: true, reason: 'transform' });
+      this.store.commit(tool);
+    }
+
+    this.draft = null;
+    this.viewport.setPreview(null);
+    this.onStatus(TOOL_HINTS[tool]);
+  }
+
+  /* ---------------- transformasjon fra menyene ---------------- */
+
+  /**
+   * Flytter utvalget et gitt stykke. Brukes av tallfeltene i menyen og av
+   * transformasjonspanelet i venstre panel.
+   */
+  moveSelection(dx, dy) {
+    const ids = this.store.state.selection;
+    if (!ids.length) return { ok: false, msg: 'Ingen form er markert.' };
+    if (!dx && !dy) return { ok: false, msg: 'Δx og Δy er begge null.' };
+    this.store.moveShapes(ids, dx, dy, { reason: 'move' });
+    return { ok: true, msg: `Flyttet ${ids.length} form(er): Δx = ${fmt(dx)}, Δy = ${fmt(dy)}.` };
+  }
+
+  /** Roterer utvalget om et punkt. Vinkelen er i grader. */
+  rotateSelection(deg, center) {
+    const ids = this.store.state.selection;
+    if (!ids.length) return { ok: false, msg: 'Ingen form er markert.' };
+    if (!deg) return { ok: false, msg: 'Vinkelen er null.' };
+    const ang = (deg * Math.PI) / 180;
+    const entries = this.store
+      .selectedShapes()
+      .map((s) => ({ id: s.id, points: rotatePoints(s.points, ang, center) }));
+    this.store.setManyPoints(entries, { transient: true, reason: 'rotate' });
+    this.store.commit('rotate');
+    return { ok: true, msg: `Rotert ${ids.length} form(er) ${fmt(deg)}° om (${fmt(center[0])}, ${fmt(center[1])}).` };
+  }
+
+  /** Speiler utvalget om linja gjennom a og b. */
+  mirrorSelection(a, b, { keepOriginal = false } = {}) {
+    const ids = this.store.state.selection;
+    if (!ids.length) return { ok: false, msg: 'Ingen form er markert.' };
+    const entries = this.store
+      .selectedShapes()
+      .map((s) => ({ id: s.id, points: mirrorPointsAboutLine(s.points, a, b) }));
+    if (keepOriginal) {
+      const byId = new Map(entries.map((o) => [o.id, o.points]));
+      this.store.copyShapes(ids, [(pts, s) => byId.get(s.id) || pts], { reason: 'mirror' });
+    } else {
+      this.store.setManyPoints(entries, { reason: 'mirror' });
+    }
+    return { ok: true, msg: `Speilet ${ids.length} form(er).` };
   }
 
   /** Ligger punktet innenfor bildeunderlaget? */

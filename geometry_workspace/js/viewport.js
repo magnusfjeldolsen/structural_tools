@@ -649,6 +649,57 @@ export class Viewport {
     const p = this.preview;
     if (!p) return;
 
+    // Spøkelseskonturer: hvor geometrien kommer fra under flytt og rotasjon,
+    // og hvor kopien havner under kopiering og speiling.
+    if (p.ghosts && p.ghosts.length) {
+      const pos = [];
+      for (const ring of p.ghosts) {
+        if (!ring || ring.length < 2) continue;
+        pos.push(...thickPolylinePositions(openRing(ring), true, (1.4 * upp) / 2, Z.preview - 0.02));
+      }
+      if (pos.length) g.add(buildLineMesh(pos, p.ghostColor || '#94a3b8', 0.55));
+    }
+
+    // Stiplet linje fra basispunkt (eller rotasjonssenter) til markøren
+    if (p.line) {
+      const [a, b] = p.line;
+      const total = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (total > 1e-9) {
+        const dashLen = 8 * upp;
+        const ux = (b[0] - a[0]) / total;
+        const uy = (b[1] - a[1]) / total;
+        const dashes = [];
+        for (let d = 0; d < total; d += dashLen * 2) {
+          const e = Math.min(d + dashLen, total);
+          dashes.push(
+            ...thickPolylinePositions(
+              [[a[0] + ux * d, a[1] + uy * d], [a[0] + ux * e, a[1] + uy * e]],
+              false,
+              upp * 0.6,
+              Z.preview - 0.01
+            )
+          );
+        }
+        g.add(buildLineMesh(dashes, p.lineColor || '#94a3b8', 0.8));
+      }
+    }
+
+    // Rotasjonssenteret som et lite kryss
+    if (p.cross) {
+      const [x, y] = p.cross;
+      const arm = 9 * upp;
+      g.add(
+        buildLineMesh(
+          [
+            ...thickPolylinePositions([[x - arm, y], [x + arm, y]], false, upp * 0.9, Z.preview),
+            ...thickPolylinePositions([[x, y - arm], [x, y + arm]], false, upp * 0.9, Z.preview),
+          ],
+          p.crossColor || '#f97316',
+          1
+        )
+      );
+    }
+
     if (p.points && p.points.length >= 2) {
       const closed = !!p.closed;
       g.add(

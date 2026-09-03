@@ -97,7 +97,7 @@
         <!-- Verktøy: symboler som viser hva som lages -->
         <div class="relative">
           <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Verktøy</h2>
-          <div class="grid grid-cols-6 gap-1" id="tool-buttons">
+          <div class="grid grid-cols-5 gap-1" id="tool-buttons">
 
             <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
                     data-tool="select" title="Velg og rediger (V)" aria-label="Velg">
@@ -143,6 +143,41 @@
               </svg>
             </button>
 
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="move" title="Flytt utvalget (M)" aria-label="Flytt">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <path d="M12 3v18M3 12h18" />
+                <path d="M12 3l-2.5 2.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l2.5 2.5"
+                      stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="copy" title="Kopier utvalget (K)" aria-label="Kopi">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <rect x="3.5" y="3.5" width="11" height="11" rx="0.5" stroke-dasharray="3 2" opacity="0.8" />
+                <rect x="9.5" y="9.5" width="11" height="11" rx="0.5" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="rotate" title="Roter utvalget (T)" aria-label="Roter">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <path d="M20 12a8 8 0 1 1-2.7-6" stroke-linecap="round" />
+                <path d="M20 4v4.5h-4.5" stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="mirror" title="Speil utvalget om en akse" aria-label="Speil">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <path d="M12 2v20" stroke-dasharray="3 2" />
+                <path d="M9.5 6.5L4 12l5.5 5.5z" stroke-linejoin="round" />
+                <path d="M14.5 6.5L20 12l-5.5 5.5z" stroke-linejoin="round" opacity="0.55" />
+              </svg>
+            </button>
+
           </div>
 
           <!-- Meny for det aktive verktøyet -->
@@ -183,6 +218,12 @@
             <input id="image-input" type="file" accept="image/*" class="hidden" />
           </div>
           <div id="underlay-panel"></div>
+        </div>
+
+        <!-- Plassering: transformasjoner som virker på hele utvalget -->
+        <div>
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5">Plassering</h2>
+          <div id="placement-panel"></div>
         </div>
 
         <!-- Geometriliste med egenskaper -->
@@ -374,7 +415,53 @@
         <li>Shift+klikk markerer flere, og du kan dra et vindu i tomrommet.</li>
         <li>Dra en form for å flytte den. Hold Shift for å låse til x eller y.</li>
         <li>Dra et hjørnepunkt for å endre det. Alt+klikk sletter punktet, dobbeltklikk på en kant setter inn et nytt.</li>
+        <li>Koordinatlista kan vises <strong>absolutt eller relativt</strong> til formens eget
+          tyngdepunkt. Begge kan redigeres.</li>
       </ul>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Parametrisk redigering</h3>
+      <p>
+        Kjenner verktøyet igjen formen, får du redigere den med parameterne den er laget av
+        i stedet for hjørnekoordinatene — en bjelkehøyde endres da ved å skrive den, ikke ved
+        å regne ut fire hjørner:
+      </p>
+      <ul class="list-disc list-inside space-y-1">
+        <li><strong>Rektangel</strong> — bredde b, høyde h og rotasjon, også når rektangelet er
+          rotert. Ankerpunktet (senter, nedre venstre eller midt på underkant) bestemmer hva som
+          står stille når b eller h endres.</li>
+        <li><strong>Sirkel</strong> — senter og radius.</li>
+        <li><strong>Skall</strong> — senterlinje og tykkelse.</li>
+      </ul>
+      <p class="text-slate-400">
+        Tallene utledes alltid av punktene. Drar du et hjørne slik at formen ikke lenger er et
+        rektangel, forsvinner feltene — panelet viser aldri tall som ikke stemmer med geometrien.
+      </p>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Flytte, kopiere, rotere og speile</h3>
+      <p>
+        De fire siste verktøysymbolene virker på <strong>utvalget</strong>, og følger vanlig
+        CAD-flyt: du peker ut punktene i lerretet, med snapping og orto som ellers. Geometrien
+        som er i bevegelse snapper ikke mot seg selv. Hele kommandoen blir ett angresteg, og
+        <kbd class="px-1 bg-slate-700 rounded">Esc</kbd> avbryter og setter alt tilbake.
+      </p>
+      <ul class="list-disc list-inside space-y-1">
+        <li><strong>Flytt</strong> (<kbd class="px-1 bg-slate-700 rounded">M</kbd>) — klikk
+          basispunkt, så sluttpunkt. Δx, Δy og lengden vises i statuslinja.</li>
+        <li><strong>Kopi</strong> (<kbd class="px-1 bg-slate-700 rounded">K</kbd>) — som flytt,
+          men legger igjen en kopi og blir stående med samme basispunkt, så du kan sette flere
+          etter hverandre. Menyen har «antall» for en rekke med jevn avstand.</li>
+        <li><strong>Roter</strong> (<kbd class="px-1 bg-slate-700 rounded">T</kbd>) — klikk
+          rotasjonssenter, så et referansepunkt som gir startvinkelen, og til slutt der det skal
+          ende. Hold <kbd class="px-1 bg-slate-700 rounded">Shift</kbd> for å låse til 15°.</li>
+        <li><strong>Speil</strong> — to klikk definerer speilaksen, som kan ligge hvor som helst.
+          Menyen velger om originalen beholdes.</li>
+      </ul>
+      <p>
+        Menyene har også tallfelt for de samme kommandoene, og «Plassering» i venstre panel gjør
+        det samme på hele utvalget under ett. Der ligger også <strong>«Sentrer utvalg i origo»</strong>
+        og <strong>«Sentrer alt i origo»</strong>. Sentreringen flytter nullpunktet med samme
+        vektor, slik at avvikene i resultatpanelet ikke endrer seg av flyttingen.
+      </p>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Bildeunderlag</h3>
       <p>
@@ -443,6 +530,9 @@
         <div><kbd class="px-1 bg-slate-700 rounded">P</kbd> Polygon</div>
         <div><kbd class="px-1 bg-slate-700 rounded">C</kbd> Sirkel</div>
         <div><kbd class="px-1 bg-slate-700 rounded">O</kbd> Nullpunkt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">M</kbd> Flytt utvalg</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">K</kbd> Kopier utvalg</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">T</kbd> Roter utvalg</div>
         <div><kbd class="px-1 bg-slate-700 rounded">F</kbd> Zoom alt</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Alt+1…6</kbd> Snap-typer</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Alt+9</kbd> Alle snap av/på</div>
