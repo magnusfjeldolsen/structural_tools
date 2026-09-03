@@ -16,7 +16,7 @@ import {
   mirrorPointsAboutLine,
 } from './geometry.js';
 import { applyOrtho, snapColor as engineSnapColor } from './snapping.js';
-import { addInterface, INTERFACE_COLOR } from './interfaces.js';
+import { JOINT_COLOR } from './store.js';
 
 const TOOL_HINTS = {
   select: 'Velg: klikk for å markere, dra for å flytte. Dra et hjørnepunkt for å redigere. Alt+klikk på punkt sletter det, dobbeltklikk på en kant setter inn nytt.',
@@ -30,7 +30,8 @@ const TOOL_HINTS = {
   copy: 'Kopi: klikk basispunkt, deretter der kopien skal ligge. Verktøyet blir stående, så du kan sette flere. Esc avslutter.',
   rotate: 'Roter: klikk rotasjonssenter, så et referansepunkt, og til slutt der det skal ende. Shift låser til 15°. Esc avbryter.',
   mirror: 'Speil: klikk to punkt som definerer speilaksen. Esc avbryter.',
-  interface: 'Grensesnitt: klikk to punkt i skjøten mellom eksisterende og ny del. Verktøyet gjetter hvilken side som er den nye. Esc avbryter.',
+  joint: 'Skjøt: klikk to punkt langs skjøtelinja. Navnes automatisk etter delene den skiller. Esc avbryter.',
+  splitline: 'Del med linje: klikk to punkt for snittlinja. Hver MARKERTE form linja krysser deles i to (eller flere) langs den — former linja ikke krysser står urørt. Rent redigeringsverktøy, ikke en forutsetning for beregningen. Esc avbryter.',
 };
 
 /** Verktøyene som transformerer et eksisterende utvalg i stedet for å tegne. */
@@ -161,6 +162,38 @@ export class ToolController {
     return best;
   }
 
+  /**
+   * Nærmeste skjøt innenfor pikseltoleranse — brukes til hover i «select»
+   * (§6.2: hover i lerretet skal kunne fremheve raden i skjøtelista, og
+   * omvendt; se `viewport.setHoverJoint` for den andre veien).
+   */
+  hitJoint(world, tolPx = 8) {
+    const tol = tolPx * this.viewport.unitsPerPixel;
+    let best = null;
+    let bestD = tol;
+    for (const j of this.store.state.joints) {
+      if (!j.a || !j.b) continue;
+      const [x1, y1] = j.a;
+      const [x2, y2] = j.b;
+      const vx = x2 - x1;
+      const vy = y2 - y1;
+      const len2 = vx * vx + vy * vy;
+      let d;
+      if (len2 < 1e-12) {
+        d = Math.hypot(world[0] - x1, world[1] - y1);
+      } else {
+        let t = ((world[0] - x1) * vx + (world[1] - y1) * vy) / len2;
+        t = Math.max(0, Math.min(1, t));
+        d = Math.hypot(world[0] - (x1 + vx * t), world[1] - (y1 + vy * t));
+      }
+      if (d < bestD) {
+        bestD = d;
+        best = j;
+      }
+    }
+    return best;
+  }
+
   /** Nærmeste kant i markerte former (for innsetting av punkt). */
   hitEdge(world, tolPx = 8) {
     const tol = tolPx * this.viewport.unitsPerPixel;
@@ -239,14 +272,27 @@ export class ToolController {
         }
         return;
 
-      case 'interface':
+      case 'joint':
         // To klikk, som rektangelet — men resultatet er en linje i lista over
-        // grensesnitt, ikke en form i geometrien.
+        // skjøter, ikke en form i geometrien.
         if (!this.draft) {
           this.draft = { start: p };
-          this.onStatus('Grensesnitt: klikk det andre punktet. Snapping og orto virker som ellers.');
+          this.onStatus('Skjøt: klikk det andre punktet. Snapping og orto virker som ellers.');
         } else {
-          this._finishInterface(this.draft.start, p);
+          this._finishJoint(this.draft.start, p);
+          this.draft = null;
+          this.viewport.setPreview(null);
+        }
+        return;
+
+      case 'splitline':
+        // To klikk definerer snittlinja. Selve delingen skjer først når linja
+        // er ferdig, siden den kan krysse flere markerte former på én gang.
+        if (!this.draft) {
+          this.draft = { start: p };
+          this.onStatus('Del med linje: klikk det andre punktet.');
+        } else {
+          this._finishSplitLine(this.draft.start, p);
           this.draft = null;
           this.viewport.setPreview(null);
         }
@@ -392,16 +438,29 @@ export class ToolController {
       } else if (this.tool === 'calibrate') {
         this.viewport.setPreview({ points: [this.draft.start, p], color: '#f59e0b', cursor: p });
         this.onStatus(`Kalibrer: målt lengde ${fmt(Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]))}`);
-      } else if (this.tool === 'interface') {
-        this.viewport.setPreview({ points: [this.draft.start, p], color: INTERFACE_COLOR, cursor: p });
+      } else if (this.tool === 'joint') {
+        this.viewport.setPreview({ points: [this.draft.start, p], color: JOINT_COLOR, cursor: p });
         const d = Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]);
-        this.onStatus(`Grensesnitt: heftbredde ${fmt(d)} (linjas lengde). Klikk for å fullføre.`);
+        this.onStatus(`Skjøt: heftbredde ${fmt(d)} (linjas lengde, med mindre en annen er satt). Klikk for å fullføre.`);
+      } else if (this.tool === 'splitline') {
+        this.viewport.setPreview({ points: [this.draft.start, p], color: '#f8fafc', cursor: p });
+        const d = Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]);
+        this.onStatus(`Del med linje: lengde ${fmt(d)}. Klikk for å dele de markerte formene linja krysser.`);
       }
     } else {
       this.viewport.setPreview({ points: [], cursor: p, cursorColor: snapColor(snapped.type) });
       if (this.tool === 'select') {
         const hit = this.hitShape(e.world);
         this.viewport.setHover(hit ? hit.id : null);
+        // Skjøtene ligger typisk OPPÅ formene, så vi sjekker dem uansett —
+        // en linje er en smalere målskive enn en form og skal ikke tape mot
+        // den (§6.2: hover i lerretet skal kunne fremheve skjøtelista).
+        const jointHit = this.hitJoint(e.world);
+        const jointId = jointHit ? jointHit.id : null;
+        if (this.viewport.hoverJoint !== jointId) {
+          this.viewport.setHoverJoint(jointId);
+          this.onJointHover?.(jointId);
+        }
       }
     }
   }
@@ -738,26 +797,39 @@ export class ToolController {
   }
 
   /**
-   * Fullfører grensesnittet. Gruppesiden gjettes i `addInterface` — formene
-   * hvis tyngdepunkt ligger til venstre for a→b, og av dem bare de som er
-   * merket «ny» dersom det gir et ikke-tomt sett. Statuslinja sier fra hva
-   * gjettet ble, slik at en feil oppdages med en gang og ikke først når
-   * tallene ser rare ut.
+   * Fullfører skjøten. Ingen side å gjette lenger (§8.1 i planen — gruppa
+   * utledes av halvplanet/grafen, ikke lagret som et brukervalg): navnet
+   * autogenereres av `store.addJoint` fra delene linja skiller
+   * (`sidesOfJoint`), og status bare bekrefter hva den ble kalt.
    */
-  _finishInterface(a, b) {
+  _finishJoint(a, b) {
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-9) {
-      this.onStatus('Grensesnittlinja har null lengde — avbrutt.');
+      this.onStatus('Skjøtelinja har null lengde — avbrutt.');
       return;
     }
-    const f = addInterface(this.store, a, b);
-    const names = this.store.state.shapes
-      .filter((s) => f.groupIds.includes(s.id))
-      .map((s) => s.name)
-      .join(', ');
+    const j = this.store.addJoint(a, b);
+    this.onStatus(`${j.name} lagt inn.`);
+  }
+
+  /**
+   * Fullfører «Del med linje» (§8.5): deler hver markerte form linja krysser.
+   * Selve delingen (og hvilke former som faktisk krysses) er `store`s ansvar —
+   * se `Store.splitByLine`.
+   */
+  _finishSplitLine(a, b) {
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-9) {
+      this.onStatus('Snittlinja har null lengde — avbrutt.');
+      return;
+    }
+    if (!this.store.state.selection.length) {
+      this.onStatus('Marker formene som skal deles først, og prøv igjen.');
+      return;
+    }
+    const { splitCount, newIds } = this.store.splitByLine(a, b);
     this.onStatus(
-      names
-        ? `${f.name} lagt inn. Gruppesiden ble gjettet til: ${names}. Pilene i lerretet peker den veien — snu den i «Forsterkning» om det ble feil.`
-        : `${f.name} lagt inn, men ingen former havnet på gruppesiden. Bruk «Snu siden» i «Forsterkning».`
+      splitCount
+        ? `${splitCount} form(er) delt i ${newIds.length} biter langs linja.`
+        : 'Linja krysset ingen av de markerte formene — ingenting delt.'
     );
   }
 

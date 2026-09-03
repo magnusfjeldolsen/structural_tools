@@ -95,7 +95,7 @@ function update() {
     reference: st.reference,
     grid: st.grid,
     underlay: st.underlay,
-    interfaces: st.interfaces,
+    joints: st.joints,
   });
   try {
     ui.render(analysis);
@@ -121,7 +121,8 @@ const TOOL_KEYS = {
   m: 'move',
   k: 'copy',
   t: 'rotate',
-  g: 'interface',
+  g: 'joint',
+  x: 'splitline',
 };
 
 window.addEventListener('keydown', (e) => {

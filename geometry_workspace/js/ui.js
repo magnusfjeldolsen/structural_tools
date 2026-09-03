@@ -18,6 +18,7 @@ import {
   mirrorPoints,
   centroidOfPoints,
   centroidOfShapes,
+  neighborTolerance,
 } from './geometry.js';
 import {
   describeShape,
@@ -30,7 +31,9 @@ import {
 import { SNAP_TYPES, SNAP_ALL, ORTHO } from './snapping.js';
 import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel } from './units.js';
 import { MATERIALS, materialByName, materialE } from './materials.js';
-import { ReinforcementPanel } from './reinforcement-ui.js';
+import { JOINT_COLOR } from './store.js';
+import { sidesOfJoint, buildGraph, jointGroup, overConstrained } from './joints.js';
+import { ReinforcementPanel, CONNECTOR_LABELS } from './reinforcement-ui.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -115,7 +118,8 @@ const TOOL_TITLES = {
   copy: 'Kopier utvalg',
   rotate: 'Roter utvalg',
   mirror: 'Speil utvalg',
-  interface: 'Grensesnitt mellom eksisterende og ny del',
+  joint: 'Skjøt mellom deler av tverrsnittet',
+  splitline: 'Del med linje',
 };
 
 /** Overskriften på parameterseksjonen, etter hva formen viser seg å være. */
@@ -161,6 +165,10 @@ export class UI {
 
     /** Åpne elementer i geometrilista. */
     this.expanded = new Set();
+    /** Åpne elementer i skjøtelista (§5 i interaksjonsplanen). */
+    this.jointExpanded = new Set();
+    /** Skjøten musepekeren hviler over i lerretet — for å fremheve raden i lista (§6.2 «omvendt»). */
+    this._canvasHoverJoint = null;
     /** Åpne underseksjoner, nøkler som `${id}:coords`. */
     this.sections = new Set();
     /** Formene som viser koordinatene relativt til sitt eget tyngdepunkt. */
@@ -182,6 +190,15 @@ export class UI {
       mirror: { keep: true },
       // Transformasjonspanelet i venstre panel, som virker på hele utvalget
       placement: { dx: 0, dy: 0, angle: 90, center: 'reference', keep: false },
+    };
+
+    // Hover i lerretet over en skjøt skal fremheve raden i skjøtelista, og
+    // omvendt (§6.2). `tools.js` sender treff hit via denne haken; den andre
+    // veien (klikk i lista → fremhevet i lerretet) skjer i `_bindJointEditors`.
+    this.tools.onJointHover = (id) => {
+      if (this._canvasHoverJoint === id) return;
+      this._canvasHoverJoint = id;
+      this._renderJointList();
     };
 
     this._bind();
@@ -508,25 +525,35 @@ export class UI {
           ha hvilken som helst retning. Faste akser gjennom nullpunktet ligger i «Plassering».
         </p>`;
     }
-    if (tool === 'interface') {
-      const n = this.store.state.interfaces.length;
-      const newCount = this.store.state.shapes.filter((s) => s.stage === 'new').length;
+    if (tool === 'joint') {
+      const jn = this.store.state.joints.length;
       return `
-        <p class="text-[11px] ${newCount ? 'text-slate-400' : 'text-amber-300'} mb-2 leading-snug">
-          ${
-            newCount
-              ? `${newCount} form${newCount === 1 ? ' er' : 'er er'} merket «ny».`
-              : 'Ingen former er merket «ny» ennå — sett stadium i geometrilista først, så blir gjettet riktig.'
-          }
-        </p>
         <p class="text-[11px] text-slate-500 leading-snug">
-          Klikk to punkt i skjøten mellom eksisterende og ny del. Verktøyet gjetter hvilken side som
-          er den nye — pilene i lerretet peker den veien — og linjas lengde blir heftbredden
-          <em>b</em>. Tall, forbindere og resultater ligger i fanen «Forsterkning» til høyre.
+          Klikk to punkt langs skjøtelinja — typisk der to deler møtes, eller langs et snitt du vil
+          kontrollere (geometrien trenger ikke være delt opp der; skjærstrømmen regnes fra halvplanet
+          linja definerer). Skjøten navnes automatisk etter delene den skiller.
         </p>
-        <p class="text-[11px] text-slate-500 mt-2 leading-snug">${
-          n ? `${n} grensesnitt er lagt inn.` : 'Ingen grensesnitt ennå.'
-        }</p>`;
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          Former som berører eller overlapper hverandre uten en skjøt mellom seg, regnes som stivt
+          forbundet automatisk — du trenger bare tegne skjøten der forbindelsen faktisk er.
+        </p>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          ${jn ? `${jn} skjøt${jn === 1 ? '' : 'er'} lagt inn.` : 'Ingen skjøter ennå.'}
+          Rediger navn, forbindelsestype og heftbredde i skjøtelista under geometrilista.
+        </p>`;
+    }
+    if (tool === 'splitline') {
+      return `
+        <p class="text-[11px] text-slate-500 leading-snug">
+          Klikk to punkt for snittlinja. Hver <strong>markerte</strong> form linja krysser deles i to
+          (eller flere) langs den — former linja ikke krysser, eller som ikke er markert, står urørt.
+          Ett angresteg.
+        </p>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          Rent redigeringsverktøy, ikke en forutsetning for beregningen: skjærstrømmen virker uendret
+          på en udelt, importert profil. Nytten er å kunne gi de to delene ulikt materiale eller
+          stadium, eller se bidragene hver for seg.
+        </p>`;
     }
     return null;
   }
@@ -930,6 +957,7 @@ export class UI {
       this._renderUnderlay();
       this._renderPlacement();
       this._renderList();
+      this._renderJointList();
       this._renderResults(analysis);
       this._renderTabs();
       // Forsterkningsfanen tegnes selv om den er skjult, slik at tallene er
@@ -1675,6 +1703,243 @@ export class UI {
       if (!pts) return this.toast('Senterlinja har null lengde.');
       this.store.updateShape(id, { points: pts, meta: { kind: 'shell', p1, p2, t } }, { reason: 'params' });
     }
+  }
+
+  /* ---------------- skjøtelista (interaksjonsplanen §5) ---------------- */
+
+  /**
+   * Skjøtelista i venstre panel, under geometrilista, bygget som den: en rad
+   * per skjøt med navn, lengde, forbindelsestype og en slette-knapp. Åpnet
+   * viser delene på hver side (`sidesOfJoint`), heftbredde, forbindelsesfelter
+   * (inkl. sveis) og `share` når oppsettet er statisk ubestemt.
+   *
+   * Redigeringen av en skjøt lever HER, ikke i «Forsterkning»-fanen — det
+   * panelet er lese/resultat-visning, jf. prinsippet om at man velger
+   * geometri og skriver, ikke går til et kommandosenter.
+   */
+  _renderJointList() {
+    const host = $('joint-list');
+    if (!host) return;
+    const st = this.store.state;
+    const joints = st.joints || [];
+    const countEl = $('joint-count');
+    if (countEl) countEl.textContent = joints.length ? `(${joints.length})` : '';
+
+    if (!joints.length) {
+      host.innerHTML =
+        '<p class="text-xs text-slate-500 italic py-2">Ingen skjøter ennå. Velg skjøteverktøyet (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) og klikk to punkt i lerretet.</p>';
+      return;
+    }
+
+    const shapes = st.shapes || [];
+    const tol = neighborTolerance(shapes);
+    // Bygges ÉN gang for hele lista, ikke per rad — samme grunn som i viewport.js.
+    const graph = buildGraph(shapes, joints, tol);
+    const overC = overConstrained(shapes, joints, graph);
+    const unit = lengthLabel(st.unit);
+
+    host.innerHTML = joints
+      .map((j) => {
+        const open = this.jointExpanded.has(j.id);
+        const isHover = this._canvasHoverJoint === j.id || this._activeJointId === j.id;
+        const len = Math.hypot(j.b[0] - j.a[0], j.b[1] - j.a[1]);
+        const kindLabel = CONNECTOR_LABELS[j.connector.kind] || CONNECTOR_LABELS.screw;
+        return `
+      <div class="rounded border ${isHover ? 'border-sky-500' : 'border-slate-700'} ${open ? 'bg-slate-700' : 'bg-slate-750'}"
+           data-joint-row="${j.id}">
+        <div class="flex items-center gap-1.5 px-2 py-1.5">
+          <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${JOINT_COLOR}"></span>
+          <button data-jact="toggle" data-id="${j.id}"
+                  class="flex-1 flex items-center gap-1.5 text-left text-xs truncate ${isHover ? 'text-white' : 'text-slate-300'} hover:text-white">
+            <span class="chev shrink-0 text-slate-500 ${open ? 'rotate-90' : ''}" style="display:inline-block">›</span>
+            <span class="truncate">${escapeHtml(j.name)}</span>
+          </button>
+          <span class="text-[10px] text-slate-500 num shrink-0">${fmtLen(len)} ${unit}</span>
+          <span class="text-[10px] px-1 rounded bg-slate-800 text-slate-300 shrink-0">${kindLabel}</span>
+          <button data-jact="delete" data-id="${j.id}"
+                  class="px-1 text-slate-400 hover:text-red-400 shrink-0" title="Slett skjøten">×</button>
+        </div>
+        ${open ? this._jointEditorHtml(j, graph, overC) : ''}
+      </div>`;
+      })
+      .join('');
+
+    host.onclick = (e) => {
+      const btn = e.target.closest('[data-jact]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (btn.dataset.jact === 'toggle') {
+        if (this.jointExpanded.has(id)) this.jointExpanded.delete(id);
+        else this.jointExpanded.add(id);
+        this._activeJointId = id;
+        // Fremhev i lerretet — omvendt vei av hover (§6.2). `hoverJoint` er
+        // det eneste fremhevingshaket viewport.js eksponerer i dag; en
+        // vedvarende «valgt skjøt» uavhengig av hover er 2C sin jobb (§1 i
+        // interaksjonsplanen — utvider `state.selection` til å ta skjøter).
+        this.viewport.setHoverJoint(id);
+        this._renderJointList();
+      } else if (btn.dataset.jact === 'delete') {
+        this.jointExpanded.delete(id);
+        if (this._activeJointId === id) this._activeJointId = null;
+        this.store.removeJoint(id);
+        this.toast('Skjøten er slettet.');
+      }
+    };
+
+    this._bindJointEditors();
+  }
+
+  /** Egenskapspanelet for én åpnet skjøt. */
+  _jointEditorHtml(j, graph, overC) {
+    const st = this.store.state;
+    const unit = lengthLabel(st.unit);
+    const tol = neighborTolerance(st.shapes);
+    const sides = sidesOfJoint(j, st.shapes, tol);
+    const nameOf = (id) => {
+      const s = this.store.getShape(id);
+      return s ? s.name : String(id);
+    };
+    const aNames = sides.aSide.map(nameOf).join(', ') || '—';
+    const bNames = sides.bSide.map(nameOf).join(', ') || '—';
+
+    const ocEntry = overC.find((e) => e.jointIds.includes(j.id));
+    const jg = jointGroup(j, graph);
+    const showShare = !jg.determinate;
+
+    const cfield = (key, label, value, attrs = '') => {
+      const id = `jc-${j.id}-${key}`;
+      return `<div>
+        <label class="field-label" for="${id}">${label}</label>
+        <input id="${id}" data-jc="${key}" data-id="${j.id}" data-focus-key="${id}" type="number" ${attrs}
+               value="${value === null || value === undefined ? '' : value}" />
+      </div>`;
+    };
+
+    const c = j.connector;
+    const connectorFields =
+      c.kind === 'glue'
+        ? `<div class="grid grid-cols-3 gap-1.5">
+             ${cfield('tauRd', 'τ_Rd [N/mm²]', c.tauRd, 'step="0.1"')}
+             ${cfield('Ga', 'G_a [N/mm²]', c.Ga, 'step="10"')}
+             ${cfield('ta', 't_a [mm]', c.ta, 'step="0.1"')}
+           </div>`
+        : c.kind === 'weld'
+        ? `<div class="grid grid-cols-2 gap-1.5">
+             ${cfield('nWelds', 'Antall strenger', c.nWelds, 'step="1" min="1"')}
+             ${cfield('a_weld', 'a-mål [mm]', c.a_weld, 'step="0.5"')}
+             ${cfield('fvwd', 'f_vw,d [N/mm²]', c.fvwd, 'step="1"')}
+             ${cfield('qRd', 'eller q_Rd direkte [N/mm]', c.qRd, 'step="1" min="0"')}
+           </div>
+           <p class="text-[10px] text-slate-500 leading-snug">
+             f_vw,d (dimensjonerende skjærfasthet i sveisesnittet) regnes ut i modulen
+             <code>weld_capacity/</code> — skriv resultatet inn her, eller sett q_Rd direkte og la
+             de tre andre stå ubrukt.
+           </p>`
+        : `<div class="grid grid-cols-2 gap-1.5">
+             ${cfield('FRd', 'F_Rd per forbinder [kN]', c.FRd, 'step="0.5"')}
+             ${cfield('rows', 'Rader på tvers', c.rows, 'step="1" min="1"')}
+             ${cfield('spacing', 'Senteravstand s [mm]', c.spacing, 'step="10"')}
+             ${cfield('Kser', 'K_ser [N/mm]', c.Kser, 'step="100"')}
+           </div>`;
+
+    return `
+      <div class="px-2 pb-2 pt-1 space-y-2 border-t border-slate-600">
+        <div>
+          <label class="field-label" for="j-name-${j.id}">Navn</label>
+          <input id="j-name-${j.id}" data-jf="name" data-id="${j.id}" data-focus-key="j-name-${j.id}"
+                 type="text" value="${escapeHtml(j.name)}" />
+        </div>
+        <div class="text-[11px] text-slate-400 leading-snug">
+          <div>Side A: <span class="text-slate-200">${aNames}</span></div>
+          <div>Side B: <span class="text-slate-200">${bNames}</span></div>
+          <div class="text-slate-500 mt-0.5 num">
+            Linje (${fmtLen(j.a[0])}, ${fmtLen(j.a[1])}) → (${fmtLen(j.b[0])}, ${fmtLen(j.b[1])}) ${unit}
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <div>
+            <label class="field-label" for="j-kind-${j.id}">Forbindelse</label>
+            <select id="j-kind-${j.id}" data-jkind data-id="${j.id}" data-focus-key="j-kind-${j.id}">
+              <option value="screw" ${c.kind !== 'glue' && c.kind !== 'weld' ? 'selected' : ''}>Skruer / mekaniske forbindere</option>
+              <option value="glue" ${c.kind === 'glue' ? 'selected' : ''}>Lim</option>
+              <option value="weld" ${c.kind === 'weld' ? 'selected' : ''}>Sveis</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="j-bw-${j.id}">Heftbredde b [mm], tom = linjelengden</label>
+            <input id="j-bw-${j.id}" data-jf="bondWidth" data-id="${j.id}" data-focus-key="j-bw-${j.id}"
+                   type="number" step="1" min="0" value="${j.bondWidth == null ? '' : j.bondWidth}" />
+          </div>
+        </div>
+        ${connectorFields}
+        ${
+          showShare
+            ? `<div>
+                 <label class="field-label" for="j-share-${j.id}">
+                   Andel av ΔN gjennom denne skjøten [%] — statisk ubestemt${
+                     ocEntry ? `, delt med ${ocEntry.jointIds.length - 1} annen/andre skjøt(er)` : ''
+                   }
+                 </label>
+                 <input id="j-share-${j.id}" data-jf="share" data-id="${j.id}" data-focus-key="j-share-${j.id}"
+                        type="number" step="1" min="0" max="100" placeholder="auto (lik fordeling)"
+                        value="${j.share == null ? '' : Math.round(j.share * 100)}" />
+               </div>`
+            : ''
+        }
+      </div>`;
+  }
+
+  _bindJointEditors() {
+    const host = $('joint-list');
+    if (!host) return;
+
+    host.querySelectorAll('[data-jf]').forEach((el) => {
+      const id = el.dataset.id;
+      const key = el.dataset.jf;
+      if (key === 'name') {
+        el.addEventListener('input', (e) => this.store.updateJoint(id, { name: e.target.value }, { transient: true }));
+        el.addEventListener('change', () => this.store.commit('joint-rename'));
+      } else if (key === 'bondWidth') {
+        el.addEventListener('change', (e) => {
+          const v = Number(e.target.value);
+          this.store.updateJoint(id, { bondWidth: Number.isFinite(v) && v > 0 ? v : null });
+        });
+      } else if (key === 'share') {
+        el.addEventListener('change', (e) => {
+          const raw = e.target.value;
+          if (raw === '') return this.store.updateJoint(id, { share: null });
+          const v = Number(raw);
+          if (!Number.isFinite(v)) return;
+          this.store.updateJoint(id, { share: Math.min(100, Math.max(0, v)) / 100 });
+        });
+      }
+    });
+
+    host.querySelectorAll('[data-jkind]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        const kind = e.target.value === 'glue' ? 'glue' : e.target.value === 'weld' ? 'weld' : 'screw';
+        this.store.updateJoint(id, { connector: { ...j.connector, kind } });
+      });
+    });
+
+    host.querySelectorAll('[data-jc]').forEach((el) => {
+      el.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const key = e.target.dataset.jc;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        const raw = e.target.value;
+        if (raw === '' && key === 'qRd') {
+          this.store.updateJoint(id, { connector: { ...j.connector, qRd: null } });
+          return;
+        }
+        const v = Number(raw);
+        this.store.updateJoint(id, { connector: { ...j.connector, [key]: Number.isFinite(v) ? v : 0 } });
+      });
+    });
   }
 
   _renderResults(analysis) {

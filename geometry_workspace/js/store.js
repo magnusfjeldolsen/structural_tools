@@ -5,9 +5,10 @@
  * Ingen DOM-avhengigheter utover localStorage.
  */
 
-import { boundsOfShapes, translatePoints } from './geometry.js';
+import { boundsOfShapes, translatePoints, multiProps, pointsToMulti, splitPointsByLine, openRing, neighborTolerance, EPS as GEOM_EPS } from './geometry.js';
 import { conversionFactor, unitInfo } from './units.js';
 import { SNAP_KEYS } from './snapping.js';
+import { sidesOfJoint } from './joints.js';
 
 const STORAGE_KEY = 'geometry_workspace_v1';
 const MAX_HISTORY = 60;
@@ -28,6 +29,44 @@ function nextId() {
   return `s${uid++}`;
 }
 
+let jointUid = 1;
+function nextJointId() {
+  return `j${jointUid++}`;
+}
+
+/**
+ * Fargen skjøtelinjer tegnes i. Bevisst IKKE en `PALETTE`-farge — det gamle
+ * grensesnittfargen (`#f472b6`) kolliderte med `PALETTE[1]`, som gjorde en
+ * skjøt vanskelig å skille fra en rosa form (§6.1 i joints-planen).
+ */
+export const JOINT_COLOR = '#2dd4bf';
+
+/**
+ * Standard forbinderdata for en ny skjøt (v3, §4 i joints-planen). Sveisefeltene
+ * (`qRd`, `a_weld`, `fvwd`, `nWelds`) er nye i denne versjonen — uten dem kan
+ * `connector.kind` ikke settes til `'weld'` med fornuftige startverdier.
+ * `f_vw,d` (`fvwd`) regnes IKKE ut her — den hentes fra modulen `weld_capacity/`.
+ */
+export function defaultConnector() {
+  return {
+    kind: 'screw',
+    // skrue
+    FRd: 8.0, // kapasitet per forbinder [kN]
+    rows: 1, // antall rader på tvers
+    spacing: 200, // senteravstand langs bjelkeaksen [mm]
+    Kser: 5000, // stivhet per forbinder [N/mm]
+    // lim
+    tauRd: 4.0, // dimensjonerende heftfasthet [N/mm²]
+    Ga: 700, // limets skjærmodul [N/mm²]
+    ta: 2, // limtykkelse [mm]
+    // sveis
+    qRd: null, // kapasitet per mm skjøtelengde [N/mm] — satt direkte overstyrer utledningen
+    a_weld: 4, // a-mål [mm]
+    fvwd: 207, // dimensjonerende skjærfasthet i sveisesnittet [N/mm²]
+    nWelds: 2, // antall sveisestrenger langs skjøten
+  };
+}
+
 /**
  * Standardmateriale for en form. E er i N/mm², uavhengig av arbeidsenheten,
  * fordi mekanikken alltid regnes i N og mm.
@@ -38,9 +77,92 @@ function nextId() {
  */
 export const DEFAULT_MATERIAL = { name: 'S355', E: 210000 };
 
-/** Standard lastdata. V og N i kN, M i kNm, L i arbeidsenheten. */
+/**
+ * Standard lastdata (v3, §3/§4 i joints-planen). To lasttilstander —
+ * superposisjon: `before` virker på tverrsnittet av bare `existing`-formene,
+ * `after` på det sammensatte tverrsnittet. V og N i kN, M i kNm, L (forankrings-
+ * lengden ΔN skal innføres over) i arbeidsenheten.
+ */
 export function defaultLoads() {
-  return { V: 0, N: 0, M: 0, L: 1000 };
+  return { before: { V: 0, N: 0, M: 0 }, after: { V: 0, N: 0, M: 0 }, L: 1000 };
+}
+
+function num(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Oppgraderer lastdata fra det flate v1/v2-formatet `{V,N,M,L}` til v3 sine to
+ * lasttilstander. Gammel `V`/`N`/`M` legges i `after` — det er den tolkningen
+ * som stemmer med hva feltene betydde før: last som virker på HELE (sammensatte)
+ * tverrsnittet var alt verktøyet kjente til den gangen. `before` blir 0/0/0.
+ * Er dataene allerede v3 (har `before`/`after`), fylles bare manglende felt ut.
+ */
+function migrateLoads(loads) {
+  const l = loads || {};
+  if (l.before || l.after) {
+    return {
+      before: { V: num(l.before && l.before.V), N: num(l.before && l.before.N), M: num(l.before && l.before.M) },
+      after: { V: num(l.after && l.after.V), N: num(l.after && l.after.N), M: num(l.after && l.after.M) },
+      L: Number.isFinite(l.L) ? l.L : 1000,
+    };
+  }
+  return {
+    before: { V: 0, N: 0, M: 0 },
+    after: { V: num(l.V), N: num(l.N), M: num(l.M) },
+    L: Number.isFinite(l.L) ? l.L : 1000,
+  };
+}
+
+/**
+ * Oppgraderer én skjøt til v3 (§4). Gamle grensesnitt (v1/v2) beholder `a`,
+ * `b` og `connector`; `groupIds` forkastes bevisst — gruppa utledes nå fra
+ * halvplanet/grafen (§8) i stedet for å ligge lagret på skjøten. `share` er nytt
+ * (null = automatisk lik fordeling ved et statisk ubestemt oppsett, §2).
+ */
+function migrateJoint(f, i) {
+  const a = Array.isArray(f && f.a) ? [num(f.a[0]), num(f.a[1])] : [0, 0];
+  const b = Array.isArray(f && f.b) ? [num(f.b[0]), num(f.b[1])] : [0, 0];
+  const bw = Number(f && f.bondWidth);
+  const shareRaw = f && f.share;
+  const share = shareRaw === null || shareRaw === undefined ? NaN : Number(shareRaw);
+  return {
+    id: (f && f.id) || nextJointId(),
+    name: (f && f.name) || `Skjøt ${i + 1}`,
+    a,
+    b,
+    bondWidth: Number.isFinite(bw) && bw > 0 ? bw : null,
+    share: Number.isFinite(share) && share >= 0 && share <= 1 ? share : null,
+    connector: { ...defaultConnector(), ...((f && f.connector) || {}) },
+  };
+}
+
+/**
+ * Autonavn for en ny skjøt (§6.2): «<former på den ene siden> ↔ <former på den
+ * andre siden>», utledet fra `sidesOfJoint` i joints.js. Faller tilbake på et
+ * nøytralt «Skjøt» der en side ikke treffer noen form (f.eks. midt i tomrom,
+ * før brukeren har tegnet det den skal feste).
+ */
+function jointSideLabel(ids, shapes) {
+  const names = ids
+    .map((id) => {
+      const s = shapes.find((x) => x.id === id);
+      return s ? s.name : null;
+    })
+    .filter(Boolean);
+  return names.length ? names.join(' + ') : null;
+}
+
+export function autoJointName(a, b, shapes) {
+  const tol = neighborTolerance(shapes);
+  const sides = sidesOfJoint({ a, b }, shapes, tol);
+  const aLabel = jointSideLabel(sides.aSide, shapes);
+  const bLabel = jointSideLabel(sides.bSide, shapes);
+  if (aLabel && bLabel) return `${aLabel} ↔ ${bLabel}`;
+  if (aLabel) return `${aLabel} ↔ ?`;
+  if (bLabel) return `? ↔ ${bLabel}`;
+  return 'Skjøt';
 }
 
 /**
@@ -62,10 +184,14 @@ function migrateShape(s) {
 }
 
 /**
- * Oppgraderer lagret tilstand fra eldre versjoner. Tidligere lå snap som et
- * enkelt av/på-flagg på rutenettet; nå er det én bryter per snap-type.
- * Fra versjon 2 har hver form `stage` og `material`, og modellen har
- * `interfaces` og `loads`.
+ * Oppgraderer lagret tilstand fra eldre versjoner. Håndterer v1, v2 og v3 —
+ * alle tre skal lastes uten feil, både fra localStorage og fra importert JSON.
+ *
+ *  - v1: ingen `snap`-brytere per type (ett flagg på rutenettet), ingen
+ *    `stage`/`material` på formene, ingen grensesnitt/skjøter.
+ *  - v2: `interfaces` (flat `groupIds`-modell) og flat `loads` {V,N,M,L}.
+ *  - v3: `joints` (§4 — `a`,`b`,`bondWidth`,`share`,`connector`, INGEN
+ *    `groupIds`) og lastdata med to tilstander, `{before,after,L}` (§3).
  */
 function migrate(data) {
   const out = { ...data };
@@ -90,8 +216,14 @@ function migrate(data) {
   if (out.ortho === undefined) out.ortho = false;
   if (out.underlay === undefined) out.underlay = null;
   if (Array.isArray(out.shapes)) out.shapes = out.shapes.map(migrateShape);
-  if (!Array.isArray(out.interfaces)) out.interfaces = [];
-  out.loads = { ...defaultLoads(), ...(out.loads || {}) };
+
+  // `interfaces` (v1/v2) -> `joints` (v3). Er begge fraværende, tomt.
+  const jointsSrc = Array.isArray(out.joints) ? out.joints : Array.isArray(out.interfaces) ? out.interfaces : [];
+  out.joints = jointsSrc.map(migrateJoint);
+  delete out.interfaces;
+
+  out.loads = migrateLoads(out.loads);
+  out.version = 3;
   return out;
 }
 
@@ -108,8 +240,8 @@ function defaultState() {
     ortho: false,
     underlay: null,
     title: '',
-    // Grensesnitt mellom eksisterende og ny del. Fylles av agent C.
-    interfaces: [],
+    // Skjøtelinjer mellom deler av tverrsnittet (v3, §4 i joints-planen).
+    joints: [],
     loads: defaultLoads(),
   };
 }
@@ -147,7 +279,7 @@ export class Store {
       ortho: this.state.ortho,
       underlay: this.state.underlay,
       title: this.state.title,
-      interfaces: this.state.interfaces,
+      joints: this.state.joints,
       loads: this.state.loads,
     });
   }
@@ -381,6 +513,106 @@ export class Store {
     }, { reason: 'reorder' });
   }
 
+  /* ---------------- skjøter (§4, §6.2) ---------------- */
+
+  getJoint(id) {
+    return this.state.joints.find((j) => j.id === id) || null;
+  }
+
+  /**
+   * Legger inn en ny skjøt. Autonavnes etter delene den skiller (§6.2), med
+   * mindre `opts.name` er gitt eksplisitt — brukeren skal aldri få navnet sitt
+   * overskrevet av en senere geometriendring (det er `updateJoint` sin jobb å
+   * la stå urørt, ikke denne).
+   */
+  addJoint(a, b, opts = {}) {
+    const shapes = this.state.shapes;
+    const joint = {
+      id: nextJointId(),
+      name: opts.name || autoJointName(a, b, shapes),
+      a: [a[0], a[1]],
+      b: [b[0], b[1]],
+      bondWidth: null,
+      share: null,
+      connector: defaultConnector(),
+    };
+    this.mutate((st) => {
+      st.joints.push(joint);
+    }, { reason: 'joint' });
+    return joint;
+  }
+
+  updateJoint(id, patch, opts = {}) {
+    this.mutate((st) => {
+      const j = st.joints.find((x) => x.id === id);
+      if (j) Object.assign(j, patch);
+    }, opts);
+  }
+
+  removeJoint(id) {
+    this.mutate((st) => {
+      st.joints = st.joints.filter((j) => j.id !== id);
+    }, { reason: 'joint' });
+  }
+
+  /* ---------------- del med linje (§8.5) ---------------- */
+
+  /**
+   * «Del med linje»: deler hver MARKERTE form som linja a→b krysser, i to (eller
+   * flere, for en konkav form) nye former langs den (`splitPointsByLine` i
+   * geometry.js, halvplan-klipping — §8.5). En form som linja ikke krysser (den
+   * ligger helt på én side, eller er ikke markert) står urørt. De nye formene
+   * arver navn (med suffiks), farge, rolle, stadium og materiale fra
+   * originalen. Ett undo-steg, siden hele operasjonen skjer i én `mutate`.
+   *
+   * @param {[number,number]} a
+   * @param {[number,number]} b
+   * @returns {{splitCount: number, newIds: Array<string>}}
+   */
+  splitByLine(a, b) {
+    const ids = new Set(this.state.selection);
+    const newIds = [];
+    let splitCount = 0;
+    this.mutate((st) => {
+      const next = [];
+      for (const s of st.shapes) {
+        if (!ids.has(s.id) || !s.points || s.points.length < 3) {
+          next.push(s);
+          continue;
+        }
+        const ownArea = Math.abs(multiProps(pointsToMulti(s.points)).A);
+        const areaTol = Math.max(ownArea * 1e-9, GEOM_EPS);
+        const { posMulti, negMulti } = splitPointsByLine(s.points, a, b);
+        const posArea = Math.abs(multiProps(posMulti).A);
+        const negArea = Math.abs(multiProps(negMulti).A);
+        if (posArea < areaTol || negArea < areaTol) {
+          // Linja krysser ikke formen (eller bare tangerer) — la den stå urørt.
+          next.push(s);
+          continue;
+        }
+        let n = 1;
+        for (const poly of [...posMulti, ...negMulti]) {
+          const ring = openRing(poly && poly[0] ? poly[0] : []);
+          if (ring.length < 3) continue; // degenerert bit — ignorer
+          const copy = {
+            ...s,
+            id: nextId(),
+            name: `${s.name} (del ${n})`,
+            points: ring.map((p) => [p[0], p[1]]),
+            material: { ...s.material },
+          };
+          next.push(copy);
+          newIds.push(copy.id);
+          n++;
+        }
+        splitCount++;
+      }
+      st.shapes = next;
+      if (newIds.length) st.selection = newIds.slice();
+    }, { reason: 'split' });
+    return { splitCount, newIds };
+  }
+
   /* ---------------- utvalg ---------------- */
 
   select(ids, additive = false) {
@@ -453,8 +685,10 @@ export class Store {
         st.shapes = st.shapes.map((s) => ({ ...s, points: s.points.map(([x, y]) => [x * k, y * k]) }));
         st.reference = [st.reference[0] * k, st.reference[1] * k];
         st.grid.step = st.grid.step * k;
-        // Grensesnittlinjene er geometri, og L er en lengde i arbeidsenheten
-        st.interfaces = st.interfaces.map((f) => ({
+        // Skjøtelinjene er geometri, og L er en lengde i arbeidsenheten.
+        // `bondWidth` er derimot en ABSOLUTT mm-verdi (samme grunn som
+        // forbinderfeltene, se defaultConnector) og skal IKKE regnes om her.
+        st.joints = st.joints.map((f) => ({
           ...f,
           a: [f.a[0] * k, f.a[1] * k],
           b: [f.b[0] * k, f.b[1] * k],
@@ -495,10 +729,17 @@ export class Store {
     }, { reason: 'title', transient: true });
   }
 
-  /** Globale lastdata for forsterkningsberegningen. */
+  /**
+   * Globale lastdata for forsterkningsberegningen (v3, §3). `patch.before` og
+   * `patch.after` slås sammen felt-for-felt inn i den eksisterende
+   * lasttilstanden, slik at `setLoads({ after: { V: 100 } })` ikke nullstiller
+   * `after.N`/`after.M`.
+   */
   setLoads(patch) {
     this.mutate((st) => {
-      Object.assign(st.loads, patch);
+      if (patch && patch.before) Object.assign(st.loads.before, patch.before);
+      if (patch && patch.after) Object.assign(st.loads.after, patch.after);
+      if (patch && patch.L !== undefined) st.loads.L = patch.L;
     }, { reason: 'loads', transient: true });
     this.commit('loads');
   }
@@ -507,7 +748,7 @@ export class Store {
     this.mutate((st) => {
       st.shapes = [];
       st.selection = [];
-      st.interfaces = [];
+      st.joints = [];
     }, { reason: 'clear' });
   }
 
@@ -542,7 +783,7 @@ export class Store {
     return JSON.stringify(
       {
         format: 'structural_tools.geometry_workspace',
-        version: 2,
+        version: 3,
         title: this.state.title,
         unit: this.state.unit,
         mode: this.state.mode,
@@ -552,7 +793,7 @@ export class Store {
         ortho: this.state.ortho,
         underlay: this.state.underlay,
         shapes: this.state.shapes,
-        interfaces: this.state.interfaces,
+        joints: this.state.joints,
         loads: this.state.loads,
       },
       null,
@@ -589,7 +830,7 @@ export class Store {
       if (m.snaps) Object.assign(st.snaps, m.snaps);
       st.ortho = !!m.ortho;
       st.underlay = m.underlay || null;
-      st.interfaces = m.interfaces;
+      st.joints = m.joints;
       st.loads = m.loads;
     }, { reason: 'import' });
     this.syncUid();

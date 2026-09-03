@@ -482,3 +482,73 @@ export function boundsOfShapes(shapes) {
   const all = (shapes || []).flatMap((s) => s.points || []);
   return boundsOfPoints(all);
 }
+
+/* ------------------------------------------------------------------ *
+ * Skjøter (§4/§6.2/§8.5 i geometry_workspace-joints-plan.md)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Liten, geometribasert toleranse for naboskapstester — en brøkdel av
+ * modellens utstrekning, slik at den skalerer med arbeidsenheten (mm/cm/m)
+ * i stedet for å være en hardkodet mm-verdi. Brukt både av skjøteverktøyet
+ * (autonavn via `sidesOfJoint` i joints.js) og av den dempede
+ * gruppemarkeringen i viewport.js (`buildGraph`).
+ *
+ * @param {Array} shapes
+ * @returns {number}
+ */
+export function neighborTolerance(shapes) {
+  const b = boundsOfShapes(shapes);
+  if (!b) return 1e-3;
+  const diag = Math.hypot(b.maxX - b.minX, b.maxY - b.minY) || 1;
+  return diag / 2000;
+}
+
+/**
+ * Deler ett polygon i to halvdeler langs en (uendelig forlenget) linje a→b,
+ * ved å klippe det mot halvplanet på hver side med `intersectionMulti` — samme
+ * halvplan-teknikk som `joints.js` bruker for ES* (§8.1), men her brukt til å
+ * faktisk KUTTE geometrien, ikke bare integrere over den. En konkav form kan gi
+ * flere biter per side (klippingen mot en konveks halvplan-firkant bevarer alle
+ * bitene) — det MultiPolygon-formatet fanger naturlig, uten særtilfelle.
+ *
+ * Brukes av «Del med linje»-verktøyet (§8.5). Formen som IKKE krysses av linja
+ * gir en tom MultiPolygon på den ene siden — kallende kode lar den da stå urørt.
+ *
+ * @param {Array<[number,number]>} points Formens ring (åpen eller lukket)
+ * @param {[number,number]} a
+ * @param {[number,number]} b
+ * @returns {{posMulti: Array, negMulti: Array}} tomme lister hvis linja er
+ *   degenerert eller formen har for få punkt.
+ */
+export function splitPointsByLine(points, a, b) {
+  const empty = { posMulti: [], negMulti: [] };
+  if (!points || points.length < 3) return empty;
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy);
+  if (len < EPS) return empty;
+  const dir = [dx / len, dy / len];
+  const nrm = [-dir[1], dir[0]]; // venstre normal
+
+  const own = pointsToMulti(points);
+  if (!own.length) return empty;
+
+  const bnds = boundsOfPoints(points);
+  const diag = Math.hypot(bnds.maxX - bnds.minX, bnds.maxY - bnds.minY) || 1;
+  const M = diag * 4 + 1000; // god margin — dekker hele formen uansett hvor linja krysser
+
+  const halfPolygon = (side) => {
+    const n = [nrm[0] * side, nrm[1] * side];
+    const p1 = [a[0] - dir[0] * M, a[1] - dir[1] * M];
+    const p2 = [b[0] + dir[0] * M, b[1] + dir[1] * M];
+    const far2 = [p2[0] + n[0] * M, p2[1] + n[1] * M];
+    const far1 = [p1[0] + n[0] * M, p1[1] + n[1] * M];
+    return [[p1, p2, far2, far1, p1]]; // Polygon = [ring] (ingen hull)
+  };
+
+  return {
+    posMulti: intersectionMulti(own, [halfPolygon(1)]),
+    negMulti: intersectionMulti(own, [halfPolygon(-1)]),
+  };
+}

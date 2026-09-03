@@ -2,38 +2,47 @@
  * reinforcement-ui.js — «Forsterkning»-fanen i høyre panel.
  *
  * To ansvar, holdt fra hverandre:
- *   1. `computeReinforcement()` — broen fra modellen (store + analyse) til den
- *      rene mekanikken i `reinforcement.js`. All enhetsomregning skjer her, ett
- *      sted, slik at panelet aldri regner selv.
+ *   1. `computeReinforcement()` — broen fra modellen (store) til den rene
+ *      mekanikken i `joints.js`/`reinforcement.js`. All enhetsomregning skjer
+ *      her, ett sted, slik at panelet aldri regner selv.
  *   2. `ReinforcementPanel` — rendering og hendelser. Panelet regner ingenting.
+ *
+ * Skjøtene REDIGERES i venstre panel (skjøtelista, se `ui.js` §5 i
+ * interaksjonsplanen) — denne fanen er lese/resultat-visning pluss de
+ * globale lastfeltene, som ikke hører til noen enkelt skjøt eller form.
+ *
+ * ------------------------------------------------------------------
+ * VIKTIG — ES* kommer fra HALVPLANET, ikke grafen (§8 i joints-planen)
+ * ------------------------------------------------------------------
+ * `halfPlaneParts(joint, shapes, side)` er `groupParts` til `shearFlow`, og
+ * `fullSectionParts(shapes)` er `section`. Grafen (`buildGraph`/`jointGroup`
+ * fra joints.js) brukes KUN til å rute aksialleddet ΔN og til advarsler
+ * (former uten skjøt, statisk ubestemte oppsett) — ALDRI til ES*.
+ *
+ * ------------------------------------------------------------------
+ * TO LASTTILSTANDER — superposisjon (§3)
+ * ------------------------------------------------------------------
+ * `loads.before` virker på tverrsnittet av bare `existing`-formene,
+ * `loads.after` på det sammensatte. Per skjøt: q_før (bare hvis skjøten
+ * ligger helt inne i eksisterende materiale), q_etter, q_V,tot = |q_før| +
+ * |q_etter|, q_N (fra grafen/ΔN), q_tot = q_V,tot + q_N. Er ALLE former
+ * `existing`, er dette en ren kontroll av en eksisterende konstruksjon:
+ * «etter»-tilstanden, aksialfordelingen, ΔN/L og Volkersen skjules, og bare
+ * «før» og skjærstrømmen vises (`allExisting` under).
  *
  * ------------------------------------------------------------------
  * ENHETER — den eneste omregningsplassen i UI-laget
  * ------------------------------------------------------------------
- * Geometrien ligger i arbeidsenheten (mm/cm/m). Mekanikken regnes i N og mm.
- * Derfor skaleres arealegenskapene her, med k = mm per arbeidsenhet:
- *
- *      A   [mm²]  = A_arb  · k²
- *      Sx  [mm³]  = Sx_arb · k³
- *      Ix0 [mm⁴]  = Ix0_arb· k⁴
- *
- * Lastene ligger i kN/kNm og går gjennom `kNtoN`/`kNmToNmm` før de sendes
- * videre. Forankringslengden `L` er i arbeidsenheten og ganges med k.
- * Forbinderdataene er allerede i N/mm/kN (se `interfaces.js`) og røres ikke.
- *
- * ------------------------------------------------------------------
- * HVA SOM IKKE BRUKES
- * ------------------------------------------------------------------
- * `shape.factor` er vektfaktoren for tyngdepunktsfanen og har ingenting her å
- * gjøre — forsterkningsberegningen bruker utelukkende `material.E`. Derfor
- * regnes arealegenskapene på nytt fra `part.multi` i stedet for å bruke
- * `part.props`, som allerede er ganget med `factor`. Overlapp og hull er
- * derimot håndtert av `analyze()`, og det arver vi.
+ * Geometrien (former OG skjøter) ligger i arbeidsenheten (mm/cm/m).
+ * Mekanikken i joints.js/reinforcement.js regner i N og mm. Derfor bygges
+ * `shapesMm`/`jointsMm` her — punktene skalert med k = mm per arbeidsenhet —
+ * ÉN gang, og alt av `halfPlaneParts`/`fullSectionParts`/`buildGraph` regner
+ * på de skalerte kopiene. `bondWidth` og forbinderfeltene er allerede
+ * absolutte mm/kN/N-mm² (se `store.js`) og skal IKKE skaleres.
  */
 
-import { multiProps } from './geometry.js';
 import { unitInfo, lengthLabel } from './units.js';
-import { MATERIALS, materialE, materialByName } from './materials.js';
+import { neighborTolerance } from './geometry.js';
 import {
   sectionEA,
   compareStates,
@@ -49,22 +58,18 @@ import {
   NtokN,
 } from './reinforcement.js';
 import {
-  normalizeInterface,
-  bondWidthMm,
-  lineLength,
-  updateInterface,
-  updateConnector,
-  removeInterface,
-  flipGroup,
-  INTERFACE_COLOR,
-} from './interfaces.js';
+  sidesOfJoint,
+  buildGraph,
+  jointGroup,
+  danglingShapes,
+  overConstrained,
+  fullSectionParts,
+  halfPlaneParts,
+} from './joints.js';
+import { JOINT_COLOR } from './store.js';
 
 /* ------------------------------------------------------------------ *
  * Tallformatering
- *
- * Egne formaterere her i stedet for å importere fra ui.js: ui.js importerer
- * denne fila, og en gjensidig import er noe man ikke skal måtte tenke på når
- * man leser koden.
  * ------------------------------------------------------------------ */
 
 const nf = (dec) =>
@@ -111,205 +116,276 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+function num(v, fallback = 0) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : fallback;
+}
+
+export const CONNECTOR_LABELS = { screw: 'Skruer / mekaniske forbindere', glue: 'Lim', weld: 'Sveis' };
+
 /* ------------------------------------------------------------------ *
  * 1. Broen: modell → mekanikk
  * ------------------------------------------------------------------ */
 
 /**
- * @typedef {Object} RfPart
- * @property {string} id
- * @property {string} name
- * @property {string} color
- * @property {'existing'|'new'} stage
- * @property {number} E      [N/mm²]
- * @property {Object} props  Arealegenskaper i mm, om globalt origo
- * @property {number} EA     [N]
- * @property {boolean} isVoid
- */
-
-/**
- * Regner ut alt «Forsterkning»-fanen viser.
+ * Regner ut alt «Forsterkning»-fanen (og skjøtelista i venstre panel) viser.
  *
  * @param {Object} state  store.state
- * @param {Object} analysis  fra `analyze()` i geometry.js
  * @returns {Object|null} null hvis det ikke finnes noe å regne på
  */
-export function computeReinforcement(state, analysis) {
+export function computeReinforcement(state) {
   if (!state) return null;
   const unit = state.unit || 'mm';
   const k = unitInfo(unit).toMillimetres;
-  const k2 = k * k;
-  const k3 = k2 * k;
-  const k4 = k2 * k2;
 
-  /** @type {RfPart[]} */
-  const parts = [];
-  for (const p of (analysis && analysis.parts) || []) {
-    const shape = p.shape;
-    // Vekten her er BARE overlapp-/hullhåndtering, ikke `factor`. Samme regel
-    // som analyze() bruker, med factor satt til 1.
-    const weight = p.isVoid ? (analysis.mode === 'sum' ? -1 : 0) : 1;
-    const raw = multiProps(p.multi);
-    const props = {
-      A: raw.A * weight * k2,
-      Sx: raw.Sx * weight * k3,
-      Sy: raw.Sy * weight * k3,
-      Ix0: raw.Ix0 * weight * k4,
-      Iy0: raw.Iy0 * weight * k4,
-      Ixy0: raw.Ixy0 * weight * k4,
-    };
-    const E = materialE(shape.material);
-    parts.push({
-      id: p.id,
-      name: shape.name,
-      color: shape.color,
-      stage: shape.stage === 'new' ? 'new' : 'existing',
-      isVoid: !!p.isVoid,
-      factor: Number.isFinite(shape.factor) ? shape.factor : 1,
-      E,
-      materialName: (shape.material && shape.material.name) || '',
-      props,
-      EA: E * props.A,
-    });
-  }
+  const shapesRaw = (state.shapes || []).filter(
+    (s) => s && s.include !== false && Array.isArray(s.points) && s.points.length >= 3
+  );
+  const jointsRaw = state.joints || [];
 
-  const newParts = parts.filter((p) => p.stage === 'new');
-  const existingParts = parts.filter((p) => p.stage !== 'new');
+  const scalePts = (pts) => pts.map(([x, y]) => [x * k, y * k]);
+  const shapesMm = shapesRaw.map((s) => ({ ...s, points: scalePts(s.points) }));
+  const jointsMm = jointsRaw.map((j) => ({
+    ...j,
+    a: [j.a[0] * k, j.a[1] * k],
+    b: [j.b[0] * k, j.b[1] * k],
+  }));
+  const tol = neighborTolerance(shapesMm);
 
-  // ÉN gang, og den sendes videre til shearFlow — ES* skal regnes om DEN
-  // sammensatte nøytralaksen, ikke om gruppas egen.
-  const section = sectionEA(parts);
+  const shapeByIdRaw = new Map(shapesRaw.map((s) => [s.id, s]));
+  const shapeByIdMm = new Map(shapesMm.map((s) => [s.id, s]));
+  const newIds = new Set(shapesRaw.filter((s) => s.stage === 'new').map((s) => s.id));
+  const existingShapesMm = shapesMm.filter((s) => !newIds.has(s.id));
+  const allExisting = shapesRaw.length > 0 && newIds.size === 0;
+
+  // §8: hele det sammensatte tverrsnittet og bare-eksisterende, som Part[]
+  // (per form — mates inn i axialSplit/axialTransfer) og som SectionEA
+  // (nøytralakse + EI — mates inn i shearFlow som `section`).
+  const sectionParts = fullSectionParts(shapesMm);
+  const existingParts = fullSectionParts(existingShapesMm);
+  const section = sectionEA(sectionParts);
   const existingSection = sectionEA(existingParts);
   const comparison = compareStates({ existing: existingSection, combined: section });
 
-  const rawLoads = state.loads || { V: 0, N: 0, M: 0, L: 0 };
+  /** @type {Array<{id, name, color, stage, E, props, EA}>} — visningslista, §3-tabellen. */
+  const parts = sectionParts.map((p) => {
+    const s = shapeByIdRaw.get(p.id);
+    return {
+      id: p.id,
+      name: s ? s.name : String(p.id),
+      color: s ? s.color : '#94a3b8',
+      stage: s && s.stage === 'new' ? 'new' : 'existing',
+      E: p.E,
+      props: p.props,
+      EA: p.E * p.props.A,
+    };
+  });
+  const newParts = parts.filter((p) => p.stage === 'new');
+  const existingPartsDisplay = parts.filter((p) => p.stage !== 'new');
+
+  const rawLoads = state.loads || {};
+  const beforeRaw = rawLoads.before || {};
+  const afterRaw = rawLoads.after || {};
   const loads = {
-    V_kN: Number(rawLoads.V) || 0,
-    N_kN: Number(rawLoads.N) || 0,
-    M_kNm: Number(rawLoads.M) || 0,
-    L_unit: Number(rawLoads.L) || 0,
-    V: kNtoN(Number(rawLoads.V) || 0),
-    N: kNtoN(Number(rawLoads.N) || 0),
-    M: kNmToNmm(Number(rawLoads.M) || 0),
-    L: (Number(rawLoads.L) || 0) * k,
+    before: {
+      V_kN: num(beforeRaw.V), N_kN: num(beforeRaw.N), M_kNm: num(beforeRaw.M),
+      V: kNtoN(num(beforeRaw.V)), N: kNtoN(num(beforeRaw.N)), M: kNmToNmm(num(beforeRaw.M)),
+    },
+    after: {
+      V_kN: num(afterRaw.V), N_kN: num(afterRaw.N), M_kNm: num(afterRaw.M),
+      V: kNtoN(num(afterRaw.V)), N: kNtoN(num(afterRaw.N)), M: kNmToNmm(num(afterRaw.M)),
+    },
+    L_unit: num(rawLoads.L),
+    L: num(rawLoads.L) * k,
   };
 
-  // Aksialfordelingen over hele tverrsnittet, og hvor mye som må inn i den nye
-  // delen. Dette er tallet §7 C3.3 kaller ΔN.
-  const split = axialSplit({ N: loads.N, parts });
-  const transferNew = axialTransfer({ N: loads.N, parts, groupIds: newParts.map((p) => p.id) });
+  // Aksialfordeling over HELE det sammensatte tverrsnittet (§3): hvor mye av
+  // N_etter som havner i de nye delene samlet. Udefinert/uinteressant i
+  // ren-eksisterende-modus, siden det da ikke finnes noe å forankre.
+  const split = allExisting ? null : axialSplit({ N: loads.after.N, parts: sectionParts });
+  const transferNew = allExisting
+    ? { dN: 0, EA_group: 0, share: 0 }
+    : axialTransfer({ N: loads.after.N, parts: sectionParts, groupIds: [...newIds] });
   const anchorNew = anchorFlow({ dN: transferNew.dN, L: loads.L });
 
-  const interfaces = (state.interfaces || []).map((raw, i) => {
-    const f = normalizeInterface(raw, i);
-    const wanted = new Set(f.groupIds);
-    const groupParts = parts.filter((p) => wanted.has(p.id));
-    const group = sectionEA(groupParts);
+  // Grafen (§8.3): KUN til ΔN-ruting og advarsler. ALDRI til ES*.
+  const graph = buildGraph(shapesMm, jointsMm, tol);
+  const dangling = danglingShapes(shapesMm, jointsMm, graph).map((id) => {
+    const s = shapeByIdMm.get(id);
+    return s ? s.name : String(id);
+  });
+  const overC = overConstrained(shapesMm, jointsMm, graph);
 
-    const flow = shearFlow({ V: loads.V, groupParts, section });
-    // Aksialkraften som må gjennom NETTOPP denne fugen: andelen av N som havner
-    // i formene på gruppesiden. Det er ikke nødvendigvis den samme som ΔN over,
-    // som gjelder alt som er merket «ny».
-    const transfer = axialTransfer({ N: loads.N, parts, groupIds: f.groupIds });
-    const anchor = anchorFlow({ dN: transfer.dN, L: loads.L });
+  const joints = jointsRaw.map((raw, i) => {
+    const jm = jointsMm[i];
+    const lineLenUnit = Math.hypot(raw.b[0] - raw.a[0], raw.b[1] - raw.a[1]);
+    const lenMm = Math.hypot(jm.b[0] - jm.a[0], jm.b[1] - jm.a[1]);
 
-    const qV = flow.valid ? flow.qAbs : 0;
-    const qN = anchor.valid ? Math.abs(anchor.q) : 0;
-    // |q_V| + |q_N|: de to bidragene kan ikke regnes med fortegn mot hverandre,
-    // fordi de hører til to forskjellige lasttilfeller langs bjelken.
-    const qTot = qV + qN;
+    const sides = sidesOfJoint(jm, shapesMm, tol);
+    const aNames = sides.aSide.map((id) => (shapeByIdMm.get(id) || {}).name || String(id));
+    const bNames = sides.bSide.map((id) => (shapeByIdMm.get(id) || {}).name || String(id));
+    const touchingIds = [...sides.aSide, ...sides.bSide];
+    const hasNeighbor = touchingIds.length > 0;
+    const hasNewNeighbor = touchingIds.some((id) => newIds.has(id));
+    // §3: «en skjøt mot en ny del har ingen «før»-tilstand» — den må ligge
+    // HELT inne i eksisterende materiale, altså ingen nabo som er «ny».
+    const existingOnly = hasNeighbor && !hasNewNeighbor;
 
-    const b = bondWidthMm(f, unit);
-    const check = connectorCheck({ q: qTot, bondWidth: b, connector: f.connector });
-    const kConn = connectorStiffness(f.connector, b);
-    const tau = b > 0 ? qTot / b : null;
+    let flowBefore = null;
+    let qBefore = 0;
+    if (existingOnly) {
+      const halfBefore = halfPlaneParts(jm, existingShapesMm, 1);
+      flowBefore = shearFlow({ V: loads.before.V, groupParts: halfBefore, section: existingSection });
+      qBefore = flowBefore.valid ? flowBefore.qAbs : 0;
+    }
 
-    // Aksialkraften i gruppa fra bøyemomentet, N_G = M·ES*/EI. Det er den
-    // eneste rollen M_Ed spiller: den sier hvor stor kraft forbindelsen
-    // allerede har levert fram til snittet.
-    const NG = flow.valid && Math.abs(loads.M) > 0 ? (loads.M * flow.EStar) / flow.EI : null;
+    let flowAfter = null;
+    let qAfter = 0;
+    if (!allExisting) {
+      const halfAfter = halfPlaneParts(jm, shapesMm, 1);
+      flowAfter = shearFlow({ V: loads.after.V, groupParts: halfAfter, section });
+      qAfter = flowAfter.valid ? flowAfter.qAbs : 0;
+    }
 
-    const EA_group = group.EA;
+    const qVtot = allExisting ? qBefore : qBefore + qAfter;
+
+    // Aksialleddet (§8.3): grafen, IKKE halvplanet. `share` overstyrer bare her.
+    const jg = jointGroup(jm, graph);
+    const groupNewIds = jg.groupIds.filter((id) => newIds.has(id));
+    const ocEntry = overC.find((e) => e.jointIds.includes(jm.id));
+
+    let dN = 0;
+    let shareApplied = null;
+    if (!allExisting) {
+      if (ocEntry) {
+        const bodyNewIds = ocEntry.shapeIds.filter((id) => newIds.has(id));
+        if (bodyNewIds.length) {
+          const totalT = axialTransfer({ N: loads.after.N, parts: sectionParts, groupIds: bodyNewIds });
+          shareApplied =
+            Number.isFinite(raw.share) && raw.share >= 0 && raw.share <= 1
+              ? raw.share
+              : 1 / ocEntry.jointIds.length;
+          dN = totalT.dN * shareApplied;
+        }
+      } else if (groupNewIds.length) {
+        dN = axialTransfer({ N: loads.after.N, parts: sectionParts, groupIds: groupNewIds }).dN;
+      }
+    }
+    const anchor = anchorFlow({ dN, L: loads.L });
+    const qN = allExisting ? 0 : anchor.valid ? Math.abs(anchor.q) : 0;
+    const qTot = qVtot + qN;
+
+    const bMm = Number.isFinite(raw.bondWidth) && raw.bondWidth > 0 ? raw.bondWidth : lenMm;
+    const connector = raw.connector || {};
+    const check = connectorCheck({ q: qTot, bondWidth: bMm, connector });
+    const kConn = connectorStiffness(connector, bMm);
+    const tau = bMm > 0 ? qTot / bMm : null;
+
+    const groupNewParts = sectionParts.filter((p) => groupNewIds.includes(p.id));
+    const groupSection = sectionEA(groupNewParts);
+    const EA_group = groupSection.EA;
     const EA_other = section.EA - EA_group;
     const vol =
-      Math.abs(transfer.dN) > 0 && loads.L > 0 && EA_group > 0 && EA_other > 0 && kConn > 0
-        ? volkersen({ P: Math.abs(transfer.dN), L: loads.L, k: kConn, EA1: EA_other, EA2: EA_group, samples: 201 })
+      !allExisting && Math.abs(dN) > 0 && loads.L > 0 && EA_group > 0 && EA_other > 0 && kConn > 0
+        ? volkersen({ P: Math.abs(dN), L: loads.L, k: kConn, EA1: EA_other, EA2: EA_group, samples: 201 })
+        : null;
+
+    const NG =
+      flowAfter && flowAfter.valid && Math.abs(loads.after.M) > 0
+        ? (loads.after.M * flowAfter.EStar) / flowAfter.EI
         : null;
 
     return {
-      def: f,
-      lineLenUnit: lineLength(f),
-      groupParts,
-      group,
-      flow,
-      transfer,
-      anchor,
-      qV,
+      id: raw.id,
+      name: raw.name,
+      raw,
+      lineLenUnit,
+      lenMm,
+      aNames,
+      bNames,
+      hasNeighbor,
+      existingOnly,
+      determinate: jg.determinate,
+      overConstrained: !!ocEntry,
+      ocJointIds: ocEntry ? ocEntry.jointIds : null,
+      shareApplied,
+      flowBefore,
+      flowAfter,
+      qBefore,
+      qAfter,
+      qVtot,
       qN,
       qTot,
-      b,
+      dN,
+      anchor,
+      b: bMm,
       tau,
       check,
       kConn,
-      NG,
       EA_group,
       EA_other,
+      NG,
       volkersen: vol,
-      valid: flow.valid,
+      connector,
+      valid: allExisting ? !!(flowBefore && flowBefore.valid) : !!(flowAfter && flowAfter.valid),
     };
   });
 
-  /* ---- advarsler (§7 C4) ---- */
+  /* ---- advarsler (§6.4) ---- */
   const warnings = [];
-  if (!parts.length) {
+  if (!shapesRaw.length) {
     warnings.push({ level: 'warn', text: 'Ingen geometri er med i beregningen. Tegn tverrsnittet først.' });
-  } else if (!newParts.length) {
-    warnings.push({
-      level: 'warn',
-      text:
-        'Ingen former er merket som «ny». Da er det ikke noe å forsterke, og alle forskjellene mellom ' +
-        'eksisterende og sammensatt tverrsnitt blir null. Merk den nye delen under «Stadium» i geometrilista.',
-    });
   }
-  if (parts.length && !section.valid) {
+  if (shapesRaw.length && !section.valid) {
     warnings.push({
       level: 'warn',
       text: 'Sammensatt EA er null — det finnes ikke noe materiale å regne på. Nøytralaksen er udefinert.',
     });
-  } else if (parts.length && Math.abs(section.EIx) < 1e-9) {
+  } else if (shapesRaw.length && Math.abs(section.EIx) < 1e-9) {
     warnings.push({
       level: 'warn',
       text: 'Sammensatt EIₓ er tilnærmet null. Skjærstrømmen q = V·ES*/EI kan ikke regnes ut; sjekk geometrien.',
     });
   }
-  for (const it of interfaces) {
-    if (!it.groupParts.length) {
+  for (const jt of joints) {
+    if (!jt.hasNeighbor) {
       warnings.push({
         level: 'warn',
-        text: `${escapeHtml(it.def.name)}: ingen former er valgt på gruppesiden, så ES* = 0 og q kan ikke regnes ut. Bruk «Snu siden», eller tegn grensesnittet på nytt.`,
+        text: `${escapeHtml(jt.name)}: linja treffer ingen former på noen side, så q kan ikke regnes ut.`,
       });
-    } else if (!it.flow.valid) {
-      warnings.push({
-        level: 'warn',
-        text: `${escapeHtml(it.def.name)}: skjærstrømmen kunne ikke regnes ut (EI ≈ 0 eller tom gruppe).`,
-      });
+    } else if (!jt.valid) {
+      warnings.push({ level: 'warn', text: `${escapeHtml(jt.name)}: skjærstrømmen kunne ikke regnes ut (EI ≈ 0).` });
     }
-    if (it.b <= 0) {
-      warnings.push({
-        level: 'warn',
-        text: `${escapeHtml(it.def.name)}: heftbredden er null, så τ = q/b kan ikke regnes ut.`,
-      });
+    if (jt.b <= 0) {
+      warnings.push({ level: 'warn', text: `${escapeHtml(jt.name)}: heftbredden er null, så τ = q/b kan ikke regnes ut.` });
     }
   }
-  if (loads.L <= 0 && (Math.abs(loads.N) > 0 || interfaces.length)) {
+  for (const name of dangling) {
+    warnings.push({ level: 'warn', text: `«${escapeHtml(name)}» henger i løse lufta — tegn skjøten som fester den.` });
+  }
+  for (const entry of overC) {
+    const names = entry.shapeIds.map((id) => (shapeByIdMm.get(id) || {}).name || id).join(' + ');
+    const jn = entry.jointIds
+      .map((id) => {
+        const j = joints.find((x) => x.id === id);
+        return j ? j.name : id;
+      })
+      .join(', ');
+    warnings.push({
+      level: 'warn',
+      text:
+        `«${escapeHtml(names)}» er festet med flere skjøter samtidig (${escapeHtml(jn)}) — statisk ubestemt. ` +
+        'Fordelingen er satt lik mellom dem som utgangspunkt; overstyr med «Andel» på hver skjøt i skjøtelista om nødvendig.',
+    });
+  }
+  if (!allExisting && loads.L <= 0 && (Math.abs(loads.after.N) > 0 || joints.length)) {
     warnings.push({
       level: 'warn',
       text: 'Forankringslengden L er null eller negativ. q_N = ΔN/L er da udefinert og settes til null.',
     });
   }
-  // `factor` mot ulik E — de to er uavhengige, og det er verdt å si fra om
   const eValues = new Set(parts.map((p) => p.E));
-  const anyFactor = parts.some((p) => Math.abs(p.factor - 1) > 1e-9);
+  const anyFactor = shapesRaw.some((s) => Number.isFinite(s.factor) && Math.abs(s.factor - 1) > 1e-9);
   if (anyFactor && eValues.size > 1) {
     warnings.push({
       level: 'info',
@@ -329,9 +405,10 @@ export function computeReinforcement(state, analysis) {
   return {
     unit,
     k,
+    allExisting,
     parts,
     newParts,
-    existingParts,
+    existingParts: existingPartsDisplay,
     section,
     existingSection,
     comparison,
@@ -339,7 +416,9 @@ export function computeReinforcement(state, analysis) {
     split,
     transferNew,
     anchorNew,
-    interfaces,
+    joints,
+    dangling,
+    overC,
     warnings,
   };
 }
@@ -405,7 +484,7 @@ function volkersenSvg(vol) {
       <rect x="0" y="0" width="${W}" height="${Hh}" fill="#0f172a" rx="4" />
       <line x1="${pad}" y1="${yAvg.toFixed(1)}" x2="${W - pad}" y2="${yAvg.toFixed(1)}"
             stroke="#64748b" stroke-width="1" stroke-dasharray="3 3" />
-      <polyline points="${pts.join(' ')}" fill="none" stroke="${INTERFACE_COLOR}" stroke-width="1.6" />
+      <polyline points="${pts.join(' ')}" fill="none" stroke="${JOINT_COLOR}" stroke-width="1.6" />
       <text x="${pad + 1}" y="${Hh - 1}" fill="#64748b" font-size="8">x = 0</text>
       <text x="${W - pad - 24}" y="${Hh - 1}" fill="#64748b" font-size="8">x = L</text>
     </svg>
@@ -436,7 +515,7 @@ export class ReinforcementPanel {
     this.hostId = deps.hostId || 'tab-reinforcement';
     /** Siste utregning — også nyttig for feilsøking via `window.__gw`. */
     this.result = null;
-    /** Åpne «Utregning»-grupper, nøkkel = grensesnitt-id eller 'section'. */
+    /** Åpne «Utregning»-grupper, nøkkel = skjøt-id eller 'section'. */
     this.openCalc = new Set(['section']);
   }
 
@@ -447,26 +526,37 @@ export class ReinforcementPanel {
     // nytt uten å vente på neste beregningsrunde.
     this._lastAnalysis = analysis;
     const state = this.store.state;
-    const res = computeReinforcement(state, analysis);
+    const res = computeReinforcement(state);
     this.result = res;
+    if (!res) {
+      host.innerHTML = '';
+      return;
+    }
+
+    const sections = [
+      { title: 'Last', body: this._loadsBody(res) },
+      !res.allExisting && { title: 'Effekt av forsterkningen', body: this._effectBody(res) },
+      !res.allExisting && { title: 'Aksialfordeling', body: this._axialBody(res) },
+      { title: 'Per skjøt', body: this._jointsBody(res) },
+      !res.allExisting && { title: 'Shear lag (Volkersen)', body: this._shearLagBody(res) },
+      { title: 'Utregning', body: this._derivationBody(res) },
+    ].filter(Boolean);
+
+    const intro = res.allExisting
+      ? 'Kontroll av eksisterende konstruksjon: skjærstrøm per skjøt i dagens tverrsnitt — «hvor mye går ' +
+        'det i sveisen mellom flens og steg».'
+      : 'Skjærstrøm og aksialoverføring i skjøtene mellom eksisterende og ny del.';
 
     host.innerHTML = [
       `<div class="flex items-center justify-between gap-2">
-         <span class="text-[11px] text-slate-500 leading-snug">
-           Skjærstrøm i forbindelsen mellom eksisterende og ny del.
-         </span>
+         <span class="text-[11px] text-slate-500 leading-snug">${intro}</span>
          <button data-rf-act="copy"
                  class="px-2 py-1 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0">
            Kopier resultat
          </button>
        </div>`,
       this._warnings(res),
-      this._loads(res),
-      this._effect(res),
-      this._axial(res),
-      this._interfaces(res),
-      this._shearLag(res),
-      this._derivation(res),
+      ...sections.map((s, i) => H(`${i + 1}. ${s.title}`, s.body)),
     ].join('');
 
     this._bind();
@@ -486,30 +576,54 @@ export class ReinforcementPanel {
     return `<div class="space-y-1.5">${res.warnings.map(box).join('')}</div>`;
   }
 
-  _loads(res) {
+  _loadsBody(res) {
     const u = lengthLabel(res.unit);
-    const l = res.loads;
-    return H(
-      '1. Laster',
-      `<div class="grid grid-cols-2 gap-2">
-         ${numField('loads.V', 'V_Ed [kN]', l.V_kN, 'step="1"')}
-         ${numField('loads.N', 'N_Ed [kN]', l.N_kN, 'step="1"')}
-         ${numField('loads.M', 'M_Ed [kNm]', l.M_kNm, 'step="1"')}
-         ${numField('loads.L', `Forankringslengde L [${u}]`, l.L_unit, 'step="10" min="0"')}
-       </div>
+    const b = res.loads.before;
+    const beforeFields = `<div class="grid grid-cols-3 gap-2">
+       ${numField('loads.before.V', 'V_Ed,før [kN]', b.V_kN, 'step="1"')}
+       ${numField('loads.before.N', 'N_Ed,før [kN]', b.N_kN, 'step="1"')}
+       ${numField('loads.before.M', 'M_Ed,før [kNm]', b.M_kNm, 'step="1"')}
+     </div>`;
+
+    if (res.allExisting) {
+      return (
+        beforeFields +
+        `<p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
+           Alle former er merket «eksisterende» — dette er en kontroll av en eksisterende konstruksjon.
+           Lasten virker på tverrsnittet slik det står i dag; det finnes ingen «etter»-tilstand å legge til.
+         </p>`
+      );
+    }
+
+    const a = res.loads.after;
+    const afterFields = `<div class="grid grid-cols-3 gap-2">
+       ${numField('loads.after.V', 'V_Ed,etter [kN]', a.V_kN, 'step="1"')}
+       ${numField('loads.after.N', 'N_Ed,etter [kN]', a.N_kN, 'step="1"')}
+       ${numField('loads.after.M', 'M_Ed,etter [kNm]', a.M_kNm, 'step="1"')}
+     </div>`;
+
+    return `
+       <p class="text-[11px] text-slate-400 mb-1">
+         Før forsterkning — virker på det <strong>eksisterende</strong> tverrsnittet alene
+       </p>
+       ${beforeFields}
+       <p class="text-[11px] text-slate-400 mt-2.5 mb-1">
+         Etter forsterkning — tilleggslast på det <strong>sammensatte</strong> tverrsnittet
+       </p>
+       ${afterFields}
+       <div class="mt-2">${numField('loads.L', `Forankringslengde L [${u}]`, res.loads.L_unit, 'step="10" min="0"')}</div>
        <p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
-         Dette er kreftene som virker på det <strong>sammensatte</strong> tverrsnittet. Last som
-         allerede står på den eksisterende delen når forsterkningen monteres, tas ikke av det nye
-         profilet — den skal ikke med her.
+         Den eksisterende bjelken bærer allerede «før»-lasten idet forsterkningen monteres — bare
+         tilleggslasten «etter» virker på det sammensatte tverrsnittet. De to superponeres:
+         q_V,tot = |q_før| + |q_etter|.
        </p>
        <p class="text-[11px] text-slate-500 mt-1 leading-snug num">
-         Internt regnes alt i N og mm: V = ${q(l.V, 'N', 0)}, N = ${q(l.N, 'N', 0)},
-         M = ${q(l.M, 'Nmm', 0)}, L = ${q(l.L, 'mm', 0)}.
-       </p>`
-    );
+         Internt: V_før = ${q(res.loads.before.V, 'N', 0)}, V_etter = ${q(res.loads.after.V, 'N', 0)},
+         N_etter = ${q(res.loads.after.N, 'N', 0)}, L = ${q(res.loads.L, 'mm', 0)}.
+       </p>`;
   }
 
-  _effect(res) {
+  _effectBody(res) {
     const c = res.comparison;
     const line = (label, before, after, ratio, unit, dec = 2) => {
       const inc = ratio == null ? null : (ratio - 1) * 100;
@@ -523,9 +637,8 @@ export class ReinforcementPanel {
       </tr>`;
     };
     const dyc = c.dyc;
-    return H(
-      '2. Effekt av forsterkningen',
-      `<table class="w-full text-[11px]">
+    return `
+       <table class="w-full text-[11px]">
          <thead><tr class="text-slate-500">
            <th class="text-left font-normal py-1">Størrelse</th>
            <th class="text-right font-normal py-1">Eksisterende</th>
@@ -548,12 +661,11 @@ export class ReinforcementPanel {
          Begge stivhetene er regnet om <em>sin egen</em> nøytralakse: før forsterkningen bøyer den
          eksisterende delen seg om sin akse, etterpå om den felles aksen. y_c måles i det globale
          koordinatsystemet, ikke fra underkant.
-       </p>`
-    );
+       </p>`;
   }
 
-  _axial(res) {
-    const shareById = new Map(res.split.shares.map((s) => [s.id, s]));
+  _axialBody(res) {
+    const shareById = res.split ? new Map(res.split.shares.map((s) => [s.id, s])) : new Map();
     const rows = res.parts
       .map((p) => {
         const s = shareById.get(p.id);
@@ -572,9 +684,8 @@ export class ReinforcementPanel {
       .join('');
 
     const dN = res.transferNew.dN;
-    return H(
-      '3. Aksialfordeling',
-      `<table class="w-full text-[11px]">
+    return `
+       <table class="w-full text-[11px]">
          <thead><tr class="text-slate-500">
            <th class="text-left font-normal py-1">Form</th>
            <th class="text-right font-normal py-1">E</th>
@@ -586,122 +697,97 @@ export class ReinforcementPanel {
        </table>
        <div class="mt-2 space-y-1 text-[11px] num">
          ${row('ΣE·A (sammensatt)', q(res.section.EA, 'N', 0))}
-         ${row('Andel til ny del', pct(res.transferNew.share * 100), 'text-emerald-300')}
-         ${row('ΔN inn i ny del', q(NtokN(dN), 'kN'), 'text-white')}
+         ${row('Andel til nye deler', pct(res.transferNew.share * 100), 'text-emerald-300')}
+         ${row('ΔN inn i nye deler', q(NtokN(dN), 'kN'), 'text-white')}
          ${row('q_N = ΔN/L', q(res.anchorNew.valid ? res.anchorNew.q : NaN, 'N/mm'), 'text-white')}
        </div>
        <p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
-         Fordelingen forutsetter at aksialkraften allerede er innført i begge deler, altså at snittet
-         ligger utenfor forankringssonen. ΔN er nettopp kraften som må gjennom fugen for å få det til.
-         q_N = ΔN/L er en <strong>middelverdi</strong> — se punkt 5.
-       </p>`
-    );
+         Fordelingen forutsetter at aksialkraften N_etter allerede er innført i begge deler, altså at
+         snittet ligger utenfor forankringssonen. ΔN er kraften som må gjennom fugene for å få det til —
+         per skjøt, se punkt under. q_N = ΔN/L er en <strong>middelverdi</strong>, se Volkersen-avsnittet.
+       </p>`;
   }
 
-  _interfaces(res) {
-    const list = res.interfaces;
-    const body = list.length
-      ? list.map((it) => this._interfaceCard(it, res)).join('')
-      : `<p class="text-[11px] text-slate-500 italic leading-snug">
-           Ingen grensesnitt ennå. Velg grensesnittverktøyet (<kbd class="px-1 bg-slate-700 rounded">G</kbd>)
-           og klikk to punkt i lerretet — typisk på skjøten mellom eksisterende og ny del.
+  _jointsBody(res) {
+    const list = res.joints;
+    if (!list.length) {
+      return `<p class="text-[11px] text-slate-500 italic leading-snug">
+           Ingen skjøter ennå. Velg skjøteverktøyet (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) og
+           klikk to punkt i lerretet — typisk der to deler møtes, eller langs et snitt du vil kontrollere
+           (verktøyet trenger ikke at geometrien er delt opp der). Skjøtelista i venstre panel lar deg
+           redigere navn, forbindelsestype, heftbredde og andel.
          </p>`;
-    return H('4. Per grensesnitt', body);
+    }
+    return list.map((jt) => this._jointCard(jt, res)).join('');
   }
 
-  _interfaceCard(it, res) {
-    const f = it.def;
-    const c = f.connector;
-    const u = lengthLabel(res.unit);
-    const groupNames = it.groupParts.map((p) => escapeHtml(p.name)).join(', ') || '—';
-
-    const connectorFields =
-      c.kind === 'glue'
-        ? `<div class="grid grid-cols-3 gap-1.5">
-             ${numField(`conn.${f.id}.tauRd`, 'τ_Rd [N/mm²]', c.tauRd, 'step="0.1"')}
-             ${numField(`conn.${f.id}.Ga`, 'G_a [N/mm²]', c.Ga, 'step="10"')}
-             ${numField(`conn.${f.id}.ta`, 't_a [mm]', c.ta, 'step="0.1"')}
-           </div>`
-        : `<div class="grid grid-cols-2 gap-1.5">
-             ${numField(`conn.${f.id}.FRd`, 'F_Rd per forbinder [kN]', c.FRd, 'step="0.5"')}
-             ${numField(`conn.${f.id}.rows`, 'Rader på tvers', c.rows, 'step="1" min="1"')}
-             ${numField(`conn.${f.id}.spacing`, 'Senteravstand s [mm]', c.spacing, 'step="10"')}
-             ${numField(`conn.${f.id}.Kser`, 'K_ser [N/mm]', c.Kser, 'step="100"')}
-           </div>`;
+  _jointCard(jt, res) {
+    const c = jt.connector;
+    const kindLabel = CONNECTOR_LABELS[c.kind] || CONNECTOR_LABELS.screw;
+    const sidesText = `${jt.aNames.join(' + ') || '—'} ↔ ${jt.bNames.join(' + ') || '—'}`;
 
     const checkLine =
-      it.check.kind === 'screw'
-        ? row(
+      c.kind === 'weld'
+        ? row('q_Rd (sveis)', jt.check.qRd == null ? '–' : q(jt.check.qRd, 'N/mm'), 'text-white') +
+          row(
+            'Utnyttelse',
+            jt.check.util == null ? '–' : pct(jt.check.util * 100),
+            jt.check.util != null && jt.check.util > 1 ? 'text-rose-300' : 'text-emerald-300'
+          )
+        : c.kind === 'glue'
+        ? row('τ = q_tot/b', q(jt.check.tau, 'N/mm²'), 'text-white') +
+          row(
+            `Utnyttelse mot τ_Rd = ${q(c.tauRd, 'N/mm²')}`,
+            jt.check.util == null ? '–' : pct(jt.check.util * 100),
+            jt.check.util != null && jt.check.util > 1 ? 'text-rose-300' : 'text-emerald-300'
+          )
+        : row(
             'Nødvendig senteravstand s_req',
-            it.check.sReq === Infinity
-              ? 'ingen krav (q = 0)'
-              : it.check.sReq == null
-              ? '–'
-              : q(it.check.sReq, 'mm', 1),
+            jt.check.sReq === Infinity ? 'ingen krav (q = 0)' : jt.check.sReq == null ? '–' : q(jt.check.sReq, 'mm', 1),
             'text-white'
           ) +
           row(
             `Utnyttelse ved s = ${q(c.spacing, 'mm', 0)}`,
-            it.check.util == null ? '–' : pct(it.check.util * 100),
-            it.check.util != null && it.check.util > 1 ? 'text-rose-300' : 'text-emerald-300'
-          )
-        : row('τ = q_tot/b', q(it.check.tau, 'N/mm²'), 'text-white') +
-          row(
-            `Utnyttelse mot τ_Rd = ${q(c.tauRd, 'N/mm²')}`,
-            it.check.util == null ? '–' : pct(it.check.util * 100),
-            it.check.util != null && it.check.util > 1 ? 'text-rose-300' : 'text-emerald-300'
+            jt.check.util == null ? '–' : pct(jt.check.util * 100),
+            jt.check.util != null && jt.check.util > 1 ? 'text-rose-300' : 'text-emerald-300'
           );
 
     return `
       <div class="rounded border border-slate-700 bg-slate-900 p-2.5 space-y-2 mb-2">
         <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${INTERFACE_COLOR}"></span>
-          <input data-rf="if.${f.id}.name" data-focus-key="rf-name-${f.id}" type="text"
-                 value="${escapeHtml(f.name)}" class="flex-1 text-xs" />
-          <button data-rf-act="remove" data-id="${f.id}"
-                  class="px-1 text-slate-500 hover:text-red-400 shrink-0" title="Slett grensesnittet">×</button>
+          <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${JOINT_COLOR}"></span>
+          <span class="flex-1 text-xs text-slate-200 truncate">${escapeHtml(jt.name)}</span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded border border-slate-600 bg-slate-800 text-slate-300 shrink-0">${kindLabel}</span>
         </div>
-
-        <div class="text-[11px] text-slate-400 leading-snug">
-          Gruppeside (den nye delen): <span class="text-slate-200">${groupNames}</span>
-          <button data-rf-act="flip" data-id="${f.id}"
-                  class="ml-1 px-1.5 py-0.5 text-[10px] rounded border border-slate-600 bg-slate-700 hover:bg-slate-600">
-            Snu siden
-          </button>
-        </div>
-        <div class="text-[11px] text-slate-500 num leading-snug">
-          Linje (${n(f.a[0])}, ${n(f.a[1])}) → (${n(f.b[0])}, ${n(f.b[1])}) ${u},
-          lengde ${q(it.lineLenUnit, u)}
-        </div>
-
-        <div class="grid grid-cols-2 gap-1.5">
-          <div>
-            <label class="field-label" for="rf-kind-${f.id}">Forbindelse</label>
-            <select id="rf-kind-${f.id}" data-rf="conn.${f.id}.kind" data-focus-key="rf-kind-${f.id}">
-              <option value="screw" ${c.kind !== 'glue' ? 'selected' : ''}>Skruer / mekaniske forbindere</option>
-              <option value="glue" ${c.kind === 'glue' ? 'selected' : ''}>Lim</option>
-            </select>
-          </div>
-          ${numField(`if.${f.id}.bondWidth`, 'Heftbredde b [mm], tom = linjelengden', f.bondWidth, 'step="1" min="0"')}
-        </div>
-        ${connectorFields}
-
-        <div class="pt-1.5 border-t border-slate-700 space-y-1 text-[11px]">
-          ${row('ES* (gruppa, om y_c)', q(it.flow.EStar, 'Nmm', 0))}
-          ${row('EI_x (sammensatt)', q(it.flow.EI, 'Nmm²', 0))}
-          ${row('q_V = V·ES*/EI', q(it.qV, 'N/mm'), 'text-white')}
-          ${row('q_N = ΔN_i/L', q(it.qN, 'N/mm'), 'text-white')}
-          ${row('q_tot = |q_V| + |q_N|', q(it.qTot, 'N/mm'), 'text-sky-300')}
-          ${row('Heftbredde b', q(it.b, 'mm', 1))}
-          ${row('τ = q_tot/b', it.tau == null ? '–' : q(it.tau, 'N/mm²'))}
-          ${it.NG != null ? row('N_G = M·ES*/EI (kraft i gruppa)', q(NtokN(it.NG), 'kN')) : ''}
+        <div class="text-[11px] text-slate-400 leading-snug">${sidesText}</div>
+        ${
+          !jt.determinate
+            ? `<div class="rounded border border-amber-600/60 bg-amber-950/40 text-amber-200 px-2 py-1 text-[10px] leading-snug">
+                 Statisk ubestemt${jt.shareApplied != null ? ` — andel satt til ${pct(jt.shareApplied * 100)}` : ''}.
+                 Rediger «Andel» i skjøtelista til venstre for å overstyre den automatiske like fordelingen.
+               </div>`
+            : ''
+        }
+        <div class="space-y-1 text-[11px]">
+          ${
+            res.allExisting
+              ? row('q_før = V_før·ES*/EI', q(jt.qBefore, 'N/mm'), 'text-sky-300')
+              : `${jt.flowBefore ? row('q_før', q(jt.qBefore, 'N/mm')) : row('q_før', 'ingen «før»-tilstand (mot ny del)', 'text-slate-500')}
+                 ${row('q_etter', q(jt.qAfter, 'N/mm'))}
+                 ${row('q_V,tot = |q_før| + |q_etter|', q(jt.qVtot, 'N/mm'), 'text-sky-300')}
+                 ${row('q_N = ΔN/L', q(jt.qN, 'N/mm'))}
+                 ${row('q_tot = q_V,tot + q_N', q(jt.qTot, 'N/mm'), 'text-white')}`
+          }
+          ${row('Heftbredde b', q(jt.b, 'mm', 1))}
+          ${jt.tau != null ? row('τ = q_tot/b', q(jt.tau, 'N/mm²')) : ''}
+          ${jt.NG != null ? row('N_G = M_etter·ES*/EI (kraft i gruppa)', q(NtokN(jt.NG), 'kN')) : ''}
           ${checkLine}
         </div>
       </div>`;
   }
 
-  _shearLag(res) {
-    const withVol = res.interfaces.filter((it) => it.volkersen && it.volkersen.valid);
+  _shearLagBody(res) {
+    const withVol = res.joints.filter((jt) => jt.volkersen && jt.volkersen.valid);
     const intro = `
       <p class="text-[11px] text-slate-500 leading-snug mb-2">
         q_N = ΔN/L er en <strong>middelverdi</strong>. Virkeligheten har topper i skjøteendene, fordi
@@ -709,24 +795,24 @@ export class ReinforcementPanel {
         kontinuerlig skjærlag med stivhet k og gir fordelingen under.
       </p>`;
     if (!withVol.length) {
-      return H(
-        '5. Shear lag (Volkersen)',
+      return (
         intro +
-          `<p class="text-[11px] text-slate-500 italic leading-snug">
-             Ingen fordeling å vise: det kreves aksialkraft å forankre (N_Ed ≠ 0 med former på begge
-             sider av fugen), en forankringslengde L &gt; 0, og en forbindelsesstivhet k &gt; 0
-             (K_ser og senteravstand for skruer, G_a og t_a for lim).
+        `<p class="text-[11px] text-slate-500 italic leading-snug">
+             Ingen fordeling å vise: det kreves aksialkraft å forankre (ΔN ≠ 0, altså former på begge sider
+             av skjøten der minst én er ny), en forankringslengde L &gt; 0, og en forbindelsesstivhet k &gt; 0
+             (K_ser og senteravstand for skruer, G_a og t_a for lim — sveis har ingen kontinuerlig stivhet i
+             denne modellen).
            </p>`
       );
     }
     const cards = withVol
-      .map((it) => {
-        const v = it.volkersen;
+      .map((jt) => {
+        const v = jt.volkersen;
         return `
         <div class="rounded border border-slate-700 bg-slate-900 p-2.5 space-y-1 mb-2">
-          <div class="text-xs text-slate-300">${escapeHtml(it.def.name)}</div>
+          <div class="text-xs text-slate-300">${escapeHtml(jt.name)}</div>
           <div class="space-y-1 text-[11px]">
-            ${row('Forbindelsesstivhet k', q(it.kConn, 'N/mm²'))}
+            ${row('Forbindelsesstivhet k', q(jt.kConn, 'N/mm²'))}
             ${row('λ = √(k(1/α + 1/β))', q(v.lambda, '1/mm', 6))}
             ${row('λ·L', n(v.lambdaL, 3))}
             ${row('q_avg = ΔN/L', q(v.qAvg, 'N/mm'))}
@@ -737,11 +823,12 @@ export class ReinforcementPanel {
         </div>`;
       })
       .join('');
-    return H('5. Shear lag (Volkersen)', intro + cards);
+    return intro + cards;
   }
 
-  _derivation(res) {
+  _derivationBody(res) {
     const s = res.section;
+    const es = res.existingSection;
     const l = res.loads;
 
     const group = (key, title, inner) => {
@@ -756,126 +843,198 @@ export class ReinforcementPanel {
         </div>`;
     };
 
-    // --- tverrsnittet
-    const sectionCalc =
-      calc({
-        sym: 'EA',
-        formula: 'EA = Σ Eᵢ·Aᵢ',
-        subst: res.parts.length
-          ? res.parts.map((p) => `${n(p.E, 0)}·${n(p.props.A, 0)}`).join(' + ')
-          : '0',
-        result: q(s.EA, 'N', 0),
-        note: 'Aksialstivheten til hele det sammensatte tverrsnittet. E i N/mm², A i mm².',
-      }) +
-      calc({
-        sym: 'y_c',
-        formula: 'y_c = ESx / EA = Σ Eᵢ·Sxᵢ / Σ Eᵢ·Aᵢ',
-        subst: `${n(s.ESx, 0)} Nmm / ${n(s.EA, 0)} N`,
-        result: q(s.yc, 'mm'),
-        note:
-          'Den E-vektede nøytralaksen. Den er identisk med tyngdepunktet i det transformerte ' +
-          'tverrsnittet, der bredden skaleres med Eᵢ/E_ref — referansemodulen forkorter bort.',
-      }) +
-      calc({
-        sym: 'EI_x',
-        formula: 'EI_x = Σ Eᵢ·Ix0ᵢ − EA·y_c²  (Steiners sats, om nøytralaksen)',
-        subst: `${n(s.EIx0, 0)} − ${n(s.EA, 0)}·${n(s.yc)}²`,
-        result: q(s.EIx, 'Nmm²', 0),
-        note: 'Ix0 er integrert om globalt origo; leddet EA·y_c² flytter stivheten til nøytralaksen.',
-      }) +
-      calc({
-        sym: 'ΔN',
-        formula: 'ΔN = N · Σ_ny(Eᵢ·Aᵢ) / Σ(Eⱼ·Aⱼ)',
-        subst: `${n(l.N, 0)} N · ${n(res.transferNew.EA_group, 0)} / ${n(s.EA, 0)}`,
-        result: q(NtokN(res.transferNew.dN), 'kN'),
-        note: 'Aksialkraften fordeles etter aksialstivhet, fordi tøyningen er felles over tverrsnittet.',
-      }) +
-      calc({
-        sym: 'q_N',
-        formula: 'q_N = ΔN / L',
-        subst: `${n(res.transferNew.dN, 0)} N / ${n(l.L, 0)} mm`,
-        result: q(res.anchorNew.valid ? res.anchorNew.q : NaN, 'N/mm'),
-        note: 'Middelverdi over forankringslengden. Toppene i endene ligger over — se punkt 5.',
-      });
+    let sectionCalc;
+    if (res.allExisting) {
+      sectionCalc =
+        calc({
+          sym: 'EA',
+          formula: 'EA = Σ Eᵢ·Aᵢ',
+          subst: res.parts.length ? res.parts.map((p) => `${n(p.E, 0)}·${n(p.props.A, 0)}`).join(' + ') : '0',
+          result: q(es.EA, 'N', 0),
+          note: 'Aksialstivheten til det eksisterende tverrsnittet (= hele tverrsnittet her, siden alt er eksisterende).',
+        }) +
+        calc({
+          sym: 'y_c',
+          formula: 'y_c = ESx / EA',
+          subst: `${n(es.ESx, 0)} Nmm / ${n(es.EA, 0)} N`,
+          result: q(es.yc, 'mm'),
+        }) +
+        calc({
+          sym: 'EI_x',
+          formula: 'EI_x = Σ Eᵢ·Ix0ᵢ − EA·y_c²  (Steiners sats, om nøytralaksen)',
+          subst: `${n(es.EIx0, 0)} − ${n(es.EA, 0)}·${n(es.yc)}²`,
+          result: q(es.EIx, 'Nmm²', 0),
+        });
+    } else {
+      sectionCalc =
+        calc({
+          sym: 'EA',
+          formula: 'EA = Σ Eᵢ·Aᵢ',
+          subst: res.parts.length ? res.parts.map((p) => `${n(p.E, 0)}·${n(p.props.A, 0)}`).join(' + ') : '0',
+          result: q(s.EA, 'N', 0),
+          note: 'Aksialstivheten til hele det sammensatte tverrsnittet. E i N/mm², A i mm².',
+        }) +
+        calc({
+          sym: 'y_c',
+          formula: 'y_c = ESx / EA = Σ Eᵢ·Sxᵢ / Σ Eᵢ·Aᵢ',
+          subst: `${n(s.ESx, 0)} Nmm / ${n(s.EA, 0)} N`,
+          result: q(s.yc, 'mm'),
+          note: 'Den E-vektede nøytralaksen — identisk med tyngdepunktet i det transformerte tverrsnittet.',
+        }) +
+        calc({
+          sym: 'EI_x',
+          formula: 'EI_x = Σ Eᵢ·Ix0ᵢ − EA·y_c²  (Steiners sats, om nøytralaksen)',
+          subst: `${n(s.EIx0, 0)} − ${n(s.EA, 0)}·${n(s.yc)}²`,
+          result: q(s.EIx, 'Nmm²', 0),
+        }) +
+        calc({
+          sym: 'ΔN',
+          formula: 'ΔN = N_etter · Σ_ny(Eᵢ·Aᵢ) / Σ(Eⱼ·Aⱼ)',
+          subst: `${n(l.after.N, 0)} N · ${n(res.transferNew.EA_group, 0)} / ${n(s.EA, 0)}`,
+          result: q(NtokN(res.transferNew.dN), 'kN'),
+          note: 'Aksialkraften fordeles etter aksialstivhet, fordi tøyningen er felles over tverrsnittet.',
+        }) +
+        calc({
+          sym: 'q_N',
+          formula: 'q_N = ΔN / L',
+          subst: `${n(res.transferNew.dN, 0)} N / ${n(l.L, 0)} mm`,
+          result: q(res.anchorNew.valid ? res.anchorNew.q : NaN, 'N/mm'),
+          note: 'Middelverdi over forankringslengden, for HELE den nye delen samlet. Per-skjøt ΔN kan avvike — se under.',
+        });
+    }
 
-    const interfaceCalcs = res.interfaces
-      .map((it) => {
-        const c = it.def.connector;
-        let inner =
-          calc({
-            sym: 'ES*',
-            formula: 'ES* = Σ_gruppe Eᵢ·Aᵢ·(yᵢ − y_c) = Σ_gruppe Eᵢ·Sxᵢ − y_c·Σ_gruppe Eᵢ·Aᵢ',
-            subst: `${n(it.group.ESx, 0)} − ${n(s.yc)}·${n(it.group.EA, 0)}`,
-            result: q(it.flow.EStar, 'Nmm', 0),
-            note:
-              'Regnet om den SAMMENSATTE nøytralaksen, ikke om gruppas egen. Fortegnet sier bare ' +
-              'hvilken vei kraften går; kapasitetskontrollen bruker tallverdien.',
-          }) +
-          calc({
-            sym: 'q_V',
-            formula: 'q_V = V · ES* / EI_x     (følger av q = dN/dx og dM/dx = V)',
-            subst: `${n(l.V, 0)} N · ${n(it.flow.EStar, 0)} Nmm / ${n(it.flow.EI, 0)} Nmm²`,
-            result: q(it.qV, 'N/mm'),
-            note: 'Med samme E i hele tverrsnittet forkorter E bort, og dette er den klassiske q = VQ/I.',
-          }) +
-          calc({
-            sym: 'ΔN_i',
-            formula: 'ΔN_i = N · Σ_gruppe(Eᵢ·Aᵢ) / Σ(Eⱼ·Aⱼ)',
-            subst: `${n(l.N, 0)} N · ${n(it.transfer.EA_group, 0)} / ${n(s.EA, 0)}`,
-            result: q(NtokN(it.transfer.dN), 'kN'),
-            note: 'Aksialkraften som må gjennom nettopp denne fugen — gruppesiden, ikke alt som er merket «ny».',
-          }) +
-          calc({
-            sym: 'q_N',
-            formula: 'q_N = ΔN_i / L',
-            subst: `${n(it.transfer.dN, 0)} N / ${n(l.L, 0)} mm`,
-            result: q(it.qN, 'N/mm'),
-          }) +
-          calc({
-            sym: 'q_tot',
-            formula: 'q_tot = |q_V| + |q_N|',
-            subst: `${n(it.qV)} + ${n(it.qN)}`,
-            result: q(it.qTot, 'N/mm'),
-            note: 'Absoluttverdier legges sammen: de to bidragene kan ikke regnes til fradrag mot hverandre.',
-          }) +
-          calc({
-            sym: 'τ',
-            formula: 'τ = q_tot / b',
-            subst: `${n(it.qTot)} N/mm / ${n(it.b, 1)} mm`,
-            result: it.tau == null ? '–' : q(it.tau, 'N/mm²'),
-            note: 'b er heftbredden, altså grensesnittets lengde i tverrsnittsplanet.',
-          });
+    const jointCalcs = res.joints
+      .map((jt) => {
+        const c = jt.connector;
+        let inner = '';
 
-        if (it.check.kind === 'screw') {
+        if (res.allExisting) {
+          inner +=
+            calc({
+              sym: 'ES*',
+              formula: 'ES* = Σ_side Eᵢ·Aᵢ·(yᵢ − y_c)  — halvplanet snittlinja definerer (§8), IKKE grafen',
+              subst: jt.flowBefore ? `klippet mot y_c = ${n(es.yc)} mm` : '–',
+              result: jt.flowBefore ? q(jt.flowBefore.EStar, 'Nmm', 0) : '–',
+              note:
+                'Halvplanet virker uendret på en udelt, importert profil — du trenger ikke splitte ' +
+                'geometrien for å snitte i den.',
+            }) +
+            calc({
+              sym: 'q_før',
+              formula: 'q_før = V_før · ES* / EI_x     (q = dN/dx, dM/dx = V — klassisk q = VQ/I når E er lik overalt)',
+              subst: jt.flowBefore
+                ? `${n(l.before.V, 0)} N · ${n(jt.flowBefore.EStar, 0)} Nmm / ${n(jt.flowBefore.EI, 0)} Nmm²`
+                : '–',
+              result: q(jt.qBefore, 'N/mm'),
+            });
+        } else {
+          if (jt.flowBefore) {
+            inner +=
+              calc({
+                sym: 'ES*_før',
+                formula: 'ES* = Σ_side Eᵢ·Aᵢ·(yᵢ − y_c,eks)  — halvplanet mot KUN eksisterende geometri',
+                subst: `klippet mot y_c,eks = ${n(es.yc)} mm`,
+                result: q(jt.flowBefore.EStar, 'Nmm', 0),
+              }) +
+              calc({
+                sym: 'q_før',
+                formula: 'q_før = V_før · ES*_før / EI_x,eks',
+                subst: `${n(l.before.V, 0)} N · ${n(jt.flowBefore.EStar, 0)} Nmm / ${n(jt.flowBefore.EI, 0)} Nmm²`,
+                result: q(jt.qBefore, 'N/mm'),
+              });
+          }
+          inner +=
+            calc({
+              sym: 'ES*_etter',
+              formula: 'ES* = Σ_side Eᵢ·Aᵢ·(yᵢ − y_c)  — halvplanet mot HELE det sammensatte tverrsnittet',
+              subst: `klippet mot y_c = ${n(s.yc)} mm`,
+              result: q(jt.flowAfter.EStar, 'Nmm', 0),
+            }) +
+            calc({
+              sym: 'q_etter',
+              formula: 'q_etter = V_etter · ES*_etter / EI_x',
+              subst: `${n(l.after.V, 0)} N · ${n(jt.flowAfter.EStar, 0)} Nmm / ${n(jt.flowAfter.EI, 0)} Nmm²`,
+              result: q(jt.qAfter, 'N/mm'),
+            }) +
+            calc({
+              sym: 'q_V,tot',
+              formula: 'q_V,tot = |q_før| + |q_etter|',
+              subst: `${n(jt.qBefore)} + ${n(jt.qAfter)}`,
+              result: q(jt.qVtot, 'N/mm'),
+              note: 'Superposisjon (§3): de to lasttilstandene virker på ulike tverrsnitt, og legges sammen i tallverdi.',
+            }) +
+            calc({
+              sym: 'ΔN_i',
+              formula:
+                'ΔN_i = N_etter · Σ_gruppe(Eᵢ·Aᵢ) / Σ(Eⱼ·Aⱼ)   (gruppa fra GRAFEN, §8.3 — ikke halvplanet)',
+              subst: `${n(l.after.N, 0)} N · ${n(jt.EA_group, 0)} / ${n(s.EA, 0)}${
+                jt.shareApplied != null ? ` · andel ${n(jt.shareApplied, 3)}` : ''
+              }`,
+              result: q(NtokN(jt.dN), 'kN'),
+              note: 'Aksialkraften som må gjennom nettopp denne skjøten — ikke nødvendigvis alt som er «ny».',
+            }) +
+            calc({
+              sym: 'q_N',
+              formula: 'q_N = ΔN_i / L',
+              subst: `${n(jt.dN, 0)} N / ${n(l.L, 0)} mm`,
+              result: q(jt.qN, 'N/mm'),
+            }) +
+            calc({
+              sym: 'q_tot',
+              formula: 'q_tot = q_V,tot + q_N',
+              subst: `${n(jt.qVtot)} + ${n(jt.qN)}`,
+              result: q(jt.qTot, 'N/mm'),
+            });
+        }
+
+        if (c.kind === 'weld') {
+          const explicitQrd = Number(c.qRd) > 0;
+          inner +=
+            calc({
+              sym: 'q_Rd',
+              formula: 'q_Rd = n_sveiser · a · f_vw,d     (f_vw,d hentes fra modulen weld_capacity/, regnes ikke ut her)',
+              subst: explicitQrd ? `satt direkte = ${n(c.qRd)} N/mm` : `${n(c.nWelds, 0)} · ${n(c.a_weld)} · ${n(c.fvwd)}`,
+              result: jt.check.qRd == null ? '–' : q(jt.check.qRd, 'N/mm'),
+            }) +
+            calc({
+              sym: 'utnyttelse',
+              formula: 'util = q_tot / q_Rd',
+              subst: `${n(jt.qTot)} / ${jt.check.qRd == null ? '–' : n(jt.check.qRd)}`,
+              result: jt.check.util == null ? '–' : pct(jt.check.util * 100),
+            });
+        } else if (c.kind === 'glue') {
+          inner +=
+            calc({
+              sym: 'τ',
+              formula: 'τ = q_tot / b',
+              subst: `${n(jt.qTot)} N/mm / ${n(jt.b, 1)} mm`,
+              result: jt.tau == null ? '–' : q(jt.tau, 'N/mm²'),
+            }) +
+            calc({
+              sym: 'utnyttelse',
+              formula: 'util = τ / τ_Rd',
+              subst: `${n(jt.tau)} / ${n(c.tauRd)}`,
+              result: jt.check.util == null ? '–' : pct(jt.check.util * 100),
+            });
+        } else {
           inner +=
             calc({
               sym: 's_req',
               formula: 's_req = rader · F_Rd · 1000 / q_tot     (F_Rd i kN, q i N/mm)',
-              subst: `${n(c.rows, 0)} · ${n(c.FRd)} · 1000 / ${n(it.qTot)}`,
+              subst: `${n(c.rows, 0)} · ${n(c.FRd)} · 1000 / ${n(jt.qTot)}`,
               result:
-                it.check.sReq === Infinity
-                  ? 'ingen krav (q_tot = 0)'
-                  : it.check.sReq == null
-                  ? '–'
-                  : q(it.check.sReq, 'mm', 1),
+                jt.check.sReq === Infinity ? 'ingen krav (q_tot = 0)' : jt.check.sReq == null ? '–' : q(jt.check.sReq, 'mm', 1),
             }) +
             calc({
               sym: 'utnyttelse',
               formula: 'util = q_tot · s / (rader · F_Rd · 1000)',
-              subst: `${n(it.qTot)} · ${n(c.spacing, 0)} / (${n(c.rows, 0)} · ${n(c.FRd)} · 1000)`,
-              result: it.check.util == null ? '–' : pct(it.check.util * 100),
+              subst: `${n(jt.qTot)} · ${n(c.spacing, 0)} / (${n(c.rows, 0)} · ${n(c.FRd)} · 1000)`,
+              result: jt.check.util == null ? '–' : pct(jt.check.util * 100),
             });
-        } else {
-          inner += calc({
-            sym: 'utnyttelse',
-            formula: 'util = τ / τ_Rd',
-            subst: `${n(it.tau)} / ${n(c.tauRd)}`,
-            result: it.check.util == null ? '–' : pct(it.check.util * 100),
-          });
         }
 
-        if (it.volkersen && it.volkersen.valid) {
-          const v = it.volkersen;
+        if (jt.volkersen && jt.volkersen.valid) {
+          const v = jt.volkersen;
           inner +=
             calc({
               sym: 'k',
@@ -885,47 +1044,46 @@ export class ReinforcementPanel {
                   : 'k = K_ser · rader / s     [(N/mm)·(1/mm) = N/mm²]',
               subst:
                 c.kind === 'glue'
-                  ? `${n(c.Ga, 0)} · ${n(it.b, 1)} / ${n(c.ta)}`
+                  ? `${n(c.Ga, 0)} · ${n(jt.b, 1)} / ${n(c.ta)}`
                   : `${n(c.Kser, 0)} · ${n(c.rows, 0)} / ${n(c.spacing, 0)}`,
-              result: q(it.kConn, 'N/mm²'),
+              result: q(jt.kConn, 'N/mm²'),
             }) +
             calc({
               sym: 'λ',
-              formula: 'λ = √( k · (1/α + 1/β) ),  α = (EA)_eks, β = (EA)_ny',
-              subst: `√(${n(it.kConn)} · (1/${n(it.EA_other, 0)} + 1/${n(it.EA_group, 0)}))`,
+              formula: 'λ = √( k · (1/α + 1/β) ),  α = (EA)_øvrig, β = (EA)_gruppe',
+              subst: `√(${n(jt.kConn)} · (1/${n(jt.EA_other, 0)} + 1/${n(jt.EA_group, 0)}))`,
               result: q(v.lambda, '1/mm', 6),
             }) +
             calc({
               sym: 'q_max',
               formula: 'q(x) = (P·λ/2)·[cosh(λx′)/sinh(λL/2) + ((α−β)/(α+β))·sinh(λx′)/cosh(λL/2)],  x′ = x − L/2',
-              subst: `maks |q| over x ∈ [0, ${n(l.L, 0)} mm], med P = ${n(Math.abs(it.transfer.dN), 0)} N`,
+              subst: `maks |q| over x ∈ [0, ${n(l.L, 0)} mm], med P = ${n(Math.abs(jt.dN), 0)} N`,
               result: q(v.qMax, 'N/mm'),
               note: `Toppfaktor q_max/q_avg = ${n(v.peakFactor, 3)}. Integralet av q over skjøten er per konstruksjon lik P.`,
             });
         }
 
-        return group(it.def.id, escapeHtml(it.def.name), inner);
+        return group(jt.id, escapeHtml(jt.name), inner);
       })
       .join('');
 
-    return H(
-      '6. Utregning',
-      group('section', 'Tverrsnittet og aksialkraften', sectionCalc) +
-        interfaceCalcs +
-        `<div class="rounded border border-slate-700 bg-slate-900 p-2.5 text-[11px] text-slate-400 leading-snug space-y-1.5">
+    return (
+      group('section', res.allExisting ? 'Tverrsnittet (eksisterende)' : 'Tverrsnittet og aksialkraften', sectionCalc) +
+      jointCalcs +
+      `<div class="rounded border border-slate-700 bg-slate-900 p-2.5 text-[11px] text-slate-400 leading-snug space-y-1.5">
            <div class="text-slate-300 font-medium">Forutsetninger</div>
            <ul class="list-disc list-inside space-y-1">
              <li><strong>Full samvirkning</strong> mellom delene: tverrsnittet forblir plant, og det er
-               ingen glidning i fugen. Skjærstrømmen er nettopp den kraften forbindelsen må ta for at
+               ingen glidning i skjøten. Skjærstrømmen er nettopp den kraften forbindelsen må ta for at
                dette skal holde.</li>
              <li><strong>Lineær elastisitet</strong>: σ = E·ε i alle deler, med E fra materialvalget.
                Ingen riss, ingen flyt, ingen kryp — skal du regne langtid, sett inn en redusert E selv.</li>
-             <li>Kreftene V_Ed, N_Ed og M_Ed gjelder det <strong>sammensatte</strong> tverrsnittet.
-               Last som allerede sto på den eksisterende delen før montasje, bæres av den alene.</li>
+             <li>«Før»-kreftene gjelder det <strong>eksisterende</strong> tverrsnittet alene, «etter»-
+               kreftene det <strong>sammensatte</strong>. Er alt merket eksisterende, finnes bare «før».</li>
+             <li>Naboskap uten en skjøt regnes som stivt forbundet: former som berører eller overlapper
+               hverandre og ikke har en skjøt mellom seg, oppfører seg som støpt sammen.</li>
              <li>Vektfaktoren <code>factor</code> påvirker bare tyngdepunktsfanen. Her brukes bare
                <code>material.E</code>.</li>
-             <li>Overlapp og hull er håndtert av geometrien slik fanen «Tverrsnitt» viser
-               (skallmodell eller fysisk tverrsnitt).</li>
              <li>Beregningen er <strong>iterativ i praksis</strong>: ny geometri gir ny stivhet, som gir
                nye krefter. Tallene her gjelder de kreftene som er tastet inn.</li>
            </ul>
@@ -942,56 +1100,22 @@ export class ReinforcementPanel {
 
     host.querySelectorAll('[data-rf]').forEach((el) => {
       const path = el.dataset.rf;
-      const evt = el.tagName === 'SELECT' ? 'change' : el.type === 'text' ? 'input' : 'change';
-      el.addEventListener(evt, () => {
+      el.addEventListener('change', () => {
         const parts = path.split('.');
-        if (parts[0] === 'loads') {
-          const v = Number(el.value);
-          store.setLoads({ [parts[1]]: Number.isFinite(v) ? v : 0 });
-          return;
-        }
-        if (parts[0] === 'if') {
-          const id = parts[1];
-          const key = parts[2];
-          if (key === 'name') {
-            updateInterface(store, id, { name: el.value }, { transient: true });
-            return;
-          }
-          if (key === 'bondWidth') {
-            const v = Number(el.value);
-            updateInterface(store, id, { bondWidth: Number.isFinite(v) && v > 0 ? v : null });
-            return;
-          }
-        }
-        if (parts[0] === 'conn') {
-          const id = parts[1];
-          const key = parts[2];
-          if (key === 'kind') {
-            updateConnector(store, id, { kind: el.value === 'glue' ? 'glue' : 'screw' });
-            return;
-          }
-          const v = Number(el.value);
-          updateConnector(store, id, { [key]: Number.isFinite(v) ? v : 0 });
+        if (parts[0] !== 'loads') return;
+        const v = Number(el.value);
+        const val = Number.isFinite(v) ? v : 0;
+        if (parts[1] === 'L') {
+          store.setLoads({ L: val });
+        } else if (parts[1] === 'before' || parts[1] === 'after') {
+          store.setLoads({ [parts[1]]: { [parts[2]]: val } });
         }
       });
-      // Navnefeltet skrives transient; ett undo-steg når feltet forlates.
-      if (path.endsWith('.name')) {
-        el.addEventListener('change', () => store.commit('interface-rename'));
-      }
     });
 
     host.querySelectorAll('[data-rf-act]').forEach((el) => {
       el.addEventListener('click', () => {
-        const id = el.dataset.id;
-        if (el.dataset.rfAct === 'copy') {
-          this.onCopy();
-        } else if (el.dataset.rfAct === 'remove') {
-          removeInterface(store, id);
-          this.toast('Grensesnittet er slettet.');
-        } else if (el.dataset.rfAct === 'flip') {
-          flipGroup(store, id);
-          this.toast('Gruppesiden er snudd — pilene i lerretet peker nå motsatt vei.');
-        }
+        if (el.dataset.rfAct === 'copy') this.onCopy();
       });
     });
 
@@ -1012,42 +1136,50 @@ export class ReinforcementPanel {
   clipboardText() {
     const res = this.result;
     if (!res) return '';
-    const c = res.comparison;
-    const lines = [
-      'FORSTERKNING — sammensatt tverrsnitt',
-      `Laster: V_Ed = ${res.loads.V_kN} kN, N_Ed = ${res.loads.N_kN} kN, M_Ed = ${res.loads.M_kNm} kNm, L = ${n(res.loads.L, 0)} mm`,
-      '',
-      'Effekt av forsterkningen',
-      `  EA:    ${n(c.EA0, 0)} N  ->  ${n(c.EA1, 0)} N   (${c.ratios.EA == null ? '–' : pct((c.ratios.EA - 1) * 100)})`,
-      `  EI_x:  ${n(c.EIx0, 0)} Nmm2  ->  ${n(c.EIx1, 0)} Nmm2   (${c.ratios.EIx == null ? '–' : pct((c.ratios.EIx - 1) * 100)})`,
-      `  y_c:   ${n(c.yc0)} mm  ->  ${n(c.yc1)} mm`,
-      '',
-      `Aksialfordeling: DeltaN til ny del = ${n(NtokN(res.transferNew.dN))} kN, q_N = ${n(res.anchorNew.q)} N/mm`,
-    ];
-    for (const it of res.interfaces) {
+    const lines = [res.allExisting ? 'KONTROLL AV EKSISTERENDE KONSTRUKSJON' : 'FORSTERKNING — to lasttilstander'];
+    if (res.allExisting) {
+      lines.push(`Last: V_før = ${res.loads.before.V_kN} kN, N_før = ${res.loads.before.N_kN} kN, M_før = ${res.loads.before.M_kNm} kNm`);
+    } else {
+      const c = res.comparison;
+      lines.push(
+        `Før:   V = ${res.loads.before.V_kN} kN, N = ${res.loads.before.N_kN} kN, M = ${res.loads.before.M_kNm} kNm`,
+        `Etter: V = ${res.loads.after.V_kN} kN, N = ${res.loads.after.N_kN} kN, M = ${res.loads.after.M_kNm} kNm, L = ${n(res.loads.L, 0)} mm`,
+        '',
+        'Effekt av forsterkningen',
+        `  EA:    ${n(c.EA0, 0)} N  ->  ${n(c.EA1, 0)} N   (${c.ratios.EA == null ? '–' : pct((c.ratios.EA - 1) * 100)})`,
+        `  EI_x:  ${n(c.EIx0, 0)} Nmm2  ->  ${n(c.EIx1, 0)} Nmm2   (${c.ratios.EIx == null ? '–' : pct((c.ratios.EIx - 1) * 100)})`,
+        `  y_c:   ${n(c.yc0)} mm  ->  ${n(c.yc1)} mm`,
+        '',
+        `Aksialfordeling: DeltaN til nye deler = ${n(NtokN(res.transferNew.dN))} kN, q_N (middel) = ${n(res.anchorNew.q)} N/mm`
+      );
+    }
+    for (const jt of res.joints) {
       lines.push('');
-      lines.push(`${it.def.name}`);
-      lines.push(`  ES*   = ${n(it.flow.EStar, 0)} Nmm     EI_x = ${n(it.flow.EI, 0)} Nmm2`);
-      lines.push(`  q_V   = ${n(it.qV)} N/mm   q_N = ${n(it.qN)} N/mm   q_tot = ${n(it.qTot)} N/mm`);
-      lines.push(`  b     = ${n(it.b, 1)} mm    tau = ${it.tau == null ? '-' : n(it.tau)} N/mm2`);
-      if (it.check.kind === 'screw') {
+      lines.push(`${jt.name}`);
+      if (res.allExisting) {
+        lines.push(`  q_foer = ${n(jt.qBefore)} N/mm`);
+      } else {
+        lines.push(`  q_foer = ${n(jt.qBefore)} N/mm   q_etter = ${n(jt.qAfter)} N/mm   q_V,tot = ${n(jt.qVtot)} N/mm`);
+        lines.push(`  q_N = ${n(jt.qN)} N/mm   q_tot = ${n(jt.qTot)} N/mm`);
+      }
+      lines.push(`  b = ${n(jt.b, 1)} mm    tau = ${jt.tau == null ? '-' : n(jt.tau)} N/mm2   forbindelse: ${jt.connector.kind}`);
+      if (jt.check.kind === 'screw') {
         lines.push(
-          `  s_req = ${it.check.sReq === Infinity ? 'ingen krav' : n(it.check.sReq, 1) + ' mm'}` +
-            `   utnyttelse ved s = ${n(it.def.connector.spacing, 0)} mm: ${it.check.util == null ? '-' : pct(it.check.util * 100)}`
+          `  s_req = ${jt.check.sReq === Infinity ? 'ingen krav' : n(jt.check.sReq, 1) + ' mm'}` +
+            `   utnyttelse ved s = ${n(jt.connector.spacing, 0)} mm: ${jt.check.util == null ? '-' : pct(jt.check.util * 100)}`
         );
       } else {
-        lines.push(`  utnyttelse mot tau_Rd: ${it.check.util == null ? '-' : pct(it.check.util * 100)}`);
+        lines.push(`  utnyttelse: ${jt.check.util == null ? '-' : pct(jt.check.util * 100)}`);
       }
-      if (it.volkersen && it.volkersen.valid) {
-        lines.push(`  Volkersen: lambda = ${n(it.volkersen.lambda, 6)} 1/mm, q_max = ${n(it.volkersen.qMax)} N/mm, toppfaktor ${n(it.volkersen.peakFactor, 3)}`);
+      if (jt.volkersen && jt.volkersen.valid) {
+        lines.push(
+          `  Volkersen: lambda = ${n(jt.volkersen.lambda, 6)} 1/mm, q_max = ${n(jt.volkersen.qMax)} N/mm, toppfaktor ${n(jt.volkersen.peakFactor, 3)}`
+        );
       }
     }
     lines.push('');
-    lines.push('Forutsetninger: full samvirkning, lineaer elastisitet, kreftene gjelder det sammensatte');
-    lines.push('tverrsnittet. Beregningen er iterativ i praksis - ny geometri gir ny stivhet og nye krefter.');
+    lines.push('Forutsetninger: full samvirkning, lineaer elastisitet. Naboskap uten skjot regnes stivt forbundet.');
+    lines.push('Beregningen er iterativ i praksis - ny geometri gir ny stivhet og nye krefter.');
     return lines.join('\n');
   }
 }
-
-/** Materialpresetene, gjort tilgjengelig for geometrilista i ui.js. */
-export { MATERIALS, materialByName };

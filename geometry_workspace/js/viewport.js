@@ -10,15 +10,13 @@
  */
 
 import * as THREE from 'three';
-import { openRing } from './geometry.js';
+import { openRing, centroidOfPoints } from './geometry.js';
 import { findSnap } from './snapping.js';
-import {
-  normalizeInterface,
-  groupSideSign,
-  leftNormal,
-  INTERFACE_COLOR,
-  NEW_STAGE_COLOR,
-} from './interfaces.js';
+import { buildGraph, jointGroup } from './joints.js';
+import { JOINT_COLOR } from './store.js';
+
+/** Fargestikket former merket «ny» får i lerretet (kontur under den stiplede). Ren tegneparameter — hører ikke til datamodellen, derfor ikke i store.js. */
+const NEW_STAGE_COLOR = '#34d399';
 
 const Z = {
   underlay: -0.5,
@@ -27,7 +25,7 @@ const Z = {
   fill: 0.1,
   outline: 0.2,
   net: 0.3,
-  interface: 0.35,
+  joint: 0.35,
   preview: 0.4,
   marker: 0.5,
   handle: 0.6,
@@ -162,6 +160,15 @@ function makeLabelTexture(text, color) {
   return { texture, w, h };
 }
 
+/** Enhetsnormalen som peker mot venstre side av linja a→b. Null lengde ⟹ [0, 0]. Lokal kopi — samme lille utledning som i joints.js/store.js, for tegning her. */
+function leftNormal(a, b) {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-12) return [0, 0];
+  return [-dy / len, dx / len];
+}
+
 function disposeGroup(group) {
   for (let i = group.children.length - 1; i >= 0; i--) {
     const child = group.children[i];
@@ -194,13 +201,15 @@ export class Viewport {
       reference: [0, 0],
       grid: null,
       underlay: null,
-      interfaces: [],
+      joints: [],
     };
     this.underlayTexture = null;
     /** Buffer for tekstetiketter, nøkkel `farge|tekst`. */
     this._labelCache = new Map();
     this.preview = null;
     this.hover = null;
+    /** Skjøten som er fremhevet (hover), fra lerretet ELLER fra skjøtelista i panelet (§6.2 — se `setHoverJoint`). */
+    this.hoverJoint = null;
     this.showNet = true;
     this.showPrincipal = true;
     this.showOverlap = true;
@@ -219,7 +228,7 @@ export class Viewport {
     this.renderer.domElement.style.cursor = 'crosshair';
 
     this.groups = {};
-    for (const key of ['underlay', 'grid', 'fill', 'outline', 'net', 'interface', 'marker', 'preview', 'handle']) {
+    for (const key of ['underlay', 'grid', 'fill', 'outline', 'net', 'joint', 'marker', 'preview', 'handle']) {
       const g = new THREE.Group();
       this.scene.add(g);
       this.groups[key] = g;
@@ -459,6 +468,17 @@ export class Viewport {
     this.refresh();
   }
 
+  /**
+   * Fremhever én skjøt i lerretet — kalt fra tools.js når musa er over en
+   * skjøtelinje, og ment å kunne kalles fra panelet (agent 2B) når musa er
+   * over raden i skjøtelista, slik at fremhevingen virker begge veier (§6.2).
+   */
+  setHoverJoint(id) {
+    if (this.hoverJoint === id) return;
+    this.hoverJoint = id;
+    this.refresh();
+  }
+
   setOverlays({ showNet, showPrincipal, showOverlap }) {
     if (showNet !== undefined) this.showNet = showNet;
     if (showPrincipal !== undefined) this.showPrincipal = showPrincipal;
@@ -487,7 +507,7 @@ export class Viewport {
     this._drawGrid(upp);
     this._drawShapes(upp);
     this._drawNet(upp);
-    this._drawInterfaces(upp);
+    this._drawJoints(upp);
     this._drawMarkers(upp);
     this._drawPreview(upp);
   }
@@ -682,87 +702,117 @@ export class Viewport {
   }
 
   /**
-   * Grensesnittene: kraftig linje, piler mot gruppesiden (den nye delen, altså
-   * den hvis aksialkraft må gjennom fugen) og navnet. Pilretningen er hele
-   * poenget — den er den visuelle kontrollen på at riktig side er valgt.
+   * Skjøtene (§6.1 i joints-planen): en tydelig linje med endemarkører, i
+   * `JOINT_COLOR` — en farge som ikke finnes i `PALETTE`, så en skjøt aldri
+   * kan forveksles med en formfarge. INGEN piler, og INGEN sidevalg: hvilken
+   * komponent grafen regner som «gruppa» (`jointGroup` fra joints.js — §8.3,
+   * kun ΔN-ruting/advarsler, IKKE ES*) vises bare som en dempet, liten prikk —
+   * ren informasjon, ikke noe å klikke på eller snu.
    */
-  _drawInterfaces(upp) {
-    const g = this.groups.interface;
+  _drawJoints(upp) {
+    const g = this.groups.joint;
     disposeGroup(g);
-    const list = this.data.interfaces || [];
+    const list = this.data.joints || [];
     if (!list.length) return;
     const shapes = this.data.shapes || [];
 
-    list.forEach((raw, i) => {
-      const f = normalizeInterface(raw, i);
-      const [a, b] = [f.a, f.b];
+    // Grafen bygges ÉN gang for alle skjøtene, ikke per skjøt — buildGraph er
+    // O(n²) i antall former (implisitte kanter), og det er ingen grunn til å
+    // gjenta det arbeidet for hver linje som skal tegnes.
+    const tol = (() => {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const s of shapes) for (const [x, y] of s.points || []) {
+        if (x < minX) minX = x; if (y < minY) minY = y;
+        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+      }
+      if (!Number.isFinite(minX)) return 1e-3;
+      return Math.max(Math.hypot(maxX - minX, maxY - minY), 1) / 2000;
+    })();
+    const graph = buildGraph(shapes, list, tol);
+
+    list.forEach((f) => {
+      const a = f && f.a;
+      const b = f && f.b;
+      if (!a || !b) return;
       const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
       if (len < 1e-12) return;
 
+      const isHover = this.hoverJoint === f.id;
+      const color = isHover ? '#ffffff' : JOINT_COLOR;
+      const widthPx = isHover ? 4.4 : 3.2;
+
       g.add(
         buildLineMesh(
-          thickPolylinePositions([a, b], false, (3.2 * upp) / 2, Z.interface),
-          INTERFACE_COLOR,
+          thickPolylinePositions([a, b], false, (widthPx * upp) / 2, Z.joint),
+          color,
           0.95
         )
       );
 
       const nrm = leftNormal(a, b);
-      const sign = groupSideSign(f, shapes);
-      const ux = (b[0] - a[0]) / len;
-      const uy = (b[1] - a[1]) / len;
 
-      // Endestreker på tvers, så det er tydelig hvor fugen slutter
-      const tick = 5 * upp;
+      // Endestreker på tvers, så det er tydelig hvor skjøten slutter
+      const tick = 6 * upp;
       const ends = [];
       for (const p of [a, b]) {
         ends.push(
           ...thickPolylinePositions(
             [[p[0] - nrm[0] * tick, p[1] - nrm[1] * tick], [p[0] + nrm[0] * tick, p[1] + nrm[1] * tick]],
             false,
-            upp * 0.8,
-            Z.interface
+            upp * 0.9,
+            Z.joint
           )
         );
       }
-      g.add(buildLineMesh(ends, INTERFACE_COLOR, 0.9));
+      g.add(buildLineMesh(ends, color, 0.9));
 
-      if (sign) {
-        const nx = nrm[0] * sign;
-        const ny = nrm[1] * sign;
-        const arrow = 14 * upp;
-        const head = 5 * upp;
-        const count = Math.max(2, Math.min(8, Math.round(len / (30 * upp))));
-        const pos = [];
-        for (let j = 0; j < count; j++) {
-          const t = (j + 0.5) / count;
-          const px = a[0] + ux * len * t;
-          const py = a[1] + uy * len * t;
-          const tx = px + nx * arrow;
-          const ty = py + ny * arrow;
-          pos.push(...thickPolylinePositions([[px, py], [tx, ty]], false, upp * 0.8, Z.interface));
-          pos.push(
-            ...thickPolylinePositions(
-              [
-                [tx - nx * head - ux * head * 0.7, ty - ny * head - uy * head * 0.7],
-                [tx, ty],
-                [tx - nx * head + ux * head * 0.7, ty - ny * head + uy * head * 0.7],
-              ],
-              false,
-              upp * 0.8,
-              Z.interface
-            )
-          );
+      // Dempet gruppemarkering — INFORMASJON, ikke et valg (§6.1): en liten
+      // prikk midt på linja, forskjøvet et lite stykke mot komponenten
+      // `jointGroup` regner som gruppa.
+      try {
+        const { groupIds } = jointGroup(f, graph);
+        if (groupIds && groupIds.length) {
+          const centroids = groupIds
+            .map((id) => {
+              const s = shapes.find((x) => x.id === id);
+              return s && s.points && s.points.length >= 3 ? centroidOfPoints(s.points) : null;
+            })
+            .filter(Boolean);
+          if (centroids.length) {
+            const gx = centroids.reduce((sum, c) => sum + c[0], 0) / centroids.length;
+            const gy = centroids.reduce((sum, c) => sum + c[1], 0) / centroids.length;
+            const mx = (a[0] + b[0]) / 2;
+            const my = (a[1] + b[1]) / 2;
+            const dx = gx - mx;
+            const dy = gy - my;
+            const dlen = Math.hypot(dx, dy) || 1;
+            const nudge = 10 * upp;
+            const dot = { x: mx + (dx / dlen) * nudge, y: my + (dy / dlen) * nudge };
+            const r = 2.4 * upp;
+            const disc = [];
+            for (let i = 0; i < 16; i++) {
+              const a1 = (i / 16) * Math.PI * 2;
+              const a2 = ((i + 1) / 16) * Math.PI * 2;
+              disc.push(
+                dot.x, dot.y, Z.joint + 0.01,
+                dot.x + r * Math.cos(a1), dot.y + r * Math.sin(a1), Z.joint + 0.01,
+                dot.x + r * Math.cos(a2), dot.y + r * Math.sin(a2), Z.joint + 0.01
+              );
+            }
+            g.add(buildLineMesh(disc, color, 0.5));
+          }
         }
-        g.add(buildLineMesh(pos, INTERFACE_COLOR, 0.9));
+      } catch (err) {
+        // Gruppemarkeringen er ren pynt — en feil her skal aldri ta ned
+        // resten av lerretstegningen.
+        console.warn('[viewport] gruppemarkering feilet for skjøt', f.id, err);
       }
 
-      const s = sign || 1;
-      const sprite = this._label(f.name, INTERFACE_COLOR);
+      const sprite = this._label(f.name || '', color);
       sprite.position.set(
-        (a[0] + b[0]) / 2 + nrm[0] * s * 34 * upp,
-        (a[1] + b[1]) / 2 + nrm[1] * s * 34 * upp,
-        Z.interface + 0.01
+        (a[0] + b[0]) / 2 + nrm[0] * 34 * upp,
+        (a[1] + b[1]) / 2 + nrm[1] * 34 * upp,
+        Z.joint + 0.02
       );
       sprite.scale.set(sprite.userData.w * upp * 0.5, sprite.userData.h * upp * 0.5, 1);
       g.add(sprite);
