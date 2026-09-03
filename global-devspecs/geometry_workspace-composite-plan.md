@@ -235,3 +235,45 @@ utløser avskalling.
 `σ_i = M·E_i·(y − y_c)/EI` er den naturlige neste utvidelsen, men et fullt
 spenningsbilde krever flere lastvirkninger enn verktøyet tar inn i dag.
 **Utenfor omfanget denne runden.** Ikke bygg halvveis.
+
+---
+
+## 9. Akse- og fortegnskonvensjoner skal stå synlig
+
+Brukeren skal ikke måtte lese kildekoden for å vite hva positivt moment er.
+Dette er ikke pynt: `M_y` er her definert som `∫σx dA`, som avviker fra den
+vanlige bjelkekonvensjonen `M_y = −∫σx dA`. Et fortegnsbytte er usynlig så lenge
+tverrsnittet er symmetrisk, og dukker først opp når geometrien blir usymmetrisk
+— altså nøyaktig i de tilfellene verktøyet er laget for.
+
+### 9.1 Konvensjonene som gjelder
+
+| Størrelse | Definisjon |
+| --- | --- |
+| Tverrsnittsplanet | `x` mot høyre, `y` opp |
+| Bjelkeaksen | `z`, ut av skjermen, mot betrakteren |
+| `N` | positiv = **strekk** |
+| `M_x` | `∫σ·y dA` — positiv gir **strekk i overkant** (`y > 0`) |
+| `M_y` | `∫σ·x dA` — positiv gir **strekk på høyre side** (`x > 0`) |
+| `V_y` | hører sammen med `M_x`: `dM_x/dz = V_y` |
+| `V_x` | hører sammen med `M_y`: `dM_y/dz = V_x` |
+| `q` | positiv/negativ sier bare hvilken vei kraften går; **kapasitet kontrolleres mot `\|q\|`** |
+| `θ` | mot klokka fra `x`-aksen til hovedaksen med **størst** stivhet, i (−90°, 90°] |
+
+Merk avviket for `M_y` eksplisitt, med én setning om hvorfor: valget gjør
+stivhetsmatrisen symmetrisk, `[M_x; M_y] = [[EI_x, EI_xy],[EI_xy, EI_y]]·[κ_x; κ_y]`,
+og fjerner en fortegnsfelle i utledningen. Skriv at den som henter `M_y` fra et
+rammeprogram med motsatt konvensjon må snu fortegnet.
+
+### 9.2 Hvor det skal stå
+
+1. **En liten figur** — inline SVG, ingen bilde­fil — som viser tverrsnittsplanet
+   med `x` og `y`, bjelkeaksen `z` ut av planet (ring med prikk), og de positive
+   retningene for `M_x`, `M_y`, `V_x`, `V_y` og `N`. Den skal virke i både lyst
+   og mørkt tema, og ha tekst som er lesbar i panelbredden.
+2. **Ved lastfeltene:** en sammenleggbar «Akse- og fortegnskonvensjoner» rett
+   under inndataene, med figuren og tabellen. Lukket som standard, så den ikke
+   er i veien for den som allerede vet.
+3. **I hjelpedialogen:** samme innhold som en egen seksjon.
+4. **Feltetikettene selv** skal si hva de betyr, ikke bare symbolet — f.eks.
+   «M_x,etter [kNm] — om x-aksen, positiv gir strekk i overkant».

@@ -638,6 +638,25 @@
         Beregningen forutsetter full samvirkning og lineær elastisitet, og er <strong>iterativ i
         praksis</strong>: endrer du geometrien, endrer stivheten seg, og dermed kreftene.
       </p>
+      <p class="text-slate-400">
+        <strong>Festemiddelstivhet (K_ser)</strong> hentes enten fra EC5 tabell 7.1 (festemiddeltype,
+        middeldensitet, diameter, kontaktflate og tilstand SLS/ULS) eller legges inn fritt fra en ETA
+        eller produktgodkjenning — de to er likestilte valg i skjøtelista. <strong>Samvirkegraden</strong>
+        (γ-metoden, EC5 tillegg B) viser hvor mye lavere (EI)_ef er enn ved full samvirkning når fugen
+        ikke er uendelig stiv; full samvirkning vises alltid ved siden av, som standard. γ-metoden er
+        enakslet (om y-aksen) og gjelder bare topartstilfellet (eksisterende + ny) — flere grupper i én
+        skjøt gir en tydelig begrunnelse i stedet for et gjettet tall. <strong>Forankringskontrollen</strong>
+        i skjøtekortet viser aksialkraften N_G som skal forankres fra lamellenden (fra M_etter, biaksielt),
+        nødvendig forankringslengde og utnyttelsen mot den innlagte lengden.
+      </p>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Akse- og fortegnskonvensjoner</h3>
+      <p>
+        Samme figur og tabell som den sammenleggbare seksjonen rett under lastfeltene i «Forsterkning»
+        (lukket der som standard). Feltetikettene i fanen sier selv hva de betyr — «M_x,etter [kNm] — om
+        x-aksen, positiv gir strekk i overkant» — men figuren og avviket for M_y er verdt å lese én gang.
+      </p>
+      <div id="help-axis-convention" class="text-slate-300"></div>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Bildeunderlag</h3>
       <p>

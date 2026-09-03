@@ -33,7 +33,9 @@ import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel } from './units.js';
 import { MATERIALS, materialByName, materialE } from './materials.js';
 import { JOINT_COLOR } from './store.js';
 import { sidesOfJoint, buildGraph, jointGroup, overConstrained } from './joints.js';
-import { ReinforcementPanel, CONNECTOR_LABELS } from './reinforcement-ui.js';
+import { ReinforcementPanel, CONNECTOR_LABELS, axisConventionHtml } from './reinforcement-ui.js';
+import { SYSTEM_FACTORS } from './reinforcement.js';
+import { EC5_FASTENERS, EC5_CONTACTS, STATES, ec5Fastener } from './connection-stiffness.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -399,6 +401,11 @@ export class UI {
     $('help-overlay').addEventListener('click', (e) => {
       if (e.target === $('help-overlay')) $('help-overlay').classList.add('hidden');
     });
+
+    // §9.2 punkt 3: samme innhold som «Forsterkning»-fanens sammenleggbare
+    // seksjon, injisert her så figuren og tabellen ikke skrives to ganger.
+    const axisHelp = $('help-axis-convention');
+    if (axisHelp) axisHelp.innerHTML = axisConventionHtml();
   }
 
   /* ---------------- verktøymeny ---------------- */
@@ -1794,8 +1801,102 @@ export class UI {
              ${cfield('FRd', 'F_Rd per forbinder [kN]', c.FRd, 'step="0.5"')}
              ${cfield('rows', 'Rader på tvers', c.rows, 'step="1" min="1"')}
              ${cfield('spacing', 'Senteravstand s [mm]', c.spacing, 'step="10"')}
-             ${cfield('Kser', 'K_ser [N/mm]', c.Kser, 'step="100"')}
+             ${cfield('shearPlanes', 'Skjærplan', c.shearPlanes == null ? 1 : c.shearPlanes, 'step="1" min="1"')}
            </div>`;
+
+    // §3/§4 — festemiddelstivheten K_ser: EC5 tabell 7.1 og «fritt innlagt»
+    // (ETA/produktgodkjenning) er LIKESTILTE kilder, ikke den ene gjemt bak
+    // den andre (§3.2 i samvirkeplanen). Bare relevant for skruer/mekaniske
+    // forbindere — lim har sin egen formel (Ga/ta over), og sveis regnes som
+    // uendelig stiv (γ → 1) uansett.
+    const stiffnessBlock =
+      c.kind === 'screw'
+        ? (() => {
+            const src = c.stiffSource === 'ec5' ? 'ec5' : 'eta';
+            const fastenerKey = c.ec5Fastener || 'dowel';
+            const fastener = ec5Fastener(fastenerKey) || EC5_FASTENERS[0];
+            const state = c.state === 'ULS' ? 'ULS' : 'SLS';
+            return `
+              <div class="rounded border border-slate-700 bg-slate-800/60 p-2 space-y-1.5">
+                <div class="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                  K_ser — festemiddelstivhet
+                </div>
+                <div class="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <label class="field-label" for="j-src-${j.id}">Kilde</label>
+                    <select id="j-src-${j.id}" data-jsrc data-id="${j.id}" data-focus-key="j-src-${j.id}">
+                      <option value="eta" ${src === 'eta' ? 'selected' : ''}>Fritt innlagt (ETA / produktgodkjenning)</option>
+                      <option value="ec5" ${src === 'ec5' ? 'selected' : ''}>EC5 tabell 7.1</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="field-label" for="j-state-${j.id}">Tilstand</label>
+                    <select id="j-state-${j.id}" data-jstate data-id="${j.id}" data-focus-key="j-state-${j.id}">
+                      ${STATES.map((s) => `<option value="${s.key}" ${state === s.key ? 'selected' : ''}>${s.label}</option>`).join('')}
+                    </select>
+                  </div>
+                </div>
+                ${
+                  src === 'eta'
+                    ? `<div class="grid grid-cols-1 gap-1.5">
+                         ${cfield('Kser', 'K_ser [N/mm], fra ETA/produktgodkjenning', c.Kser, 'step="100"')}
+                       </div>
+                       <p class="text-[10px] text-slate-500 leading-snug">
+                         Verdien er ikke kontrollert mot EC5 — oppgi kilde (ETA-nummer e.l.) i dokumentasjonen.
+                         Nødvendig for stål-mot-stål og proprietære festemidler, der EC5 tabell 7.1 ikke gjelder.
+                       </p>`
+                    : `<div class="grid grid-cols-2 gap-1.5">
+                         <div>
+                           <label class="field-label" for="j-fast-${j.id}">Festemiddel</label>
+                           <select id="j-fast-${j.id}" data-jfast data-id="${j.id}" data-focus-key="j-fast-${j.id}">
+                             ${EC5_FASTENERS.map((f) => `<option value="${f.key}" ${fastenerKey === f.key ? 'selected' : ''}>${f.label}</option>`).join('')}
+                           </select>
+                         </div>
+                         <div>
+                           <label class="field-label" for="j-contact-${j.id}">Kontaktflate</label>
+                           <select id="j-contact-${j.id}" data-jcontact data-id="${j.id}" data-focus-key="j-contact-${j.id}">
+                             ${EC5_CONTACTS.map((k) => `<option value="${k.key}" ${(c.ec5Contact || 'timber-timber') === k.key ? 'selected' : ''}>${k.label}</option>`).join('')}
+                           </select>
+                         </div>
+                       </div>
+                       <div class="grid grid-cols-3 gap-1.5">
+                         ${cfield('ec5Rho1', 'ρ_m,1 [kg/m³]', c.ec5Rho1, 'step="10"')}
+                         ${cfield('ec5Rho2', 'ρ_m,2 [kg/m³], valgfri', c.ec5Rho2, 'step="10"')}
+                         ${fastener.needs === 'dc' ? cfield('ec5Dc', 'd_c [mm]', c.ec5Dc, 'step="1"') : cfield('ec5D', 'd [mm]', c.ec5D, 'step="0.5"')}
+                       </div>
+                       <p class="text-[10px] text-slate-500 leading-snug">
+                         Gjelder TREVIRKE. To treslag: oppgi begge ρ_m — det geometriske middelet brukes.
+                         Stål-mot-tre/betong-mot-tre dobler K_ser (EC5 7.1(3)).
+                       </p>`
+                }
+              </div>`;
+          })()
+        : '';
+
+    // §4 — samvirkegrad (γ-metoden, EC5 tillegg B). Krever effektiv lengde,
+    // derfor spennvidde + systemtype uansett forbindelsestype (sveis gir k = ∞
+    // og γ = 1, men trenger fortsatt L_ef for å vise (EI)_ef konsistent).
+    const gammaFields = `
+      <div class="rounded border border-slate-700 bg-slate-800/60 p-2 space-y-1.5">
+        <div class="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+          Samvirkegrad — γ-metoden (§4)
+        </div>
+        <div class="grid grid-cols-2 gap-1.5">
+          ${cfield('span', 'Spennvidde L [mm]', c.span, 'step="100" min="0"')}
+          <div>
+            <label class="field-label" for="j-system-${j.id}">System</label>
+            <select id="j-system-${j.id}" data-jsystem data-id="${j.id}" data-focus-key="j-system-${j.id}">
+              ${Object.entries(SYSTEM_FACTORS).map(([key, s]) => `<option value="${key}" ${(c.system || 'simple') === key ? 'selected' : ''}>${s.label}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-500 leading-snug">
+          Enakslet (regnes om y-aksen, V_y/M_x). Full samvirkning er fortsatt standard og vises ved
+          siden av γ-resultatet i «Forsterkning»-fanen — det er et tillegg, ikke en erstatning.
+          Mer enn to grupper i skjøten: γ-metoden sier fra at den ikke er anvendelig, i stedet for
+          å gjette på en generalisering.
+        </p>
+      </div>`;
 
     return `
       <div class="px-2 pb-2 pt-1 space-y-2 border-t border-slate-600">
@@ -1827,6 +1928,8 @@ export class UI {
           </div>
         </div>
         ${connectorFields}
+        ${stiffnessBlock}
+        ${gammaFields}
         ${
           showShare
             ? `<div>
@@ -1893,6 +1996,50 @@ export class UI {
         }
         const v = Number(raw);
         this.store.updateJoint(id, { connector: { ...j.connector, [key]: Number.isFinite(v) ? v : 0 } });
+      });
+    });
+
+    // §3 — K_ser-kilde (EC5 tabell 7.1 kontra fritt innlagt/ETA), festemiddel
+    // og kontaktflate. Rene tekstvalg — coerces IKKE til tall, i motsetning
+    // til [data-jc].
+    host.querySelectorAll('[data-jsrc]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        this.store.updateJoint(id, { connector: { ...j.connector, stiffSource: e.target.value === 'ec5' ? 'ec5' : 'eta' } });
+      });
+    });
+    host.querySelectorAll('[data-jstate]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        this.store.updateJoint(id, { connector: { ...j.connector, state: e.target.value === 'ULS' ? 'ULS' : 'SLS' } });
+      });
+    });
+    host.querySelectorAll('[data-jfast]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        this.store.updateJoint(id, { connector: { ...j.connector, ec5Fastener: e.target.value } });
+      });
+    });
+    host.querySelectorAll('[data-jcontact]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        this.store.updateJoint(id, { connector: { ...j.connector, ec5Contact: e.target.value } });
+      });
+    });
+    host.querySelectorAll('[data-jsystem]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        this.store.updateJoint(id, { connector: { ...j.connector, system: e.target.value } });
       });
     });
   }

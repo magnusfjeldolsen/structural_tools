@@ -27,13 +27,15 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/tools.js` | Tegne- og redigeringsverktøy; oversetter pekerhendelser til CRUD |
 | `js/ui.js` | Panelrendering: geometriliste, formredigering, plassering, resultater |
 | `js/materials.js` | Materialpresets med E [N/mm²]. Ingen DOM. |
-| `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, aksialfordeling, skjærstrøm, forankring, Volkersen, forbinderkontroll (skrue/lim/sveis). Rene funksjoner, N og mm. Ingen DOM. |
+| `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, biaksiell bøyning og skjærstrøm, aksialfordeling, forankring (§8.2), hovedakser/skjevbøyning (§1), γ-metoden og kraft per festemiddel (§4), Volkersen, forbinderkontroll (skrue/lim/sveis). Rene funksjoner, N og mm. Ingen DOM. |
+| `js/connection-stiffness.js` | Festemiddelstivheten K_ser: EC5 tabell 7.1 (§3.1) og fritt innlagt (ETA/produktgodkjenning, §3.2) som likestilte kilder, pluss limstivhet og smøring til fugestivhet (§3.3) — det `volkersen()` og γ-metoden begge bruker. Rene funksjoner. Ingen DOM, ingen importer (se filhodet). |
 | `js/joints.js` | Skjøtelinjer: naboskap (`shapesTouch`), en kraftig nedskalert graf (kun til ΔN-ruting og advarsler), og halvplan-avskjæring for ES* (`halfPlaneParts`/`fullSectionParts`). Erstatter det slettede `interfaces.js`. Ingen DOM. |
-| `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen (resultater og de globale lastfeltene) |
+| `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen: lastfeltene (biaksielle), kraftsammendraget, hovedakse-/skjevbøyningsvisningen, per-skjøt-kortene (samvirkegrad, forankringskontroll) og den sammenleggbare akse-/fortegnskonvensjonsfiguren (`axisConventionHtml`, delt med hjelpedialogen). |
 | `js/numeric-input.js` | CAD-aktig tallinntasting i lerretet: tilstandsmaskin + tolkning av `300 200` / `D 300 200` / `10,5 0`. Uavhengig av verktøyene. |
 | `js/main.js` | Bootstrap, hurtigtaster og ruting av tastetrykk til tallinntastingen |
-| `tests/reinforcement.test.mjs` | Fasit for mekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
+| `tests/reinforcement.test.mjs` | Fasit for grunnmekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
 | `tests/joints.test.mjs` | Fasit for naboskap, grafen og halvplan-ES*. `node geometry_workspace/tests/joints.test.mjs` |
+| `tests/composite.test.mjs` | Fasit for festemiddelstivhet (EC5/ETA), γ-metoden, biaksiell skjærstrøm/hovedakser og forankringskontroll. `node geometry_workspace/tests/composite.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
 three.js hentes fra CDN via `importmap`.
@@ -248,26 +250,39 @@ til to ting: å rute aksialleddet `ΔN` til riktig skjøt, og advarsler (en ny
 form uten noen skjøt, eller en del festet med flere skjøter samtidig —
 statisk ubestemt, se `share`-feltet).
 
-### To lasttilstander — superposisjon
+### To lasttilstander, biaksielle — superposisjon
 
 ```js
 loads: {
-  before: { V, N, M },   // virker på tverrsnittet av bare 'existing'-formene
-  after:  { V, N, M },   // virker på det sammensatte tverrsnittet
-  L,                      // forankringslengde for ΔN, i arbeidsenheten
+  before: { Vy, Vx, N, Mx, My },   // virker på tverrsnittet av bare 'existing'-formene
+  after:  { Vy, Vx, N, Mx, My },   // virker på det sammensatte tverrsnittet
+  L,                                // forankringslengde for ΔN, i arbeidsenheten
 }
 ```
+
+Lasten er **biaksiell** (v4): `Vy`/`Mx` er den loddrette tverrkraften og
+momentet om x-aksen, `Vx`/`My` det tilsvarende om y-aksen — se «Akse- og
+fortegnskonvensjoner» under. Skjærstrømmen regnes med `shearFlowBiaxial`, som
+kobler de to aksene via `EI_xy` når tverrsnittet er skjevt; den gamle
+enakslede `shearFlow({axis})` er beholdt i `reinforcement.js` som en tynn,
+regresjonstestet innpakning rundt den, men panelet kaller den biaksielle
+funksjonen direkte.
 
 Den eksisterende bjelken bærer allerede `before`-lasten idet forsterkningen
 monteres — bare `after` virker på det sammensatte tverrsnittet. Per skjøt:
 
 ```
-q_før   = V_før · ES*_eks / EI_eks     (bare hvis skjøten ligger HELT i eksisterende materiale)
-q_etter = V_etter · ES* / EI            (halvplanet mot det sammensatte tverrsnittet)
+q_før   = q_y(V_y,før, V_x,før)   om EKSISTERENDE tverrsnitt (bare hvis skjøten ligger HELT i eksisterende materiale)
+q_etter = q_y(V_y,etter, V_x,etter)   om det sammensatte tverrsnittet
 q_V,tot = |q_før| + |q_etter|
 q_N     = ΔN_i / L                      (aksialleddet, fra grafen — se over)
 q_tot   = q_V,tot + q_N
 ```
+
+Et kompakt **kraftsammendrag** (bidrag fra V_før, V_etter og ΔN, pluss en
+uthevet sum) står rett under lastfeltene i fanen, før «Effekt av
+forsterkningen» — det er tallet brukeren kom for, og skal ikke være noe man
+må lete etter eller scrolle til «Per skjøt» for å finne.
 
 En skjøt mot en ny del har ingen «før»-tilstand. Er **alle** former merket
 `existing` (ingen forsterkning i det hele tatt), skjuler fanen automatisk
@@ -293,6 +308,55 @@ andelen av `ΔN` som går gjennom nettopp den skjøten. Tre typer:
   her — den hentes fra modulen `weld_capacity/`. `util = q_tot/q_Rd`. En
   sveiseskjøt har ingen senteravstand å løse for (`sReq` er `null`).
 
+### Festemiddelstivhet (K_ser) og samvirkegrad (γ-metoden)
+
+For skruer/mekaniske forbindere velges kilden til `K_ser` i skjøtelista, som
+**likestilte** valg:
+
+- **EC5 tabell 7.1** (`js/connection-stiffness.js`) — festemiddeltype,
+  middeldensitet (ett eller to treslag, geometrisk middel), diameter, kontakt-
+  flate (stål-mot-tre/betong-mot-tre dobler `K_ser`) og tilstand SLS/ULS
+  (`K_u = ⅔·K_ser`). Formlene gjelder **trevirke**.
+- **Fritt innlagt** — `K_ser` fra en ETA eller produktgodkjenning, direkte i
+  det samme feltet forbindelsen alltid har hatt. Eneste ærlige vei for
+  stål-mot-stål og proprietære festemidler.
+
+Den avledede `K_ser` (uansett kilde) mater BÅDE Volkersen og γ-metoden — én
+stivhet, ikke to som kan gli fra hverandre.
+
+**γ-metoden** (EC5 tillegg B, topartstilfellet: eksisterende + ny) gir
+samvirkegraden `γ_eff ∈ [0,1]` — hvor mye lavere `(EI)_ef` er enn ved full
+samvirkning, når fugen ikke er uendelig stiv. Spennvidde og system (fritt
+opplagt / kontinuerlig felt / utkraget → `L_ef`) velges per skjøt. **Full
+samvirkning vises alltid ved siden av, som standard** — γ-resultatet er et
+tillegg, aldri en stille erstatning. To forbehold står i panelet: γ-metoden
+er **enakslet** (om y-aksen — dekker ikke skjev bøyning), og gjelder bare
+**topartstilfellet**; flere grupper i én skjøt gir en tydelig begrunnelse
+(`applicable: false`, med `reason`) i stedet for et gjettet tall. Kraften per
+festemiddel (§4.1) vises både ved full samvirkning og ved γ.
+
+### Nøytralakse og hovedakser — skjev bøyning
+
+Forsterkning flytter tyngdepunktet i begge retninger og kan **rotere
+hovedaksene**. `axesComparison` gir hele sammenligningen i ett kall: `x_c`/
+`y_c` før og etter, hovedaksevinkelen `θ`, hovedstivhetene `EI_1`/`EI_2`, og
+nøytralaksens helning `tan β = EI_xy/EI_y` for et rent `M_x` — den sidevegse
+andelen av nedbøyningen. Er tverrsnittet praktisk talt dobbeltsymmetrisk før
+forsterkningen og tydelig skjevt etter (`introducedSkew`), varsler panelet:
+forsterkningen har innført skjev bøyning som ikke fantes før, og lasten må
+kontrolleres i begge plan. Var tverrsnittet skjevt fra før, sier panelet det
+i stedet — det er ikke forsterkningens skyld.
+
+### Forankringskontroll i enden (§8.2)
+
+`N` fra bøyning gir INGEN egen skjærstrøm — `q = dN_G/dz = V·ES*/EI`, samme
+kraft sett fra to sider, og `q_V` ER forankringen av bøyekraften. Det panelet
+i stedet kontrollerer er **enden**: nødvendig forankringslengde
+`L_req = N_G/q_Rd` (N_G fra biaksiell bøyning, `M_etter`), mot den innlagte
+lengden `L`, med advarsel når `L_req > L`. Kontrollen er en
+middelverdibetraktning — Volkersen-toppen i skjøteenden kommer i tillegg, og
+er det som faktisk utløser avskalling i et limt skjøteende.
+
 Arbeidsflyten:
 
 1. (Bare ved forsterkning) Merk hver form som **eksisterende** eller **ny**,
@@ -301,14 +365,30 @@ Arbeidsflyten:
    skiller. Rediger forbindelsestype, felter og heftbredde i skjøtelista.
 3. Legg inn lastene i fanen «Forsterkning» — `before` og (hvis relevant)
    `after`, samt forankringslengden `L`.
-4. Les av `q_før`, `q_etter`, `q_N`, `q_tot`, `τ` og forbinderkontrollen per
-   skjøt, i skjøtekortet i fanen.
+4. Les av `q_før`, `q_etter`, `q_N`, `q_tot`, `τ`, forbinderkontrollen,
+   samvirkegraden og forankringskontrollen per skjøt, i skjøtekortet i fanen
+   — kraftsammendraget rett under lastene gir deg totalen først.
 
 Hver størrelse vises som **formel → innsatte tall → resultat med enhet**.
 
 **Forutsetninger:** full samvirkning (tverrsnittet forblir plant, ingen
 glidning), lineær elastisitet. Beregningen er **iterativ i praksis**: ny
 geometri gir ny stivhet, som gir nye krefter.
+
+### Akse- og fortegnskonvensjoner
+
+`x` mot høyre, `y` opp, bjelkeaksen `z` ut av tverrsnittsplanet (mot
+betrakteren) — `N` positiv virker samme vei. `M_x = ∫σ·y dA` (positiv gir
+strekk i overkant), `M_y = ∫σ·x dA` (positiv gir strekk på høyre side),
+`V_y = dM_x/dz`, `V_x = dM_y/dz`. **`M_y` avviker bevisst fra den vanlige
+bjelkekonvensjonen** (`M_y = −∫σx dA`): definisjonen over gjør stivhets-
+matrisen `[M_x;M_y] = [[EI_x,EI_xy],[EI_xy,EI_y]]·[κ_x;κ_y]` symmetrisk og
+fjerner en fortegnsfelle i utledningen (se `reinforcement.js`). Henter du
+`M_y` fra et rammeprogram med motsatt konvensjon, må du snu fortegnet. En
+inline SVG-figur og tabellen over står i en sammenleggbar seksjon rett under
+lastfeltene (lukket som standard) og som egen seksjon i hjelpedialogen —
+begge fra samme `axisConventionHtml()` i `reinforcement-ui.js`, så innholdet
+ikke skrives to ganger.
 
 ### Enheter i forsterkningsberegningen
 
@@ -321,7 +401,7 @@ alltid absolutte — `F_Rd` [kN], `s` [mm], `K_ser` [N/mm], `τ_Rd`/`G_a` [N/mm�
 `t_a` [mm], `a_weld`/`fvwd`/`qRd` og heftbredde-overstyringen [mm] — slik at
 et bytte fra mm til m ikke endrer skrue- eller sveisekapasiteten.
 
-## Datamodell (v3)
+## Datamodell (v4)
 
 Hver form har i tillegg til geometrien:
 
@@ -333,7 +413,10 @@ material: { name: 'S355', E: 210000 }     // E i N/mm²
 `factor` og `material.E` er **uavhengige**: `factor` er vektfaktoren for
 tyngdepunktsberegningen, mens `material.E` hører til forsterkningsberegningen.
 
-`state.joints` (tidligere `interfaces`) er lista over skjøter:
+`state.joints` (tidligere `interfaces`) er lista over skjøter. Utover de
+grunnleggende feltene har `connector` (skrue) noen felt bare panelet bruker,
+for K_ser-kilden (§3) og γ-metoden (§4) — udefinerte betyr «fritt innlagt,
+default-system»:
 
 ```js
 {
@@ -344,18 +427,22 @@ tyngdepunktsberegningen, mens `material.E` hører til forsterkningsberegningen.
   share: null,                     // null ⟹ automatisk lik fordeling ved statisk ubestemt oppsett
   connector: {
     kind: 'screw' | 'glue' | 'weld',
-    FRd, rows, spacing, Kser,      // skrue
+    FRd, rows, spacing, Kser, shearPlanes,   // skrue — Kser er ETA-verdien når stiffSource ≠ 'ec5'
+    stiffSource: 'eta' | 'ec5',              // K_ser-kilde (§3.2) — udefinert ⟹ 'eta' (ingen atferdsendring)
+    ec5Fastener, ec5Rho1, ec5Rho2, ec5D, ec5Dc, ec5Contact, state,  // EC5 tabell 7.1-inndata (§3.1)
+    span, system,                            // γ-metoden: L_ef-grunnlag (§4)
     tauRd, Ga, ta,                 // lim
     qRd, a_weld, fvwd, nWelds,     // sveis — qRd overstyrer utledningen om satt
   },
 }
 ```
 
-`state.loads` er `{ before: {V,N,M}, after: {V,N,M}, L }` — se «To
-lasttilstander» over. Eksport-JSON er `version: 3`; filer og lagret tilstand
-fra versjon 1 og 2 migreres ved innlasting (gammel `interfaces` → `joints`,
-gammel flat `loads` → `{ before: 0, after: {...} }`), så gamle modeller åpnes
-uten feil.
+`state.loads` er `{ before: {Vy,Vx,N,Mx,My}, after: {Vy,Vx,N,Mx,My}, L }` —
+**biaksiell** (v4), se «To lasttilstander» over. Eksport-JSON er
+`version: 4`; filer og lagret tilstand fra versjon 1, 2 og 3 migreres ved
+innlasting (gammel `interfaces` → `joints`; gammel flat `loads` →
+`{ before: 0, after: {...} }`; v3 sitt enakslede `{V,N,M}` per tilstand →
+`Vy = V`, `Mx = M`, `Vx = My = 0`), så gamle modeller åpnes uten feil.
 
 ## Enheter
 
