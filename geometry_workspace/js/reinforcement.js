@@ -34,6 +34,17 @@
 /** Numerisk nulltoleranse. Samme størrelsesorden som `EPS` i geometry.js. */
 export const EPS = 1e-9;
 
+/**
+ * Relativ terskel for «EI_xy er merkbart forskjellig fra null» (§1.2 i
+ * samvirkeplanen): |EI_xy| > 0,02·√(EI_x·EI_y).
+ *
+ * Hvorfor RELATIV og ikke absolutt: EI_xy er i Nmm² og kan være 1e10 for et
+ * tverrsnitt som likevel er praktisk talt symmetrisk. √(EI_x·EI_y) er den
+ * naturlige skalaen — Cauchy–Schwarz gir |EI_xy| ≤ √(EI_x·EI_y), så forholdet
+ * ligger alltid i [0, 1] og 0,02 er dermed «2 % av det maksimalt mulige».
+ */
+export const SKEW_THRESHOLD = 0.02;
+
 /* ------------------------------------------------------------------ *
  * Enhetshjelpere — den ene tydelige konverteringsplassen
  * ------------------------------------------------------------------ */
@@ -308,24 +319,281 @@ export function axialTransfer({ N, parts, groupIds }) {
 }
 
 /* ------------------------------------------------------------------ *
+ * B2.4a — BIAKSIELL bøyning: fortegn, krumninger, N_G og skjærstrøm
+ *
+ * Dette er den generelle formen. Den gamle, enakslede veien (`shearFlow` med
+ * `axis`) er beholdt som en tynn innpakning rundt den, men REGNER ikke lenger
+ * selv — se begrunnelsen rett under.
+ * ------------------------------------------------------------------ */
+
+/**
+ * FORTEGNS- OG LASTKONVENSJONER — les dette før du merker et inndatafelt.
+ *
+ * Koordinatsystemet er geometry.js sitt: x mot høyre, y opp, bjelkeaksen z ut
+ * av tverrsnittsplanet. Alle stivheter under er om det E-VEKTEDE tyngdepunktet
+ * (`sectionEA(...).xc/yc`):
+ *
+ *      EI_x  = ∫ E y² dA        EI_y  = ∫ E x² dA        EI_xy = ∫ E x y dA
+ *
+ * Momentene er definert som RENE INTEGRALER av spenningen — samme fortegn som
+ * arealmomentene, slik at ligningene under blir symmetriske og uten
+ * minustegn å miste:
+ *
+ *      M_x = ∫ σ y dA      (positiv M_x gir strekk for y > y_c)
+ *      M_y = ∫ σ x dA      (positiv M_y gir strekk for x > x_c)
+ *
+ * Tverrkreftene er de tilhørende deriverte langs bjelkeaksen:
+ *
+ *      V_y = dM_x/dz       ← V_y hører sammen med M_x  (og med ES*_x, EI_x)
+ *      V_x = dM_y/dz       ← V_x hører sammen med M_y  (og med ES*_y, EI_y)
+ *
+ * Dette er den ENESTE parringen som gjør q = dN_G/dz riktig, og den er lett å
+ * bytte om: `V_y` er den LODDRETTE tverrkraften, og den hører til det momentet
+ * som bøyer bjelken i det loddrette planet (`M_x`). Bølge B må merke feltene
+ * slik.
+ *
+ * MERK at dette IKKE er den vanlige bjelkekonvensjonen der M_y defineres med
+ * motsatt fortegn (M_y = −∫σx dA). Konsekvensen er bare et fortegnsbytte på
+ * `M_y`/`V_x` ved innlesing; `|q|` — som er det kapasitetskontrollen bruker —
+ * er upåvirket.
+ *
+ * ------------------------------------------------------------------
+ * UTLEDNING (kontrollert, ikke kopiert)
+ * ------------------------------------------------------------------
+ * Plane tverrsnitt, ren bøyning om tyngdepunktet ⟹ tøyningen er lineær og
+ * uten konstantledd:
+ *
+ *      ε(x,y) = κ_x·y + κ_y·x ,      σ = E·ε
+ *
+ * Settes dette inn i definisjonene av M_x og M_y:
+ *
+ *      M_x = κ_x·EI_x  + κ_y·EI_xy
+ *      M_y = κ_x·EI_xy + κ_y·EI_y
+ *
+ * altså [M_x; M_y] = [[EI_x, EI_xy],[EI_xy, EI_y]]·[κ_x; κ_y]. Matrisen er
+ * symmetrisk; determinanten er
+ *
+ *      D = EI_x·EI_y − EI_xy²
+ *
+ * og inversen gir
+ *
+ *      κ_x = (M_x·EI_y − M_y·EI_xy)/D
+ *      κ_y = (M_y·EI_x − M_x·EI_xy)/D
+ *
+ * D > 0 for ethvert fysisk tverrsnitt: Cauchy–Schwarz på indreproduktet
+ * ⟨f,g⟩ = ∫E f g dA gir (∫E xy dA)² ≤ ∫E x² dA · ∫E y² dA, med likhet BARE
+ * hvis x og y er lineært avhengige over tverrsnittet — altså hvis alt
+ * materialet ligger på én rett linje gjennom tyngdepunktet. Da er
+ * tverrsnittet degenerert, og vi svarer `valid: false` i stedet for å dele på
+ * (nesten) null.
+ *
+ * Aksialkraften i en gruppe G (materialet på den ene siden av en skjøt):
+ *
+ *      N_G = ∫_G σ dA = κ_x·ES*_x + κ_y·ES*_y
+ *      ES*_x = ∫_G E (y − y_c) dA ,   ES*_y = ∫_G E (x − x_c) dA
+ *
+ * Skjærstrømmen følger av q = dN_G/dz med dM_x/dz = V_y og dM_y/dz = V_x
+ * (ES*_x og ES*_y er rene tverrsnittsstørrelser og deriveres ikke):
+ *
+ *      q = [(V_y·EI_y − V_x·EI_xy)·ES*_x + (V_x·EI_x − V_y·EI_xy)·ES*_y] / D
+ *
+ * KONTROLL, og grunnen til at den gamle veien måtte skrives om: er EI_xy = 0
+ * blir D = EI_x·EI_y og uttrykket faller sammen til
+ *
+ *      q = V_y·ES*_x/EI_x + V_x·ES*_y/EI_y
+ *
+ * — nøyaktig de to uavhengige leddene den gamle koden brukte. Den gamle
+ * formen var altså BARE gyldig for EI_xy = 0. Og det er nettopp EI_xy ≠ 0
+ * §1 i planen skal advare om: uten denne omskrivingen ville verktøyet advart
+ * om skjev bøyning og samtidig regnet som om den ikke fantes.
+ */
+
+/**
+ * @typedef {Object} StiffnessMatrix
+ * @property {number} EIx
+ * @property {number} EIy
+ * @property {number} EIxy
+ * @property {number} D      EI_x·EI_y − EI_xy² [N²mm⁴]
+ * @property {boolean} valid D > 0 med god margin (ikke-degenerert tverrsnitt)
+ */
+
+/**
+ * Bøyestivhetsmatrisen og determinanten for et tverrsnitt.
+ *
+ * `valid` bruker en RELATIV terskel (D > 1e-12·EI_x·EI_y), ikke en absolutt:
+ * EI-ene er i Nmm² og kan være 1e12, så en absolutt EPS ville aldri slått til.
+ *
+ * @param {SectionEA|Part[]} section
+ * @returns {StiffnessMatrix}
+ */
+export function stiffnessMatrix(section) {
+  const s = asSection(section);
+  const D = s.EIx * s.EIy - s.EIxy * s.EIxy;
+  const scale = s.EIx * s.EIy;
+  const valid = Number.isFinite(D) && D > 0 && scale > 0 && D > 1e-12 * scale;
+  return { EIx: s.EIx, EIy: s.EIy, EIxy: s.EIxy, D, valid };
+}
+
+/**
+ * Krumningene for et gitt momentpar. Se utledningen over.
+ *
+ * @param {{section: SectionEA|Part[], Mx?: number, My?: number}} arg  `Mx`,`My` i **Nmm**
+ * @returns {{kx: number, ky: number, D: number, EIx: number, EIy: number, EIxy: number, valid: boolean}}
+ *   `kx`,`ky` er krumninger [1/mm]
+ */
+export function curvatures({ section, Mx = 0, My = 0 }) {
+  const m = stiffnessMatrix(section);
+  if (!m.valid) return { kx: 0, ky: 0, D: m.D, EIx: m.EIx, EIy: m.EIy, EIxy: m.EIxy, valid: false };
+  return {
+    kx: (Mx * m.EIy - My * m.EIxy) / m.D,
+    ky: (My * m.EIx - Mx * m.EIxy) / m.D,
+    D: m.D,
+    EIx: m.EIx,
+    EIy: m.EIy,
+    EIxy: m.EIxy,
+    valid: true,
+  };
+}
+
+/**
+ * Gruppas 1. arealmomenter om det SAMMENSATTE tverrsnittets tyngdepunkt:
+ *
+ *      ES*_x = Σ_G Eᵢ Aᵢ (yᵢ − y_c) = Σ_G Eᵢ Sxᵢ − y_c · Σ_G Eᵢ Aᵢ
+ *      ES*_y = Σ_G Eᵢ Aᵢ (xᵢ − x_c) = Σ_G Eᵢ Syᵢ − x_c · Σ_G Eᵢ Aᵢ
+ *
+ * Skrevet slik fordi `props` allerede er integrert om globalt origo — vi
+ * slipper å kjenne hver dels eget tyngdepunkt.
+ *
+ * @param {Part[]} groupParts
+ * @param {SectionEA|Part[]} section  HELE det sammensatte tverrsnittet
+ * @returns {{ESx: number, ESy: number, EA: number, count: number}}
+ */
+export function groupFirstMoments(groupParts, section) {
+  const sec = asSection(section);
+  const grp = sectionEA(groupParts || []);
+  return {
+    ESx: grp.ESx - sec.yc * grp.EA,
+    ESy: grp.ESy - sec.xc * grp.EA,
+    EA: grp.EA,
+    count: grp.count,
+  };
+}
+
+/**
+ * Aksialkraften i en gruppe fra biaksiell bøyning — `N_G` i §8.2.
+ *
+ *      N_G = κ_x·ES*_x + κ_y·ES*_y
+ *
+ * Dette ERSTATTER `N_G = M·ES* / EI` fra §8.2, som bare er riktig når
+ * EI_xy = 0 og bare ett moment virker.
+ *
+ * @param {{Mx?: number, My?: number, groupParts: Part[], section: SectionEA|Part[]}} arg
+ *   `Mx`,`My` i **Nmm** (bruk `kNmToNmm` på UI-verdien)
+ * @returns {{NG: number, NG_kN: number, ESx: number, ESy: number, kx: number, ky: number, valid: boolean}}
+ */
+export function axialInGroup({ Mx = 0, My = 0, groupParts, section }) {
+  const g = groupFirstMoments(groupParts, section);
+  const c = curvatures({ section, Mx, My });
+  const valid = c.valid && g.count > 0;
+  const NG = valid ? c.kx * g.ESx + c.ky * g.ESy : 0;
+  return { NG, NG_kN: NG / 1000, ESx: g.ESx, ESy: g.ESy, kx: c.kx, ky: c.ky, valid };
+}
+
+/* ------------------------------------------------------------------ *
  * B2.4 — skjærstrøm i ett grensesnitt
  * ------------------------------------------------------------------ */
 
 /**
  * @typedef {Object} ShearFlowResult
- * @property {'y'|'x'} axis   Hvilken tverrkraftretning som er brukt
- * @property {number} V       Tverrkraften som ble brukt [N]
- * @property {number} EStar   ES* for gruppa, om nøytralaksen [Nmm]
- * @property {number} EI      Sammensatt bøyestivhet om samme akse [Nmm²]
+ * @property {'y'|'x'|'biaxial'} axis  Hvilken tverrkraftretning som ble brukt
+ * @property {number} V       Tverrkraften som ble brukt [N] (den enakslede veien)
+ * @property {number} Vy      Loddrett tverrkraft [N] — hører til M_x
+ * @property {number} Vx      Vannrett tverrkraft [N] — hører til M_y
+ * @property {number} EStar   ES* om den aksen `axis` peker på [Nmm] (bakoverkompatibelt felt)
+ * @property {number} ESx     ES*_x for gruppa [Nmm]
+ * @property {number} ESy     ES*_y for gruppa [Nmm]
+ * @property {number} EI      Bøyestivheten om samme akse som `EStar` [Nmm²]
+ * @property {number} EIxy    Avviksstivheten for HELE tverrsnittet [Nmm²]
+ * @property {number} D       EI_x·EI_y − EI_xy² [N²mm⁴]
  * @property {number} q       Signert skjærstrøm [N/mm]
  * @property {number} qAbs    |q| — det tallet forbinderkontrollen skal bruke
+ * @property {number} qy      Bidraget fra V_y alene [N/mm]
+ * @property {number} qx      Bidraget fra V_x alene [N/mm]
+ * @property {boolean} coupled true hvis EI_xy er merkbart ≠ 0 (se `SKEW_THRESHOLD`)
  * @property {number} EA_group EA for gruppa [N]
  * @property {number} arm     Avstand fra nøytralaksen til gruppas E-tyngdepunkt [mm]
- * @property {boolean} valid  false hvis EI ≈ 0 eller gruppa er tom
+ * @property {boolean} valid  false hvis tverrsnittet er degenerert (D ≈ 0) eller gruppa er tom
  */
 
 /**
- * Skjærstrøm gjennom ett grensesnitt.
+ * Skjærstrøm gjennom ett grensesnitt, BIAKSIELL form.
+ *
+ * Se den lange utledningen over `stiffnessMatrix` for formelen, fortegnene og
+ * kontrollen mot den gamle enakslede formen.
+ *
+ * Bidragene `qy` og `qx` er superponerte, men de er IKKE de gamle to
+ * uavhengige leddene: hvert av dem inneholder EI_xy-koblingen, slik at
+ * `V_y` alene også gir et bidrag via `ES*_y` når tverrsnittet er skjevt.
+ *
+ * @param {{Vy?: number, Vx?: number, groupParts: Part[], section: SectionEA|Part[]}} arg
+ *   `Vy`,`Vx` i **N**. `section` er HELE det sammensatte tverrsnittet — ES*
+ *   skal regnes om DEN nøytralaksen, ikke om gruppas egen.
+ * @returns {ShearFlowResult}
+ */
+export function shearFlowBiaxial({ Vy = 0, Vx = 0, groupParts, section }) {
+  const sec = asSection(section);
+  const m = stiffnessMatrix(sec);
+  const g = groupFirstMoments(groupParts, sec);
+
+  const valid = m.valid && g.count > 0;
+  // q = [(V_y·EI_y − V_x·EI_xy)·ES*_x + (V_x·EI_x − V_y·EI_xy)·ES*_y] / D
+  // Delt i to ledd slik at UI-et kan vise hvert lastbidrag for seg.
+  const qy = valid ? (Vy * m.EIy * g.ESx - Vy * m.EIxy * g.ESy) / m.D : 0;
+  const qx = valid ? (Vx * m.EIx * g.ESy - Vx * m.EIxy * g.ESx) / m.D : 0;
+  const q = qy + qx;
+
+  const skew = Math.sqrt(Math.abs(m.EIx * m.EIy));
+  return {
+    axis: 'biaxial',
+    V: Vy,
+    Vy,
+    Vx,
+    EStar: g.ESx,
+    ESx: g.ESx,
+    ESy: g.ESy,
+    EI: m.EIx,
+    EIxy: m.EIxy,
+    D: m.D,
+    q,
+    qAbs: Math.abs(q),
+    qy,
+    qx,
+    coupled: skew > EPS && Math.abs(m.EIxy) > SKEW_THRESHOLD * skew,
+    EA_group: g.EA,
+    arm: Math.abs(g.EA) > EPS ? g.ESx / g.EA : 0,
+    valid,
+  };
+}
+
+/**
+ * Skjærstrøm gjennom ett grensesnitt — ENAKSLET innpakning.
+ *
+ * BEHOLDT SIGNATUR, MEN REGNER IKKE SELV LENGER. Kallet settes om til
+ * `shearFlowBiaxial` med den ene tverrkraftkomponenten `axis` peker på:
+ *
+ *      axis: 'y'  ⟹  { Vy: V, Vx: 0 }      (loddrett tverrkraft, M_x)
+ *      axis: 'x'  ⟹  { Vx: V, Vy: 0 }      (vannrett tverrkraft, M_y)
+ *
+ * Er EI_xy = 0 gir det NØYAKTIG samme tall som før (se kontrollen i
+ * utledningen over `stiffnessMatrix`, og regresjonstesten i
+ * `tests/composite.test.mjs`). Er EI_xy ≠ 0 gir det det RIKTIGE tallet, som
+ * den gamle formen ikke gjorde. Feltene `EStar` og `EI` peker fortsatt på
+ * størrelsene for den valgte aksen, slik at eksisterende kall og tester
+ * leser det samme som før.
+ *
+ * NY KODE BØR KALLE `shearFlowBiaxial` DIREKTE med begge komponentene — en
+ * last som virker i begge plan kan ikke deles i to uavhengige kall når
+ * EI_xy ≠ 0, fordi bidragene kobler.
  *
  * UTLEDNING fra grunnligningen q = dN/dx. Betrakt den delen av tverrsnittet
  * som ligger på én side av fugen (gruppa G). Fra bøyning er spenningen i del i
@@ -362,32 +630,25 @@ export function axialTransfer({ N, parts, groupIds }) {
  * @returns {ShearFlowResult}
  */
 export function shearFlow({ V, groupParts, section, axis = 'y' }) {
-  const sec = asSection(section);
-  const grp = sectionEA(groupParts || []);
-
   const useY = axis !== 'x';
-  const c = useY ? sec.yc : sec.xc;
-  const ES = useY ? grp.ESx : grp.ESy;
+  const sec = asSection(section);
+  const bi = shearFlowBiaxial({
+    Vy: useY ? V : 0,
+    Vx: useY ? 0 : V,
+    groupParts,
+    section: sec,
+  });
+
+  const EStar = useY ? bi.ESx : bi.ESy;
   const EI = useY ? sec.EIx : sec.EIy;
 
-  // ES* = Σ Eᵢ Aᵢ (yᵢ − y_c) = Σ Eᵢ Sxᵢ − y_c · Σ Eᵢ Aᵢ.
-  // Skrevet slik fordi `props` allerede er integrert om globalt origo, så
-  // vi slipper å kjenne hver dels eget tyngdepunkt.
-  const EStar = ES - c * grp.EA;
-
-  const valid = Math.abs(EI) > EPS && grp.count > 0;
-  const q = valid ? (V * EStar) / EI : 0;
-
   return {
+    ...bi,
     axis: useY ? 'y' : 'x',
     V,
     EStar,
     EI,
-    q,
-    qAbs: Math.abs(q),
-    EA_group: grp.EA,
-    arm: Math.abs(grp.EA) > EPS ? EStar / grp.EA : 0,
-    valid,
+    arm: Math.abs(bi.EA_group) > EPS ? EStar / bi.EA_group : 0,
   };
 }
 
@@ -714,5 +975,613 @@ export function connectorCheck({ q, bondWidth, connector }) {
     qRd: valid && spacing > 0 ? (rows * FRd) / spacing : null,
     ok: util === null ? true : util <= 1,
     valid,
+  };
+}
+
+/* ================================================================== *
+ * §1 — hovedakser og skjev bøyning
+ *
+ * Bølge B henter ALT den trenger til §1.1/§1.2 herfra. Ingen UI i denne
+ * fila; bare tallene og advarselsflaggene.
+ * ================================================================== */
+
+/**
+ * @typedef {Object} PrincipalEI
+ * @property {number} EIx
+ * @property {number} EIy
+ * @property {number} EIxy
+ * @property {number} EI1      Største hovedstivhet [Nmm²]
+ * @property {number} EI2      Minste hovedstivhet [Nmm²]
+ * @property {number} theta    Hovedaksevinkel [rad], mot klokka fra x-aksen til EI_1
+ * @property {number} thetaDeg Samme i grader, i (−90°, 90°]
+ * @property {number|null} tanBeta  Nøytralaksens helning for rent M_x
+ * @property {number|null} betaDeg  Samme som vinkel [°]
+ * @property {number} skew     |EI_xy| / √(EI_x·EI_y) ∈ [0, 1]
+ * @property {boolean} coupled skew > SKEW_THRESHOLD
+ * @property {number} xc
+ * @property {number} yc
+ * @property {boolean} valid
+ */
+
+/**
+ * Hovedakser og skjevbøyningstall for et E-vektet tverrsnitt.
+ *
+ * ------------------------------------------------------------------
+ * UTLEDNING 1 — hovedaksevinkelen θ
+ * ------------------------------------------------------------------
+ * Roteres aksene en vinkel θ mot klokka, transformeres stivhetene som en
+ * symmetrisk 2. ordens tensor (Mohrs sirkel):
+ *
+ *      EI_x' = (EI_x+EI_y)/2 + (EI_x−EI_y)/2·cos2θ − EI_xy·sin2θ
+ *
+ * Hovedaksene er der EI_x' er stasjonær, dEI_x'/dθ = 0:
+ *
+ *      −(EI_x−EI_y)·sin2θ − 2·EI_xy·cos2θ = 0
+ *   ⟹  tan2θ = −2·EI_xy / (EI_x − EI_y)
+ *   ⟹  θ = ½·atan2(−2·EI_xy, EI_x − EI_y)
+ *
+ * `atan2` (og ikke `atan`) plukker den kvadranten der cos2θ har samme fortegn
+ * som (EI_x−EI_y), og det er nettopp den løsningen som gir MAKSIMUM: setter
+ * man den inn, blir EI_x' = snitt + ½√((EI_x−EI_y)² + 4EI_xy²) = EI_1.
+ * Vinkelen normaliseres til (−90°, 90°] — samme konvensjon som `derive()` i
+ * geometry.js. Bruk den samme, ellers spriker de to fanene i UI-et.
+ *
+ * ------------------------------------------------------------------
+ * UTLEDNING 2 — nøytralaksens helning for et rent M_x (§1.2)
+ * ------------------------------------------------------------------
+ * Med ε = κ_x·y + κ_y·x og M_y = 0 gir den andre av de to ligningene i
+ * `stiffnessMatrix`-utledningen
+ *
+ *      0 = κ_x·EI_xy + κ_y·EI_y     ⟹  κ_y = −κ_x·EI_xy/EI_y
+ *
+ * Nøytralaksen er der tøyningen er null:
+ *
+ *      κ_x·y + κ_y·x = 0  ⟹  y = −(κ_y/κ_x)·x = (EI_xy/EI_y)·x
+ *
+ *      tan β = EI_xy / EI_y                          ← helningen mot x-aksen
+ *
+ * Nedbøyningen står VINKELRETT på nøytralaksen. En retningsvektor langs
+ * nøytralaksen er (1, tanβ); vinkelrett på den er (−tanβ, 1). Forholdet
+ * mellom den sidevegse og den loddrette komponenten er altså |tan β| — det er
+ * det tallet §1.2 vil ha i prosent.
+ *
+ * `tanBeta` er null når EI_y ≈ 0 (degenerert tverrsnitt), ikke Infinity: da
+ * finnes det ingen meningsfull helning å vise.
+ *
+ * @param {SectionEA|Part[]} section
+ * @returns {PrincipalEI}
+ */
+export function principalEI(section) {
+  const s = asSection(section);
+  const avg = (s.EIx + s.EIy) / 2;
+  const dif = (s.EIx - s.EIy) / 2;
+  const rad = Math.sqrt(dif * dif + s.EIxy * s.EIxy);
+
+  let theta = Math.abs(s.EIxy) < EPS && Math.abs(dif) < EPS
+    ? 0
+    : 0.5 * Math.atan2(-2 * s.EIxy, s.EIx - s.EIy);
+  if (theta <= -Math.PI / 2) theta += Math.PI;
+  if (theta > Math.PI / 2) theta -= Math.PI;
+
+  const scale = Math.sqrt(Math.abs(s.EIx * s.EIy));
+  const skew = scale > EPS ? Math.abs(s.EIxy) / scale : 0;
+  const tanBeta = Math.abs(s.EIy) > EPS ? s.EIxy / s.EIy : null;
+
+  return {
+    EIx: s.EIx,
+    EIy: s.EIy,
+    EIxy: s.EIxy,
+    EI1: avg + rad,
+    EI2: avg - rad,
+    theta,
+    thetaDeg: (theta * 180) / Math.PI,
+    tanBeta,
+    betaDeg: tanBeta === null ? null : (Math.atan(tanBeta) * 180) / Math.PI,
+    skew,
+    coupled: skew > SKEW_THRESHOLD,
+    xc: s.xc,
+    yc: s.yc,
+    valid: s.valid,
+  };
+}
+
+/**
+ * @typedef {Object} AxesComparison
+ * @property {PrincipalEI} before  Eksisterende tverrsnitt, om SIN EGEN akse
+ * @property {PrincipalEI} after   Sammensatt tverrsnitt, om den nye aksen
+ * @property {number} dxc          Δx_c [mm]
+ * @property {number} dyc          Δy_c [mm]
+ * @property {number} dTheta       Δθ [rad]
+ * @property {number} dThetaDeg    Δθ [°]
+ * @property {boolean} introducedSkew  Var ≈ symmetrisk før, er det ikke etter
+ * @property {number|null} lateralFraction |tan β| etter forsterkning [-]
+ * @property {number|null} lateralPercent  Samme i prosent av loddrett nedbøyning
+ */
+
+/**
+ * §1.1 + §1.2 samlet: tverrsnittets akser før og etter forsterkning, med den
+ * advarselen som er hele poenget med seksjonen.
+ *
+ * `introducedSkew` er sann når EI_xy var UNDER terskelen før og OVER etter —
+ * altså når forsterkningen har INNFØRT skjev bøyning som ikke fantes. Var
+ * tverrsnittet skjevt fra før, er `after.coupled` fortsatt sann, men det er
+ * ikke forsterkningens skyld, og teksten i UI-et skal være en annen.
+ *
+ * @param {{existing: Part[]|SectionEA, combined: Part[]|SectionEA}} arg
+ * @returns {AxesComparison}
+ */
+export function axesComparison({ existing, combined }) {
+  const before = principalEI(existing);
+  const after = principalEI(combined);
+  let dTheta = after.theta - before.theta;
+  // θ lever i (−90°, 90°]; en «rotasjon» på +170° er egentlig −10°.
+  while (dTheta > Math.PI / 2) dTheta -= Math.PI;
+  while (dTheta <= -Math.PI / 2) dTheta += Math.PI;
+
+  const lateralFraction = after.tanBeta === null ? null : Math.abs(after.tanBeta);
+  return {
+    before,
+    after,
+    dxc: after.xc - before.xc,
+    dyc: after.yc - before.yc,
+    dTheta,
+    dThetaDeg: (dTheta * 180) / Math.PI,
+    introducedSkew: !before.coupled && after.coupled,
+    lateralFraction,
+    lateralPercent: lateralFraction === null ? null : lateralFraction * 100,
+  };
+}
+
+/* ================================================================== *
+ * §4 — samvirkegrad, γ-metoden (EC5 tillegg B)
+ * ================================================================== */
+
+/**
+ * Effektiv lengde for γ-metoden. Metoden er utledet for SINUSFORMET LAST på
+ * en fritt opplagt bjelke; for andre systemer brukes en effektiv lengde som
+ * gjør det virkelige momentforløpet omtrent like «langt» som en halv
+ * sinusbølge.
+ */
+export const SYSTEM_FACTORS = Object.freeze({
+  simple: Object.freeze({
+    factor: 1.0,
+    label: 'Fritt opplagt',
+    note: 'L_ef = L. Dette er tilfellet γ-metoden faktisk er utledet for — en halv sinusbølge mellom to momentnullpunkt.',
+  }),
+  continuous: Object.freeze({
+    factor: 0.8,
+    label: 'Kontinuerlig felt',
+    note: 'L_ef = 0,8·L. Avstanden mellom momentnullpunktene i et innerfelt er kortere enn spennvidden, og glidningen rekker ikke å bygge seg like mye opp.',
+  }),
+  cantilever: Object.freeze({
+    factor: 2.0,
+    label: 'Utkraget',
+    note: 'L_ef = 2·L. En utkrager er en halv fritt opplagt bjelke speilet om innspenningen, altså en kvart sinusbølge — det tilsvarer dobbel spennvidde.',
+  }),
+});
+
+/**
+ * @param {number} span L [mm]
+ * @param {'simple'|'continuous'|'cantilever'} [system]
+ * @returns {{Lef: number, factor: number, system: string, label: string, note: string, valid: boolean}}
+ */
+export function effectiveLength(span, system = 'simple') {
+  const key = SYSTEM_FACTORS[system] ? system : 'simple';
+  const s = SYSTEM_FACTORS[key];
+  const L = Number(span);
+  const valid = Number.isFinite(L) && L > EPS;
+  return {
+    Lef: valid ? L * s.factor : 0,
+    factor: s.factor,
+    system: key,
+    label: s.label,
+    note: s.note,
+    valid,
+  };
+}
+
+/**
+ * @typedef {Object} GammaPart
+ * @property {string|number} id
+ * @property {number} EA      E_i·A_i [N]
+ * @property {number} EI_own  E_i·I_i om DELENS EGEN akse [Nmm²]
+ * @property {number} y       Delens E-tyngdepunkt langs den aktuelle aksen [mm]
+ * @property {number} gamma   Samvirkefaktoren for delen [-]
+ * @property {number} a       a_i = y_i − y_ef [mm], SIGNERT
+ * @property {number} ESgamma γ_i·E_iA_i·a_i [Nmm] — γ-metodens motstykke til ES*
+ * @property {boolean} reference  true for delen som har γ = 1
+ */
+
+/**
+ * @typedef {Object} GammaResult
+ * @property {boolean} applicable  false ⟹ γ-metoden er IKKE brukt (se `reason`)
+ * @property {string|null} reason
+ * @property {'y'|'x'} axis
+ * @property {number} Lef
+ * @property {number} k         Fugestivhet per lengdeenhet [N/mm²]
+ * @property {number} gammaEff  Samvirkegraden — det tallet brukeren er ute etter [0..1]
+ * @property {number} EAstar    Seriestivheten EA₁EA₂/(EA₁+EA₂) [N]
+ * @property {number} a         Avstand mellom de to delenes tyngdepunkt [mm]
+ * @property {number} EI_none   Ingen samvirkning, Σ E_iI_i [Nmm²]
+ * @property {number} EI_full   Full samvirkning (Steiner) [Nmm²]
+ * @property {number} EI_ef     γ-metodens effektive stivhet [Nmm²]
+ * @property {number} EI_ef_series Samme tall via den lukkede topartsformelen — egenkontroll
+ * @property {number} efficiency (EI_ef − EI_none)/(EI_full − EI_none) — analytisk lik gammaEff
+ * @property {number} y_ef      Effektiv nøytralakse [mm]
+ * @property {number} y_full    Nøytralaksen ved full samvirkning [mm]
+ * @property {GammaPart[]} parts
+ * @property {number} q         Skjærstrøm i fugen ved DELVIS samvirkning [N/mm] (krever `V`)
+ * @property {number} q_full    Samme ved FULL samvirkning [N/mm]
+ * @property {boolean} valid
+ * @property {string[]} notes
+ */
+
+/**
+ * γ-metoden, EC5 tillegg B — TOPARTSTILFELLET.
+ *
+ * ------------------------------------------------------------------
+ * UTLEDNING AV a_i OG y_ef, og svaret på iterasjonsspørsmålet
+ * ------------------------------------------------------------------
+ * I γ-metoden har de to delene FELLES krumning κ, men hver sin aksialkraft,
+ * fordi fugen glir. Ettergivenheten uttrykkes ved at delens aksialkraft er
+ * REDUSERT med faktoren γ_i i forhold til full samvirkning:
+ *
+ *      N_i = γ_i·E_iA_i·a_i·κ
+ *
+ * Uten ytre aksialkraft må disse være i likevekt, ΣN_i = 0:
+ *
+ *      Σ γ_i E_iA_i (y_i − y_ef) κ = 0
+ *   ⟹  y_ef = Σ (γ_i E_iA_i y_i) / Σ (γ_i E_iA_i)          ← §4
+ *      a_i  = y_i − y_ef                                    ← SIGNERT
+ *
+ * Momentlikevekten gir så
+ *
+ *      M = κ·Σ (E_iI_i + γ_i E_iA_i a_i²)
+ *   ⟹  (EI)_ef = Σ (E_iI_i + γ_i E_iA_i a_i²)
+ *
+ * TRENGS ITERASJON? NEI. `y_ef` avhenger av γ, men γ avhenger BARE av E_iA_i,
+ * s, K og L_ef — ikke av y_ef, ikke av a_i og ikke av (EI)_ef:
+ *
+ *      γ_i = 1 / (1 + π²·E_iA_i·s/(K·L_ef²)) = 1 / (1 + π²·E_iA_i/(k·L_ef²))
+ *
+ * Løsningen er derfor EKSPLISITT i tre steg: γ først, så y_ef, så (EI)_ef.
+ * (Det ville vært en fikspunktligning hvis γ hadde inneholdt (EI)_ef — men det
+ * gjør den ikke, og det er nettopp derfor γ-metoden er en håndregnemetode.)
+ *
+ * ------------------------------------------------------------------
+ * HVILKEN DEL FÅR γ = 1 — og hvorfor det MÅ være én
+ * ------------------------------------------------------------------
+ * §4 i planen skriver `γ_i` generisk for alle deler. Det er en FORENKLING av
+ * EC5 tillegg B, som setter γ = 1 for referansedelen (B.5: γ₂ = 1 for steget i
+ * treparts-tverrsnittet). Brukes γ < 1 på BEGGE deler av en topartsskjøt,
+ * telles ettergivenheten to ganger og (EI)_ef blir for lav. Vi følger EC5.
+ *
+ * Kontrollen på at valget er riktig: den eksakte Newmark-løsningen for to
+ * deler koblet med et kontinuerlig skjærlag `k`, med sinusformet last, er
+ *
+ *      (EI)_ef = ΣE_iI_i + γ_eff·EA*·a² ,  EA* = EA₁EA₂/(EA₁+EA₂),
+ *      γ_eff   = 1/(1 + π²·EA* / (k·L_ef²)) ,  a = y₂ − y₁
+ *
+ * Setter man EC5-formen inn med γ_ref = 1, får man (med ψ = π²/(k·L_ef²))
+ *
+ *      Σ γ_i EA_i a_i² = γ_2·EA₁EA₂·a²/(γ_2·EA₂ + EA₁)
+ *                      = EA₁EA₂·a²/(EA₁ + EA₂ + ψ·EA₁EA₂)
+ *                      = γ_eff·EA*·a²
+ *
+ * — NØYAKTIG det samme uttrykket, og symmetrisk i 1↔2. (EI)_ef er altså
+ * uavhengig av hvilken del som velges som referanse, mens `y_ef` og de
+ * enkelte `γ_i`/`a_i` IKKE er det. Derfor rapporteres `gammaEff` (symmetrisk,
+ * uavhengig av valget) som SAMVIRKEGRADEN, og `parts[i].gamma` som
+ * EC5-dekomposisjonen.
+ *
+ * `y_ef` er for øvrig ingen felles nøytralakse: i delvis samvirkning har hver
+ * del sitt eget nullpunkt for tøyningen. `y_ef` sammenfaller med
+ * REFERANSEDELENS nullpunkt (den med γ = 1). Det står i `notes`.
+ *
+ * ------------------------------------------------------------------
+ * `K` KONTRA `k` — planen bruker samme bokstav om to ting
+ * ------------------------------------------------------------------
+ * §3.3 kaller stivheten PER LENGDEENHET for `K`, mens §4 bruker `K` om
+ * per-festemiddel-verdien og skriver `s` eksplisitt. Det er samme størrelse:
+ * s/K_festemiddel = 1/k. Her heter per-lengde-stivheten alltid `k`, og du kan
+ * gi enten `k` direkte eller `{K, rows, spacing, shearPlanes}` — se
+ * `connection-stiffness.js` (`jointStiffness`), som regner den samme brøken.
+ *
+ * `k = Infinity` (sveis) gir γ = 1 eksakt, altså full samvirkning.
+ *
+ * @param {{groups: Array<Part[]|SectionEA>, ids?: Array<string|number>,
+ *          k?: number, K?: number, spacing?: number, rows?: number, shearPlanes?: number,
+ *          span?: number, Lef?: number, system?: string,
+ *          axis?: 'y'|'x', referenceIndex?: number, V?: number}} arg
+ *   `groups` er nøyaktig TO grupper: [eksisterende, ny]. `V` [N] er valgfri —
+ *   er den gitt, fylles `q`/`q_full` ut.
+ * @returns {GammaResult}
+ */
+export function gammaMethod({
+  groups,
+  ids,
+  k,
+  K,
+  spacing,
+  rows = 1,
+  shearPlanes = 1,
+  span,
+  Lef,
+  system = 'simple',
+  axis = 'y',
+  referenceIndex = 0,
+  V = 0,
+}) {
+  const useY = axis !== 'x';
+  const notes = [];
+  const fail = (reason) => ({
+    applicable: false,
+    reason,
+    axis: useY ? 'y' : 'x',
+    Lef: 0, system, k: 0, gammaEff: 0, EAstar: 0, a: 0,
+    EI_none: 0, EI_full: 0, EI_ef: 0, EI_ef_series: 0, efficiency: 0,
+    y_ef: 0, y_full: 0, parts: [], q: 0, q_full: 0, valid: false, notes,
+  });
+
+  const list = Array.isArray(groups) ? groups : [];
+  if (list.length !== 2) {
+    return fail(
+      'γ-metoden er implementert bare for topartstilfellet (eksisterende + ny). ' +
+      `Her er det ${list.length} grupper — full samvirkning vises alene, og samvirkegraden er ikke beregnet.`
+    );
+  }
+
+  const secs = list.map((g) => asSection(g));
+  const EA = secs.map((s) => s.EA);
+  const EIown = secs.map((s) => (useY ? s.EIx : s.EIy));
+  const y = secs.map((s) => (useY ? s.yc : s.xc));
+  if (!(EA[0] > EPS) || !(EA[1] > EPS)) {
+    return fail('En av gruppene har ingen aksialstivhet (EA ≈ 0) — γ-metoden er ikke anvendelig.');
+  }
+
+  // --- effektiv lengde
+  const el = Number.isFinite(Lef) && Lef > EPS
+    ? {
+        Lef,
+        factor: 1,
+        system,
+        label: SYSTEM_FACTORS[system] ? SYSTEM_FACTORS[system].label : 'oppgitt L_ef',
+        note: 'L_ef er lagt inn direkte.',
+        valid: true,
+      }
+    : effectiveLength(span, system);
+  if (!el.valid) return fail('Spennvidde/effektiv lengde mangler — γ-metoden krever L_ef.');
+  notes.push(el.note);
+
+  // --- fugestivhet per lengdeenhet. Samme brøk som `jointStiffness` i
+  //     connection-stiffness.js; gjentatt her fordi denne fila med vilje ikke
+  //     importerer noe (se filhodet der).
+  let kk = Number(k);
+  if (!Number.isFinite(kk) || kk < 0) {
+    const Kf = Number(K);
+    const s = Number(spacing);
+    const r = Number(rows) > 0 ? Number(rows) : 1;
+    const p = Number(shearPlanes) > 0 ? Number(shearPlanes) : 1;
+    kk = Kf > 0 && s > 0 ? (p * r * Kf) / s : NaN;
+  }
+  if (k === Infinity) kk = Infinity;
+  if (!(kk >= 0)) return fail('Fugestivheten k mangler — oppgi k [N/mm²] eller K, s og antall rader.');
+
+  // --- γ. ψ = π²/(k·L_ef²) [1/N]; k = ∞ ⟹ ψ = 0 ⟹ γ = 1, k = 0 ⟹ ψ = ∞ ⟹ γ = 0.
+  const psi = kk === Infinity ? 0 : (Math.PI * Math.PI) / (kk * el.Lef * el.Lef);
+  const gammaOf = (ea) => (psi === 0 ? 1 : 1 / (1 + psi * ea));
+
+  const refIdx = referenceIndex === 1 ? 1 : 0;
+  const gamma = [0, 1].map((i) => (i === refIdx ? 1 : gammaOf(EA[i])));
+
+  // --- y_ef, a_i, (EI)_ef
+  const wSum = gamma[0] * EA[0] + gamma[1] * EA[1];
+  const y_ef = (gamma[0] * EA[0] * y[0] + gamma[1] * EA[1] * y[1]) / wSum;
+  const a_i = [y[0] - y_ef, y[1] - y_ef];
+
+  const EI_none = EIown[0] + EIown[1];
+  const EI_ef = EI_none + gamma[0] * EA[0] * a_i[0] * a_i[0] + gamma[1] * EA[1] * a_i[1] * a_i[1];
+
+  // --- den lukkede topartsformen: symmetrisk γ_eff og egenkontroll av EI_ef
+  const EAstar = (EA[0] * EA[1]) / (EA[0] + EA[1]);
+  const a = y[1] - y[0];
+  const y_full = (EA[0] * y[0] + EA[1] * y[1]) / (EA[0] + EA[1]);
+  const gammaEff = psi === 0 ? 1 : 1 / (1 + psi * EAstar);
+  const EI_full = EI_none + EAstar * a * a;
+  const EI_ef_series = EI_none + gammaEff * EAstar * a * a;
+
+  // ES*-analogen: γ_i·EA_i·a_i. De to har lik tallverdi og motsatt fortegn —
+  // det er nettopp den likevekten y_ef ble bestemt av, akkurat som ES* har
+  // det på hver side av et snitt ved full samvirkning.
+  const ESgamma = [gamma[0] * EA[0] * a_i[0], gamma[1] * EA[1] * a_i[1]];
+
+  const q = EI_ef > EPS ? (Math.abs(ESgamma[1]) * V) / EI_ef : 0;
+  const q_full = EI_full > EPS ? (EAstar * Math.abs(a) * V) / EI_full : 0;
+
+  notes.push(
+    'y_ef er ingen felles nøytralakse: i delvis samvirkning har hver del sitt eget nullpunkt for tøyningen. ' +
+    'y_ef sammenfaller med referansedelens (den med γ = 1).'
+  );
+  notes.push(
+    'Full samvirkning er fortsatt standard — γ-resultatet er et tillegg som vises ved siden av, ikke en erstatning.'
+  );
+
+  return {
+    applicable: true,
+    reason: null,
+    axis: useY ? 'y' : 'x',
+    Lef: el.Lef,
+    system: el.system,
+    k: kk,
+    gammaEff,
+    EAstar,
+    a,
+    EI_none,
+    EI_full,
+    EI_ef,
+    EI_ef_series,
+    // (EI_ef − EI_none)/(EI_full − EI_none) er ANALYTISK lik gammaEff; regnes
+    // likevel ut av tallene, slik at en fortegns- eller a_i-feil ville sprike her.
+    efficiency: EI_full - EI_none > EPS ? (EI_ef - EI_none) / (EI_full - EI_none) : 0,
+    y_ef,
+    y_full,
+    parts: [0, 1].map((i) => ({
+      id: ids && ids[i] !== undefined ? ids[i] : i,
+      EA: EA[i],
+      EI_own: EIown[i],
+      y: y[i],
+      gamma: gamma[i],
+      a: a_i[i],
+      ESgamma: ESgamma[i],
+      reference: i === refIdx,
+    })),
+    q,
+    q_full,
+    valid: true,
+    notes,
+  };
+}
+
+/**
+ * §4.1 — kraften per festemiddel, det tallet som går videre til en
+ * kapasitetskontroll.
+ *
+ *      F = q · s / (n_rader · n_skjærplan)          [N]
+ *
+ * UTLEDNING: skjærstrømmen `q` [N/mm] er kraft per lengdeenhet av skjøten.
+ * Over lengden `s` mellom to festemiddelrekker skal `q·s` overføres, og den
+ * kraften deles på de snittene som faktisk finnes der: `n_rader` rader på
+ * tvers, hver med `n_skjærplan` skjærplan.
+ *
+ * `FRd` er lagret i **kN** (som `connector.FRd` ellers i modulen);
+ * konverteringen skjer på én merket linje.
+ *
+ * @param {{q: number, spacing: number, rows?: number, shearPlanes?: number, FRd?: number}} arg
+ * @returns {{F: number, F_kN: number, util: number|null, sMax: number|null,
+ *            nPerMetre: number|null, ok: boolean, valid: boolean}}
+ *   `sMax` er den største senteravstanden som holder utnyttelsen ≤ 1.
+ *   `nPerMetre` er nødvendig antall festemidler per løpemeter skjøt.
+ */
+export function fastenerForce({ q, spacing, rows = 1, shearPlanes = 1, FRd }) {
+  const qa = Math.abs(Number(q) || 0);
+  const s = Number(spacing);
+  const r = Number(rows) > 0 ? Number(rows) : 1;
+  const p = Number(shearPlanes) > 0 ? Number(shearPlanes) : 1;
+  const cap = Number(FRd) * 1000; // ← eneste kN→N-konvertering her. FRd er i kN.
+  const valid = s > EPS;
+
+  const F = valid ? (qa * s) / (r * p) : 0;
+  const hasCap = Number.isFinite(cap) && cap > 0;
+  return {
+    F,
+    F_kN: F / 1000,
+    util: hasCap && valid ? F / cap : null,
+    sMax: hasCap ? (qa > EPS ? (r * p * cap) / qa : Infinity) : null,
+    nPerMetre: hasCap ? (qa * 1000) / cap : null,
+    ok: hasCap && valid ? F <= cap : true,
+    valid,
+  };
+}
+
+/* ================================================================== *
+ * §8.2 — forankringskontroll i enden
+ * ================================================================== */
+
+/**
+ * Skjøtens kapasitet uttrykt som skjærstrøm `q_Rd` [N/mm] — samme størrelse
+ * som `q` fra `shearFlow`, uansett forbindelsestype:
+ *
+ *      lim:    q_Rd = τ_Rd · b               (b = heftbredde [mm])
+ *      skrue:  q_Rd = n_rader · F_Rd / s     (F_Rd i kN ⟹ ×1000)
+ *      sveis:  q_Rd  direkte (`weldCapacity`)
+ *
+ * Regnes IKKE på nytt her — `connectorCheck` utleder allerede nøyaktig disse
+ * tre, med den ene kN→N-konverteringen samlet på ett sted. Denne funksjonen
+ * er bare den navngitte inngangen §8.2 trenger.
+ *
+ * @param {object} connector
+ * @param {number} [bondWidth] [mm], bare for lim
+ * @returns {number|null} q_Rd [N/mm], null hvis kapasiteten ikke er oppgitt
+ */
+export function jointCapacityFlow(connector, bondWidth) {
+  return connectorCheck({ q: 0, bondWidth, connector }).qRd;
+}
+
+/**
+ * @typedef {Object} AnchorageCheck
+ * @property {number} NG      Aksialkraften som skal forankres [N]
+ * @property {number} NG_kN   Samme i kN — det tallet §8.2 skal vise
+ * @property {number|null} qRd  Skjøtens kapasitet per lengdeenhet [N/mm]
+ * @property {number|null} Lreq Nødvendig forankringslengde [mm]
+ * @property {number} L       Den lengden brukeren har lagt inn [mm]
+ * @property {number|null} util L_req/L [-]
+ * @property {boolean} ok     util ≤ 1
+ * @property {boolean} valid
+ * @property {string[]} notes
+ */
+
+/**
+ * Forankringskontroll i lamellenden (§8.2).
+ *
+ *      L_req = N_G / q_Rd          [mm] = [N] / [N/mm]
+ *
+ * UTLEDNING: `q_Rd` er kraften per lengdeenhet skjøten kan overføre.
+ * Integrert fra lamellenden og innover gir den N(x) = q_Rd·x. Hele kraften
+ * `N_G` er innført når N(x) = N_G, altså ved x = N_G/q_Rd.
+ *
+ * `N_G` hentes fra BIAKSIELL bøyning (`axialInGroup`) når `Mx`/`My` og
+ * geometrien er gitt, ellers brukes en `NG` som er lagt inn direkte. Den
+ * gamle formen `N_G = M·ES* / EI` fra §8.2 er bare gyldig når EI_xy = 0 og bare
+ * ett moment virker; den brukes ikke her.
+ *
+ * FORBEHOLD som SKAL vises (ligger i `notes`): kontrollen er en
+ * MIDDELVERDIBETRAKTNING. Den virkelige skjærstrømmen har en topp i
+ * lamellenden — `volkersen()` kvantifiserer den — og for et limt skjøteende er
+ * det toppen som utløser avskalling, ikke middelverdien.
+ *
+ * @param {{NG?: number, Mx?: number, My?: number, groupParts?: Part[],
+ *          section?: SectionEA|Part[], L: number, connector?: object,
+ *          bondWidth?: number, qRd?: number}} arg
+ * @returns {AnchorageCheck}
+ */
+export function anchorageCheck({ NG, Mx = 0, My = 0, groupParts, section, L, connector, bondWidth, qRd }) {
+  const notes = [
+    'Kontrollen er en middelverdibetraktning: q_Rd antas jevnt fordelt over forankringslengden.',
+    'Volkersen-toppen (se «shear lag») kommer i tillegg — for et limt skjøteende er det toppen som utløser avskalling.',
+  ];
+
+  let N = Number(NG);
+  if (!Number.isFinite(N)) {
+    const a = groupParts && section ? axialInGroup({ Mx, My, groupParts, section }) : { NG: NaN };
+    N = a.NG;
+  }
+  const Na = Math.abs(Number.isFinite(N) ? N : 0);
+
+  const explicit = Number(qRd);
+  const cap = Number.isFinite(explicit) && explicit > 0
+    ? explicit
+    : jointCapacityFlow(connector, bondWidth);
+
+  const Ln = Number(L);
+  const hasCap = Number.isFinite(cap) && cap > EPS;
+  const Lreq = hasCap ? Na / cap : null;
+  const util = hasCap && Ln > EPS ? Lreq / Ln : null;
+
+  if (util !== null && util > 1) {
+    notes.unshift(
+      'ADVARSEL: L_req > L. Forankringen er for kort, uansett hvor liten skjærstrømmen er midt på bjelken.'
+    );
+  }
+
+  return {
+    NG: Number.isFinite(N) ? N : 0,
+    NG_kN: (Number.isFinite(N) ? N : 0) / 1000,
+    qRd: hasCap ? cap : null,
+    Lreq,
+    L: Number.isFinite(Ln) ? Ln : 0,
+    util,
+    ok: util === null ? true : util <= 1,
+    valid: hasCap && Number.isFinite(N),
+    notes,
   };
 }
