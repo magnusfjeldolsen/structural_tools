@@ -144,18 +144,24 @@ export class ToolController {
     return null;
   }
 
-  /** Nærmeste hjørnepunkt i markerte former innenfor pikseltoleranse. */
+  /**
+   * Nærmeste håndtak i det markerte utvalget innenfor pikseltoleranse — både
+   * formenes hjørnepunkt og skjøtenes to endepunkt (§1: «endepunktene til en
+   * markert skjøt skal kunne dras, som formenes hjørnepunkt»).
+   *
+   * @returns {{id: string, kind: 'shape'|'joint', points: Array, index: number}|null}
+   */
   hitVertex(world, tolPx = 10) {
     const tol = tolPx * this.viewport.unitsPerPixel;
     let best = null;
     let bestD = tol;
-    for (const s of this.store.selectedShapes()) {
-      const ring = openRing(s.points);
-      for (let i = 0; i < ring.length; i++) {
-        const d = Math.hypot(ring[i][0] - world[0], ring[i][1] - world[1]);
+    for (const { kind, obj } of this.store.selectedEntities()) {
+      const pts = kind === 'joint' ? [obj.a, obj.b] : openRing(obj.points);
+      for (let i = 0; i < pts.length; i++) {
+        const d = Math.hypot(pts[i][0] - world[0], pts[i][1] - world[1]);
         if (d < bestD) {
           bestD = d;
-          best = { shape: s, index: i };
+          best = { id: obj.id, kind, points: pts.map((p) => [p[0], p[1]]), index: i };
         }
       }
     }
@@ -222,6 +228,97 @@ export class ToolController {
     return best;
   }
 
+  /* ---------------- tallinntasting (§2) ---------------- */
+
+  /**
+   * Hva det aktive verktøyet venter på akkurat nå. `null` betyr at
+   * tallinntasting ikke gir mening — da går tastetrykket videre til
+   * hurtigtastene, som før.
+   *
+   * @returns {'point'|'angle'|'length'|null}
+   */
+  expectedInput() {
+    const t = this.tool;
+    if (t === 'select') return null;
+    if (t === 'rotate') {
+      if (!this.draft) return 'point'; // rotasjonssenteret
+      if (this.draft.stage === 'reference') return 'point'; // referansepunkt for startvinkelen
+      return 'angle'; // selve vinkelen, i grader
+    }
+    if (t === 'circle' && this.draft) return 'length'; // radius
+    return 'point';
+  }
+
+  /**
+   * Punktet en `D`-forskyvning måles fra: forrige punkt i kommandoen —
+   * basispunktet under flytting, forrige hjørne under polygontegning.
+   * `null` betyr at kommandoen ennå ikke har noe basispunkt.
+   */
+  numericBase() {
+    const d = this.draft;
+    if (!d) return null;
+    if (d.points && d.points.length) return d.points[d.points.length - 1];
+    return d.base || d.start || d.center || null;
+  }
+
+  /**
+   * Tar imot en ferdig tolket verdi fra `NumericInput`. Alt ender i
+   * `_handlePoint` — samme vei som et klikk — unntatt den ene snarveien planen
+   * uttrykkelig ber om: en `D`-forskyvning skrevet FØR et basispunkt er satt
+   * utfører flyttingen (eller kopien) med én gang. Det er den raskeste veien
+   * fra utvalg til nøyaktig plassering, og den skal virke.
+   *
+   * @param {{kind:'point'|'delta'|'length'|'angle', x?:number, y?:number, value?:number}} v
+   * @returns {{ok: boolean, msg?: string}}
+   */
+  applyNumeric(v) {
+    // Syntetisk hendelse: tallet er eksakt, så verken Shift (orto/15°-lås)
+    // eller Alt skal påvirke det.
+    const ev = { shift: false, alt: false, ctrl: false, button: 0 };
+
+    if (v.kind === 'angle') {
+      const d = this.draft;
+      if (this.tool !== 'rotate' || !d || d.stage !== 'angle') {
+        return { ok: false, msg: 'Ingen rotasjon venter på en vinkel.' };
+      }
+      const ang = d.startAngle + (v.value * Math.PI) / 180;
+      const r = Math.hypot(d.base[0] - d.center[0], d.base[1] - d.center[1]);
+      this._handlePoint([d.center[0] + r * Math.cos(ang), d.center[1] + r * Math.sin(ang)], ev);
+      return { ok: true, msg: `Rotert ${fmt(v.value)}°.` };
+    }
+
+    if (v.kind === 'length') {
+      const d = this.draft;
+      if (this.tool !== 'circle' || !d || !d.start) return { ok: false, msg: 'Ingen lengde venter på et tall.' };
+      if (!(v.value > 0)) return { ok: false, msg: 'Radien må være større enn null.' };
+      this._handlePoint([d.start[0] + v.value, d.start[1]], ev);
+      return { ok: true, msg: `Sirkel med radius ${fmt(v.value)}.` };
+    }
+
+    if (v.kind === 'delta') {
+      const base = this.numericBase();
+      if (base) {
+        this._handlePoint([base[0] + v.x, base[1] + v.y], ev);
+        return { ok: true, msg: `Δx = ${fmt(v.x)}, Δy = ${fmt(v.y)}.` };
+      }
+      if (this.tool === 'move') return this.moveSelection(v.x, v.y);
+      if (this.tool === 'copy') {
+        const ids = this.store.state.selection;
+        if (!ids.length) return { ok: false, msg: 'Ingenting er markert.' };
+        if (!v.x && !v.y) return { ok: false, msg: 'Δx og Δy er begge null — kopien ville havnet oppå originalen.' };
+        const n = Math.max(1, Math.round(this.options.copies || 1));
+        const offsets = [];
+        for (let i = 1; i <= n; i++) offsets.push([v.x * i, v.y * i]);
+        this.store.copyEntities(ids, offsets, { select: false, reason: 'copy' });
+        return { ok: true, msg: `${n === 1 ? 'Kopi satt' : `${n} kopier satt`}: Δx = ${fmt(v.x)}, Δy = ${fmt(v.y)}.` };
+      }
+      return { ok: false, msg: 'Sett et punkt først — Δ måles fra forrige punkt.' };
+    }
+
+    this._handlePoint([v.x, v.y], ev);
+    return { ok: true, msg: `Punkt (${fmt(v.x)}, ${fmt(v.y)}).` };
+  }
+
   /* ---------------- hendelser ---------------- */
 
   pointerdown(e) {
@@ -230,8 +327,20 @@ export class ToolController {
       from: this.orthoOrigin(),
       shift: e.shift,
     });
-    const p = snapped.point;
+    this._handlePoint(snapped.point, e, snapped);
+  }
 
+  /**
+   * Ett punkt inn i det aktive verktøyet. Skilt ut fra `pointerdown` slik at
+   * tallinntastingen (§2) kan mate inn et punkt den har regnet ut, og gå
+   * nøyaktig samme vei som et klikk — ingen verktøy trenger å vite om tallet
+   * kom fra musa eller tastaturet.
+   *
+   * @param {[number,number]} p ferdig snappet punkt
+   * @param {object} e pekerhendelse (eller en syntetisk med `shift`/`alt`)
+   * @param {object|null} snapped snapresultatet, bare «velg» trenger det
+   */
+  _handlePoint(p, e, snapped = null) {
     if (TRANSFORM_TOOLS.has(this.tool)) {
       this._transformPointerDown(p, e);
       return;
@@ -314,7 +423,7 @@ export class ToolController {
         return;
 
       default:
-        this._selectPointerDown(e, snapped);
+        if (snapped) this._selectPointerDown(e, snapped);
     }
   }
 
@@ -322,10 +431,14 @@ export class ToolController {
     const vertex = this.hitVertex(e.world);
     if (vertex) {
       if (e.alt) {
-        const ring = openRing(vertex.shape.points);
+        if (vertex.kind === 'joint') {
+          this.onStatus('En skjøt har bare to endepunkt — de kan ikke fjernes. Slett hele skjøten med Del.');
+          return;
+        }
+        const ring = openRing(this.store.getShape(vertex.id).points);
         if (ring.length > 3) {
           ring.splice(vertex.index, 1);
-          this.store.setPoints(vertex.shape.id, ring, { reason: 'vertex-delete' });
+          this.store.setPoints(vertex.id, ring, { reason: 'vertex-delete' });
         } else {
           this.onStatus('Kan ikke slette punkt: et polygon må ha minst tre hjørner.');
         }
@@ -333,10 +446,28 @@ export class ToolController {
       }
       this.drag = {
         kind: 'vertex',
-        shapeId: vertex.shape.id,
+        entityId: vertex.id,
+        entityKind: vertex.kind,
         index: vertex.index,
-        origin: openRing(vertex.shape.points).map((q) => [q[0], q[1]]),
+        origin: vertex.points,
       };
+      return;
+    }
+
+    // Skjøter prioriteres FORAN former ved treff (§1): linja er tynn, og
+    // ville ellers alltid tapt mot formen den ligger oppå.
+    const jointHit = this.hitJoint(e.world);
+    if (jointHit) {
+      if (e.shift) this.store.toggleSelect(jointHit.id);
+      else if (!this.store.state.selection.includes(jointHit.id)) this.store.select([jointHit.id]);
+      this.drag = {
+        kind: 'move',
+        start: snapped.point,
+        raw: e.world,
+        origin: this._selectionGeometry() || [],
+      };
+      this.onJointPicked?.(jointHit.id);
+      this.onStatus(`${jointHit.name}: dra for å flytte, dra et endepunkt for å endre linja, Del for å slette.`);
       return;
     }
 
@@ -365,7 +496,7 @@ export class ToolController {
       kind: 'move',
       start: snapped.point,
       raw: e.world,
-      origin: this.store.selectedShapes().map((s) => ({ id: s.id, points: s.points.map((q) => [q[0], q[1]]) })),
+      origin: this._selectionGeometry() || [],
     };
   }
 
@@ -375,7 +506,7 @@ export class ToolController {
     // hjørne; selve slippunktet snapper bare mot det som står stille.
     let exclude = this.transformExclude();
     if (this.drag && this.drag.kind === 'vertex') {
-      exclude = new Set([this.drag.shapeId]);
+      exclude = new Set([this.drag.entityId]);
     } else if (this.drag && this.drag.kind === 'move') {
       exclude = new Set(this.drag.origin.map((o) => o.id));
     }
@@ -406,15 +537,20 @@ export class ToolController {
       } else if (this.drag.kind === 'move') {
         const dx = p[0] - this.drag.start[0];
         const dy = p[1] - this.drag.start[1];
-        for (const o of this.drag.origin) {
-          this.store.setPoints(o.id, translatePoints(o.points, dx, dy), { transient: true, reason: 'drag' });
-        }
-        this.onStatus(`Flytter: Δx = ${fmt(dx)}, Δy = ${fmt(dy)}`);
+        this.store.setManyEntityPoints(
+          this.drag.origin.map((o) => ({ id: o.id, points: translatePoints(o.points, dx, dy) })),
+          { transient: true, reason: 'drag' }
+        );
+        this.onStatus(`Flytter: Δx = ${fmt(dx)}, Δy = ${fmt(dy)}${this._followNote(this.drag.origin)}`);
       } else if (this.drag.kind === 'vertex') {
         const pts = this.drag.origin.map((q) => [q[0], q[1]]);
         pts[this.drag.index] = p;
-        this.store.setPoints(this.drag.shapeId, pts, { transient: true, reason: 'drag' });
-        this.onStatus(`Hjørne: x = ${fmt(p[0])}, y = ${fmt(p[1])}`);
+        this.store.setManyEntityPoints([{ id: this.drag.entityId, points: pts }], { transient: true, reason: 'drag' });
+        this.onStatus(
+          this.drag.entityKind === 'joint'
+            ? `Skjøteende: x = ${fmt(p[0])}, y = ${fmt(p[1])}`
+            : `Hjørne: x = ${fmt(p[0])}, y = ${fmt(p[1])}`
+        );
       } else if (this.drag.kind === 'marquee') {
         this.drag.current = e.world;
         const [a, b] = [this.drag.start, this.drag.current];
@@ -468,17 +604,45 @@ export class ToolController {
   /* ---------------- flytt / kopi / roter / speil ---------------- */
 
   /**
-   * Utvalget slik det står nå. Punktene tas vare på, slik at
-   * forhåndsvisningen alltid regnes fra utgangspunktet og ikke akkumulerer,
-   * og slik at Esc kan sette alt tilbake.
+   * Utvalget slik det står nå — BÅDE former og skjøter (§1), som flate
+   * punktlister. Punktene tas vare på, slik at forhåndsvisningen alltid regnes
+   * fra utgangspunktet og ikke akkumulerer, og slik at Esc kan sette alt
+   * tilbake.
+   *
+   * @returns {Array<{id: string, kind: 'shape'|'joint', points: Array}>|null}
    */
-  _captureSelection() {
-    const shapes = this.store.selectedShapes();
-    if (!shapes.length) return null;
-    return shapes.map((s) => ({ id: s.id, points: s.points.map((q) => [q[0], q[1]]) }));
+  _selectionGeometry() {
+    const sel = this.store.state.selection;
+    if (!sel.length) return null;
+    // Skjøter som ligger helt inne i det som flyttes tas med selv om de ikke
+    // er markert — regelen og begrunnelsen står i `Store.jointsFollowing`.
+    const list = this.store
+      .withFollowingJoints(sel)
+      .map((id) => this.store.entityById(id))
+      .filter(Boolean)
+      .map(({ kind, obj }) => ({
+        id: obj.id,
+        kind,
+        points: kind === 'joint'
+          ? [[obj.a[0], obj.a[1]], [obj.b[0], obj.b[1]]]
+          : obj.points.map((q) => [q[0], q[1]]),
+      }));
+    return list.length ? list : null;
   }
 
-  /** Ider til formene kommandoen virker på. */
+  /**
+   * «(1 skjøt følger med)» til statuslinja, slik at det aldri er usynlig at
+   * kommandoen flytter mer enn det brukeren markerte.
+   */
+  _followNote(origin) {
+    if (!origin) return '';
+    const sel = new Set(this.store.state.selection);
+    const n = origin.filter((o) => o.kind === 'joint' && !sel.has(o.id)).length;
+    if (!n) return '';
+    return ` (${n} skjøt${n === 1 ? '' : 'er'} følger med)`;
+  }
+
+  /** Ider til entitetene kommandoen virker på. */
   _transformIds() {
     return this.draft && this.draft.origin ? this.draft.origin.map((o) => o.id) : [];
   }
@@ -493,9 +657,9 @@ export class ToolController {
     const tool = this.tool;
 
     if (!this.draft) {
-      const origin = this._captureSelection();
+      const origin = this._selectionGeometry();
       if (!origin) {
-        this.onStatus(`Ingen form er markert — marker det du vil ${TRANSFORM_VERB[tool]} først.`);
+        this.onStatus(`Ingenting er markert — marker det du vil ${TRANSFORM_VERB[tool]} først.`);
         return;
       }
       // Avslutt et hengende transient steg (typisk modellnavnet som skrives),
@@ -584,7 +748,7 @@ export class ToolController {
     const next = this._transformedPoints(p, e.shift);
 
     if (tool === 'move' || tool === 'rotate') {
-      this.store.setManyPoints(next, { transient: true, reason: 'transform' });
+      this.store.setManyEntityPoints(next, { transient: true, reason: 'transform' });
       this.viewport.setPreview({
         points: [],
         cursor: p,
@@ -615,7 +779,9 @@ export class ToolController {
       const dx = p[0] - d.base[0];
       const dy = p[1] - d.base[1];
       const label = tool === 'copy' ? 'Kopi' : 'Flytter';
-      this.onStatus(`${label}: Δx = ${fmt(dx)}, Δy = ${fmt(dy)}, lengde ${fmt(Math.hypot(dx, dy))}`);
+      this.onStatus(
+        `${label}: Δx = ${fmt(dx)}, Δy = ${fmt(dy)}, lengde ${fmt(Math.hypot(dx, dy))}${this._followNote(d.origin)}`
+      );
     }
   }
 
@@ -637,7 +803,7 @@ export class ToolController {
       const offsets = [];
       for (let i = 1; i <= n; i++) offsets.push([dx * i, dy * i]);
       // Originalen blir stående markert, så neste klikk kopierer den samme
-      this.store.copyShapes(ids, offsets, { select: false, reason: 'copy' });
+      this.store.copyEntities(ids, offsets, { select: false, reason: 'copy' });
       this.viewport.setPreview(null);
       this.onStatus(
         `${n === 1 ? 'Kopi satt' : `${n} kopier satt`}. Klikk for én til, eller Esc for å avslutte.`
@@ -649,13 +815,13 @@ export class ToolController {
 
     if (tool === 'mirror' && this.options.keepOriginal) {
       const byId = new Map(next.map((o) => [o.id, o.points]));
-      this.store.copyShapes(ids, [(pts, s) => byId.get(s.id) || pts], { reason: 'mirror' });
+      this.store.copyEntities(ids, [(pts, o) => byId.get(o.id) || pts], { reason: 'mirror' });
     } else if (tool === 'mirror') {
-      this.store.setManyPoints(next, { reason: 'mirror' });
+      this.store.setManyEntityPoints(next, { reason: 'mirror' });
     } else {
       // Flytt og roter ligger allerede transient på plass; siste posisjon
       // settes på nytt fordi klikkpunktet kan avvike litt fra siste bevegelse
-      this.store.setManyPoints(next, { transient: true, reason: 'transform' });
+      this.store.setManyEntityPoints(next, { transient: true, reason: 'transform' });
       this.store.commit(tool);
     }
 
@@ -667,45 +833,44 @@ export class ToolController {
   /* ---------------- transformasjon fra menyene ---------------- */
 
   /**
-   * Flytter utvalget et gitt stykke. Brukes av tallfeltene i menyen og av
-   * transformasjonspanelet i venstre panel.
+   * Flytter hele utvalget — former og skjøter — et gitt stykke. Brukes av
+   * tallinntastingen (§2) når `D`-forskyvningen skrives før et basispunkt er
+   * satt, og av de gjenværende knappene i panelet.
    */
   moveSelection(dx, dy) {
     const ids = this.store.state.selection;
-    if (!ids.length) return { ok: false, msg: 'Ingen form er markert.' };
+    if (!ids.length) return { ok: false, msg: 'Ingenting er markert.' };
     if (!dx && !dy) return { ok: false, msg: 'Δx og Δy er begge null.' };
-    this.store.moveShapes(ids, dx, dy, { reason: 'move' });
-    return { ok: true, msg: `Flyttet ${ids.length} form(er): Δx = ${fmt(dx)}, Δy = ${fmt(dy)}.` };
+    this.store.moveEntities(ids, dx, dy, { reason: 'move' });
+    return { ok: true, msg: `Flyttet ${ids.length} objekt(er): Δx = ${fmt(dx)}, Δy = ${fmt(dy)}.` };
   }
 
   /** Roterer utvalget om et punkt. Vinkelen er i grader. */
   rotateSelection(deg, center) {
     const ids = this.store.state.selection;
-    if (!ids.length) return { ok: false, msg: 'Ingen form er markert.' };
+    if (!ids.length) return { ok: false, msg: 'Ingenting er markert.' };
     if (!deg) return { ok: false, msg: 'Vinkelen er null.' };
     const ang = (deg * Math.PI) / 180;
-    const entries = this.store
-      .selectedShapes()
-      .map((s) => ({ id: s.id, points: rotatePoints(s.points, ang, center) }));
-    this.store.setManyPoints(entries, { transient: true, reason: 'rotate' });
+    const src = this._selectionGeometry() || [];
+    const entries = src.map((o) => ({ id: o.id, points: rotatePoints(o.points, ang, center) }));
+    this.store.setManyEntityPoints(entries, { transient: true, reason: 'rotate' });
     this.store.commit('rotate');
-    return { ok: true, msg: `Rotert ${ids.length} form(er) ${fmt(deg)}° om (${fmt(center[0])}, ${fmt(center[1])}).` };
+    return { ok: true, msg: `Rotert ${ids.length} objekt(er) ${fmt(deg)}° om (${fmt(center[0])}, ${fmt(center[1])}).` };
   }
 
   /** Speiler utvalget om linja gjennom a og b. */
   mirrorSelection(a, b, { keepOriginal = false } = {}) {
     const ids = this.store.state.selection;
-    if (!ids.length) return { ok: false, msg: 'Ingen form er markert.' };
-    const entries = this.store
-      .selectedShapes()
-      .map((s) => ({ id: s.id, points: mirrorPointsAboutLine(s.points, a, b) }));
+    if (!ids.length) return { ok: false, msg: 'Ingenting er markert.' };
+    const src = this._selectionGeometry() || [];
+    const entries = src.map((o) => ({ id: o.id, points: mirrorPointsAboutLine(o.points, a, b) }));
     if (keepOriginal) {
       const byId = new Map(entries.map((o) => [o.id, o.points]));
-      this.store.copyShapes(ids, [(pts, s) => byId.get(s.id) || pts], { reason: 'mirror' });
+      this.store.copyEntities(ids, [(pts, o) => byId.get(o.id) || pts], { reason: 'mirror' });
     } else {
-      this.store.setManyPoints(entries, { reason: 'mirror' });
+      this.store.setManyEntityPoints(entries, { reason: 'mirror' });
     }
-    return { ok: true, msg: `Speilet ${ids.length} form(er).` };
+    return { ok: true, msg: `Speilet ${ids.length} objekt(er).` };
   }
 
   /** Ligger punktet innenfor bildeunderlaget? */
@@ -727,11 +892,15 @@ export class ToolController {
       const maxX = Math.max(a[0], b[0]);
       const minY = Math.min(a[1], b[1]);
       const maxY = Math.max(a[1], b[1]);
-      const inside = this.store.state.shapes.filter((s) =>
-        s.points.every(([x, y]) => x >= minX && x <= maxX && y >= minY && y <= maxY)
-      );
+      const within = ([x, y]) => x >= minX && x <= maxX && y >= minY && y <= maxY;
+      const inside = this.store.state.shapes.filter((s) => s.points.every(within)).map((s) => s.id);
+      // Skjøter tas med når BEGGE endepunkt ligger inne i vinduet (§1) —
+      // samme regel som for en form, der alle hjørnene må være innenfor.
+      const insideJoints = this.store.state.joints
+        .filter((j) => j.a && j.b && within(j.a) && within(j.b))
+        .map((j) => j.id);
       if (Math.abs(maxX - minX) > 1e-9 || Math.abs(maxY - minY) > 1e-9) {
-        this.store.select(inside.map((s) => s.id), e.shift);
+        this.store.select([...inside, ...insideJoints], e.shift);
       }
       this.viewport.setPreview(null);
     } else {

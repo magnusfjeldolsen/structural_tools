@@ -73,7 +73,8 @@
 <div class="flex flex-col h-screen">
 
   <!-- Topplinje -->
-  <header class="flex items-center gap-4 px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0 overflow-hidden">
+  <!-- `overflow-hidden` er bevisst borte: «Importer»-menyen henger ut under topplinja. -->
+  <header class="relative z-30 flex items-center gap-4 px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0">
     <a href="../index.html" class="text-sky-400 hover:text-sky-300 text-sm whitespace-nowrap shrink-0">← Verktøy</a>
     <div class="flex items-baseline gap-3 min-w-0">
       <h1 class="text-base font-semibold text-white whitespace-nowrap">Geometri-workspace</h1>
@@ -83,10 +84,26 @@
            class="max-w-xs min-w-0 ml-auto hidden lg:block" />
     <div class="flex items-center gap-1 ml-auto lg:ml-0 shrink-0">
       <button id="btn-example" class="px-2.5 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Eksempel</button>
-      <button id="btn-import" class="px-2.5 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Importer</button>
+
+      <!-- «Importer» er en meny: modell, bilde og tømming ligger sammen (§4.4) -->
+      <div class="relative">
+        <button id="btn-import" class="px-2.5 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Importer ▾</button>
+        <div id="import-menu"
+             class="hidden absolute right-0 top-full mt-1 z-40 w-60 bg-slate-900 border border-slate-600 rounded-lg shadow-xl shadow-black/40 p-1">
+          <button data-imp="model" class="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-slate-700">Importer modell (JSON)</button>
+          <button data-imp="image" class="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-slate-700">Importer bilde som underlag</button>
+          <p class="px-2 py-1 text-[10px] text-slate-500 leading-snug">
+            Bilde kan også slippes rett på lerretet, eller limes inn med Ctrl+V.
+          </p>
+          <div class="my-1 border-t border-slate-700"></div>
+          <button data-imp="clear" class="w-full text-left px-2 py-1.5 text-xs rounded text-rose-300 hover:bg-rose-900/40">Tøm all geometri</button>
+        </div>
+      </div>
+
       <button id="btn-export" class="px-2.5 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Eksporter</button>
       <button id="btn-help" class="px-2.5 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">?</button>
       <input id="file-input" type="file" accept="application/json,.json" class="hidden" />
+      <input id="image-input" type="file" accept="image/*" class="hidden" />
     </div>
   </header>
 
@@ -109,7 +126,7 @@
             </button>
 
             <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
-                    data-tool="rect" title="Rektangel (R)" aria-label="Rektangel">
+                    data-tool="rect" title="Rektangel (B)" aria-label="Rektangel">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
                 <rect x="3.5" y="7" width="17" height="10" rx="0.5" />
               </svg>
@@ -131,14 +148,14 @@
             </button>
 
             <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
-                    data-tool="circle" title="Sirkel (C)" aria-label="Sirkel">
+                    data-tool="circle" title="Sirkel (O)" aria-label="Sirkel">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
                 <circle cx="12" cy="12" r="8" />
               </svg>
             </button>
 
             <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
-                    data-tool="reference" title="Sett nullpunkt (O)" aria-label="Nullpunkt">
+                    data-tool="reference" title="Sett nullpunkt (N)" aria-label="Nullpunkt">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
                 <circle cx="12" cy="12" r="5.5" />
                 <path d="M12 2v5M12 17v5M2 12h5M17 12h5" />
@@ -155,7 +172,7 @@
             </button>
 
             <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
-                    data-tool="copy" title="Kopier utvalget (K)" aria-label="Kopi">
+                    data-tool="copy" title="Kopier utvalget (C)" aria-label="Kopi">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
                 <rect x="3.5" y="3.5" width="11" height="11" rx="0.5" stroke-dasharray="3 2" opacity="0.8" />
                 <rect x="9.5" y="9.5" width="11" height="11" rx="0.5" />
@@ -163,7 +180,7 @@
             </button>
 
             <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
-                    data-tool="rotate" title="Roter utvalget (T)" aria-label="Roter">
+                    data-tool="rotate" title="Roter utvalget (R)" aria-label="Roter">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
                 <path d="M20 12a8 8 0 1 1-2.7-6" stroke-linecap="round" />
                 <path d="M20 4v4.5h-4.5" stroke-linecap="round" stroke-linejoin="round" />
@@ -172,7 +189,7 @@
             </button>
 
             <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
-                    data-tool="mirror" title="Speil utvalget om en akse" aria-label="Speil">
+                    data-tool="mirror" title="Speil utvalget om en akse (ingen hurtigtast)" aria-label="Speil">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
                 <path d="M12 2v20" stroke-dasharray="3 2" />
                 <path d="M9.5 6.5L4 12l5.5 5.5z" stroke-linejoin="round" />
@@ -205,45 +222,16 @@
                class="hidden absolute left-0 right-0 top-full mt-1 z-30 bg-slate-900 border border-slate-600 rounded-lg shadow-xl shadow-black/40 p-3"></div>
         </div>
 
-        <!-- Enhet og rutenett -->
-        <div class="flex items-end gap-2">
-          <div class="w-20">
-            <label class="field-label" for="unit-select">Enhet</label>
-            <select id="unit-select">
-              <option value="mm">mm</option>
-              <option value="cm">cm</option>
-              <option value="m">m</option>
-            </select>
-          </div>
-          <div class="w-24">
-            <label class="field-label" for="grid-step">Rutenett</label>
-            <input id="grid-step" type="number" value="50" step="10" min="0" />
-          </div>
-        </div>
-
-        <!-- Hva som vises -->
-        <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-300">
-          <label class="flex items-center gap-1.5"><input id="chk-grid" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Rutenett</label>
-          <label class="flex items-center gap-1.5"><input id="chk-overlap" type="checkbox" class="w-3.5 h-3.5 accent-amber-500" checked /> Overlapp</label>
-          <label class="flex items-center gap-1.5"><input id="chk-net" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Omriss</label>
-          <label class="flex items-center gap-1.5"><input id="chk-principal" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Hovedakser</label>
-        </div>
-
-
-        <!-- Bildeunderlag -->
-        <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Bildeunderlag</h2>
-            <button id="btn-image-pick" class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Velg fil</button>
-            <input id="image-input" type="file" accept="image/*" class="hidden" />
-          </div>
-          <div id="underlay-panel"></div>
-        </div>
-
-        <!-- Plassering: transformasjoner som virker på hele utvalget -->
+        <!-- Plassering: sentrering av geometrien (§4.5) -->
         <div>
           <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5">Plassering</h2>
           <div id="placement-panel"></div>
+        </div>
+
+        <!-- Bildeunderlagets egenskaper — skjult så lenge det ikke er noe bilde (§4.4) -->
+        <div id="underlay-section" class="hidden">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5">Bildeunderlag</h2>
+          <div id="underlay-panel"></div>
         </div>
 
         <!-- Geometriliste med egenskaper -->
@@ -252,15 +240,12 @@
             <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">
               Geometri <span id="shape-count" class="text-slate-500"></span>
             </h2>
-            <div class="flex gap-1">
-              <button id="btn-duplicate" class="px-2 py-1 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Dupliser</button>
-              <button id="btn-delete" class="px-2 py-1 text-[11px] bg-slate-700 hover:bg-red-700 rounded border border-slate-600">Slett</button>
-              <button id="btn-clear" class="px-2 py-1 text-[11px] bg-slate-700 hover:bg-red-700 rounded border border-slate-600">Tøm</button>
-            </div>
           </div>
           <p class="text-[11px] text-slate-500 mb-2 leading-snug">
             Klikk et element — i lista eller i lerretet — for å endre egenskapene.
             Rekkefølgen er prioritet: øverst vinner overlapp.
+            <kbd class="px-1 bg-slate-700 rounded">Del</kbd> sletter det markerte,
+            <kbd class="px-1 bg-slate-700 rounded">Ctrl+D</kbd> dupliserer.
           </p>
           <div id="shape-list" class="space-y-1"></div>
         </div>
@@ -304,10 +289,44 @@
         <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5" style="background:#2dd4bf"></span> Skjøt — ingen side å velge</div>
       </div>
 
-      <!-- Snap-kontroll nederst til høyre -->
-      <div id="snap-bar"
-           class="absolute right-2 flex items-center gap-px p-0.5 bg-slate-800/90 backdrop-blur border border-slate-700 rounded-md shadow-lg shadow-black/30"
+      <!-- Verktøyalternativer nederst til venstre — bare når verktøyet har noen (§4.2) -->
+      <div id="tool-options"
+           class="hidden absolute left-3 w-52 bg-slate-800/80 backdrop-blur border border-slate-700 rounded-md px-2.5 py-2 space-y-1.5"
            style="bottom: 2.1rem;"></div>
+
+      <!-- Snap-kontroll og tegneinnstillinger nederst til høyre -->
+      <div class="absolute right-2 flex items-center gap-1" style="bottom: 2.1rem;">
+        <div id="snap-bar"
+             class="flex items-center gap-px p-0.5 bg-slate-800/90 backdrop-blur border border-slate-700 rounded-md shadow-lg shadow-black/30"></div>
+
+        <div class="relative">
+          <button id="btn-canvas-settings" title="Rutenett, enhet og hva som vises"
+                  class="px-1.5 py-1 text-xs leading-none bg-slate-800/90 backdrop-blur border border-slate-700 rounded-md shadow-lg shadow-black/30 text-slate-300 hover:text-white">⚙</button>
+          <div id="canvas-settings"
+               class="hidden absolute right-0 bottom-full mb-1 z-30 w-56 bg-slate-900 border border-slate-600 rounded-lg shadow-xl shadow-black/40 p-2.5 space-y-2">
+            <div class="flex items-end gap-2">
+              <div class="flex-1">
+                <label class="field-label" for="unit-select">Enhet</label>
+                <select id="unit-select">
+                  <option value="mm">mm</option>
+                  <option value="cm">cm</option>
+                  <option value="m">m</option>
+                </select>
+              </div>
+              <div class="flex-1">
+                <label class="field-label" for="grid-step">Rutenett</label>
+                <input id="grid-step" type="number" value="50" step="10" min="0" />
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-300 pt-1 border-t border-slate-700">
+              <label class="flex items-center gap-1.5"><input id="chk-grid" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Rutenett</label>
+              <label class="flex items-center gap-1.5"><input id="chk-overlap" type="checkbox" class="w-3.5 h-3.5 accent-amber-500" checked /> Overlapp</label>
+              <label class="flex items-center gap-1.5"><input id="chk-net" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Omriss</label>
+              <label class="flex items-center gap-1.5"><input id="chk-principal" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Hovedakser</label>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Statuslinje -->
       <div class="absolute bottom-0 left-0 right-0 flex items-center gap-4 px-3 py-1.5 bg-slate-800/90 backdrop-blur border-t border-slate-700 text-[11px] text-slate-300">
@@ -505,20 +524,48 @@
       <ul class="list-disc list-inside space-y-1">
         <li><strong>Flytt</strong> (<kbd class="px-1 bg-slate-700 rounded">M</kbd>) — klikk
           basispunkt, så sluttpunkt. Δx, Δy og lengden vises i statuslinja.</li>
-        <li><strong>Kopi</strong> (<kbd class="px-1 bg-slate-700 rounded">K</kbd>) — som flytt,
+        <li><strong>Kopi</strong> (<kbd class="px-1 bg-slate-700 rounded">C</kbd>) — som flytt,
           men legger igjen en kopi og blir stående med samme basispunkt, så du kan sette flere
-          etter hverandre. Menyen har «antall» for en rekke med jevn avstand.</li>
-        <li><strong>Roter</strong> (<kbd class="px-1 bg-slate-700 rounded">T</kbd>) — klikk
+          etter hverandre. Boksen nede til venstre i lerretet har «antall kopier» for en rekke med jevn avstand.</li>
+        <li><strong>Roter</strong> (<kbd class="px-1 bg-slate-700 rounded">R</kbd>) — klikk
           rotasjonssenter, så et referansepunkt som gir startvinkelen, og til slutt der det skal
           ende. Hold <kbd class="px-1 bg-slate-700 rounded">Shift</kbd> for å låse til 15°.</li>
         <li><strong>Speil</strong> — to klikk definerer speilaksen, som kan ligge hvor som helst.
-          Menyen velger om originalen beholdes.</li>
+          Boksen nede til venstre i lerretet velger om originalen beholdes. Speiling har ingen hurtigtast.</li>
       </ul>
       <p>
-        Menyene har også tallfelt for de samme kommandoene, og «Plassering» i venstre panel gjør
-        det samme på hele utvalget under ett. Der ligger også <strong>«Sentrer utvalg i origo»</strong>
-        og <strong>«Sentrer alt i origo»</strong>. Sentreringen flytter nullpunktet med samme
-        vektor, slik at avvikene i resultatpanelet ikke endrer seg av flyttingen.
+        Alle virker på <strong>hele utvalget</strong>, og et utvalg kan inneholde både former og
+        skjøter om hverandre — klikk en skjøtelinje i lerretet for å markere den, dra den, dra
+        endepunktene, eller slett den med <kbd class="px-1 bg-slate-700 rounded">Del</kbd>.
+        «Plassering» i venstre panel har <strong>«Sentrer utvalg i origo»</strong> og
+        <strong>«Sentrer alt i origo»</strong>: sentreringen flytter formene, <em>skjøtene</em> og
+        nullpunktet med samme vektor, slik at geometrien og skjøtene ikke glir fra hverandre, og
+        avvikene i resultatpanelet ikke endrer seg av flyttingen.
+      </p>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Tallinntasting — skriv i stedet for å klikke</h3>
+      <p>
+        Venter et verktøy på et punkt, kan du bare <strong>begynne å skrive et tall</strong>. Et lite
+        felt dukker opp ved markøren, og <kbd class="px-1 bg-slate-700 rounded">Enter</kbd> bekrefter.
+        Du trenger ikke gå til noe panel for å plassere geometri nøyaktig.
+      </p>
+      <ul class="list-disc list-inside space-y-1">
+        <li><code>300 200</code> — absolutt punkt (300, 200) i arbeidsenheten.</li>
+        <li><code>D 300 200</code> (eller <code>d300 200</code>, eller <code>@300 200</code>) —
+          <strong>forskyvning</strong> Δx = 300, Δy = 200 fra forrige punkt.</li>
+        <li><strong>Skilletegn</strong> mellom x og y er mellomrom eller
+          <kbd class="px-1 bg-slate-700 rounded">Tab</kbd> — <em>ikke</em> komma. Komma er
+          desimaltegn: både <code>10,5</code> og <code>10.5</code> betyr det samme.</li>
+        <li>Under rotasjon er den siste inntastingen en <strong>vinkel i grader</strong>, og for
+          sirkelen en <strong>radius</strong>.</li>
+      </ul>
+      <p class="text-slate-400">
+        Den raskeste veien til en nøyaktig flytting: marker geometrien, trykk
+        <kbd class="px-1 bg-slate-700 rounded">M</kbd>, skriv <code>D 300 200</code> og
+        <kbd class="px-1 bg-slate-700 rounded">Enter</kbd> — skrives forskyvningen <em>før</em> et
+        basispunkt er satt, utføres den med én gang. Første
+        <kbd class="px-1 bg-slate-700 rounded">Esc</kbd> lukker feltet uten å avbryte kommandoen; neste
+        avbryter kommandoen.
       </p>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Skjøter og forsterkning</h3>
@@ -596,7 +643,8 @@
       </p>
       <ul class="list-disc list-inside space-y-1">
         <li>Slipp bildefila rett på lerretet, lim inn et skjermutklipp med
-          <kbd class="px-1 bg-slate-700 rounded">Ctrl+V</kbd>, eller trykk «Velg fil».</li>
+          <kbd class="px-1 bg-slate-700 rounded">Ctrl+V</kbd>, eller velg
+          «Importer → Importer bilde som underlag» i topplinja.</li>
         <li><strong>Kalibrer målestokken:</strong> klikk to punkt i bildet du vet avstanden mellom,
           skriv inn den virkelige lengden, og bildet skaleres. Uten dette er alle tall meningsløse.</li>
         <li>Lås bildet når det ligger riktig, så du ikke drar i det mens du tegner. Er det ulåst,
@@ -636,7 +684,8 @@
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Enheter</h3>
       <p>
-        Velg mm, cm eller m. Bytter du enhet, regnes alle koordinater om slik at geometrien
+        Enheten velges i tannhjulet ved snap-kontrollen nede til høyre, sammen med rutenettets
+        steglengde og hva som tegnes. Velg mm, cm eller m. Bytter du enhet, regnes alle koordinater om slik at geometrien
         beholder sin fysiske størrelse — det er tallene som endrer seg, ikke tegningen. Areal og
         arealmomenter merkes med enheten de er i.
       </p>
@@ -650,17 +699,18 @@
       <h3 class="text-base font-semibold text-sky-400 pt-2">Hurtigtaster</h3>
       <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
         <div><kbd class="px-1 bg-slate-700 rounded">V</kbd> Velg</div>
-        <div><kbd class="px-1 bg-slate-700 rounded">R</kbd> Rektangel</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">M</kbd> Flytt utvalg</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">C</kbd> Kopier utvalg</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">R</kbd> Roter utvalg</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">B</kbd> Rektangel (boks)</div>
         <div><kbd class="px-1 bg-slate-700 rounded">S</kbd> Skall</div>
         <div><kbd class="px-1 bg-slate-700 rounded">P</kbd> Polygon</div>
-        <div><kbd class="px-1 bg-slate-700 rounded">C</kbd> Sirkel</div>
-        <div><kbd class="px-1 bg-slate-700 rounded">O</kbd> Nullpunkt</div>
-        <div><kbd class="px-1 bg-slate-700 rounded">M</kbd> Flytt utvalg</div>
-        <div><kbd class="px-1 bg-slate-700 rounded">K</kbd> Kopier utvalg</div>
-        <div><kbd class="px-1 bg-slate-700 rounded">T</kbd> Roter utvalg</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">O</kbd> Sirkel</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">N</kbd> Nullpunkt</div>
         <div><kbd class="px-1 bg-slate-700 rounded">G</kbd> Skjøt</div>
         <div><kbd class="px-1 bg-slate-700 rounded">X</kbd> Del med linje</div>
         <div><kbd class="px-1 bg-slate-700 rounded">F</kbd> Zoom alt</div>
+        <div class="col-span-2 text-slate-500">Speiling har ingen tast — bruk verktøyknappen.</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Alt+1…6</kbd> Snap-typer</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Alt+9</kbd> Alle snap av/på</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Alt+0</kbd> Orto av/på</div>

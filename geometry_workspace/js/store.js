@@ -151,7 +151,17 @@ function jointSideLabel(ids, shapes) {
       return s ? s.name : null;
     })
     .filter(Boolean);
-  return names.length ? names.join(' + ') : null;
+  if (!names.length) return null;
+  // Flere former på én side er vanlig (steg + underflens mot overflens). Vi
+  // navngir de to første og teller resten, ellers blir navnet en hel setning.
+  if (names.length <= 2) return names.join(' + ');
+  return `${names.slice(0, 2).join(' + ')} + ${names.length - 2} til`;
+}
+
+/** Er det nøyaktig de samme formene på begge sider? Sammenlignes på id. */
+function sameSides(aIds, bIds) {
+  if (!aIds.length || aIds.length !== bIds.length) return false;
+  return aIds.every((id, i) => id === bIds[i]); // sidesOfJoint sorterer allerede
 }
 
 export function autoJointName(a, b, shapes) {
@@ -159,9 +169,19 @@ export function autoJointName(a, b, shapes) {
   const sides = sidesOfJoint({ a, b }, shapes, tol);
   const aLabel = jointSideLabel(sides.aSide, shapes);
   const bLabel = jointSideLabel(sides.bSide, shapes);
+
+  // Går snittet gjennom én og samme form (eller nøyaktig samme sett former),
+  // er «A ↔ A» meningsløst — det er ikke en fuge mellom to deler, men et snitt
+  // i én. Det er nettopp dette tilfellet halvplanet gjør mulig: man kan regne
+  // på et snitt i en udelt, importert profil uten å dele den opp først.
+  //
+  // Sammenligningen går på ID, ikke på navnet: to ulike former som begge heter
+  // «Form» er IKKE den samme formen, og skal fortsatt hete «Form ↔ Form».
+  if (sameSides(sides.aSide, sides.bSide)) return `Snitt i ${aLabel}`;
   if (aLabel && bLabel) return `${aLabel} ↔ ${bLabel}`;
-  if (aLabel) return `${aLabel} ↔ ?`;
-  if (bLabel) return `? ↔ ${bLabel}`;
+  // Bare den ene siden treffer materiale: snittet ligger i ytterkant, eller
+  // brukeren har ennå ikke tegnet den delen skjøten skal feste.
+  if (aLabel || bLabel) return `Skjøt ved ${aLabel || bLabel}`;
   return 'Skjøt';
 }
 
@@ -338,8 +358,11 @@ export class Store {
   restore(json) {
     const data = JSON.parse(json);
     Object.assign(this.state, migrate(data));
-    this.state.selection = this.state.selection.filter((id) =>
-      this.state.shapes.some((s) => s.id === id)
+    // Utvalget kan holde BÅDE former og skjøter (§1 i interaksjonsplanen), så
+    // filtreringen må se etter id-en i begge listene — ellers ville en angring
+    // stille tømt utvalget hver gang en skjøt var markert.
+    this.state.selection = this.state.selection.filter(
+      (id) => this.state.shapes.some((s) => s.id === id) || this.state.joints.some((j) => j.id === id)
     );
     this.syncUid();
   }
@@ -369,6 +392,15 @@ export class Store {
       if (Number.isFinite(n) && n > max) max = n;
     }
     uid = max + 1;
+    // Skjøte-id-ene teller for seg (j1, j2, …). Uten dette ville en importert
+    // eller angret modell kunne gi to skjøter samme id, og utvalget — som nå
+    // holder skjøter side om side med former — ville pekt på begge.
+    let jmax = 0;
+    for (const j of this.state.joints || []) {
+      const n = parseInt(String(j.id).replace(/\D/g, ''), 10);
+      if (Number.isFinite(n) && n > jmax) jmax = n;
+    }
+    jointUid = jmax + 1;
   }
 
   /* ---------------- CRUD ---------------- */
@@ -412,59 +444,177 @@ export class Store {
     this.updateShape(id, { points: points.map((p) => [p[0], p[1]]) }, opts);
   }
 
+  /* ---------------- entiteter: former OG skjøter (§1) ---------------- */
+
   /**
-   * Setter punkter på flere former under ett. Flytte-, roterings- og
-   * speilverktøyet bruker denne med `transient: true` under forhåndsvisningen,
-   * og avslutter med commit(), slik at hele kommandoen blir ett undo-steg.
+   * Slår opp en id i BEGGE listene. Skjøte-id-ene (`j1, j2, …`) og form-id-ene
+   * (`s1, s2, …`) er unike på tvers, så `selection` kan være en flat liste med
+   * begge slag, og hver kommando kan spørre hva den fikk tak i.
+   *
+   * @returns {{kind: 'shape'|'joint', obj: object}|null}
    */
-  setManyPoints(entries, opts = {}) {
+  entityById(id) {
+    const s = this.state.shapes.find((x) => x.id === id);
+    if (s) return { kind: 'shape', obj: s };
+    const j = this.state.joints.find((x) => x.id === id);
+    if (j) return { kind: 'joint', obj: j };
+    return null;
+  }
+
+  /** Hele utvalget, i utvalgsrekkefølge, som `{kind, obj}`. */
+  selectedEntities() {
+    return this.state.selection.map((id) => this.entityById(id)).filter(Boolean);
+  }
+
+  /** Bare skjøtene i utvalget. Motstykket til `selectedShapes()`. */
+  selectedJoints() {
+    const set = new Set(this.state.selection);
+    return this.state.joints.filter((j) => set.has(j.id));
+  }
+
+  /**
+   * Skjøtene som skal FØLGE MED når `ids` flyttes, uten selv å være markert.
+   *
+   * En skjøt er en fuge mellom materiale, ikke en fritt svevende strek. Blir
+   * den liggende igjen når geometrien flyttes, glir modellen og skjøtene fra
+   * hverandre — og resultatet blir stille feil, ikke synlig feil. Samtidig må
+   * det fortsatt gå an å flytte en skjøt alene, og å flytte én del bort fra en
+   * annen (da endrer fugen seg reelt). Regelen som balanserer dette:
+   *
+   *  - Er skjøten selv markert, er den allerede med i utvalget — ikke her.
+   *  - Ligger ALT materialet på BEGGE sider av linja i `ids`, følger skjøten
+   *    med. Dette dekker både «flytt hele tverrsnittet» og «snitt i én udelt
+   *    form» (der begge sider er samme form).
+   *  - Er bare den ene siden med, blir skjøten stående: fugen endrer seg da
+   *    reelt, og verktøyet skal ikke gjette hvor den nye fugen havner.
+   *  - En side uten materiale (linja stikker ut i lufta) teller som «med»,
+   *    slik at en skjøt i ytterkant følger delen den faktisk ligger inntil.
+   *    Ligger BEGGE sider i tomrom, hører skjøten ingen steder og blir stående.
+   *
+   * @param {Array<string>} ids
+   * @returns {Array<string>} skjøte-id-er
+   */
+  jointsFollowing(ids) {
+    const set = new Set(ids);
+    const candidates = this.state.joints.filter((j) => !set.has(j.id));
+    if (!candidates.length) return [];
+    const shapes = this.state.shapes;
+    const tol = neighborTolerance(shapes);
+    const out = [];
+    for (const j of candidates) {
+      const { aSide, bSide } = sidesOfJoint(j, shapes, tol);
+      // null = ingen former på denne siden, true/false = flyttes hele siden?
+      const moves = (side) => (side.length ? side.every((id) => set.has(id)) : null);
+      const a = moves(aSide);
+      const b = moves(bSide);
+      if (a === null && b === null) continue; // ligger i rent tomrom
+      if (a === false || b === false) continue; // en side blir stående igjen
+      out.push(j.id);
+    }
+    return out;
+  }
+
+  /** `ids` pluss skjøtene som følger med dem (se `jointsFollowing`). */
+  withFollowingJoints(ids) {
+    return [...ids, ...this.jointsFollowing(ids)];
+  }
+
+  /**
+   * Punktene en entitet består av: formens ring, eller skjøtens to endepunkt.
+   * Det er dette som lar flytt/kopi/roter/speil behandle en skjøt nøyaktig som
+   * en form — én transformasjon på en punktliste, uten spesialtilfeller.
+   */
+  entityPoints(id) {
+    const e = this.entityById(id);
+    if (!e) return null;
+    if (e.kind === 'joint') return [[e.obj.a[0], e.obj.a[1]], [e.obj.b[0], e.obj.b[1]]];
+    return e.obj.points.map((p) => [p[0], p[1]]);
+  }
+
+  /**
+   * Motstykket til `entityPoints`: skriver punktene tilbake. For en skjøt er
+   * de to første punktene `a` og `b`. Brukes med `transient: true` under
+   * forhåndsvisning, og avsluttes med `commit()` — ett undo-steg per kommando.
+   */
+  setManyEntityPoints(entries, opts = {}) {
     this.mutate((st) => {
       for (const { id, points } of entries) {
         const s = st.shapes.find((x) => x.id === id);
-        if (s) s.points = points.map((p) => [p[0], p[1]]);
+        if (s) {
+          s.points = points.map((p) => [p[0], p[1]]);
+          continue;
+        }
+        const j = st.joints.find((x) => x.id === id);
+        if (j && points.length >= 2) {
+          j.a = [points[0][0], points[0][1]];
+          j.b = [points[1][0], points[1][1]];
+        }
       }
     }, opts);
   }
 
   /**
-   * Flytter formene, og eventuelt nullpunktet med samme vektor. Sentrering
-   * bruker `withReference`, slik at referansemålene i resultatpanelet ikke
-   * endrer seg utilsiktet av at geometrien blir flyttet.
+   * Flytter formene OG skjøtene i `ids`, og eventuelt nullpunktet med samme
+   * vektor. Sentrering bruker `withReference`, slik at referansemålene i
+   * resultatpanelet ikke endrer seg utilsiktet av at geometrien blir flyttet.
+   *
+   * At skjøtene er med her er selve rettelsen av feil 1 i planen: før lå
+   * skjøtelinjene igjen når geometrien ble sentrert, og de to gled fra
+   * hverandre.
    */
-  moveShapes(ids, dx, dy, { withReference = false, reason = 'move' } = {}) {
+  moveEntities(ids, dx, dy, { withReference = false, reason = 'move' } = {}) {
     const set = new Set(ids);
     this.mutate((st) => {
       for (const s of st.shapes) {
         if (set.has(s.id)) s.points = translatePoints(s.points, dx, dy);
+      }
+      for (const j of st.joints) {
+        if (!set.has(j.id)) continue;
+        j.a = [j.a[0] + dx, j.a[1] + dy];
+        j.b = [j.b[0] + dx, j.b[1] + dy];
       }
       if (withReference) st.reference = [st.reference[0] + dx, st.reference[1] + dy];
     }, { reason });
   }
 
   /**
-   * Legger igjen kopier av formene. `variants` er én oppføring per kopi, og
-   * kan være enten en forskyvning `[dx, dy]` eller en funksjon
-   * `(points, shape) => points` for kopier som også speiles eller roteres.
-   * Hele rekka blir ett undo-steg, slik at en rekke-kopi angres under ett.
+   * Kopierer både former og skjøter. `variants` er én oppføring per kopi, og kan
+   * være enten en forskyvning `[dx, dy]` eller en funksjon `(points, obj) => points`
+   * for kopier som også speiles eller roteres. Hele rekka blir ett undo-steg.
    */
-  copyShapes(ids, variants, { select = true, reason = 'copy' } = {}) {
+  copyEntities(ids, variants, { select = true, reason = 'copy' } = {}) {
     const set = new Set(ids);
     const copies = [];
     this.mutate((st) => {
-      const src = st.shapes.filter((s) => set.has(s.id));
+      const srcShapes = st.shapes.filter((s) => set.has(s.id));
+      const srcJoints = st.joints.filter((j) => set.has(j.id));
       for (const v of variants) {
         const apply = typeof v === 'function' ? v : (pts) => translatePoints(pts, v[0], v[1]);
-        for (const s of src) {
+        for (const s of srcShapes) {
           const copy = {
             ...s,
             id: nextId(),
             name: `${s.name} (kopi)`,
             points: apply(s.points, s).map((p) => [p[0], p[1]]),
-            // Egen materialobjekt, ellers ville kopien dele det med originalen
             material: { ...s.material },
           };
           copies.push(copy);
           st.shapes.unshift(copy);
+        }
+        for (const j of srcJoints) {
+          const pts = apply([[j.a[0], j.a[1]], [j.b[0], j.b[1]]], j);
+          if (!pts || pts.length < 2) continue;
+          const copy = {
+            ...j,
+            id: nextJointId(),
+            name: `${j.name} (kopi)`,
+            a: [pts[0][0], pts[0][1]],
+            b: [pts[1][0], pts[1][1]],
+            // Egen forbinder, ellers ville kopien dele objektet med originalen
+            connector: { ...j.connector },
+          };
+          copies.push(copy);
+          st.joints.push(copy);
         }
       }
       if (select && copies.length) st.selection = copies.map((c) => c.id);
@@ -472,35 +622,21 @@ export class Store {
     return copies;
   }
 
-  removeShapes(ids) {
+  /** Sletter både former og skjøter i `ids`. `Del` går hit. */
+  removeEntities(ids) {
     const set = new Set(ids);
     this.mutate((st) => {
       st.shapes = st.shapes.filter((s) => !set.has(s.id));
+      st.joints = st.joints.filter((j) => !set.has(j.id));
       st.selection = st.selection.filter((id) => !set.has(id));
     }, { reason: 'remove' });
   }
 
-  duplicateShapes(ids, dx = 0, dy = 0) {
-    const set = new Set(ids);
-    const copies = [];
-    this.mutate((st) => {
-      const src = st.shapes.filter((s) => set.has(s.id));
-      for (const s of src) {
-        const copy = {
-          ...s,
-          id: nextId(),
-          name: `${s.name} (kopi)`,
-          points: translatePoints(s.points, dx, dy),
-          // Egen materialobjekt, ellers ville kopien dele det med originalen
-          material: { ...s.material },
-        };
-        copies.push(copy);
-        st.shapes.unshift(copy);
-      }
-      st.selection = copies.map((c) => c.id);
-    }, { reason: 'duplicate' });
-    return copies;
+  /** Ctrl+D: dupliserer utvalget (former og skjøter) forskjøvet. */
+  duplicateEntities(ids, dx = 0, dy = 0) {
+    return this.copyEntities(ids, [[dx, dy]], { select: true, reason: 'duplicate' });
   }
+
 
   /** Flytter en form opp (-1) eller ned (+1) i prioritetslista. */
   reorder(id, delta) {

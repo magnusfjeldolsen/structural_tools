@@ -729,6 +729,8 @@ export class Viewport {
       return Math.max(Math.hypot(maxX - minX, maxY - minY), 1) / 2000;
     })();
     const graph = buildGraph(shapes, list, tol);
+    // Skjøter kan nå være med i utvalget (§1), på lik linje med formene.
+    const selection = new Set(this.data.selection || []);
 
     list.forEach((f) => {
       const a = f && f.a;
@@ -737,9 +739,10 @@ export class Viewport {
       const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
       if (len < 1e-12) return;
 
+      const isSel = selection.has(f.id);
       const isHover = this.hoverJoint === f.id;
-      const color = isHover ? '#ffffff' : JOINT_COLOR;
-      const widthPx = isHover ? 4.4 : 3.2;
+      const color = isSel || isHover ? '#ffffff' : JOINT_COLOR;
+      const widthPx = isSel ? 5.0 : isHover ? 4.4 : 3.2;
 
       g.add(
         buildLineMesh(
@@ -765,6 +768,20 @@ export class Viewport {
         );
       }
       g.add(buildLineMesh(ends, color, 0.9));
+
+      // Er skjøten markert, får endepunktene håndtak — samme firkanter som
+      // formenes hjørnepunkt, og de kan dras på samme måte (§1).
+      if (isSel) {
+        const hw = 4 * upp;
+        const hpos = [];
+        for (const [x, y] of [a, b]) {
+          hpos.push(
+            x - hw, y - hw, Z.handle, x + hw, y - hw, Z.handle, x + hw, y + hw, Z.handle,
+            x - hw, y - hw, Z.handle, x + hw, y + hw, Z.handle, x - hw, y + hw, Z.handle
+          );
+        }
+        g.add(buildLineMesh(hpos, '#ffffff', 0.95));
+      }
 
       // Dempet gruppemarkering — INFORMASJON, ikke et valg (§6.1): en liten
       // prikk midt på linja, forskjøvet et lite stykke mot komponenten

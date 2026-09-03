@@ -129,13 +129,6 @@ const PARAM_TITLES = {
   shell: 'Skall — senterlinje og tykkelse',
 };
 
-/** Sentrene en rotasjon eller speiling kan gjøres om. */
-const CENTER_OPTIONS = [
-  { key: 'reference', label: 'nullpunktet' },
-  { key: 'centroid', label: 'utvalgets tyngdepunkt' },
-  { key: 'pick', label: 'et klikket punkt' },
-];
-
 const field = (key, label, value, step = '') =>
   `<div>
      <label class="field-label" for="f-${key}">${label}</label>
@@ -177,19 +170,20 @@ export class UI {
     this.anchors = new Map();
     this._lastSelectionKey = '';
 
-    /** Sist innlagte tall per verktøy, så menyene husker hva du skrev. */
+    /**
+     * Sist innlagte tall per verktøy, så menyene og alternativboksen husker hva
+     * du skrev. `copy.n`, `mirror.keep` og `shell.t` speiles over i
+     * `tools.options` av `_syncToolOptions`.
+     */
     this.form = {
       rect: { x: 0, y: 0, b: 1000, h: 300, anchor: 'corner' },
       shell: { x1: 0, y1: 0, x2: 0, y2: 3000, t: 250 },
       circle: { x: 0, y: 0, r: 200 },
       polygon: { text: '' },
       reference: { x: 0, y: 0 },
-      move: { dx: 0, dy: 0 },
-      copy: { dx: 0, dy: 0, n: 1 },
-      rotate: { angle: 90, center: 'pick' },
+      copy: { n: 1 },
+      rotate: { center: 'pick' },
       mirror: { keep: true },
-      // Transformasjonspanelet i venstre panel, som virker på hele utvalget
-      placement: { dx: 0, dy: 0, angle: 90, center: 'reference', keep: false },
     };
 
     // Hover i lerretet over en skjøt skal fremheve raden i skjøtelista, og
@@ -199,6 +193,14 @@ export class UI {
       if (this._canvasHoverJoint === id) return;
       this._canvasHoverJoint = id;
       this._renderJointList();
+    };
+
+    // Klikk på en skjøtelinje i lerretet åpner raden i skjøtelista, slik at et
+    // klikk på en form åpner formens egenskaper (§1: den andre veien av over).
+    this.tools.onJointPicked = (id) => {
+      this._activeJointId = id;
+      this.jointExpanded = new Set([id]);
+      this._scrollTo = id;
     };
 
     this._bind();
@@ -295,15 +297,26 @@ export class UI {
       else this.tools.setTool(tool);
     });
 
-    // Lukk menyen ved klikk utenfor
+    // Lukk menyene ved klikk utenfor
     document.addEventListener('pointerdown', (e) => {
-      if (!this._popoverTool) return;
-      if (e.target.closest('#tool-popover') || e.target.closest('#tool-buttons')) return;
-      this.closePopover();
+      if (this._popoverTool && !e.target.closest('#tool-popover') && !e.target.closest('#tool-buttons')) {
+        this.closePopover();
+      }
+      if (!e.target.closest('#canvas-settings') && !e.target.closest('#btn-canvas-settings')) {
+        $('canvas-settings').classList.add('hidden');
+      }
+      if (!e.target.closest('#import-menu') && !e.target.closest('#btn-import')) {
+        $('import-menu').classList.add('hidden');
+      }
     });
 
     $('grid-step').addEventListener('change', (e) => st.setGrid({ step: Math.max(0, Number(e.target.value) || 0) }));
     $('chk-grid').addEventListener('change', (e) => st.setGrid({ visible: e.target.checked }));
+
+    // Tegneinnstillingene bor ved snap-kontrollen nede til høyre (§4.3)
+    $('btn-canvas-settings').addEventListener('click', () =>
+      $('canvas-settings').classList.toggle('hidden')
+    );
 
     $('unit-select').addEventListener('change', (e) => {
       const to = e.target.value;
@@ -320,7 +333,6 @@ export class UI {
       else if (btn.dataset.snap) this.toggleSnap(btn.dataset.snap);
     });
 
-    $('btn-image-pick').addEventListener('click', () => $('image-input').click());
     $('image-input').addEventListener('change', (e) => {
       const file = e.target.files && e.target.files[0];
       if (file && this.underlayManager) this.underlayManager.accept(file, file.name);
@@ -331,13 +343,6 @@ export class UI {
     $('chk-principal').addEventListener('change', (e) =>
       this.viewport.setOverlays({ showPrincipal: e.target.checked })
     );
-
-    $('btn-delete').addEventListener('click', () => this.deleteSelected());
-    $('btn-duplicate').addEventListener('click', () => this.duplicateSelected());
-    $('btn-clear').addEventListener('click', () => {
-      if (!st.state.shapes.length) return;
-      if (confirm('Fjerne all geometri?')) st.clear();
-    });
 
     $('mode-select').addEventListener('change', (e) => st.setMode(e.target.value));
     $('ref-x').addEventListener('change', (e) =>
@@ -364,7 +369,28 @@ export class UI {
     });
 
     $('btn-export').addEventListener('click', () => this._export());
-    $('btn-import').addEventListener('click', () => $('file-input').click());
+
+    // «Importer» er en meny (§4.4): modell, bildeunderlag og tømming. Ctrl+V
+    // og fildropp virker uendret — de går rett i UnderlayManager.
+    $('btn-import').addEventListener('click', (e) => {
+      e.stopPropagation();
+      $('import-menu').classList.toggle('hidden');
+    });
+    $('import-menu').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-imp]');
+      if (!btn) return;
+      $('import-menu').classList.add('hidden');
+      if (btn.dataset.imp === 'model') $('file-input').click();
+      else if (btn.dataset.imp === 'image') $('image-input').click();
+      else if (btn.dataset.imp === 'clear') {
+        if (!st.state.shapes.length && !st.state.joints.length) return this.toast('Det er ingen geometri å tømme.');
+        if (confirm('Fjerne all geometri og alle skjøter?')) {
+          st.clear();
+          this.expanded.clear();
+          this.jointExpanded.clear();
+        }
+      }
+    });
     $('file-input').addEventListener('change', (e) => this._import(e));
     $('btn-example').addEventListener('click', () => this.loadExample());
 
@@ -381,6 +407,7 @@ export class UI {
   onToolChanged(tool) {
     if (tool === 'select') this.closePopover();
     else this.openPopover(tool);
+    this._renderToolOptions();
   }
 
   closePopover() {
@@ -470,61 +497,10 @@ export class UI {
           Eller klikk i lerretet. Alle avvik i resultatpanelet måles fra dette punktet.
         </p>`;
     }
-    if (tool === 'move') {
-      return `
-        ${this._selectionNote()}
-        <div class="grid grid-cols-2 gap-1.5">
-          ${field('dx', 'Δx', f.move.dx)}${field('dy', 'Δy', f.move.dy)}
-        </div>
-        <button data-add class="w-full mt-2 px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded">Flytt utvalg</button>
-        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
-          Eller klikk basispunkt og deretter sluttpunkt i lerretet. Begge snappes, og orto virker.
-        </p>`;
-    }
-    if (tool === 'copy') {
-      return `
-        ${this._selectionNote()}
-        <div class="grid grid-cols-3 gap-1.5">
-          ${field('dx', 'Δx', f.copy.dx)}${field('dy', 'Δy', f.copy.dy)}${field('n', 'Antall', f.copy.n, 'min="1" step="1"')}
-        </div>
-        <button data-add class="w-full mt-2 px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded">Kopier utvalg</button>
-        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
-          Antall over én gir en rekke med jevn avstand langs vektoren. Klikker du i lerretet, blir
-          verktøyet stående med samme basispunkt, så du kan sette flere kopier etter hverandre.
-        </p>`;
-    }
-    if (tool === 'rotate') {
-      return `
-        ${this._selectionNote()}
-        <div class="flex items-end gap-1.5">
-          <div class="flex-1">${field('angle', 'Vinkel [°]', f.rotate.angle, 'step="1"')}</div>
-          <button data-add class="px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 rounded whitespace-nowrap">Roter utvalg</button>
-        </div>
-        <div class="mt-2">
-          <label class="field-label" for="f-center">Senteret er</label>
-          <select id="f-center" data-form="center">
-            ${CENTER_OPTIONS.map(
-              (o) => `<option value="${o.key}" ${f.rotate.center === o.key ? 'selected' : ''}>${o.label}</option>`
-            ).join('')}
-          </select>
-        </div>
-        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
-          Positiv vinkel er mot klokka. I lerretet klikker du senter, så et referansepunkt for
-          startvinkelen, og til slutt der det skal ende — hold Shift for å låse til 15°.
-        </p>`;
-    }
-    if (tool === 'mirror') {
-      return `
-        ${this._selectionNote()}
-        <label class="flex items-center gap-1.5 text-[11px] text-slate-300">
-          <input data-form="keep" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" ${f.mirror.keep ? 'checked' : ''} />
-          Behold originalen
-        </label>
-        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
-          Klikk to punkt i lerretet — de definerer speilaksen. Aksen kan ligge hvor som helst og
-          ha hvilken som helst retning. Faste akser gjennom nullpunktet ligger i «Plassering».
-        </p>`;
-    }
+    // Flytt, kopi, roter og speil har INGEN meny lenger (§4.1/§4.2): punktene
+    // pekes ut eller skrives i lerretet, og alternativene ligger i den dempede
+    // boksen nederst til venstre.
+    if (tool === 'move' || tool === 'copy' || tool === 'rotate' || tool === 'mirror') return null;
     if (tool === 'joint') {
       const jn = this.store.state.joints.length;
       return `
@@ -573,12 +549,74 @@ export class UI {
     $('tab-reinforcement').classList.toggle('hidden', active !== 'reinforcement');
   }
 
-  /** Liten linje som sier hva transformasjonen kommer til å virke på. */
-  _selectionNote() {
+  /* ---------------- verktøyalternativer i lerretet (§4.2) ---------------- */
+
+  /**
+   * Den lille, dempede boksen nederst til venstre: alternativene som hører til
+   * det AKTIVE verktøyet, og ingenting annet. Har verktøyet ingen alternativer,
+   * er boksen skjult — den skal aldri stå tom og ta plass.
+   */
+  _renderToolOptions() {
+    const host = $('tool-options');
+    if (!host) return;
+    const tool = this.tools.tool;
+    const f = this.form;
+    const unit = lengthLabel(this.store.state.unit);
     const n = this.store.state.selection.length;
-    return `<p id="sel-note" class="text-[11px] ${n ? 'text-slate-400' : 'text-amber-300'} mb-2 leading-snug">${
-      n ? `Virker på ${n} markert${n === 1 ? ' form' : 'e former'}.` : 'Ingen form er markert ennå.'
-    }</p>`;
+
+    const num = (key, label, value, attrs = '') => `
+      <div class="flex items-center gap-2">
+        <label class="text-[11px] text-slate-400 flex-1 leading-snug" for="to-${key}">${label}</label>
+        <input id="to-${key}" data-to="${key}" data-focus-key="to-${key}" type="number" ${attrs}
+               class="w-20 shrink-0" value="${value}" />
+      </div>`;
+
+    let body = '';
+    if (tool === 'mirror') {
+      body = `<label class="flex items-center gap-1.5 text-[11px] text-slate-300">
+                <input data-to="keep" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" ${f.mirror.keep ? 'checked' : ''} />
+                Behold originalen
+              </label>`;
+    } else if (tool === 'copy') {
+      body = num('copies', 'Antall kopier', f.copy.n, 'min="1" step="1"');
+    } else if (tool === 'shell') {
+      body = num('thickness', `Tykkelse [${unit}]`, f.shell.t, 'step="10" min="0"');
+    } else if (tool === 'rotate') {
+      body = `<p class="text-[11px] text-slate-500 leading-snug">
+                Shift låser til 15°. Skriv vinkelen i grader for et eksakt tall.
+              </p>`;
+    }
+
+    if (!body) {
+      host.classList.add('hidden');
+      host.innerHTML = '';
+      return;
+    }
+
+    const note =
+      tool === 'mirror' || tool === 'copy'
+        ? `<div class="text-[10px] ${n ? 'text-slate-500' : 'text-amber-300'} leading-snug">${
+            n ? `Virker på ${n} markert${n === 1 ? ' objekt' : 'e objekter'}.` : 'Ingenting er markert ennå.'
+          }</div>`
+        : '';
+
+    host.innerHTML = `
+      <div class="text-[10px] uppercase tracking-wide text-slate-500">${TOOL_TITLES[tool] || ''}</div>
+      ${body}
+      ${note}`;
+    host.classList.remove('hidden');
+
+    host.querySelectorAll('[data-to]').forEach((el) => {
+      const key = el.dataset.to;
+      const evt = el.type === 'checkbox' ? 'change' : 'change';
+      el.addEventListener(evt, (e) => {
+        if (key === 'keep') this.form.mirror.keep = e.target.checked;
+        else if (key === 'copies') this.form.copy.n = Math.max(1, Math.round(Number(e.target.value) || 1));
+        else if (key === 'thickness') this.form.shell.t = Math.abs(Number(e.target.value) || 0);
+        this._syncToolOptions();
+        this._renderToolOptions();
+      });
+    });
   }
 
   _bindPopover(tool) {
@@ -608,56 +646,8 @@ export class UI {
         else if (tool === 'circle') this._addCircle();
         else if (tool === 'polygon') this._addPastedPolygon();
         else if (tool === 'reference') this.store.setReference([this.form.reference.x, this.form.reference.y]);
-        else if (tool === 'move') this._runMove(this.form.move.dx, this.form.move.dy);
-        else if (tool === 'copy') this._runCopy(this.form.copy.dx, this.form.copy.dy, this.form.copy.n);
-        else if (tool === 'rotate') this._runRotate(this.form.rotate.angle, this.form.rotate.center);
       });
     }
-  }
-
-  /* ---------------- transformasjoner fra tall ---------------- */
-
-  /** Rotasjons-/speilsenteret som svarer til valget i menyen. */
-  _centerFor(key) {
-    if (key === 'reference') return this.store.state.reference.slice();
-    if (key === 'centroid') return centroidOfShapes(this.store.selectedShapes());
-    return null;
-  }
-
-  _runMove(dx, dy) {
-    const res = this.tools.moveSelection(dx, dy);
-    this.toast(res.msg);
-  }
-
-  _runCopy(dx, dy, n) {
-    const ids = this.store.state.selection;
-    if (!ids.length) return this.toast('Ingen form er markert.');
-    if (!dx && !dy) return this.toast('Δx og Δy er begge null — kopien ville havnet oppå originalen.');
-    const count = Math.max(1, Math.round(n) || 1);
-    const offsets = [];
-    for (let i = 1; i <= count; i++) offsets.push([dx * i, dy * i]);
-    this.store.copyShapes(ids, offsets, { reason: 'copy' });
-    this.toast(`${count === 1 ? 'Kopi' : `${count} kopier`} lagt inn.`);
-  }
-
-  _runRotate(angle, centerKey) {
-    if (centerKey === 'pick') {
-      this.tools.setTool('rotate');
-      return this.toast('Klikk rotasjonssenteret i lerretet.');
-    }
-    const c = this._centerFor(centerKey);
-    if (!c) return this.toast('Fant ikke noe senter å rotere om.');
-    const res = this.tools.rotateSelection(angle, c);
-    this.toast(res.msg);
-  }
-
-  /** Speiler utvalget om en vannrett eller loddrett akse gjennom senteret. */
-  _runMirror(axis, centerKey, keep) {
-    const c = this._centerFor(centerKey);
-    if (!c) return this.toast('Fant ikke noe senter å speile om.');
-    const b = axis === 'horizontal' ? [c[0] + 1, c[1]] : [c[0], c[1] + 1];
-    const res = this.tools.mirrorSelection(c, b, { keepOriginal: keep });
-    this.toast(res.msg);
   }
 
   /* ---------------- legg til ---------------- */
@@ -711,152 +701,94 @@ export class UI {
   /* ---------------- plassering ---------------- */
 
   /**
-   * Transformasjonspanelet som virker på hele utvalget under ett, pluss de to
-   * sentreringsknappene. Det per form finnes fortsatt inne i geometrilista.
+   * «Plassering» er nå bare de to sentreringsknappene (§4.5). Alt som før
+   * krevde et tallfelt her — flytting, rotasjon, speiling — gjøres med verktøy
+   * og tallinntasting i lerretet i stedet.
    */
   _renderPlacement() {
     const host = $('placement-panel');
-    const f = this.form.placement;
-    const n = this.store.state.selection.length;
-    const unit = lengthLabel(this.store.state.unit);
-
-    const btn = (attr, label, cls = 'bg-slate-700 hover:bg-slate-600') =>
-      `<button ${attr} class="flex-1 px-2 py-1.5 text-[11px] ${cls} rounded border border-slate-600">${label}</button>`;
 
     host.innerHTML = `
       <div class="space-y-2">
         <div class="flex gap-1.5">
-          ${btn('data-pl="center-selection"', 'Sentrer utvalg i origo')}
-          ${btn('data-pl="center-all"', 'Sentrer alt i origo')}
+          <button data-pl="center-selection" class="flex-1 px-2 py-1.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Sentrer utvalg i origo</button>
+          <button data-pl="center-all" class="flex-1 px-2 py-1.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Sentrer alt i origo</button>
         </div>
         <p class="text-[11px] text-slate-500 leading-snug">
-          Sentreringen flytter nullpunktet med samme vektor, slik at avvikene i resultatpanelet
-          ikke endrer seg av flyttingen.
+          Formene, skjøtene og nullpunktet flyttes med samme vektor, slik at geometrien og skjøtene
+          ikke glir fra hverandre og avvikene i resultatpanelet ikke endrer seg av flyttingen.
         </p>
-
-        <div class="border-t border-slate-700 pt-2 space-y-2">
-          <div class="text-[11px] ${n ? 'text-slate-400' : 'text-amber-300'}">
-            ${n ? `Transformer ${n} markert${n === 1 ? ' form' : 'e former'} under ett` : 'Marker former for å transformere dem'}
-          </div>
-
-          <div class="flex items-end gap-1.5">
-            <div class="flex-1">
-              <label class="field-label" for="pl-dx">Δx [${unit}]</label>
-              <input id="pl-dx" data-pl-form="dx" data-focus-key="pl-dx" type="number" value="${f.dx}" />
-            </div>
-            <div class="flex-1">
-              <label class="field-label" for="pl-dy">Δy [${unit}]</label>
-              <input id="pl-dy" data-pl-form="dy" data-focus-key="pl-dy" type="number" value="${f.dy}" />
-            </div>
-            <button data-pl="move" class="px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Flytt</button>
-          </div>
-
-          <div>
-            <label class="field-label" for="pl-center">Senter for rotasjon og speiling</label>
-            <select id="pl-center" data-pl-form="center" data-focus-key="pl-center">
-              ${CENTER_OPTIONS.filter((o) => o.key !== 'pick')
-                .map((o) => `<option value="${o.key}" ${f.center === o.key ? 'selected' : ''}>${o.label}</option>`)
-                .join('')}
-            </select>
-          </div>
-
-          <div class="flex items-end gap-1.5">
-            <div class="flex-1">
-              <label class="field-label" for="pl-angle">Vinkel [°]</label>
-              <input id="pl-angle" data-pl-form="angle" data-focus-key="pl-angle" type="number" step="1" value="${f.angle}" />
-            </div>
-            <button data-pl="rotate" class="px-2 py-1.5 text-xs bg-slate-600 hover:bg-slate-500 rounded">Roter</button>
-          </div>
-
-          <div class="flex gap-1.5">
-            ${btn('data-pl="mirror-h"', 'Speil om vannrett akse')}
-            ${btn('data-pl="mirror-v"', 'Speil om loddrett akse')}
-          </div>
-
-          <label class="flex items-center gap-1.5 text-[11px] text-slate-300">
-            <input data-pl-form="keep" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" ${f.keep ? 'checked' : ''} />
-            Behold originalen ved speiling
-          </label>
-        </div>
       </div>`;
-
-    host.querySelectorAll('[data-pl-form]').forEach((input) => {
-      const key = input.dataset.plForm;
-      const evt = input.type === 'checkbox' || input.tagName === 'SELECT' ? 'change' : 'input';
-      input.addEventListener(evt, (e) => {
-        if (e.target.type === 'checkbox') f[key] = e.target.checked;
-        else if (e.target.type === 'number') f[key] = Number(e.target.value) || 0;
-        else f[key] = e.target.value;
-      });
-    });
 
     host.querySelectorAll('[data-pl]').forEach((el) => {
       el.addEventListener('click', () => {
-        switch (el.dataset.pl) {
-          case 'center-selection':
-            this._centerSelection();
-            break;
-          case 'center-all':
-            this._centerAll();
-            break;
-          case 'move':
-            this._runMove(f.dx, f.dy);
-            break;
-          case 'rotate':
-            this._runRotate(f.angle, f.center);
-            break;
-          case 'mirror-h':
-            this._runMirror('horizontal', f.center, f.keep);
-            break;
-          case 'mirror-v':
-            this._runMirror('vertical', f.center, f.keep);
-            break;
-        }
+        if (el.dataset.pl === 'center-selection') this._centerSelection();
+        else this._centerAll();
       });
     });
   }
 
   /**
-   * Flytter de markerte formene slik at deres arealvektede tyngdepunkt havner
-   * i (0, 0). Vektfaktorer og overlapphåndtering holdes utenfor her — dette
-   * er ren plassering av geometri, ikke en beregning.
+   * Flytter det markerte slik at formenes arealvektede tyngdepunkt havner i
+   * (0, 0). Vektfaktorer og overlapphåndtering holdes utenfor her — dette er
+   * ren plassering av geometri, ikke en beregning.
+   *
+   * Forskyvningen regnes ut av FORMENE, men brukes på hele utvalget, altså
+   * også på skjøtene i det (§1, feil 1). Er bare skjøter markert, finnes det
+   * ikke noe tyngdepunkt å regne fra, og vi sier fra i stedet for å gjette.
    */
   _centerSelection() {
     const sel = this.store.state.selection;
-    if (!sel.length) return this.toast('Ingen form er markert.');
+    if (!sel.length) return this.toast('Ingenting er markert.');
     const c = centroidOfShapes(this.store.selectedShapes());
-    if (!c) return this.toast('Fant ikke noe tyngdepunkt i utvalget.');
-    this.store.moveShapes(sel, -c[0], -c[1], { withReference: true, reason: 'center' });
+    if (!c) return this.toast('Utvalget har ingen form å regne tyngdepunkt av — marker også geometrien.');
+    // Skjøtene som ligger inne i det som flyttes blir med (Store.jointsFollowing)
+    const ids = this.store.withFollowingJoints(sel);
+    this.store.moveEntities(ids, -c[0], -c[1], { withReference: true, reason: 'center' });
     this.toast(`Utvalget sentrert: flyttet Δx = ${fmtLen(-c[0])}, Δy = ${fmtLen(-c[1])}.`);
   }
 
   /**
-   * Flytter hele modellen slik at det sammensatte tyngdepunktet havner i
-   * (0, 0) — samme punkt som resultatpanelet viser, altså med vektfaktorer og
-   * valgt overlappmodus.
+   * Flytter hele modellen — former, skjøter og nullpunkt — slik at det
+   * sammensatte tyngdepunktet havner i (0, 0). Samme punkt som resultatpanelet
+   * viser, altså med vektfaktorer og valgt overlappmodus.
    */
   _centerAll() {
     if (!this.analysis || !this.analysis.result.valid) return this.toast('Ingen geometri å sentrere.');
     const { cx, cy } = this.analysis.result;
-    const ids = this.store.state.shapes.map((s) => s.id);
-    if (!ids.length) return this.toast('Ingen geometri å sentrere.');
-    this.store.moveShapes(ids, -cx, -cy, { withReference: true, reason: 'center' });
+    const st = this.store.state;
+    if (!st.shapes.length) return this.toast('Ingen geometri å sentrere.');
+    const ids = [...st.shapes.map((s) => s.id), ...st.joints.map((j) => j.id)];
+    this.store.moveEntities(ids, -cx, -cy, { withReference: true, reason: 'center' });
     this.toast(`Modellen sentrert: flyttet Δx = ${fmtLen(-cx)}, Δy = ${fmtLen(-cy)}.`);
   }
 
   /* ---------------- kommandoer ---------------- */
 
+  /** `Del`: sletter alt som er markert — både former og skjøter (§1). */
   deleteSelected() {
     const sel = this.store.state.selection;
-    if (!sel.length) return this.toast('Ingen form er markert.');
-    this.store.removeShapes(sel);
+    if (!sel.length) return this.toast('Ingenting er markert.');
+    const joints = this.store.selectedJoints().length;
+    const shapes = sel.length - joints;
+    for (const id of sel) {
+      this.expanded.delete(id);
+      this.jointExpanded.delete(id);
+    }
+    this.store.removeEntities(sel);
+    this.toast(
+      [shapes ? `${shapes} form(er)` : null, joints ? `${joints} skjøt(er)` : null].filter(Boolean).join(' og ') +
+        ' slettet.'
+    );
   }
 
+  /** `Ctrl+D`: dupliserer utvalget, former og skjøter, forskjøvet. */
   duplicateSelected() {
     const sel = this.store.state.selection;
-    if (!sel.length) return this.toast('Ingen form er markert.');
+    if (!sel.length) return this.toast('Ingenting er markert.');
     const step = this.store.state.grid.step || 0;
-    this.store.duplicateShapes(sel, step * 2, 0);
+    // Dupliserer man begge sider av en fuge, skal fugen bli med i kopien
+    this.store.duplicateEntities(this.store.withFollowingJoints(sel), step * 2, 0);
   }
 
   loadExample() {
@@ -944,16 +876,24 @@ export class UI {
     if (key !== this._lastSelectionKey) {
       this._lastSelectionKey = key;
       if (sel.length === 1) {
-        this.expanded = new Set([sel[0]]);
+        const one = this.store.entityById(sel[0]);
+        if (one && one.kind === 'joint') {
+          // En markert skjøt åpner sin egen rad i skjøtelista, ikke en formrad
+          this.jointExpanded = new Set([sel[0]]);
+          this._activeJointId = sel[0];
+        } else {
+          this.expanded = new Set([sel[0]]);
+          // Er formen parametrisk, er det de tallene man vil ha fram først
+          if (describeShape(this.store.getShape(sel[0]))) this.sections.add(`${sel[0]}:params`);
+        }
         this._scrollTo = sel[0];
-        // Er formen parametrisk, er det de tallene man vil ha fram først
-        if (describeShape(this.store.getShape(sel[0]))) this.sections.add(`${sel[0]}:params`);
       }
     }
 
     preserveFocus(() => {
       this._renderControls();
       this._renderSnapChips();
+      this._renderToolOptions();
       this._renderUnderlay();
       this._renderPlacement();
       this._renderList();
@@ -967,7 +907,9 @@ export class UI {
     });
 
     if (this._scrollTo) {
-      const row = document.querySelector(`[data-row="${CSS.escape(this._scrollTo)}"]`);
+      const key = CSS.escape(this._scrollTo);
+      const row =
+        document.querySelector(`[data-row="${key}"]`) || document.querySelector(`[data-joint-row="${key}"]`);
       if (row) row.scrollIntoView({ block: 'nearest' });
       this._scrollTo = null;
     }
@@ -996,11 +938,6 @@ export class UI {
 
     const n = s.shapes.length;
     $('shape-count').textContent = n ? `(${n})` : '';
-
-    // Verktøymenyen for flytt/kopi/roter/speil sier hvor mange former den
-    // virker på; den må holdes à jour når utvalget endrer seg.
-    const note = $('sel-note');
-    if (note) note.outerHTML = this._selectionNote();
   }
 
   /** Den lille snap-kontrollen nede til høyre i lerretet. */
@@ -1042,16 +979,18 @@ export class UI {
 
   _renderUnderlay() {
     const host = $('underlay-panel');
+    const section = $('underlay-section');
     const u = this.store.state.underlay;
     const unit = lengthLabel(this.store.state.unit);
 
+    // Seksjonen er skjult så lenge det ikke finnes noe bilde (§4.4) — den
+    // gamle «slipp en fil her»-teksten sto og tok plass uten å gjøre nytte.
     if (!u) {
-      host.innerHTML = `<p class="text-[11px] text-slate-500 leading-snug">
-        Slipp en bildefil på lerretet, lim inn et skjermutklipp med <kbd class="px-1 bg-slate-700 rounded">Ctrl+V</kbd>,
-        eller velg fil. Deretter kalibrerer du målestokken med to punkt du vet avstanden mellom.
-      </p>`;
+      host.innerHTML = '';
+      if (section) section.classList.add('hidden');
       return;
     }
+    if (section) section.classList.remove('hidden');
 
     const cal = this.calibration;
     host.innerHTML = `
@@ -1251,7 +1190,7 @@ export class UI {
           break;
         case 'delete':
           this.expanded.delete(id);
-          this.store.removeShapes([id]);
+          this.store.removeEntities([id]);
           break;
         case 'relcoords':
           if (this.relCoords.has(id)) this.relCoords.delete(id);
@@ -1631,22 +1570,35 @@ export class UI {
       btn.addEventListener('click', (e) => {
         const id = e.currentTarget.dataset.id;
         const kind = e.currentTarget.dataset.tr;
-        const pts = this.store.getShape(id).points;
         const ref = this.store.state.reference;
+
+        // Transformasjonen er en ren punktavbildning, så den kan brukes på
+        // formens ring og på en skjøts to endepunkt uten forskjell.
+        let map = null;
         if (kind === 'move') {
           const dx = Number($(`tr-dx-${id}`).value) || 0;
           const dy = Number($(`tr-dy-${id}`).value) || 0;
           if (!dx && !dy) return;
-          setPts(id, translatePoints(pts, dx, dy));
+          map = (pts) => translatePoints(pts, dx, dy);
         } else if (kind === 'rotate') {
           const ang = ((Number($(`tr-ang-${id}`).value) || 0) * Math.PI) / 180;
           if (!ang) return;
-          setPts(id, rotatePoints(pts, ang, ref));
+          map = (pts) => rotatePoints(pts, ang, ref);
         } else if (kind === 'mirror-x') {
-          setPts(id, mirrorPoints(pts, 'x', ref[1]));
+          map = (pts) => mirrorPoints(pts, 'x', ref[1]);
         } else if (kind === 'mirror-y') {
-          setPts(id, mirrorPoints(pts, 'y', ref[0]));
+          map = (pts) => mirrorPoints(pts, 'y', ref[0]);
         }
+        if (!map) return;
+
+        // Et snitt som ligger helt inne i DENNE formen flytter seg med den —
+        // ellers ville tallfeltene her være en bakvei rundt regelen i §1.
+        const ids = this.store.withFollowingJoints([id]);
+        const entries = ids
+          .map((eid) => ({ id: eid, points: this.store.entityPoints(eid) }))
+          .filter((entry) => entry.points)
+          .map((entry) => ({ id: entry.id, points: map(entry.points) }));
+        this.store.setManyEntityPoints(entries, { reason: 'edit' });
       });
     });
   }
@@ -1741,7 +1693,11 @@ export class UI {
     host.innerHTML = joints
       .map((j) => {
         const open = this.jointExpanded.has(j.id);
-        const isHover = this._canvasHoverJoint === j.id || this._activeJointId === j.id;
+        // Markert i lerretet teller som fremhevet i lista, og omvendt (§1/§5).
+        const isHover =
+          this._canvasHoverJoint === j.id ||
+          this._activeJointId === j.id ||
+          st.selection.includes(j.id);
         const len = Math.hypot(j.b[0] - j.a[0], j.b[1] - j.a[1]);
         const kindLabel = CONNECTOR_LABELS[j.connector.kind] || CONNECTOR_LABELS.screw;
         return `
@@ -1772,11 +1728,10 @@ export class UI {
         if (this.jointExpanded.has(id)) this.jointExpanded.delete(id);
         else this.jointExpanded.add(id);
         this._activeJointId = id;
-        // Fremhev i lerretet — omvendt vei av hover (§6.2). `hoverJoint` er
-        // det eneste fremhevingshaket viewport.js eksponerer i dag; en
-        // vedvarende «valgt skjøt» uavhengig av hover er 2C sin jobb (§1 i
-        // interaksjonsplanen — utvider `state.selection` til å ta skjøter).
-        this.viewport.setHoverJoint(id);
+        // Klikk i lista MARKERER skjøten i lerretet (§1) — den er nå en fullverdig
+        // del av utvalget, ikke bare noe som kan fremheves.
+        this.store.select(e.shiftKey ? [...this.store.state.selection, id] : [id]);
+        this._lastSelectionKey = this.store.state.selection.join(',');
         this._renderJointList();
       } else if (btn.dataset.jact === 'delete') {
         this.jointExpanded.delete(id);
