@@ -576,12 +576,43 @@ export function connectorStiffness(connector, bondWidth) {
 }
 
 /* ------------------------------------------------------------------ *
+ * B2.6b — sveisekapasitet (§4, §5.3 i skjøteplanen)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Kapasitet for en sveiseskjøt, uttrykt som skjærstrøm `q_Rd` [N/mm] —
+ * samme størrelse som `q` fra `shearFlow`, slik at `connectorCheck` kan
+ * sammenligne dem direkte uten en egen enhetsomregning.
+ *
+ * Er `qRd` allerede satt (brukeren har tastet inn en direkte kapasitet, eller
+ * hentet den fra `weld_capacity/`-modulen), vinner den. Ellers regnes den ut
+ * fra a-mål, dimensjonerende skjærfasthet og antall strenger:
+ *
+ *      q_Rd = n_sveiser · a · f_vw,d      [N/mm] = [-]·[mm]·[N/mm²]
+ *
+ * `f_vw,d` (dimensjonerende skjærfasthet i sveisesnittet) regnes IKKE ut her
+ * — den hentes fra modulen `weld_capacity/`. Denne funksjonen tar den som gitt.
+ *
+ * @param {{qRd?: number, a_weld?: number, fvwd?: number, nWelds?: number}} connector
+ * @returns {number} q_Rd [N/mm], 0 hvis inndata mangler
+ */
+export function weldCapacity({ qRd, a_weld, fvwd, nWelds } = {}) {
+  const explicit = Number(qRd);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const n = Number(nWelds);
+  const a = Number(a_weld);
+  const f = Number(fvwd);
+  if (!(n > 0) || !(a > 0) || !(f > 0)) return 0;
+  return n * a * f;
+}
+
+/* ------------------------------------------------------------------ *
  * B2.7 — forbinderkontroll
  * ------------------------------------------------------------------ */
 
 /**
  * @typedef {Object} ConnectorCheck
- * @property {'screw'|'glue'} kind
+ * @property {'screw'|'glue'|'weld'} kind
  * @property {number} q          |q| som er kontrollert [N/mm]
  * @property {number|null} sReq  Nødvendig senteravstand [mm] (skrue), ellers null
  * @property {number|null} tau   Skjærspenning [N/mm²] (lim), ellers null
@@ -607,6 +638,13 @@ export function connectorStiffness(connector, bondWidth) {
  *      τ    = q / b        [N/mm²]
  *      util = τ / τ_Rd     [-]
  *
+ * SVEIS. Kapasiteten er allerede en skjærstrøm (`weldCapacity`, over), så
+ * kontrollen er den enkleste av de tre — ingen senteravstand å løse for
+ * (`sReq` er derfor `null`, ikke `Infinity`: det finnes ikke noe geometrisk
+ * mål å kreve, i motsetning til skruens `s_req`):
+ *
+ *      util = q / q_Rd     [-]
+ *
  * `q` skal være ABSOLUTTVERDIEN av skjærstrømmen (`shearFlow(...).qAbs`), og
  * normalt q_tot = |q_V| + |q_N|. Fortegnet har ingen betydning for kapasiteten.
  *
@@ -615,7 +653,27 @@ export function connectorStiffness(connector, bondWidth) {
  */
 export function connectorCheck({ q, bondWidth, connector }) {
   const qa = Math.abs(Number(q) || 0);
-  const kind = connector && connector.kind === 'glue' ? 'glue' : 'screw';
+  const kind = connector && connector.kind === 'glue'
+    ? 'glue'
+    : connector && connector.kind === 'weld'
+      ? 'weld'
+      : 'screw';
+
+  if (kind === 'weld') {
+    const qRd = weldCapacity(connector || {});
+    const valid = qRd > 0;
+    const util = valid ? qa / qRd : null;
+    return {
+      kind,
+      q: qa,
+      sReq: null,
+      tau: null,
+      util,
+      qRd: valid ? qRd : null,
+      ok: util === null ? true : util <= 1,
+      valid,
+    };
+  }
 
   if (kind === 'glue') {
     const b = Number(bondWidth);

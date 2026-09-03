@@ -27,11 +27,12 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/tools.js` | Tegne- og redigeringsverktøy; oversetter pekerhendelser til CRUD |
 | `js/ui.js` | Panelrendering: geometriliste, formredigering, plassering, resultater |
 | `js/materials.js` | Materialpresets med E [N/mm²]. Ingen DOM. |
-| `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, aksialfordeling, skjærstrøm, forankring, Volkersen, forbinderkontroll. Rene funksjoner, N og mm. Ingen DOM. |
-| `js/interfaces.js` | Grensesnittene mellom eksisterende og ny del: geometri (hvilken side er hvilken), heftbredde og CRUD mot store. Ingen DOM. |
-| `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen |
+| `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, aksialfordeling, skjærstrøm, forankring, Volkersen, forbinderkontroll (skrue/lim/sveis). Rene funksjoner, N og mm. Ingen DOM. |
+| `js/joints.js` | Skjøtelinjer: naboskap (`shapesTouch`), en kraftig nedskalert graf (kun til ΔN-ruting og advarsler), og halvplan-avskjæring for ES* (`halfPlaneParts`/`fullSectionParts`). Erstatter det slettede `interfaces.js`. Ingen DOM. |
+| `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen (resultater og de globale lastfeltene) |
 | `js/main.js` | Bootstrap og hurtigtaster |
 | `tests/reinforcement.test.mjs` | Fasit for mekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
+| `tests/joints.test.mjs` | Fasit for naboskap, grafen og halvplan-ES*. `node geometry_workspace/tests/joints.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
 three.js hentes fra CDN via `importmap`.
@@ -48,7 +49,8 @@ bevegelse snapper ikke mot seg selv:
 | Kopi | `K` | basispunkt → der kopien skal ligge. Verktøyet blir stående med samme basispunkt, så flere kopier kan settes etter hverandre. Menyen har «antall» for en rekke med jevn avstand. |
 | Roter | `T` | rotasjonssenter → referansepunkt for startvinkelen → sluttvinkel. `Shift` låser til 15°. |
 | Speil | — | to klikk definerer speilaksen; menyen velger om originalen beholdes |
-| Grensesnitt | `G` | to klikk i skjøten mellom eksisterende og ny del (se «Forsterkning» under) |
+| Skjøt | `G` | to klikk langs skjøtelinja (se «Skjøter og forsterkning» under) |
+| Del med linje | `X` | to klikk for snittlinja; deler hver MARKERTE form linja krysser. Redigeringsverktøy, ikke en forutsetning for beregningen. |
 
 Hver kommando er **ett angresteg**. `Esc` er en kaskade der ett trykk alltid
 skal gi et rent utgangspunkt: står markøren i et tallfelt, forlates feltet; er
@@ -110,60 +112,118 @@ To modi:
 Vektfaktoren på hver form er ment som E-forhold ved transformert tverrsnitt; med
 faktorer ulik 1 er «tyngdepunktet» nøytralaksen til det transformerte tverrsnittet.
 
-## Forsterkning — skjærstrøm i grensesnittet
+## Skjøter og forsterkning — skjærstrøm i skjøten
 
-Høyre panel har to faner. **«Tverrsnitt»** er tyngdepunktet og arealmomentene som
-før. **«Forsterkning»** svarer på hvor mye kraft forbindelsen mellom et
-eksisterende og et nytt profil må ta opp.
+Høyre panel har to faner. **«Tverrsnitt»** er tyngdepunktet og arealmomentene
+som før. **«Forsterkning»** svarer på hvor mye kraft en **skjøt** må ta opp —
+enten det er en ny del som festes til et eksisterende profil, eller en ren
+kontroll av en eksisterende sveis («hvor mye går det i sveisen mellom flens og
+steg i denne gamle bjelken»). Det er samme fysiske spørsmål og samme formel;
+verktøyet skiller ikke mellom dem.
 
-Grunnligningen er `q(x) = dN(x)/dx` [N/mm langs bjelkeaksen]. To bidrag:
+### Ett primitiv: skjøten
+
+En **skjøt** (`js/joints.js`) er en linje tegnet i tverrsnittsplanet. Den har
+ingen side å velge: `ES*` for hele tverrsnittet er per definisjon null (det er
+slik nøytralaksen `y_c` er bestemt), så de to sidene av samme snitt gir like
+store `ES*` med motsatt fortegn — `|q|` er identisk uansett hvilken side man
+regner fra. Skjøteverktøyet (`G`) tegner derfor bare en tydelig linje med
+endemarkører, ingen piler, intet «snu siden».
+
+**Den implisitte naboskapsregelen**: former som berører eller overlapper
+hverandre, og som det *ikke* ligger en skjøt mellom, regnes automatisk som
+stivt forbundet (`shapesTouch` i `joints.js`). Tegner du en I-profil som tre
+rektangler og bare sveiser flensen mot steget, vet verktøyet likevel at steg
+og underflens sitter sammen — ingen ekstra skjøt trengs der.
+
+### ES* fra halvplanet, ikke en graf
+
+Et snitt er en rett linje. Forlenget uendelig deler den planet i to halvplan,
+og **gruppa er alt som ligger på den ene siden** — akkurat som i klassisk
+bjelketeori (`Q` = statisk moment av arealet på den ene siden av snittet).
+`halfPlaneParts(joint, shapes, side)` klipper hele geometrien mot halvplanet
+med `intersectionMulti` og integrerer med `multiProps`; `fullSectionParts`
+gir tilsvarende for hele tverrsnittet. Fordelen: det virker uendret på en
+**udelt, importert profil** — du trenger ikke splitte geometrien for å kunne
+snitte i den. En liten graf (`buildGraph`/`jointGroup`) er beholdt, men bare
+til to ting: å rute aksialleddet `ΔN` til riktig skjøt, og advarsler (en ny
+form uten noen skjøt, eller en del festet med flere skjøter samtidig —
+statisk ubestemt, se `share`-feltet).
+
+### To lasttilstander — superposisjon
+
+```js
+loads: {
+  before: { V, N, M },   // virker på tverrsnittet av bare 'existing'-formene
+  after:  { V, N, M },   // virker på det sammensatte tverrsnittet
+  L,                      // forankringslengde for ΔN, i arbeidsenheten
+}
+```
+
+Den eksisterende bjelken bærer allerede `before`-lasten idet forsterkningen
+monteres — bare `after` virker på det sammensatte tverrsnittet. Per skjøt:
 
 ```
-Bøyning:      q_V = V · ES* / EI      ES* = Σ_gruppe Eᵢ·Aᵢ·(yᵢ − y_c)
-Aksialkraft:  N_i = N · EᵢAᵢ / ΣEⱼAⱼ  ⟹  q_N = ΔN / L
-Sammen:       q_tot = |q_V| + |q_N|,   τ = q_tot / b
+q_før   = V_før · ES*_eks / EI_eks     (bare hvis skjøten ligger HELT i eksisterende materiale)
+q_etter = V_etter · ES* / EI            (halvplanet mot det sammensatte tverrsnittet)
+q_V,tot = |q_før| + |q_etter|
+q_N     = ΔN_i / L                      (aksialleddet, fra grafen — se over)
+q_tot   = q_V,tot + q_N
 ```
 
-`y_c = ESx/EA` er den E-vektede nøytralaksen — samme punkt som tyngdepunktet i
-det transformerte tverrsnittet. `ES*` regnes alltid om den **sammensatte**
-nøytralaksen, ikke om gruppas egen. Er E lik overalt, forkorter E bort og
-`q = VQ/I`. De to sidene av samme snitt gir like store `ES*` med motsatt
-fortegn, så `|q|` er den samme uansett hvilken side man regner fra.
+En skjøt mot en ny del har ingen «før»-tilstand. Er **alle** former merket
+`existing` (ingen forsterkning i det hele tatt), skjuler fanen automatisk
+«etter»-tilstanden, aksialfordelingen og Volkersen, og viser bare «før» og
+skjærstrømmen per skjøt — dette er ren-eksisterende-modus, og er det som gjør
+verktøyet nyttig for kontroll av en gammel konstruksjon uten noen ny del.
 
 `q_N = ΔN/L` er en middelverdi. Volkersen-modellen (`λ² = k(1/α + 1/β)`) viser
 hvor mye høyere toppene i skjøteendene ligger, med `k = G_a·b/t_a` for lim og
 `k = K_ser·rader/s` for skruer.
 
+### Forbindelsestyper
+
+Skjøtelista i venstre panel (under geometrilista) er der en skjøt redigeres:
+navn, forbindelsestype, heftbredde og — når oppsettet er statisk ubestemt —
+andelen av `ΔN` som går gjennom nettopp den skjøten. Tre typer:
+
+- **Skruer/mekaniske forbindere** — `F_Rd` [kN] per forbinder, rader, senter-
+  avstand `s`, `K_ser`. `s_req = rader·F_Rd·1000/q_tot`.
+- **Lim** — `τ_Rd`, `G_a`, `t_a`. `τ = q_tot/b`, `util = τ/τ_Rd`.
+- **Sveis** — `q_Rd = n_sveiser · a · f_vw,d` [N/mm], eller en direkte `q_Rd`.
+  `f_vw,d` (dimensjonerende skjærfasthet i sveisesnittet) regnes **ikke** ut
+  her — den hentes fra modulen `weld_capacity/`. `util = q_tot/q_Rd`. En
+  sveiseskjøt har ingen senteravstand å løse for (`sReq` er `null`).
+
 Arbeidsflyten:
 
-1. Merk hver form som **eksisterende** eller **ny**, og velg materiale (eller
-   skriv E fritt). Nye former får stiplet kontur i lerretet.
-2. Tegn **grensesnittet** (`G`): to klikk i skjøten. Verktøyet gjetter
-   gruppesiden (venstre for a→b, og av dem de som er merket «ny» hvis det gir et
-   ikke-tomt sett), tegner piler den veien, og bruker linjas lengde som
-   heftbredde `b`. «Snu siden» retter et feil gjett.
-3. Legg inn `V_Ed`, `N_Ed`, `M_Ed` og forankringslengden `L`.
-4. Les av `q_V`, `q_N`, `q_tot`, `τ` og forbinderkontrollen — nødvendig
-   senteravstand for skruer, utnyttelse mot `τ_Rd` for lim.
+1. (Bare ved forsterkning) Merk hver form som **eksisterende** eller **ny**,
+   og velg materiale. Nye former får stiplet kontur i lerretet.
+2. Tegn **skjøten** (`G`): to klikk langs linja. Autonavnes etter delene den
+   skiller. Rediger forbindelsestype, felter og heftbredde i skjøtelista.
+3. Legg inn lastene i fanen «Forsterkning» — `before` og (hvis relevant)
+   `after`, samt forankringslengden `L`.
+4. Les av `q_før`, `q_etter`, `q_N`, `q_tot`, `τ` og forbinderkontrollen per
+   skjøt, i skjøtekortet i fanen.
 
 Hver størrelse vises som **formel → innsatte tall → resultat med enhet**.
 
 **Forutsetninger:** full samvirkning (tverrsnittet forblir plant, ingen
-glidning), lineær elastisitet, og at kreftene gjelder det **sammensatte**
-tverrsnittet — last som allerede sto på den eksisterende delen før montasje,
-bæres av den alene. Beregningen er **iterativ i praksis**: ny geometri gir ny
-stivhet, som gir nye krefter.
+glidning), lineær elastisitet. Beregningen er **iterativ i praksis**: ny
+geometri gir ny stivhet, som gir nye krefter.
 
 ### Enheter i forsterkningsberegningen
 
-Mekanikken regnes i **N og mm**, uavhengig av arbeidsenheten. Omregningen skjer
-ett sted, i `reinforcement-ui.js`: arealegenskapene skaleres med `k²`, `k³`,
-`k⁴` (`k` = mm per arbeidsenhet), lastene går gjennom `kNtoN`/`kNmToNmm`, og `L`
-ganges med `k`. Forbinderdataene er derimot alltid absolutte — `F_Rd` [kN],
-`s` [mm], `K_ser` [N/mm], `τ_Rd`/`G_a` [N/mm²], `t_a` [mm] og heftbredde-
-overstyringen [mm] — slik at et bytte fra mm til m ikke endrer skruekapasiteten.
+Mekanikken regnes i **N og mm**, uavhengig av arbeidsenheten. Omregningen
+skjer ett sted, i `reinforcement-ui.js`: former OG skjøter skaleres til mm
+(`shapesMm`/`jointsMm`, punktene ganget med `k` = mm per arbeidsenhet) FØR de
+mates inn i `halfPlaneParts`/`fullSectionParts`/`buildGraph`, lastene går
+gjennom `kNtoN`/`kNmToNmm`, og `L` ganges med `k`. Forbinderdataene er derimot
+alltid absolutte — `F_Rd` [kN], `s` [mm], `K_ser` [N/mm], `τ_Rd`/`G_a` [N/mm²],
+`t_a` [mm], `a_weld`/`fvwd`/`qRd` og heftbredde-overstyringen [mm] — slik at
+et bytte fra mm til m ikke endrer skrue- eller sveisekapasiteten.
 
-## Datamodell
+## Datamodell (v3)
 
 Hver form har i tillegg til geometrien:
 
@@ -175,10 +235,29 @@ material: { name: 'S355', E: 210000 }     // E i N/mm²
 `factor` og `material.E` er **uavhengige**: `factor` er vektfaktoren for
 tyngdepunktsberegningen, mens `material.E` hører til forsterkningsberegningen.
 
-Modellen har også `interfaces: []` (grensesnitt mellom eksisterende og ny del)
-og `loads: { V, N, M, L }` (`V`, `N` i kN, `M` i kNm, `L` i arbeidsenheten).
-Eksport-JSON er `version: 2`; filer og lagret tilstand fra versjon 1 migreres
-ved innlasting, så gamle modeller åpnes uten feil.
+`state.joints` (tidligere `interfaces`) er lista over skjøter:
+
+```js
+{
+  id: 'j1',
+  name: 'Steg ↔ Overflens',       // autogenereres av delene den skiller
+  a: [x, y], b: [x, y],
+  bondWidth: null,                 // null ⟹ linjas lengde
+  share: null,                     // null ⟹ automatisk lik fordeling ved statisk ubestemt oppsett
+  connector: {
+    kind: 'screw' | 'glue' | 'weld',
+    FRd, rows, spacing, Kser,      // skrue
+    tauRd, Ga, ta,                 // lim
+    qRd, a_weld, fvwd, nWelds,     // sveis — qRd overstyrer utledningen om satt
+  },
+}
+```
+
+`state.loads` er `{ before: {V,N,M}, after: {V,N,M}, L }` — se «To
+lasttilstander» over. Eksport-JSON er `version: 3`; filer og lagret tilstand
+fra versjon 1 og 2 migreres ved innlasting (gammel `interfaces` → `joints`,
+gammel flat `loads` → `{ before: 0, after: {...} }`), så gamle modeller åpnes
+uten feil.
 
 ## Enheter
 

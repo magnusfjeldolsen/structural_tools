@@ -13,13 +13,13 @@
 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Geometri-workspace for sammensatte tverrsnitt: tyngdepunkt, nøytralakse og arealmomenter — og skjøtekrefter ved forsterkning av eksisterende profiler. Tegn eksisterende og ny del, sett grensesnittet mellom dem, og få skjærstrømmen q = V·ES*/EI, forankringskraften ΔN/L, nødvendig skrueavstand eller limspenning, og Volkersen-toppen i skjøteendene.">
-  <meta name="keywords" content="tyngdepunkt, nøytralakse, arealsenter, sammensatt tverrsnitt, arealmoment, treghetsmoment, hovedakser, FEM-Design, virtual bar, skallelement, geometri, forsterkning, skjøtekrefter, skjærstrøm, VQ/I, skjærflyt, samvirke, limt forbindelse, skruavstand, Volkersen, forankringslengde, CFRP, påforing">
+  <meta name="description" content="Geometri-workspace for sammensatte tverrsnitt: tyngdepunkt, nøytralakse og arealmomenter — og skjøtekrefter ved forsterkning eller kontroll av eksisterende profiler. Tegn skjøtelinjer (skruer, lim eller sveis) og få skjærstrømmen q = V·ES*/EI fra to lasttilstander før/etter forsterkning, forankringskraften ΔN/L, nødvendig skrueavstand, limspenning eller sveiseutnyttelse, og Volkersen-toppen i skjøteendene.">
+  <meta name="keywords" content="tyngdepunkt, nøytralakse, arealsenter, sammensatt tverrsnitt, arealmoment, treghetsmoment, hovedakser, FEM-Design, virtual bar, skallelement, geometri, forsterkning, skjøt, skjøtekrefter, skjærstrøm, VQ/I, skjærflyt, samvirke, limt forbindelse, skruavstand, sveis, sveisekapasitet, Volkersen, forankringslengde, CFRP, påforing, eksisterende konstruksjon">
   <title>Geometri-workspace — Tverrsnitt og forsterkning</title>
 
   <!-- Open Graph -->
   <meta property="og:title" content="Geometri-workspace — Tverrsnitt og forsterkning">
-  <meta property="og:description" content="Tegn sammensatte tverrsnitt i XY-planet, finn tyngdepunkt og arealmomenter, og regn ut kreftene forbindelsen mellom eksisterende og ny profil må ta opp.">
+  <meta property="og:description" content="Tegn sammensatte tverrsnitt i XY-planet, finn tyngdepunkt og arealmomenter, og regn ut skjærstrømmen i skjøtene — enten det er en ny del som forsterker, eller en kontroll av en eksisterende sveis.">
   <meta property="og:type" content="website">
 
   <!-- Tailwind CSS -->
@@ -181,11 +181,20 @@
             </button>
 
             <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
-                    data-tool="interface" title="Grensesnitt mellom eksisterende og ny del (G)" aria-label="Grensesnitt">
+                    data-tool="joint" title="Skjøt mellom deler av tverrsnittet (G)" aria-label="Skjøt">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
-                <path d="M3 13h18" />
-                <path d="M7 10.5V6M12 10.5V6M17 10.5V6" stroke-linecap="round" opacity="0.9" />
-                <path d="M5.5 8L7 6l1.5 2M10.5 8L12 6l1.5 2M15.5 8L17 6l1.5 2" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+                <path d="M3 12h4M17 12h4" stroke-linecap="round" />
+                <path d="M7 12h10" stroke-dasharray="2.5 2" />
+                <path d="M7 8v8M17 8v8" stroke-linecap="round" />
+              </svg>
+            </button>
+
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="splitline" title="Del markerte former med linje (X)" aria-label="Del med linje">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <circle cx="6" cy="6" r="2.6" />
+                <circle cx="6" cy="18" r="2.6" />
+                <path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12" stroke-linecap="round" />
               </svg>
             </button>
 
@@ -256,6 +265,20 @@
           <div id="shape-list" class="space-y-1"></div>
         </div>
 
+        <!-- Skjøtelista (interaksjonsplanen §5) -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Skjøter <span id="joint-count" class="text-slate-500"></span>
+            </h2>
+          </div>
+          <p class="text-[11px] text-slate-500 mb-2 leading-snug">
+            Klikk en skjøt for å fremheve den i lerretet og redigere navn, forbindelse og heftbredde.
+            Skjærstrøm og utnyttelse per skjøt vises i fanen «Forsterkning».
+          </p>
+          <div id="joint-list" class="space-y-1"></div>
+        </div>
+
       </div>
     </aside>
 
@@ -278,7 +301,7 @@
         <div class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-full border border-amber-500"></span> Referansepunkt</div>
         <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5 bg-violet-400"></span> Hovedakser</div>
         <div class="flex items-center gap-2"><span class="inline-block w-3 h-0 border-t-2 border-dashed border-emerald-400"></span> Ny del (stiplet kontur)</div>
-        <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5" style="background:#f472b6"></span> Grensesnitt — piler mot ny del</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5" style="background:#2dd4bf"></span> Skjøt — ingen side å velge</div>
       </div>
 
       <!-- Snap-kontroll nederst til høyre -->
@@ -498,31 +521,67 @@
         vektor, slik at avvikene i resultatpanelet ikke endrer seg av flyttingen.
       </p>
 
-      <h3 class="text-base font-semibold text-sky-400 pt-2">Forsterkning — eksisterende og ny del</h3>
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Skjøter og forsterkning</h3>
       <p>
-        Skal et nytt profil festes til et eksisterende, må kraften overføres gjennom akseparallell
-        skjærkraft i grensesnittet. Fanen <strong>«Forsterkning»</strong> i høyre panel svarer på hvor
-        stor den kraften er, og hva forbindelsen må tåle.
+        En <strong>skjøt</strong> er linja der kraften må krysse fra én del av tverrsnittet til en
+        annen — samme fysiske ting enten materialet på begge sider er gammelt, eller det ene er en ny
+        del som skrus, limes eller sveises på. Det er derfor ett verktøy og én fane for begge
+        spørsmålene: «hvor mye må sveisen mellom flens og steg i en gammel bjelke tåle?» og «hvor mye
+        må den nye lamellen festes med?» får samme formel.
       </p>
       <ul class="list-disc list-inside space-y-1">
-        <li>Merk hver form som <strong>Eksisterende</strong> eller <strong>Ny</strong> i egenskapspanelet.
-          Nye former tegnes med stiplet kontur og et grønt fargestikk.</li>
+        <li>Merk hver form som <strong>Eksisterende</strong> eller <strong>Ny</strong> i egenskapspanelet
+          (bare relevant når du faktisk forsterker). Nye former tegnes med stiplet kontur og et grønt
+          fargestikk.</li>
         <li>Velg <strong>materiale</strong> per form, eller skriv E fritt. E brukes bare her;
-          vektfaktoren over gjelder bare tyngdepunktet — de to er uavhengige.</li>
-        <li><strong>Grensesnitt</strong> (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) — klikk to punkt
-          i skjøten. Verktøyet gjetter hvilken side som er den nye, tegner piler den veien, og bruker
-          linjas lengde som heftbredde <em>b</em>. Ble gjettet feil, trykk «Snu siden».</li>
-        <li>Legg inn <strong>V_Ed, N_Ed, M_Ed</strong> og forankringslengden <strong>L</strong>. Dette er
-          kreftene på det <em>sammensatte</em> tverrsnittet — last som allerede sto på den eksisterende
-          delen før montasje, bæres av den alene.</li>
+          vektfaktoren i tyngdepunktsfanen er noe annet — de to er uavhengige.</li>
+        <li><strong>Skjøt</strong> (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) — klikk to punkt langs
+          skjøtelinja. Det finnes ingen side å velge: |q| er identisk fra begge sider av et snitt, så
+          verktøyet tegner bare en linje med endemarkører, uten piler. Navnes automatisk etter delene
+          den skiller. Skjøtelista i venstre panel, under geometrilista, lar deg redigere navn,
+          forbindelsestype og heftbredde — klikk en rad for å fremheve skjøten i lerretet.</li>
+        <li><strong>Den implisitte naboskapsregelen</strong>: former som berører eller overlapper
+          hverandre og som det <em>ikke</em> ligger en skjøt mellom, regnes automatisk som stivt
+          forbundet. Tegner du en I-profil som tre rektangler og bare sveiser flensen mot steget, vet
+          verktøyet likevel at steg og underflens sitter sammen — du trenger ikke tegne en skjøt der
+          også.</li>
+        <li><strong>Del med linje</strong> (<kbd class="px-1 bg-slate-700 rounded">X</kbd>) er et rent
+          redigeringsverktøy, <em>ikke</em> en forutsetning for beregningen: skjærstrømmen regnes fra
+          halvplanet en skjøtelinje definerer, og virker uendret på en udelt, importert profil. Nytten
+          av å dele er å kunne gi de to delene ulikt materiale eller ulikt stadium (eksisterende/ny),
+          eller å se bidragene hver for seg. Klikk to punkt for snittlinja — hver markerte form linja
+          krysser deles i to langs den; de nye formene arver navn, farge, rolle, stadium og materiale.</li>
       </ul>
       <p class="text-slate-400">
-        Skjærstrømmen er q = V·ES*/EI, der ES* = Σ Eᵢ·Aᵢ·(yᵢ − y_c) for formene på den ene siden av
-        fugen, regnet om den <em>sammensatte</em> nøytralaksen. Med samme E overalt forkorter E bort og
-        det blir den klassiske q = VQ/I. Aksialkraften fordeles etter aksialstivhet, og andelen ΔN som
-        må inn i den nye delen gir q_N = ΔN/L. Det er en middelverdi: Volkersen-avsnittet viser hvor
-        mye høyere toppene i skjøteendene ligger. Hver størrelse står som formel, innsatte tall og
-        resultat med enhet under «Utregning».
+        <strong>To lasttilstander, superponert.</strong> Den eksisterende bjelken bærer allerede det
+        som står på den i det øyeblikket forsterkningen monteres — bare tilleggslasten virker på det
+        sammensatte tverrsnittet. Fanen har derfor last <strong>«før»</strong> (virker på tverrsnittet
+        av bare de eksisterende formene) og <strong>«etter»</strong> (virker på det sammensatte).
+        Per skjøt: q_før = V_før·ES*_eks/EI_eks (bare hvis skjøten ligger helt inne i eksisterende
+        materiale — en skjøt mot en ny del har ingen «før»-tilstand), q_etter = V_etter·ES*/EI, og
+        q_V,tot = |q_før| + |q_etter|. Aksialleddet q_N = ΔN/L kommer i tillegg der en ny del må forankres.
+      </p>
+      <p class="text-slate-400">
+        <strong>Ren kontroll av en eksisterende konstruksjon.</strong> Er ALLE former merket
+        «eksisterende» — altså ingen forsterkning i det hele tatt — skjuler fanen automatisk
+        «etter»-tilstanden, aksialfordelingen og Volkersen, og viser bare «før» og skjærstrømmen per
+        skjøt. Det er dette som gjør verktøyet nyttig for et spørsmål som «hvor mye går det i sveisen
+        mellom flens og steg i denne gamle bjelken» — tegn tverrsnittet (gjerne som ett sammenhengende
+        polygon, eller som flere rektangler), tegn en skjøt der du vil vite skjærstrømmen, og les av q.
+      </p>
+      <p class="text-slate-400">
+        ES* = Σ Eᵢ·Aᵢ·(yᵢ − y_c) regnes ved å klippe HELE geometrien mot halvplanet skjøtelinja
+        (forlenget uendelig) deler planet i, om den sammensatte nøytralaksen — ikke ved å slå sammen
+        former langs en graf. Med samme E overalt forkorter E bort og det blir den klassiske q = VQ/I.
+        Aksialkraften N_etter fordeles etter aksialstivhet, og andelen ΔN som må inn i de nye delene gir
+        q_N = ΔN/L — en middelverdi; Volkersen-avsnittet viser hvor mye høyere toppene i skjøteendene
+        ligger. Hver størrelse står som formel, innsatte tall og resultat med enhet under «Utregning».
+      </p>
+      <p class="text-slate-400">
+        <strong>Sveis</strong> som forbindelsestype tar antall strenger, a-mål og dimensjonerende
+        skjærfasthet f_vw,d (regnet ut i modulen <code>weld_capacity/</code> — skriv resultatet inn her,
+        eller sett kapasiteten q_Rd direkte): q_Rd = n·a·f_vw,d [N/mm], og utnyttelsen er q_tot/q_Rd. En
+        sveiseskjøt har ingen senteravstand å løse for, slik en skrueskjøt har.
       </p>
       <p class="text-slate-400">
         Beregningen forutsetter full samvirkning og lineær elastisitet, og er <strong>iterativ i
@@ -599,7 +658,8 @@
         <div><kbd class="px-1 bg-slate-700 rounded">M</kbd> Flytt utvalg</div>
         <div><kbd class="px-1 bg-slate-700 rounded">K</kbd> Kopier utvalg</div>
         <div><kbd class="px-1 bg-slate-700 rounded">T</kbd> Roter utvalg</div>
-        <div><kbd class="px-1 bg-slate-700 rounded">G</kbd> Grensesnitt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">G</kbd> Skjøt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">X</kbd> Del med linje</div>
         <div><kbd class="px-1 bg-slate-700 rounded">F</kbd> Zoom alt</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Alt+1…6</kbd> Snap-typer</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Alt+9</kbd> Alle snap av/på</div>
@@ -611,12 +671,6 @@
         <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+Shift+Z</kbd> Gjør om</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Esc</kbd> Avbryt / tøm utvalg</div>
       </div>
-
-      <h3 class="text-base font-semibold text-sky-400 pt-2">Enheter</h3>
-      <p>
-        Verktøyet er enhetsløst — bruk konsekvent samme lengdeenhet overalt (typisk mm).
-        Areal blir da mm² og arealmomenter mm⁴.
-      </p>
     </div>
   </div>
 </div>
