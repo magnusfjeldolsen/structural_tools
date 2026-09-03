@@ -303,7 +303,7 @@ export class ToolController {
       }
       if (this.tool === 'move') return this.moveSelection(v.x, v.y);
       if (this.tool === 'copy') {
-        const ids = this.store.state.selection;
+        const ids = this.store.withFollowingJoints(this.store.state.selection);
         if (!ids.length) return { ok: false, msg: 'Ingenting er markert.' };
         if (!v.x && !v.y) return { ok: false, msg: 'Δx og Δy er begge null — kopien ville havnet oppå originalen.' };
         const n = Math.max(1, Math.round(this.options.copies || 1));
@@ -838,11 +838,21 @@ export class ToolController {
    * satt, og av de gjenværende knappene i panelet.
    */
   moveSelection(dx, dy) {
-    const ids = this.store.state.selection;
-    if (!ids.length) return { ok: false, msg: 'Ingenting er markert.' };
+    const sel = this.store.state.selection;
+    if (!sel.length) return { ok: false, msg: 'Ingenting er markert.' };
     if (!dx && !dy) return { ok: false, msg: 'Δx og Δy er begge null.' };
+    // Samme regel som når man drar med musa: skjøtene som ligger inne i det
+    // som flyttes blir med, ellers ville tallinntastingen vært en bakvei rundt
+    // §1 og geometrien og skjøtene ville glidd fra hverandre.
+    const ids = this.store.withFollowingJoints(sel);
     this.store.moveEntities(ids, dx, dy, { reason: 'move' });
-    return { ok: true, msg: `Flyttet ${ids.length} objekt(er): Δx = ${fmt(dx)}, Δy = ${fmt(dy)}.` };
+    const extra = ids.length - sel.length;
+    return {
+      ok: true,
+      msg: `Flyttet ${sel.length} objekt(er): Δx = ${fmt(dx)}, Δy = ${fmt(dy)}.${
+        extra ? ` ${extra} skjøt${extra === 1 ? '' : 'er'} fulgte med.` : ''
+      }`,
+    };
   }
 
   /** Roterer utvalget om et punkt. Vinkelen er i grader. */

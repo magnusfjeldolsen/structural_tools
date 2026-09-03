@@ -59,6 +59,33 @@ skjøter** om hverandre: en skjøtelinje markeres ved å klikke den i lerretet
 marquee-vindu når begge endepunktene ligger inne, kan dras, får håndtak på
 endepunktene når den er markert, og slettes med `Del`.
 
+### Når følger en skjøt med geometrien?
+
+En skjøt er en fuge i materialet, ikke en fritt svevende strek. Blir den
+liggende igjen når geometrien flyttes, glir modellen og skjøtene fra hverandre,
+og resultatet blir **stille feil** — tallene ser like riktige ut. Regelen
+(`Store.jointsFollowing`) er derfor:
+
+| Situasjon | Skjøten |
+| --- | --- |
+| Skjøten er selv markert | flyttes som del av utvalget |
+| Alt materialet på **begge** sider er med i det som flyttes | følger med, selv om den ikke er markert |
+| Bare den **ene** siden er med | blir stående — fugen endrer seg da reelt, og verktøyet skal ikke gjette hvor den nye havner |
+| Den ene siden er tomrom (linja stikker ut i lufta) | følger delen den ligger inntil |
+| Begge sider er tomrom | blir stående |
+
+Dette dekker også «snitt i én udelt profil», der begge sider av linja er samme
+form: da følger snittet alltid formen. Regelen gjelder **alle** veier geometri
+kan flyttes — dra med musa, flytt/kopi/roter/speil, tallinntastingen,
+`Ctrl+D`, sentrering i origo, og «Transformer»-feltene i egenskapspanelet.
+Enhetsbytte skalerer skjøtenes `a`/`b` sammen med koordinatene. Følger en skjøt
+med uten å være markert, står det i statuslinja («1 skjøt følger med»).
+
+Autonavnet tar hensyn til det samme: en linje med samme form på begge sider blir
+«Snitt i Udelt profil», ikke «Udelt profil ↔ Udelt profil». Treffer bare den ene
+siden materiale, blir det «Skjøt ved Overflens», og en side med mange former
+navngir de to første og teller resten.
+
 Hver kommando er **ett angresteg**. `Esc` er en kaskade der ett trykk alltid
 skal gi et rent utgangspunkt: står markøren i et tallfelt, forlates feltet; er
 en kommando i gang, avbrytes den og geometrien settes tilbake; ellers tømmes
