@@ -12,6 +12,13 @@
 import * as THREE from 'three';
 import { openRing } from './geometry.js';
 import { findSnap } from './snapping.js';
+import {
+  normalizeInterface,
+  groupSideSign,
+  leftNormal,
+  INTERFACE_COLOR,
+  NEW_STAGE_COLOR,
+} from './interfaces.js';
 
 const Z = {
   underlay: -0.5,
@@ -20,6 +27,7 @@ const Z = {
   fill: 0.1,
   outline: 0.2,
   net: 0.3,
+  interface: 0.35,
   preview: 0.4,
   marker: 0.5,
   handle: 0.6,
@@ -92,10 +100,74 @@ function buildFillMesh(points, color, opacity, z) {
   return mesh;
 }
 
+/**
+ * Stiplet variant av samme polylinje. Brukes til former merket «ny», slik at
+ * de skiller seg fra det eksisterende tverrsnittet uten å miste sin egen farge.
+ * Dashen måles i verdensenheter, og kallende kode ganger med `unitsPerPixel`,
+ * så mønsteret holder seg like tett uansett zoom.
+ */
+function dashedPolylinePositions(points, closed, hw, z, dashLen, gapLen) {
+  const pos = [];
+  const n = points.length;
+  if (n < 2 || dashLen <= 0) return pos;
+  const last = closed ? n : n - 1;
+  for (let i = 0; i < last; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % n];
+    const total = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (total < 1e-12) continue;
+    const ux = (b[0] - a[0]) / total;
+    const uy = (b[1] - a[1]) / total;
+    for (let d = 0; d < total; d += dashLen + gapLen) {
+      const e = Math.min(d + dashLen, total);
+      pos.push(
+        ...thickPolylinePositions(
+          [[a[0] + ux * d, a[1] + uy * d], [a[0] + ux * e, a[1] + uy * e]],
+          false,
+          hw,
+          z
+        )
+      );
+    }
+  }
+  return pos;
+}
+
+/**
+ * Tekst som en canvas-tekstur. three.js har ingen tekstgjengivelse innebygd,
+ * og et helt fontbibliotek for å skrive «Grensesnitt 1» ville vært ute av
+ * proporsjon. Teksturen bufres av Viewport, siden lerretet tegnes på nytt for
+ * hver musebevegelse.
+ */
+function makeLabelTexture(text, color) {
+  const font = '600 28px ui-sans-serif, system-ui, sans-serif';
+  const pad = 8;
+  const canvas = document.createElement('canvas');
+  const measure = canvas.getContext('2d');
+  measure.font = font;
+  const w = Math.ceil(measure.measureText(text).width) + pad * 2;
+  const h = 40;
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.font = font;
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = color;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, pad, h / 2 + 1);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return { texture, w, h };
+}
+
 function disposeGroup(group) {
   for (let i = group.children.length - 1; i >= 0; i--) {
     const child = group.children[i];
     if (child.geometry) child.geometry.dispose();
+    // Teksturer eies av Viewport (bildeunderlaget og etikettbufferet), ikke av
+    // materialet — de skal derfor ikke frigis her.
     if (child.material) child.material.dispose();
     group.remove(child);
   }
@@ -115,8 +187,18 @@ export class Viewport {
     this.width = 1;
     this.height = 1;
 
-    this.data = { shapes: [], selection: [], analysis: null, reference: [0, 0], grid: null, underlay: null };
+    this.data = {
+      shapes: [],
+      selection: [],
+      analysis: null,
+      reference: [0, 0],
+      grid: null,
+      underlay: null,
+      interfaces: [],
+    };
     this.underlayTexture = null;
+    /** Buffer for tekstetiketter, nøkkel `farge|tekst`. */
+    this._labelCache = new Map();
     this.preview = null;
     this.hover = null;
     this.showNet = true;
@@ -137,7 +219,7 @@ export class Viewport {
     this.renderer.domElement.style.cursor = 'crosshair';
 
     this.groups = {};
-    for (const key of ['underlay', 'grid', 'fill', 'outline', 'net', 'marker', 'preview', 'handle']) {
+    for (const key of ['underlay', 'grid', 'fill', 'outline', 'net', 'interface', 'marker', 'preview', 'handle']) {
       const g = new THREE.Group();
       this.scene.add(g);
       this.groups[key] = g;
@@ -154,6 +236,7 @@ export class Viewport {
     this._resizeObserver.disconnect();
     cancelAnimationFrame(this._raf);
     Object.values(this.groups).forEach(disposeGroup);
+    this._clearLabelCache();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
@@ -404,6 +487,7 @@ export class Viewport {
     this._drawGrid(upp);
     this._drawShapes(upp);
     this._drawNet(upp);
+    this._drawInterfaces(upp);
     this._drawMarkers(upp);
     this._drawPreview(upp);
   }
@@ -496,13 +580,38 @@ export class Viewport {
       fills.add(buildFillMesh(openRing(s.points), color, fillOpacity, Z.fill + i * 1e-4));
 
       const widthPx = isSel ? 2.6 : isHover ? 2.0 : 1.4;
-      const pos = thickPolylinePositions(
-        openRing(s.points),
-        true,
-        (widthPx * upp) / 2,
-        Z.outline + i * 1e-4
-      );
-      outlines.add(buildLineMesh(pos, isSel ? '#ffffff' : color, off ? 0.4 : 1));
+      const ring = openRing(s.points);
+      const z = Z.outline + i * 1e-4;
+
+      if (s.stage === 'new') {
+        // Ny del: stiplet kontur i formens egen farge, med et dempet
+        // fargestikk under. Skillet skal være tydelig selv når to former
+        // tilfeldigvis har liknende farge, uten at fargen forsvinner.
+        const dash = 10 * upp;
+        const gap = 6 * upp;
+        outlines.add(
+          buildLineMesh(
+            dashedPolylinePositions(ring, true, ((widthPx + 2.6) * upp) / 2, z - 5e-5, dash, gap),
+            NEW_STAGE_COLOR,
+            off ? 0.2 : 0.45
+          )
+        );
+        outlines.add(
+          buildLineMesh(
+            dashedPolylinePositions(ring, true, (widthPx * upp) / 2, z, dash, gap),
+            isSel ? '#ffffff' : color,
+            off ? 0.4 : 1
+          )
+        );
+      } else {
+        outlines.add(
+          buildLineMesh(
+            thickPolylinePositions(ring, true, (widthPx * upp) / 2, z),
+            isSel ? '#ffffff' : color,
+            off ? 0.4 : 1
+          )
+        );
+      }
 
       if (isSel) {
         const hw = 4 * upp;
@@ -547,6 +656,117 @@ export class Viewport {
       }
     }
     if (pos.length) g.add(buildLineMesh(pos, '#22d3ee', 0.95));
+  }
+
+  /** Henter (eller lager) en tekstetikett som sprite. */
+  _label(text, color) {
+    const key = `${color}|${text}`;
+    let entry = this._labelCache.get(key);
+    if (!entry) {
+      // Bufferet vokser bare med antall grensesnittnavn, men et navn som
+      // skrives om bokstav for bokstav legger igjen én tekstur per tastetrykk.
+      if (this._labelCache.size > 48) this._clearLabelCache();
+      entry = makeLabelTexture(text, color);
+      this._labelCache.set(key, entry);
+    }
+    const material = new THREE.SpriteMaterial({ map: entry.texture, transparent: true, depthWrite: false });
+    const sprite = new THREE.Sprite(material);
+    sprite.userData.w = entry.w;
+    sprite.userData.h = entry.h;
+    return sprite;
+  }
+
+  _clearLabelCache() {
+    for (const entry of this._labelCache.values()) entry.texture.dispose();
+    this._labelCache.clear();
+  }
+
+  /**
+   * Grensesnittene: kraftig linje, piler mot gruppesiden (den nye delen, altså
+   * den hvis aksialkraft må gjennom fugen) og navnet. Pilretningen er hele
+   * poenget — den er den visuelle kontrollen på at riktig side er valgt.
+   */
+  _drawInterfaces(upp) {
+    const g = this.groups.interface;
+    disposeGroup(g);
+    const list = this.data.interfaces || [];
+    if (!list.length) return;
+    const shapes = this.data.shapes || [];
+
+    list.forEach((raw, i) => {
+      const f = normalizeInterface(raw, i);
+      const [a, b] = [f.a, f.b];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (len < 1e-12) return;
+
+      g.add(
+        buildLineMesh(
+          thickPolylinePositions([a, b], false, (3.2 * upp) / 2, Z.interface),
+          INTERFACE_COLOR,
+          0.95
+        )
+      );
+
+      const nrm = leftNormal(a, b);
+      const sign = groupSideSign(f, shapes);
+      const ux = (b[0] - a[0]) / len;
+      const uy = (b[1] - a[1]) / len;
+
+      // Endestreker på tvers, så det er tydelig hvor fugen slutter
+      const tick = 5 * upp;
+      const ends = [];
+      for (const p of [a, b]) {
+        ends.push(
+          ...thickPolylinePositions(
+            [[p[0] - nrm[0] * tick, p[1] - nrm[1] * tick], [p[0] + nrm[0] * tick, p[1] + nrm[1] * tick]],
+            false,
+            upp * 0.8,
+            Z.interface
+          )
+        );
+      }
+      g.add(buildLineMesh(ends, INTERFACE_COLOR, 0.9));
+
+      if (sign) {
+        const nx = nrm[0] * sign;
+        const ny = nrm[1] * sign;
+        const arrow = 14 * upp;
+        const head = 5 * upp;
+        const count = Math.max(2, Math.min(8, Math.round(len / (30 * upp))));
+        const pos = [];
+        for (let j = 0; j < count; j++) {
+          const t = (j + 0.5) / count;
+          const px = a[0] + ux * len * t;
+          const py = a[1] + uy * len * t;
+          const tx = px + nx * arrow;
+          const ty = py + ny * arrow;
+          pos.push(...thickPolylinePositions([[px, py], [tx, ty]], false, upp * 0.8, Z.interface));
+          pos.push(
+            ...thickPolylinePositions(
+              [
+                [tx - nx * head - ux * head * 0.7, ty - ny * head - uy * head * 0.7],
+                [tx, ty],
+                [tx - nx * head + ux * head * 0.7, ty - ny * head + uy * head * 0.7],
+              ],
+              false,
+              upp * 0.8,
+              Z.interface
+            )
+          );
+        }
+        g.add(buildLineMesh(pos, INTERFACE_COLOR, 0.9));
+      }
+
+      const s = sign || 1;
+      const sprite = this._label(f.name, INTERFACE_COLOR);
+      sprite.position.set(
+        (a[0] + b[0]) / 2 + nrm[0] * s * 34 * upp,
+        (a[1] + b[1]) / 2 + nrm[1] * s * 34 * upp,
+        Z.interface + 0.01
+      );
+      sprite.scale.set(sprite.userData.w * upp * 0.5, sprite.userData.h * upp * 0.5, 1);
+      g.add(sprite);
+    });
   }
 
   _drawMarkers(upp) {

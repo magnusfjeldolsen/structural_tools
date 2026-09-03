@@ -95,6 +95,7 @@ function update() {
     reference: st.reference,
     grid: st.grid,
     underlay: st.underlay,
+    interfaces: st.interfaces,
   });
   try {
     ui.render(analysis);
@@ -120,6 +121,7 @@ const TOOL_KEYS = {
   m: 'move',
   k: 'copy',
   t: 'rotate',
+  g: 'interface',
 };
 
 window.addEventListener('keydown', (e) => {
@@ -134,11 +136,21 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
+  // Escape er en KASKADE, og ett trykk skal alltid gi et rent utgangspunkt.
+  // Rekkefølgen er: forlat feltet man skriver i, avbryt en kommando som er i
+  // gang, og ellers tøm utvalget. Steg 1 og 2 skjer i samme trykk — står man i
+  // et tallfelt mens en rotasjon pågår, skal ikke Esc måtte trykkes to ganger.
   if (e.key === 'Escape') {
     document.getElementById('help-overlay').classList.add('hidden');
+    ui.closePopover();
     if (typing) e.target.blur();
-    if (!tools.draft) ui.closePopover();
+    // Hva som var i gang må avgjøres FØR tools.keydown rydder det bort
+    const busy = !!(tools.draft || tools.drag);
     tools.keydown(e);
+    if (!busy && store.state.selection.length) {
+      store.select([]);
+      ui.status('Utvalget er tømt.');
+    }
     return;
   }
   if (typing) return;
@@ -236,6 +248,10 @@ window.__gw = {
     else if (type === 'pointerup') tools.pointerup(e);
     else if (type === 'dblclick') tools.dblclick(e);
     return e;
+  },
+  /** Siste utregning i «Forsterkning»-fanen, til kontrollregning i konsollet. */
+  rf() {
+    return ui.reinforcement ? ui.reinforcement.result : null;
   },
   /** Klikk = flytt markøren dit først, som en ekte peker gjør. */
   click(world, opts = {}) {

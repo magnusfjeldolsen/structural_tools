@@ -16,6 +16,7 @@ import {
   mirrorPointsAboutLine,
 } from './geometry.js';
 import { applyOrtho, snapColor as engineSnapColor } from './snapping.js';
+import { addInterface, INTERFACE_COLOR } from './interfaces.js';
 
 const TOOL_HINTS = {
   select: 'Velg: klikk for å markere, dra for å flytte. Dra et hjørnepunkt for å redigere. Alt+klikk på punkt sletter det, dobbeltklikk på en kant setter inn nytt.',
@@ -29,6 +30,7 @@ const TOOL_HINTS = {
   copy: 'Kopi: klikk basispunkt, deretter der kopien skal ligge. Verktøyet blir stående, så du kan sette flere. Esc avslutter.',
   rotate: 'Roter: klikk rotasjonssenter, så et referansepunkt, og til slutt der det skal ende. Shift låser til 15°. Esc avbryter.',
   mirror: 'Speil: klikk to punkt som definerer speilaksen. Esc avbryter.',
+  interface: 'Grensesnitt: klikk to punkt i skjøten mellom eksisterende og ny del. Verktøyet gjetter hvilken side som er den nye. Esc avbryter.',
 };
 
 /** Verktøyene som transformerer et eksisterende utvalg i stedet for å tegne. */
@@ -237,6 +239,19 @@ export class ToolController {
         }
         return;
 
+      case 'interface':
+        // To klikk, som rektangelet — men resultatet er en linje i lista over
+        // grensesnitt, ikke en form i geometrien.
+        if (!this.draft) {
+          this.draft = { start: p };
+          this.onStatus('Grensesnitt: klikk det andre punktet. Snapping og orto virker som ellers.');
+        } else {
+          this._finishInterface(this.draft.start, p);
+          this.draft = null;
+          this.viewport.setPreview(null);
+        }
+        return;
+
       case 'polygon':
         if (!this.draft) {
           this.draft = { points: [p] };
@@ -377,6 +392,10 @@ export class ToolController {
       } else if (this.tool === 'calibrate') {
         this.viewport.setPreview({ points: [this.draft.start, p], color: '#f59e0b', cursor: p });
         this.onStatus(`Kalibrer: målt lengde ${fmt(Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]))}`);
+      } else if (this.tool === 'interface') {
+        this.viewport.setPreview({ points: [this.draft.start, p], color: INTERFACE_COLOR, cursor: p });
+        const d = Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]);
+        this.onStatus(`Grensesnitt: heftbredde ${fmt(d)} (linjas lengde). Klikk for å fullføre.`);
       }
     } else {
       this.viewport.setPreview({ points: [], cursor: p, cursorColor: snapColor(snapped.type) });
@@ -716,6 +735,30 @@ export class ToolController {
       this.store.addShape(circlePoints(a[0], a[1], r), { name: 'Sirkel', meta: { kind: 'circle', c: a, r } });
     }
     this.onStatus(TOOL_HINTS[this.tool]);
+  }
+
+  /**
+   * Fullfører grensesnittet. Gruppesiden gjettes i `addInterface` — formene
+   * hvis tyngdepunkt ligger til venstre for a→b, og av dem bare de som er
+   * merket «ny» dersom det gir et ikke-tomt sett. Statuslinja sier fra hva
+   * gjettet ble, slik at en feil oppdages med en gang og ikke først når
+   * tallene ser rare ut.
+   */
+  _finishInterface(a, b) {
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-9) {
+      this.onStatus('Grensesnittlinja har null lengde — avbrutt.');
+      return;
+    }
+    const f = addInterface(this.store, a, b);
+    const names = this.store.state.shapes
+      .filter((s) => f.groupIds.includes(s.id))
+      .map((s) => s.name)
+      .join(', ');
+    this.onStatus(
+      names
+        ? `${f.name} lagt inn. Gruppesiden ble gjettet til: ${names}. Pilene i lerretet peker den veien — snu den i «Forsterkning» om det ble feil.`
+        : `${f.name} lagt inn, men ingen former havnet på gruppesiden. Bruk «Snu siden» i «Forsterkning».`
+    );
   }
 
   _finishPolygon() {
