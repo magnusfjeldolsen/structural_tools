@@ -3,6 +3,7 @@
  */
 
 import { analyze, hasClipper } from './geometry.js';
+import * as shapes from './shapes.js';
 import { store } from './store.js';
 import { Viewport } from './viewport.js';
 import { ToolController } from './tools.js';
@@ -109,7 +110,17 @@ store.subscribe(() => scheduleRender());
  * Hurtigtaster
  * ------------------------------------------------------------------ */
 
-const TOOL_KEYS = { v: 'select', r: 'rect', s: 'shell', p: 'polygon', c: 'circle', o: 'reference' };
+const TOOL_KEYS = {
+  v: 'select',
+  r: 'rect',
+  s: 'shell',
+  p: 'polygon',
+  c: 'circle',
+  o: 'reference',
+  m: 'move',
+  k: 'copy',
+  t: 'rotate',
+};
 
 window.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
@@ -207,5 +218,29 @@ if (!restored || !store.state.shapes.length) {
   ui.toast(`Hentet fram forrige modell (${store.state.shapes.length} former).`);
 }
 
-// Nyttig for feilsøking i konsollet
-window.__gw = { store, viewport, tools, ui, analyze };
+// Nyttig for feilsøking i konsollet. `emit` sender en syntetisk pekerhendelse
+// i verdenskoordinater rett inn i verktøyet, slik at hele klikkflyten kan
+// kjøres uten mus — det er slik verktøyene testes.
+window.__gw = {
+  store,
+  viewport,
+  tools,
+  ui,
+  analyze,
+  shapes,
+  emit(type, world, opts = {}) {
+    const px = viewport.worldToScreen(world[0], world[1]);
+    const e = { type, world, px, button: 0, shift: false, ctrl: false, alt: false, ...opts };
+    if (type === 'pointerdown') tools.pointerdown(e);
+    else if (type === 'pointermove') tools.pointermove(e);
+    else if (type === 'pointerup') tools.pointerup(e);
+    else if (type === 'dblclick') tools.dblclick(e);
+    return e;
+  },
+  /** Klikk = flytt markøren dit først, som en ekte peker gjør. */
+  click(world, opts = {}) {
+    this.emit('pointermove', world, opts);
+    this.emit('pointerdown', world, opts);
+    this.emit('pointerup', world, opts);
+  },
+};

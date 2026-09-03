@@ -405,6 +405,64 @@ export function mirrorPoints(points, axis = 'x', at = 0) {
   );
 }
 
+/**
+ * Speiler punktene om linja gjennom a og b — den generelle varianten, der
+ * aksen kan ligge hvor som helst og ha hvilken som helst retning.
+ * Har linja null lengde, returneres punktene uendret.
+ */
+export function mirrorPointsAboutLine(points, a, b) {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  if (len2 < EPS * EPS) return points.map((p) => [p[0], p[1]]);
+  // Speiling om en linje gjennom origo med retning (dx, dy), skrevet ut:
+  //   [cos2φ  sin2φ; sin2φ  −cos2φ]   der φ er linjas vinkel
+  const c = (dx * dx - dy * dy) / len2;
+  const s = (2 * dx * dy) / len2;
+  return points.map(([x, y]) => {
+    const ux = x - a[0];
+    const uy = y - a[1];
+    return [a[0] + ux * c + uy * s, a[1] + ux * s - uy * c];
+  });
+}
+
+/**
+ * Arealtyngdepunktet til én ring. Er ringen degenerert (null areal), faller
+ * vi tilbake på punktmiddelet, slik at et basispunkt alltid kan oppgis.
+ */
+export function centroidOfPoints(points) {
+  const ring = openRing(points || []);
+  if (!ring.length) return [0, 0];
+  const p = ringProps(ring);
+  if (Math.abs(p.A) > EPS) return [p.Sy / p.A, p.Sx / p.A];
+  const n = ring.length;
+  return [ring.reduce((a, q) => a + q[0], 0) / n, ring.reduce((a, q) => a + q[1], 0) / n];
+}
+
+/**
+ * Arealvektet tyngdepunkt for et sett former, uten vektfaktorer og uten
+ * overlappbehandling. Dette er «hvor ligger disse formene», altså det
+ * sentreringsverktøyet og relative koordinater måler fra — ikke det
+ * sammensatte tverrsnittets nøytralakse, som analyze() gir.
+ */
+export function centroidOfShapes(shapes) {
+  const list = (shapes || []).filter((s) => s.points && s.points.length >= 3);
+  if (!list.length) return null;
+  // Fortegnet på ringPropsene følger omløpsretningen, så hver form tvinges
+  // positiv før de summeres — ellers ville en ring tegnet med klokka
+  // trekke tyngdepunktet feil vei.
+  const total = sumProps(
+    list.map((s) => {
+      const raw = ringProps(closeRing(s.points));
+      return raw.A >= 0 ? raw : scaleProps(raw, -1);
+    })
+  );
+  if (Math.abs(total.A) > EPS) return [total.Sy / total.A, total.Sx / total.A];
+  // Alle formene er degenererte — bruk midtpunktet av utstrekningen
+  const b = boundsOfShapes(list);
+  return b ? [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2] : null;
+}
+
 export function boundsOfPoints(points) {
   if (!points || !points.length) return null;
   let minX = Infinity;
