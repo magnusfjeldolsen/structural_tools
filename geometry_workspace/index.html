@@ -53,6 +53,8 @@
     input[type="number"] { -moz-appearance: textfield; }
     .tool-btn { transition: all .12s ease; }
     .tool-btn[data-active="true"] { background: #0284c7; color: #fff; border-color: #0ea5e9; }
+    .tab-btn { transition: color .12s ease, border-color .12s ease; }
+    .tab-btn[data-active="true"] { color: #f8fafc; border-bottom-color: #0ea5e9; background: #1e293b; }
     .num { font-variant-numeric: tabular-nums; }
     details > summary { cursor: pointer; list-style: none; }
     details > summary::-webkit-details-marker { display: none; }
@@ -178,6 +180,15 @@
               </svg>
             </button>
 
+            <button class="tool-btn flex items-center justify-center h-10 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600"
+                    data-tool="interface" title="Grensesnitt mellom eksisterende og ny del (G)" aria-label="Grensesnitt">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <path d="M3 13h18" />
+                <path d="M7 10.5V6M12 10.5V6M17 10.5V6" stroke-linecap="round" opacity="0.9" />
+                <path d="M5.5 8L7 6l1.5 2M10.5 8L12 6l1.5 2M15.5 8L17 6l1.5 2" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+              </svg>
+            </button>
+
           </div>
 
           <!-- Meny for det aktive verktøyet -->
@@ -266,6 +277,8 @@
         <div class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span> Tyngdepunkt</div>
         <div class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-full border border-amber-500"></span> Referansepunkt</div>
         <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5 bg-violet-400"></span> Hovedakser</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-0 border-t-2 border-dashed border-emerald-400"></span> Ny del (stiplet kontur)</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5" style="background:#f472b6"></span> Grensesnitt — piler mot ny del</div>
       </div>
 
       <!-- Snap-kontroll nederst til høyre -->
@@ -281,9 +294,22 @@
       </div>
     </main>
 
-    <!-- Høyre panel: resultater -->
-    <aside class="w-80 shrink-0 bg-slate-800 border-l border-slate-700 flex flex-col min-h-0">
-      <div class="panel-scroll overflow-y-auto flex-1 p-3 space-y-3">
+    <!-- Høyre panel: resultater, delt i to faner -->
+    <aside class="w-80 xl:w-96 shrink-0 bg-slate-800 border-l border-slate-700 flex flex-col min-h-0">
+
+      <!-- Faner: tyngdepunkt/tverrsnitt kontra forsterkning -->
+      <div id="result-tabs" class="flex shrink-0 border-b border-slate-700">
+        <button data-tab="section" data-active="true"
+                class="tab-btn flex-1 px-3 py-2 text-xs font-medium text-slate-400 border-b-2 border-transparent hover:text-white">
+          Tverrsnitt
+        </button>
+        <button data-tab="reinforcement"
+                class="tab-btn flex-1 px-3 py-2 text-xs font-medium text-slate-400 border-b-2 border-transparent hover:text-white">
+          Forsterkning
+        </button>
+      </div>
+
+      <div id="tab-section" class="panel-scroll overflow-y-auto flex-1 p-3 space-y-3">
 
         <div>
           <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Overlapp</h2>
@@ -357,6 +383,9 @@
         </details>
 
       </div>
+
+      <!-- Forsterkningsfanen fylles av js/reinforcement-ui.js -->
+      <div id="tab-reinforcement" class="hidden panel-scroll overflow-y-auto flex-1 p-3 space-y-3"></div>
     </aside>
 
   </div>
@@ -444,6 +473,12 @@
         som er i bevegelse snapper ikke mot seg selv. Hele kommandoen blir ett angresteg, og
         <kbd class="px-1 bg-slate-700 rounded">Esc</kbd> avbryter og setter alt tilbake.
       </p>
+      <p class="text-slate-400">
+        <kbd class="px-1 bg-slate-700 rounded">Esc</kbd> er en kaskade, og ett trykk skal alltid gi et
+        rent utgangspunkt: står du i et tallfelt, forlates feltet; er en kommando i gang, avbrytes den;
+        ellers tømmes utvalget. Hjelpedialogen og verktøymenyen lukkes uansett. Står du i et felt mens
+        en kommando pågår, gjør ett trykk begge deler.
+      </p>
       <ul class="list-disc list-inside space-y-1">
         <li><strong>Flytt</strong> (<kbd class="px-1 bg-slate-700 rounded">M</kbd>) — klikk
           basispunkt, så sluttpunkt. Δx, Δy og lengden vises i statuslinja.</li>
@@ -461,6 +496,37 @@
         det samme på hele utvalget under ett. Der ligger også <strong>«Sentrer utvalg i origo»</strong>
         og <strong>«Sentrer alt i origo»</strong>. Sentreringen flytter nullpunktet med samme
         vektor, slik at avvikene i resultatpanelet ikke endrer seg av flyttingen.
+      </p>
+
+      <h3 class="text-base font-semibold text-sky-400 pt-2">Forsterkning — eksisterende og ny del</h3>
+      <p>
+        Skal et nytt profil festes til et eksisterende, må kraften overføres gjennom akseparallell
+        skjærkraft i grensesnittet. Fanen <strong>«Forsterkning»</strong> i høyre panel svarer på hvor
+        stor den kraften er, og hva forbindelsen må tåle.
+      </p>
+      <ul class="list-disc list-inside space-y-1">
+        <li>Merk hver form som <strong>Eksisterende</strong> eller <strong>Ny</strong> i egenskapspanelet.
+          Nye former tegnes med stiplet kontur og et grønt fargestikk.</li>
+        <li>Velg <strong>materiale</strong> per form, eller skriv E fritt. E brukes bare her;
+          vektfaktoren over gjelder bare tyngdepunktet — de to er uavhengige.</li>
+        <li><strong>Grensesnitt</strong> (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) — klikk to punkt
+          i skjøten. Verktøyet gjetter hvilken side som er den nye, tegner piler den veien, og bruker
+          linjas lengde som heftbredde <em>b</em>. Ble gjettet feil, trykk «Snu siden».</li>
+        <li>Legg inn <strong>V_Ed, N_Ed, M_Ed</strong> og forankringslengden <strong>L</strong>. Dette er
+          kreftene på det <em>sammensatte</em> tverrsnittet — last som allerede sto på den eksisterende
+          delen før montasje, bæres av den alene.</li>
+      </ul>
+      <p class="text-slate-400">
+        Skjærstrømmen er q = V·ES*/EI, der ES* = Σ Eᵢ·Aᵢ·(yᵢ − y_c) for formene på den ene siden av
+        fugen, regnet om den <em>sammensatte</em> nøytralaksen. Med samme E overalt forkorter E bort og
+        det blir den klassiske q = VQ/I. Aksialkraften fordeles etter aksialstivhet, og andelen ΔN som
+        må inn i den nye delen gir q_N = ΔN/L. Det er en middelverdi: Volkersen-avsnittet viser hvor
+        mye høyere toppene i skjøteendene ligger. Hver størrelse står som formel, innsatte tall og
+        resultat med enhet under «Utregning».
+      </p>
+      <p class="text-slate-400">
+        Beregningen forutsetter full samvirkning og lineær elastisitet, og er <strong>iterativ i
+        praksis</strong>: endrer du geometrien, endrer stivheten seg, og dermed kreftene.
       </p>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Bildeunderlag</h3>
@@ -533,6 +599,7 @@
         <div><kbd class="px-1 bg-slate-700 rounded">M</kbd> Flytt utvalg</div>
         <div><kbd class="px-1 bg-slate-700 rounded">K</kbd> Kopier utvalg</div>
         <div><kbd class="px-1 bg-slate-700 rounded">T</kbd> Roter utvalg</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">G</kbd> Grensesnitt</div>
         <div><kbd class="px-1 bg-slate-700 rounded">F</kbd> Zoom alt</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Alt+1…6</kbd> Snap-typer</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Alt+9</kbd> Alle snap av/på</div>
@@ -542,7 +609,7 @@
         <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+D</kbd> Dupliser</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+Z</kbd> Angre</div>
         <div><kbd class="px-1 bg-slate-700 rounded">Ctrl+Shift+Z</kbd> Gjør om</div>
-        <div><kbd class="px-1 bg-slate-700 rounded">Esc</kbd> Avbryt</div>
+        <div><kbd class="px-1 bg-slate-700 rounded">Esc</kbd> Avbryt / tøm utvalg</div>
       </div>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Enheter</h3>

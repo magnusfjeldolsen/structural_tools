@@ -29,6 +29,8 @@ import {
 } from './shapes.js';
 import { SNAP_TYPES, SNAP_ALL, ORTHO } from './snapping.js';
 import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel } from './units.js';
+import { MATERIALS, materialByName, materialE } from './materials.js';
+import { ReinforcementPanel } from './reinforcement-ui.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -113,6 +115,7 @@ const TOOL_TITLES = {
   copy: 'Kopier utvalg',
   rotate: 'Roter utvalg',
   mirror: 'Speil utvalg',
+  interface: 'Grensesnitt mellom eksisterende og ny del',
 };
 
 /** Overskriften på parameterseksjonen, etter hva formen viser seg å være. */
@@ -146,6 +149,13 @@ export class UI {
     this.tools = tools;
     this.underlayManager = opts.underlayManager || null;
     this.analysis = null;
+    /** Aktiv fane i høyre panel: 'section' (tyngdepunkt) eller 'reinforcement'. */
+    this.tab = 'section';
+    /** Forsterkningsfanen bor i sin egen modul; ui.js er stor nok fra før. */
+    this.reinforcement = new ReinforcementPanel(store, {
+      toast: (m) => this.toast(m),
+      onCopy: () => this._copyResult(),
+    });
     /** Pågående to-punkts kalibrering av bildeunderlaget. */
     this.calibration = null;
 
@@ -331,6 +341,11 @@ export class UI {
     $('model-title').addEventListener('input', (e) => st.setTitle(e.target.value));
     $('btn-copy').addEventListener('click', () => this._copyResult());
 
+    $('result-tabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-tab]');
+      if (btn) this.setTab(btn.dataset.tab);
+    });
+
     $('btn-export').addEventListener('click', () => this._export());
     $('btn-import').addEventListener('click', () => $('file-input').click());
     $('file-input').addEventListener('change', (e) => this._import(e));
@@ -493,7 +508,42 @@ export class UI {
           ha hvilken som helst retning. Faste akser gjennom nullpunktet ligger i «Plassering».
         </p>`;
     }
+    if (tool === 'interface') {
+      const n = this.store.state.interfaces.length;
+      const newCount = this.store.state.shapes.filter((s) => s.stage === 'new').length;
+      return `
+        <p class="text-[11px] ${newCount ? 'text-slate-400' : 'text-amber-300'} mb-2 leading-snug">
+          ${
+            newCount
+              ? `${newCount} form${newCount === 1 ? ' er' : 'er er'} merket «ny».`
+              : 'Ingen former er merket «ny» ennå — sett stadium i geometrilista først, så blir gjettet riktig.'
+          }
+        </p>
+        <p class="text-[11px] text-slate-500 leading-snug">
+          Klikk to punkt i skjøten mellom eksisterende og ny del. Verktøyet gjetter hvilken side som
+          er den nye — pilene i lerretet peker den veien — og linjas lengde blir heftbredden
+          <em>b</em>. Tall, forbindere og resultater ligger i fanen «Forsterkning» til høyre.
+        </p>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">${
+          n ? `${n} grensesnitt er lagt inn.` : 'Ingen grensesnitt ennå.'
+        }</p>`;
+    }
     return null;
+  }
+
+  /** Bytter fane i høyre panel. */
+  setTab(tab) {
+    this.tab = tab === 'reinforcement' ? 'reinforcement' : 'section';
+    this._renderTabs();
+  }
+
+  _renderTabs() {
+    const active = this.tab;
+    document.querySelectorAll('#result-tabs [data-tab]').forEach((btn) => {
+      btn.dataset.active = String(btn.dataset.tab === active);
+    });
+    $('tab-section').classList.toggle('hidden', active !== 'section');
+    $('tab-reinforcement').classList.toggle('hidden', active !== 'reinforcement');
   }
 
   /** Liten linje som sier hva transformasjonen kommer til å virke på. */
@@ -802,6 +852,16 @@ export class UI {
   }
 
   _copyResult() {
+    // Er forsterkningsfanen aktiv, er det de tallene brukeren ser på — og da
+    // er det de som skal på utklippstavla.
+    if (this.tab === 'reinforcement') {
+      const text = this.reinforcement.clipboardText();
+      if (!text) return this.toast('Ingen forsterkningstall å kopiere.');
+      return navigator.clipboard
+        .writeText(text)
+        .then(() => this.toast('Forsterkningsresultatet er kopiert til utklippstavla.'))
+        .catch(() => this.toast('Kunne ikke kopiere.'));
+    }
     if (!this.analysis || !this.analysis.result.valid) return this.toast('Ingen geometri å kopiere.');
     const r = this.analysis.result;
     const ref = this.store.state.reference;
@@ -871,6 +931,11 @@ export class UI {
       this._renderPlacement();
       this._renderList();
       this._renderResults(analysis);
+      this._renderTabs();
+      // Forsterkningsfanen tegnes selv om den er skjult, slik at tallene er
+      // klare i det man bytter fane — og slik at fokusbevaringen over dekker
+      // også dens tallfelt.
+      this.reinforcement.render(analysis);
     });
 
     if (this._scrollTo) {
@@ -1112,6 +1177,7 @@ export class UI {
             <span class="chev shrink-0 text-slate-500 ${open ? 'rotate-90' : ''}" style="display:inline-block">›</span>
             <span class="truncate">${escapeHtml(sh.name)}</span>
           </button>
+          ${sh.stage === 'new' ? '<span class="text-[10px] px-1 rounded bg-emerald-900 text-emerald-300 shrink-0" title="Ny del — tegnes med stiplet kontur">ny</span>' : ''}
           ${sh.role === 'void' ? '<span class="text-[10px] px-1 rounded bg-rose-900 text-rose-300 shrink-0">hull</span>' : ''}
           ${Math.abs(sh.factor - 1) > 1e-9 ? `<span class="text-[10px] px-1 rounded bg-amber-900 text-amber-300 shrink-0">×${sh.factor}</span>` : ''}
           <button data-act="up" data-id="${sh.id}" ${i === 0 ? 'disabled' : ''}
@@ -1269,6 +1335,67 @@ export class UI {
     return '';
   }
 
+  /**
+   * Stadium og materiale — de to feltene forsterkningsberegningen lever av.
+   *
+   * `stage` skiller det eksisterende tverrsnittet fra den nye delen (som får
+   * stiplet kontur i lerretet), og `material.E` er E-modulen mekanikken bruker.
+   * Vektfaktoren over i panelet er noe helt annet, og det står det uttrykkelig
+   * i hjelpeteksten her — det er en forveksling som ville gitt gale tall.
+   */
+  _stageHtml(sh) {
+    const mat = sh.material || {};
+    const E = materialE(mat);
+    const preset = materialByName(mat.name);
+    // Er E endret bort fra presetet, skal det stå — ellers ville nedtrekket
+    // gitt inntrykk av at det er presetets verdi som gjelder.
+    const custom = preset ? Math.abs(preset.E - E) > 1e-9 : true;
+    const groups = [];
+    for (const m of MATERIALS) {
+      if (!groups.length || groups[groups.length - 1].name !== m.group) {
+        groups.push({ name: m.group, items: [] });
+      }
+      groups[groups.length - 1].items.push(m);
+    }
+
+    return `
+      <div class="border-t border-slate-600 pt-2 space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="field-label" for="ed-stage-${sh.id}">Stadium</label>
+            <select id="ed-stage-${sh.id}" data-ed="stage" data-id="${sh.id}" data-focus-key="ed-stage-${sh.id}">
+              <option value="existing" ${sh.stage !== 'new' ? 'selected' : ''}>Eksisterende</option>
+              <option value="new" ${sh.stage === 'new' ? 'selected' : ''}>Ny — forsterkning</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="ed-E-${sh.id}">E [N/mm²]</label>
+            <input id="ed-E-${sh.id}" data-ed="E" data-id="${sh.id}" data-focus-key="ed-E-${sh.id}"
+                   type="number" step="500" min="0" value="${round(E)}" />
+          </div>
+        </div>
+        <div>
+          <label class="field-label" for="ed-mat-${sh.id}">Materiale</label>
+          <select id="ed-mat-${sh.id}" data-ed="material" data-id="${sh.id}" data-focus-key="ed-mat-${sh.id}">
+            ${groups
+              .map(
+                (g) => `<optgroup label="${g.name}">${g.items
+                  .map(
+                    (m) =>
+                      `<option value="${escapeHtml(m.name)}" ${mat.name === m.name ? 'selected' : ''}>${escapeHtml(m.label)} — ${m.E} N/mm²</option>`
+                  )
+                  .join('')}</optgroup>`
+              )
+              .join('')}
+          </select>
+          <p class="text-[10px] text-slate-500 mt-1 leading-snug">
+            ${custom ? '<span class="text-amber-300">E er satt manuelt</span> og overstyrer presetet. ' : ''}E brukes
+            bare i fanen «Forsterkning». Vektfaktoren over gjelder bare tyngdepunktet — de to er uavhengige.
+          </p>
+        </div>
+      </div>`;
+  }
+
   /** Egenskapspanelet som vises inne i et åpnet listeelement. */
   _editorHtml(sh, part) {
     const ring = openRing(sh.points);
@@ -1313,6 +1440,8 @@ export class UI {
                    type="number" step="0.01" value="${sh.factor}" />
           </div>
         </div>
+
+        ${this._stageHtml(sh)}
 
         <div class="text-[11px] text-slate-400 num space-y-0.5">
           <div>Areal brutto ${fmtArea(grossArea)}${
@@ -1410,6 +1539,26 @@ export class UI {
         input.addEventListener('change', (e) => {
           const v = Number(e.target.value);
           this.store.updateShape(id, { factor: Number.isFinite(v) ? v : 1 });
+        });
+      } else if (key === 'stage') {
+        input.addEventListener('change', (e) =>
+          this.store.updateShape(id, { stage: e.target.value === 'new' ? 'new' : 'existing' })
+        );
+      } else if (key === 'material') {
+        input.addEventListener('change', (e) => {
+          const preset = materialByName(e.target.value);
+          if (!preset) return;
+          // Presetet setter BÅDE navn og E, slik at nedtrekket alltid stemmer
+          // med tallet ved siden av.
+          this.store.updateShape(id, { material: { name: preset.name, E: preset.E } });
+        });
+      } else if (key === 'E') {
+        input.addEventListener('change', (e) => {
+          const v = Number(e.target.value);
+          if (!Number.isFinite(v) || v <= 0) return this.toast('E må være et positivt tall i N/mm².');
+          const cur = this.store.getShape(id);
+          const name = (cur && cur.material && cur.material.name) || '';
+          this.store.updateShape(id, { material: { name, E: v } });
         });
       }
     });

@@ -26,7 +26,12 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/viewport.js` | three.js-rendering i XY-planet (ortografisk kamera), rutenett, snapping, pan/zoom |
 | `js/tools.js` | Tegne- og redigeringsverktøy; oversetter pekerhendelser til CRUD |
 | `js/ui.js` | Panelrendering: geometriliste, formredigering, plassering, resultater |
+| `js/materials.js` | Materialpresets med E [N/mm²]. Ingen DOM. |
+| `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, aksialfordeling, skjærstrøm, forankring, Volkersen, forbinderkontroll. Rene funksjoner, N og mm. Ingen DOM. |
+| `js/interfaces.js` | Grensesnittene mellom eksisterende og ny del: geometri (hvilken side er hvilken), heftbredde og CRUD mot store. Ingen DOM. |
+| `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen |
 | `js/main.js` | Bootstrap og hurtigtaster |
+| `tests/reinforcement.test.mjs` | Fasit for mekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
 three.js hentes fra CDN via `importmap`.
@@ -43,9 +48,13 @@ bevegelse snapper ikke mot seg selv:
 | Kopi | `K` | basispunkt → der kopien skal ligge. Verktøyet blir stående med samme basispunkt, så flere kopier kan settes etter hverandre. Menyen har «antall» for en rekke med jevn avstand. |
 | Roter | `T` | rotasjonssenter → referansepunkt for startvinkelen → sluttvinkel. `Shift` låser til 15°. |
 | Speil | — | to klikk definerer speilaksen; menyen velger om originalen beholdes |
+| Grensesnitt | `G` | to klikk i skjøten mellom eksisterende og ny del (se «Forsterkning» under) |
 
-Hver kommando er **ett angresteg**, og `Esc` avbryter og setter geometrien
-tilbake til utgangspunktet. De samme kommandoene finnes som tallfelt i
+Hver kommando er **ett angresteg**. `Esc` er en kaskade der ett trykk alltid
+skal gi et rent utgangspunkt: står markøren i et tallfelt, forlates feltet; er
+en kommando i gang, avbrytes den og geometrien settes tilbake; ellers tømmes
+utvalget. Hjelpedialogen og verktøymenyen lukkes uansett, og steg 1 og 2 skjer i
+samme trykk. De samme kommandoene finnes som tallfelt i
 verktøymenyene og i «Plassering» i venstre panel, der de virker på hele utvalget
 under ett. «Sentrer utvalg i origo» og «Sentrer alt i origo» flytter
 nullpunktet med samme vektor, slik at referansemålene ikke endrer seg av
@@ -100,6 +109,59 @@ To modi:
 
 Vektfaktoren på hver form er ment som E-forhold ved transformert tverrsnitt; med
 faktorer ulik 1 er «tyngdepunktet» nøytralaksen til det transformerte tverrsnittet.
+
+## Forsterkning — skjærstrøm i grensesnittet
+
+Høyre panel har to faner. **«Tverrsnitt»** er tyngdepunktet og arealmomentene som
+før. **«Forsterkning»** svarer på hvor mye kraft forbindelsen mellom et
+eksisterende og et nytt profil må ta opp.
+
+Grunnligningen er `q(x) = dN(x)/dx` [N/mm langs bjelkeaksen]. To bidrag:
+
+```
+Bøyning:      q_V = V · ES* / EI      ES* = Σ_gruppe Eᵢ·Aᵢ·(yᵢ − y_c)
+Aksialkraft:  N_i = N · EᵢAᵢ / ΣEⱼAⱼ  ⟹  q_N = ΔN / L
+Sammen:       q_tot = |q_V| + |q_N|,   τ = q_tot / b
+```
+
+`y_c = ESx/EA` er den E-vektede nøytralaksen — samme punkt som tyngdepunktet i
+det transformerte tverrsnittet. `ES*` regnes alltid om den **sammensatte**
+nøytralaksen, ikke om gruppas egen. Er E lik overalt, forkorter E bort og
+`q = VQ/I`. De to sidene av samme snitt gir like store `ES*` med motsatt
+fortegn, så `|q|` er den samme uansett hvilken side man regner fra.
+
+`q_N = ΔN/L` er en middelverdi. Volkersen-modellen (`λ² = k(1/α + 1/β)`) viser
+hvor mye høyere toppene i skjøteendene ligger, med `k = G_a·b/t_a` for lim og
+`k = K_ser·rader/s` for skruer.
+
+Arbeidsflyten:
+
+1. Merk hver form som **eksisterende** eller **ny**, og velg materiale (eller
+   skriv E fritt). Nye former får stiplet kontur i lerretet.
+2. Tegn **grensesnittet** (`G`): to klikk i skjøten. Verktøyet gjetter
+   gruppesiden (venstre for a→b, og av dem de som er merket «ny» hvis det gir et
+   ikke-tomt sett), tegner piler den veien, og bruker linjas lengde som
+   heftbredde `b`. «Snu siden» retter et feil gjett.
+3. Legg inn `V_Ed`, `N_Ed`, `M_Ed` og forankringslengden `L`.
+4. Les av `q_V`, `q_N`, `q_tot`, `τ` og forbinderkontrollen — nødvendig
+   senteravstand for skruer, utnyttelse mot `τ_Rd` for lim.
+
+Hver størrelse vises som **formel → innsatte tall → resultat med enhet**.
+
+**Forutsetninger:** full samvirkning (tverrsnittet forblir plant, ingen
+glidning), lineær elastisitet, og at kreftene gjelder det **sammensatte**
+tverrsnittet — last som allerede sto på den eksisterende delen før montasje,
+bæres av den alene. Beregningen er **iterativ i praksis**: ny geometri gir ny
+stivhet, som gir nye krefter.
+
+### Enheter i forsterkningsberegningen
+
+Mekanikken regnes i **N og mm**, uavhengig av arbeidsenheten. Omregningen skjer
+ett sted, i `reinforcement-ui.js`: arealegenskapene skaleres med `k²`, `k³`,
+`k⁴` (`k` = mm per arbeidsenhet), lastene går gjennom `kNtoN`/`kNmToNmm`, og `L`
+ganges med `k`. Forbinderdataene er derimot alltid absolutte — `F_Rd` [kN],
+`s` [mm], `K_ser` [N/mm], `τ_Rd`/`G_a` [N/mm²], `t_a` [mm] og heftbredde-
+overstyringen [mm] — slik at et bytte fra mm til m ikke endrer skruekapasiteten.
 
 ## Datamodell
 
