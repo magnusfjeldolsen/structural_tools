@@ -1519,9 +1519,15 @@
           <p class="text-gray-300 mb-6 leading-relaxed">
             Draw arbitrary composite cross-sections in the XY plane and read off the area-weighted
             centroid, second moments of area and principal axes, measured from a reference point
-            you choose. Rectangles, mid-surface shells, polygons and circles with full CRUD
-            editing, exact polygon integration and weight factors for transformed sections.
-            Overlapping shapes can be counted once or twice, whichever your model calls for.
+            you choose. Rectangles, mid-surface shells, polygons and circles, with CAD-style move,
+            copy, rotate and mirror tools, parametric editing of width and depth, exact polygon
+            integration and weight factors for transformed sections.
+            <br /><br />
+            For strengthening existing members, mark shapes as existing or new, give each a
+            material, and draw the interface between them: the tool reports the longitudinal shear
+            flow the joint must carry (q = V&middot;ES*/EI, generalised to differing E), the axial
+            force shared out by EA and anchored over a lap length (&Delta;N/L), the resulting glue
+            stress or screw spacing, and the Volkersen shear-lag peak at the lap ends.
           </p>
 
           <div class="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
@@ -1535,6 +1541,8 @@
             <span class="px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-sm">Neutral Axis</span>
             <span class="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-sm">Section Properties</span>
             <span class="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-sm">FEM-Design</span>
+            <span class="px-3 py-1 bg-rose-500/20 text-rose-300 rounded-full text-sm">Strengthening</span>
+            <span class="px-3 py-1 bg-amber-500/20 text-amber-300 rounded-full text-sm">Shear Flow</span>
           </div>
 
           <a href="./geometry_workspace/index.html"
