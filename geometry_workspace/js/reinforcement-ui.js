@@ -359,6 +359,29 @@ export function computeReinforcement(state) {
     if (jt.b <= 0) {
       warnings.push({ level: 'warn', text: `${escapeHtml(jt.name)}: heftbredden er null, så τ = q/b kan ikke regnes ut.` });
     }
+    // En skjøt mot ny del har ingen «før»-tilstand: før forsterkningen ble
+    // montert fantes ikke den nye delen, og ingen skjærstrøm krysset fugen.
+    // Det er riktig å se bort fra V_før her — men brukeren har tastet inn en
+    // skjærkraft, og skal ikke måtte gjette hvorfor den ikke dukker opp noe
+    // sted. Uten denne meldingen forsvinner den i en grå merknad, og man
+    // sitter igjen med bare aksialbidraget uten å skjønne hvorfor.
+    if (!jt.existingOnly && Math.abs(loads.before.V) > 0) {
+      warnings.push({
+        level: 'warn',
+        text:
+          `${escapeHtml(jt.name)}: V_før = ${q(NtokN(loads.before.V), 'kN')} gir ingen skjærstrøm her, ` +
+          'fordi den nye delen ikke fantes da den lasten sto på. Virker skjærkraften på det ' +
+          'forsterkede tverrsnittet, hører den hjemme i V_etter.',
+      });
+    }
+  }
+  // Motsatt felle: alt er tastet inn under «etter», men ingen skjærkraft der,
+  // så q_V blir null overalt selv om brukeren tror skjærkraften er med.
+  if (!allExisting && Math.abs(loads.after.V) === 0 && Math.abs(loads.before.V) === 0 && joints.length) {
+    warnings.push({
+      level: 'info',
+      text: 'Ingen skjærkraft er lagt inn, så skjøtene får bare aksialbidraget q_N = ΔN/L.',
+    });
   }
   for (const name of dangling) {
     warnings.push({ level: 'warn', text: `«${escapeHtml(name)}» henger i løse lufta — tegn skjøten som fester den.` });
