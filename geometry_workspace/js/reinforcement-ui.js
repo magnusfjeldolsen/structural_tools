@@ -54,7 +54,6 @@ import {
   gammaMethod,
   fastenerForce,
   anchorFlow,
-  anchorageCheck,
   volkersen,
   connectorStiffness,
   connectorCheck,
@@ -360,17 +359,49 @@ export function computeReinforcement(state) {
         ? fastenerForce({ q: gamma.q, spacing: connector.spacing, rows: connector.rows, shearPlanes: connector.shearPlanes, FRd: connector.FRd })
         : null;
 
-    // §8.2 — forankringskontroll i enden: N_G fra BIAKSIELL bøyning
-    // (`axialInGroup` via `anchorageCheck`), ikke den gamle M·ES*/EI som bare
-    // var riktig når EI_xy = 0 og bare ett moment virket.
-    const anchorCheck =
-      !allExisting && halfAfterParts
-        ? anchorageCheck({
-            Mx: loads.after.Mx, My: loads.after.My,
-            groupParts: halfAfterParts, section,
-            L: loads.L, connector, bondWidth: bMm,
-          })
-        : null;
+    // §8.2, snudd — forankring i enden gir NØDVENDIG kapasitet, ikke en
+    // kontroll mot en antatt kapasitet: verktøyets jobb er å si hvor sterk
+    // forbindelsen må være, ikke om en gjettet skjøtekapasitet holder.
+    // To UAVHENGIGE kriterier, aldri lagt sammen (§4 i tilbakemeldingen):
+    //   - q_tot   — den lokale skjærstrømmen (over): V + den løpende
+    //     aksialfordelingen ΔN_i/L. Momentet gir INGEN eget ledd her —
+    //     q = dN_G/dz = V·ES*/EI ER allerede momentets virkning.
+    //   - q_req = N_G/L — middelverdien N_G (fra BIAKSIELL bøyning via
+    //     `axialInGroup`, ikke den gamle M·ES*/EI som bare var riktig når
+    //     EI_xy = 0) må leveres over HELE forankringssonen L.
+    // Det STØRSTE av de to styrer nødvendig forbinderkraft F_Ed = q·L/n,
+    // fordelt på `n` forbindere brukeren oppgir (bare et antall — rader,
+    // senteravstand og kantavstander er brukerens jobb, ikke dette verktøyets).
+    // Dimensjonerende kapasitet F_Rd er VALGFRI: oppgitt viser vi utnyttelse,
+    // tom viser vi bare F_Ed — det normale, ikke et unntak.
+    let anchorReq = null;
+    if (!allExisting && halfAfterParts) {
+      const ng = axialInGroup({ Mx: loads.after.Mx, My: loads.after.My, groupParts: halfAfterParts, section });
+      const reqFlow = ng.valid ? anchorFlow({ dN: ng.NG, L: loads.L }) : null;
+      const qReq = reqFlow && reqFlow.valid ? Math.abs(reqFlow.q) : null;
+      const qGoverning = Math.max(qTot, qReq || 0);
+      const governedByMoment = qReq != null && qReq > qTot;
+      const nRaw = Number(connector.anchorN);
+      const n_ = Number.isFinite(nRaw) && nRaw > 0 ? nRaw : null;
+      const FEd = n_ && loads.L > 0 ? NtokN((qGoverning * loads.L) / n_) : null;
+      const capRaw = Number(connector.anchorFRd);
+      const FRdCap = Number.isFinite(capRaw) && capRaw > 0 ? capRaw : null;
+      const util = FEd != null && FRdCap ? FEd / FRdCap : null;
+      anchorReq = {
+        NG: ng.valid ? ng.NG : 0,
+        NG_kN: ng.valid ? ng.NG / 1000 : 0,
+        qTot,
+        qReq,
+        qGoverning,
+        governedByMoment,
+        L: loads.L,
+        n: n_,
+        FEd,
+        FRdCap,
+        util,
+        valid: ng.valid,
+      };
+    }
 
     return {
       id: raw.id,
@@ -404,7 +435,7 @@ export function computeReinforcement(state) {
       gamma,
       fastenerFull,
       fastenerGamma,
-      anchorCheck,
+      anchorReq,
       EA_group,
       EA_other,
       volkersen: vol,
@@ -800,16 +831,19 @@ export class ReinforcementPanel {
     return `<div class="space-y-1.5">${res.warnings.map(box).join('')}</div>`;
   }
 
-  /** De fem biaksielle lastfeltene for én tilstand («før» eller «etter»). */
-  _loadStateFields(prefix, state, tag) {
-    return `<div class="grid grid-cols-2 gap-2">
-       ${loadField(`loads.${prefix}.Vy`, `V_y,${tag}`, 'kN', 'loddrett tverrkraft, hører til M_x', state.Vy_kN, 'step="1"')}
-       ${loadField(`loads.${prefix}.Vx`, `V_x,${tag}`, 'kN', 'vannrett tverrkraft, hører til M_y', state.Vx_kN, 'step="1"')}
-       ${loadField(`loads.${prefix}.N`, `N_${tag}`, 'kN', 'positiv = strekk', state.N_kN, 'step="1"')}
-       ${loadField(`loads.${prefix}.Mx`, `M_x,${tag}`, 'kNm', 'om x-aksen, positiv gir strekk i overkant', state.Mx_kNm, 'step="1"')}
-       <div class="col-span-2">
-         ${loadField(`loads.${prefix}.My`, `M_y,${tag}`, 'kNm', 'om y-aksen, positiv gir strekk på høyre side — merk avviket, se konvensjoner under', state.My_kNm, 'step="1"')}
-       </div>
+  /**
+   * De fem biaksielle lastfeltene for én tilstand («før» eller «etter»),
+   * i FAST rekkefølge N → V → M (§9.2 punkt 1) og på ett kompakt rutenett i
+   * stedet for én rad per felt. Etikettene er korte — den fulle forklaringen
+   * ligger i den sammenleggbare konvensjonsseksjonen rett under.
+   */
+  _loadStateFields(prefix, state) {
+    return `<div class="grid grid-cols-3 gap-x-2 gap-y-1.5">
+       ${loadField(`loads.${prefix}.N`, `N`, 'kN', 'positiv = strekk', state.N_kN, 'step="1"')}
+       ${loadField(`loads.${prefix}.Vy`, `V_y`, 'kN', 'loddrett, hører til M_x', state.Vy_kN, 'step="1"')}
+       ${loadField(`loads.${prefix}.Vx`, `V_x`, 'kN', 'vannrett, hører til M_y', state.Vx_kN, 'step="1"')}
+       ${loadField(`loads.${prefix}.Mx`, `M_x`, 'kNm', 'strekk i overkant', state.Mx_kNm, 'step="1"')}
+       ${loadField(`loads.${prefix}.My`, `M_y`, 'kNm', 'strekk på høyre side', state.My_kNm, 'step="1"')}
      </div>`;
   }
 
@@ -827,10 +861,11 @@ export class ReinforcementPanel {
 
   _loadsBody(res) {
     const u = lengthLabel(res.unit);
-    const beforeFields = this._loadStateFields('before', res.loads.before, 'før');
+    const beforeFields = this._loadStateFields('before', res.loads.before);
 
     if (res.allExisting) {
       return (
+        `<p class="text-[11px] text-slate-400 mb-1">Last på det eksisterende tverrsnittet</p>` +
         beforeFields +
         `<p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
            Alle former er merket «eksisterende» — dette er en kontroll av en eksisterende konstruksjon.
@@ -840,27 +875,22 @@ export class ReinforcementPanel {
       );
     }
 
-    const afterFields = this._loadStateFields('after', res.loads.after, 'etter');
+    const afterFields = this._loadStateFields('after', res.loads.after);
 
     return `
-       <p class="text-[11px] text-slate-400 mb-1">
-         Før forsterkning — virker på det <strong>eksisterende</strong> tverrsnittet alene
-       </p>
-       ${beforeFields}
-       <p class="text-[11px] text-slate-400 mt-2.5 mb-1">
-         Etter forsterkning — tilleggslast på det <strong>sammensatte</strong> tverrsnittet
-       </p>
-       ${afterFields}
-       <div class="mt-2">${numField('loads.L', `Forankringslengde L [${u}]`, res.loads.L_unit, 'step="10" min="0"')}</div>
+       <div class="rounded border border-slate-700/60 p-2">
+         <p class="text-[11px] text-slate-400 mb-1">Før — på det <strong>eksisterende</strong> tverrsnittet alene</p>
+         ${beforeFields}
+       </div>
+       <div class="rounded border border-slate-700/60 p-2 mt-1.5">
+         <p class="text-[11px] text-slate-400 mb-1">Etter — tillegg på det <strong>sammensatte</strong> tverrsnittet</p>
+         ${afterFields}
+       </div>
+       <div class="mt-1.5">${numField('loads.L', `Forankringslengde L [${u}]`, res.loads.L_unit, 'step="10" min="0"')}</div>
        <p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
          Den eksisterende bjelken bærer allerede «før»-lasten idet forsterkningen monteres — bare
          tilleggslasten «etter» virker på det sammensatte tverrsnittet. De to superponeres:
          q_V,tot = |q_før| + |q_etter|.
-       </p>
-       <p class="text-[11px] text-slate-500 mt-1 leading-snug num">
-         Internt: V_y,før = ${q(res.loads.before.Vy, 'N', 0)}, V_x,før = ${q(res.loads.before.Vx, 'N', 0)},
-         V_y,etter = ${q(res.loads.after.Vy, 'N', 0)}, V_x,etter = ${q(res.loads.after.Vx, 'N', 0)},
-         N_etter = ${q(res.loads.after.N, 'N', 0)}, L = ${q(res.loads.L, 'mm', 0)}.
        </p>
        ${this._conventionDetails()}`;
   }
@@ -893,8 +923,18 @@ export class ReinforcementPanel {
       .join('');
   }
 
+  /**
+   * §1/§2 i tilbakemeldingen — «Effekt av forsterkningen» skal grupperes etter
+   * hva som HØRER SAMMEN, med tekst som binder gruppene, i stedet for
+   * løsrevne rader: (1) stivheten EA/EI_x/EI_y, (2) nøytralaksens forskyvning
+   * y_c OG x_c sammen, med én forklaring av hva forskyvningen betyr, (3)
+   * hovedaksene θ/EI_1/EI_2 sammen, med skjevbøyningsadvarselen til slutt.
+   * Bygd på `axesComparison` (§1), som er det ene kallet som gir hele
+   * sammenligningen — dxc/dyc, θ før/etter, EI_1/EI_2, tan β.
+   */
   _effectBody(res) {
     const c = res.comparison;
+    const ax = res.axes;
     const line = (label, before, after, ratio, unit, dec = 2) => {
       const inc = ratio == null ? null : (ratio - 1) * 100;
       return `<tr class="border-t border-slate-700/60">
@@ -906,46 +946,17 @@ export class ReinforcementPanel {
         </td>
       </tr>`;
     };
-    const dyc = c.dyc;
-    return `
-       <table class="w-full text-[11px]">
-         <thead><tr class="text-slate-500">
-           <th class="text-left font-normal py-1">Størrelse</th>
-           <th class="text-right font-normal py-1">Eksisterende</th>
-           <th class="text-right font-normal py-1">Sammensatt</th>
-           <th class="text-right font-normal py-1">Økning</th>
-         </tr></thead>
-         <tbody>
-           ${line('EA', c.EA0, c.EA1, c.ratios.EA, 'N', 0)}
-           ${line('EI_x', c.EIx0, c.EIx1, c.ratios.EIx, 'Nmm²', 0)}
-           ${line('EI_y', c.EIy0, c.EIy1, c.ratios.EIy, 'Nmm²', 0)}
-           <tr class="border-t border-slate-700/60">
-             <td class="py-1 pr-2 text-slate-400">Nøytralakse y_c</td>
-             <td class="py-1 pr-2 text-right num text-slate-300">${q(c.yc0, 'mm')}</td>
-             <td class="py-1 pr-2 text-right num text-white">${q(c.yc1, 'mm')}</td>
-             <td class="py-1 text-right num text-amber-300">${dyc >= 0 ? '+' : ''}${q(dyc, 'mm')}</td>
-           </tr>
-         </tbody>
-       </table>
-       <p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
-         Begge stivhetene er regnet om <em>sin egen</em> nøytralakse: før forsterkningen bøyer den
-         eksisterende delen seg om sin akse, etterpå om den felles aksen. y_c måles i det globale
-         koordinatsystemet, ikke fra underkant.
-       </p>
-       ${this._axesBody(res)}`;
-  }
+    const posLine = (label, before, after, delta) => `<tr class="border-t border-slate-700/60">
+        <td class="py-1 pr-2 text-slate-400">${label}</td>
+        <td class="py-1 pr-2 text-right num text-slate-300">${q(before, 'mm')}</td>
+        <td class="py-1 pr-2 text-right num text-white">${q(after, 'mm')}</td>
+        <td class="py-1 text-right num text-amber-300">${delta >= 0 ? '+' : ''}${q(delta, 'mm')}</td>
+      </tr>`;
 
-  /**
-   * §1 — nøytralakse OG hovedakser, med skjevbøyningsadvarselen (§1.2). Bygd
-   * på `axesComparison`, som er det ene kallet som gir hele tabellen —
-   * dxc/dyc, θ før/etter, EI_1/EI_2, tan β og den sidevegse andelen.
-   */
-  _axesBody(res) {
-    const ax = res.axes;
     const beta = ax.after.tanBeta;
     const lat = ax.lateralPercent;
-    const warn = ax.introducedSkew
-      ? `<div class="rounded border border-amber-600/60 bg-amber-950/40 text-amber-200 px-2 py-1.5 text-[11px] leading-snug mt-2">
+    const skewWarn = ax.introducedSkew
+      ? `<div class="rounded border border-amber-600/60 bg-amber-950/40 text-amber-200 px-2 py-1.5 text-[11px] leading-snug mt-1.5">
            <strong>ADVARSEL — skjev bøyning innført:</strong> tverrsnittet var praktisk talt
            dobbeltsymmetrisk (EI_xy ≈ 0) før forsterkningen, og er det tydelig IKKE lenger. Nøytral-
            aksens helning for et rent M_x er tan β = EI_xy/EI_y = ${n(beta ?? 0, 4)} — bjelken bøyer seg
@@ -953,49 +964,85 @@ export class ReinforcementPanel {
            En last som før virket rent i ett hovedplan må nå kontrolleres <strong>i begge plan</strong>.
          </div>`
       : ax.after.coupled
-      ? `<p class="text-[11px] text-amber-300 mt-2 leading-snug">
+      ? `<p class="text-[11px] text-amber-300 mt-1.5 leading-snug">
            Tverrsnittet var skjevt (EI_xy ≠ 0) allerede før forsterkningen, og er det fortsatt — det er
            altså ikke forsterkningen som har innført dette. Sidevegs andel av nedbøyningen for et rent
            M_x: tan β = ${n(beta ?? 0, 4)}, dvs. ${pct(lat ?? 0)} av den loddrette nedbøyningen.
          </p>`
-      : `<p class="text-[11px] text-slate-500 mt-2 leading-snug">
+      : `<p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
            Tverrsnittet er (tilnærmet) dobbeltsymmetrisk både før og etter — ingen skjev bøyning.
          </p>`;
 
     return `
-       <table class="w-full text-[11px] mt-2">
-         <thead><tr class="text-slate-500">
-           <th class="text-left font-normal py-1">Hovedakser</th>
-           <th class="text-right font-normal py-1">Eksisterende</th>
-           <th class="text-right font-normal py-1">Sammensatt</th>
-         </tr></thead>
-         <tbody>
-           <tr class="border-t border-slate-700/60">
-             <td class="py-1 pr-2 text-slate-400">Nøytralakse x_c</td>
-             <td class="py-1 pr-2 text-right num text-slate-300">${q(ax.before.xc, 'mm')}</td>
-             <td class="py-1 text-right num text-white">${q(ax.after.xc, 'mm')}</td>
-           </tr>
-           <tr class="border-t border-slate-700/60">
-             <td class="py-1 pr-2 text-slate-400">Hovedaksevinkel θ</td>
-             <td class="py-1 pr-2 text-right num text-slate-300">${q(ax.before.thetaDeg, '°')}</td>
-             <td class="py-1 text-right num text-white">${q(ax.after.thetaDeg, '°')}</td>
-           </tr>
-           <tr class="border-t border-slate-700/60">
-             <td class="py-1 pr-2 text-slate-400">EI_1 (størst)</td>
-             <td class="py-1 pr-2 text-right num text-slate-300">${q(ax.before.EI1, 'Nmm²', 0)}</td>
-             <td class="py-1 text-right num text-white">${q(ax.after.EI1, 'Nmm²', 0)}</td>
-           </tr>
-           <tr class="border-t border-slate-700/60">
-             <td class="py-1 pr-2 text-slate-400">EI_2 (minst)</td>
-             <td class="py-1 pr-2 text-right num text-slate-300">${q(ax.before.EI2, 'Nmm²', 0)}</td>
-             <td class="py-1 text-right num text-white">${q(ax.after.EI2, 'Nmm²', 0)}</td>
-           </tr>
-         </tbody>
-       </table>
-       <p class="text-[11px] text-slate-500 mt-1.5 leading-snug num">
-         Δx_c = ${q(ax.dxc, 'mm')}, Δθ = ${q(ax.dThetaDeg, '°')}.
-       </p>
-       ${warn}`;
+       <div>
+         <table class="w-full text-[11px]">
+           <thead><tr class="text-slate-500">
+             <th class="text-left font-normal py-1">Stivhet</th>
+             <th class="text-right font-normal py-1">Eksisterende</th>
+             <th class="text-right font-normal py-1">Sammensatt</th>
+             <th class="text-right font-normal py-1">Økning</th>
+           </tr></thead>
+           <tbody>
+             ${line('EA', c.EA0, c.EA1, c.ratios.EA, 'N', 0)}
+             ${line('EI_x', c.EIx0, c.EIx1, c.ratios.EIx, 'Nmm²', 0)}
+             ${line('EI_y', c.EIy0, c.EIy1, c.ratios.EIy, 'Nmm²', 0)}
+           </tbody>
+         </table>
+         <p class="text-[11px] text-slate-500 mt-1 leading-snug">
+           Begge stivhetene er regnet om <em>sin egen</em> nøytralakse: før forsterkningen bøyer den
+           eksisterende delen seg om sin akse, etterpå om den felles aksen.
+         </p>
+       </div>
+       <div class="mt-3">
+         <table class="w-full text-[11px]">
+           <thead><tr class="text-slate-500">
+             <th class="text-left font-normal py-1">Nøytralakse</th>
+             <th class="text-right font-normal py-1">Eksisterende</th>
+             <th class="text-right font-normal py-1">Sammensatt</th>
+             <th class="text-right font-normal py-1">Forskyvning</th>
+           </tr></thead>
+           <tbody>
+             ${posLine('y_c', c.yc0, c.yc1, c.dyc)}
+             ${posLine('x_c', ax.before.xc, ax.after.xc, ax.dxc)}
+           </tbody>
+         </table>
+         <p class="text-[11px] text-slate-500 mt-1 leading-snug">
+           (Δy_c, Δx_c) er hvor mye tyngdepunktet har flyttet seg i det globale koordinatsystemet når den
+           nye delen legges til — ikke fra underkant. Det er denne forskyvningen som kan innføre skjev
+           bøyning, se hovedaksene under.
+         </p>
+       </div>
+       <div class="mt-3">
+         <table class="w-full text-[11px]">
+           <thead><tr class="text-slate-500">
+             <th class="text-left font-normal py-1">Hovedakser</th>
+             <th class="text-right font-normal py-1">Eksisterende</th>
+             <th class="text-right font-normal py-1">Sammensatt</th>
+           </tr></thead>
+           <tbody>
+             <tr class="border-t border-slate-700/60">
+               <td class="py-1 pr-2 text-slate-400">Vinkel θ</td>
+               <td class="py-1 pr-2 text-right num text-slate-300">${q(ax.before.thetaDeg, '°')}</td>
+               <td class="py-1 text-right num text-white">${q(ax.after.thetaDeg, '°')}</td>
+             </tr>
+             <tr class="border-t border-slate-700/60">
+               <td class="py-1 pr-2 text-slate-400">EI_1 (størst)</td>
+               <td class="py-1 pr-2 text-right num text-slate-300">${q(ax.before.EI1, 'Nmm²', 0)}</td>
+               <td class="py-1 text-right num text-white">${q(ax.after.EI1, 'Nmm²', 0)}</td>
+             </tr>
+             <tr class="border-t border-slate-700/60">
+               <td class="py-1 pr-2 text-slate-400">EI_2 (minst)</td>
+               <td class="py-1 pr-2 text-right num text-slate-300">${q(ax.before.EI2, 'Nmm²', 0)}</td>
+               <td class="py-1 text-right num text-white">${q(ax.after.EI2, 'Nmm²', 0)}</td>
+             </tr>
+           </tbody>
+         </table>
+         <p class="text-[11px] text-slate-500 mt-1 leading-snug num">
+           θ er hovedaksenes retning (mot klokka fra x-aksen), EI_1/EI_2 stivheten i sterk/svak retning —
+           sammen sier de om forsterkningen har dreid tverrsnittet: Δθ = ${q(ax.dThetaDeg, '°')}.
+         </p>
+         ${skewWarn}
+       </div>`;
   }
 
   _axialBody(res) {
@@ -1180,21 +1227,72 @@ export class ReinforcementPanel {
       </div>`;
   }
 
-  /** §8.2 — forankringskontroll i enden. */
+  /**
+   * §8.2, snudd (§3/§4 i tilbakemeldingen) — forankring i enden gir NØDVENDIG
+   * kapasitet, ikke en kontroll mot en antatt kapasitet. To uavhengige
+   * kriterier vises side om side, aldri lagt sammen: q_tot (den lokale
+   * skjærstrømmen) og q_req = N_G/L (middelverdien momentets N_G krever
+   * innført over hele forankringslengden). Det største styrer F_Ed = q·L/n.
+   * Dimensjonerende kapasitet F_Rd er valgfri — utfylt gir utnyttelse, tom
+   * viser bare F_Ed, som er den NORMALE tilstanden her, ikke et unntak.
+   */
   _anchorBlock(jt) {
-    const a = jt.anchorCheck;
+    const a = jt.anchorReq;
     if (!a) return '';
-    const overLength = a.util != null && a.util > 1;
+    const nId = `rf-anchorN-${jt.id}`;
+    const capId = `rf-anchorFRd-${jt.id}`;
+    const overCap = a.util != null && a.util > 1;
+    const governLabel = a.governedByMoment ? 'q_req (moment)' : 'q_tot (lokal)';
     return `
-      <div class="rounded border ${overLength ? 'border-amber-600/60 bg-amber-950/40' : 'border-slate-700 bg-slate-900'} p-2.5 space-y-1">
-        <div class="text-[10px] font-medium text-slate-400 uppercase tracking-wide">Forankring i enden</div>
-        ${row('N_G — aksialkraft å forankre', q(a.NG_kN, 'kN'), 'text-white')}
-        ${row('L_req — nødvendig forankringslengde', a.Lreq == null ? '–' : q(a.Lreq, 'mm', 0))}
-        ${row(`Utnyttelse mot L = ${q(a.L, 'mm', 0)}`, a.util == null ? '–' : pct(a.util * 100), overLength ? 'text-rose-300' : 'text-emerald-300')}
-        ${overLength ? `<p class="text-[11px] text-amber-200 leading-snug"><strong>ADVARSEL:</strong> L_req &gt; L — forankringen er for kort, uansett hvor liten skjærstrømmen er midt på bjelken.</p>` : ''}
+      <div class="rounded border ${overCap ? 'border-amber-600/60 bg-amber-950/40' : 'border-slate-700 bg-slate-900'} p-2.5 space-y-1.5">
+        <div class="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+          Forankring i enden — nødvendig kapasitet
+        </div>
+        <div class="space-y-0.5">
+          ${row('q_tot — lokal skjærstrøm (over)', q(a.qTot, 'N/mm'))}
+          ${row('q_req = N_G/L — fra momentet', a.qReq == null ? '– (N_G = 0 eller L ≤ 0)' : q(a.qReq, 'N/mm'))}
+        </div>
+        <p class="text-[10px] text-slate-500 leading-snug">
+          To UAVHENGIGE kriterier, aldri en sum: momentet gir ingen egen skjærstrøm — q_tot ER allerede
+          momentets virkning gjennom V. q_req er en separat middelverdibetraktning for kraften N_G som
+          bøyningen legger på DENNE gruppa, og som må være ført helt inn over lengden L.
+        </p>
+        <div class="flex items-center justify-between pt-1 border-t border-slate-700/60">
+          <span class="text-slate-300 text-xs font-medium">Styrende q — ${governLabel}</span>
+          <span class="text-sm font-semibold num text-white">${q(a.qGoverning, 'N/mm')}</span>
+        </div>
+        <div class="grid grid-cols-2 gap-1.5 pt-1">
+          <div>
+            <label class="field-label" for="${nId}">Antall forbindere n over skjøten</label>
+            <input id="${nId}" data-rf-anchor="${jt.id}:n" data-focus-key="${nId}" type="number" step="1" min="1"
+                   value="${a.n == null ? '' : a.n}" />
+          </div>
+          <div>
+            <label class="field-label" for="${capId}">F_Rd [kN] per forbinder — valgfri</label>
+            <input id="${capId}" data-rf-anchor="${jt.id}:FRd" data-focus-key="${capId}" type="number" step="0.5" min="0"
+                   value="${a.FRdCap == null ? '' : a.FRdCap}" />
+          </div>
+        </div>
+        ${
+          a.n == null
+            ? `<p class="text-[11px] text-slate-500 leading-snug">Oppgi antall forbindere for å få kraften per forbinder.</p>`
+            : `<div class="flex items-center justify-between">
+                 <span class="text-slate-300 text-xs font-medium">F_Ed = q·L/n per forbinder</span>
+                 <span class="text-sm font-semibold num text-white">${q(a.FEd, 'kN')}</span>
+               </div>` +
+              (a.FRdCap != null
+                ? row('Utnyttelse mot F_Rd', a.util == null ? '–' : pct(a.util * 100), overCap ? 'text-rose-300' : 'text-emerald-300')
+                : `<p class="text-[11px] text-slate-500 leading-snug">
+                     Ingen dimensjonerende kapasitet oppgitt — F_Ed er den nødvendige kraften per forbinder,
+                     ikke en kontroll. Fyll ut F_Rd for å få utnyttelsen.
+                   </p>`)
+        }
+        ${overCap ? `<p class="text-[11px] text-amber-200 leading-snug"><strong>ADVARSEL:</strong> F_Ed &gt; F_Rd.</p>` : ''}
         <p class="text-[10px] text-slate-500 leading-snug">
           Middelverdibetraktning. Volkersen-toppen i skjøteenden (se «Shear lag») kommer i tillegg —
-          for et limt skjøteende er det toppen som utløser avskalling.
+          for et limt skjøteende er det toppen som utløser avskalling. Verktøyet sier hvor sterk
+          forbindelsen må være — festemiddelvalg, kantavstander og materialspesifikke kontroller hører
+          hjemme i andre verktøy.
         </p>
       </div>`;
   }
@@ -1477,6 +1575,40 @@ export class ReinforcementPanel {
             });
         }
 
+        if (jt.anchorReq) {
+          const a = jt.anchorReq;
+          inner +=
+            calc({
+              sym: 'N_G',
+              formula: 'N_G = κ_x·ES*_x + κ_y·ES*_y   (biaksiell bøyning, §1 — κ fra M_x/M_y og hovedstivhetene)',
+              subst: `for gruppa denne skjøten fører kraft til`,
+              result: q(a.NG_kN, 'kN'),
+              note: 'Momentet gir INGEN egen skjærstrøm i q_tot — dette er et separat krav til hva som må være innført over L.',
+            }) +
+            calc({
+              sym: 'q_req',
+              formula: 'q_req = N_G / L',
+              subst: `${n(a.NG, 0)} N / ${n(a.L, 0)} mm`,
+              result: a.qReq == null ? '–' : q(a.qReq, 'N/mm'),
+              note: 'Middelverdi over hele forankringssonen — et ALTERNATIVT kriterium til q_tot, aldri en sum.',
+            }) +
+            calc({
+              sym: 'q_gov',
+              formula: 'q_gov = max(q_tot, q_req)',
+              subst: `max(${n(a.qTot)}, ${a.qReq == null ? '0' : n(a.qReq)})`,
+              result: q(a.qGoverning, 'N/mm'),
+            }) +
+            (a.n != null
+              ? calc({
+                  sym: 'F_Ed',
+                  formula: 'F_Ed = q_gov · L / n',
+                  subst: `${n(a.qGoverning)} N/mm · ${n(a.L, 0)} mm / ${n(a.n, 0)}`,
+                  result: q(a.FEd, 'kN'),
+                  note: a.FRdCap != null ? `Utnyttelse mot F_Rd = ${n(a.FRdCap)} kN: ${a.util == null ? '–' : pct(a.util * 100)}.` : 'Nødvendig kapasitet — ingen F_Rd oppgitt.',
+                })
+              : '');
+        }
+
         return group(jt.id, escapeHtml(jt.name), inner);
       })
       .join('');
@@ -1524,6 +1656,26 @@ export class ReinforcementPanel {
         } else if (parts[1] === 'before' || parts[1] === 'after') {
           store.setLoads({ [parts[1]]: { [parts[2]]: val } });
         }
+      });
+    });
+
+    // §3 — «antall forbindere n» og valgfri F_Rd for forankringen i enden,
+    // lagret på skjøtens `connector` (spres gjennom av `migrateJoint` i
+    // store.js, i motsetning til nye topp-nivå-felter — se reinforcement-ui.js).
+    host.querySelectorAll('[data-rf-anchor]').forEach((el) => {
+      el.addEventListener('change', () => {
+        const [jointId, key] = el.dataset.rfAnchor.split(':');
+        const j = store.getJoint(jointId);
+        if (!j) return;
+        const raw = el.value;
+        const field = key === 'n' ? 'anchorN' : 'anchorFRd';
+        if (raw === '') {
+          store.updateJoint(jointId, { connector: { ...j.connector, [field]: null } });
+          return;
+        }
+        const v = Number(raw);
+        if (!Number.isFinite(v)) return;
+        store.updateJoint(jointId, { connector: { ...j.connector, [field]: v } });
       });
     });
 
@@ -1599,10 +1751,14 @@ export class ReinforcementPanel {
       if (jt.gamma && jt.gamma.applicable) {
         lines.push(`  gamma_eff = ${n(jt.gamma.gammaEff, 4)}   EI_ef = ${n(jt.gamma.EI_ef, 0)} Nmm2   EI_full = ${n(jt.gamma.EI_full, 0)} Nmm2`);
       }
-      if (jt.anchorCheck) {
+      if (jt.anchorReq) {
+        const a = jt.anchorReq;
         lines.push(
-          `  Forankring: N_G = ${n(jt.anchorCheck.NG_kN)} kN   L_req = ${jt.anchorCheck.Lreq == null ? '-' : n(jt.anchorCheck.Lreq, 0) + ' mm'}` +
-            `   util = ${jt.anchorCheck.util == null ? '-' : pct(jt.anchorCheck.util * 100)}${jt.anchorCheck.ok === false ? '  ADVARSEL: L_req > L' : ''}`
+          `  Forankring (noedvendig kapasitet): N_G = ${n(a.NG_kN)} kN   q_tot = ${n(a.qTot)} N/mm   q_req = ${a.qReq == null ? '-' : n(a.qReq) + ' N/mm'}   q_gov = ${n(a.qGoverning)} N/mm`
+        );
+        lines.push(
+          `    n = ${a.n == null ? '-' : n(a.n, 0)}   F_Ed = ${a.FEd == null ? '-' : n(a.FEd) + ' kN'}` +
+            `${a.FRdCap != null ? `   F_Rd = ${n(a.FRdCap)} kN   util = ${a.util == null ? '-' : pct(a.util * 100)}` : ''}`
         );
       }
     }

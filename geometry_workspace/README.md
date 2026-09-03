@@ -30,7 +30,7 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, biaksiell bøyning og skjærstrøm, aksialfordeling, forankring (§8.2), hovedakser/skjevbøyning (§1), γ-metoden og kraft per festemiddel (§4), Volkersen, forbinderkontroll (skrue/lim/sveis). Rene funksjoner, N og mm. Ingen DOM. |
 | `js/connection-stiffness.js` | Festemiddelstivheten K_ser: EC5 tabell 7.1 (§3.1) og fritt innlagt (ETA/produktgodkjenning, §3.2) som likestilte kilder, pluss limstivhet og smøring til fugestivhet (§3.3) — det `volkersen()` og γ-metoden begge bruker. Rene funksjoner. Ingen DOM, ingen importer (se filhodet). |
 | `js/joints.js` | Skjøtelinjer: naboskap (`shapesTouch`), en kraftig nedskalert graf (kun til ΔN-ruting og advarsler), og halvplan-avskjæring for ES* (`halfPlaneParts`/`fullSectionParts`). Erstatter det slettede `interfaces.js`. Ingen DOM. |
-| `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen: lastfeltene (biaksielle), kraftsammendraget, hovedakse-/skjevbøyningsvisningen, per-skjøt-kortene (samvirkegrad, forankringskontroll) og den sammenleggbare akse-/fortegnskonvensjonsfiguren (`axisConventionHtml`, delt med hjelpedialogen). |
+| `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen: lastfeltene (biaksielle), kraftsammendraget, hovedakse-/skjevbøyningsvisningen, per-skjøt-kortene (samvirkegrad, nødvendig forankringskapasitet) og den sammenleggbare akse-/fortegnskonvensjonsfiguren (`axisConventionHtml`, delt med hjelpedialogen). |
 | `js/numeric-input.js` | CAD-aktig tallinntasting i lerretet: tilstandsmaskin + tolkning av `300 200` / `D 300 200` / `10,5 0`. Uavhengig av verktøyene. |
 | `js/main.js` | Bootstrap, hurtigtaster og ruting av tastetrykk til tallinntastingen |
 | `tests/reinforcement.test.mjs` | Fasit for grunnmekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
@@ -279,6 +279,12 @@ q_N     = ΔN_i / L                      (aksialleddet, fra grafen — se over)
 q_tot   = q_V,tot + q_N
 ```
 
+Lastfeltene for `before`/`after` står på et kompakt rutenett, i FAST rekkefølge
+**N → V_y, V_x → M_x, M_y** for begge tilstander — de to gruppene («før»/«etter»)
+holdes tett sammen i hver sin ramme. Etikettene er korte (den fulle
+fortegnsforklaringen ligger i den sammenleggbare konvensjonsseksjonen rett
+under).
+
 Et kompakt **kraftsammendrag** (bidrag fra V_før, V_etter og ΔN, pluss en
 uthevet sum) står rett under lastfeltene i fanen, før «Effekt av
 forsterkningen» — det er tallet brukeren kom for, og skal ikke være noe man
@@ -347,15 +353,39 @@ forsterkningen har innført skjev bøyning som ikke fantes før, og lasten må
 kontrolleres i begge plan. Var tverrsnittet skjevt fra før, sier panelet det
 i stedet — det er ikke forsterkningens skyld.
 
-### Forankringskontroll i enden (§8.2)
+### Forankring i enden — nødvendig kapasitet, ikke en kontroll (§8.2, snudd)
 
 `N` fra bøyning gir INGEN egen skjærstrøm — `q = dN_G/dz = V·ES*/EI`, samme
-kraft sett fra to sider, og `q_V` ER forankringen av bøyekraften. Det panelet
-i stedet kontrollerer er **enden**: nødvendig forankringslengde
-`L_req = N_G/q_Rd` (N_G fra biaksiell bøyning, `M_etter`), mot den innlagte
-lengden `L`, med advarsel når `L_req > L`. Kontrollen er en
-middelverdibetraktning — Volkersen-toppen i skjøteenden kommer i tillegg, og
-er det som faktisk utløser avskalling i et limt skjøteende.
+kraft sett fra to sider, og `q_V` ER forankringen av bøyekraften; momentet
+gir derfor ikke et eget ledd i `q_tot` ved siden av `q_V` — det ville telt
+samme kraft to ganger.
+
+Panelet regnet tidligere `L_req = N_G/q_Rd`, som forutsetter at brukeren
+allerede kjenner skjøtens kapasitet — men det er nettopp den man er her for å
+**finne**. Snudd: brukeren oppgir tilgjengelig forankringslengde `L` (samme
+`L` som resten av fanen) og et **antall** forbindere `n` over skjøten — bare
+et tall, ikke rader × senteravstand eller kantavstander; det er for spesifikt
+for dette verktøyet, og brukeren regner selv ut hvordan de plasseres. To
+UAVHENGIGE kriterier styrer, aldri lagt sammen:
+
+```
+q_tot = q_V,tot + q_N          (den lokale skjærstrømmen, se over — momentets virkning ligger allerede her)
+q_req = N_G / L                (middelverdien N_G — fra biaksiell bøyning, `axialInGroup` — krever innført over HELE L)
+q_gov = max(q_tot, q_req)      (det største styrer)
+F_Ed  = q_gov · L / n          (nødvendig kraft per forbinder)
+```
+
+Dimensjonerende kapasitet `F_Rd` per forbinder er **valgfri**: fylt ut vises
+utnyttelsen `F_Ed/F_Rd`, tom vises bare `F_Ed` — det er den NORMALE
+tilstanden her, ikke et unntak, siden verktøyets jobb er å si hvor sterk
+forbindelsen må være. Kontrollen er fortsatt en middelverdibetraktning —
+Volkersen-toppen i skjøteenden kommer i tillegg, og er det som faktisk
+utløser avskalling i et limt skjøteende.
+
+Verktøyet sier **hvor sterk** forbindelsen må være, ikke **hvordan** den
+utføres: festemiddelvalg, kantavstander og materialspesifikke kontroller
+hører hjemme i andre verktøy, fordi de avhenger av materialer og forhold på
+stedet.
 
 Arbeidsflyten:
 
@@ -365,9 +395,11 @@ Arbeidsflyten:
    skiller. Rediger forbindelsestype, felter og heftbredde i skjøtelista.
 3. Legg inn lastene i fanen «Forsterkning» — `before` og (hvis relevant)
    `after`, samt forankringslengden `L`.
-4. Les av `q_før`, `q_etter`, `q_N`, `q_tot`, `τ`, forbinderkontrollen,
-   samvirkegraden og forankringskontrollen per skjøt, i skjøtekortet i fanen
-   — kraftsammendraget rett under lastene gir deg totalen først.
+4. Les av `q_før`, `q_etter`, `q_N`, `q_tot`, `τ`, forbinderkontrollen og
+   samvirkegraden i skjøtekortet, og — i «Forankring i enden» — oppgi antall
+   forbindere `n` for å få nødvendig kraft `F_Ed` per forbinder, med valgfri
+   `F_Rd` for utnyttelse. Kraftsammendraget rett under lastene gir deg
+   totalen først.
 
 Hver størrelse vises som **formel → innsatte tall → resultat med enhet**.
 
