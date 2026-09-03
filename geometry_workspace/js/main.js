@@ -9,6 +9,7 @@ import { Viewport } from './viewport.js';
 import { ToolController } from './tools.js';
 import { UI, fmtLen } from './ui.js';
 import { UnderlayManager, defaultPlacement } from './underlay.js';
+import { NumericInput } from './numeric-input.js';
 import { snapLabel } from './snapping.js';
 import { lengthLabel } from './units.js';
 
@@ -57,12 +58,42 @@ tools.onCalibrated = (payload) => ui.onCalibrationPicked(payload);
  * Avlesning av markørposisjon
  * ------------------------------------------------------------------ */
 
+/** Siste markørposisjon i lerretspiksler — tallfeltet dukker opp her. */
+let lastCursorPx = null;
+
 tools.onCursor = (p, type) => {
   const u = lengthLabel(store.state.unit);
   document.getElementById('cursor-readout').textContent = `x ${fmtLen(p[0])}   y ${fmtLen(p[1])}   ${u}`;
   const label = type === 'ortho' ? 'orto' : snapLabel(type);
   document.getElementById('snap-badge').textContent = label ? `snap: ${label.toLowerCase()}` : '';
+  lastCursorPx = viewport.worldToScreen(p[0], p[1]);
 };
+
+/* ------------------------------------------------------------------ *
+ * Tallinntasting (§2)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Feltet lever i lerretets overlegg, ikke i panelet. `main.js` sender
+ * tastetrykk hit FØR hurtigtastene, slik at «bare begynn å skrive» virker
+ * uten at noe verktøy vet om det.
+ */
+const numeric = new NumericInput({
+  host: host.parentElement || host,
+  getUnit: () => lengthLabel(store.state.unit),
+  getExpect: () => tools.expectedInput(),
+  getAnchor: () => lastCursorPx,
+  // Alt+siffer (snap/orto) har forrang, også midt i en inntasting
+  onSnapShortcut: (e) => ui.handleSnapShortcut(e),
+  onStatus: (msg) => ui.status(msg),
+  onCommit: (v) => {
+    const res = tools.applyNumeric(v);
+    if (res && res.msg) ui.status(res.msg);
+    scheduleRender();
+    return res;
+  },
+  onCancel: () => ui.status(tools.hint()),
+});
 
 /* ------------------------------------------------------------------ *
  * Beregning og oppdatering
@@ -111,16 +142,22 @@ store.subscribe(() => scheduleRender());
  * Hurtigtaster
  * ------------------------------------------------------------------ */
 
+/**
+ * Hurtigtaster for verktøy (§3). `M`, `C` og `R` er reservert til flytt, kopi
+ * og rotasjon — de tre kommandoene man bruker oftest — og tegneverktøyene har
+ * flyttet seg etter det: `B` boks (rektangel), `O` er rund (sirkel), `N`
+ * nullpunkt. Speiling har bevisst INGEN tast, bare verktøyknappen.
+ */
 const TOOL_KEYS = {
   v: 'select',
-  r: 'rect',
+  m: 'move',
+  c: 'copy',
+  r: 'rotate',
+  b: 'rect',
   s: 'shell',
   p: 'polygon',
-  c: 'circle',
-  o: 'reference',
-  m: 'move',
-  k: 'copy',
-  t: 'rotate',
+  o: 'circle',
+  n: 'reference',
   g: 'joint',
   x: 'splitline',
 };
@@ -143,6 +180,8 @@ window.addEventListener('keydown', (e) => {
   // et tallfelt mens en rotasjon pågår, skal ikke Esc måtte trykkes to ganger.
   if (e.key === 'Escape') {
     document.getElementById('help-overlay').classList.add('hidden');
+    document.getElementById('import-menu').classList.add('hidden');
+    document.getElementById('canvas-settings').classList.add('hidden');
     ui.closePopover();
     if (typing) e.target.blur();
     // Hva som var i gang må avgjøres FØR tools.keydown rydder det bort
@@ -179,6 +218,14 @@ window.addEventListener('keydown', (e) => {
       store.select(store.state.shapes.map((s) => s.id));
       return;
     }
+    return;
+  }
+
+  // Tallinntastingen får tasten FØR hurtigtastene (§2.4). Det er dette som
+  // gjør at sifrene, `-`, `.`, `,` og `d` ikke lenger kan utløse verktøybytte
+  // mens et verktøy venter på et punkt — feltet tar dem.
+  if (numeric.beginIfTypingKey(e)) {
+    e.preventDefault();
     return;
   }
 
@@ -239,6 +286,7 @@ window.__gw = {
   viewport,
   tools,
   ui,
+  numeric,
   analyze,
   shapes,
   emit(type, world, opts = {}) {

@@ -30,7 +30,8 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, aksialfordeling, skjærstrøm, forankring, Volkersen, forbinderkontroll (skrue/lim/sveis). Rene funksjoner, N og mm. Ingen DOM. |
 | `js/joints.js` | Skjøtelinjer: naboskap (`shapesTouch`), en kraftig nedskalert graf (kun til ΔN-ruting og advarsler), og halvplan-avskjæring for ES* (`halfPlaneParts`/`fullSectionParts`). Erstatter det slettede `interfaces.js`. Ingen DOM. |
 | `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen (resultater og de globale lastfeltene) |
-| `js/main.js` | Bootstrap og hurtigtaster |
+| `js/numeric-input.js` | CAD-aktig tallinntasting i lerretet: tilstandsmaskin + tolkning av `300 200` / `D 300 200` / `10,5 0`. Uavhengig av verktøyene. |
+| `js/main.js` | Bootstrap, hurtigtaster og ruting av tastetrykk til tallinntastingen |
 | `tests/reinforcement.test.mjs` | Fasit for mekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
 | `tests/joints.test.mjs` | Fasit for naboskap, grafen og halvplan-ES*. `node geometry_workspace/tests/joints.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
@@ -46,21 +47,91 @@ bevegelse snapper ikke mot seg selv:
 | Verktøy | Tast | Flyt |
 | --- | --- | --- |
 | Flytt | `M` | basispunkt → sluttpunkt |
-| Kopi | `K` | basispunkt → der kopien skal ligge. Verktøyet blir stående med samme basispunkt, så flere kopier kan settes etter hverandre. Menyen har «antall» for en rekke med jevn avstand. |
-| Roter | `T` | rotasjonssenter → referansepunkt for startvinkelen → sluttvinkel. `Shift` låser til 15°. |
-| Speil | — | to klikk definerer speilaksen; menyen velger om originalen beholdes |
+| Kopi | `C` | basispunkt → der kopien skal ligge. Verktøyet blir stående med samme basispunkt, så flere kopier kan settes etter hverandre. «Antall kopier» i alternativboksen gir en rekke med jevn avstand. |
+| Roter | `R` | rotasjonssenter → referansepunkt for startvinkelen → sluttvinkel. `Shift` låser til 15°. |
+| Speil | — | to klikk definerer speilaksen; alternativboksen velger om originalen beholdes. Ingen hurtigtast. |
 | Skjøt | `G` | to klikk langs skjøtelinja (se «Skjøter og forsterkning» under) |
 | Del med linje | `X` | to klikk for snittlinja; deler hver MARKERTE form linja krysser. Redigeringsverktøy, ikke en forutsetning for beregningen. |
+
+Alle virker på **utvalget**, og et utvalg kan inneholde **både former og
+skjøter** om hverandre: en skjøtelinje markeres ved å klikke den i lerretet
+(skjøter prioriteres foran former ved treff, siden linja er tynn), tas med i et
+marquee-vindu når begge endepunktene ligger inne, kan dras, får håndtak på
+endepunktene når den er markert, og slettes med `Del`.
 
 Hver kommando er **ett angresteg**. `Esc` er en kaskade der ett trykk alltid
 skal gi et rent utgangspunkt: står markøren i et tallfelt, forlates feltet; er
 en kommando i gang, avbrytes den og geometrien settes tilbake; ellers tømmes
-utvalget. Hjelpedialogen og verktøymenyen lukkes uansett, og steg 1 og 2 skjer i
-samme trykk. De samme kommandoene finnes som tallfelt i
-verktøymenyene og i «Plassering» i venstre panel, der de virker på hele utvalget
-under ett. «Sentrer utvalg i origo» og «Sentrer alt i origo» flytter
-nullpunktet med samme vektor, slik at referansemålene ikke endrer seg av
+utvalget. Hjelpedialogen og menyene lukkes uansett, og steg 1 og 2 skjer i
+samme trykk.
+
+«Sentrer utvalg i origo» og «Sentrer alt i origo» i «Plassering» flytter
+formene, **skjøtene** og nullpunktet med samme vektor, slik at geometrien og
+skjøtene ikke glir fra hverandre og referansemålene ikke endrer seg av
 flyttingen.
+
+## Tallinntasting
+
+Venter et verktøy på et punkt, åpner et tastetrykk på `0-9`, `-`, `.`, `,`,
+`d`/`D` eller `@` et lite felt ved markøren. `Enter` bekrefter. Feltet er en
+liten tilstandsmaskin i `js/numeric-input.js`, uavhengig av hvilket verktøy som
+er aktivt: `main.js` sender tastetrykket dit **før** hurtigtastene, så
+«bare begynn å skrive» virker uten at noe verktøy implementerer det.
+
+| Inntasting | Betyr |
+| --- | --- |
+| `300 200` | absolutt punkt (300, 200) i arbeidsenheten |
+| `D 300 200` | forskyvning Δx = 300, Δy = 200 fra forrige punkt |
+| `d300 200`, `@300 200` | det samme |
+| `10,5 0` | Δx = 10,5 — **komma er desimaltegn**, ikke skilletegn |
+
+Skilletegnet mellom x og y er **mellomrom eller `Tab`**. Både `.` og `,` godtas
+som desimaltegn. Under rotasjon er den siste inntastingen en **vinkel i grader**,
+for sirkelen en **radius**, og ellers et punkt.
+
+Den raskeste veien til en nøyaktig flytting: marker, `M`, `D 300 200`, `Enter`.
+Skrives forskyvningen **før** et basispunkt er satt, utføres den med én gang.
+Første `Esc` lukker feltet uten å avbryte kommandoen; neste avbryter kommandoen.
+`Alt`+siffer (snap/orto) har forrang og virker også midt i en inntasting.
+
+## Hurtigtaster
+
+| Tast | Verktøy |
+| --- | --- |
+| `V` | Velg |
+| `M` | Flytt |
+| `C` | Kopier |
+| `R` | Roter |
+| `B` | Rektangel (boks) |
+| `S` | Skall |
+| `P` | Polygon |
+| `O` | Sirkel |
+| `N` | Nullpunkt |
+| `G` | Skjøt |
+| `X` | Del med linje |
+| `F` | Zoom alt |
+| `F8` / `Alt+0` | Orto |
+| `Alt+1…6`, `Alt+9` | Snap |
+| `Del` | Slett markerte (former og skjøter) |
+| `Ctrl+D` | Dupliser |
+
+`M`, `C` og `R` er reservert til de tre kommandoene man bruker oftest, og
+tegneverktøyene har flyttet seg etter det. Speiling har bevisst ingen tast.
+
+## Panelene
+
+Venstre panel viser **tilstand og egenskaper** — det er ikke et kommandosenter.
+Der ligger verktøyraden, «Plassering» (de to sentreringsknappene),
+geometrilista, skjøtelista, og bildeunderlagets egenskaper når det finnes et
+bilde. Resten bor der man faktisk arbeider:
+
+- **Verktøyalternativer** (speilingens «behold originalen», kopiens «antall
+  kopier», skallets tykkelse) i en dempet boks nederst til venstre i lerretet,
+  synlig bare når det aktive verktøyet har alternativer.
+- **Rutenett, enhet og hva som tegnes** i tannhjulet ved snap-kontrollen nede
+  til høyre.
+- **Importer modell / importer bilde / tøm all geometri** i menyen bak
+  «Importer» i topplinja. `Ctrl+V` og fildropp på lerretet virker som før.
 
 ## Parametrisk redigering
 
