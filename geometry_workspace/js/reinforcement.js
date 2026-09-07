@@ -357,55 +357,20 @@ export function axialTransfer({ N, parts, groupIds }) {
  * `M_y`/`V_x` ved innlesing; `|q|` — som er det kapasitetskontrollen bruker —
  * er upåvirket.
  *
- * ------------------------------------------------------------------
- * UTLEDNING (kontrollert, ikke kopiert)
- * ------------------------------------------------------------------
- * Plane tverrsnitt, ren bøyning om tyngdepunktet ⟹ tøyningen er lineær og
- * uten konstantledd:
+ * UTLEDNINGEN står i `global-devspecs/geometry_workspace-design.md` §4.
+ * Kortversjonen, som er det man trenger for ikke å ødelegge noe her:
  *
- *      ε(x,y) = κ_x·y + κ_y·x ,      σ = E·ε
+ *      D = EI_x·EI_y − EI_xy²            (> 0 for ethvert ikke-degenerert
+ *                                         tverrsnitt, ved Cauchy–Schwarz)
+ *      q = [(V_y·EI_y − V_x·EI_xy)·ES*_x
+ *         + (V_x·EI_x − V_y·EI_xy)·ES*_y] / D
  *
- * Settes dette inn i definisjonene av M_x og M_y:
- *
- *      M_x = κ_x·EI_x  + κ_y·EI_xy
- *      M_y = κ_x·EI_xy + κ_y·EI_y
- *
- * altså [M_x; M_y] = [[EI_x, EI_xy],[EI_xy, EI_y]]·[κ_x; κ_y]. Matrisen er
- * symmetrisk; determinanten er
- *
- *      D = EI_x·EI_y − EI_xy²
- *
- * og inversen gir
- *
- *      κ_x = (M_x·EI_y − M_y·EI_xy)/D
- *      κ_y = (M_y·EI_x − M_x·EI_xy)/D
- *
- * D > 0 for ethvert fysisk tverrsnitt: Cauchy–Schwarz på indreproduktet
- * ⟨f,g⟩ = ∫E f g dA gir (∫E xy dA)² ≤ ∫E x² dA · ∫E y² dA, med likhet BARE
- * hvis x og y er lineært avhengige over tverrsnittet — altså hvis alt
- * materialet ligger på én rett linje gjennom tyngdepunktet. Da er
- * tverrsnittet degenerert, og vi svarer `valid: false` i stedet for å dele på
- * (nesten) null.
- *
- * Aksialkraften i en gruppe G (materialet på den ene siden av en skjøt):
- *
- *      N_G = ∫_G σ dA = κ_x·ES*_x + κ_y·ES*_y
- *      ES*_x = ∫_G E (y − y_c) dA ,   ES*_y = ∫_G E (x − x_c) dA
- *
- * Skjærstrømmen følger av q = dN_G/dz med dM_x/dz = V_y og dM_y/dz = V_x
- * (ES*_x og ES*_y er rene tverrsnittsstørrelser og deriveres ikke):
- *
- *      q = [(V_y·EI_y − V_x·EI_xy)·ES*_x + (V_x·EI_x − V_y·EI_xy)·ES*_y] / D
- *
- * KONTROLL, og grunnen til at den gamle veien måtte skrives om: er EI_xy = 0
- * blir D = EI_x·EI_y og uttrykket faller sammen til
- *
- *      q = V_y·ES*_x/EI_x + V_x·ES*_y/EI_y
- *
- * — nøyaktig de to uavhengige leddene den gamle koden brukte. Den gamle
- * formen var altså BARE gyldig for EI_xy = 0. Og det er nettopp EI_xy ≠ 0
- * §1 i planen skal advare om: uten denne omskrivingen ville verktøyet advart
- * om skjev bøyning og samtidig regnet som om den ikke fantes.
+ * ADVARSEL. Er EI_xy = 0 faller dette sammen til `q = V_y·ES*_x/EI_x +
+ * V_x·ES*_y/EI_y` — de to uavhengige leddene den gamle koden brukte. Den
+ * gamle formen var altså BARE gyldig for EI_xy = 0, og ga 58 % for lav
+ * skjærstrøm på et skjevt tverrsnitt (54,93 mot riktige 34,78 N/mm). Gå ikke
+ * tilbake til den: verktøyet ville da advart om skjev bøyning og samtidig
+ * regnet som om den ikke fantes.
  */
 
 /**

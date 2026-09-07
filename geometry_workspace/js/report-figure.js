@@ -52,8 +52,7 @@ export const PAPER = Object.freeze({ w: 174, h: 72 });
 
 /**
  * Romfordelingen i figuren. Tegneflaten er det som blir igjen når
- * målsettingen har fått sitt til venstre og under, og tegnforklaringen +
- * aksetriaden har fått sin kolonne til høyre (§7.5, punkt 3).
+ * tegnforklaringen har fått sin kolonne til høyre.
  *
  * Tegnforklaringen ligger i en egen høyrekolonne i stedet for å flyte oppå
  * tegningen nede til høyre. Det er den samme plasseringen visuelt, men den er
@@ -63,18 +62,18 @@ export const PAPER = Object.freeze({ w: 174, h: 72 });
 export const LAYOUT = Object.freeze({
   pad: 2.5, // luft mot papirkanten
   headerH: 5, // stripa øverst med målestokkteksten
-  dimLeft: 12, // reservert til den loddrette målelinja
-  dimBottom: 12, // reservert til den vannrette målelinja
+  marginLeft: 3, // luft mot venstre kant
+  marginBottom: 3, // luft mot nedre kant
   gap: 2.5, // luft mellom tegneflaten og høyrekolonnen
-  rightW: 44, // høyrekolonnen: aksetriade + tegnforklaring
+  rightW: 44, // høyrekolonnen: tegnforklaringen
 });
 
 /** Tegneflaten, utledet av `LAYOUT`. `x`/`y` er øvre venstre hjørne. */
 export const DRAW_BOX = Object.freeze({
-  x: LAYOUT.pad + LAYOUT.dimLeft, //                     14.5
+  x: LAYOUT.pad + LAYOUT.marginLeft, //                     5.5
   y: LAYOUT.pad + LAYOUT.headerH, //                      7.5
-  w: PAPER.w - LAYOUT.pad - LAYOUT.rightW - LAYOUT.gap - (LAYOUT.pad + LAYOUT.dimLeft), // 110.5
-  h: PAPER.h - LAYOUT.pad - LAYOUT.dimBottom - (LAYOUT.pad + LAYOUT.headerH), //            73
+  w: PAPER.w - LAYOUT.pad - LAYOUT.rightW - LAYOUT.gap - (LAYOUT.pad + LAYOUT.marginLeft), // 119.5
+  h: PAPER.h - LAYOUT.pad - LAYOUT.marginBottom - (LAYOUT.pad + LAYOUT.headerH), //          59
 });
 
 /** Målestokkene en tegning får lov å ha. Samme liste som §7.4. */
@@ -206,24 +205,6 @@ function pointInRing(pt, ring) {
     if (hits) inside = !inside;
   }
   return inside;
-}
-
-/** Liang–Barsky: hvor langs `p + t·d` linja ligger inne i boksen. */
-function clipRay(p, d, box) {
-  const P = [-d[0], d[0], -d[1], d[1]];
-  const Q = [p[0] - box.x, box.x + box.w - p[0], p[1] - box.y, box.y + box.h - p[1]];
-  let t0 = -Infinity;
-  let t1 = Infinity;
-  for (let i = 0; i < 4; i++) {
-    if (Math.abs(P[i]) < 1e-12) {
-      if (Q[i] < 0) return null;
-    } else {
-      const r = Q[i] / P[i];
-      if (P[i] < 0) t0 = Math.max(t0, r);
-      else t1 = Math.min(t1, r);
-    }
-  }
-  return t0 > t1 ? null : [t0, t1];
 }
 
 /* ================================================================== *
@@ -422,76 +403,6 @@ function line(x1, y1, x2, y2, stroke, width, dash = null) {
   return `<line x1="${n3(x1)}" y1="${n3(y1)}" x2="${n3(x2)}" y2="${n3(y2)}" stroke="${stroke}" stroke-width="${n3(width)}"${d} />`;
 }
 
-/** Byggmesterstrek: en 45°-skråstrek i enden av en målelinje, ikke en pil. */
-function tickSlash(x, y, len, stroke) {
-  const h = len / 2;
-  return line(x - h, y + h, x + h, y - h, stroke, 0.2);
-}
-
-/* ------------------------------------------------------------------ *
- * Målsetting (§7.4, punkt 6)
- * ------------------------------------------------------------------ */
-
-function dimensions(shapeBounds, toPaper) {
-  if (!shapeBounds) return '';
-  const w = shapeBounds.maxX - shapeBounds.minX;
-  const h = shapeBounds.maxY - shapeBounds.minY;
-  const p1 = toPaper([shapeBounds.minX, shapeBounds.minY]);
-  const p2 = toPaper([shapeBounds.maxX, shapeBounds.maxY]);
-  const left = Math.min(p1[0], p2[0]);
-  const right = Math.max(p1[0], p2[0]);
-  const top = Math.min(p1[1], p2[1]);
-  const bottom = Math.max(p1[1], p2[1]);
-
-  // Målelinjene legges 8 mm utenfor konturen — ikke ytterst i det reserverte
-  // båndet. Med et smalt tverrsnitt sentrert i tegneflaten ville en fast
-  // plassering gitt 40 mm lange hjelpelinjer ut i ingenting. Båndene (12 mm
-  // nede, 12 mm til venstre) er der som GARANTI for at målelinja får plass,
-  // ikke som dens faste plass.
-  const yDim = Math.min(bottom + 8, PAPER.h - LAYOUT.pad - 3.5);
-  const xDim = Math.max(left - 8, LAYOUT.pad + 3.5);
-  const out = [];
-
-  if (w > 1e-9) {
-    out.push(line(left, bottom + 1, left, yDim + 1.6, INK_SOFT, 0.15)); // hjelpelinje
-    out.push(line(right, bottom + 1, right, yDim + 1.6, INK_SOFT, 0.15));
-    out.push(line(left, yDim, right, yDim, INK, 0.2));
-    out.push(tickSlash(left, yDim, 2, INK));
-    out.push(tickSlash(right, yDim, 2, INK));
-    out.push(textEl((left + right) / 2, yDim - 1.1, fmtMm(w), { size: 2.4, anchor: 'middle' }));
-  }
-  if (h > 1e-9) {
-    out.push(line(left - 1, top, xDim - 1.6, top, INK_SOFT, 0.15));
-    out.push(line(left - 1, bottom, xDim - 1.6, bottom, INK_SOFT, 0.15));
-    out.push(line(xDim, top, xDim, bottom, INK, 0.2));
-    out.push(tickSlash(xDim, top, 2, INK));
-    out.push(tickSlash(xDim, bottom, 2, INK));
-    out.push(textEl(xDim - 1.1, (top + bottom) / 2, fmtMm(h), { size: 2.4, anchor: 'middle', rotate: -90 }));
-  }
-  return `<g id="fig-dim">${out.join('')}</g>`;
-}
-
-/* ------------------------------------------------------------------ *
- * Aksetriade (§7.4, punkt 7) — samme konvensjon som `axisConventionHtml()`
- * ------------------------------------------------------------------ */
-
-function triad(cx, cy) {
-  const L = 8;
-  const out = [];
-  out.push(line(cx, cy, cx + L, cy, INK, 0.25));
-  out.push(`<path d="M${n3(cx + L + 1.4)},${n3(cy)}L${n3(cx + L - 0.6)},${n3(cy - 0.9)}L${n3(cx + L - 0.6)},${n3(cy + 0.9)}Z" fill="${INK}" />`);
-  out.push(textEl(cx + L + 2.2, cy + 1, 'x', { size: 2.6, style: 'italic' }));
-
-  out.push(line(cx, cy, cx, cy - L, INK, 0.25));
-  out.push(`<path d="M${n3(cx)},${n3(cy - L - 1.4)}L${n3(cx - 0.9)},${n3(cy - L + 0.6)}L${n3(cx + 0.9)},${n3(cy - L + 0.6)}Z" fill="${INK}" />`);
-  out.push(textEl(cx + 0.9, cy - L - 1.8, 'y', { size: 2.6, style: 'italic' }));
-
-  out.push(`<circle cx="${n3(cx)}" cy="${n3(cy)}" r="1.5" fill="#ffffff" stroke="${INK}" stroke-width="0.25" />`);
-  out.push(`<circle cx="${n3(cx)}" cy="${n3(cy)}" r="0.45" fill="${INK}" />`);
-  out.push(textEl(cx - 2.4, cy + 3.6, 'z ut av planet', { size: 2, fill: INK_SOFT }));
-  return `<g id="fig-triad">${out.join('')}</g>`;
-}
-
 /* ------------------------------------------------------------------ *
  * Tegnforklaring (§7.4, punkt 8)
  * ------------------------------------------------------------------ */
@@ -630,34 +541,6 @@ export function buildFigureSvg(model) {
   });
   body.push(`<g id="fig-parts">${parts.join('')}</g>`);
 
-  /* ---- 5. Hovedakser gjennom det sammensatte tyngdepunktet ---- */
-  if (p.tpAfter && p.theta !== null) {
-    const c = toPaper(p.tpAfter);
-    const axisSvg = [];
-    const label = (dir, t1, txt) => {
-      const x = c[0] + dir[0] * t1;
-      const y = c[1] + dir[1] * t1;
-      const anchor = dir[0] > 0.2 ? 'end' : dir[0] < -0.2 ? 'start' : 'middle';
-      return textEl(x - dir[0] * 1.2, y - dir[1] * 1.2 - 0.6, txt, { size: 2.2, anchor, fill: INK_SOFT });
-    };
-    // y snus på papiret, derfor −sin i y-komponenten.
-    const dirs = [
-      { d: [Math.cos(p.theta), -Math.sin(p.theta)], txt: '1–1 (EI₁)' },
-      { d: [-Math.sin(p.theta), -Math.cos(p.theta)], txt: '2–2 (EI₂)' },
-    ];
-    for (const a of dirs) {
-      const t = clipRay(c, a.d, DRAW_BOX);
-      if (!t) continue;
-      const x1 = c[0] + a.d[0] * t[0];
-      const y1 = c[1] + a.d[1] * t[0];
-      const x2 = c[0] + a.d[0] * t[1];
-      const y2 = c[1] + a.d[1] * t[1];
-      axisSvg.push(line(x1, y1, x2, y2, INK_SOFT, 0.2, '4 1 0.6 1'));
-      axisSvg.push(label(a.d, t[1] - 0.5, a.txt));
-    }
-    body.push(`<g id="fig-axes">${axisSvg.join('')}</g>`);
-  }
-
   /* ---- 6. Tyngdepunkt før og etter ---- */
   const tpSvg = [];
   if (p.tpAfter) {
@@ -670,17 +553,6 @@ export function buildFigureSvg(model) {
     tpSvg.push(
       textEl(cx + 3, cy - 0.6, `TP (${fmtMm(p.tpAfter[0])}; ${fmtMm(p.tpAfter[1])})`, { size: 2.2, weight: '600' })
     );
-  }
-  if (p.tpBefore && p.tpAfter) {
-    const a = toPaper(p.tpBefore);
-    const b = toPaper(p.tpAfter);
-    // Under 0,5 mm på papiret overlapper de to merkene og gir bare rot (§7.4).
-    if (Math.hypot(a[0] - b[0], a[1] - b[1]) > 0.5) {
-      tpSvg.push(`<circle cx="${n3(a[0])}" cy="${n3(a[1])}" r="1.5" fill="none" stroke="${INK_SOFT}" stroke-width="0.25" />`);
-      tpSvg.push(line(a[0] - 2.2, a[1], a[0] + 2.2, a[1], INK_SOFT, 0.18));
-      tpSvg.push(line(a[0], a[1] - 2.2, a[0], a[1] + 2.2, INK_SOFT, 0.18));
-      tpSvg.push(textEl(a[0] + 2.7, a[1] + 2.6, 'TP₀', { size: 2.2, fill: INK_SOFT }));
-    }
   }
   if (tpSvg.length) body.push(`<g id="fig-centroid">${tpSvg.join('')}</g>`);
 
@@ -757,16 +629,11 @@ export function buildFigureSvg(model) {
     }
   }
 
-  /* ---- 9. Målsetting ---- */
-  body.push(dimensions(shapeBounds, toPaper));
+  /* ---- 9. Tegnforklaring ---- */
+  body.push(legend(p.solids, PAPER.w - LAYOUT.pad - LAYOUT.rightW,
+                   PAPER.h - LAYOUT.pad, LAYOUT.rightW).svg);
 
-  /* ---- 10. Høyrekolonnen: tegnforklaring nederst, aksetriade over ---- */
-  const colX = PAPER.w - LAYOUT.pad - LAYOUT.rightW;
-  const lg = legend(p.solids, colX, PAPER.h - LAYOUT.pad, LAYOUT.rightW);
-  body.push(lg.svg);
-  body.push(triad(colX + 11, Math.max(lg.top - 5, LAYOUT.pad + 14)));
-
-  /* ---- 11. Målestokk ---- */
+  /* ---- 10. Målestokk ---- */
   const scaleTxt = `Målestokk 1:${fmt(S, Number.isInteger(S) ? 0 : 1)} · mål i mm`;
   body.push(textEl(LAYOUT.pad, LAYOUT.pad + 2.6, scaleTxt, { size: 2.5, weight: '600' }));
 

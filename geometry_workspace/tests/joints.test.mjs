@@ -500,6 +500,33 @@ test('10. Loddrett snitt i samme rektangel (halv bredde), V_x: håndregnet fasit
  * Kjøring
  * ================================================================== */
 
+test('14. Heftbredden er linjas snitt med tverrsnittet, ikke lengden av tegnet linje', () => {
+  // Halvplanmetoden inviterer til å tegne skjøtelinja med overheng, for å være
+  // sikker på at snittet går helt gjennom. Brukte man den TEGNEDE lengden som
+  // heftbredde, ble τ = q/b for lav — alltid til gunst for konstruksjonen, og
+  // uten at noe varslet.
+  const R = (x, y, w, h) => ({ id: `r${x}_${y}`, stage: 'existing',
+    material: { E: E_ALL }, points: rectPoints(x, y, w, h) });
+  const seg = (a, b) => ({ a, b });
+
+  // Bjelke 100 bred, linja tegnet fra x = -20 til 120 => 20 mm overheng hver side.
+  close('overheng klippes bort', jt.jointContactLength(seg([-20, 300], [120, 300]),
+    [R(0, 0, 100, 300), R(0, 300, 100, 50)]), 100);
+  close('uten overheng uendret', jt.jointContactLength(seg([0, 300], [100, 300]),
+    [R(0, 0, 100, 300), R(0, 300, 100, 50)]), 100);
+
+  // To flenser med 80 mm luft mellom: bare materialet teller (2 x 60 = 120).
+  close('gapet teller ikke med', jt.jointContactLength(seg([-10, 100], [210, 100]),
+    [R(0, 0, 60, 200), R(140, 0, 60, 200)]), 120);
+
+  // Skra linje gjennom et 100 x 100-kvadrat => diagonalen.
+  close('skra linje gir diagonalen', jt.jointContactLength(seg([-50, -50], [150, 150]),
+    [R(0, 0, 100, 100)]), Math.hypot(100, 100));
+
+  close('linje utenfor geometrien gir 0', jt.jointContactLength(seg([0, 999], [100, 999]),
+    [R(0, 0, 100, 100)]), 0);
+});
+
 let failures = 0;
 console.log('\njoints.test.mjs — skjøtelogikk (naboskap, halvplan, grafen)\n');
 for (const t of tests) {
