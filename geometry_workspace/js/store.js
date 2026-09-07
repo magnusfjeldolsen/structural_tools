@@ -9,6 +9,7 @@ import { boundsOfShapes, translatePoints, multiProps, pointsToMulti, splitPoints
 import { conversionFactor, unitInfo } from './units.js';
 import { SNAP_KEYS } from './snapping.js';
 import { sidesOfJoint } from './joints.js';
+import { materialByName } from './materials.js';
 
 const STORAGE_KEY = 'geometry_workspace_v1';
 const MAX_HISTORY = 60;
@@ -74,8 +75,55 @@ export function defaultConnector() {
  * MERK: dette er en innebygd standard slik at datamodellen står støtt alene.
  * Presetlista og materialvelgeren hører hjemme i `js/materials.js` — agent C
  * kobler dette feltet mot den modulen.
+ *
+ * `shape.material` kan i tillegg bære et VALGFRITT `rho` [kg/m³] —
+ * middeldensiteten `ρ_m` som EC5 tabell 7.1 trenger for skruede skjøter.
+ * Feltet er bevisst valgfritt og gir INGEN versjonsbump: fravær betyr «ikke
+ * oppgitt», som er nøyaktig det alle eksisterende modeller allerede sier.
+ * S355 har ingen `rho`, fordi EC5-formelen ikke gjelder stål.
  */
 export const DEFAULT_MATERIAL = { name: 'S355', E: 210000 };
+
+/**
+ * Normaliserer et `material`-objekt fra en lagret modell eller fra UI-et.
+ *
+ * `rho` tas bare med når den faktisk er et positivt, endelig tall. Fella her
+ * er `Number(null) === 0` og `Number('') === 0`: en tom eller manglende verdi
+ * ville ellers blitt lagret som densiteten 0, som verken er «ikke oppgitt»
+ * eller et brukbart tall — `meanDensity()` ville avvist den som ugyldig, men
+ * UI-et ville vist «0 kg/m³» som om noen hadde ment det. Derfor
+ * `Number.isFinite` + `> 0`, og feltet utelates helt ellers.
+ *
+ * NAVNET SLÅS OPP NÅR TALLET MANGLER — og hvorfor det må gjøres
+ * ------------------------------------------------------------
+ * Mangler `E`, hentes den fra presetet navnet peker på, og først hvis navnet
+ * er ukjent brukes `DEFAULT_MATERIAL`. Det samme for `rho`.
+ *
+ * Uten oppslaget fikk `{ name: 'C24' }` stålets `E = 210000` bakt fast på seg.
+ * Og siden en egen `E` med vilje vinner over presetet ved lesing (`materialE()`
+ * — et fritt inntastet E-felt skal ikke overstyres av navnet det tilfeldigvis
+ * ble lagret med), ble det gale tallet stående for godt. Utslaget er ikke
+ * subtilt: en C24-bjelke regnes 19 ganger for stiv, hele kraftfordelingen blir
+ * feil, og nedtrekkslista viser fortsatt «C24».
+ *
+ * Utløseren er ikke hypotetisk: en importert modell som navngir materialet men
+ * mangler `E` — håndredigert JSON, eller en fil laget før `E` ble persistert —
+ * treffer nøyaktig dette. Ingenting hadde varslet.
+ */
+function normalizeMaterial(mat) {
+  const name = mat && mat.name ? String(mat.name) : DEFAULT_MATERIAL.name;
+  const preset = materialByName(name);
+  const out = {
+    name,
+    E: mat && Number.isFinite(mat.E) && mat.E > 0
+      ? mat.E
+      : (preset ? preset.E : DEFAULT_MATERIAL.E),
+  };
+  const rho = mat ? Number(mat.rho) : NaN;
+  if (Number.isFinite(rho) && rho > 0) out.rho = rho;
+  else if (preset && Number.isFinite(preset.rho) && preset.rho > 0) out.rho = preset.rho;
+  return out;
+}
 
 /**
  * Standard lastdata (v4, §1 i samvirkeplanen — biaksiell last). To
@@ -216,14 +264,10 @@ export function autoJointName(a, b, shapes) {
  * for tyngdepunktsberegningen — de to er uavhengige.
  */
 function migrateShape(s) {
-  const mat = s && s.material;
   return {
     ...s,
     stage: s && s.stage === 'new' ? 'new' : 'existing',
-    material: {
-      name: mat && mat.name ? String(mat.name) : DEFAULT_MATERIAL.name,
-      E: mat && Number.isFinite(mat.E) ? mat.E : DEFAULT_MATERIAL.E,
-    },
+    material: normalizeMaterial(s && s.material),
   };
 }
 
@@ -445,9 +489,7 @@ export class Store {
       // Nytt tegnet materiale hører som standard til det eksisterende
       // tverrsnittet; brukeren merker selv av hva som er ny del.
       stage: opts.stage === 'new' ? 'new' : 'existing',
-      material: opts.material
-        ? { name: opts.material.name, E: opts.material.E }
-        : { ...DEFAULT_MATERIAL },
+      material: opts.material ? normalizeMaterial(opts.material) : { ...DEFAULT_MATERIAL },
     };
     this.mutate((st) => {
       st.shapes.unshift(shape); // nyeste øverst = høyest prioritet

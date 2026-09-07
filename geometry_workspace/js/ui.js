@@ -30,7 +30,7 @@ import {
 } from './shapes.js';
 import { SNAP_TYPES, SNAP_ALL, ORTHO } from './snapping.js';
 import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel } from './units.js';
-import { MATERIALS, materialByName, materialE } from './materials.js';
+import { MATERIALS, materialByName, materialE, materialRho } from './materials.js';
 import { JOINT_COLOR } from './store.js';
 import { sidesOfJoint, buildGraph, jointGroup, overConstrained } from './joints.js';
 import { ReinforcementPanel, CONNECTOR_LABELS, axisConventionHtml } from './reinforcement-ui.js';
@@ -1316,6 +1316,12 @@ export class UI {
    * stiplet kontur i lerretet), og `material.E` er E-modulen mekanikken bruker.
    * Vektfaktoren over i panelet er noe helt annet, og det står det uttrykkelig
    * i hjelpeteksten her — det er en forveksling som ville gitt gale tall.
+   *
+   * ρ_m-feltet vises BARE når det finnes en densitet å vise (presetets eller
+   * en brukeren selv har satt). Stål og betong har ingen `rho`, og et tomt
+   * densitetsfelt på en stålplate ville invitert til å fylle det ut — inn i en
+   * EC5-formel som ikke gjelder stål. Feltet dukker altså opp når det betyr
+   * noe, og er borte ellers.
    */
   _stageHtml(sh) {
     const mat = sh.material || {};
@@ -1324,6 +1330,23 @@ export class UI {
     // Er E endret bort fra presetet, skal det stå — ellers ville nedtrekket
     // gitt inntrykk av at det er presetets verdi som gjelder.
     const custom = preset ? Math.abs(preset.E - E) > 1e-9 : true;
+    const rho = materialRho(mat);
+    const ownRho = Number.isFinite(mat.rho) && mat.rho > 0;
+    const showRho = rho !== undefined || ownRho;
+    const customRho = ownRho && preset && Number.isFinite(preset.rho) ? Math.abs(preset.rho - mat.rho) > 1e-9 : ownRho;
+    const rhoField = showRho
+      ? `
+        <div>
+          <label class="field-label" for="ed-rho-${sh.id}">ρ_m [kg/m³]</label>
+          <input id="ed-rho-${sh.id}" data-ed="rho" data-id="${sh.id}" data-focus-key="ed-rho-${sh.id}"
+                 type="number" step="10" min="0" value="${rho === undefined ? '' : round(rho)}" />
+          <p class="text-[10px] text-slate-500 mt-1 leading-snug">
+            ${customRho ? '<span class="text-amber-300">ρ_m er satt manuelt</span> og overstyrer presetet. ' : ''}Middeldensiteten
+            ρ_mean (ikke ρ_k). Brukes av EC5 tabell 7.1 for skruede skjøter — en skjøt uten eget ρ-felt
+            henter den herfra.
+          </p>
+        </div>`
+      : '';
     const groups = [];
     for (const m of MATERIALS) {
       if (!groups.length || groups[groups.length - 1].name !== m.group) {
@@ -1367,6 +1390,7 @@ export class UI {
             bare i fanen «Forsterkning». Vektfaktoren over gjelder bare tyngdepunktet — de to er uavhengige.
           </p>
         </div>
+        ${rhoField}
       </div>`;
   }
 
@@ -1522,17 +1546,43 @@ export class UI {
         input.addEventListener('change', (e) => {
           const preset = materialByName(e.target.value);
           if (!preset) return;
-          // Presetet setter BÅDE navn og E, slik at nedtrekket alltid stemmer
-          // med tallet ved siden av.
-          this.store.updateShape(id, { material: { name: preset.name, E: preset.E } });
+          // Presetet setter BÅDE navn, E og ρ_m, slik at nedtrekket alltid
+          // stemmer med tallene ved siden av. Har presetet ingen densitet
+          // (stål, betong), forsvinner feltet — det er riktig: EC5 tabell 7.1
+          // gjelder trevirke, og en gammel treverdi skal ikke bli hengende
+          // igjen på en stålplate.
+          const mat = { name: preset.name, E: preset.E };
+          if (Number.isFinite(preset.rho) && preset.rho > 0) mat.rho = preset.rho;
+          this.store.updateShape(id, { material: mat });
         });
       } else if (key === 'E') {
         input.addEventListener('change', (e) => {
           const v = Number(e.target.value);
           if (!Number.isFinite(v) || v <= 0) return this.toast('E må være et positivt tall i N/mm².');
           const cur = this.store.getShape(id);
-          const name = (cur && cur.material && cur.material.name) || '';
-          this.store.updateShape(id, { material: { name, E: v } });
+          const curMat = (cur && cur.material) || {};
+          // Behold en egen ρ_m: å endre E er ikke å endre treslag, og en
+          // densitet brukeren har skrevet inn skal ikke forsvinne på veien.
+          const mat = { name: curMat.name || '', E: v };
+          if (Number.isFinite(curMat.rho) && curMat.rho > 0) mat.rho = curMat.rho;
+          this.store.updateShape(id, { material: mat });
+        });
+      } else if (key === 'rho') {
+        input.addEventListener('change', (e) => {
+          const cur = this.store.getShape(id);
+          const curMat = (cur && cur.material) || {};
+          const mat = { name: curMat.name || '', E: Number.isFinite(curMat.E) ? curMat.E : materialE(curMat) };
+          const txt = String(e.target.value).trim();
+          if (txt === '') {
+            // Tomt felt = «ikke oppgitt». Da faller formen tilbake på
+            // presetets ρ_m om det finnes — feltet tømmes ikke til null.
+            this.store.updateShape(id, { material: mat });
+            return;
+          }
+          const v = Number(txt);
+          if (!Number.isFinite(v) || v <= 0) return this.toast('ρ_m må være et positivt tall i kg/m³.');
+          mat.rho = v;
+          this.store.updateShape(id, { material: mat });
         });
       }
     });
