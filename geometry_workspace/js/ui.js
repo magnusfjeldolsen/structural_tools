@@ -16,9 +16,26 @@ import {
   translatePoints,
   rotatePoints,
   mirrorPoints,
+  centroidOfPoints,
+  centroidOfShapes,
+  neighborTolerance,
 } from './geometry.js';
+import {
+  describeShape,
+  rectPointsFromParams,
+  rectAnchorPoint,
+  circlePointsFromParams,
+  RECT_ANCHORS,
+  isRectAnchor,
+} from './shapes.js';
 import { SNAP_TYPES, SNAP_ALL, ORTHO } from './snapping.js';
 import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel } from './units.js';
+import { MATERIALS, materialByName, materialE, materialRho } from './materials.js';
+import { JOINT_COLOR } from './store.js';
+import { sidesOfJoint, buildGraph, jointGroup, overConstrained } from './joints.js';
+import { ReinforcementPanel, CONNECTOR_LABELS, axisConventionHtml } from './reinforcement-ui.js';
+import { SYSTEM_FACTORS } from './reinforcement.js';
+import { EC5_FASTENERS, EC5_CONTACTS, STATES, ec5Fastener } from './connection-stiffness.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -99,6 +116,19 @@ const TOOL_TITLES = {
   polygon: 'Polygon',
   circle: 'Sirkel',
   reference: 'Nullpunkt',
+  move: 'Flytt utvalg',
+  copy: 'Kopier utvalg',
+  rotate: 'Roter utvalg',
+  mirror: 'Speil utvalg',
+  joint: 'Skjøt mellom deler av tverrsnittet',
+  splitline: 'Del med linje',
+};
+
+/** Overskriften på parameterseksjonen, etter hva formen viser seg å være. */
+const PARAM_TITLES = {
+  rect: 'Rektangel — b, h og rotasjon',
+  circle: 'Sirkel — senter og radius',
+  shell: 'Skall — senterlinje og tykkelse',
 };
 
 const field = (key, label, value, step = '') =>
@@ -118,25 +148,76 @@ export class UI {
     this.tools = tools;
     this.underlayManager = opts.underlayManager || null;
     this.analysis = null;
+    /** Aktiv fane i høyre panel: 'section' (tyngdepunkt) eller 'reinforcement'. */
+    this.tab = 'section';
+    /** Forsterkningsfanen bor i sin egen modul; ui.js er stor nok fra før. */
+    this.reinforcement = new ReinforcementPanel(store, {
+      toast: (m) => this.toast(m),
+      onCopy: () => this._copyResult(),
+    });
     /** Pågående to-punkts kalibrering av bildeunderlaget. */
     this.calibration = null;
 
     /** Åpne elementer i geometrilista. */
     this.expanded = new Set();
+    /** Åpne elementer i skjøtelista (§5 i interaksjonsplanen). */
+    this.jointExpanded = new Set();
+    /** Skjøten musepekeren hviler over i lerretet — for å fremheve raden i lista (§6.2 «omvendt»). */
+    this._canvasHoverJoint = null;
     /** Åpne underseksjoner, nøkler som `${id}:coords`. */
     this.sections = new Set();
+    /** Formene som viser koordinatene relativt til sitt eget tyngdepunkt. */
+    this.relCoords = new Set();
+    /** Valgt ankerpunkt per form i det parametriske panelet. */
+    this.anchors = new Map();
     this._lastSelectionKey = '';
 
-    /** Sist innlagte tall per verktøy, så menyene husker hva du skrev. */
+    /**
+     * Sist innlagte tall per verktøy, så menyene og alternativboksen husker hva
+     * du skrev. `copy.n`, `mirror.keep` og `shell.t` speiles over i
+     * `tools.options` av `_syncToolOptions`.
+     */
     this.form = {
       rect: { x: 0, y: 0, b: 1000, h: 300, anchor: 'corner' },
       shell: { x1: 0, y1: 0, x2: 0, y2: 3000, t: 250 },
       circle: { x: 0, y: 0, r: 200 },
       polygon: { text: '' },
       reference: { x: 0, y: 0 },
+      copy: { n: 1 },
+      rotate: { center: 'pick' },
+      mirror: { keep: true },
+    };
+
+    // Hover i lerretet over en skjøt skal fremheve raden i skjøtelista, og
+    // omvendt (§6.2). `tools.js` sender treff hit via denne haken; den andre
+    // veien (klikk i lista → fremhevet i lerretet) skjer i `_bindJointEditors`.
+    this.tools.onJointHover = (id) => {
+      if (this._canvasHoverJoint === id) return;
+      this._canvasHoverJoint = id;
+      this._renderJointList();
+    };
+
+    // Klikk på en skjøtelinje i lerretet åpner raden i skjøtelista, slik at et
+    // klikk på en form åpner formens egenskaper (§1: den andre veien av over).
+    this.tools.onJointPicked = (id) => {
+      this._activeJointId = id;
+      this.jointExpanded = new Set([id]);
+      this._scrollTo = id;
     };
 
     this._bind();
+    this._syncToolOptions();
+  }
+
+  /**
+   * Speiler menyvalgene over i verktøyene, slik at antall kopier, «behold
+   * original» og valgt rotasjonssenter gjelder også når kommandoen kjøres
+   * ved å klikke i lerretet.
+   */
+  _syncToolOptions() {
+    this.tools.options.copies = Math.max(1, Math.round(this.form.copy.n) || 1);
+    this.tools.options.keepOriginal = !!this.form.mirror.keep;
+    this.tools.options.rotateCenter = this.form.rotate.center;
   }
 
   /** Tykkelsen tegneverktøyet for skall skal bruke. */
@@ -218,15 +299,26 @@ export class UI {
       else this.tools.setTool(tool);
     });
 
-    // Lukk menyen ved klikk utenfor
+    // Lukk menyene ved klikk utenfor
     document.addEventListener('pointerdown', (e) => {
-      if (!this._popoverTool) return;
-      if (e.target.closest('#tool-popover') || e.target.closest('#tool-buttons')) return;
-      this.closePopover();
+      if (this._popoverTool && !e.target.closest('#tool-popover') && !e.target.closest('#tool-buttons')) {
+        this.closePopover();
+      }
+      if (!e.target.closest('#canvas-settings') && !e.target.closest('#btn-canvas-settings')) {
+        $('canvas-settings').classList.add('hidden');
+      }
+      if (!e.target.closest('#import-menu') && !e.target.closest('#btn-import')) {
+        $('import-menu').classList.add('hidden');
+      }
     });
 
     $('grid-step').addEventListener('change', (e) => st.setGrid({ step: Math.max(0, Number(e.target.value) || 0) }));
     $('chk-grid').addEventListener('change', (e) => st.setGrid({ visible: e.target.checked }));
+
+    // Tegneinnstillingene bor ved snap-kontrollen nede til høyre (§4.3)
+    $('btn-canvas-settings').addEventListener('click', () =>
+      $('canvas-settings').classList.toggle('hidden')
+    );
 
     $('unit-select').addEventListener('change', (e) => {
       const to = e.target.value;
@@ -243,7 +335,6 @@ export class UI {
       else if (btn.dataset.snap) this.toggleSnap(btn.dataset.snap);
     });
 
-    $('btn-image-pick').addEventListener('click', () => $('image-input').click());
     $('image-input').addEventListener('change', (e) => {
       const file = e.target.files && e.target.files[0];
       if (file && this.underlayManager) this.underlayManager.accept(file, file.name);
@@ -254,13 +345,6 @@ export class UI {
     $('chk-principal').addEventListener('change', (e) =>
       this.viewport.setOverlays({ showPrincipal: e.target.checked })
     );
-
-    $('btn-delete').addEventListener('click', () => this.deleteSelected());
-    $('btn-duplicate').addEventListener('click', () => this.duplicateSelected());
-    $('btn-clear').addEventListener('click', () => {
-      if (!st.state.shapes.length) return;
-      if (confirm('Fjerne all geometri?')) st.clear();
-    });
 
     $('mode-select').addEventListener('change', (e) => st.setMode(e.target.value));
     $('ref-x').addEventListener('change', (e) =>
@@ -281,8 +365,34 @@ export class UI {
     $('model-title').addEventListener('input', (e) => st.setTitle(e.target.value));
     $('btn-copy').addEventListener('click', () => this._copyResult());
 
+    $('result-tabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-tab]');
+      if (btn) this.setTab(btn.dataset.tab);
+    });
+
     $('btn-export').addEventListener('click', () => this._export());
-    $('btn-import').addEventListener('click', () => $('file-input').click());
+
+    // «Importer» er en meny (§4.4): modell, bildeunderlag og tømming. Ctrl+V
+    // og fildropp virker uendret — de går rett i UnderlayManager.
+    $('btn-import').addEventListener('click', (e) => {
+      e.stopPropagation();
+      $('import-menu').classList.toggle('hidden');
+    });
+    $('import-menu').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-imp]');
+      if (!btn) return;
+      $('import-menu').classList.add('hidden');
+      if (btn.dataset.imp === 'model') $('file-input').click();
+      else if (btn.dataset.imp === 'image') $('image-input').click();
+      else if (btn.dataset.imp === 'clear') {
+        if (!st.state.shapes.length && !st.state.joints.length) return this.toast('Det er ingen geometri å tømme.');
+        if (confirm('Fjerne all geometri og alle skjøter?')) {
+          st.clear();
+          this.expanded.clear();
+          this.jointExpanded.clear();
+        }
+      }
+    });
     $('file-input').addEventListener('change', (e) => this._import(e));
     $('btn-example').addEventListener('click', () => this.loadExample());
 
@@ -291,6 +401,11 @@ export class UI {
     $('help-overlay').addEventListener('click', (e) => {
       if (e.target === $('help-overlay')) $('help-overlay').classList.add('hidden');
     });
+
+    // §9.2 punkt 3: samme innhold som «Forsterkning»-fanens sammenleggbare
+    // seksjon, injisert her så figuren og tabellen ikke skrives to ganger.
+    const axisHelp = $('help-axis-convention');
+    if (axisHelp) axisHelp.innerHTML = axisConventionHtml();
   }
 
   /* ---------------- verktøymeny ---------------- */
@@ -299,6 +414,7 @@ export class UI {
   onToolChanged(tool) {
     if (tool === 'select') this.closePopover();
     else this.openPopover(tool);
+    this._renderToolOptions();
   }
 
   closePopover() {
@@ -388,7 +504,126 @@ export class UI {
           Eller klikk i lerretet. Alle avvik i resultatpanelet måles fra dette punktet.
         </p>`;
     }
+    // Flytt, kopi, roter og speil har INGEN meny lenger (§4.1/§4.2): punktene
+    // pekes ut eller skrives i lerretet, og alternativene ligger i den dempede
+    // boksen nederst til venstre.
+    if (tool === 'move' || tool === 'copy' || tool === 'rotate' || tool === 'mirror') return null;
+    if (tool === 'joint') {
+      const jn = this.store.state.joints.length;
+      return `
+        <p class="text-[11px] text-slate-500 leading-snug">
+          Klikk to punkt langs skjøtelinja — typisk der to deler møtes, eller langs et snitt du vil
+          kontrollere (geometrien trenger ikke være delt opp der; skjærstrømmen regnes fra halvplanet
+          linja definerer). Skjøten navnes automatisk etter delene den skiller.
+        </p>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          Former som berører eller overlapper hverandre uten en skjøt mellom seg, regnes som stivt
+          forbundet automatisk — du trenger bare tegne skjøten der forbindelsen faktisk er.
+        </p>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          ${jn ? `${jn} skjøt${jn === 1 ? '' : 'er'} lagt inn.` : 'Ingen skjøter ennå.'}
+          Rediger navn, forbindelsestype og heftbredde i skjøtelista under geometrilista.
+        </p>`;
+    }
+    if (tool === 'splitline') {
+      return `
+        <p class="text-[11px] text-slate-500 leading-snug">
+          Klikk to punkt for snittlinja. Hver <strong>markerte</strong> form linja krysser deles i to
+          (eller flere) langs den — former linja ikke krysser, eller som ikke er markert, står urørt.
+          Ett angresteg.
+        </p>
+        <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+          Rent redigeringsverktøy, ikke en forutsetning for beregningen: skjærstrømmen virker uendret
+          på en udelt, importert profil. Nytten er å kunne gi de to delene ulikt materiale eller
+          stadium, eller se bidragene hver for seg.
+        </p>`;
+    }
     return null;
+  }
+
+  /** Bytter fane i høyre panel. */
+  setTab(tab) {
+    this.tab = tab === 'reinforcement' ? 'reinforcement' : 'section';
+    this._renderTabs();
+  }
+
+  _renderTabs() {
+    const active = this.tab;
+    document.querySelectorAll('#result-tabs [data-tab]').forEach((btn) => {
+      btn.dataset.active = String(btn.dataset.tab === active);
+    });
+    $('tab-section').classList.toggle('hidden', active !== 'section');
+    $('tab-reinforcement').classList.toggle('hidden', active !== 'reinforcement');
+  }
+
+  /* ---------------- verktøyalternativer i lerretet (§4.2) ---------------- */
+
+  /**
+   * Den lille, dempede boksen nederst til venstre: alternativene som hører til
+   * det AKTIVE verktøyet, og ingenting annet. Har verktøyet ingen alternativer,
+   * er boksen skjult — den skal aldri stå tom og ta plass.
+   */
+  _renderToolOptions() {
+    const host = $('tool-options');
+    if (!host) return;
+    const tool = this.tools.tool;
+    const f = this.form;
+    const unit = lengthLabel(this.store.state.unit);
+    const n = this.store.state.selection.length;
+
+    const num = (key, label, value, attrs = '') => `
+      <div class="flex items-center gap-2">
+        <label class="text-[11px] text-slate-400 flex-1 leading-snug" for="to-${key}">${label}</label>
+        <input id="to-${key}" data-to="${key}" data-focus-key="to-${key}" type="number" ${attrs}
+               class="w-20 shrink-0" value="${value}" />
+      </div>`;
+
+    let body = '';
+    if (tool === 'mirror') {
+      body = `<label class="flex items-center gap-1.5 text-[11px] text-slate-300">
+                <input data-to="keep" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" ${f.mirror.keep ? 'checked' : ''} />
+                Behold originalen
+              </label>`;
+    } else if (tool === 'copy') {
+      body = num('copies', 'Antall kopier', f.copy.n, 'min="1" step="1"');
+    } else if (tool === 'shell') {
+      body = num('thickness', `Tykkelse [${unit}]`, f.shell.t, 'step="10" min="0"');
+    } else if (tool === 'rotate') {
+      body = `<p class="text-[11px] text-slate-500 leading-snug">
+                Shift låser til 15°. Skriv vinkelen i grader for et eksakt tall.
+              </p>`;
+    }
+
+    if (!body) {
+      host.classList.add('hidden');
+      host.innerHTML = '';
+      return;
+    }
+
+    const note =
+      tool === 'mirror' || tool === 'copy'
+        ? `<div class="text-[10px] ${n ? 'text-slate-500' : 'text-amber-300'} leading-snug">${
+            n ? `Virker på ${n} markert${n === 1 ? ' objekt' : 'e objekter'}.` : 'Ingenting er markert ennå.'
+          }</div>`
+        : '';
+
+    host.innerHTML = `
+      <div class="text-[10px] uppercase tracking-wide text-slate-500">${TOOL_TITLES[tool] || ''}</div>
+      ${body}
+      ${note}`;
+    host.classList.remove('hidden');
+
+    host.querySelectorAll('[data-to]').forEach((el) => {
+      const key = el.dataset.to;
+      const evt = el.type === 'checkbox' ? 'change' : 'change';
+      el.addEventListener(evt, (e) => {
+        if (key === 'keep') this.form.mirror.keep = e.target.checked;
+        else if (key === 'copies') this.form.copy.n = Math.max(1, Math.round(Number(e.target.value) || 1));
+        else if (key === 'thickness') this.form.shell.t = Math.abs(Number(e.target.value) || 0);
+        this._syncToolOptions();
+        this._renderToolOptions();
+      });
+    });
   }
 
   _bindPopover(tool) {
@@ -400,9 +635,13 @@ export class UI {
 
     const target = tool === 'polygon' ? this.form.polygon : this.form[tool];
     el.querySelectorAll('[data-form]').forEach((input) => {
-      input.addEventListener('input', (e) => {
+      const evt = input.type === 'checkbox' || input.tagName === 'SELECT' ? 'change' : 'input';
+      input.addEventListener(evt, (e) => {
         const key = e.target.dataset.form;
-        target[key] = e.target.type === 'number' ? Number(e.target.value) || 0 : e.target.value;
+        if (e.target.type === 'checkbox') target[key] = e.target.checked;
+        else if (e.target.type === 'number') target[key] = Number(e.target.value) || 0;
+        else target[key] = e.target.value;
+        this._syncToolOptions();
       });
     });
 
@@ -466,19 +705,97 @@ export class UI {
     this.viewport.zoomToFit(this.store.bounds());
   }
 
-  /* ---------------- kommandoer ---------------- */
+  /* ---------------- plassering ---------------- */
 
-  deleteSelected() {
-    const sel = this.store.state.selection;
-    if (!sel.length) return this.toast('Ingen form er markert.');
-    this.store.removeShapes(sel);
+  /**
+   * «Plassering» er nå bare de to sentreringsknappene (§4.5). Alt som før
+   * krevde et tallfelt her — flytting, rotasjon, speiling — gjøres med verktøy
+   * og tallinntasting i lerretet i stedet.
+   */
+  _renderPlacement() {
+    const host = $('placement-panel');
+
+    host.innerHTML = `
+      <div class="space-y-2">
+        <div class="flex gap-1.5">
+          <button data-pl="center-selection" class="flex-1 px-2 py-1.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Sentrer utvalg i origo</button>
+          <button data-pl="center-all" class="flex-1 px-2 py-1.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Sentrer alt i origo</button>
+        </div>
+        <p class="text-[11px] text-slate-500 leading-snug">
+          Formene, skjøtene og nullpunktet flyttes med samme vektor, slik at geometrien og skjøtene
+          ikke glir fra hverandre og avvikene i resultatpanelet ikke endrer seg av flyttingen.
+        </p>
+      </div>`;
+
+    host.querySelectorAll('[data-pl]').forEach((el) => {
+      el.addEventListener('click', () => {
+        if (el.dataset.pl === 'center-selection') this._centerSelection();
+        else this._centerAll();
+      });
+    });
   }
 
+  /**
+   * Flytter det markerte slik at formenes arealvektede tyngdepunkt havner i
+   * (0, 0). Vektfaktorer og overlapphåndtering holdes utenfor her — dette er
+   * ren plassering av geometri, ikke en beregning.
+   *
+   * Forskyvningen regnes ut av FORMENE, men brukes på hele utvalget, altså
+   * også på skjøtene i det (§1, feil 1). Er bare skjøter markert, finnes det
+   * ikke noe tyngdepunkt å regne fra, og vi sier fra i stedet for å gjette.
+   */
+  _centerSelection() {
+    const sel = this.store.state.selection;
+    if (!sel.length) return this.toast('Ingenting er markert.');
+    const c = centroidOfShapes(this.store.selectedShapes());
+    if (!c) return this.toast('Utvalget har ingen form å regne tyngdepunkt av — marker også geometrien.');
+    // Skjøtene som ligger inne i det som flyttes blir med (Store.jointsFollowing)
+    const ids = this.store.withFollowingJoints(sel);
+    this.store.moveEntities(ids, -c[0], -c[1], { withReference: true, reason: 'center' });
+    this.toast(`Utvalget sentrert: flyttet Δx = ${fmtLen(-c[0])}, Δy = ${fmtLen(-c[1])}.`);
+  }
+
+  /**
+   * Flytter hele modellen — former, skjøter og nullpunkt — slik at det
+   * sammensatte tyngdepunktet havner i (0, 0). Samme punkt som resultatpanelet
+   * viser, altså med vektfaktorer og valgt overlappmodus.
+   */
+  _centerAll() {
+    if (!this.analysis || !this.analysis.result.valid) return this.toast('Ingen geometri å sentrere.');
+    const { cx, cy } = this.analysis.result;
+    const st = this.store.state;
+    if (!st.shapes.length) return this.toast('Ingen geometri å sentrere.');
+    const ids = [...st.shapes.map((s) => s.id), ...st.joints.map((j) => j.id)];
+    this.store.moveEntities(ids, -cx, -cy, { withReference: true, reason: 'center' });
+    this.toast(`Modellen sentrert: flyttet Δx = ${fmtLen(-cx)}, Δy = ${fmtLen(-cy)}.`);
+  }
+
+  /* ---------------- kommandoer ---------------- */
+
+  /** `Del`: sletter alt som er markert — både former og skjøter (§1). */
+  deleteSelected() {
+    const sel = this.store.state.selection;
+    if (!sel.length) return this.toast('Ingenting er markert.');
+    const joints = this.store.selectedJoints().length;
+    const shapes = sel.length - joints;
+    for (const id of sel) {
+      this.expanded.delete(id);
+      this.jointExpanded.delete(id);
+    }
+    this.store.removeEntities(sel);
+    this.toast(
+      [shapes ? `${shapes} form(er)` : null, joints ? `${joints} skjøt(er)` : null].filter(Boolean).join(' og ') +
+        ' slettet.'
+    );
+  }
+
+  /** `Ctrl+D`: dupliserer utvalget, former og skjøter, forskjøvet. */
   duplicateSelected() {
     const sel = this.store.state.selection;
-    if (!sel.length) return this.toast('Ingen form er markert.');
+    if (!sel.length) return this.toast('Ingenting er markert.');
     const step = this.store.state.grid.step || 0;
-    this.store.duplicateShapes(sel, step * 2, 0);
+    // Dupliserer man begge sider av en fuge, skal fugen bli med i kopien
+    this.store.duplicateEntities(this.store.withFollowingJoints(sel), step * 2, 0);
   }
 
   loadExample() {
@@ -501,6 +818,16 @@ export class UI {
   }
 
   _copyResult() {
+    // Er forsterkningsfanen aktiv, er det de tallene brukeren ser på — og da
+    // er det de som skal på utklippstavla.
+    if (this.tab === 'reinforcement') {
+      const text = this.reinforcement.clipboardText();
+      if (!text) return this.toast('Ingen forsterkningstall å kopiere.');
+      return navigator.clipboard
+        .writeText(text)
+        .then(() => this.toast('Forsterkningsresultatet er kopiert til utklippstavla.'))
+        .catch(() => this.toast('Kunne ikke kopiere.'));
+    }
     if (!this.analysis || !this.analysis.result.valid) return this.toast('Ingen geometri å kopiere.');
     const r = this.analysis.result;
     const ref = this.store.state.reference;
@@ -556,7 +883,16 @@ export class UI {
     if (key !== this._lastSelectionKey) {
       this._lastSelectionKey = key;
       if (sel.length === 1) {
-        this.expanded = new Set([sel[0]]);
+        const one = this.store.entityById(sel[0]);
+        if (one && one.kind === 'joint') {
+          // En markert skjøt åpner sin egen rad i skjøtelista, ikke en formrad
+          this.jointExpanded = new Set([sel[0]]);
+          this._activeJointId = sel[0];
+        } else {
+          this.expanded = new Set([sel[0]]);
+          // Er formen parametrisk, er det de tallene man vil ha fram først
+          if (describeShape(this.store.getShape(sel[0]))) this.sections.add(`${sel[0]}:params`);
+        }
         this._scrollTo = sel[0];
       }
     }
@@ -564,13 +900,23 @@ export class UI {
     preserveFocus(() => {
       this._renderControls();
       this._renderSnapChips();
+      this._renderToolOptions();
       this._renderUnderlay();
+      this._renderPlacement();
       this._renderList();
+      this._renderJointList();
       this._renderResults(analysis);
+      this._renderTabs();
+      // Forsterkningsfanen tegnes selv om den er skjult, slik at tallene er
+      // klare i det man bytter fane — og slik at fokusbevaringen over dekker
+      // også dens tallfelt.
+      this.reinforcement.render(analysis);
     });
 
     if (this._scrollTo) {
-      const row = document.querySelector(`[data-row="${CSS.escape(this._scrollTo)}"]`);
+      const key = CSS.escape(this._scrollTo);
+      const row =
+        document.querySelector(`[data-row="${key}"]`) || document.querySelector(`[data-joint-row="${key}"]`);
       if (row) row.scrollIntoView({ block: 'nearest' });
       this._scrollTo = null;
     }
@@ -640,16 +986,18 @@ export class UI {
 
   _renderUnderlay() {
     const host = $('underlay-panel');
+    const section = $('underlay-section');
     const u = this.store.state.underlay;
     const unit = lengthLabel(this.store.state.unit);
 
+    // Seksjonen er skjult så lenge det ikke finnes noe bilde (§4.4) — den
+    // gamle «slipp en fil her»-teksten sto og tok plass uten å gjøre nytte.
     if (!u) {
-      host.innerHTML = `<p class="text-[11px] text-slate-500 leading-snug">
-        Slipp en bildefil på lerretet, lim inn et skjermutklipp med <kbd class="px-1 bg-slate-700 rounded">Ctrl+V</kbd>,
-        eller velg fil. Deretter kalibrerer du målestokken med to punkt du vet avstanden mellom.
-      </p>`;
+      host.innerHTML = '';
+      if (section) section.classList.add('hidden');
       return;
     }
+    if (section) section.classList.remove('hidden');
 
     const cal = this.calibration;
     host.innerHTML = `
@@ -803,6 +1151,7 @@ export class UI {
             <span class="chev shrink-0 text-slate-500 ${open ? 'rotate-90' : ''}" style="display:inline-block">›</span>
             <span class="truncate">${escapeHtml(sh.name)}</span>
           </button>
+          ${sh.stage === 'new' ? '<span class="text-[10px] px-1 rounded bg-emerald-900 text-emerald-300 shrink-0" title="Ny del — tegnes med stiplet kontur">ny</span>' : ''}
           ${sh.role === 'void' ? '<span class="text-[10px] px-1 rounded bg-rose-900 text-rose-300 shrink-0">hull</span>' : ''}
           ${Math.abs(sh.factor - 1) > 1e-9 ? `<span class="text-[10px] px-1 rounded bg-amber-900 text-amber-300 shrink-0">×${sh.factor}</span>` : ''}
           <button data-act="up" data-id="${sh.id}" ${i === 0 ? 'disabled' : ''}
@@ -848,7 +1197,12 @@ export class UI {
           break;
         case 'delete':
           this.expanded.delete(id);
-          this.store.removeShapes([id]);
+          this.store.removeEntities([id]);
+          break;
+        case 'relcoords':
+          if (this.relCoords.has(id)) this.relCoords.delete(id);
+          else this.relCoords.add(id);
+          this._renderList();
           break;
         case 'section': {
           const key = `${id}:${btn.dataset.section}`;
@@ -863,6 +1217,183 @@ export class UI {
     this._bindEditors();
   }
 
+  /**
+   * Ankerpunktet den parametriske redigeringen skalerer om. Valget er en
+   * ren visningspreferanse, så det ligger i UI-et — men det skrives også til
+   * `meta` når geometrien endres, slik at det overlever en runde på disk.
+   */
+  _anchorOf(sh) {
+    const fromUi = this.anchors.get(sh.id);
+    if (isRectAnchor(fromUi)) return fromUi;
+    const fromMeta = sh.meta && sh.meta.anchor;
+    return isRectAnchor(fromMeta) ? fromMeta : 'center';
+  }
+
+  /**
+   * Parameterfeltene for en form som lar seg beskrive parametrisk. Tallene
+   * utledes alltid fra punktene, aldri fra `meta` — har brukeren dratt i et
+   * hjørne, viser panelet den nye virkeligheten, eller forsvinner helt hvis
+   * formen ikke lenger er et rektangel.
+   */
+  _paramsHtml(sh, desc) {
+    const unit = lengthLabel(this.store.state.unit);
+    const f = (key, label, value, attrs = '') => `
+      <div>
+        <label class="field-label" for="pr-${key}-${sh.id}">${label}</label>
+        <input id="pr-${key}-${sh.id}" data-par="${key}" data-kind="${desc.kind}" data-id="${sh.id}"
+               data-focus-key="pr-${key}-${sh.id}" type="number" ${attrs} value="${round(value)}" />
+      </div>`;
+
+    if (desc.kind === 'rect') {
+      const anchor = this._anchorOf(sh);
+      const a = rectAnchorPoint(desc, anchor);
+      return `
+        <div class="space-y-2 pt-1">
+          <div class="grid grid-cols-2 gap-2">
+            ${f('b', `Bredde b [${unit}]`, desc.b)}
+            ${f('h', `Høyde h [${unit}]`, desc.h)}
+          </div>
+          <div>
+            <label class="field-label" for="pr-anchor-${sh.id}">Ankerpunkt — b og h vokser fra dette</label>
+            <select id="pr-anchor-${sh.id}" data-anchor data-id="${sh.id}" data-focus-key="pr-anchor-${sh.id}">
+              ${RECT_ANCHORS.map(
+                (o) => `<option value="${o.key}" ${anchor === o.key ? 'selected' : ''}>x, y = ${o.label}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            ${f('x', `x [${unit}]`, a[0])}
+            ${f('y', `y [${unit}]`, a[1])}
+            ${f('angle', 'Rotasjon [°]', desc.angle, 'step="1"')}
+          </div>
+          <p class="text-[11px] text-slate-500 leading-snug">
+            Rotasjonen måles mot klokka fra x-aksen, og b er siden langs den retningen.
+            Endrer du b eller h, står ankerpunktet stille.
+          </p>
+        </div>`;
+    }
+
+    if (desc.kind === 'circle') {
+      return `
+        <div class="space-y-2 pt-1">
+          <div class="grid grid-cols-3 gap-2">
+            ${f('x', `x [${unit}]`, desc.c[0])}
+            ${f('y', `y [${unit}]`, desc.c[1])}
+            ${f('r', `Radius r [${unit}]`, desc.r)}
+          </div>
+          <p class="text-[11px] text-slate-500 leading-snug">
+            Tilnærmet med en ${desc.segments}-kant, så arealet er marginalt mindre enn πr².
+          </p>
+        </div>`;
+    }
+
+    if (desc.kind === 'shell') {
+      return `
+        <div class="space-y-2 pt-1">
+          <div class="grid grid-cols-2 gap-2">
+            ${f('x1', `x₁ [${unit}]`, desc.p1[0])}
+            ${f('y1', `y₁ [${unit}]`, desc.p1[1])}
+            ${f('x2', `x₂ [${unit}]`, desc.p2[0])}
+            ${f('y2', `y₂ [${unit}]`, desc.p2[1])}
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            ${f('t', `Tykkelse t [${unit}]`, desc.t)}
+            <div class="self-end text-[11px] text-slate-400 num pb-1.5">lengde ${fmtLen(desc.length)} ${unit}</div>
+          </div>
+          <p class="text-[11px] text-slate-500 leading-snug">
+            Senterlinje og tykkelse — rektangelet er tykkelsen sentrert om linja, slik skallet
+            faktisk er modellert.
+          </p>
+        </div>`;
+    }
+    return '';
+  }
+
+  /**
+   * Stadium og materiale — de to feltene forsterkningsberegningen lever av.
+   *
+   * `stage` skiller det eksisterende tverrsnittet fra den nye delen (som får
+   * stiplet kontur i lerretet), og `material.E` er E-modulen mekanikken bruker.
+   * Vektfaktoren over i panelet er noe helt annet, og det står det uttrykkelig
+   * i hjelpeteksten her — det er en forveksling som ville gitt gale tall.
+   *
+   * ρ_m-feltet vises BARE når det finnes en densitet å vise (presetets eller
+   * en brukeren selv har satt). Stål og betong har ingen `rho`, og et tomt
+   * densitetsfelt på en stålplate ville invitert til å fylle det ut — inn i en
+   * EC5-formel som ikke gjelder stål. Feltet dukker altså opp når det betyr
+   * noe, og er borte ellers.
+   */
+  _stageHtml(sh) {
+    const mat = sh.material || {};
+    const E = materialE(mat);
+    const preset = materialByName(mat.name);
+    // Er E endret bort fra presetet, skal det stå — ellers ville nedtrekket
+    // gitt inntrykk av at det er presetets verdi som gjelder.
+    const custom = preset ? Math.abs(preset.E - E) > 1e-9 : true;
+    const rho = materialRho(mat);
+    const ownRho = Number.isFinite(mat.rho) && mat.rho > 0;
+    const showRho = rho !== undefined || ownRho;
+    const customRho = ownRho && preset && Number.isFinite(preset.rho) ? Math.abs(preset.rho - mat.rho) > 1e-9 : ownRho;
+    const rhoField = showRho
+      ? `
+        <div>
+          <label class="field-label" for="ed-rho-${sh.id}">ρ_m [kg/m³]</label>
+          <input id="ed-rho-${sh.id}" data-ed="rho" data-id="${sh.id}" data-focus-key="ed-rho-${sh.id}"
+                 type="number" step="10" min="0" value="${rho === undefined ? '' : round(rho)}" />
+          <p class="text-[10px] text-slate-500 mt-1 leading-snug">
+            ${customRho ? '<span class="text-amber-300">ρ_m er satt manuelt</span> og overstyrer presetet. ' : ''}Middeldensiteten
+            ρ_mean (ikke ρ_k). Brukes av EC5 tabell 7.1 for skruede skjøter — en skjøt uten eget ρ-felt
+            henter den herfra.
+          </p>
+        </div>`
+      : '';
+    const groups = [];
+    for (const m of MATERIALS) {
+      if (!groups.length || groups[groups.length - 1].name !== m.group) {
+        groups.push({ name: m.group, items: [] });
+      }
+      groups[groups.length - 1].items.push(m);
+    }
+
+    return `
+      <div class="border-t border-slate-600 pt-2 space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="field-label" for="ed-stage-${sh.id}">Stadium</label>
+            <select id="ed-stage-${sh.id}" data-ed="stage" data-id="${sh.id}" data-focus-key="ed-stage-${sh.id}">
+              <option value="existing" ${sh.stage !== 'new' ? 'selected' : ''}>Eksisterende</option>
+              <option value="new" ${sh.stage === 'new' ? 'selected' : ''}>Ny — forsterkning</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="ed-E-${sh.id}">E [N/mm²]</label>
+            <input id="ed-E-${sh.id}" data-ed="E" data-id="${sh.id}" data-focus-key="ed-E-${sh.id}"
+                   type="number" step="500" min="0" value="${round(E)}" />
+          </div>
+        </div>
+        <div>
+          <label class="field-label" for="ed-mat-${sh.id}">Materiale</label>
+          <select id="ed-mat-${sh.id}" data-ed="material" data-id="${sh.id}" data-focus-key="ed-mat-${sh.id}">
+            ${groups
+              .map(
+                (g) => `<optgroup label="${g.name}">${g.items
+                  .map(
+                    (m) =>
+                      `<option value="${escapeHtml(m.name)}" ${mat.name === m.name ? 'selected' : ''}>${escapeHtml(m.label)} — ${m.E} N/mm²</option>`
+                  )
+                  .join('')}</optgroup>`
+              )
+              .join('')}
+          </select>
+          <p class="text-[10px] text-slate-500 mt-1 leading-snug">
+            ${custom ? '<span class="text-amber-300">E er satt manuelt</span> og overstyrer presetet. ' : ''}E brukes
+            bare i fanen «Forsterkning». Vektfaktoren over gjelder bare tyngdepunktet — de to er uavhengige.
+          </p>
+        </div>
+        ${rhoField}
+      </div>`;
+  }
+
   /** Egenskapspanelet som vises inne i et åpnet listeelement. */
   _editorHtml(sh, part) {
     const ring = openRing(sh.points);
@@ -870,6 +1401,12 @@ export class UI {
     const grossArea = Math.abs(signedArea(ring));
     const showCoords = this.sections.has(`${sh.id}:coords`);
     const showTransform = this.sections.has(`${sh.id}:transform`);
+    const showParams = this.sections.has(`${sh.id}:params`);
+    const desc = describeShape(sh);
+    // Koordinatene kan leses absolutt eller i forhold til formens eget
+    // tyngdepunkt — det siste er nyttig når man vil se formen for seg selv.
+    const rel = this.relCoords.has(sh.id);
+    const c = rel ? centroidOfPoints(ring) : [0, 0];
 
     const sectionHead = (key, label) => `
       <button data-act="section" data-section="${key}" data-id="${sh.id}"
@@ -902,6 +1439,8 @@ export class UI {
           </div>
         </div>
 
+        ${this._stageHtml(sh)}
+
         <div class="text-[11px] text-slate-400 num space-y-0.5">
           <div>Areal brutto ${fmtArea(grossArea)}${
             part && Math.abs(part.area - grossArea) > 1e-6
@@ -911,22 +1450,44 @@ export class UI {
           <div>x ∈ [${fmtLen(b.minX)}, ${fmtLen(b.maxX)}] · y ∈ [${fmtLen(b.minY)}, ${fmtLen(b.maxY)}]</div>
         </div>
 
+        ${
+          desc
+            ? `<div class="border-t border-slate-600 pt-1">
+                 ${sectionHead('params', PARAM_TITLES[desc.kind])}
+                 ${showParams ? this._paramsHtml(sh, desc) : ''}
+               </div>`
+            : ''
+        }
+
         <div class="border-t border-slate-600 pt-1">
           ${sectionHead('coords', `Koordinater (${ring.length})`)}
           ${
             showCoords
-              ? `<div class="max-h-52 overflow-y-auto panel-scroll space-y-1 pt-1">
-                  ${ring
-                    .map(
-                      ([x, y], i) => `
-                    <div class="flex items-center gap-1">
-                      <span class="text-[10px] text-slate-500 w-4 shrink-0 num">${i + 1}</span>
-                      <input data-pt="${i}" data-axis="0" data-id="${sh.id}" data-focus-key="pt-${sh.id}-${i}-0" type="number" value="${round(x)}" />
-                      <input data-pt="${i}" data-axis="1" data-id="${sh.id}" data-focus-key="pt-${sh.id}-${i}-1" type="number" value="${round(y)}" />
-                      <button data-del-pt="${i}" data-id="${sh.id}" class="px-1 text-slate-500 hover:text-red-400 shrink-0" title="Slett punkt">×</button>
-                    </div>`
-                    )
-                    .join('')}
+              ? `<div class="pt-1">
+                  <div class="flex items-center justify-between gap-2 mb-1">
+                    <span class="text-[10px] text-slate-500 leading-snug">${
+                      rel
+                        ? `relativt til tyngdepunktet (${fmtLen(c[0])}, ${fmtLen(c[1])})`
+                        : 'absolutte koordinater'
+                    }</span>
+                    <button data-act="relcoords" data-id="${sh.id}"
+                            class="px-1.5 py-0.5 text-[10px] rounded border border-slate-600 bg-slate-700 hover:bg-slate-600 shrink-0">
+                      ${rel ? 'Vis absolutt' : 'Vis relativt'}
+                    </button>
+                  </div>
+                  <div class="max-h-52 overflow-y-auto panel-scroll space-y-1">
+                    ${ring
+                      .map(
+                        ([x, y], i) => `
+                      <div class="flex items-center gap-1">
+                        <span class="text-[10px] text-slate-500 w-4 shrink-0 num">${i + 1}</span>
+                        <input data-pt="${i}" data-axis="0" data-id="${sh.id}" data-rel="${rel ? 1 : 0}" data-focus-key="pt-${sh.id}-${i}-0" type="number" value="${round(x - c[0])}" />
+                        <input data-pt="${i}" data-axis="1" data-id="${sh.id}" data-rel="${rel ? 1 : 0}" data-focus-key="pt-${sh.id}-${i}-1" type="number" value="${round(y - c[1])}" />
+                        <button data-del-pt="${i}" data-id="${sh.id}" class="px-1 text-slate-500 hover:text-red-400 shrink-0" title="Slett punkt">×</button>
+                      </div>`
+                      )
+                      .join('')}
+                  </div>
                 </div>`
               : ''
           }
@@ -977,6 +1538,52 @@ export class UI {
           const v = Number(e.target.value);
           this.store.updateShape(id, { factor: Number.isFinite(v) ? v : 1 });
         });
+      } else if (key === 'stage') {
+        input.addEventListener('change', (e) =>
+          this.store.updateShape(id, { stage: e.target.value === 'new' ? 'new' : 'existing' })
+        );
+      } else if (key === 'material') {
+        input.addEventListener('change', (e) => {
+          const preset = materialByName(e.target.value);
+          if (!preset) return;
+          // Presetet setter BÅDE navn, E og ρ_m, slik at nedtrekket alltid
+          // stemmer med tallene ved siden av. Har presetet ingen densitet
+          // (stål, betong), forsvinner feltet — det er riktig: EC5 tabell 7.1
+          // gjelder trevirke, og en gammel treverdi skal ikke bli hengende
+          // igjen på en stålplate.
+          const mat = { name: preset.name, E: preset.E };
+          if (Number.isFinite(preset.rho) && preset.rho > 0) mat.rho = preset.rho;
+          this.store.updateShape(id, { material: mat });
+        });
+      } else if (key === 'E') {
+        input.addEventListener('change', (e) => {
+          const v = Number(e.target.value);
+          if (!Number.isFinite(v) || v <= 0) return this.toast('E må være et positivt tall i N/mm².');
+          const cur = this.store.getShape(id);
+          const curMat = (cur && cur.material) || {};
+          // Behold en egen ρ_m: å endre E er ikke å endre treslag, og en
+          // densitet brukeren har skrevet inn skal ikke forsvinne på veien.
+          const mat = { name: curMat.name || '', E: v };
+          if (Number.isFinite(curMat.rho) && curMat.rho > 0) mat.rho = curMat.rho;
+          this.store.updateShape(id, { material: mat });
+        });
+      } else if (key === 'rho') {
+        input.addEventListener('change', (e) => {
+          const cur = this.store.getShape(id);
+          const curMat = (cur && cur.material) || {};
+          const mat = { name: curMat.name || '', E: Number.isFinite(curMat.E) ? curMat.E : materialE(curMat) };
+          const txt = String(e.target.value).trim();
+          if (txt === '') {
+            // Tomt felt = «ikke oppgitt». Da faller formen tilbake på
+            // presetets ρ_m om det finnes — feltet tømmes ikke til null.
+            this.store.updateShape(id, { material: mat });
+            return;
+          }
+          const v = Number(txt);
+          if (!Number.isFinite(v) || v <= 0) return this.toast('ρ_m må være et positivt tall i kg/m³.');
+          mat.rho = v;
+          this.store.updateShape(id, { material: mat });
+        });
       }
     });
 
@@ -986,9 +1593,23 @@ export class UI {
         const i = Number(e.target.dataset.pt);
         const axis = Number(e.target.dataset.axis);
         const pts = openRing(this.store.getShape(id).points).map((p) => [p[0], p[1]]);
-        pts[i][axis] = Number(e.target.value) || 0;
+        // I relativ modus er tallet målt fra tyngdepunktet slik formen står nå
+        const base = e.target.dataset.rel === '1' ? centroidOfPoints(pts)[axis] : 0;
+        pts[i][axis] = base + (Number(e.target.value) || 0);
         setPts(id, pts);
       });
+    });
+
+    // Ankervalget endrer ikke geometrien, bare hvilket punkt x og y viser til
+    host.querySelectorAll('[data-anchor]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        this.anchors.set(e.target.dataset.id, e.target.value);
+        this._renderList();
+      });
+    });
+
+    host.querySelectorAll('[data-par]').forEach((input) => {
+      input.addEventListener('change', (e) => this._applyParams(e.target.dataset.id, e.target.dataset.kind));
     });
 
     host.querySelectorAll('[data-del-pt]').forEach((btn) => {
@@ -1006,22 +1627,469 @@ export class UI {
       btn.addEventListener('click', (e) => {
         const id = e.currentTarget.dataset.id;
         const kind = e.currentTarget.dataset.tr;
-        const pts = this.store.getShape(id).points;
         const ref = this.store.state.reference;
+
+        // Transformasjonen er en ren punktavbildning, så den kan brukes på
+        // formens ring og på en skjøts to endepunkt uten forskjell.
+        let map = null;
         if (kind === 'move') {
           const dx = Number($(`tr-dx-${id}`).value) || 0;
           const dy = Number($(`tr-dy-${id}`).value) || 0;
           if (!dx && !dy) return;
-          setPts(id, translatePoints(pts, dx, dy));
+          map = (pts) => translatePoints(pts, dx, dy);
         } else if (kind === 'rotate') {
           const ang = ((Number($(`tr-ang-${id}`).value) || 0) * Math.PI) / 180;
           if (!ang) return;
-          setPts(id, rotatePoints(pts, ang, ref));
+          map = (pts) => rotatePoints(pts, ang, ref);
         } else if (kind === 'mirror-x') {
-          setPts(id, mirrorPoints(pts, 'x', ref[1]));
+          map = (pts) => mirrorPoints(pts, 'x', ref[1]);
         } else if (kind === 'mirror-y') {
-          setPts(id, mirrorPoints(pts, 'y', ref[0]));
+          map = (pts) => mirrorPoints(pts, 'y', ref[0]);
         }
+        if (!map) return;
+
+        // Et snitt som ligger helt inne i DENNE formen flytter seg med den —
+        // ellers ville tallfeltene her være en bakvei rundt regelen i §1.
+        const ids = this.store.withFollowingJoints([id]);
+        const entries = ids
+          .map((eid) => ({ id: eid, points: this.store.entityPoints(eid) }))
+          .filter((entry) => entry.points)
+          .map((entry) => ({ id: entry.id, points: map(entry.points) }));
+        this.store.setManyEntityPoints(entries, { reason: 'edit' });
+      });
+    });
+  }
+
+  /**
+   * Bygger formen på nytt fra parameterfeltene. `meta` skrives med, slik at
+   * verktøyet husker hva formen er ment som — men den er bare en huskelapp:
+   * neste gang panelet åpnes, leses tallene av punktene på nytt.
+   */
+  _applyParams(id, kind) {
+    const sh = this.store.getShape(id);
+    if (!sh) return;
+    const val = (key) => {
+      const el = $(`pr-${key}-${id}`);
+      return el ? Number(el.value) || 0 : 0;
+    };
+
+    if (kind === 'rect') {
+      const anchor = this._anchorOf(sh);
+      const b = Math.abs(val('b'));
+      const h = Math.abs(val('h'));
+      if (b < 1e-9 || h < 1e-9) return this.toast('Bredde og høyde må være større enn null.');
+      const angle = val('angle');
+      const x = val('x');
+      const y = val('y');
+      const pts = rectPointsFromParams({ b, h, angle, anchor, x, y });
+      if (!pts) return;
+      this.store.updateShape(
+        id,
+        { points: pts, meta: { kind: 'rect', b, h, angle, anchor, origin: [x, y] } },
+        { reason: 'params' }
+      );
+      return;
+    }
+
+    if (kind === 'circle') {
+      const r = Math.abs(val('r'));
+      if (r < 1e-9) return this.toast('Radien må være større enn null.');
+      const x = val('x');
+      const y = val('y');
+      const segments = describeShape(sh)?.segments || 48;
+      const pts = circlePointsFromParams({ x, y, r, segments });
+      if (!pts) return;
+      this.store.updateShape(id, { points: pts, meta: { kind: 'circle', c: [x, y], r } }, { reason: 'params' });
+      return;
+    }
+
+    if (kind === 'shell') {
+      const t = Math.abs(val('t'));
+      if (t < 1e-9) return this.toast('Tykkelsen må være større enn null.');
+      const p1 = [val('x1'), val('y1')];
+      const p2 = [val('x2'), val('y2')];
+      const pts = shellPoints(p1, p2, t);
+      if (!pts) return this.toast('Senterlinja har null lengde.');
+      this.store.updateShape(id, { points: pts, meta: { kind: 'shell', p1, p2, t } }, { reason: 'params' });
+    }
+  }
+
+  /* ---------------- skjøtelista (interaksjonsplanen §5) ---------------- */
+
+  /**
+   * Skjøtelista i venstre panel, under geometrilista, bygget som den: en rad
+   * per skjøt med navn, lengde, forbindelsestype og en slette-knapp. Åpnet
+   * viser delene på hver side (`sidesOfJoint`), heftbredde, forbindelsesfelter
+   * (inkl. sveis) og `share` når oppsettet er statisk ubestemt.
+   *
+   * Redigeringen av en skjøt lever HER, ikke i «Forsterkning»-fanen — det
+   * panelet er lese/resultat-visning, jf. prinsippet om at man velger
+   * geometri og skriver, ikke går til et kommandosenter.
+   */
+  _renderJointList() {
+    const host = $('joint-list');
+    if (!host) return;
+    const st = this.store.state;
+    const joints = st.joints || [];
+    const countEl = $('joint-count');
+    if (countEl) countEl.textContent = joints.length ? `(${joints.length})` : '';
+
+    if (!joints.length) {
+      host.innerHTML =
+        '<p class="text-xs text-slate-500 italic py-2">Ingen skjøter ennå. Velg skjøteverktøyet (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) og klikk to punkt i lerretet.</p>';
+      return;
+    }
+
+    const shapes = st.shapes || [];
+    const tol = neighborTolerance(shapes);
+    // Bygges ÉN gang for hele lista, ikke per rad — samme grunn som i viewport.js.
+    const graph = buildGraph(shapes, joints, tol);
+    const overC = overConstrained(shapes, joints, graph);
+    const unit = lengthLabel(st.unit);
+
+    host.innerHTML = joints
+      .map((j) => {
+        const open = this.jointExpanded.has(j.id);
+        // Markert i lerretet teller som fremhevet i lista, og omvendt (§1/§5).
+        const isHover =
+          this._canvasHoverJoint === j.id ||
+          this._activeJointId === j.id ||
+          st.selection.includes(j.id);
+        const len = Math.hypot(j.b[0] - j.a[0], j.b[1] - j.a[1]);
+        const kindLabel = CONNECTOR_LABELS[j.connector.kind] || CONNECTOR_LABELS.screw;
+        return `
+      <div class="rounded border ${isHover ? 'border-sky-500' : 'border-slate-700'} ${open ? 'bg-slate-700' : 'bg-slate-750'}"
+           data-joint-row="${j.id}">
+        <div class="flex items-center gap-1.5 px-2 py-1.5">
+          <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${JOINT_COLOR}"></span>
+          <button data-jact="toggle" data-id="${j.id}"
+                  class="flex-1 flex items-center gap-1.5 text-left text-xs truncate ${isHover ? 'text-white' : 'text-slate-300'} hover:text-white">
+            <span class="chev shrink-0 text-slate-500 ${open ? 'rotate-90' : ''}" style="display:inline-block">›</span>
+            <span class="truncate">${escapeHtml(j.name)}</span>
+          </button>
+          <span class="text-[10px] text-slate-500 num shrink-0">${fmtLen(len)} ${unit}</span>
+          <span class="text-[10px] px-1 rounded bg-slate-800 text-slate-300 shrink-0">${kindLabel}</span>
+          <button data-jact="delete" data-id="${j.id}"
+                  class="px-1 text-slate-400 hover:text-red-400 shrink-0" title="Slett skjøten">×</button>
+        </div>
+        ${open ? this._jointEditorHtml(j, graph, overC) : ''}
+      </div>`;
+      })
+      .join('');
+
+    host.onclick = (e) => {
+      const btn = e.target.closest('[data-jact]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (btn.dataset.jact === 'toggle') {
+        if (this.jointExpanded.has(id)) this.jointExpanded.delete(id);
+        else this.jointExpanded.add(id);
+        this._activeJointId = id;
+        // Klikk i lista MARKERER skjøten i lerretet (§1) — den er nå en fullverdig
+        // del av utvalget, ikke bare noe som kan fremheves.
+        this.store.select(e.shiftKey ? [...this.store.state.selection, id] : [id]);
+        this._lastSelectionKey = this.store.state.selection.join(',');
+        this._renderJointList();
+      } else if (btn.dataset.jact === 'delete') {
+        this.jointExpanded.delete(id);
+        if (this._activeJointId === id) this._activeJointId = null;
+        this.store.removeJoint(id);
+        this.toast('Skjøten er slettet.');
+      }
+    };
+
+    this._bindJointEditors();
+  }
+
+  /** Egenskapspanelet for én åpnet skjøt. */
+  _jointEditorHtml(j, graph, overC) {
+    const st = this.store.state;
+    const unit = lengthLabel(st.unit);
+    const tol = neighborTolerance(st.shapes);
+    const sides = sidesOfJoint(j, st.shapes, tol);
+    const nameOf = (id) => {
+      const s = this.store.getShape(id);
+      return s ? s.name : String(id);
+    };
+    const aNames = sides.aSide.map(nameOf).join(', ') || '—';
+    const bNames = sides.bSide.map(nameOf).join(', ') || '—';
+
+    const ocEntry = overC.find((e) => e.jointIds.includes(j.id));
+    const jg = jointGroup(j, graph);
+    const showShare = !jg.determinate;
+
+    const cfield = (key, label, value, attrs = '') => {
+      const id = `jc-${j.id}-${key}`;
+      return `<div>
+        <label class="field-label" for="${id}">${label}</label>
+        <input id="${id}" data-jc="${key}" data-id="${j.id}" data-focus-key="${id}" type="number" ${attrs}
+               value="${value === null || value === undefined ? '' : value}" />
+      </div>`;
+    };
+
+    const c = j.connector;
+    const connectorFields =
+      c.kind === 'glue'
+        ? `<div class="grid grid-cols-3 gap-1.5">
+             ${cfield('tauRd', 'τ_Rd [N/mm²]', c.tauRd, 'step="0.1"')}
+             ${cfield('Ga', 'G_a [N/mm²]', c.Ga, 'step="10"')}
+             ${cfield('ta', 't_a [mm]', c.ta, 'step="0.1"')}
+           </div>`
+        : c.kind === 'weld'
+        ? `<div class="grid grid-cols-2 gap-1.5">
+             ${cfield('nWelds', 'Antall strenger', c.nWelds, 'step="1" min="1"')}
+             ${cfield('a_weld', 'a-mål [mm]', c.a_weld, 'step="0.5"')}
+             ${cfield('fvwd', 'f_vw,d [N/mm²]', c.fvwd, 'step="1"')}
+             ${cfield('qRd', 'eller q_Rd direkte [N/mm]', c.qRd, 'step="1" min="0"')}
+           </div>
+           <p class="text-[10px] text-slate-500 leading-snug">
+             f_vw,d (dimensjonerende skjærfasthet i sveisesnittet) regnes ut i modulen
+             <code>weld_capacity/</code> — skriv resultatet inn her, eller sett q_Rd direkte og la
+             de tre andre stå ubrukt.
+           </p>`
+        : `<div class="grid grid-cols-2 gap-1.5">
+             ${cfield('FRd', 'F_Rd per forbinder [kN]', c.FRd, 'step="0.5"')}
+             ${cfield('rows', 'Rader på tvers', c.rows, 'step="1" min="1"')}
+             ${cfield('spacing', 'Senteravstand s [mm]', c.spacing, 'step="10"')}
+             ${cfield('shearPlanes', 'Skjærplan', c.shearPlanes == null ? 1 : c.shearPlanes, 'step="1" min="1"')}
+           </div>`;
+
+    // §3/§4 — festemiddelstivheten K_ser: EC5 tabell 7.1 og «fritt innlagt»
+    // (ETA/produktgodkjenning) er LIKESTILTE kilder, ikke den ene gjemt bak
+    // den andre (§3.2 i samvirkeplanen). Bare relevant for skruer/mekaniske
+    // forbindere — lim har sin egen formel (Ga/ta over), og sveis regnes som
+    // uendelig stiv (γ → 1) uansett.
+    const stiffnessBlock =
+      c.kind === 'screw'
+        ? (() => {
+            const src = c.stiffSource === 'ec5' ? 'ec5' : 'eta';
+            const fastenerKey = c.ec5Fastener || 'dowel';
+            const fastener = ec5Fastener(fastenerKey) || EC5_FASTENERS[0];
+            const state = c.state === 'ULS' ? 'ULS' : 'SLS';
+            return `
+              <div class="rounded border border-slate-700 bg-slate-800/60 p-2 space-y-1.5">
+                <div class="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                  K_ser — festemiddelstivhet
+                </div>
+                <div class="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <label class="field-label" for="j-src-${j.id}">Kilde</label>
+                    <select id="j-src-${j.id}" data-jsrc data-id="${j.id}" data-focus-key="j-src-${j.id}">
+                      <option value="eta" ${src === 'eta' ? 'selected' : ''}>Fritt innlagt (ETA / produktgodkjenning)</option>
+                      <option value="ec5" ${src === 'ec5' ? 'selected' : ''}>EC5 tabell 7.1</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="field-label" for="j-state-${j.id}">Tilstand</label>
+                    <select id="j-state-${j.id}" data-jstate data-id="${j.id}" data-focus-key="j-state-${j.id}">
+                      ${STATES.map((s) => `<option value="${s.key}" ${state === s.key ? 'selected' : ''}>${s.label}</option>`).join('')}
+                    </select>
+                  </div>
+                </div>
+                ${
+                  src === 'eta'
+                    ? `<div class="grid grid-cols-1 gap-1.5">
+                         ${cfield('Kser', 'K_ser [N/mm], fra ETA/produktgodkjenning', c.Kser, 'step="100"')}
+                       </div>
+                       <p class="text-[10px] text-slate-500 leading-snug">
+                         Verdien er ikke kontrollert mot EC5 — oppgi kilde (ETA-nummer e.l.) i dokumentasjonen.
+                         Nødvendig for stål-mot-stål og proprietære festemidler, der EC5 tabell 7.1 ikke gjelder.
+                       </p>`
+                    : `<div class="grid grid-cols-2 gap-1.5">
+                         <div>
+                           <label class="field-label" for="j-fast-${j.id}">Festemiddel</label>
+                           <select id="j-fast-${j.id}" data-jfast data-id="${j.id}" data-focus-key="j-fast-${j.id}">
+                             ${EC5_FASTENERS.map((f) => `<option value="${f.key}" ${fastenerKey === f.key ? 'selected' : ''}>${f.label}</option>`).join('')}
+                           </select>
+                         </div>
+                         <div>
+                           <label class="field-label" for="j-contact-${j.id}">Kontaktflate</label>
+                           <select id="j-contact-${j.id}" data-jcontact data-id="${j.id}" data-focus-key="j-contact-${j.id}">
+                             ${EC5_CONTACTS.map((k) => `<option value="${k.key}" ${(c.ec5Contact || 'timber-timber') === k.key ? 'selected' : ''}>${k.label}</option>`).join('')}
+                           </select>
+                         </div>
+                       </div>
+                       <div class="grid grid-cols-3 gap-1.5">
+                         ${cfield('ec5Rho1', 'ρ_m,1 [kg/m³]', c.ec5Rho1, 'step="10"')}
+                         ${cfield('ec5Rho2', 'ρ_m,2 [kg/m³], valgfri', c.ec5Rho2, 'step="10"')}
+                         ${fastener.needs === 'dc' ? cfield('ec5Dc', 'd_c [mm]', c.ec5Dc, 'step="1"') : cfield('ec5D', 'd [mm]', c.ec5D, 'step="0.5"')}
+                       </div>
+                       <p class="text-[10px] text-slate-500 leading-snug">
+                         Gjelder TREVIRKE. To treslag: oppgi begge ρ_m — det geometriske middelet brukes.
+                         Stål-mot-tre/betong-mot-tre dobler K_ser (EC5 7.1(3)).
+                       </p>`
+                }
+              </div>`;
+          })()
+        : '';
+
+    // §4 — samvirkegrad (γ-metoden, EC5 tillegg B). Krever effektiv lengde,
+    // derfor spennvidde + systemtype uansett forbindelsestype (sveis gir k = ∞
+    // og γ = 1, men trenger fortsatt L_ef for å vise (EI)_ef konsistent).
+    const gammaFields = `
+      <div class="rounded border border-slate-700 bg-slate-800/60 p-2 space-y-1.5">
+        <div class="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+          Samvirkegrad — γ-metoden (§4)
+        </div>
+        <div class="grid grid-cols-2 gap-1.5">
+          ${cfield('span', 'Spennvidde L [mm]', c.span, 'step="100" min="0"')}
+          <div>
+            <label class="field-label" for="j-system-${j.id}">System</label>
+            <select id="j-system-${j.id}" data-jsystem data-id="${j.id}" data-focus-key="j-system-${j.id}">
+              ${Object.entries(SYSTEM_FACTORS).map(([key, s]) => `<option value="${key}" ${(c.system || 'simple') === key ? 'selected' : ''}>${s.label}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-500 leading-snug">
+          Enakslet (regnes om y-aksen, V_y/M_x). Full samvirkning er fortsatt standard og vises ved
+          siden av γ-resultatet i «Forsterkning»-fanen — det er et tillegg, ikke en erstatning.
+          Mer enn to grupper i skjøten: γ-metoden sier fra at den ikke er anvendelig, i stedet for
+          å gjette på en generalisering.
+        </p>
+      </div>`;
+
+    return `
+      <div class="px-2 pb-2 pt-1 space-y-2 border-t border-slate-600">
+        <div>
+          <label class="field-label" for="j-name-${j.id}">Navn</label>
+          <input id="j-name-${j.id}" data-jf="name" data-id="${j.id}" data-focus-key="j-name-${j.id}"
+                 type="text" value="${escapeHtml(j.name)}" />
+        </div>
+        <div class="text-[11px] text-slate-400 leading-snug">
+          <div>Side A: <span class="text-slate-200">${aNames}</span></div>
+          <div>Side B: <span class="text-slate-200">${bNames}</span></div>
+          <div class="text-slate-500 mt-0.5 num">
+            Linje (${fmtLen(j.a[0])}, ${fmtLen(j.a[1])}) → (${fmtLen(j.b[0])}, ${fmtLen(j.b[1])}) ${unit}
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <div>
+            <label class="field-label" for="j-kind-${j.id}">Forbindelse</label>
+            <select id="j-kind-${j.id}" data-jkind data-id="${j.id}" data-focus-key="j-kind-${j.id}">
+              <option value="screw" ${c.kind !== 'glue' && c.kind !== 'weld' ? 'selected' : ''}>Skruer / mekaniske forbindere</option>
+              <option value="glue" ${c.kind === 'glue' ? 'selected' : ''}>Lim</option>
+              <option value="weld" ${c.kind === 'weld' ? 'selected' : ''}>Sveis</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="j-bw-${j.id}">Heftbredde b [mm], tom = linjelengden</label>
+            <input id="j-bw-${j.id}" data-jf="bondWidth" data-id="${j.id}" data-focus-key="j-bw-${j.id}"
+                   type="number" step="1" min="0" value="${j.bondWidth == null ? '' : j.bondWidth}" />
+          </div>
+        </div>
+        ${connectorFields}
+        ${stiffnessBlock}
+        ${gammaFields}
+        ${
+          showShare
+            ? `<div>
+                 <label class="field-label" for="j-share-${j.id}">
+                   Andel av ΔN gjennom denne skjøten [%] — statisk ubestemt${
+                     ocEntry ? `, delt med ${ocEntry.jointIds.length - 1} annen/andre skjøt(er)` : ''
+                   }
+                 </label>
+                 <input id="j-share-${j.id}" data-jf="share" data-id="${j.id}" data-focus-key="j-share-${j.id}"
+                        type="number" step="1" min="0" max="100" placeholder="auto (lik fordeling)"
+                        value="${j.share == null ? '' : Math.round(j.share * 100)}" />
+               </div>`
+            : ''
+        }
+      </div>`;
+  }
+
+  _bindJointEditors() {
+    const host = $('joint-list');
+    if (!host) return;
+
+    host.querySelectorAll('[data-jf]').forEach((el) => {
+      const id = el.dataset.id;
+      const key = el.dataset.jf;
+      if (key === 'name') {
+        el.addEventListener('input', (e) => this.store.updateJoint(id, { name: e.target.value }, { transient: true }));
+        el.addEventListener('change', () => this.store.commit('joint-rename'));
+      } else if (key === 'bondWidth') {
+        el.addEventListener('change', (e) => {
+          const v = Number(e.target.value);
+          this.store.updateJoint(id, { bondWidth: Number.isFinite(v) && v > 0 ? v : null });
+        });
+      } else if (key === 'share') {
+        el.addEventListener('change', (e) => {
+          const raw = e.target.value;
+          if (raw === '') return this.store.updateJoint(id, { share: null });
+          const v = Number(raw);
+          if (!Number.isFinite(v)) return;
+          this.store.updateJoint(id, { share: Math.min(100, Math.max(0, v)) / 100 });
+        });
+      }
+    });
+
+    host.querySelectorAll('[data-jkind]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        const kind = e.target.value === 'glue' ? 'glue' : e.target.value === 'weld' ? 'weld' : 'screw';
+        this.store.updateJoint(id, { connector: { ...j.connector, kind } });
+      });
+    });
+
+    host.querySelectorAll('[data-jc]').forEach((el) => {
+      el.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const key = e.target.dataset.jc;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        const raw = e.target.value;
+        if (raw === '' && key === 'qRd') {
+          this.store.updateJoint(id, { connector: { ...j.connector, qRd: null } });
+          return;
+        }
+        const v = Number(raw);
+        this.store.updateJoint(id, { connector: { ...j.connector, [key]: Number.isFinite(v) ? v : 0 } });
+      });
+    });
+
+    // §3 — K_ser-kilde (EC5 tabell 7.1 kontra fritt innlagt/ETA), festemiddel
+    // og kontaktflate. Rene tekstvalg — coerces IKKE til tall, i motsetning
+    // til [data-jc].
+    host.querySelectorAll('[data-jsrc]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        this.store.updateJoint(id, { connector: { ...j.connector, stiffSource: e.target.value === 'ec5' ? 'ec5' : 'eta' } });
+      });
+    });
+    host.querySelectorAll('[data-jstate]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        this.store.updateJoint(id, { connector: { ...j.connector, state: e.target.value === 'ULS' ? 'ULS' : 'SLS' } });
+      });
+    });
+    host.querySelectorAll('[data-jfast]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        this.store.updateJoint(id, { connector: { ...j.connector, ec5Fastener: e.target.value } });
+      });
+    });
+    host.querySelectorAll('[data-jcontact]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        this.store.updateJoint(id, { connector: { ...j.connector, ec5Contact: e.target.value } });
+      });
+    });
+    host.querySelectorAll('[data-jsystem]').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        const j = this.store.getJoint(id);
+        if (!j) return;
+        this.store.updateJoint(id, { connector: { ...j.connector, system: e.target.value } });
       });
     });
   }

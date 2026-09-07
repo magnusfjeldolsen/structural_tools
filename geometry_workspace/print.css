@@ -1,0 +1,354 @@
+/*
+ * print.css — skjerm- og utskriftsoppsett for rapporten i Geometry Workspace.
+ *
+ * HVORFOR IKKE ../assets/css/report-print.css
+ * Den delte fila former om den levende siden til et dokument ved å skjule ting
+ * klasse for klasse (`body > main > *:not(...)`, `[class*="bg-gray-"]` osv.).
+ * Da brekker PDF-en stille hver gang markupen endres. Samme begrunnelse som
+ * `concrete_slab_design/print.css` skrev inn i toppen av sin egen fil.
+ *
+ * I TILLEGG, og dette er spesielt for denne modulen: appen er et fullhøyde
+ * flex-oppsett (`h-screen`) der begge sidepaneler har `overflow-y-auto`.
+ * Innhold inne i en scroll-container klippes til ÉN side ved utskrift.
+ * Rapporten må derfor ut av det treet, og `height`/`overflow` må nullstilles
+ * eksplisitt. Uten resetten under blir hele rapporten en halv side.
+ *
+ * MØNSTERET
+ * Rapporten bygges i `#report-overlay` for skjerm. Rett før utskrift klones
+ * `.report-content` inn i `#gwPrintRoot`, som er et DIREKTE barn av <body>.
+ * Hele utskriften trenger da bare én strukturell regel, og ingenting ved appens
+ * markup kan påvirke den.
+ *
+ * Fila lenkes UTEN `media="print"`, fordi den også eier skjermvisningen av
+ * overlegget (§6.5 i planen: papiret speiles på skjerm, slik at man ser
+ * linjeskift og figurstørrelse før man skriver ut). Alt som gjelder papir
+ * ligger inne i `@media print`.
+ */
+
+/* ===========================================================================
+   SKJERM — overlegget
+   =========================================================================== */
+
+#report-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: #0f172a;
+}
+#report-overlay[hidden] { display: none; }
+
+#report-overlay .report-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .5rem .75rem;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  color: #e2e8f0;
+  font-size: 12px;
+}
+
+#report-overlay .report-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 0 48px;
+  display: flex;
+  justify-content: center;
+}
+
+/* Papiret speilet på skjerm: samme 174 mm trykkflate, samme hvite bakgrunn.
+   Det er dette som gjør at man ser at en tabell er for bred FØR utskrift. */
+#report-overlay .report-content {
+  /* `content-box` er ikke en detalj: Tailwind setter `box-sizing: border-box`
+     globalt, og da ville `width: 174mm` + `padding: 8mm` gitt en tekstkolonne
+     på 158 mm — mens papiret gir 174. Figuren (som har faste 174 mm) stakk da
+     ut til høyre for tabellene, og all tekst brøt tidligere på skjerm enn på
+     papir. Skjermen skal speile papiret; margen legges UTENFOR de 174 mm. */
+  box-sizing: content-box;
+  width: 174mm;
+  max-width: none;
+  background: #fff;
+  color: #111;
+  padding: 8mm;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, .5);
+  font-size: 9.5pt;
+  line-height: 1.45;
+}
+
+/* Sidegrenser: en tynn strek hver 259. mm. Dette er en INDIKASJON, ikke en
+   fasit — utskriftsmotoren skyver innhold nedover for å unngå brudd, så streken
+   treffer ikke nøyaktig der sideskiftet havner. Men den fanger «figuren er for
+   høy» og «tabellen strekker seg over grensen» på et halvt sekund. Fasiten er
+   audit() og utskriftsforhåndsvisningen. */
+#report-overlay .report-content[data-page-guides] {
+  background-image: repeating-linear-gradient(
+    to bottom, transparent 0, transparent 258mm, #ef4444 258mm, #ef4444 259mm);
+}
+
+/* ===========================================================================
+   DOKUMENTET — gjelder BÅDE på skjerm og på papir
+   ===========================================================================
+
+   Disse reglene lå opprinnelig inne i `@media print`. Det var feil, og feilen
+   var ikke kosmetisk: `audit()` måler skjermlayouten for å si om noe kommer
+   til å splittes over et sideskift. Var skjermen stylet med nettleserens
+   standardavstander mens papiret hadde rapportens egne, målte audit() en helt
+   annen side enn den som ble skrevet ut — og svarte selvsikkert på feil
+   spørsmål. (Konkret: lasttabellen målte 57 mm på skjerm mot 20 mm på papir.)
+
+   Regelen er derfor: alt som beskriver DOKUMENTET står her, scopet til
+   `.report-content` — som finnes både i overlegget og i utskriftsroten. Bare
+   det som beskriver ARKET (sideboks, skjuling av appen, sidebrudd, blekk)
+   ligger igjen i `@media print`.
+   =========================================================================== */
+
+/* ---- typografi ----------------------------------------------------------- */
+.report-content h1 { font-size: 15pt;   margin: 0 0 3mm; }
+.report-content h2 { font-size: 12.5pt; margin: 0 0 2.5mm; }
+.report-content h3 { font-size: 10.5pt; margin: 3mm 0 1.5mm;
+                    letter-spacing: .02em; }
+/* Første overskrift i en seksjon trenger ingen toppmarg — seksjonen har alt
+   avstanden fra blokka over. */
+.report-content section > h3:first-child { margin-top: 0; }
+.report-content h4 { font-size: 9.5pt;  margin: 3mm 0 1.5mm; }
+.report-content p  { margin: 0 0 1.5mm; }
+.report-content p, .report-content li, .report-content td { orphans: 3; widows: 3; }
+
+.report-content .text-xs   { font-size: 8pt; }
+.report-content .text-sm   { font-size: 8.5pt; }
+.report-content .text-base { font-size: 9.5pt; }
+.report-content .text-lg   { font-size: 10.5pt; }
+.report-content .text-xl   { font-size: 11.5pt; }
+.report-content .text-2xl  { font-size: 12.5pt; }
+
+/* ---- tabeller ------------------------------------------------------------ */
+.report-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 3mm;
+  font-size: 8.5pt;
+}
+.report-content th, .report-content td {
+  border: 0.5pt solid #bbb;
+  padding: 0.6mm 1.2mm;
+  line-height: 1.25;
+  text-align: left;
+}
+.report-content thead { display: table-header-group; }   /* gjentas på hver side */
+.report-content th { background: #eef0f3; font-weight: 600; }
+.report-content td.num, .report-content th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fargeprøven i deletabellen er koblingen mellom tabellen og figuren. Den må
+   derfor overleve `print-color-adjust`; det er den ene fargeflaten i
+   rapporten som bærer informasjon i seg selv. */
+.report-content .swatch {
+  display: inline-block;
+  width: 3mm;
+  height: 3mm;
+  border: 0.4pt solid #666;
+  vertical-align: -0.3mm;
+}
+
+/* To tabeller side om side.
+   
+   Side 1 har 259 mm, og figuren tar 82 av dem. Lastene og virkningen av
+   forsterkningen er begge smale tabeller (4 kolonner) som hver bare brukte
+   halve bredden — stablet under hverandre kostet de 137 mm, side om side
+   koster de 71. Det var forskjellen på at side 1 fikk plass og ikke.
+
+   MERK grid-fella: `break-inside: avoid` virker ikke på et element som er
+   grid-ITEM i Chromium. Det er derfor `.two-col` selv merkes `.atomic`, og
+   ikke kolonnene inni den. Grid brukes til innholdet i en atomblokk, aldri
+   til å stable atomblokker. */
+.report-content .two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4mm;
+  align-items: start;
+}
+.report-content .two-col > * { min-width: 0; }
+
+/* ---- formler ------------------------------------------------------------- */
+.report-content .font-mono, .report-content code {
+  font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+  font-size: 8.5pt;
+  background: transparent;
+  padding: 0;
+}
+.report-content .whitespace-pre-wrap { white-space: pre-wrap; }
+
+/* Utskriftsroten er usynlig på skjerm — den fylles først ved beforeprint. */
+#gwPrintRoot { display: none; }
+
+/* ===========================================================================
+   UTSKRIFT
+   =========================================================================== */
+
+@media print {
+
+  /* ---- papirflaten ---------------------------------------------------------
+     A4 stående. 210 − 20 − 16 = 174 mm trykkflate i bredden, 297 − 18 − 20 =
+     259 mm i høyden. Hvert mål i rapporten er målt mot disse to tallene. */
+  @page {
+    size: A4 portrait;
+    margin: 18mm 16mm 20mm 20mm;
+  }
+
+  html, body {
+    background: #fff !important;
+    color: #111 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 9.5pt !important;
+    line-height: 1.45 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+
+    /* KRITISK I DENNE MODULEN. <body> er h-screen med overflow-hidden. Uten
+       denne resetten klippes utskriften til én side, uansett hvor riktig alt
+       annet er. Dette er den enkeltregelen som er lettest å utelate og verst å
+       feilsøke. */
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* ---- den ene strukturelle regelen ---------------------------------------
+     Alt appen tegner skjules; bare utskriftsroten vises. Ingenting her avhenger
+     av Tailwind-klassenavn eller av hvor dypt rapporten er nestet. */
+  body > *            { display: none !important; }
+  body > #gwPrintRoot { display: block !important; }
+
+  #gwPrintRoot {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #111 !important;
+  }
+
+  #gwPrintRoot .report-content {
+    background: #fff !important;
+    color: #111 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background-image: none !important;   /* sidegrensene er en skjermting */
+  }
+
+  /* `position: static` på ALT er tryggere enn å lete opp enkelttilfeller:
+     `position: fixed` gjentas på hver side i Chrome og forsvinner i Firefox.
+     `overflow: visible` fjerner enhver arvet scroll-container. */
+  #gwPrintRoot, #gwPrintRoot * {
+    overflow: visible !important;
+    position: static !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    max-width: 100% !important;
+    overflow-wrap: break-word !important;
+    word-break: normal;
+  }
+
+  /* ---- løpende overskrift --------------------------------------------------
+     Skrives ÉN gang øverst i dokumentet, ikke per side: Chrome kan ikke plassere
+     levende innhold i @page-margeboksene, og å late som noe annet er hvordan man
+     ender opp med @top-left-regler som ikke gjør noe. Sidetall overlates til
+     nettleserens egen bunntekst. */
+  #gwPrintRoot .print-head {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 0.6pt solid #999;
+    padding-bottom: 2mm;
+    margin-bottom: 4mm;
+    font-size: 8pt;
+    color: #444;
+  }
+  #gwPrintRoot .print-head b { font-size: 10pt; color: #111; }
+
+  /* Blekk: appen er mørk, så alt må tvinges nær-svart. Seksjonsfargene beholdes,
+     ellers blir rapporten uleselig grå. */
+  .report-content,
+  .report-content p, .report-content div, .report-content span,
+  .report-content li, .report-content td, .report-content th { color: #111; }
+  .report-content .muted,
+  .report-content .text-slate-400,
+  .report-content .text-slate-500           { color: #555; }
+  .report-content .sec-input,  .report-content .text-blue-700   { color: #1d4ed8; }
+  .report-content .sec-result, .report-content .text-green-700  { color: #15803d; }
+  .report-content .sec-calc,   .report-content .text-purple-700 { color: #6b21a8; }
+  .report-content .sec-plot,   .report-content .text-yellow-700 { color: #a16207; }
+  .report-content .warn,       .report-content .text-red-700    { color: #b91c1c; }
+
+  /* ---- sidebrudd -----------------------------------------------------------
+     (a) ATOMBLOKK — det som aldri skal splittes. Hva som er atomært avgjøres i
+     markupen med class="atomic", ikke av en liste over Tailwind-klasser i
+     CSS-en. Det var nettopp klasselistene som gjorde den delte report-print.css
+     skjør.
+
+     FALLGRUVE: `break-inside: avoid` virker IKKE på et element som er flex-
+     eller grid-ITEM i Chromium. Atomblokkene skal derfor være vanlige
+     blokkelementer. Bruk grid til innholdet INNI en atomblokk, aldri til å
+     stable atomblokkene. */
+  #gwPrintRoot .atomic,
+  #gwPrintRoot table,
+  #gwPrintRoot tr,
+  #gwPrintRoot figure,
+  #gwPrintRoot svg {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* (b) BIND OVERSKRIFT TIL DET SOM FØLGER.
+     `break-after: avoid` på en <h3> er IKKE pålitelig i Chromium — den ignoreres
+     i flere layoutsituasjoner, og er den vanligste grunnen til at en overskrift
+     blir stående alene nederst på en side. Den robuste løsningen er å pakke
+     overskriften og dens første blokk sammen i .keep-with-next. Det er
+     .keep-with-next som faktisk virker; break-after under er en gratis
+     forbedring der nettleseren respekterer den. */
+  #gwPrintRoot .keep-with-next {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  #gwPrintRoot h1, #gwPrintRoot h2, #gwPrintRoot h3, #gwPrintRoot h4 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* (c) SIDESKIFTET MELLOM SIDE 1 OG SIDE 2.
+     Begge regler, ikke bare den ene: en break-after på siste barn ignoreres i
+     noen motorer, mens en break-before på det neste elementet respekteres, og
+     motsatt. De to sammen gir aldri en blank side, fordi de peker på samme
+     skift. */
+  #gwPrintRoot .page-1 { page-break-after: always;  break-after: page; }
+  #gwPrintRoot .page-2 { page-break-before: always; break-before: page; }
+
+  /* ---- figuren -------------------------------------------------------------
+     Rapportfiguren har EKSPLISITTE mm-mål i width/height. De skal stå. En SVG
+     med prosent- eller auto-høyde måles feil i Safari ved utskrift, og
+     `height: auto` under ville overstyrt de faste målene. Derfor er
+     .report-figure unntatt fra den generelle bilderegelen. */
+  #gwPrintRoot img, #gwPrintRoot canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  #gwPrintRoot svg.report-figure {
+    display: block !important;
+    max-width: none !important;
+  }
+
+  #gwPrintRoot a { color: #1d4ed8 !important; text-decoration: none !important; }
+  #gwPrintRoot a[href]::after { content: "" !important; }
+}

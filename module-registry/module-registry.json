@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "generated": "2026-08-25T13:02:43.812Z",
+    "generated": "2026-09-07T12:45:34.636Z",
     "total_modules": 28,
     "version": "1.0.0",
     "duplicates_removed": 0,
@@ -241,8 +241,8 @@
     },
     {
       "id": "geometry_workspace",
-      "title": "Geometri-workspace — Tyngdepunkt og nøytralakse",
-      "description": "Geometri-workspace for å finne tyngdepunkt og nøytralakse i sammensatte tverrsnitt. Tegn rektangler, skallelementer og polygoner i XY-planet, håndter overlapp, og les av tyngdepunkt, arealmomenter og hovedakser.",
+      "title": "Geometri-workspace — Tverrsnitt og forsterkning",
+      "description": "Geometri-workspace for sammensatte tverrsnitt: tyngdepunkt, nøytralakse og arealmomenter — og skjøtekrefter ved forsterkning eller kontroll av eksisterende profiler. Tegn skjøtelinjer (skruer, lim eller sveis) og få skjærstrømmen q = V·ES*/EI fra to lasttilstander før/etter forsterkning, forankringskraften ΔN/L, nødvendig skrueavstand, limspenning eller sveiseutnyttelse, og Volkersen-toppen i skjøteendene.",
       "keywords": [
         "tyngdepunkt",
         "nøytralakse",
@@ -254,7 +254,23 @@
         "fem-design",
         "virtual bar",
         "skallelement",
-        "geometri"
+        "geometri",
+        "forsterkning",
+        "skjøt",
+        "skjøtekrefter",
+        "skjærstrøm",
+        "vq/i",
+        "skjærflyt",
+        "samvirke",
+        "limt forbindelse",
+        "skruavstand",
+        "sveis",
+        "sveisekapasitet",
+        "volkersen",
+        "forankringslengde",
+        "cfrp",
+        "påforing",
+        "eksisterende konstruksjon"
       ],
       "url": "./geometry_workspace/index.html",
       "category": "structural-analysis"
