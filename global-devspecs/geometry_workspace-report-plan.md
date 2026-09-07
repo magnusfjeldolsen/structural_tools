@@ -89,21 +89,72 @@ Papirflate: A4 stående, marger `18mm 16mm 20mm 20mm` (topp/høyre/bunn/venstre)
 
 ### 4.1 Side 1 — oppgaven på ett blikk
 
-Denne siden skal kunne legges foran noen som ikke kjenner modellen, og gi dem
-oppgaven. Ingen mellomregning her.
+**Revidert etter brukerens presisering.** Rekkefølgen under er den brukeren ba om:
+tegningen **først**, deretter inndata, deretter virkningen av forsterkningen, og til
+slutt skjøtekreftene. Denne siden skal kunne legges foran noen som ikke kjenner
+modellen, og gi dem hele oppgaven. Ingen mellomregning her.
 
 | Rekkefølge | Blokk | Høyde­budsjett | Innhold |
 |---|---|---|---|
-| 1 | `.print-head` | 8 mm | Venstre: modellnavn (`state.title`) i fet, eller «Geometri-workspace» om tomt. Høyre: «Tverrsnitt og skjøtekrefter · `NS-EN 1995-1-1` (γ-metoden) · dato». Understrek. |
-| 2 | Tittel + beskrivelse | 8–20 mm | `<h1>` «Tverrsnitt, skjøter og skjærstrøm». Under: brukerens frie beskrivelse fra `state.report.note` hvis satt, ellers utelatt (ikke tom plass). |
-| 3 | **Figur** | 112 mm | Vektor-SVG, `width="174mm" height="112mm"`. Se §7 for innhold. |
-| 4 | Lasttabell | 22 mm | To kolonner: «Før forsterkning — på det eksisterende tverrsnittet alene» og «Etter forsterkning — tillegg på det sammensatte». Rader: `N` [kN], `M_x` [kNm], `M_y` [kNm], `V_y` [kN], `V_x` [kN]. Under tabellen: `L = … mm` (forankringslengde). Ved `res.allExisting` faller «etter»-kolonnen bort og tabellen får i stedet linja «Alle former er eksisterende — dette er en kontroll av dagens konstruksjon; det finnes ingen etter-tilstand.» |
-| 5 | Skjøte- og krafttabell | 6 + n·5,5 mm | Én rad per skjøt. Kolonner: `#` (J1, J2 …, samme merking som i figuren) · Navn · **Type** · Forbindelse · `b` [mm] · `q_før` · `q_etter` · `q_N` · **`q_tot`** [N/mm]. `q_tot` i fet. Ved `res.allExisting` vises bare `q_før`, og den er totalen. |
-| 6 | Avgrensningsnote | 12 mm | Fast tekst, §5.4. Rammet, liten skrift. |
-| — | Slakk | ≥ 20 mm | Buffer mot at skrifthøyder varierer mellom nettlesere. |
+| 1 | `.print-head` | 8 mm | Venstre: modellnavn (`state.title`) i fet, eller «Geometri-workspace» om tomt. Høyre: «Tverrsnitt og skjøtekrefter · `NS-EN 1995-1-1` (γ-metoden) · dato». Understrek. Ingen `<h1>` — figuren er tittelen. |
+| 2 | **Figur** | 95 mm | Vektor-SVG, `width="174mm" height="95mm"`, utsnittet valgt som «zoom alt» — se §7.5. Dette er **det første** leseren ser. |
+| 3 | **Deler og materialdata** | 6 + n·5,5 mm | Én rad per form. Se §4.1.1. Dette er brukerens «materialdata for eksisterende og nytt tverrsnitt, for hver del». |
+| 4 | Lasttabell | 20 mm | To kolonner: «Før forsterkning — på det eksisterende tverrsnittet alene» og «Etter forsterkning — tillegg på det sammensatte». Rader: `N` [kN], `V_y` [kN], `V_x` [kN], `M_x` [kNm], `M_y` [kNm] — samme rekkefølge som feltene i fanen. Under tabellen: `L = … mm`. Ved `res.allExisting` faller «etter»-kolonnen bort, og tabellen får i stedet linja «Alle former er eksisterende — dette er en kontroll av dagens konstruksjon; det finnes ingen etter-tilstand.» |
+| 5 | **Effekt av forsterkningen** | 26 mm | Kondensert før/etter-tabell: `EA`, `EI_x`, `EI_y`, `y_c`, `x_c`, `θ` i kolonnene «Eksisterende / Sammensatt / Endring». Kilde `res.comparison` + `res.axes`. Den fulle versjonen med utledning står i §4 på side 2+; her er bare tallene. Utelates helt ved `res.allExisting`. |
+| 6 | **Skjøtekrefter** | 6 + n·5,5 mm | Én rad per skjøt, se §4.1.2. Dette er tallene brukeren tar med videre til festemiddelberegningen. |
+| 7 | Avgrensningsnote | 12 mm | Fast tekst, §5.4. Rammet, liten skrift. |
 
-**Type-kolonnen** er det brukeren ba om eksplisitt, og avledes slik (feltnavnene
-finnes allerede på skjøteobjektet fra `computeReinforcement`):
+**Høydebudsjett:** 8 + 95 + 26 + 20 + 26 + 26 + 12 = 213 mm av 259 mm ved 4 deler og
+4 skjøter, altså 46 mm slakk. Overflytsreglene under er valgt slik at siden holder.
+
+**Overflytsregel (deterministisk, ikke målt):** maks **8** delerader og maks **8**
+skjøterader på side 1. Er det flere, vises de 7 første, og rad 8 blir «… og *m* flere
+— se side 2». Tegnforklaringen i figuren følger delelista og har samme grense.
+
+*Ærlig forbehold til M1:* med 8 deler **og** 8 skjøter blir budsjettet 257 mm, altså
+akkurat innenfor, men uten margin for at skrifthøyder varierer mellom nettlesere.
+M1 leses derfor som: **side 1 er garantert én side for modeller med opptil 6 deler og
+6 skjøter**, og audit-funksjonen (§8.1) er det som avgjør om en gitt modell holder.
+Å presse ti rader inn med mindre skrift ville gjort tabellen uleselig i en rapport som
+skal signeres — grensen er et bevisst valg, ikke en begrensning i teknikken.
+
+#### 4.1.1 Deletabellen — materialdata per del
+
+Kolonner, i denne rekkefølgen:
+
+| Kolonne | Kilde | Merknad |
+|---|---|---|
+| Fargeprøve | `part.color` | Samme farge som i figuren — det er koblingen mellom tabell og tegning |
+| Del | `part.name` | |
+| Tilstand | `part.stage` | «Eksisterende» / **«Ny»** i fet |
+| Materiale | `shape.material.name` | Presetets `label` hvis navnet treffer et preset, ellers navnet som det står |
+| `E` [N/mm²] | `part.E` | |
+| `ρ_m` [kg/m³] | `shape.material.rho` | Bare når kolonnen har minst én verdi — se §14 |
+| `A` [mm²] | `part.props.A` | |
+| `EA` [N] | `part.EA` | Vitenskapelig notasjon, `sci()` |
+| Andel av `EA` | `part.EA / res.section.EA` | Prosent. Dette er den som forklarer aksialfordelingen på én linje |
+
+Summeringsrad nederst: `ΣA`, `ΣEA`, og «herav ny: *x* %». Den raden er hele
+poenget med tabellen — den sier på ett blikk hvor stor forsterkningen faktisk er.
+
+`E` og `ρ_m` er de to tallene som avgjør henholdsvis kraftfordelingen og
+festemiddelstivheten. Står de ikke i rapporten, kan ingen etterprøve den.
+
+#### 4.1.2 Skjøtetabellen — kreftene som skal videre
+
+Kolonner: `#` (J1, J2 …, **samme merking som i figuren**) · Navn · **Type** ·
+Forbindelse · `b` [mm] · `q_før` · `q_etter` · `q_N` · **`q_tot`** [N/mm] ·
+`τ = q_tot/b` [N/mm²]. `q_tot` i fet. Ved `res.allExisting` vises bare `q_før`, og den
+er totalen.
+
+Brukerens krav «hvor de skjøtesnittene er på tverrsnittet» løses ved at `#`-merkingen
+er den **eneste** koblingen som trengs: figuren viser `J1`, `J2` … med leder ut til
+skjøtelinja, og tabellen bruker de samme merkelappene. Merkingen genereres ett sted
+(`report.js` nummererer `res.joints` i rekkefølge) og sendes både til figuren og til
+tabellen, slik at de ikke kan komme i utakt.
+
+**Type-kolonnen** avledes slik (feltnavnene finnes allerede på skjøteobjektet fra
+`computeReinforcement`):
 
 ```
 !jt.hasNeighbor  → «treffer ingen former»   (feiltilstand, rød)
@@ -115,13 +166,7 @@ ellers           → «mot ny del»
 Det er den samme testen som avgjør om skjøten har en «før»-tilstand i det hele tatt,
 så tabellen kan ikke komme i utakt med tallene til høyre for den.
 
-**Overflytsregel (deterministisk, ikke målt):** maks **10** skjøterader på side 1. Er
-det flere, vises de 9 første, og rad 10 blir «… og *m* flere skjøter — se «Per skjøt»,
-side 2». Tilsvarende for figurens tegnforklaring: maks 8 oppføringer, deretter
-«… og *m* flere former». Grensene er valgt slik at høydebudsjettet holder med margin,
-og de er faste tall nettopp fordi de skal kunne testes.
-
-Blokk 6 avsluttes med `break-after: page`. Alt over ligger i én `<section class="page-1">`.
+Blokk 7 avsluttes med `break-after: page`. Alt over ligger i én `<section class="page-1">`.
 
 ### 4.2 Side 2 og utover — beregningen
 
@@ -542,6 +587,28 @@ Innhold, i tegnerekkefølge (bakerst først):
 Tomtilfelle: uten former tegnes en tom ramme med teksten «Ingen geometri i modellen».
 Rapporten skal fortsatt kunne skrives ut.
 
+### 7.5 Utsnittet — «zoom alt», ikke lerretets tilfeldige tilstand
+
+Brukeren ba om at figuren viser tverrsnittet slik «zoom alt» viser det. Det skal
+**ikke** løses ved å lese av lerretets kameraposisjon. Den er tilfeldig — den avhenger
+av hvor brukeren sist zoomet, og en rapport som ser ulik ut avhengig av det er ikke en
+rapport. Utsnittet regnes i stedet ut på nytt, deterministisk:
+
+1. Ta omsluttende boks av **alt som skal tegnes**: alle former (fra `parts[i].multi`),
+   alle skjøtelinjenes endepunkt, begge tyngdepunkt, og nullpunktet hvis det er satt.
+   At skjøtene er med er poenget — en skjøtelinje som stikker utenfor konturen skal
+   ikke klippes bort.
+2. Legg til 6 % luft på hver side, minst 10 mm i modellkoordinater.
+3. Reserver plass i tegneflaten: 12 mm nede og 14 mm til venstre til målsetting,
+   og en tegnforklaringsboks nede til høyre.
+4. Velg målestokk `S` som den minste i lista i §7.4 der boksen får plass i det som er
+   igjen. Sentrer utsnittet i den flaten.
+
+Resultatet er at samme modell alltid gir samme figur, uansett hva brukeren gjorde på
+lerretet rett før. Det er en egenskap som skal enhetstestes: `buildFigureSvg` tar
+**ingen** kameratilstand som argument, og skal ikke kunne det.
+
+
 ---
 
 ## 8. Testopplegg
@@ -812,3 +879,83 @@ gjelder til noen sier noe annet.
    modellnavn oppfører seg.
 4. **Sidetall.** Overlates til nettleserens egen bunntekst, som i
    `concrete_slab_design`. Standard: ingen egen implementasjon.
+
+---
+
+## 14. Tillegg: trevirke som førstemål, og materialdata per del
+
+Brukeren har presisert at **forsterkning av trekonstruksjoner** er det første målet, og
+at materialdata skal fram per del. To ting følger av det.
+
+### 14.1 `ρ_m` hører hjemme på delen, ikke bare i skjøten
+
+I dag oppgis densiteten `ρ` i **skjøtens** forbindelsesfelt, som inndata til
+`ec5Kser()`. For to trestykker skriver brukeren inn `ρ₁` og `ρ₂` for hånd — på hver
+skjøt på nytt. Det er den samme materialegenskapen skrevet inn like mange ganger som
+det finnes skjøter, og ingen av dem havner i rapportens deletabell.
+
+**Endring:** `shape.material` får et valgfritt felt `rho` [kg/m³], og
+`MATERIALS`-presetene i `materials.js` får `rho` der det er meningsfullt:
+
+| Preset | `rho` [kg/m³] | Kilde |
+|---|---|---|
+| `C24` | 420 | NS-EN 338, `ρ_mean` (`ρ_k` er 350 — **ikke** den) |
+| `GL30c` | 430 | NS-EN 14080, `ρ_mean` |
+| Stål, betong, CFRP, aluminium | utelatt (`undefined`) | Ikke i bruk — EC5 tabell 7.1 gjelder trevirke |
+
+`ρ_mean`, ikke `ρ_k`. EC5 (7.1) er skrevet med `ρ_m`, og `ec5Kser()` heter allerede
+`rhoMean` internt. Å blande inn `ρ_k` her ville gitt ~20 % for lav `K_ser` uten at noen
+merket det.
+
+**Rettelse.** Første utkast av denne tabellen skrev `C24 = 350`. Det er `ρ_k`, ikke
+`ρ_mean` — nøyaktig feilen avsnittet over advarer mot, begått i selve tabellen som
+advarer mot den. Riktig verdi er **420**, som er det `TIMBER_DENSITIES` i
+`connection-stiffness.js` allerede sto med. `TIMBER_DENSITIES` er fasit ved sprik; den
+lista er fullstendig og ble skrevet først. Feilen var stille: 350 er en fullt plausibel
+densitet, og ingen test ville fanget den.
+
+`connection-stiffness.js` endres **ikke**. Koblingen gjøres i `computeReinforcement`:
+når en skjøt har `connector.kind === 'screw'` og brukeren **ikke** har skrevet inn
+`rho1`/`rho2`, hentes de fra `material.rho` på de to sidene skjøten faktisk treffer
+(`sides.aSide` / `sides.bSide` — samme kilde som `aNames`/`bNames`).
+
+**Regelen som ikke får brytes:** et tall brukeren har skrevet inn vinner alltid. Auto-
+utledningen fyller bare tomme felt. Rapporten og fanen skriver hvilken kilde som ble
+brukt — «ρ₁ = 350 kg/m³ (fra materialet C24 i Steg)» mot «ρ₁ = 380 kg/m³ (oppgitt)» —
+fordi et tall som dukker opp av seg selv i en beregning som skal signeres, må kunne
+spores. Dette er også hva som gjør endringen trygg: eksisterende modeller har verken
+`material.rho` eller endret oppførsel, siden feltene deres allerede er utfylt.
+
+Kommer `ρ` fra to ulike treslag, brukes `meanDensity()` som i dag — den regner
+√(ρ₁·ρ₂), slik EC5 krever, og skriver mellomregningen selv.
+
+*Ingen versjonsbump av modellformatet.* `rho` er valgfritt, og fravær betyr «ikke
+oppgitt», som er nøyaktig dagens tilstand.
+
+### 14.2 Hva rapporten må vise for at en trebjelke skal kunne etterprøves
+
+Den fulle sporen fra materiale til kraft per festemiddel, som §6d skal skrive ut:
+
+```
+ρ_m  (per del, deletabellen)  →  K_ser = ρ_m^1.5·d/23   (EC5 tabell 7.1)
+                              →  K_u   = ⅔·K_ser        (ULS)
+                              →  k     = K/s            [N/mm per mm skjøt]
+                              →  γ_i, (EI)_ef           (EC5 tillegg B)
+                              →  F_i   = q_tot·s        [N per festemiddel]
+```
+
+Hvert steg med formel, innsatte tall og resultat. Det er denne kjeden som gjør at en
+kontrollør kan gå fra «C24» øverst i rapporten til «12,4 kN per skrue» nederst uten å
+måtte slå opp noe selv — og det er den kjeden som gjør rapporten til dokumentasjon
+heller enn et utskrevet skjermbilde.
+
+### 14.3 Arbeidsdeling
+
+§14.1 er en egen, liten bølge som ligger **før** bølge A, fordi den rører
+`materials.js`, `store.js`, `ui.js` og `reinforcement-ui.js` — filer bølge A også
+rører. Kalles **bølge 0**.
+
+**Ferdig når:** `C24` og `GL30c` har `rho`; et skruet skjøt mellom to C24-deler
+foreslår `ρ_m = 420` uten at brukeren skriver noe; et inntastet `ρ₁` overstyrer
+fortsatt; kildeteksten står i fanen; og de tre eksisterende testsuitene er grønne med
+**uendrede** tall.
