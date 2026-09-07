@@ -62,6 +62,8 @@ import {
   NtokN,
 } from './reinforcement.js';
 import { slipModulus, interfaceStiffness } from './connection-stiffness.js';
+import { materialRho } from './materials.js';
+import { derivationModel, DERIVATION_ASSUMPTIONS, sci, n, q, pct } from './derivation.js';
 import {
   sidesOfJoint,
   buildGraph,
@@ -77,48 +79,63 @@ import { JOINT_COLOR } from './store.js';
  * Tallformatering
  * ------------------------------------------------------------------ */
 
-const nf = (dec) =>
-  new Intl.NumberFormat('nb-NO', { minimumFractionDigits: dec, maximumFractionDigits: dec }).format;
-
-const SUP = { '-': '⁻', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' };
-
-function sup(v) {
-  return String(v).split('').map((c) => SUP[c] || c).join('');
-}
-
-/** Tierpotens med mantisse, som resten av repoet skriver store tall. */
-export function sci(v, digits = 4) {
-  if (!Number.isFinite(v)) return '–';
-  if (v === 0) return '0';
-  const exp = Math.floor(Math.log10(Math.abs(v)));
-  const mant = v / 10 ** exp;
-  return `${nf(digits - 1)(mant)}·10${sup(exp)}`;
-}
-
-/** Tall uten enhet. Går over til tierpotens der desimalform blir uleselig. */
-export function n(v, dec = 2) {
-  if (v === Infinity) return '∞';
-  if (!Number.isFinite(v)) return '–';
-  if (v === 0) return '0';
-  const a = Math.abs(v);
-  if (a >= 1e5 || a < 1e-3) return sci(v, 4);
-  return nf(dec)(v);
-}
-
-/** Tall MED enhet. Ingen størrelse i denne fanen skal vises uten. */
-export function q(v, unit, dec = 2) {
-  if (v === Infinity) return `∞ ${unit}`;
-  if (!Number.isFinite(v)) return `– ${unit}`;
-  return `${n(v, dec)} ${unit}`;
-}
-
-function pct(v, dec = 1) {
-  if (!Number.isFinite(v)) return '–';
-  return `${nf(dec)(v)} %`;
-}
+/*
+ * Formatererne bor i `derivation.js`, ikke her. Grunnen er at utledningen må
+ * kunne lastes uten importer (testriggen laster moduler som `data:`-URL), og
+ * da må tallformateringen ligge i den fila som ikke importerer noe. De
+ * re-eksporteres herfra slik at panelets offentlige API er uendret.
+ */
+export { sci, n, q };
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* ------------------------------------------------------------------ *
+ * §14.1 — ρ_m per del, ikke per skjøt
+ * ------------------------------------------------------------------ *
+ * Densiteten er en egenskap ved TREET, ikke ved skjøten. Den skulle derfor
+ * ikke skrives inn på nytt for hver eneste skjøt. `shape.material.rho` er
+ * kilden; skjøtens egne ρ-felt er overstyringen.
+ *
+ * DEN UKRENKELIGE REGELEN: et tall brukeren har skrevet inn vinner ALLTID.
+ * Auto-utledningen fyller bare tomme felt, og den skriver alltid fra seg hvor
+ * tallet kom fra — et tall som dukker opp av seg selv i en beregning som skal
+ * signeres, må kunne spores tilbake til noe.
+ */
+
+/** Er dette et tall brukeren faktisk har oppgitt? Tomt felt gir `''` ⟹ nei. */
+function givenNumber(v) {
+  const x = Number(v);
+  return Number.isFinite(x) && x > 0 ? x : null;
+}
+
+/**
+ * Laveste ρ_m blant formene på én side av skjøten.
+ *
+ * Er det flere former med ulik densitet på samme side, velges den LAVESTE.
+ * Det er konservativt for `K_ser` (som går som ρ^1,5), altså gir lavere
+ * samvirkegrad og større beregnet nedbøyning — den trygge veien når verktøyet
+ * må gjette. At det ble gjettet, står i `multi`, og skrives ut i fanen.
+ *
+ * @param {string[]} ids Formene på siden (`sides.aSide` / `sides.bSide`)
+ * @param {Map<string, Object>} byId
+ * @returns {{rho: number, label: string, shape: string, multi: boolean}|null}
+ */
+function sideRho(ids, byId) {
+  const found = [];
+  for (const id of ids || []) {
+    const s = byId.get(id);
+    if (!s) continue;
+    const r = materialRho(s.material);
+    if (r === undefined) continue;
+    found.push({ rho: r, label: (s.material && s.material.name) || '', shape: s.name || String(id) });
+  }
+  if (!found.length) return null;
+  let best = found[0];
+  for (const f of found) if (f.rho < best.rho) best = f;
+  const multi = found.some((f) => Math.abs(f.rho - best.rho) > 1e-9);
+  return { ...best, multi };
 }
 
 function num(v, fallback = 0) {
@@ -296,14 +313,46 @@ export function computeReinforcement(state) {
     // `stiffSource` mangler på gamle/nye skjøter ⟹ 'eta', som er nøyaktig det
     // det rå `Kser`-feltet alltid har betydd — ingen stille atferdsendring.
     const stiffState = connector.state === 'ULS' ? 'ULS' : 'SLS';
+
+    // §14.1 — ρ_m hentes fra delene skjøten faktisk treffer, men BARE inn i
+    // felt brukeren har latt stå tomme. `sides.aSide`/`sides.bSide` er samme
+    // kilde som `aNames`/`bNames`, så det som står i «fra materialet X i Y» er
+    // nøyaktig den formen skjøten ligger inntil.
+    let rhoSource = null;
+    let rho1 = givenNumber(connector.ec5Rho1);
+    let rho2 = givenNumber(connector.ec5Rho2);
+    if (connector.kind === 'screw') {
+      const derA = rho1 == null ? sideRho(sides.aSide, shapeByIdMm) : null;
+      const derB = rho2 == null ? sideRho(sides.bSide, shapeByIdMm) : null;
+      const a = { kind: rho1 != null ? 'input' : derA ? 'material' : 'none', value: rho1 != null ? rho1 : derA ? derA.rho : null,
+        label: derA ? derA.label : '', shape: derA ? derA.shape : '', multi: !!(derA && derA.multi) };
+      const b = { kind: rho2 != null ? 'input' : derB ? 'material' : 'none', value: rho2 != null ? rho2 : derB ? derB.rho : null,
+        label: derB ? derB.label : '', shape: derB ? derB.shape : '', multi: !!(derB && derB.multi) };
+      rho1 = a.value;
+      rho2 = b.value;
+      // `meanDensity()` krever at ρ₁ finnes: den regner √(ρ₁·ρ₂) og gir NaN
+      // uten den første. Har bare B-siden en densitet (A er stål, eller linja
+      // stikker ut i lufta), er det riktige ett treslag med B sin verdi — ikke
+      // et ugyldig geometrisk middel av «ingenting» og 350.
+      if (rho1 == null && rho2 != null) {
+        rhoSource = { a: b.kind, aValue: b.value, aLabel: b.label, aShape: b.shape, aMulti: b.multi,
+          b: 'none', bValue: null, bLabel: '', bShape: '', bMulti: false, swapped: true };
+        rho1 = rho2;
+        rho2 = null;
+      } else {
+        rhoSource = { a: a.kind, aValue: a.value, aLabel: a.label, aShape: a.shape, aMulti: a.multi,
+          b: b.kind, bValue: b.value, bLabel: b.label, bShape: b.shape, bMulti: b.multi, swapped: false };
+      }
+    }
+
     const slip = connector.kind === 'screw'
       ? slipModulus(
           connector.stiffSource === 'ec5'
             ? {
                 source: 'ec5',
                 fastener: connector.ec5Fastener || 'dowel',
-                rho1: connector.ec5Rho1,
-                rho2: connector.ec5Rho2,
+                rho1: rho1 == null ? undefined : rho1,
+                rho2: rho2 == null ? undefined : rho2,
                 d: connector.ec5D,
                 dc: connector.ec5Dc,
                 contact: connector.ec5Contact || 'timber-timber',
@@ -431,6 +480,7 @@ export function computeReinforcement(state) {
       check,
       kConn,
       slip,
+      rhoSource,
       ifStiff,
       gamma,
       fastenerFull,
@@ -590,6 +640,34 @@ function row(label, value, cls = 'text-slate-200') {
     <span class="text-slate-400">${label}</span>
     <span class="${cls} num">${value}</span>
   </div>`;
+}
+
+/**
+ * §14.1 — hvor hver ρ_m kom fra, skrevet ut.
+ *
+ * «ρ₁ = 350 kg/m³ (fra materialet C24 i Steg)» mot «ρ₁ = 380 kg/m³ (oppgitt)».
+ * Poenget er ikke pynt: en verdi verktøyet fant selv, i en beregning som skal
+ * signeres, må kunne spores tilbake til den delen den kom fra. Uten denne
+ * linja ville brukeren ikke kunne se forskjell på et tall han selv skrev og et
+ * tall programmet gjettet.
+ */
+function rhoSourceHtml(rs) {
+  if (!rs) return '';
+  const line = (sym, kind, value, label, shape, multi) => {
+    if (kind === 'none') return '';
+    const origin =
+      kind === 'input'
+        ? 'oppgitt'
+        : `fra materialet ${escapeHtml(label || '—')} i ${escapeHtml(shape || '—')}`;
+    const warn = multi
+      ? ' <span class="text-amber-300">Flere deler på denne siden har ulik ρ_m — den laveste er brukt (konservativt for K_ser).</span>'
+      : '';
+    return `<p class="text-[10px] text-slate-500 leading-snug">${sym} = ${n(value, 0)} kg/m³ (${origin})${warn}</p>`;
+  };
+  return (
+    line('ρ₁', rs.a, rs.aValue, rs.aLabel, rs.aShape, rs.aMulti) +
+    line('ρ₂', rs.b, rs.bValue, rs.bLabel, rs.bShape, rs.bMulti)
+  );
 }
 
 /**
@@ -1177,6 +1255,7 @@ export class ReinforcementPanel {
            <div class="text-[10px] text-slate-500">
              K_ser — ${jt.slip.source === 'ec5' ? `EC5 tabell 7.1 (${escapeHtml(jt.slip.label)})` : 'fritt innlagt (ETA / produktgodkjenning)'}
            </div>
+           ${jt.slip.source === 'ec5' ? rhoSourceHtml(jt.rhoSource) : ''}
            ${row(`K (${jt.slip.state})`, jt.slip.valid ? q(jt.slip.K, 'N/mm') : '–')}
            ${jt.slip.notes.map((t) => `<p class="text-[10px] text-slate-500 leading-snug">${escapeHtml(t)}</p>`).join('')}
          </div>`
@@ -1337,11 +1416,16 @@ export class ReinforcementPanel {
     return intro + cards;
   }
 
+  /**
+   * Ren rendrer over `derivationModel(res)`. Metoden formulerer INGENTING
+   * selv — den legger bare HTML rundt `sym`/`formula`/`subst`/`result`/`note`
+   * og husker hvilke grupper brukeren har slått ut (`this.openCalc`).
+   *
+   * Det er hele poenget: formlene finnes ett sted, i `js/derivation.js`, slik
+   * at rapporten kan rendre fra samme kilde uten at de to kan gli fra
+   * hverandre. Skal en formel endres, endres den der — ikke her.
+   */
   _derivationBody(res) {
-    const s = res.section;
-    const es = res.existingSection;
-    const l = res.loads;
-
     const group = (key, title, inner) => {
       const open = this.openCalc.has(key);
       return `
@@ -1354,284 +1438,14 @@ export class ReinforcementPanel {
         </div>`;
     };
 
-    let sectionCalc;
-    if (res.allExisting) {
-      sectionCalc =
-        calc({
-          sym: 'EA',
-          formula: 'EA = Σ Eᵢ·Aᵢ',
-          subst: res.parts.length ? res.parts.map((p) => `${n(p.E, 0)}·${n(p.props.A, 0)}`).join(' + ') : '0',
-          result: q(es.EA, 'N', 0),
-          note: 'Aksialstivheten til det eksisterende tverrsnittet (= hele tverrsnittet her, siden alt er eksisterende).',
-        }) +
-        calc({
-          sym: 'y_c',
-          formula: 'y_c = ESx / EA',
-          subst: `${n(es.ESx, 0)} Nmm / ${n(es.EA, 0)} N`,
-          result: q(es.yc, 'mm'),
-        }) +
-        calc({
-          sym: 'EI_x',
-          formula: 'EI_x = Σ Eᵢ·Ix0ᵢ − EA·y_c²  (Steiners sats, om nøytralaksen)',
-          subst: `${n(es.EIx0, 0)} − ${n(es.EA, 0)}·${n(es.yc)}²`,
-          result: q(es.EIx, 'Nmm²', 0),
-        });
-    } else {
-      sectionCalc =
-        calc({
-          sym: 'EA',
-          formula: 'EA = Σ Eᵢ·Aᵢ',
-          subst: res.parts.length ? res.parts.map((p) => `${n(p.E, 0)}·${n(p.props.A, 0)}`).join(' + ') : '0',
-          result: q(s.EA, 'N', 0),
-          note: 'Aksialstivheten til hele det sammensatte tverrsnittet. E i N/mm², A i mm².',
-        }) +
-        calc({
-          sym: 'y_c',
-          formula: 'y_c = ESx / EA = Σ Eᵢ·Sxᵢ / Σ Eᵢ·Aᵢ',
-          subst: `${n(s.ESx, 0)} Nmm / ${n(s.EA, 0)} N`,
-          result: q(s.yc, 'mm'),
-          note: 'Den E-vektede nøytralaksen — identisk med tyngdepunktet i det transformerte tverrsnittet.',
-        }) +
-        calc({
-          sym: 'EI_x',
-          formula: 'EI_x = Σ Eᵢ·Ix0ᵢ − EA·y_c²  (Steiners sats, om nøytralaksen)',
-          subst: `${n(s.EIx0, 0)} − ${n(s.EA, 0)}·${n(s.yc)}²`,
-          result: q(s.EIx, 'Nmm²', 0),
-        }) +
-        calc({
-          sym: 'ΔN',
-          formula: 'ΔN = N_etter · Σ_ny(Eᵢ·Aᵢ) / Σ(Eⱼ·Aⱼ)',
-          subst: `${n(l.after.N, 0)} N · ${n(res.transferNew.EA_group, 0)} / ${n(s.EA, 0)}`,
-          result: q(NtokN(res.transferNew.dN), 'kN'),
-          note: 'Aksialkraften fordeles etter aksialstivhet, fordi tøyningen er felles over tverrsnittet.',
-        }) +
-        calc({
-          sym: 'q_N',
-          formula: 'q_N = ΔN / L',
-          subst: `${n(res.transferNew.dN, 0)} N / ${n(l.L, 0)} mm`,
-          result: q(res.anchorNew.valid ? res.anchorNew.q : NaN, 'N/mm'),
-          note: 'Middelverdi over forankringslengden, for HELE den nye delen samlet. Per-skjøt ΔN kan avvike — se under.',
-        });
-    }
-
-    const jointCalcs = res.joints
-      .map((jt) => {
-        const c = jt.connector;
-        let inner = '';
-
-        if (res.allExisting) {
-          inner +=
-            calc({
-              sym: 'ES*_x, ES*_y',
-              formula: 'ES*_x = Σ_side Eᵢ·Aᵢ·(yᵢ − y_c), ES*_y = Σ_side Eᵢ·Aᵢ·(xᵢ − x_c)  — halvplanet snittlinja definerer (§8), IKKE grafen',
-              subst: jt.flowBefore ? `klippet mot (x_c,y_c) = (${n(es.xc)}, ${n(es.yc)}) mm` : '–',
-              result: jt.flowBefore ? `${q(jt.flowBefore.ESx, 'Nmm', 0)}, ${q(jt.flowBefore.ESy, 'Nmm', 0)}` : '–',
-              note:
-                'Halvplanet virker uendret på en udelt, importert profil — du trenger ikke splitte ' +
-                'geometrien for å snitte i den.',
-            }) +
-            calc({
-              sym: 'q_før = q_y + q_x',
-              formula: 'Biaksiell skjærstrøm (reinforcement.js): q = q_y + q_x, koblet via EI_xy når tverrsnittet er skjevt',
-              subst: jt.flowBefore ? `${n(jt.flowBefore.qy)} + ${n(jt.flowBefore.qx)} N/mm` : '–',
-              result: q(jt.qBefore, 'N/mm'),
-              note: jt.flowBefore && jt.flowBefore.coupled ? 'Koblet: EI_xy ≠ 0, bidragene kan ikke regnes hver for seg.' : '',
-            });
-        } else {
-          if (jt.flowBefore) {
-            inner +=
-              calc({
-                sym: 'ES*_før',
-                formula: 'ES*_x = Σ_side Eᵢ·Aᵢ·(yᵢ − y_c,eks), ES*_y = Σ_side Eᵢ·Aᵢ·(xᵢ − x_c,eks)  — halvplanet mot KUN eksisterende geometri',
-                subst: `klippet mot (x_c,eks, y_c,eks) = (${n(es.xc)}, ${n(es.yc)}) mm`,
-                result: `${q(jt.flowBefore.ESx, 'Nmm', 0)}, ${q(jt.flowBefore.ESy, 'Nmm', 0)}`,
-              }) +
-              calc({
-                sym: 'q_før = q_y + q_x',
-                formula: 'Biaksiell skjærstrøm om det EKSISTERENDE tverrsnittet',
-                subst: `${n(jt.flowBefore.qy)} + ${n(jt.flowBefore.qx)} N/mm`,
-                result: q(jt.qBefore, 'N/mm'),
-              });
-          }
-          inner +=
-            calc({
-              sym: 'ES*_etter',
-              formula: 'ES*_x = Σ_side Eᵢ·Aᵢ·(yᵢ − y_c), ES*_y = Σ_side Eᵢ·Aᵢ·(xᵢ − x_c)  — halvplanet mot HELE det sammensatte tverrsnittet',
-              subst: `klippet mot (x_c, y_c) = (${n(s.xc)}, ${n(s.yc)}) mm`,
-              result: `${q(jt.flowAfter.ESx, 'Nmm', 0)}, ${q(jt.flowAfter.ESy, 'Nmm', 0)}`,
-            }) +
-            calc({
-              sym: 'q_etter = q_y + q_x',
-              formula: 'Biaksiell skjærstrøm (reinforcement.js): q = q_y + q_x, koblet via EI_xy når tverrsnittet er skjevt',
-              subst: `${n(jt.flowAfter.qy)} + ${n(jt.flowAfter.qx)} N/mm`,
-              result: q(jt.qAfter, 'N/mm'),
-              note: jt.flowAfter.coupled ? 'Koblet: EI_xy ≠ 0, bidragene kan ikke regnes hver for seg — se «Effekt av forsterkningen».' : '',
-            }) +
-            calc({
-              sym: 'q_V,tot',
-              formula: 'q_V,tot = |q_før| + |q_etter|',
-              subst: `${n(jt.qBefore)} + ${n(jt.qAfter)}`,
-              result: q(jt.qVtot, 'N/mm'),
-              note: 'Superposisjon (§3): de to lasttilstandene virker på ulike tverrsnitt, og legges sammen i tallverdi.',
-            }) +
-            calc({
-              sym: 'ΔN_i',
-              formula:
-                'ΔN_i = N_etter · Σ_gruppe(Eᵢ·Aᵢ) / Σ(Eⱼ·Aⱼ)   (gruppa fra GRAFEN, §8.3 — ikke halvplanet)',
-              subst: `${n(l.after.N, 0)} N · ${n(jt.EA_group, 0)} / ${n(s.EA, 0)}${
-                jt.shareApplied != null ? ` · andel ${n(jt.shareApplied, 3)}` : ''
-              }`,
-              result: q(NtokN(jt.dN), 'kN'),
-              note: 'Aksialkraften som må gjennom nettopp denne skjøten — ikke nødvendigvis alt som er «ny».',
-            }) +
-            calc({
-              sym: 'q_N',
-              formula: 'q_N = ΔN_i / L',
-              subst: `${n(jt.dN, 0)} N / ${n(l.L, 0)} mm`,
-              result: q(jt.qN, 'N/mm'),
-            }) +
-            calc({
-              sym: 'q_tot',
-              formula: 'q_tot = q_V,tot + q_N',
-              subst: `${n(jt.qVtot)} + ${n(jt.qN)}`,
-              result: q(jt.qTot, 'N/mm'),
-            });
-        }
-
-        if (c.kind === 'weld') {
-          const explicitQrd = Number(c.qRd) > 0;
-          inner +=
-            calc({
-              sym: 'q_Rd',
-              formula: 'q_Rd = n_sveiser · a · f_vw,d     (f_vw,d hentes fra modulen weld_capacity/, regnes ikke ut her)',
-              subst: explicitQrd ? `satt direkte = ${n(c.qRd)} N/mm` : `${n(c.nWelds, 0)} · ${n(c.a_weld)} · ${n(c.fvwd)}`,
-              result: jt.check.qRd == null ? '–' : q(jt.check.qRd, 'N/mm'),
-            }) +
-            calc({
-              sym: 'utnyttelse',
-              formula: 'util = q_tot / q_Rd',
-              subst: `${n(jt.qTot)} / ${jt.check.qRd == null ? '–' : n(jt.check.qRd)}`,
-              result: jt.check.util == null ? '–' : pct(jt.check.util * 100),
-            });
-        } else if (c.kind === 'glue') {
-          inner +=
-            calc({
-              sym: 'τ',
-              formula: 'τ = q_tot / b',
-              subst: `${n(jt.qTot)} N/mm / ${n(jt.b, 1)} mm`,
-              result: jt.tau == null ? '–' : q(jt.tau, 'N/mm²'),
-            }) +
-            calc({
-              sym: 'utnyttelse',
-              formula: 'util = τ / τ_Rd',
-              subst: `${n(jt.tau)} / ${n(c.tauRd)}`,
-              result: jt.check.util == null ? '–' : pct(jt.check.util * 100),
-            });
-        } else {
-          inner +=
-            calc({
-              sym: 's_req',
-              formula: 's_req = rader · F_Rd · 1000 / q_tot     (F_Rd i kN, q i N/mm)',
-              subst: `${n(c.rows, 0)} · ${n(c.FRd)} · 1000 / ${n(jt.qTot)}`,
-              result:
-                jt.check.sReq === Infinity ? 'ingen krav (q_tot = 0)' : jt.check.sReq == null ? '–' : q(jt.check.sReq, 'mm', 1),
-            }) +
-            calc({
-              sym: 'utnyttelse',
-              formula: 'util = q_tot · s / (rader · F_Rd · 1000)',
-              subst: `${n(jt.qTot)} · ${n(c.spacing, 0)} / (${n(c.rows, 0)} · ${n(c.FRd)} · 1000)`,
-              result: jt.check.util == null ? '–' : pct(jt.check.util * 100),
-            });
-        }
-
-        if (jt.volkersen && jt.volkersen.valid) {
-          const v = jt.volkersen;
-          inner +=
-            calc({
-              sym: 'k',
-              formula:
-                c.kind === 'glue'
-                  ? 'k = G_a · b / t_a     [(N/mm²)·mm/mm = N/mm²]'
-                  : 'k = K_ser · rader / s     [(N/mm)·(1/mm) = N/mm²]',
-              subst:
-                c.kind === 'glue'
-                  ? `${n(c.Ga, 0)} · ${n(jt.b, 1)} / ${n(c.ta)}`
-                  : `${n(jt.slip && jt.slip.valid ? jt.slip.K : c.Kser, 0)} · ${n(c.rows, 0)} / ${n(c.spacing, 0)}`,
-              result: q(jt.kConn, 'N/mm²'),
-              note: c.kind !== 'glue' && jt.slip ? `K_ser fra ${jt.slip.source === 'ec5' ? 'EC5 tabell 7.1' : 'fritt innlagt (ETA)'} — samme stivhet som γ-metoden bruker.` : '',
-            }) +
-            calc({
-              sym: 'λ',
-              formula: 'λ = √( k · (1/α + 1/β) ),  α = (EA)_øvrig, β = (EA)_gruppe',
-              subst: `√(${n(jt.kConn)} · (1/${n(jt.EA_other, 0)} + 1/${n(jt.EA_group, 0)}))`,
-              result: q(v.lambda, '1/mm', 6),
-            }) +
-            calc({
-              sym: 'q_max',
-              formula: 'q(x) = (P·λ/2)·[cosh(λx′)/sinh(λL/2) + ((α−β)/(α+β))·sinh(λx′)/cosh(λL/2)],  x′ = x − L/2',
-              subst: `maks |q| over x ∈ [0, ${n(l.L, 0)} mm], med P = ${n(Math.abs(jt.dN), 0)} N`,
-              result: q(v.qMax, 'N/mm'),
-              note: `Toppfaktor q_max/q_avg = ${n(v.peakFactor, 3)}. Integralet av q over skjøten er per konstruksjon lik P.`,
-            });
-        }
-
-        if (jt.anchorReq) {
-          const a = jt.anchorReq;
-          inner +=
-            calc({
-              sym: 'N_G',
-              formula: 'N_G = κ_x·ES*_x + κ_y·ES*_y   (biaksiell bøyning, §1 — κ fra M_x/M_y og hovedstivhetene)',
-              subst: `for gruppa denne skjøten fører kraft til`,
-              result: q(a.NG_kN, 'kN'),
-              note: 'Momentet gir INGEN egen skjærstrøm i q_tot — dette er et separat krav til hva som må være innført over L.',
-            }) +
-            calc({
-              sym: 'q_req',
-              formula: 'q_req = N_G / L',
-              subst: `${n(a.NG, 0)} N / ${n(a.L, 0)} mm`,
-              result: a.qReq == null ? '–' : q(a.qReq, 'N/mm'),
-              note: 'Middelverdi over hele forankringssonen — et ALTERNATIVT kriterium til q_tot, aldri en sum.',
-            }) +
-            calc({
-              sym: 'q_gov',
-              formula: 'q_gov = max(q_tot, q_req)',
-              subst: `max(${n(a.qTot)}, ${a.qReq == null ? '0' : n(a.qReq)})`,
-              result: q(a.qGoverning, 'N/mm'),
-            }) +
-            (a.n != null
-              ? calc({
-                  sym: 'F_Ed',
-                  formula: 'F_Ed = q_gov · L / n',
-                  subst: `${n(a.qGoverning)} N/mm · ${n(a.L, 0)} mm / ${n(a.n, 0)}`,
-                  result: q(a.FEd, 'kN'),
-                  note: a.FRdCap != null ? `Utnyttelse mot F_Rd = ${n(a.FRdCap)} kN: ${a.util == null ? '–' : pct(a.util * 100)}.` : 'Nødvendig kapasitet — ingen F_Rd oppgitt.',
-                })
-              : '');
-        }
-
-        return group(jt.id, escapeHtml(jt.name), inner);
-      })
-      .join('');
-
     return (
-      group('section', res.allExisting ? 'Tverrsnittet (eksisterende)' : 'Tverrsnittet og aksialkraften', sectionCalc) +
-      jointCalcs +
+      derivationModel(res)
+        .map((g) => group(g.key, escapeHtml(g.title), g.steps.map(calc).join('')))
+        .join('') +
       `<div class="rounded border border-slate-700 bg-slate-900 p-2.5 text-[11px] text-slate-400 leading-snug space-y-1.5">
            <div class="text-slate-300 font-medium">Forutsetninger</div>
            <ul class="list-disc list-inside space-y-1">
-             <li><strong>Full samvirkning</strong> mellom delene: tverrsnittet forblir plant, og det er
-               ingen glidning i skjøten. Skjærstrømmen er nettopp den kraften forbindelsen må ta for at
-               dette skal holde.</li>
-             <li><strong>Lineær elastisitet</strong>: σ = E·ε i alle deler, med E fra materialvalget.
-               Ingen riss, ingen flyt, ingen kryp — skal du regne langtid, sett inn en redusert E selv.</li>
-             <li>«Før»-kreftene gjelder det <strong>eksisterende</strong> tverrsnittet alene, «etter»-
-               kreftene det <strong>sammensatte</strong>. Er alt merket eksisterende, finnes bare «før».</li>
-             <li>Naboskap uten en skjøt regnes som stivt forbundet: former som berører eller overlapper
-               hverandre og ikke har en skjøt mellom seg, oppfører seg som støpt sammen.</li>
-             <li>Vektfaktoren <code>factor</code> påvirker bare tyngdepunktsfanen. Her brukes bare
-               <code>material.E</code>.</li>
-             <li>Beregningen er <strong>iterativ i praksis</strong>: ny geometri gir ny stivhet, som gir
-               nye krefter. Tallene her gjelder de kreftene som er tastet inn.</li>
+             ${DERIVATION_ASSUMPTIONS.map((t) => `<li>${t}</li>`).join('\n             ')}
            </ul>
          </div>`
     );
