@@ -116,9 +116,13 @@ function model(over = {}) {
 const partsGroup = (svg) => (/<g id="fig-parts">([\s\S]*?)<\/g>/.exec(svg) || [, ''])[1];
 const pathTags = (frag) => frag.match(/<path\b[^>]*>/g) || [];
 const strokeWidths = (svg) => [...svg.matchAll(/stroke-width="([^"]+)"/g)].map((m) => Number(m[1]));
+// Figuren OPPGIR ikke lenger noen målestokk som synlig tekst — et oppgitt
+// målestokkforhold er et løfte som brytes i det noen skriver ut med «tilpass
+// til side». Den interne skaleringa finnes fortsatt (tegningen må passe i
+// tegneflaten) og eksponeres som `data-scale`, som er det testene leser.
 const scaleOf = (svg) => {
-  const m = /Målestokk 1:([0-9]+(?:,[0-9]+)?)/.exec(svg);
-  return m ? Number(m[1].replace(',', '.')) : null;
+  const m = /data-scale="([0-9.]+)"/.exec(svg);
+  return m ? Number(m[1]) : null;
 };
 /** Alle koordinatpar i et `d`-attributt. */
 function dPoints(pathTag) {
@@ -130,22 +134,24 @@ function dPoints(pathTag) {
  * 1. Papirformatet
  * ================================================================== */
 
-test('papirflaten er A4-trykkflatens 174 mm × §4.1 sine 72 mm', () => {
+test('papirflaten er A4-trykkflatens 174 mm × 67 mm', () => {
   const svg = buildFigureSvg(model({ shapes: [shape(rect(0, 0, 200, 100))] }));
-  ok('viewBox er «0 0 174 72»', svg.includes('viewBox="0 0 174 72"'), svg.slice(0, 200));
+  ok('viewBox er «0 0 174 67»', svg.includes('viewBox="0 0 174 67"'), svg.slice(0, 200));
   ok('width="174mm"', svg.includes('width="174mm"'));
-  ok('height="72mm"', svg.includes('height="72mm"'));
+  ok('height="67mm"', svg.includes('height="67mm"'));
   ok('starter som <svg', svg.startsWith('<svg '));
   ok('avsluttes som </svg>', svg.trimEnd().endsWith('</svg>'));
   ok('har xmlns (kan lagres som frittstående .svg)', svg.includes('xmlns="http://www.w3.org/2000/svg"'));
-  // Høyden er justert to ganger: §7.4 skrev 112, §4.1 satte 95, og målingen av
-  // hva side 1 faktisk rommer (241,6 mm ved 2 deler / 1 skjøt) tvang den til 72.
+  // Høyden er justert flere ganger: 112 → 95 → 72 etter måling av hva side 1
+  // rommer, og til slutt 67 da målestokkteksten forsvant og topplinja ble
+  // frigitt. Tegneflaten er uendret 119,5 × 59 mm gjennom den siste endringen —
+  // figuren ble lavere, ikke tegningen mindre.
   // Sjekken gjelder ATTRIBUTTENE, ikke hele strengen: et gammelt mål kunne ellers
   // dukke opp som en tilfeldig koordinat og gi falskt utslag.
   const head = svg.slice(0, svg.indexOf('>') + 1);
-  ok('ingen rest av 112 eller 95 i formatet', !/112|"?95mm|0 0 174 95/.test(head), head);
+  ok('ingen rest av eldre format', !/112|"?(95|72)mm|0 0 174 (95|72)/.test(head), head);
   eq('PAPER.w', PAPER.w, 174);
-  eq('PAPER.h', PAPER.h, 72);
+  eq('PAPER.h', PAPER.h, 67);
 });
 
 /* ================================================================== *
@@ -155,11 +161,11 @@ test('papirflaten er A4-trykkflatens 174 mm × §4.1 sine 72 mm', () => {
 test('tegneflaten er det som blir igjen etter tegnforklaringens kolonne', () => {
   // Håndregning, alt i mm i figurens eget viewBox:
   //   x = pad + marginLeft         = 2,5 + 3    =  5,5
-  //   y = pad + headerH            = 2,5 + 5    =  7,5
+  //   y = pad + headerH            = 2,5 + 0    =  2,5
   //   w = 174 − pad − rightW − gap − x = 174 − 2,5 − 44 − 2,5 −  5,5 = 119,5
-  //   h =  72 − pad − marginBottom − y =  72 − 2,5 −  3 −  7,5       =  59
+  //   h =  67 − pad − marginBottom − y =  67 − 2,5 −  3 −  2,5       =  59
   close('DRAW_BOX.x', DRAW_BOX.x, 5.5);
-  close('DRAW_BOX.y', DRAW_BOX.y, 7.5);
+  close('DRAW_BOX.y', DRAW_BOX.y, 2.5);
   close('DRAW_BOX.w', DRAW_BOX.w, 119.5);
   close('DRAW_BOX.h', DRAW_BOX.h, 59);
   eq('LAYOUT.rightW', LAYOUT.rightW, 44);
@@ -502,7 +508,7 @@ test('ingen former ⟹ gyldig SVG med «Ingen geometri i modellen»', () => {
   for (const m of [model(), model({ shapes: [] }), {}, undefined]) {
     const svg = buildFigureSvg(m);
     ok('teksten står der', svg.includes('Ingen geometri i modellen'));
-    ok('riktig viewBox', svg.includes('viewBox="0 0 174 72"'));
+    ok('riktig viewBox', svg.includes('viewBox="0 0 174 67"'));
     ok('riktig bredde', svg.includes('width="174mm"'));
     ok('balansert dokument', svg.startsWith('<svg ') && svg.endsWith('</svg>'));
     eq('ingen <path>', pathTags(svg).length, 0);

@@ -48,7 +48,7 @@ import { unitInfo } from './units.js';
  * figuren 95 mm av de 259 mm høye. (§7.4 skrev 112 mm før §4.1 ble revidert —
  * 95 er det som gjelder.)
  */
-export const PAPER = Object.freeze({ w: 174, h: 72 });
+export const PAPER = Object.freeze({ w: 174, h: 67 });
 
 /**
  * Romfordelingen i figuren. Tegneflaten er det som blir igjen når
@@ -61,7 +61,7 @@ export const PAPER = Object.freeze({ w: 174, h: 72 });
  */
 export const LAYOUT = Object.freeze({
   pad: 2.5, // luft mot papirkanten
-  headerH: 5, // stripa øverst med målestokkteksten
+  headerH: 0, // ingen topptekst lenger (se punkt 10 i buildFigureSvg)
   marginLeft: 3, // luft mot venstre kant
   marginBottom: 3, // luft mot nedre kant
   gap: 2.5, // luft mellom tegneflaten og høyrekolonnen
@@ -633,12 +633,20 @@ export function buildFigureSvg(model) {
   body.push(legend(p.solids, PAPER.w - LAYOUT.pad - LAYOUT.rightW,
                    PAPER.h - LAYOUT.pad, LAYOUT.rightW).svg);
 
-  /* ---- 10. Målestokk ---- */
-  const scaleTxt = `Målestokk 1:${fmt(S, Number.isInteger(S) ? 0 : 1)} · mål i mm`;
-  body.push(textEl(LAYOUT.pad, LAYOUT.pad + 2.6, scaleTxt, { size: 2.5, weight: '600' }));
+  /* ---- 10. Ingen målestokktekst ----
+     Tegningen skaleres internt for å passe i tegneflaten (det er det `S` er
+     til), men figuren OPPGIR ingen målestokk. En oppgitt målestokk er et løfte
+     om at 10 mm på papiret er 100 mm i virkeligheten, og det løftet brytes i
+     det noen skriver ut med «tilpass til side» eller 90 % skalering — uten at
+     noe varsler. Figuren er en illustrasjon av hvor delene og skjøtene ligger;
+     alle mål står som tall i tabellene, der de ikke kan bli feil av en
+     utskriftsinnstilling. `S` legges på som `data-scale` for testene. */
 
   const defsSvg = defs.length ? `<defs>${defs.join('')}</defs>` : '';
-  return open + defsSvg + paper + frame + body.join('') + '</svg>';
+  // `data-scale` er den interne skaleringa, eksponert for testene. Den er
+  // BEVISST ikke synlig tekst — se punkt 10 over.
+  const tagged = open.replace('<svg ', `<svg data-scale="${S}" `);
+  return tagged + defsSvg + paper + frame + body.join('') + '</svg>';
 }
 
 export default buildFigureSvg;

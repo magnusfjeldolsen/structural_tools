@@ -334,6 +334,10 @@ function defaultState() {
     // Skjøtelinjer mellom deler av tverrsnittet (v3, §4 i joints-planen).
     joints: [],
     loads: defaultLoads(),
+    // Rapportvalg. `detailed` slår den fullstendige utregningen (side 2 og
+    // utover) av og på. Standard AV, fordi side 1 alene er nøyaktig én A4 —
+    // og en rapport som uventet blir to sider er verre enn en som er kort.
+    report: { detailed: false },
   };
 }
 
@@ -372,6 +376,7 @@ export class Store {
       title: this.state.title,
       joints: this.state.joints,
       loads: this.state.loads,
+      report: this.state.report,
     });
   }
 
@@ -957,6 +962,13 @@ export class Store {
     }, { reason: 'clear' });
   }
 
+  /** Slår den detaljerte beregningsdelen i rapporten av eller på. */
+  setReportDetailed(on) {
+    this.mutate((st) => {
+      st.report = { ...(st.report || {}), detailed: !!on };
+    }, { reason: 'report-option' });
+  }
+
   bounds() {
     return boundsOfShapes(this.state.shapes);
   }
@@ -1000,6 +1012,7 @@ export class Store {
         shapes: this.state.shapes,
         joints: this.state.joints,
         loads: this.state.loads,
+        report: this.state.report,
       },
       null,
       2
@@ -1037,6 +1050,8 @@ export class Store {
       st.underlay = m.underlay || null;
       st.joints = m.joints;
       st.loads = m.loads;
+      // Valgfritt felt; fravær betyr «av». Filer fra v4 åpnes uendret.
+      st.report = { detailed: !!(data.report && data.report.detailed) };
     }, { reason: 'import' });
     this.syncUid();
   }

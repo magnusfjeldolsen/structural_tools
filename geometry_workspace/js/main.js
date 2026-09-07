@@ -310,6 +310,8 @@ function renderReport() {
 function openReport() {
   const overlay = document.getElementById('report-overlay');
   if (!overlay) return;
+  const box = document.getElementById('rep-detailed');
+  if (box) box.checked = !!(store.state.report && store.state.report.detailed);
   renderReport();
   overlay.hidden = false;
 
@@ -340,6 +342,13 @@ function closeReport() {
 document.getElementById('btn-report').addEventListener('click', openReport);
 document.getElementById('rep-close').addEventListener('click', closeReport);
 document.getElementById('rep-print').addEventListener('click', () => window.print());
+// Den detaljerte beregningsdelen. Valget lagres i modellen, så det følger med
+// i eksport-JSON og står ved neste økt — man skrur ikke av og på hver gang.
+document.getElementById('rep-detailed').addEventListener('change', (e) => {
+  store.setReportDetailed(e.target.checked);
+  openReport();   // bygger på nytt og måler side 1 igjen
+});
+
 document.getElementById('rep-guides').addEventListener('change', (e) => {
   const c = document.querySelector('#report-overlay .report-content');
   if (!c) return;

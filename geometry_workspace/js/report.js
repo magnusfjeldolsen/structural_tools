@@ -31,6 +31,7 @@
  */
 
 import { computeReinforcement, n, q, sci } from './reinforcement-ui.js';
+import { derivationModel, DERIVATION_ASSUMPTIONS } from './derivation.js';
 import { buildFigureSvg } from './report-figure.js';
 import { materialByName } from './materials.js';
 
@@ -450,6 +451,63 @@ function twoCol(a, b) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Side 2 og utover — den fullstendige utregningen
+ *
+ * Rendres fra `derivationModel(res)`, den SAMME modellen «Forsterkning»-fanen
+ * bruker. Det var hele grunnen til at utledningen ble trukket ut av
+ * `reinforcement-ui.js`: formlene finnes ett sted, så panelet og rapporten kan
+ * ikke gli fra hverandre.
+ *
+ * Delen er valgfri (`state.report.detailed`) og AV som standard. Side 1 alene
+ * er nøyaktig én A4, og en rapport som uventet blir sju sider er verre enn en
+ * som er kort — den lange versjonen skal være noe man ber om.
+ * ------------------------------------------------------------------ */
+
+/** Ett utregningssteg: formel → innsatte tall → resultat. */
+function step(st) {
+  const parts = [
+    st.sym ? '<b>' + esc(st.sym) + '</b>' : '',
+    st.formula ? '<div class="font-mono">' + esc(st.formula) + '</div>' : '',
+    st.subst ? '<div class="font-mono muted">= ' + esc(st.subst) + '</div>' : '',
+    st.result ? '<div class="font-mono"><b>= ' + esc(st.result) + '</b></div>' : '',
+    st.note ? '<div class="muted">' + esc(st.note) + '</div>' : '',
+  ].filter(Boolean).join('');
+  return '<div class="atomic calc-step">' + parts + '</div>';
+}
+
+function detailedPages(res) {
+  const groups = derivationModel(res);
+  if (!groups.length) return '';
+
+  const body = groups
+    .map((g) => '<section class="keep-with-next"><h3>' + esc(g.title) + '</h3>'
+      + g.steps.map(step).join('') + '</section>')
+    .join('');
+
+  // Momentets rolle er den ene misforståelsen rapporten er nødt til å lukke,
+  // og den hører hjemme her, rett før tallene. Se designnotatet §1.
+  const momentNote = `<section class="atomic scope-note">
+    <p><b>Momentet er allerede med.</b>
+      <span class="font-mono">q_V = V·ES*/EI</span> <i>er</i> momentets virkning i
+      snittet, siden <span class="font-mono">q = dN/dz</span> og
+      <span class="font-mono">N_G = M·ES*/EI</span> er samme kraft sett fra to sider.
+      Å vise et «bidrag fra <span class="font-mono">M</span>» ved siden av bidraget
+      fra <span class="font-mono">V</span> ville telt den samme kraften to ganger.</p>
+    <p>Momentets egen rolle er <span class="font-mono">N_G</span> — den kumulative
+      kraften fugen må ha levert fram til snittet. Den gir et <b>separat
+      forankringskrav</b>, ikke et tillegg til skjærstrømmen. De to er
+      <b>alternative kriterier der det største styrer</b>, aldri ledd i en sum.</p>
+  </section>`;
+
+  const assumptions = '<section class="atomic"><h3>Forutsetninger</h3><ul>'
+    + DERIVATION_ASSUMPTIONS.map((t) => '<li>' + t + '</li>').join('')
+    + '</ul></section>';
+
+  return '<section class="page-2"><h2>Beregning</h2>'
+    + momentNote + body + assumptions + '</section>';
+}
+
+/* ------------------------------------------------------------------ *
  * Dokumentet
  * ------------------------------------------------------------------ */
 
@@ -476,15 +534,13 @@ export function buildReportHtml(state, analysis) {
     scopeBlock(),
   ].join('\n');
 
-  // Side 2 fylles i bølge D. Stubben står med vilje synlig i stedet for å
-  // utelates: en rapport som stille mangler beregningsdelen ser ferdig ut.
-  const page2 = `<section class="page-2">
-    <h2>Beregning</h2>
-    <p class="muted">Den fullstendige utregningen kommer i neste versjon av rapporten.
-      Inntil da står tallene i «Forsterkning»-fanen med full utledning.</p>
-  </section>`;
+  // Er den detaljerte delen av, finnes det INGEN side 2 — ikke en tom, ikke en
+  // stubb. Det var stubben som gjorde at rapporten alltid ble to sider, med en
+  // overskrift alene på den andre.
+  const detailed = !!(state.report && state.report.detailed);
+  const page2 = detailed ? detailedPages(res) : '';
 
-  return `<section class="page-1">${page1}</section>\n${page2}`;
+  return '<section class="page-1">' + page1 + '</section>' + page2;
 }
 
 /* ------------------------------------------------------------------ *
