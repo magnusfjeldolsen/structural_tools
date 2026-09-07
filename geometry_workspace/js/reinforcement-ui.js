@@ -72,6 +72,7 @@ import {
   overConstrained,
   fullSectionParts,
   halfPlaneParts,
+  jointContactLength,
 } from './joints.js';
 import { JOINT_COLOR } from './store.js';
 
@@ -303,7 +304,13 @@ export function computeReinforcement(state) {
     const qN = allExisting ? 0 : anchor.valid ? Math.abs(anchor.q) : 0;
     const qTot = qVtot + qN;
 
-    const bMm = Number.isFinite(raw.bondWidth) && raw.bondWidth > 0 ? raw.bondWidth : lenMm;
+    // Standard heftbredde er lengden av linjas SNITT med tverrsnittet, ikke
+    // lengden av den tegnede linja — se `jointContactLength`. Et overheng
+    // gjorde ellers τ = q/b for lav, alltid til gunst for konstruksjonen.
+    const contactMm = jointContactLength(jm, shapesMm);
+    const bMm = Number.isFinite(raw.bondWidth) && raw.bondWidth > 0
+      ? raw.bondWidth
+      : (contactMm > 0 ? contactMm : lenMm);
     const connector = raw.connector || {};
     const check = connectorCheck({ q: qTot, bondWidth: bMm, connector });
 

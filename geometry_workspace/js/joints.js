@@ -51,6 +51,8 @@ import {
   intersectionMulti,
   multiProps,
   scaleProps,
+  openRing,
+  pointInMulti,
 } from './geometry.js';
 
 export const EPS = GEOM_EPS;
@@ -599,4 +601,63 @@ export function halfPlaneParts(joint, shapes, side) {
   if (!ring) return [];
   const clipMulti = [[[...ring, ring[0]]]]; // én polygon, én ring, lukket
   return partsFromShapes(active, clipMulti);
+}
+
+/**
+ * Lengden av skjøtelinjas snitt med tverrsnittet — den virkelige heftbredden.
+ *
+ * Standardverdien var lenge lengden av den TEGNEDE linja, og det er feil på en
+ * måte som alltid slår ut til gunst for konstruksjonen: halvplanmetoden
+ * inviterer til å tegne linja med overheng for å være sikker på at snittet går
+ * helt gjennom, og hver millimeter overheng gjør `τ = q/b` for lav. En linje
+ * fra x = −20 til 120 over en 100 mm bred bjelke ga `b = 140` i stedet for
+ * 100, altså 30 % for lav skjærspenning, uten at noe varslet.
+ *
+ * Metoden: parametriser linja a→b, finn alle t der den krysser en kant i noen
+ * form, og summer de intervallene som ligger inne i materialet.
+ *
+ * @returns {number} [mm], 0 hvis linja ikke treffer noe
+ */
+export function jointContactLength(joint, shapes) {
+  const a = joint && joint.a;
+  const b = joint && joint.b;
+  if (!a || !b) return 0;
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy);
+  if (len < EPS) return 0;
+
+  const multis = (shapes || []).filter(ACTIVE_CALC).map((s) => pointsToMulti(s.points));
+  const ts = [0, 1];
+  for (const multi of multis) {
+    for (const poly of multi) {
+      for (const ring of poly) {
+        const r = openRing(ring);
+        for (let i = 0; i < r.length; i++) {
+          const p = r[i];
+          const q = r[(i + 1) % r.length];
+          // t der a + t·(b−a) treffer segmentet p→q
+          const ex = q[0] - p[0];
+          const ey = q[1] - p[1];
+          const den = dx * ey - dy * ex;
+          if (Math.abs(den) < EPS) continue; // parallelle
+          const t = ((p[0] - a[0]) * ey - (p[1] - a[1]) * ex) / den;
+          const u = ((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / den;
+          if (t >= -EPS && t <= 1 + EPS && u >= -EPS && u <= 1 + EPS) ts.push(t);
+        }
+      }
+    }
+  }
+
+  ts.sort((x, y) => x - y);
+  let inside = 0;
+  for (let i = 0; i < ts.length - 1; i++) {
+    const t0 = ts[i];
+    const t1 = ts[i + 1];
+    if (t1 - t0 < EPS) continue;
+    const tm = (t0 + t1) / 2;
+    const pt = [a[0] + dx * tm, a[1] + dy * tm];
+    if (multis.some((m) => pointInMulti(pt, m))) inside += (t1 - t0) * len;
+  }
+  return inside;
 }

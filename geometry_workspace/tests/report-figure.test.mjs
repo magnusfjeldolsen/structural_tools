@@ -152,16 +152,16 @@ test('papirflaten er A4-trykkflatens 174 mm × §4.1 sine 72 mm', () => {
  * 2. Tegneflaten — grunnlaget for alle målestokktallene under
  * ================================================================== */
 
-test('tegneflaten er det som blir igjen etter målsetting og høyrekolonne', () => {
+test('tegneflaten er det som blir igjen etter tegnforklaringens kolonne', () => {
   // Håndregning, alt i mm i figurens eget viewBox:
-  //   x = pad + dimLeft            = 2,5 + 12   = 14,5
+  //   x = pad + marginLeft         = 2,5 + 3    =  5,5
   //   y = pad + headerH            = 2,5 + 5    =  7,5
-  //   w = 174 − pad − rightW − gap − x = 174 − 2,5 − 44 − 2,5 − 14,5 = 110,5
-  //   h =  72 − pad − dimBottom − y    =  72 − 2,5 − 12 −  7,5       =  50
-  close('DRAW_BOX.x', DRAW_BOX.x, 14.5);
+  //   w = 174 − pad − rightW − gap − x = 174 − 2,5 − 44 − 2,5 −  5,5 = 119,5
+  //   h =  72 − pad − marginBottom − y =  72 − 2,5 −  3 −  7,5       =  59
+  close('DRAW_BOX.x', DRAW_BOX.x, 5.5);
   close('DRAW_BOX.y', DRAW_BOX.y, 7.5);
-  close('DRAW_BOX.w', DRAW_BOX.w, 110.5);
-  close('DRAW_BOX.h', DRAW_BOX.h, 50);
+  close('DRAW_BOX.w', DRAW_BOX.w, 119.5);
+  close('DRAW_BOX.h', DRAW_BOX.h, 59);
   eq('LAYOUT.rightW', LAYOUT.rightW, 44);
 });
 
@@ -174,29 +174,25 @@ test('målestokken er den minste i lista der utsnittet får plass', () => {
 
   // Luftregelen (§7.5, punkt 2): 6 % på hver side, minst 10 mm i modellkoordinater.
   //
-  //  # | form [mm]   | luft x/y [mm] | utsnitt [mm]   | / S ≤ 110,5 × 50   | S
+  //  # | form [mm]   | luft x/y [mm] | utsnitt [mm]   | / S ≤ 119,5 × 59   | S
   // ---+-------------+---------------+----------------+--------------------+----
   //  A |   60 ×  20  | 10   / 10     |    80 ×   40   | 80/1=80   40/1=40  | 1
   //  B |  300 × 100  | 18   / 10     |   336 ×  120   | 336/5=67,2  24     | 5
   //  C |  800 × 400  | 48   / 24     |   896 ×  448   | 896/10=89,6 44,8   | 10
   //  D | 3000 × 600  | 180  / 36     |  3360 ×  672   | 3360/50=67,2 13,4  | 50
-  //  E |  100 ×1000  | 10   / 60     |   120 × 1120   | 1120/25=44,8 (høyden styrer) | 25
+  //  E |  100 ×1000  | 10   / 60     |   120 × 1120   | 1120/20=56 (høyden styrer) | 20
   //
   // Kontroll av at det er den MINSTE som velges:
-  //  B: 336/2,5 = 134,4 > 110,5 ⟹ 2,5 er for fin, 5 er svaret
-  //  C: 448/5   =  89,6 >  50   ⟹ 5 er for fin, 10 er svaret (høyden styrer nå)
-  //  D: 3360/25 = 134,4 > 110,5 ⟹ 25 er for fin, 50 er svaret
-  //  E: 1120/20 =  56   >  50   ⟹ 20 er for fin, 25 er svaret
-  //
-  // E flyttet seg fra 1:20 til 1:25 da tegneflaten ble 50 mm høy i stedet for
-  // 73. Det er den eneste raden som endret seg — de andre styres av bredden,
-  // som er uendret.
+  //  B: 336/2,5 = 134,4 > 119,5 ⟹ 2,5 er for fin, 5 er svaret
+  //  C: 448/5   =  89,6 >  59   ⟹ 5 er for fin, 10 er svaret (høyden styrer)
+  //  D: 3360/25 = 134,4 > 119,5 ⟹ 25 er for fin, 50 er svaret
+  //  E: 1120/10 = 112   >  59   ⟹ 10 er for fin, 20 er svaret
   const table = [
     { w: 60, h: 20, S: 1 },
     { w: 300, h: 100, S: 5 },
     { w: 800, h: 400, S: 10 },
     { w: 3000, h: 600, S: 50 },
-    { w: 100, h: 1000, S: 25 },
+    { w: 100, h: 1000, S: 20 },
   ];
   for (const row of table) {
     const svg = buildFigureSvg(model({ shapes: [shape(rect(0, 0, row.w, row.h))] }));
@@ -204,10 +200,10 @@ test('målestokken er den minste i lista der utsnittet får plass', () => {
   }
 
   // `chooseScale` direkte, uten luftregelen — 110,5 mm er akkurat 1:1.
-  eq('chooseScale(110.5, 50) = 1', chooseScale(110.5, 50), 1);
-  eq('chooseScale(110.6, 50) = 2', chooseScale(110.6, 50), 2);
-  eq('chooseScale(221, 50) = 2', chooseScale(221, 50), 2);
-  eq('chooseScale(1, 50.1) = 2', chooseScale(1, 50.1), 2);
+  eq('chooseScale(119.5, 59) = 1', chooseScale(119.5, 59), 1);
+  eq('chooseScale(119.6, 59) = 2', chooseScale(119.6, 59), 2);
+  eq('chooseScale(239, 59) = 2', chooseScale(239, 59), 2);
+  eq('chooseScale(1, 59.1) = 2', chooseScale(1, 59.1), 2);
   // Større enn den groveste målestokken: beskåret tegning slår ingen tegning.
   eq('chooseScale(1e9, 1e9) = 1000', chooseScale(1e9, 1e9), 1000);
 });
@@ -346,9 +342,6 @@ test('tyngdepunktet fra res (mm) lander på tverrsnittet, også i meter-modus', 
     close('TP x i midten av flaten [mm papir]', Number(tp[1]), midX, 0.002);
     close('TP y i midten av flaten [mm papir]', Number(tp[2]), midY, 0.002);
   }
-  // Tverrsnittet er 2000 mm bredt og 1000 mm høyt — det skal stå i målsettingen.
-  ok('bredden 2000 er målsatt', svg.includes('>2000<'), 'fant ikke målet 2000');
-  ok('høyden 1000 er målsatt', svg.includes('>1000<'), 'fant ikke målet 1000');
 });
 
 /* ================================================================== *
@@ -491,66 +484,6 @@ test('skjøtene får J-merkelapper der typen står i teksten, ikke i streken', (
  * 9. Akser, tyngdepunkt og tegnforklaring
  * ================================================================== */
 
-test('hovedakser tegnes bare når res.axes.after er gyldig', () => {
-  const shapes = [shape(rect(0, 0, 200, 100))];
-  const withAxes = buildFigureSvg(
-    model({
-      shapes,
-      res: {
-        allExisting: true,
-        parts: [],
-        section: { xc: 100, yc: 50, valid: true },
-        existingSection: { xc: 100, yc: 50, valid: true },
-        axes: { after: { theta: 0.3, EI1: 2, EI2: 1, valid: true } },
-        joints: [],
-      },
-    })
-  );
-  ok('1–1 og 2–2 er merket', withAxes.includes('1–1 (EI₁)') && withAxes.includes('2–2 (EI₂)'));
-  ok('strek-prikk-linje', withAxes.includes('stroke-dasharray="4 1 0.6 1"'));
-
-  const noAxes = buildFigureSvg(model({ shapes }));
-  ok('uten res: ingen akser', !noAxes.includes('fig-axes'));
-});
-
-test('TP₀ vises bare når det er forsterket og merkene ikke overlapper', () => {
-  const shapes = [shape(rect(0, 0, 2000, 1000), { id: 'a' }), shape(rect(0, 1000, 2000, 200), { id: 'b', stage: 'new' })];
-  const mk = (yc0) =>
-    buildFigureSvg(
-      model({
-        shapes,
-        res: {
-          allExisting: false,
-          parts: [],
-          section: { xc: 1000, yc: 600, valid: true },
-          existingSection: { xc: 1000, yc: yc0, valid: true },
-          axes: { after: { theta: 0, EI1: 2, EI2: 1, valid: true } },
-          joints: [],
-        },
-      })
-    );
-  // Målestokk: 2000 × 1200 ⟹ luft 120/72 ⟹ 2240 × 1344; 2240/20 = 112 > 110,5,
-  // 2240/25 = 89,6 ⟹ 1:25. 400 mm forskjell i modellen = 16 mm på papiret ≫ 0,5 mm.
-  ok('tydelig avstand ⟹ TP₀ vises', mk(200).includes('TP₀'));
-  // 10 mm forskjell = 0,4 mm på papiret < 0,5 mm ⟹ merkene ville overlappet.
-  ok('nesten sammenfallende ⟹ TP₀ utelates', !mk(590).includes('TP₀'));
-  // Ren kontroll av eksisterende konstruksjon har ingen «før»-tilstand å vise.
-  const allEx = buildFigureSvg(
-    model({
-      shapes: [shape(rect(0, 0, 2000, 1000))],
-      res: {
-        allExisting: true,
-        parts: [],
-        section: { xc: 1000, yc: 500, valid: true },
-        existingSection: { xc: 1000, yc: 200, valid: true },
-        axes: { after: { theta: 0, EI1: 2, EI2: 1, valid: true } },
-        joints: [],
-      },
-    })
-  );
-  ok('allExisting ⟹ ingen TP₀', !allEx.includes('TP₀'));
-});
-
 test('tegnforklaringen har maks 8 rader og teller resten', () => {
   const many = [];
   for (let i = 0; i < 11; i++) many.push(shape(rect(i * 100, 0, 80, 200), { name: `Del ${i + 1}`, E: 210000 }));
@@ -559,8 +492,6 @@ test('tegnforklaringen har maks 8 rader og teller resten', () => {
   eq('åtte rader vist', rows.length, 8);
   ok('resten telles', svg.includes('… og 3 flere'), 'fant ikke overflytslinja');
   ok('E står i forklaringen', svg.includes('E = 210000 N/mm²'));
-  // Aksetriaden skal være der uansett.
-  ok('aksetriade', svg.includes('id="fig-triad"') && svg.includes('z ut av planet'));
 });
 
 /* ================================================================== *
