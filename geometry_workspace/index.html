@@ -66,6 +66,7 @@
                padding: 0.3rem 0.5rem; color: #f1f5f9; }
     textarea:focus { outline: none; border-color: #38bdf8; }
   </style>
+  <link rel="stylesheet" href="print.css" />
 </head>
 
 <body class="bg-slate-900 text-slate-100 font-sans">
@@ -100,6 +101,7 @@
         </div>
       </div>
 
+      <button id="btn-report" class="px-2.5 py-1.5 text-xs bg-sky-700 hover:bg-sky-600 rounded border border-sky-600">Rapport</button>
       <button id="btn-export" class="px-2.5 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Eksporter</button>
       <button id="btn-help" class="px-2.5 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">?</button>
       <input id="file-input" type="file" accept="application/json,.json" class="hidden" />
@@ -755,6 +757,25 @@
     Dette verktøyet krever JavaScript.
   </div>
 </noscript>
+
+<div id="report-overlay" hidden>
+  <div class="report-toolbar">
+    <b class="mr-2">Rapport</b>
+    <button id="rep-print" class="px-2.5 py-1 text-xs bg-sky-700 hover:bg-sky-600 rounded border border-sky-600">Skriv ut / PDF</button>
+    <label class="flex items-center gap-1.5 text-slate-300">
+      <input type="checkbox" id="rep-guides" class="accent-sky-500" /> Vis sidegrenser
+    </label>
+    <span id="rep-audit" class="text-slate-400"></span>
+    <button id="rep-close" class="ml-auto px-2.5 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">Lukk</button>
+  </div>
+  <div class="report-scroll">
+    <div class="report-content"></div>
+  </div>
+</div>
+
+<!-- Utskriftsroten. MAA vaere et direkte barn av <body>: print.css skjuler
+     `body > *` og viser bare denne. Ligger den nestet, skjules den med resten. -->
+<div id="gwPrintRoot" aria-hidden="true" hidden></div>
 
 <script type="module" src="js/main.js"></script>
 </body>

@@ -12,6 +12,8 @@ import { UnderlayManager, defaultPlacement } from './underlay.js';
 import { NumericInput } from './numeric-input.js';
 import { snapLabel } from './snapping.js';
 import { lengthLabel } from './units.js';
+import { buildFigureSvg } from './report-figure.js';
+import { buildReportHtml, stageReportForPrint, clearPrintStage, audit } from './report.js';
 
 const host = document.getElementById('canvas-host');
 
@@ -179,6 +181,14 @@ window.addEventListener('keydown', (e) => {
   // gang, og ellers tøm utvalget. Steg 1 og 2 skjer i samme trykk — står man i
   // et tallfelt mens en rotasjon pågår, skal ikke Esc måtte trykkes to ganger.
   if (e.key === 'Escape') {
+    // Rapportoverlegget dekker hele skjermen. Er det åpent, er det ÅPENBART
+    // det brukeren vil ut av — og da skal Esc ikke også tømme utvalget bak
+    // det, som brukeren ikke kan se. Derfor `return` her, ikke gjennomfall.
+    const overlay = document.getElementById('report-overlay');
+    if (overlay && !overlay.hidden) {
+      closeReport();
+      return;
+    }
     document.getElementById('help-overlay').classList.add('hidden');
     document.getElementById('import-menu').classList.add('hidden');
     document.getElementById('canvas-settings').classList.add('hidden');
@@ -281,6 +291,80 @@ if (!restored || !store.state.shapes.length) {
 // Nyttig for feilsøking i konsollet. `emit` sender en syntetisk pekerhendelse
 // i verdenskoordinater rett inn i verktøyet, slik at hele klikkflyten kan
 // kjøres uten mus — det er slik verktøyene testes.
+/* ------------------------------------------------------------------ *
+ * Rapporten
+ *
+ * Bygges PÅ FORESPØRSEL — når overlegget åpnes, og ved `beforeprint`. Aldri i
+ * `scheduleRender()`-løkka: den kjører på hver store-oppdatering, og rapporten
+ * er altfor tung til det. Ingenting ved rapporten trenger å være ferskt før
+ * noen faktisk ser på den.
+ * ------------------------------------------------------------------ */
+
+function renderReport() {
+  const host = document.querySelector('#report-overlay .report-content');
+  if (!host) return;
+  const st = store.state;
+  host.innerHTML = buildReportHtml(st, analyze(st.shapes, st.mode));
+}
+
+function openReport() {
+  const overlay = document.getElementById('report-overlay');
+  if (!overlay) return;
+  renderReport();
+  overlay.hidden = false;
+
+  // Måler om noe kommer til å splittes over et sideskift, og sier det med én
+  // gang i stedet for å la brukeren oppdage det i PDF-en. `oversize` er den
+  // eneste sjekken som er sann uavhengig av utskriftsmotoren; `straddle` er
+  // bare en indikasjon og nevnes derfor ikke her.
+  const out = document.getElementById('rep-audit');
+  if (out) {
+    const a = audit();
+    if (a.error) out.textContent = '';
+    else if (a.oversize.length) {
+      out.textContent = `${a.oversize.length} blokk(er) er høyere enn én side og vil bli delt.`;
+      out.className = 'text-amber-300';
+    } else {
+      out.textContent = `Side 1: ${a.page1Mm.toFixed(0)} av 259 mm.`;
+      out.className = a.page1Ok ? 'text-slate-400' : 'text-amber-300';
+    }
+  }
+}
+
+function closeReport() {
+  const overlay = document.getElementById('report-overlay');
+  if (overlay) overlay.hidden = true;
+  clearPrintStage();
+}
+
+document.getElementById('btn-report').addEventListener('click', openReport);
+document.getElementById('rep-close').addEventListener('click', closeReport);
+document.getElementById('rep-print').addEventListener('click', () => window.print());
+document.getElementById('rep-guides').addEventListener('change', (e) => {
+  const c = document.querySelector('#report-overlay .report-content');
+  if (!c) return;
+  if (e.target.checked) c.setAttribute('data-page-guides', '');
+  else c.removeAttribute('data-page-guides');
+});
+
+// Ctrl+P skal gi NØYAKTIG samme dokument som «Skriv ut»-knappen. Er overlegget
+// lukket, bygges rapporten først og rives ned igjen etterpå — ellers ville
+// Ctrl+P skrevet ut appen, som er det ingen vil.
+let printedWhileClosed = false;
+window.addEventListener('beforeprint', () => {
+  const overlay = document.getElementById('report-overlay');
+  const wasClosed = !overlay || overlay.hidden;
+  if (wasClosed) {
+    renderReport();
+    printedWhileClosed = true;
+  }
+  stageReportForPrint();
+});
+window.addEventListener('afterprint', () => {
+  clearPrintStage();
+  printedWhileClosed = false;
+});
+
 window.__gw = {
   store,
   viewport,
@@ -297,6 +381,30 @@ window.__gw = {
     else if (type === 'pointerup') tools.pointerup(e);
     else if (type === 'dblclick') tools.dblclick(e);
     return e;
+  },
+  /**
+   * Rapportens deler, til øyekontroll i konsollet (bølge B).
+   * `__gw.report.figure()` gir måltegningen som SVG-streng; lim den inn i en
+   * tom fil, eller `open(URL.createObjectURL(new Blob([s], {type:'image/svg+xml'})))`.
+   */
+  report: {
+    open: openReport,
+    close: closeReport,
+    render: renderReport,
+    audit,
+    html: () => buildReportHtml(store.state, analyze(store.state.shapes, store.state.mode)),
+    figure() {
+      const st = store.state;
+      return buildFigureSvg({
+        unit: st.unit,
+        mode: st.mode,
+        shapes: st.shapes,
+        joints: st.joints,
+        reference: st.reference,
+        analysis: analyze(st.shapes, st.mode),
+        res: ui.reinforcement ? ui.reinforcement.result : null,
+      });
+    },
   },
   /** Siste utregning i «Forsterkning»-fanen, til kontrollregning i konsollet. */
   rf() {
