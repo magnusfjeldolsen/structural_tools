@@ -149,3 +149,53 @@ Fem suiter, alle rene `node <fil>`, exit 0/1, ingen avhengigheter:
 `report-figure` (17). Hver forventet verdi er håndregnet i en kommentar over
 sjekken. De har fanget fire reelle feil, blant annet at C24 fikk stålets
 E-modul.
+
+## 12. Eksportkontrakten (`resolved`)
+
+`toJSON()` legger ved et `resolved`-felt for verktøy som skal *bruke*
+geometrien — FEM-meshere, MCP-servere — i stedet for å redigere den.
+
+Grunnen: `shapes[].points` er redigeringsverktøyets modell. Et mottakende
+verktøy måtte ellers kjenne tre konvensjoner det ikke finnes spor av i
+JSON-en — at hull er egne former med `role:'void'`, at `mode:'priority'` gjør
+array-rekkefølgen til prioritet, og at ringene er åpne — og i tillegg
+reimplementere boolske polygonoperasjoner.
+
+```
+resolved: {
+  unit: 'mm',                              // ALLTID mm, uansett arbeidsenhet
+  mode: 'sum' | 'priority',
+  winding: 'outer CCW, holes CW, rings closed',
+  notes: string[],                         // se under
+  voidsIgnored: string[],
+  grossArea, netArea, overlapArea,         // mm², kontrollsummer
+  regions: [{ id, name, stage, material, rings: [{ outer, holes }] }]
+}
+```
+
+Fire egenskaper som er verdt å ikke miste:
+
+- **Hull er trukket inn i de faste formene.** `void`-formene er ikke egne
+  regioner; de *er* innerringene. En forms egen geometri har ingen hull i
+  `sum`-modus, så uten dette steget ville `holes` alltid vært tom.
+- **`notes` sier fra om overlapp.** I `sum`-modus (skallmodellen) teller
+  overlapp mellom to faste former dobbelt i tverrsnittsverdiene, men et fysisk
+  område kan bare ha materiale én gang. Summen av regionenes arealer er
+  `grossArea`, unionen er `netArea`. De to er ulike tall med vilje — men det
+  må *sies*, ellers oppdages avviket senere som en «feil» i mottakeren.
+- **`voidsIgnored`** fanger utsparinger som ble spist opp av prioriteten. I
+  lerretet går det bra (nye former legges først i lista), men en
+  maskingenerert fil kan legge hullet etter formen det skal kutte — og da
+  forsvinner det stille.
+- **Importen leser IKKE `resolved`.** Feltet er avledet av `shapes` og regnes
+  ut på nytt ved hver eksport. Å lese det inn ville gitt to kilder til samme
+  geometri, der en håndredigert `resolved` stille kunne overstyre formene
+  brukeren ser. `fromJSON` plukker eksplisitte felt og kopierer ikke objektet,
+  så ukjente nøkler ignoreres uansett.
+
+Formatet er **idempotent** etter første import: eksport → import → eksport gir
+byte-identisk fil. Første runde fyller ut standardverdier (`color`, `factor`,
+`meta`) og slår opp `rho` fra materialpresetet, som er utfylling, ikke tap.
+
+`tests/export.test.mjs` (7 tester) låser hull-som-innerring,
+mm-skaleringa, omløpsretningen, og at `Σ regioner = netArea + overlapp`.

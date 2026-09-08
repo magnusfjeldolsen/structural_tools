@@ -5,7 +5,7 @@
  * Ingen DOM-avhengigheter utover localStorage.
  */
 
-import { boundsOfShapes, translatePoints, multiProps, pointsToMulti, splitPointsByLine, openRing, neighborTolerance, EPS as GEOM_EPS } from './geometry.js';
+import { boundsOfShapes, translatePoints, multiProps, pointsToMulti, splitPointsByLine, openRing, neighborTolerance, resolvedRegions, EPS as GEOM_EPS } from './geometry.js';
 import { conversionFactor, unitInfo } from './units.js';
 import { SNAP_KEYS } from './snapping.js';
 import { sidesOfJoint } from './joints.js';
@@ -996,6 +996,38 @@ export class Store {
     }
   }
 
+  /**
+   * Oppløst geometri til eksport. `null` når polygonbiblioteket ikke er lastet
+   * — da utelates feltet helt i stedet for å eksportere noe halvferdig.
+   */
+  _resolved() {
+    const r = resolvedRegions(this.state.shapes, this.state.mode, unitInfo(this.state.unit).toMillimetres);
+    if (!r) return undefined;
+    return {
+      unit: 'mm',
+      mode: this.state.mode,
+      winding: 'outer CCW, holes CW, rings closed',
+      notes: [
+        this.state.mode === 'sum' && r.overlapArea > 0
+          ? 'Skallmodell: faste former overlapper med ' + r.overlapArea.toFixed(0) +
+            ' mm². Overlappet teller DOBBELT i tverrsnittsverdiene, men et fysisk ' +
+            'område kan bare ha materiale én gang. Summen av regionenes arealer er ' +
+            'grossArea; unionen av dem er netArea.'
+          : null,
+        r.voidsIgnored.length
+          ? 'Utsparingene ' + r.voidsIgnored.join(', ') + ' hadde ingen virkning: i ' +
+            'priority-modus er rekkefølgen prioritet, og de ligger etter formen de ' +
+            'skulle kutte. Flytt dem foran i shapes-lista hvis de skal være hull.'
+          : null,
+      ].filter(Boolean),
+      voidsIgnored: r.voidsIgnored,
+      grossArea: r.grossArea,
+      netArea: r.netArea,
+      overlapArea: r.overlapArea,
+      regions: r.regions,
+    };
+  }
+
   toJSON() {
     return JSON.stringify(
       {
@@ -1013,6 +1045,12 @@ export class Store {
         joints: this.state.joints,
         loads: this.state.loads,
         report: this.state.report,
+        // AVLEDET, ikke kilde. `shapes` er fasit; `resolved` er den samme
+        // geometrien gjort opp for et mottakende verktøy: hull som ekte
+        // innerringer, alt i millimeter, normalisert omløpsretning. Importen
+        // IGNORERER feltet — det regnes ut på nytt ved neste eksport, så en
+        // fil kan ikke havne i en tilstand der de to spriker.
+        resolved: this._resolved(),
       },
       null,
       2
@@ -1052,6 +1090,12 @@ export class Store {
       st.loads = m.loads;
       // Valgfritt felt; fravær betyr «av». Filer fra v4 åpnes uendret.
       st.report = { detailed: !!(data.report && data.report.detailed) };
+      // `data.resolved` leses IKKE, med vilje. Den er avledet av `shapes`, og
+      // å lese den inn ville gitt to kilder til samme geometri som kan gli fra
+      // hverandre — en håndredigert `resolved` ville da stille overstyre
+      // formene brukeren ser i lerretet. Feltet regnes ut på nytt ved hver
+      // eksport. Ukjente nøkler ellers ignoreres på samme måte: denne
+      // funksjonen plukker eksplisitte felt, den kopierer ikke objektet.
     }, { reason: 'import' });
     this.syncUid();
   }

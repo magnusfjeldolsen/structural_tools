@@ -552,3 +552,91 @@ export function splitPointsByLine(points, a, b) {
     negMulti: intersectionMulti(own, [halfPolygon(-1)]),
   };
 }
+
+/**
+ * Oppløst geometri per form, til eksport — ytterring med hull som innerringer,
+ * i millimeter.
+ *
+ * HVORFOR DENNE FINNES
+ * `shapes[].points` er redigeringsverktøyets modell, ikke et ferdig tverrsnitt.
+ * Et mottakende verktøy (FEM-mesher, MCP-server) måtte ellers kjenne tre
+ * konvensjoner det ikke finnes noe spor av i JSON-en: at hull er EGNE former
+ * med `role: 'void'`, at `mode: 'priority'` gjør array-rekkefølgen til
+ * prioritet, og at ringene er åpne. Her er alt det gjort opp.
+ *
+ * HULL TREKKES INN I DE FASTE FORMENE. En forms egen geometri har ingen hull i
+ * `sum`-modus — hullet er en søsterform. Eksporten subtraherer derfor alle
+ * `void`-former fra hver faste form, slik at hullet blir en ekte innerring der
+ * det hører hjemme. `void`-formene er ikke med i lista; de ER innerringene.
+ *
+ * OVERLAPP. I `sum`-modus (skallmodellen) teller overlapp mellom to faste
+ * former DOBBELT i tverrsnittsverdiene, men et fysisk område kan bare ha
+ * materiale én gang. Regionene under overlapper derfor slik formene gjør, og
+ * `overlapArea` sier hvor mye areal som er felles. Summerer mottakeren
+ * regionenes arealer, får den skallmodellens `grossArea`; unionerer den dem,
+ * får den `netArea`. De to er forskjellige tall, og det er meningen — men det
+ * må sies, ellers blir avviket oppdaget som en «feil» senere.
+ *
+ * OMLØPSRETNING er normalisert eksplisitt: ytterringer mot klokka (positivt
+ * areal), innerringer med klokka. Ringene er LUKKET (siste punkt = første).
+ *
+ * @param {Array} shapes  `state.shapes`, i arbeidsenhet
+ * @param {string} mode   `'sum' | 'priority'`
+ * @param {number} k      arbeidsenhet → mm (`unitInfo(unit).toMillimetres`)
+ * @returns {{regions: Array, overlapArea: number, grossArea: number, netArea: number}|null}
+ *          `null` når polygonbiblioteket ikke er lastet
+ */
+export function resolvedRegions(shapes, mode = 'sum', k = 1) {
+  if (!pc) return null;
+  const a = analyze(shapes, mode);
+  const voids = unionMulti(a.parts.filter((p) => p.isVoid).map((p) => p.multi));
+
+  const ccw = (ring) => {
+    const r = closeRing(ring);
+    return signedArea(r) < 0 ? r.slice().reverse() : r;
+  };
+  const cw = (ring) => {
+    const r = closeRing(ring);
+    return signedArea(r) > 0 ? r.slice().reverse() : r;
+  };
+  const scale = (ring) => ring.map(([x, y]) => [x * k, y * k]);
+
+  const regions = [];
+  for (const part of a.parts) {
+    if (part.isVoid) continue; // hullene er innerringer, ikke egne regioner
+    const multi = voids.length ? differenceMulti(part.multi, voids) : part.multi;
+    const s = part.shape;
+    const rings = multi
+      .filter((poly) => poly.length && poly[0].length >= 3)
+      .map((poly) => ({
+        outer: scale(ccw(poly[0])),
+        holes: poly.slice(1).filter((r) => r.length >= 3).map((r) => scale(cw(r))),
+      }));
+    if (!rings.length) continue;
+    regions.push({
+      id: s.id,
+      name: s.name,
+      stage: s.stage === 'new' ? 'new' : 'existing',
+      material: s.material || null,
+      rings,
+    });
+  }
+
+  // `void`-former som ble spist opp av prioriteten. I `priority`-modus er
+  // array-rekkefølgen prioritet, så et hull som ligger ETTER formen det skal
+  // kutte gjør ingenting — formen har allerede krevd arealet. I lerretet går
+  // det bra, fordi nye former legges først i lista, men en håndredigert eller
+  // maskingenerert fil bommer lett på det. Da forsvinner hullet stille, og
+  // det er verdt et varsel framfor et tverrsnitt som er for stort.
+  const voidsIgnored = a.parts
+    .filter((p) => p.isVoid && !(voids.length && p.multi.length))
+    .map((p) => p.shape.id);
+
+  return {
+    regions,
+    grossArea: a.grossArea * k * k,
+    netArea: a.netArea * k * k,
+    overlapArea: a.overlapArea * k * k,
+    voidsIgnored,
+  };
+}
