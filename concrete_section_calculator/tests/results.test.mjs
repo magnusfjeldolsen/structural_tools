@@ -59,6 +59,8 @@ import {
   compressionEdgeLabel,
   tensionEdgeLabel,
   analysisBlock,
+  failureState,
+  failureStateIsAtNEd,
   headlineUtilisation,
   momentCapacity,
   isUsable,
@@ -366,6 +368,57 @@ test('momentkapasiteten hentes fra riktig felt i hver analyse', () => {
   // `nm_domain` bærer den som M_Rd_at_N — samme tall, annet navn.
   assert.equal(momentCapacity(NMDOM), NMDOM.nm_domain.M_Rd_at_N);
   assert.equal(momentCapacity(BENDING), momentCapacity(NMDOM));
+});
+
+test('mc_endpoint_mismatch er en INFO om kurvens endepunkt, ikke om kapasiteten', () => {
+  const w = describeWarning({
+    code: 'mc_endpoint_mismatch',
+    severity: 'info',
+    message: 'ignorert',
+    detail: 'last point -194.7 MNmm vs M_Rd -214.0 MNmm (3.2 permille)',
+  });
+  assert.equal(w.message, CODE_MESSAGES.mc_endpoint_mismatch);
+  assert.equal(w.severityLabel, 'Merknad', 'info skal ikke se ut som en feil');
+  assert.match(w.message, /M_Rd/, 'leseren må se at kapasiteten står urørt');
+  assert.match(w.message, /tøyningsplan/, 'og hvorfor endepunktene skiller seg');
+  assert.ok(!w.message.includes('last point'), 'engelsk detalj er ikke hovedmelding');
+  assert.ok(w.detail.includes('194.7'));
+});
+
+test('bruddtilstanden hentes fra nm_domain òg, ikke bare fra bending', () => {
+  // De åtte feltene har IDENTISKE nøkkelnavn i begge blokkene.
+  assert.equal(failureState(BENDING), BENDING.bending);
+
+  const dom = JSON.parse(JSON.stringify(NMDOM));
+  Object.assign(dom.nm_domain, {
+    eps_a: 0.0012,
+    chi_y: -1.5e-5,
+    x: 220.4,
+    x_over_d: 0.403,
+    eps_c_top: -0.0035,
+    eps_s_max: 0.0049,
+    failure_mode: 'concrete_crushing',
+    layers: [{ id: 'L1', z: -250, eps: 0.0049, sigma: 434.8, compression: false }],
+  });
+  assert.equal(failureState(dom), dom.nm_domain);
+  assert.equal(failureState(dom).x, 220.4);
+});
+
+test('bare omhyllingen trenger «ved N_Ed»-merkingen', () => {
+  const dom = JSON.parse(JSON.stringify(NMDOM));
+  dom.nm_domain.failure_mode = 'concrete_crushing';
+  assert.equal(failureStateIsAtNEd(dom), true);
+  // For en ren bøyeberegning er det selvsagt og trenger ingen påminnelse.
+  assert.equal(failureStateIsAtNEd(BENDING), false);
+  // Uten feltene er det ingenting å merke.
+  assert.equal(failureStateIsAtNEd(NMDOM), false);
+  assert.equal(failureState(NMDOM), null);
+});
+
+test('failureState tåler et resultat uten bruddtilstand', () => {
+  assert.equal(failureState(null), null);
+  assert.equal(failureState(MC), null, 'M–κ-blokka bærer ikke et bruddplan');
+  assert.equal(failureStateIsAtNEd(null), false);
 });
 
 test('analysisBlock tåler et resultat uten analyse', () => {
