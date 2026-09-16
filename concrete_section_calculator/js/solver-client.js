@@ -379,20 +379,14 @@ export function createSolverClient(options = {}) {
      * kall blir framdriften DETERMINAT (punkt 7 av 20) og «Avbryt» er å la
      * være å sende neste bit.
      *
-     * TO TING SOM ER MÅLT PÅ EKTE MOTOR OG SOM ER LETT Å TA FEIL AV
-     *
-     * 1. **`chi_plan` er STØRRELSER, men motoren trenger FORTEGNET krumning.**
-     *    Målt på referansebjelken: punkt 5 med `+3,173e−6` gir 0,396 MNmm —
-     *    tøys — mens `−3,173e−6` gir 114,408 MNmm, som er nøyaktig det samlede
-     *    kallet gir. Fortegnet er `meta.moment_sign` (verifisert: θ=0 gir −1 og
-     *    negativ krumning, θ=π gir +1 og positiv). Uten dette ville kurven vært
-     *    feil UTEN at noe feilet.
-     * 2. **`chi_plan` kan ha feil lengde.** Målt for θ=π på referansebjelken:
-     *    10 punkter i planen mot 20 i det samlede kallet. Da er planen ikke
-     *    rutenettet det samlede kallet ville brukt, og å drive på den ville gitt
-     *    en ANNEN kurve enn «Beregn» gjorde i går. Vi faller derfor tilbake til
-     *    ett samlet kall når `chi_plan.length !== mc_pre_yield + mc_post_yield`
-     *    — dårligere framdrift, men riktig kurve.
+     * ENHETENE ER STØRRELSER HELE VEIEN
+     * `chi_plan` kommer som størrelser, og `mc_chi` TAS som størrelse: motoren
+     * gjør `abs()` og setter fortegnet selv ut fra θ. JS skal derfor sende
+     * planverdiene uendret. (Tidligere ganget denne fila med
+     * `meta.moment_sign`, fordi motoren den gangen tolket `mc_chi` fortegnsatt
+     * og et positivt tall ga et tøvete moment. Det er rettet i `engine.py`, og
+     * kompensasjonen er fjernet — en kompensasjon for en feil som ikke finnes,
+     * er selv en feil som venter.)
      *
      * @param {object} payload §5.1-payload med `analysis: 'moment_curvature'`
      * @param {object} [opts]
@@ -422,22 +416,30 @@ export function createSolverClient(options = {}) {
       }
 
       async function drive() {
-        // Probe: ett trivielt punkt, bare for å få `chi_plan` og `moment_sign`.
-        // Punktets egen verdi KASTES — den er regnet med ukjent fortegn.
+        // Probe: ett trivielt punkt, bare for å få `chi_plan`. Punktets egen
+        // verdi KASTES — den hører ikke til rutenettet.
         report({ done: 0, total: expected, pct: 0 });
         emit({ state: 'solving', phase: 'solve', pct: 0, done: 0, total: expected });
         const probe = await step(withChi(PROBE_CHI));
         if (!probe || probe.ok !== true) return probe;
 
         const plan = probe.moment_curvature?.chi_plan;
-        const sign = Number(probe.meta?.moment_sign) < 0 ? -1 : 1;
 
-        if (!Array.isArray(plan) || plan.length !== expected) {
-          // Se punkt 2 over. Ett samlet kall, ærlig ubestemt framdrift.
+        if (!Array.isArray(plan) || plan.length === 0) {
+          // Plan §5.2: `chi_plan` er `null` hvis pakka endrer seg — rutenettet
+          // bygges via en PRIVAT metode i `structuralcodes`, og forsvinner den
+          // i en oppgradering, mister JS bare muligheten til å drive punktvis.
+          // Da er ett samlet kall riktig svar, med ærlig ubestemt framdrift.
+          // Dette er en reserve for en framtidig oppgradering, ikke for noe vi
+          // forventer i dag.
           emit({ state: 'solving', phase: 'solve', pct: 0, done: null, total: null });
           return client.run(withChi(null), { onProgress: opts.onProgress, onStart });
         }
 
+        // Fra nå av er PLANEN fasiten for hvor mange punkter kurven har, ikke
+        // `pre + post`: det er planen vi faktisk kjører gjennom, og et samlet
+        // kall ville brukt nøyaktig den samme.
+        const total = plan.length;
         const kappa = [];
         const moment = [];
         const warnings = probe.warnings ? [...probe.warnings] : [];
@@ -445,11 +447,12 @@ export function createSolverClient(options = {}) {
         let wallTime = Number(probe.meta?.wall_time_ms) || 0;
         let cancelled = false;
 
-        for (let i = 0; i < plan.length; i++) {
+        for (let i = 0; i < total; i++) {
           // Avbrudd er å LA VÆRE Å SENDE neste bit — ikke å rive ned runtimen.
           if (isCancelled()) { cancelled = true; break; }
-          // FORTEGNET krumning. Se punkt 1 over.
-          const point = await step(withChi(plan[i] * sign));
+          // Uendret planverdi: `mc_chi` er en STØRRELSE, og motoren setter
+          // fortegnet selv ut fra θ.
+          const point = await step(withChi(plan[i]));
           if (!point || point.ok !== true) {
             // Et punkt som ikke lar seg regne avslutter kurven. Har vi ingen
             // punkter i det hele tatt, er motorens eget svar det beste vi har.
@@ -466,21 +469,21 @@ export function createSolverClient(options = {}) {
           for (const w of point.warnings || []) {
             if (w && !seen.has(w.code)) { seen.add(w.code); warnings.push(w); }
           }
-          const pct = Math.round((kappa.length / expected) * 100);
-          report({ done: kappa.length, total: expected, pct });
-          emit({ state: 'solving', phase: 'solve', pct, done: kappa.length, total: expected });
+          const pct = Math.round((kappa.length / total) * 100);
+          report({ done: kappa.length, total, pct });
+          emit({ state: 'solving', phase: 'solve', pct, done: kappa.length, total });
         }
 
         const got = kappa.length;
-        const truncated = got < expected;
+        const truncated = got < total;
         if (truncated && !seen.has('mc_truncated')) {
           warnings.push({
             code: 'mc_truncated',
             severity: 'warning',
             message: '',
             detail: cancelled
-              ? `avbrutt av bruker etter ${got} av ${expected} punkter`
-              : `kurven stoppet etter ${got} av ${expected} punkter`,
+              ? `avbrutt av bruker etter ${got} av ${total} punkter`
+              : `kurven stoppet etter ${got} av ${total} punkter`,
           });
         }
 
