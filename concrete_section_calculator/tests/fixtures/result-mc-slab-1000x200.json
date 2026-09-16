@@ -1,17 +1,19 @@
 {
   "ok": true,
   "schema": 1,
+  "analysis": "moment_curvature",
   "meta": {
     "structuralcodes_version": "0.7.2",
-    "engine_version": "0.0.0-fixture",
-    "runtime": "cpython (fixturegenerator)",
+    "engine_version": "1.0.0",
+    "runtime": "cpython 3.11.9",
     "integrator": "marin",
     "scipy": "real",
     "moment_sign": -1,
     "theta": 0.0,
     "direction": "sagging",
     "subtract_bar_area": false,
-    "wall_time_ms": 14.5
+    "wall_time_ms": 331.6,
+    "mc_active_combo": "C1"
   },
   "materials": {
     "fck": 30.0,
@@ -44,6 +46,8 @@
     "rho": 0.005922256664881004,
     "b_t": 1000.0,
     "d_eff": 169.0,
+    "d_eff_all": 169.0,
+    "As_tension": 1000.8613763648898,
     "As_min": 254.5416213574282,
     "As_max": 8000.0,
     "n_min": -4435863.797944463,
@@ -58,7 +62,6 @@
     "all_ok": true
   },
   "warnings": [],
-  "analysis": "moment_curvature",
   "moment_curvature": {
     "N_Ed": 0.0,
     "kappa": [
@@ -103,12 +106,64 @@
       69429122.36018166,
       69604202.91164318,
       69766034.50101723,
-      69918939.48278105
+      69918940.09775558
+    ],
+    "chi_plan": [
+      1e-08,
+      1.9813134314502485e-06,
+      3.952626862900497e-06,
+      5.923940294350746e-06,
+      7.895253725800994e-06,
+      9.866567157251243e-06,
+      1.1837880588701492e-05,
+      1.380919402015174e-05,
+      1.578050745160199e-05,
+      1.775182088305224e-05,
+      2.8749840865380572e-05,
+      3.9747860847708896e-05,
+      5.074588083003723e-05,
+      6.174390081236556e-05,
+      7.274192079469388e-05,
+      8.373994077702222e-05,
+      9.473796075935056e-05,
+      0.00010573598074167887,
+      0.00011673400072400721,
+      0.00012773202070633555
     ],
     "yield_index": 9,
     "M_Rd": 69918940.09775558,
     "M_Ed": 0.0,
     "utilisation": 0.0,
-    "truncated": false
+    "truncated": false,
+    "combinations": [
+      {
+        "id": "C1",
+        "name": "",
+        "N_Ed": 0.0,
+        "M_Ed": 0.0,
+        "theta": 0.0,
+        "M_Rd": 69918940.09775558,
+        "utilisation": 0.0,
+        "x": 27.401116655366607,
+        "x_over_d": 0.16213678494299769,
+        "eps_a": 0.009273202070633552,
+        "chi_y": -0.00012773202070633555,
+        "eps_c_top": -0.003500000000000003,
+        "eps_s_max": 0.018086711499370703,
+        "failure_mode": "concrete_crushing",
+        "layers": [
+          {
+            "id": "L1",
+            "z": -69.0,
+            "eps": 0.018086711499370703,
+            "sigma": 443.255313364347,
+            "utilisation": 1.0194872207379981,
+            "compression": false
+          }
+        ],
+        "within_limits": true
+      }
+    ],
+    "governing": "C1"
   }
 }

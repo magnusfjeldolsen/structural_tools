@@ -380,7 +380,7 @@ def test_endpoint_mismatch_is_reported_not_silently_swallowed():
     # alltid står der lærer brukeren å overse dem som faktisk teller.
     assert hits[0]['severity'] == 'info'
     # Ingen spekulasjon om resten av kurven: nabopunktene er målt til å ligge der de skal.
-    assert 'resten av kurven' not in hits[0]['message']
+    assert 'rest of the curve' not in hits[0]['message']
     # Begge tallene skal stå i detail, ellers kan ingen etterprøve merknaden.
     assert 'fixed-curvature m_y' in hits[0]['detail']
     assert 'M_Rd' in hits[0]['detail']
@@ -493,6 +493,48 @@ def test_nm_domain_matches_fixture():
     assert close(dom['N_min'], expected['N_min'])
     assert close(dom['N_max'], expected['N_max'])
 
+    # §10 B2 punkt 6: `M_Rd` er NY, og skal ha nøyaktig samme verdi som `M_Rd_at_N`.
+    assert dom['M_Rd'] == dom['M_Rd_at_N']
+    assert dom['governing'] == 'C1'
+    assert len(dom['combinations']) == 1
+    assert dom['combinations'][0]['id'] == 'C1'
+
+
+def test_nm_domain_sign_convention_follows_options_theta_not_governing():
+    """Koordinatorendring: bytter governing fra sagging til hogging, skal ikke omhyllingen
+    speilvendes. `options.theta` styrer fortegnet, og skal stå stille mens man redigerer
+    kombinasjonstabellen (§4.1). `meta.domain_theta` skal si hvilken retning som ble brukt,
+    og `meta.moment_sign` skal fortsatt være GOVERNING sitt eget, rå fortegn — ikke det
+    samme tallet lenger.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['analysis'] = 'nm_domain'
+    expected = load('result-nmdomain-beam-300x600.json')['nm_domain']
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'sagging', 'N_Ed': 0.0, 'M_Ed': 100000000.0,
+             'theta': 0.0},
+            # Uten overkantarmering er hogging-kapasiteten liten (~6,4 kNm), så en
+            # beskjeden M_Ed her gir likevel størst utnyttelse og vinner governing.
+            {'id': 'C2', 'name': 'hogging', 'N_Ed': 0.0, 'M_Ed': 5000000.0,
+             'theta': math.pi},
+        ],
+        'active': 'C1',
+    }
+    result = engine.run(payload)
+    dom = result['nm_domain']
+
+    assert dom['governing'] == 'C2'                    # hogging vant på utnyttelse
+    assert result['meta']['domain_theta'] == 0.0       # men omhyllingen fulgte options.theta
+    assert result['meta']['moment_sign'] == 1          # governing (hogging) sitt EGNE fortegn
+
+    # Selve omhyllingen er UENDRET fra den rene sagging-fixturen, byte for byte — governing
+    # sitt bytte av retning skal ikke speilvende diagrammet.
+    assert dom['n'] == expected['n']
+    for got, want in zip(dom['m'], expected['m']):
+        assert close(got, want)
+    assert dom['field_num'] == expected['field_num']
+
 
 # Bruddtilstanden UI og rapport leser generisk. Nøkkelnavnene må være de samme i `bending`
 # og `nm_domain`, ellers trenger hver leser et særtilfelle per analyse.
@@ -597,18 +639,141 @@ def test_hogging_mirrors_sagging():
     assert close(result['bending']['x_over_d'], 0.15652547619225654)
 
 
-def test_axial_pre_check_is_norwegian_and_stops_the_run():
+def test_axial_pre_check_is_english_and_still_returns_the_full_envelope():
+    """§4.4: aksialsjekken stopper ikke lenger hele kjøringen.
+
+    Med bare ÉN kombinasjon (den gamle `loads`-forma) og den utenfor grensene, finnes det
+    ingen kandidat til `governing` (§4.3 regel 4). Toppnivå `ok` blir da `False` med en
+    `axial_out_of_range`-feil — men resten av konvolutten (checks, section_props, meta,
+    combinations) er fortsatt der, slik at figurer og tabeller har noe å vise.
+    """
     payload = load('payload-beam-300x600.json')
     payload['loads']['N_Ed'] = -5_000_000.0
     result = engine.run(payload)
 
     assert result['ok'] is False
     assert result['error']['code'] == 'axial_out_of_range'
-    assert 'Aksialkraften' in result['error']['message']
+    assert 'axial force' in result['error']['message']
     assert 'kN' in result['error']['message']
-    # Rå engelsk pakketekst hører hjemme i detail, aldri i message.
     assert 'n_min' in result['error']['detail']
+
+    assert result['checks']['axial_ok'] is False
+    assert result['bending']['governing'] is None
+    combo = result['bending']['combinations'][0]
+    assert combo['within_limits'] is False
+    assert combo['M_Rd'] is None
+    assert combo['utilisation'] is None
+
+    per_combo = [w for w in result['warnings'] if w['code'] == 'axial_out_of_range']
+    assert len(per_combo) == 1
+    assert per_combo[0]['combo'] == 'C1'
+    assert 'axial force' in per_combo[0]['message']
+
     json.dumps(result, allow_nan=False)
+
+
+def test_three_combinations_one_out_of_range_does_not_upset_the_others():
+    """§4.6, full presisjon. C3 ligger under n_min og skal ikke røre C1/C2."""
+    payload = load('payload-beam-300x600.json')
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'ULS 1', 'N_Ed': 0.0, 'M_Ed': 150000000.0, 'theta': 0.0},
+            {'id': 'C2', 'name': 'ULS 2', 'N_Ed': -500000.0, 'M_Ed': 250000000.0,
+             'theta': 0.0},
+            {'id': 'C3', 'name': 'ULS 3', 'N_Ed': -5000000.0, 'M_Ed': 100000000.0,
+             'theta': 0.0},
+        ],
+        'active': 'C1',
+    }
+    result = engine.run(payload)
+    assert result['ok'] is True
+
+    bending = result['bending']
+    assert close(result['section_props']['n_min'], -4010438.409731036)
+    combos = {c['id']: c for c in bending['combinations']}
+
+    assert close(combos['C1']['M_Rd'], 215006759.18601915)
+    assert close(combos['C1']['utilisation'], 0.6976524857538235)
+    assert combos['C1']['within_limits'] is True
+
+    assert close(combos['C2']['M_Rd'], 305396902.98483205)
+    assert close(combos['C2']['utilisation'], 0.818606860634787)
+    assert combos['C2']['within_limits'] is True
+
+    assert combos['C3']['within_limits'] is False
+    assert combos['C3']['M_Rd'] is None
+    assert combos['C3']['utilisation'] is None
+
+    # C2 har størst utnyttelse av kandidatene og skal derfor styre toppnivåfeltene (§4.3).
+    assert bending['governing'] == 'C2'
+    assert close(bending['M_Rd'], 305396902.98483205)
+    assert close(bending['utilisation'], 0.818606860634787)
+    assert close(bending['N_Ed'], -500000.0)
+
+    assert result['checks']['axial_ok'] is False       # C3 alene gjør det usant
+    hits = [w for w in result['warnings'] if w['code'] == 'axial_out_of_range']
+    assert len(hits) == 1
+    assert hits[0]['combo'] == 'C3'
+    assert hits[0]['combo_name'] == 'ULS 3'
+
+
+def test_governing_tie_break_picks_the_first_combination_not_null():
+    """§4.3 regel 3 — også når ALLE utnyttelser er 0, som i den committede fixturen."""
+    payload = load('payload-beam-300x600.json')
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'A', 'N_Ed': 0.0, 'M_Ed': 0.0, 'theta': 0.0},
+            {'id': 'C2', 'name': 'B', 'N_Ed': -100000.0, 'M_Ed': 0.0, 'theta': 0.0},
+            {'id': 'C3', 'name': 'C', 'N_Ed': -200000.0, 'M_Ed': 0.0, 'theta': 0.0},
+        ],
+        'active': 'C1',
+    }
+    result = engine.run(payload)
+    assert all(c['utilisation'] == 0.0 for c in result['bending']['combinations'])
+    assert result['bending']['governing'] == 'C1'
+    assert close(result['bending']['N_Ed'], 0.0)
+
+
+def test_old_loads_shape_is_treated_as_a_single_unnamed_combination():
+    """§4.2: gammel form ⇒ nøyaktig fixturtallet, som én kombinasjon `C1` uten navn."""
+    payload = load('payload-beam-300x600.json')
+    result = engine.run(payload)
+
+    assert result['bending']['governing'] == 'C1'
+    combo = result['bending']['combinations'][0]
+    assert combo['id'] == 'C1'
+    assert combo['name'] == ''
+    assert close(combo['M_Rd'], M_RD_BEAM)
+    assert close(result['bending']['M_Rd'], M_RD_BEAM)
+
+
+def test_mc_active_combo_is_set_only_for_moment_curvature():
+    payload = load('payload-beam-300x600.json')
+    bending = engine.run(payload)
+    assert 'mc_active_combo' not in bending['meta']
+
+    payload['analysis'] = 'moment_curvature'
+    mc = engine.run(payload)
+    assert mc['meta']['mc_active_combo'] == 'C1'
+    assert len(mc['moment_curvature']['combinations']) == 1
+    assert mc['moment_curvature']['combinations'][0]['id'] == 'C1'
+
+
+def test_every_analysis_block_carries_combinations_and_governing():
+    """§4.3: `combinations` OG `governing` skal finnes i HVER analyseblokk.
+
+    M–κ har bare én kombinasjon å velge governing blant, men nøkkelen skal likevel stå
+    der — den committede fixturen har `M_Ed = 0` og altså `utilisation = 0.0`, nøyaktig
+    regel 3 sitt uavgjort-tilfelle, så et manglende `governing` her ville vist seg som
+    `None` i stedet for `'C1'`.
+    """
+    payload = load('payload-beam-300x600.json')
+    for analysis in ('bending', 'moment_curvature', 'nm_domain'):
+        payload['analysis'] = analysis
+        block = engine.run(payload)[analysis]
+        assert 'combinations' in block, analysis
+        assert 'governing' in block, analysis
+        assert block['governing'] == 'C1', analysis
 
 
 def test_bar_in_compression_zone_warning_is_quantitative():

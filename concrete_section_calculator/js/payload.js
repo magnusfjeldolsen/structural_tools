@@ -107,7 +107,7 @@ function rebarEntry(layer, state) {
 export function buildPayload(state = {}, overrides = {}) {
   const concrete = state.concrete || {};
   const steel = state.steel || {};
-  const loads = state.loads || {};
+  const combos = state.combos || [];
   const options = state.options || {};
 
   const alpha_cc = requirePositive(concrete.alpha_cc, 'α_cc');
@@ -146,11 +146,21 @@ export function buildPayload(state = {}, overrides = {}) {
       },
       rebar: (state.layers || []).map((layer) => rebarEntry(layer, state)),
     },
+    // Én kombinasjon per rad i lastkombinasjonstabellen (§4.2). Motoren
+    // regner alle og finner selv hvilken som er GOVERNING (§4.3) — det er
+    // derfor `active` er med og ikke bare en enkelt N_Ed/M_Ed slik det pleide.
     loads: {
-      // Fortegn beholdes: n > 0 er STREKK, n < 0 er TRYKK (plan §3.6).
-      N_Ed: num(loads.N_Ed) * KN_TO_N,
-      // `M_Ed` er en STØRRELSE i retningen `direction` angir — derfor `abs`.
-      M_Ed: Math.abs(num(loads.M_Ed)) * KNM_TO_NMM,
+      combinations: combos.map((c) => ({
+        id: c.id,
+        name: c.name || '',
+        // Fortegn beholdes: n > 0 er STREKK, n < 0 er TRYKK (plan §3.6).
+        N_Ed: num(c.N_Ed) * KN_TO_N,
+        // `M_Ed` er en STØRRELSE i retningen kombinasjonens `direction`
+        // angir — derfor `abs`.
+        M_Ed: Math.abs(num(c.M_Ed)) * KNM_TO_NMM,
+        theta: thetaFor(c.direction),
+      })),
+      active: state.activeCombo,
     },
     options: {
       theta: thetaFor(state.direction),
