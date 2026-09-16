@@ -731,10 +731,13 @@ def _run_inner(payload, progress, t0):
         'section_props': {
             'Ag': _num(b * h),
             'As_total': _num(as_total),
-            # ρ regnes med EC2 sin d, altså strekkarmeringens. `d_eff_all` og
-            # `As_tension` ligger ved siden av slik at rapporten kan vise hva som er med
-            # i hvilket tall — valget skal være synlig, ikke gjemt i en kildefil.
-            'rho': _num(as_total / (b * d_eff)) if d_eff else None,
+            # ρ er EC2 sin ρ_l: STREKKARMERINGEN over `b_t·d`, med samme `d` som under.
+            # Teller og nevner må gjelde den samme armeringen. `As_total/(b·d_eff)` ville
+            # vært total armering delt på strekkarmeringens dybde — en størrelse som ikke
+            # betyr noe for et dobbeltarmert snitt, men som en leser tar for ρ_l.
+            # `d_eff_all` og `As_tension` ligger ved siden av slik at rapporten kan vise
+            # hva som er med i hvilket tall — valget skal være synlig, ikke gjemt bort.
+            'rho': _num(as_tension / (b * d_eff)) if d_eff else None,
             'b_t': _num(b),
             'd_eff': _num(d_eff),
             'd_eff_all': _num(d_eff_all),

@@ -151,7 +151,11 @@ def test_d_eff_is_the_tension_reinforcement_only():
     fctm = result['materials']['fctm']
     assert close(props['As_min'],
                  max(0.26 * fctm / 500.0 * 300.0 * 550.0, 0.0013 * 300.0 * 550.0))
-    assert close(props['rho'], props['As_total'] / (300.0 * 550.0))
+    # ρ er EC2 sin ρ_l: STREKKARMERINGEN over b_t·d. Teller og nevner må gjelde den samme
+    # armeringen — 1168,672/(b·550) ville vært total armering delt på strekkarmeringens
+    # dybde, et tall uten mening som en leser likevel tar for ρ_l.
+    assert close(props['rho'], 942.4777960769379 / (300.0 * 550.0))
+    assert not close(props['rho'], props['As_total'] / (300.0 * 550.0))
     assert close(result['bending']['x_over_d'], result['bending']['x'] / 550.0)
 
 

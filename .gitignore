@@ -37,3 +37,6 @@ local-docs/
 # Scratch
 2dfea/temp/
 temp/
+
+# Python bytecode i concrete_section_calculator
+concrete_section_calculator/**/__pycache__/
