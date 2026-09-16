@@ -290,6 +290,76 @@ test('den radielle λ er merket som sekundær lastvei, ikke som η', () => {
   assert.ok(!chapterBody(buildReportHtml(BEAM_STATE, BENDING), 5).includes('lastvei'));
 });
 
+/**
+ * `nm_domain` bærer bruddtilstanden ved N_Ed med NØYAKTIG samme åtte
+ * nøkkelnavn som `bending`. Tallene er de målte fra nettleseren ved
+ * N_Ed = −500 kN.
+ */
+function domainWithFailureState() {
+  const r = clone(NMDOM);
+  Object.assign(r.nm_domain, {
+    N_Ed: -500000,
+    M_Ed: 250e6,
+    utilisation: 0.82,
+    eps_a: 0.00123,
+    chi_y: -1.5e-5,
+    x: 220.4,
+    x_over_d: 0.403,
+    eps_c_top: -0.0035,
+    eps_s_max: 0.0049,
+    failure_mode: 'concrete_crushing',
+    layers: [{ id: 'L1', z: -250.0, eps: 0.0049, sigma: 434.8, compression: false }],
+  });
+  return r;
+}
+
+test('M–N-rapporten viser bruddtilstanden ved N_Ed, ikke bare omhyllingen', () => {
+  const ch5 = chapterBody(buildReportHtml(BEAM_STATE, domainWithFailureState()), 5);
+  assert.ok(ch5.includes('220,4'), 'x ved N_Ed');
+  assert.ok(ch5.includes('0,403'), 'x/d ved N_Ed');
+  assert.match(ch5, /ε_s,maks/);
+  assert.match(ch5, /κ_y/);
+  assert.match(ch5, /Trykkbrudd i betongen/, 'bruddformen skal være oversatt');
+  assert.match(ch5, /Tøyninger og spenninger per armeringslag ved N_Ed/);
+  assert.ok(ch5.includes('434,8'), 'spenningen per lag');
+});
+
+test('tøyningsplanet for M–N merkes uttrykkelig som «ved N_Ed»', () => {
+  const ch5 = chapterBody(buildReportHtml(BEAM_STATE, domainWithFailureState()), 5);
+  assert.match(ch5, /Trykksonehøyde x \[mm\] ved N_Ed/);
+  assert.match(ch5, /ikke et vilkårlig punkt på omhyllingen/);
+  assert.ok(ch5.includes('-500,0'), 'N_Ed skal stå i merknaden, i kN');
+  // Bøyeberegningen trenger ingen slik påminnelse — der er det selvsagt.
+  const bend5 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 5);
+  assert.ok(!bend5.includes('vilkårlig punkt'));
+  assert.ok(!bend5.includes('Trykksonehøyde x [mm] ved N_Ed'));
+  assert.match(bend5, /Trykksonehøyde x \[mm\]/);
+});
+
+test('mangler omhyllingen bruddtilstanden, faller kapitlet pent tilbake', () => {
+  // Fixturen har ikke de åtte feltene — rapporten skal ikke finne på tall.
+  const ch5 = chapterBody(buildReportHtml(BEAM_STATE, NMDOM), 5);
+  assert.ok(!ch5.includes('Trykksonehøyde'));
+  assert.match(ch5, /Punkter på omhyllingen/, 'resten av kapitlet står som før');
+});
+
+test('mc_endpoint_mismatch vises som merknad, ikke som ukjent kode', () => {
+  const res = clone(MC);
+  res.warnings = [
+    {
+      code: 'mc_endpoint_mismatch',
+      severity: 'info',
+      message: 'ignorert',
+      detail: 'last point differs from M_Rd by 3.2 permille',
+    },
+  ];
+  const ch7 = chapterBody(buildReportHtml(BEAM_STATE, res), 7);
+  assert.ok(ch7.includes(CODE_MESSAGES.mc_endpoint_mismatch));
+  assert.ok(ch7.includes('Merknad'));
+  assert.ok(!ch7.includes('Uspesifisert melding'), 'koden skal være kjent nå');
+  assert.ok(ch7.includes('<code>mc_endpoint_mismatch</code>'));
+});
+
 test('et {ok:false}-svar rapporteres på norsk, ikke som rå ValueError', () => {
   const bad = {
     ok: false,

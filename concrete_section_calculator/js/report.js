@@ -77,6 +77,8 @@ import {
   lawLabel,
   compressionEdgeLabel,
   analysisBlock,
+  failureState,
+  failureStateIsAtNEd,
   headlineUtilisation,
   momentCapacity,
 } from './results.js';
@@ -445,8 +447,8 @@ function loadsChapter(state, result, props) {
  * 5. Resultat
  * ------------------------------------------------------------------ */
 
-function strainTable(bending, theta) {
-  const layers = Array.isArray(bending?.layers) ? bending.layers : [];
+function strainTable(fs, atNEd) {
+  const layers = Array.isArray(fs?.layers) ? fs.layers : [];
   if (!layers.length) return '';
   const rows = layers.map((l) => [
     esc(l.id || DASH),
@@ -457,7 +459,7 @@ function strainTable(bending, theta) {
     l.utilisation === undefined || l.utilisation === null ? DASH : fmtRatio(l.utilisation, 3),
   ]);
   return (
-    `<h4>Tøyninger og spenninger per armeringslag</h4>` +
+    `<h4>Tøyninger og spenninger per armeringslag${atNEd ? ' ved N_Ed' : ''}</h4>` +
     table(['Lag', 'z [mm]', 'ε [‰]', 'σ [MPa]', 'Tilstand', 'σ/f_yd'], rows, {
       num: [1, 2, 3, 5],
     })
@@ -494,7 +496,10 @@ function resultChapter(state, result) {
   }
 
   const blk = analysisBlock(result) || {};
-  const bending = result.bending || null;
+  // IKKE `result.bending`: `nm_domain` bærer de samme åtte feltene for
+  // tilstanden ved N_Ed. Se `failureState()` i `results.js`.
+  const fs = failureState(result);
+  const atNEd = failureStateIsAtNEd(result);
   const theta = thetaOf(state, result);
   const eta = headlineUtilisation(result);
   const status = utilisationStatus(eta);
@@ -519,15 +524,16 @@ function resultChapter(state, result) {
     [`${HEADLINE_UTILISATION_LABEL} [–]`, fmtRatio(eta, 3)],
     ['Utnyttelse [%]', fmtPercent(eta, 1)],
   ];
-  if (bending) {
+  if (fs) {
+    const at = atNEd ? ' ved N_Ed' : '';
     rows.push(
-      ['Trykksonehøyde x [mm]', fmtLength(bending.x, 1)],
-      ['x/d [–]', fmtRatio(bending.x_over_d, 3)],
-      [`ε_c ved ${compressionEdgeLabel(theta)} [‰]`, fmtStrainPermille(bending.eps_c_top)],
-      ['ε_s,maks [‰]', fmtStrainPermille(bending.eps_s_max)],
-      ['ε_a i tyngdepunktet [‰]', fmtStrainPermille(bending.eps_a)],
-      ['κ_y [10⁻⁶/mm]', fmtCurvature(bending.chi_y)],
-      ['Bruddform', esc(failureModeLabel(bending.failure_mode))]
+      [`Trykksonehøyde x [mm]${at}`, fmtLength(fs.x, 1)],
+      ['x/d [–]', fmtRatio(fs.x_over_d, 3)],
+      [`ε_c ved ${compressionEdgeLabel(theta)} [‰]`, fmtStrainPermille(fs.eps_c_top)],
+      ['ε_s,maks [‰]', fmtStrainPermille(fs.eps_s_max)],
+      ['ε_a i tyngdepunktet [‰]', fmtStrainPermille(fs.eps_a)],
+      ['κ_y [10⁻⁶/mm]', fmtCurvature(fs.chi_y)],
+      ['Bruddform', esc(failureModeLabel(fs.failure_mode))]
     );
   }
   const mc = result.moment_curvature;
@@ -561,11 +567,24 @@ function resultChapter(state, result) {
   }
 
   const xNote =
-    bending && toNum(bending.x) === null
+    fs && toNum(fs.x) === null
       ? `<p class="note">Trykksonehøyden er ikke oppgitt: nøytralaksen ligger mer enn ` +
         `10·h fra tyngdepunktet, altså praktisk talt i det uendelige. Det skjer ved nær ` +
         `rent trykk, og et endelig tall der ville vært meningsløst.</p>`
       : '';
+
+  /**
+   * Uten denne merknaden leses tøyningsplanet som om det gjaldt omhyllingen.
+   * Det gjør det ikke: de åtte feltene beskriver ÉN tilstand — den ved N_Ed —
+   * mens resten av kapitlet handler om 69 andre punkter.
+   */
+  const atNEdNote = atNEd
+    ? `<p class="note">Trykksonehøyde, tøyninger og bruddform over gjelder ` +
+      `tilstanden <b>ved N_Ed = ${fmtForceKN(blk.N_Ed)} kN</b> — altså det ene ` +
+      `punktet lasten ligger på, ikke et vilkårlig punkt på omhyllingen. Det er ` +
+      `samme snitt og samme tøyningsplan som en ren bøyeberegning ved denne ` +
+      `normalkraften ville gitt.</p>`
+    : '';
 
   const radNote = dom
     ? `<p class="note">Hovedtallet er den <b>vertikale</b> utnyttelsen ` +
@@ -579,8 +598,8 @@ function resultChapter(state, result) {
     checkRows(result.checks || {}).map((c) => [esc(c.label), esc(c.text)])
   );
 
-  const modeNote = bending && failureModeNote(bending.failure_mode)
-    ? `<p class="note">${esc(failureModeNote(bending.failure_mode))}</p>`
+  const modeNote = fs && failureModeNote(fs.failure_mode)
+    ? `<p class="note">${esc(failureModeNote(fs.failure_mode))}</p>`
     : '';
 
   return chapter(
@@ -591,8 +610,9 @@ function resultChapter(state, result) {
         `<div><h4>Kapasitet og tøyningsplan</h4>${kvTable(rows)}</div>`,
         `<div><h4>Kontroller</h4>${checks}${modeNote}</div>`
       ) +
-      strainTable(bending, theta) +
+      strainTable(fs, atNEd) +
       xNote +
+      atNEdNote +
       radNote
   );
 }
@@ -641,14 +661,15 @@ function plotChapter(state, result) {
       'Plott — M–N-diagram',
       `<figure class="atomic report-figure-wrap">${svg}<figcaption>Kapasitetsomhylling
         med lastpunktet og lastveien. +M er den analyserte retningen, −M den motsatte;
-        N vender oppover med sitt eget fortegn, altså trykk nedover.</figcaption></figure>`
+        N vender oppover med sitt eget fortegn, altså trykk nedover. Tøyningsplanet og
+        bruddformen ved N_Ed står i kapittel 5.</figcaption></figure>`
     );
   }
 
   // Bøyekapasitet: snittet med nøytralakse og trykksone. `x === null` betyr at
   // nøytralaksen er praktisk talt uendelig langt unna — da tegnes ingen linje,
   // og figuren sier det i stedet for å plassere en strek på slump.
-  const x = toNum(result.bending?.x);
+  const x = toNum(failureState(result)?.x);
   const theta = thetaOf(state, result);
   const caption =
     x === null

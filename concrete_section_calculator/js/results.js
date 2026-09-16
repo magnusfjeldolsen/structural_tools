@@ -225,6 +225,10 @@ export const ENGINE_CODES = Object.freeze([
   'as_max_exceeded',
   'ductility_limit',
   'bar_outside_section',
+  // Lagt til etter at motoren begynte å sammenligne pakkas eget sistepunkt på
+  // M–κ med M_Rd. Den utløses på STANDARDOPPSETTET (α_cc = 0,85), så uten en
+  // norsk tekst ville den vanligste kjøringen vist «Uspesifisert melding».
+  'mc_endpoint_mismatch',
 ]);
 
 /** Kodene `section.js` sin `validate()` kan produsere. Samme tabell, ett oppslag. */
@@ -263,6 +267,12 @@ export const CODE_MESSAGES = Object.freeze({
   mc_truncated:
     'Moment–krumningskurven er avkortet: motoren stoppet før siste planlagte ' +
     'krumningspunkt. Kurven er riktig så langt den går, men bruddpunktet mangler.',
+  mc_endpoint_mismatch:
+    'Kurven avsluttes i bøyekapasiteten M_Rd, som er den eksakte verdien. ' +
+    'Pakkens eget siste krumningspunkt ligger litt ved siden av, fordi ' +
+    'likevektssøket ved brudd fant et annet tøyningsplan enn krumningsrutenettet ' +
+    'traff. Forskjellen er en opplysning om kurvens endepunkt, ikke om ' +
+    'kapasiteten — M_Rd står uendret.',
   bar_in_compression_zone:
     'Ett eller flere armeringsjern ligger i trykksonen ved brudd. Med ' +
     'subtract_bar_area = av telles betongen jernet fortrenger dobbelt, slik at ' +
@@ -551,6 +561,39 @@ export function analysisBlock(result) {
  */
 export function headlineUtilisation(result) {
   return toNum(analysisBlock(result)?.utilisation);
+}
+
+/**
+ * Blokka som bærer BRUDDTILSTANDEN: `eps_a`, `chi_y`, `x`, `x_over_d`,
+ * `eps_c_top`, `eps_s_max`, `failure_mode` og `layers`.
+ *
+ * HVORFOR DETTE IKKE ER `result.bending`
+ * `nm_domain` bærer nå de samme åtte feltene, med NØYAKTIG samme nøkkelnavn,
+ * for tilstanden ved `N_Ed`. Slo rapporten opp i `result.bending` direkte,
+ * ville hele tøyningsplanet forsvunnet fra M–N-rapporten uten at noe feilet —
+ * kapittel 5 ville bare vært kortere. `failure_mode` brukes som markør fordi
+ * det er feltet som finnes hvis og bare hvis blokka faktisk beskriver et
+ * bruddplan.
+ *
+ * MERK at feltene i `nm_domain` gjelder tilstanden ved `N_Ed`, ikke et
+ * vilkårlig punkt på omhyllingen. Se `failureStateIsAtNEd()` — rapporten skal
+ * si det der tallene vises, ellers er de misvisende.
+ */
+export function failureState(result) {
+  const blk = analysisBlock(result);
+  if (blk && blk.failure_mode !== undefined) return blk;
+  if (result?.bending?.failure_mode !== undefined) return result.bending;
+  return null;
+}
+
+/**
+ * Sant når bruddtilstanden hører til en omhylling og derfor MÅ merkes med at
+ * den gjelder ved `N_Ed`. For `bending` er det selvsagt og trenger ingen
+ * påminnelse; for `nm_domain` er det tvert imot det leseren lett tar feil av,
+ * fordi resten av blokka beskriver 69 andre punkter.
+ */
+export function failureStateIsAtNEd(result) {
+  return result?.analysis === 'nm_domain' && failureState(result) !== null;
 }
 
 /**
