@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="no" class="dark">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-BFVZQQ2LYN');
+  </script>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Bruddgrensekapasitet for armerte betongtverrsnitt etter Eurocode 2, regnet av fib structuralcodes i nettleseren. Bjelke b×h eller plate per meter, felt- og støttemoment, flere armeringslag. Gir M_Rd ved gitt N_Ed, nøytralakse, tøyninger og spenninger per lag, bruddform, A_s,min og A_s,max, moment–krumningskurve og full M–N-kapasitetsomhylling med lastpunktet inntegnet — med utskriftsklar A4-rapport.">
+  <meta name="keywords" content="betong, betongtverrsnitt, armert betong, bruddgrensetilstand, ULS, Eurocode 2, EC2, momentkapasitet, M_Rd, bøyekapasitet, nøytralakse, tøyning, moment-krumning, M-N-diagram, kapasitetsomhylling, interaksjonsdiagram, minimumsarmering, As_min, armeringslag, bjelke, plate, dekke, feltmoment, støttemoment, structuralcodes, pyodide, betongberegning">
+  <title>Betongtverrsnitt ULS — momentkapasitet, M–κ og M–N etter EC2</title>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Betongtverrsnitt ULS — momentkapasitet, M–κ og M–N etter EC2">
+  <meta property="og:description" content="Regn bøyekapasitet, moment–krumning og M–N-omhylling for armerte betongtverrsnitt i nettleseren, med fib structuralcodes og en utskriftsklar A4-rapport.">
+  <meta property="og:type" content="website">
+
+  <!--
+    Oppvarmingen (plan §3.9) starter så snart workeren er oppe, men de store
+    hentene kan begynne før det: disse lenkene lar nettleseren laste ned
+    kjernen parallelt med at modulskriptene tolkes. `pyodide.asm.wasm` og
+    `python_stdlib.zip` er de to tyngste enkeltfilene i budsjettet på 10,2 MB.
+  -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="modulepreload" href="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs">
+  <link rel="preload" as="fetch" crossorigin href="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.asm.wasm">
+  <link rel="preload" as="fetch" crossorigin href="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/python_stdlib.zip">
+  <link rel="preload" as="fetch" crossorigin href="./vendor/structuralcodes-0.7.2-py3-none-any.whl">
+
+  <script>tailwind = window.tailwind || {}; tailwind.config = { darkMode: 'class' };</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!--
+    UTEN `media="print"` med vilje: `print.css` eier også SKJERMVISNINGEN av
+    rapportoverlegget (#report-overlay), ikke bare utskriften. Legges `media`
+    på her, blir overlegget usynlig på skjerm og rapporten ser ut til å være
+    ødelagt. Se hodekommentaren i fila.
+  -->
+  <link rel="stylesheet" href="print.css">
+
+  <style>
+    html { scroll-behavior: smooth; scroll-padding-top: 108px; }
+    body { background: #0f172a; }
+    .num { font-variant-numeric: tabular-nums; }
+    input[type="text"], input[type="date"], select, textarea {
+      background: #334155; border: 1px solid #475569; border-radius: .375rem;
+      padding: .35rem .55rem; color: #f1f5f9; width: 100%; font-size: .8125rem;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56,189,248,.22);
+    }
+    .field-label { font-size: .6875rem; color: #94a3b8; margin-bottom: .15rem; display: block; }
+    .seg { display: inline-flex; background: #1e293b; border: 1px solid #475569; border-radius: .5rem; overflow: hidden; }
+    .seg > button { padding: .4rem .9rem; font-size: .8125rem; color: #cbd5e1; transition: background .12s; }
+    .seg > button:hover { background: #334155; }
+    .seg > button[data-on="true"] { background: #0284c7; color: #fff; }
+    .chip { padding: .25rem .6rem; font-size: .75rem; border-radius: 9999px; border: 1px solid #475569;
+            background: #1e293b; color: #cbd5e1; transition: all .12s; }
+    .chip:hover { background: #334155; }
+    .chip[data-on="true"] { background: #0369a1; border-color: #0ea5e9; color: #fff; }
+    kbd { font-family: ui-monospace, monospace; font-size: .6875rem; background: #1e293b;
+          border: 1px solid #475569; border-bottom-width: 2px; border-radius: .3rem;
+          padding: .05rem .35rem; color: #e2e8f0; }
+    .sec-h { font-size: .75rem; letter-spacing: .09em; text-transform: uppercase; color: #94a3b8; }
+    .navlink[data-on="true"] { color: #f8fafc; border-bottom-color: #0ea5e9; }
+    details > summary { cursor: pointer; list-style: none; }
+    details > summary::-webkit-details-marker { display: none; }
+    .lrow:hover .lact { opacity: 1; }
+    .lact { opacity: 0; transition: opacity .12s; }
+    @media (max-width: 900px) { .lact { opacity: 1; } }
+    /* `section-draw.js` og `charts.js` setter en FAST bredde i px eller mm på
+       rot-SVG-en, fordi den samme funksjonen tegner papirfiguren. På skjerm
+       skal figuren i stedet fylle boksen sin; viewBox-en gjør det trygt. */
+    .svg-fit > svg { width: 100%; height: auto; display: block; }
+  </style>
+</head>
+
+<body class="bg-slate-900 text-slate-100 font-sans">
+
+<!-- ═══════════════════ topplinje og seksjonsnavigasjon ═══════════════════ -->
+<header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-700">
+  <div class="max-w-5xl mx-auto px-5 flex items-center gap-4 h-12">
+    <a href="../index.html" class="text-sky-400 hover:text-sky-300 text-sm shrink-0">← Verktøy</a>
+    <h1 class="text-base font-semibold text-white whitespace-nowrap">Betongtverrsnitt · ULS</h1>
+    <span class="text-xs text-slate-500 hidden md:inline truncate">Bøyekapasitet, moment–krumning og M–N etter EC2</span>
+    <div class="ml-auto flex items-center gap-2 shrink-0">
+      <div id="engine-pill" class="flex items-center gap-2 text-xs px-2.5 py-1 rounded-full border border-slate-600 bg-slate-800"></div>
+      <button type="button" id="btn-help" class="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded border border-slate-600" title="Tastatursnarveier">?</button>
+      <button type="button" id="btn-report" class="px-2.5 py-1 text-xs bg-sky-700 hover:bg-sky-600 rounded border border-sky-600">Rapport</button>
+    </div>
+  </div>
+  <nav class="max-w-5xl mx-auto px-5 flex gap-1 text-[13px] overflow-x-auto">
+    <a href="#s-mat"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">1 Materiale</a>
+    <a href="#s-geo"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">2 Geometri</a>
+    <a href="#s-arm"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">3 Armering</a>
+    <a href="#s-last" class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">4 Last</a>
+    <a href="#s-calc" class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">5 Beregn</a>
+    <a href="#s-res"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">6 Resultat</a>
+  </nav>
+</header>
+
+<main class="max-w-5xl mx-auto px-5 pb-32 pt-6 space-y-5">
+
+  <!-- ═══════════════ 1 MATERIALE ═══════════════ -->
+  <section id="s-mat" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">1 · Materiale</span>
+      <span id="mat-summary" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-4 space-y-3">
+      <div class="flex flex-wrap items-start gap-2">
+        <span class="text-xs text-slate-400 w-16 pt-1.5">Betong</span>
+        <div id="fck-chips" class="flex flex-wrap gap-1.5"></div>
+      </div>
+      <div class="flex flex-wrap items-start gap-2">
+        <span class="text-xs text-slate-400 w-16 pt-1.5">Armering</span>
+        <div id="fyk-chips" class="flex flex-wrap gap-1.5"></div>
+      </div>
+      <details class="rounded-lg border border-slate-700 bg-slate-900/40">
+        <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
+          <span class="text-slate-500">▸</span><span id="fac-summary" class="num"></span>
+        </summary>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 px-3 pb-3 pt-1">
+          <label><span class="field-label">γ<sub>c</sub></span><input id="i-gamma-c" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">α<sub>cc</sub></span><input id="i-alpha-cc" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">γ<sub>s</sub></span><input id="i-gamma-s" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">k = f<sub>tk</sub>/f<sub>yk</sub></span><input id="i-k" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">ε<sub>uk</sub></span><input id="i-epsuk" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">γ<sub>ε</sub></span><input id="i-gamma-eps" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">Arbeidsdiagram betong</span><select id="i-law-c"></select></label>
+          <label><span class="field-label">Arbeidsdiagram armering</span><select id="i-law-s"></select></label>
+        </div>
+        <p class="px-3 pb-3 text-[11px] text-slate-500 leading-snug">
+          α<sub>cc</sub>, γ<sub>c</sub> og γ<sub>s</sub> kan ikke være 0: beregningsmotoren tolker 0
+          stille som 1,0 / 1,5 / 1,15, og resultatet ville ikke stemt med det rapporten trykker.
+        </p>
+      </details>
+      <div id="mat-derived" class="grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-1 text-[12px] num pt-1"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 2 GEOMETRI ═══════════════ -->
+  <section id="s-geo" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">2 · Geometri</span>
+      <span id="geo-summary" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-5 grid md:grid-cols-[1fr_320px] gap-6">
+      <div class="space-y-4">
+        <div class="seg" id="type-seg">
+          <button type="button" data-v="beam">Bjelke</button>
+          <button type="button" data-v="slab">Plate (per meter)</button>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <label><span class="field-label">b — bredde [mm]</span><input id="i-b" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">h — høyde [mm]</span><input id="i-h" type="text" inputmode="decimal"></label>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <label><span class="field-label">Overdekning c [mm]</span><input id="i-cover" type="text" inputmode="decimal"></label>
+          <label id="w-stirrup"><span class="field-label">Bøyle Ø [mm]</span><input id="i-stirrup" type="text" inputmode="decimal"></label>
+          <label id="w-cover-side"><span class="field-label">Sidekant c [mm]</span><input id="i-cover-side" type="text" inputmode="decimal"></label>
+        </div>
+        <p class="text-[11px] text-slate-500 leading-snug">
+          Alle tallfelt godtar uttrykk: <span class="num text-slate-400">35+8</span>,
+          <span class="num text-slate-400">600/2</span>, <span class="num text-slate-400">20*5^2/8</span>.
+          Tegningen er ren JavaScript og oppdateres mens du skriver — den venter aldri på
+          beregningsmotoren.
+        </p>
+      </div>
+      <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+        <div id="draw-geo" class="svg-fit"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 3 ARMERING ═══════════════ -->
+  <section id="s-arm" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">3 · Armering</span>
+      <span id="arm-summary" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-5 space-y-3">
+
+      <!-- Korthånden er den RASKE veien inn. Hvert felt kan også redigeres i
+           radeditoren (✎) uten å kjenne grammatikken. -->
+      <div class="rounded-lg border border-sky-700/50 bg-sky-950/20 p-3">
+        <div class="flex items-center gap-2">
+          <span class="text-sky-400 text-sm shrink-0">＋</span>
+          <input id="sh-input" type="text" autocomplete="off" spellcheck="false"
+                 class="!bg-slate-900 !border-sky-700 !text-[15px] !py-2 font-mono"
+                 aria-label="Legg til armeringslag med korthånd">
+          <button type="button" id="sh-add"
+                  class="shrink-0 px-3 py-2 text-xs rounded bg-sky-700 hover:bg-sky-600 border border-sky-600">Legg til <kbd>⏎</kbd></button>
+        </div>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-500">
+          <span id="sh-hint" class="num"></span>
+          <span id="sh-preview" class="ml-auto num text-sky-300"></span>
+        </div>
+      </div>
+
+      <div id="layers" class="rounded-lg border border-slate-700 divide-y divide-slate-700/70 overflow-hidden"></div>
+
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <button type="button" id="add-layer" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">+ Nytt lag (fyll ut felter)</button>
+        <button type="button" id="dup-last" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">⧉ Dupliser siste <kbd>Alt+D</kbd></button>
+        <span id="arm-warn" class="text-amber-300"></span>
+        <span id="arm-total" class="ml-auto num text-slate-300"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 4 LASTVIRKNING ═══════════════ -->
+  <section id="s-last" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">4 · Lastvirkning</span>
+      <span id="load-summary" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-5 grid md:grid-cols-[auto_1fr] gap-6 items-start">
+      <div class="space-y-3">
+        <div>
+          <span class="field-label">Momentretning</span>
+          <div class="seg" id="dir-seg">
+            <button type="button" data-v="sagging">Feltmoment ⌣ <span class="text-[10px] opacity-70">θ=0</span></button>
+            <button type="button" data-v="hogging">Støttemoment ⌢ <span class="text-[10px] opacity-70">θ=π</span></button>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3 max-w-sm">
+          <label><span class="field-label">N<sub>Ed</sub> [kN] — trykk negativ</span><input id="i-n-ed" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">M<sub>Ed</sub> [kNm] — størrelse</span><input id="i-m-ed" type="text" inputmode="decimal"></label>
+        </div>
+        <p class="text-[11px] text-slate-500 max-w-sm leading-snug">
+          M<sub>Ed</sub> er en størrelse i retningen du valgte over — det finnes ikke noe fortegn å
+          tolke. N<sub>Ed</sub> beholder fortegnet: trykk er negativ.
+        </p>
+      </div>
+      <div>
+        <span class="field-label">Analyse</span>
+        <div class="flex flex-wrap gap-1.5" id="ana-chips"></div>
+        <p id="ana-desc" class="text-[11px] text-slate-500 mt-2 max-w-md leading-snug"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 5 BEREGN ═══════════════ -->
+  <section id="s-calc" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2"><span class="sec-h">5 · Beregn</span></div>
+    <div class="px-5 pb-5 space-y-3">
+      <div id="validation" class="space-y-2"></div>
+      <div class="flex flex-wrap items-center gap-4">
+        <button type="button" id="btn-run"
+                class="px-6 py-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold border border-sky-400/50 shadow-lg shadow-sky-900/40 flex items-center gap-3">
+          Beregn <kbd class="!bg-sky-900 !border-sky-500">Ctrl</kbd><kbd class="!bg-sky-900 !border-sky-500">⏎</kbd>
+        </button>
+        <button type="button" id="btn-cancel" style="display:none"
+                class="px-4 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm">Avbryt</button>
+        <div class="flex-1 min-w-[280px]">
+          <div id="engine-card" class="rounded-lg border border-slate-700 bg-slate-900/50 p-3"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 6 RESULTAT ═══════════════ -->
+  <section id="s-res" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">6 · Resultat</span>
+      <span id="res-summary" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div id="res-body" class="px-5 pb-4"></div>
+    <details class="mx-5 mb-5 rounded-lg border border-slate-700 bg-slate-900/40">
+      <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200">Rapportopplysninger — prosjekt, utført av, dato, merknad ▸</summary>
+      <div class="grid md:grid-cols-4 gap-3 px-3 pb-3">
+        <label><span class="field-label">Prosjekt</span><input id="doc-project" type="text"></label>
+        <label><span class="field-label">Tittel</span><input id="doc-title" type="text"></label>
+        <label><span class="field-label">Utført av</span><input id="doc-author" type="text"></label>
+        <label><span class="field-label">Dato</span><input id="doc-date" type="date"></label>
+        <label class="md:col-span-4"><span class="field-label">Merknad</span><textarea id="doc-note" rows="2"></textarea></label>
+      </div>
+    </details>
+  </section>
+</main>
+
+<!-- ═══════ fast handlingslinje: «Beregn» i rekkevidde, og inspeksjonsstripa ═══════ -->
+<div class="fixed bottom-0 inset-x-0 z-30 border-t border-slate-700 bg-slate-900/95 backdrop-blur">
+  <div class="max-w-5xl mx-auto px-5 h-16 flex items-center gap-4">
+    <div id="bar-thumb" class="w-12 h-12 shrink-0 rounded border border-slate-700 bg-slate-800 p-1 overflow-hidden svg-fit"></div>
+    <div class="text-[12px] num leading-tight min-w-0">
+      <div id="bar-geo" class="text-slate-300 truncate"></div>
+      <div id="bar-arm" class="text-slate-500 truncate"></div>
+    </div>
+    <!-- Inspeksjonsstripa (hentet fra mockup B): η, M_Rd, x, x/d og bruddform,
+         slik at man ser hva en endring gjorde uten å rulle ned til resultatet. -->
+    <div id="bar-inspect" class="hidden md:flex items-center gap-5 ml-4 text-[12px]"></div>
+    <div class="ml-auto flex items-center gap-3 shrink-0">
+      <div id="bar-engine" class="text-[11px] text-slate-400 num text-right max-w-[220px] leading-tight hidden lg:block"></div>
+      <button type="button" id="btn-cancel-bar" style="display:none"
+              class="px-3 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm">Avbryt</button>
+      <button type="button" id="btn-run-bar"
+              class="px-5 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 font-semibold text-sm border border-sky-400/50">
+        Beregn <kbd class="!bg-sky-900 !border-sky-500 ml-1">⌃⏎</kbd>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ hjelpeoverlegg ═══════════════ -->
+<div id="help" class="hidden fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-6">
+  <div class="max-w-md w-full rounded-xl border border-slate-600 bg-slate-800 p-5 space-y-3">
+    <div class="flex items-center"><h2 class="font-semibold">Tastatur</h2>
+      <button type="button" id="help-close" class="ml-auto text-slate-400 hover:text-white">✕</button></div>
+    <table class="w-full text-[13px]">
+      <tbody class="[&amp;_td]:py-1 [&amp;_td:first-child]:w-28">
+        <tr><td><kbd>Ctrl</kbd> <kbd>⏎</kbd></td><td class="text-slate-300">Beregn — fra hvor som helst</td></tr>
+        <tr><td><kbd>A</kbd></td><td class="text-slate-300">Hopp til armeringslinja</td></tr>
+        <tr><td><kbd>⏎</kbd></td><td class="text-slate-300">Legg til laget i armeringslinja</td></tr>
+        <tr><td><kbd>↑</kbd></td><td class="text-slate-300">Hent forrige linje tilbake</td></tr>
+        <tr><td><kbd>Alt</kbd> <kbd>D</kbd></td><td class="text-slate-300">Dupliser siste lag</td></tr>
+        <tr><td><kbd>B</kbd> / <kbd>P</kbd></td><td class="text-slate-300">Bjelke / plate</td></tr>
+        <tr><td><kbd>F</kbd> / <kbd>S</kbd></td><td class="text-slate-300">Felt- / støttemoment</td></tr>
+        <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></td><td class="text-slate-300">Bøying / M–κ / M–N</td></tr>
+        <tr><td><kbd>?</kbd></td><td class="text-slate-300">Denne lista</td></tr>
+      </tbody>
+    </table>
+    <p class="text-[11px] text-slate-500">Bokstavsnarveiene virker bare når du ikke står i et skrivefelt.</p>
+  </div>
+</div>
+
+<!-- ═══════════════ rapportoverlegg (formet av print.css, fylt av report.js) ═══════════════ -->
+<div id="report-overlay" hidden>
+  <div class="report-toolbar">
+    <b>Rapport</b>
+    <button type="button" id="report-print" class="px-2.5 py-1 rounded bg-sky-700 hover:bg-sky-600 border border-sky-600">Skriv ut / PDF</button>
+    <button type="button" id="report-guides" class="px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600" data-on="false">Vis sidegrenser</button>
+    <span class="text-slate-400">A4 stående · 174 mm trykkflate</span>
+    <button type="button" id="report-close" class="ml-auto px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">Lukk ✕</button>
+  </div>
+  <div class="report-scroll">
+    <div class="report-content"></div>
+  </div>
+</div>
+
+<!--
+  Utskriftsroten MÅ være et DIREKTE barn av <body>: hele utskriftsregelen i
+  print.css er `body > * { display:none }` og `body > #cscPrintRoot { display:block }`.
+  Nestes den inn i en beholder, blir utskriften tom.
+-->
+<div id="cscPrintRoot" aria-hidden="true" hidden></div>
+
+<script type="module">
+/**
+ * MODULE_CONFIG og window.ModuleAPI — arbeidsflytlaget (plan §9).
+ *
+ * FIRE AVVIK FRA `plan_IO-structure_for_modules.md`, alle dokumentert i
+ * README.md og gjentatt kort her fordi det er her de møter konsumenten:
+ *   1. `calculate()` er ASYNKRON og gir et Promise. Den venter selv på
+ *      initialisering framfor å avvise.
+ *   2. Resultatformen er plan §5.2, ikke `{success, inputs, ...}`. `outputs[].path`
+ *      peker derfor inn i §5.2.
+ *   3. `calculate()` er ikke en ren funksjon av argumentet — den avhenger av
+ *      worker-tilstand.
+ *   4. «Returner ALLE mellomverdier» er ikke oppnåelig: `structuralcodes`
+ *      eksponerer ikke sine indre trinn.
+ * I tillegg finnes `ready(): Promise<void>`, som ikke står i spesifikasjonen.
+ */
+import { startApp } from './js/main.js';
+import { MODULE_ID, MODULE_NAME, MODULE_VERSION } from './js/meta.js';
+
+const app = startApp();
+
+const MODULE_CONFIG = {
+  module_id: MODULE_ID,
+  module_name: MODULE_NAME,
+  version: MODULE_VERSION,
+  standard: 'Eurocode 2 (EN 1992-1-1:2004) — bruddgrensetilstand',
+  description:
+    'Bøyekapasitet, moment–krumning og M–N-kapasitetsomhylling for armerte ' +
+    'betongtverrsnitt, regnet av fib structuralcodes 0.7.2 i nettleseren.',
+
+  // `inputs` speiler tilstanden i plan §4.1. Sammensatte felt (`layers`) er
+  // oppgitt som `object`: en flat felt-for-felt-beskrivelse av en liste med
+  // varierende lengde ville vært en løgn om formen.
+  inputs: {
+    sectionType: { label: 'Tverrsnittstype', symbol: '', type: 'select', unit: '',
+      options: ['beam', 'slab'], default: 'beam', required: true, category: 'geometry',
+      description: 'beam = b×h, slab = alltid 1000 mm bredde og alt per meter' },
+    'geometry.b': { label: 'Bredde', symbol: 'b', type: 'expression', unit: 'mm',
+      default: 300, min: 1, required: true, category: 'geometry',
+      description: 'Låst til 1000 for plate' },
+    'geometry.h': { label: 'Høyde', symbol: 'h', type: 'expression', unit: 'mm',
+      default: 600, min: 1, required: true, category: 'geometry', description: 'Total tverrsnittshøyde' },
+    cover: { label: 'Overdekning', symbol: 'c', type: 'expression', unit: 'mm',
+      default: 35, min: 0, required: true, category: 'geometry',
+      description: 'Til armeringens ytterkant. Brukes til avledet d_c' },
+    stirrup_dia: { label: 'Bøylediameter', symbol: 'Ø_b', type: 'expression', unit: 'mm',
+      default: 8, min: 0, required: false, category: 'geometry', description: 'Bjelke' },
+    cover_side: { label: 'Sidekantoverdekning', symbol: 'c_side', type: 'expression', unit: 'mm',
+      default: 35, min: 0, required: false, category: 'geometry', description: 'Bjelke' },
+    'concrete.fck': { label: 'Betongfasthet', symbol: 'f_ck', type: 'number', unit: 'MPa',
+      default: 30, required: true, category: 'material', description: 'TALL, ikke «C30/37»' },
+    'concrete.gamma_c': { label: 'Materialfaktor betong', symbol: 'γ_c', type: 'expression',
+      unit: '-', default: 1.5, min: 0.0001, required: true, category: 'material',
+      description: 'Kan ikke være 0 — motoren tolker 0 stille som 1,5' },
+    'concrete.alpha_cc': { label: 'Langtidsfaktor', symbol: 'α_cc', type: 'expression',
+      unit: '-', default: 0.85, min: 0.0001, required: true, category: 'material',
+      description: 'Kan ikke være 0 — motoren tolker 0 stille som 1,0' },
+    'concrete.law': { label: 'Arbeidsdiagram betong', symbol: '', type: 'select', unit: '',
+      options: ['parabolarectangle', 'bilinearcompression'], default: 'parabolarectangle',
+      required: true, category: 'material', description: 'Styrer hvilke tøyningsgrenser som gjelder' },
+    'steel.fyk': { label: 'Flytespenning', symbol: 'f_yk', type: 'number', unit: 'MPa',
+      default: 500, required: true, category: 'material', description: '' },
+    'steel.Es': { label: 'E-modul armering', symbol: 'E_s', type: 'expression', unit: 'MPa',
+      default: 200000, required: true, category: 'material', description: '' },
+    'steel.k': { label: 'Duktilitetsforhold', symbol: 'k = f_tk/f_yk', type: 'expression',
+      unit: '-', default: 1.08, min: 1, required: true, category: 'material',
+      description: 'ALLTID satt — f_tk = k·f_yk er påkrevd av motoren' },
+    'steel.epsuk': { label: 'Bruddtøyning', symbol: 'ε_uk', type: 'expression', unit: '-',
+      default: 0.075, required: true, category: 'material', description: '' },
+    'steel.gamma_eps': { label: 'Tøyningsfaktor', symbol: 'γ_ε', type: 'expression', unit: '-',
+      default: 0.9, required: true, category: 'material', description: 'ε_ud = ε_uk·γ_ε' },
+    'steel.gamma_s': { label: 'Materialfaktor armering', symbol: 'γ_s', type: 'expression',
+      unit: '-', default: 1.15, min: 0.0001, required: true, category: 'material', description: '' },
+    'steel.law': { label: 'Arbeidsdiagram armering', symbol: '', type: 'select', unit: '',
+      options: ['elasticperfectlyplastic', 'elasticplastic'], default: 'elasticperfectlyplastic',
+      required: true, category: 'material', description: '' },
+    layers: { label: 'Armeringslag', symbol: 'A_s', type: 'object', unit: '',
+      default: [], required: true, category: 'geometry',
+      description: 'Liste av {id, mode: bars|spacing, dia, count|spacing, edge: bottom|top, dc}' },
+    'loads.N_Ed': { label: 'Normalkraft', symbol: 'N_Ed', type: 'expression', unit: 'kN',
+      default: 0, required: false, category: 'loads', description: 'Trykk NEGATIV' },
+    'loads.M_Ed': { label: 'Dimensjonerende moment', symbol: 'M_Ed', type: 'expression',
+      unit: 'kNm', default: 0, required: false, category: 'loads',
+      description: 'STØRRELSE i retningen `direction` angir' },
+    direction: { label: 'Momentretning', symbol: 'θ', type: 'select', unit: '',
+      options: ['sagging', 'hogging'], default: 'sagging', required: true, category: 'loads',
+      description: 'sagging = θ 0 (trykk oppe), hogging = θ π (trykk nede)' },
+    analysis: { label: 'Analyse', symbol: '', type: 'select', unit: '',
+      options: ['bending', 'moment_curvature', 'nm_domain'], default: 'bending',
+      required: true, category: 'meta', description: '' },
+  },
+
+  // AVVIK 2: `path` peker inn i plan §5.2, ikke i spesifikasjonens
+  // `results.*`/`intermediate_calculations.*`.
+  outputs: {
+    M_Rd: { label: 'Momentkapasitet', symbol: 'M_Rd', type: 'number', unit: 'Nmm',
+      precision: 0, category: 'primary', path: 'bending.M_Rd' },
+    utilisation: { label: 'Utnyttelse (vertikal)', symbol: 'η', type: 'number', unit: '-',
+      precision: 3, category: 'primary', path: 'bending.utilisation' },
+    x: { label: 'Trykksonehøyde', symbol: 'x', type: 'number', unit: 'mm',
+      precision: 2, category: 'primary', path: 'bending.x' },
+    x_over_d: { label: 'Relativ trykksonehøyde', symbol: 'x/d', type: 'number', unit: '-',
+      precision: 4, category: 'primary', path: 'bending.x_over_d' },
+    failure_mode: { label: 'Bruddform', symbol: '', type: 'string', unit: '',
+      precision: 0, category: 'primary', path: 'bending.failure_mode' },
+    eps_c_top: { label: 'Betongtøyning ved trykkant', symbol: 'ε_c', type: 'number', unit: '-',
+      precision: 6, category: 'intermediate', path: 'bending.eps_c_top' },
+    eps_s_max: { label: 'Største armeringstøyning', symbol: 'ε_s,maks', type: 'number', unit: '-',
+      precision: 6, category: 'intermediate', path: 'bending.eps_s_max' },
+    eps_a: { label: 'Tøyning i origo', symbol: 'ε_a', type: 'number', unit: '-',
+      precision: 8, category: 'intermediate', path: 'bending.eps_a' },
+    chi_y: { label: 'Krumning', symbol: 'χ_y', type: 'number', unit: '1/mm',
+      precision: 10, category: 'intermediate', path: 'bending.chi_y' },
+    d_eff: { label: 'Effektiv høyde (EC2, strekkarmering)', symbol: 'd', type: 'number',
+      unit: 'mm', precision: 2, category: 'intermediate', path: 'section_props.d_eff' },
+    As_total: { label: 'Armeringsareal', symbol: 'ΣA_s', type: 'number', unit: 'mm²',
+      precision: 2, category: 'intermediate', path: 'section_props.As_total' },
+    As_min: { label: 'Minimumsarmering', symbol: 'A_s,min', type: 'number', unit: 'mm²',
+      precision: 2, category: 'intermediate', path: 'section_props.As_min' },
+    As_max: { label: 'Maksimalarmering', symbol: 'A_s,max', type: 'number', unit: 'mm²',
+      precision: 2, category: 'intermediate', path: 'section_props.As_max' },
+    rho: { label: 'Armeringsforhold', symbol: 'ρ', type: 'number', unit: '-',
+      precision: 6, category: 'intermediate', path: 'section_props.rho' },
+    n_min: { label: 'Nedre aksialgrense', symbol: 'N_min', type: 'number', unit: 'N',
+      precision: 1, category: 'intermediate', path: 'section_props.n_min' },
+    n_max: { label: 'Øvre aksialgrense', symbol: 'N_max', type: 'number', unit: 'N',
+      precision: 1, category: 'intermediate', path: 'section_props.n_max' },
+    fcd: { label: 'Dimensjonerende betongfasthet', symbol: 'f_cd', type: 'number', unit: 'MPa',
+      precision: 3, category: 'intermediate', path: 'materials.fcd' },
+    fyd: { label: 'Dimensjonerende flytespenning', symbol: 'f_yd', type: 'number', unit: 'MPa',
+      precision: 3, category: 'intermediate', path: 'materials.fyd' },
+    all_ok: { label: 'Alle kontroller OK', symbol: '', type: 'boolean', unit: '',
+      precision: 0, category: 'status', path: 'checks.all_ok' },
+    ok: { label: 'Beregningen ga et svar', symbol: '', type: 'boolean', unit: '',
+      precision: 0, category: 'status', path: 'ok' },
+  },
+};
+
+function getOutputByPath(path, results) {
+  if (!results) return undefined;
+  return String(path).split('.').reduce((obj, key) => (obj == null ? undefined : obj[key]), results);
+}
+
+window.ModuleAPI = {
+  getConfig: () => MODULE_CONFIG,
+
+  /** Hele tilstanden (plan §4.1) som en ren kopi. */
+  getInputs: () => app.store.snapshot(),
+
+  /** Erstatter tilstanden. Nullstiller resultatet — det gjaldt gamle tall. */
+  setInputs: (inputs) => {
+    app.store.replaceState(inputs || {});
+    app.ui.render();
+    return app.store.snapshot();
+  },
+
+  /**
+   * AVVIK 1 og 3: asynkron, og avhengig av worker-tilstand. Venter selv på at
+   * motoren er oppe i stedet for å avvise.
+   */
+  calculate: async (inputs) => {
+    if (inputs) window.ModuleAPI.setInputs(inputs);
+    await app.ready();
+    return app.calculate();
+  },
+
+  /** Ikke i spesifikasjonen, men nødvendig: 10 MB kjøremotor tar tid. */
+  ready: () => app.ready(),
+
+  getLastResults: () => window.lastCalculationResults || null,
+  getLastInputs: () => window.lastCalculationInputs || null,
+
+  getOutput: (key) => {
+    const def = MODULE_CONFIG.outputs[key];
+    if (!def) return undefined;
+    return getOutputByPath(def.path, window.lastCalculationResults);
+  },
+
+  getAllOutputs: () => {
+    const out = {};
+    for (const [key, def] of Object.entries(MODULE_CONFIG.outputs)) {
+      out[key] = getOutputByPath(def.path, window.lastCalculationResults);
+    }
+    return out;
+  },
+
+  hasResults: () => Boolean(window.lastCalculationResults),
+};
+</script>
+</body>
+</html>
