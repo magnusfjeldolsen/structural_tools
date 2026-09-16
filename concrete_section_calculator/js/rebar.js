@@ -441,9 +441,15 @@ export function createLayer(state = {}, patch = {}) {
  * @param {object} [patch]
  */
 export function createCombo(state = {}, patch = {}) {
+  const id = patch.id || 'C1';
+  // Navnet settes automatisk av id-en: «C3» blir «ULS 3». En rad uten navn er
+  // ubrukelig i rapportens kombinasjonstabell og i advarslene, som navngir den
+  // dimensjonerende raden — og å kreve at brukeren finner på et navn for hver
+  // rad er nettopp den friksjonen som ikke skal finnes. Brukeren kan overskrive.
+  const nr = /^C(\d+)$/.exec(id);
   return {
-    id: patch.id || 'C1',
-    name: '',
+    id,
+    name: nr ? `ULS ${nr[1]}` : '',
     N_Ed: 0,
     M_Ed: 0,
     direction: state.direction || 'sagging',
