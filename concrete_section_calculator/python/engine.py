@@ -534,7 +534,15 @@ def run(payload: dict, progress=None) -> dict:
 
     `progress` er `progress(phase, done, total)` eller `None`. Worker-en sender inn en
     lambda som `postMessage`-er; skrivebordstesten sender `None` eller en liste-appender.
+
+    Sjekken er `callable()` og ikke `is not None`, fordi JS sin `null` kommer inn som et
+    `JsNull`-objekt — som verken ER `None` eller kan kalles. Målt under ekte Pyodide:
+    `run_json(payload, null)` krasjet med «'JsNull' object is not callable» før dette.
+    `null` er den naturlige måten en JS-konsument skriver «ingen framdrift» på, så
+    motoren må tåle den.
     """
+    if not callable(progress):
+        progress = None
     t0 = time.perf_counter()
     try:
         result = _run_inner(payload, progress, t0)
@@ -810,8 +818,14 @@ def _moment_curvature(sc, theta, n_ed, m_ed, m_rd, opts, warnings_out, progress)
         chi_input = None
         expected = pre + post
     else:
-        chi_input = [float(mc_chi)] if not isinstance(mc_chi, (list, tuple)) \
-            else [float(v) for v in mc_chi]
+        # `mc_chi` er en STØRRELSE, som alt annet i den analyserte retningen. Pakka vil ha
+        # krumningen i sitt eget roterte system, der den alltid er negativ uansett `theta`
+        # — `theta` er allerede innbakt i rotasjonen. Krevde vi fortegnsatt inndata, måtte
+        # hver konsument gange med `meta.moment_sign` for å få riktig kurve, og glemte man
+        # det, fikk man et moment på 0,4 kNm i stedet for 114 kNm uten at noe feilet.
+        # Fortegnsatt inndata godtas, men absoluttverdien er sannheten.
+        raw = mc_chi if isinstance(mc_chi, (list, tuple)) else [mc_chi]
+        chi_input = [-abs(float(v)) for v in raw]
         expected = len(chi_input)
 
     if progress is not None:
@@ -860,23 +874,40 @@ def _moment_curvature(sc, theta, n_ed, m_ed, m_rd, opts, warnings_out, progress)
 def _chi_plan(sc, theta, n_ed, pre, post, warnings_out):
     """Krumningsrutenettet pakka ville brukt, som STØRRELSER.
 
-    Bygges via pakkas eget `_prepare_chi_array` på den roterte geometrien — samme kall
-    `calculate_moment_curvature` gjør internt — slik at et JS-drevet punktløp treffer
+    Bygges via pakkas eget `_prepare_chi_array` slik at et JS-drevet punktløp treffer
     nøyaktig de samme krumningene som et samlet løp ville gjort. Skulle den private
     metoden forsvinne i en oppgradering, faller vi tilbake til `None`: da mister JS bare
     muligheten til å drive punktvis, mens alt annet virker.
+
+    HVORFOR INTEGRASJONSDATAENE MÅ ROTERES MED
+    `calculate_moment_curvature` roterer den cachede `integration_data` med `-theta` FØR
+    den kaller `_prepare_chi_array`, og tilbake etterpå. Gjør man ikke det samme her,
+    leser `find_equilibrium_fixed_pivot` armeringsdata i feil koordinatsystem og finner
+    en annen flyt- og bruddkrumning. For θ = 0 er rotasjonen identiteten, så feilen er
+    usynlig; for θ = π ga den en plan på 10 punkter mot 20 i det samlede kallet, med
+    verdier som ikke sammenfalt — altså en helt annen kurve, uten at noe feilet.
     """
     prepare = getattr(sc, '_prepare_chi_array', None)
+    rotate_data = getattr(sc, '_rotate_integration_data', None)
     if prepare is None:
         return None
+    rotated_data = False
     try:
         with _Capture() as cap:
             rotated = sc.section.geometry.rotate(-theta)
+            if sc.integration_data is not None and rotate_data is not None:
+                rotate_data(-theta)
+                rotated_data = True
             chi = prepare(rotated, n_ed, pre, post, 1e-8, 100, 1e-2)
         _drain(cap.records, warnings_out)
         return _abs_arr(chi)
     except Exception:  # noqa: BLE001 — planen er en bekvemmelighet, ikke et resultat
         return None
+    finally:
+        # Cachen er delt med alle senere kall på den forberedte seksjonen (§3.7). Lot vi
+        # den ligge rotert, ville neste beregning på samme snitt regnet på feil geometri.
+        if rotated_data:
+            rotate_data(theta)
 
 
 def _nm_domain(sc, theta, n_ed, m_ed, m_rd, moment_sign, n_min, n_max,
