@@ -92,6 +92,7 @@ jobs:
           echo "=== Copying all plain HTML modules to staging ==="
           # Copy each plain module directory
           for dir in pryout \
+                     concrete_section_calculator \
                      concretefastenergroup \
                      concrete_plate_CFRP \
                      concrete_beam_design \

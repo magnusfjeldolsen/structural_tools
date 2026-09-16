@@ -11,6 +11,7 @@
     "build:2dfea": "cd 2dfea && npm install && npm run build",
     "preview": "npm run build && npm run dev:serve",
     "test:deploy": "node scripts/test-deployment.js",
+    "test:concrete-section": "node --test concrete_section_calculator/tests/",
     "help": "node scripts/show-help.js"
   },
   "devDependencies": {
