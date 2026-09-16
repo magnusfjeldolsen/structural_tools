@@ -658,9 +658,24 @@ export function createUI(deps) {
    * nekter uansett å fjerne den, men en deaktivert knapp er en klarere
    * beskjed enn et klikk som ikke gjør noe.
    */
+  /**
+   * Settes mens en feltredigering i kombinasjonstabellen behandles.
+   *
+   * HVORFOR: `render()` bygde tabellen på nytt med `innerHTML` ved hver `blur`.
+   * Trykker man TAB, fyrer `blur` FØRST, DOM-en erstattes, og elementet
+   * nettleseren var i ferd med å flytte fokus til finnes ikke lenger — fokus
+   * falt ut av tabellen. Radene er allerede korrekte når brukeren selv har
+   * skrevet i dem, så omtegningen har ingenting å rette.
+   *
+   * Strukturelle endringer — legge til, fjerne, bytte aktiv rad eller retning —
+   * setter IKKE flagget, for der er omtegningen hele poenget.
+   */
+  let comboEditInFlight = false;
+
   function renderCombos() {
     const host = $('#combos');
     if (!host) return;
+    if (comboEditInFlight) return;
     const s = store.getState();
     host.innerHTML = s.combos.map((combo) => {
       const active = combo.id === s.activeCombo;
@@ -717,18 +732,24 @@ export function createUI(deps) {
     host.querySelectorAll('input[data-cf="name"]').forEach((el) => {
       el.addEventListener('input', () => {
         store.updateCombo(el.dataset.c, { name: el.value });
+        comboEditInFlight = true;
         invalidate();
+        render();
+        comboEditInFlight = false;
       });
-      // Full opptegning FØRST ved `blur` — ellers hopper markøren midt i
-      // navnet, akkurat som i `syncFields()`.
-      el.addEventListener('blur', () => render());
+      // Ingen omtegning ved `blur`. Feltet viser allerede det brukeren skrev, og
+      // en omtegning her ville spist TAB-en som utløste den.
     });
     host.querySelectorAll('input[data-cf="N_Ed"]').forEach((el) => {
       bindNumericInput(el, (value) => {
         if (value === null) { render(); return; }
         store.updateCombo(el.dataset.c, { N_Ed: value });
+        // Feltet normaliseres PÅ STEDET. Å bygge om raden her ville tatt TAB-en.
+        el.value = fmtNumber(value, 2);
+        comboEditInFlight = true;
         invalidate();
         render();
+        comboEditInFlight = false;
       });
     });
     host.querySelectorAll('input[data-cf="M_Ed"]').forEach((el) => {
@@ -737,8 +758,11 @@ export function createUI(deps) {
         // M_Ed er en STØRRELSE i kombinasjonens egen retning (§4.1) — samme
         // regel som det gamle enkeltfeltet hadde.
         store.updateCombo(el.dataset.c, { M_Ed: Math.abs(value) });
+        el.value = fmtNumber(Math.abs(value), 2);
+        comboEditInFlight = true;
         invalidate();
         render();
+        comboEditInFlight = false;
       }, { min: 0 });
     });
   }
