@@ -18,7 +18,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { drawSection, sectionViewBox, layerLabel } from '../js/section-draw.js';
+import { drawSection, sectionViewBox, layerLabel, stirrupGeometry } from '../js/section-draw.js';
 import { barPositions } from '../js/rebar.js';
 
 /**
@@ -206,7 +206,7 @@ test('drawSection: mål skrus av og på, og plata merkes per meter', () => {
   const uten = drawSection(BEAM, { showDims: false });
   assert.ok(!/data-role="dims"/.test(uten));
 
-  assert.match(drawSection(SLAB, {}), />b = 1000 mm \(per meter\)</);
+  assert.match(drawSection(SLAB, {}), />b = 1000 mm \(per metre\)</);
 });
 
 test('drawSection: merkelappene bruker bransjenotasjonen fra UI-et', () => {
@@ -270,4 +270,158 @@ test('drawSection: tverrsnitt uten armering gir fortsatt en gyldig figur', () =>
   assert.ok(svg.startsWith('<svg '));
   assert.equal(rebarCircles(svg).length, 0);
   assert.match(svg, /data-role="concrete"/);
+});
+
+/* ================================================================== *
+ * Bøyler (skjærarmering) — endringsrunde 4, §5.3
+ * ================================================================== */
+
+/** Referansebjelkens bøyle: Ø8 c/c 150, 2 ben — «S1»-eksempelet i planen. */
+const STIRRUP_S1 = { id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 };
+
+test('stirrupGeometry: null uten skjærarmering, uansett hvordan fraværet uttrykkes', () => {
+  assert.equal(stirrupGeometry({ ...BEAM, shear: { stirrups: [] } }), null);
+  assert.equal(stirrupGeometry({ ...BEAM, shear: undefined }), null);
+  assert.equal(stirrupGeometry(BEAM), null, 'BEAM har ingen shear-nøkkel i det hele tatt');
+});
+
+test('stirrupGeometry: inset = cover_side/cover + dia/2, målt mot referansebjelken', () => {
+  const g = stirrupGeometry({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } });
+  assert.ok(g, 'skal returnere geometri når lista ikke er tom');
+  // insetY = cover_side(32) + dia/2(4) = 36 -> y0/y1 = ±(150-36)
+  assert.ok(Math.abs(g.y0 - -114) < 1e-9, `y0 = ${g.y0}`);
+  assert.ok(Math.abs(g.y1 - 114) < 1e-9, `y1 = ${g.y1}`);
+  // insetZ = cover(22) + dia/2(4) = 26 -> z0/z1 = ±(300-26)
+  assert.ok(Math.abs(g.z0 - -274) < 1e-9, `z0 = ${g.z0}`);
+  assert.ok(Math.abs(g.z1 - 274) < 1e-9, `z1 = ${g.z1}`);
+  assert.equal(g.label, 'Ø8 c/c 150 (2 legs)');
+});
+
+test('stirrupGeometry: hjørneradius er min(2*dia, halve korteste innerside) — normaltilfelle', () => {
+  const g = stirrupGeometry({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } });
+  // innerW = 228, innerH = 548 -> korteste er 228, halvparten er 114 > 2*8 = 16.
+  // 2*dia er derfor det strengeste, og skal vinne.
+  assert.equal(g.radius, 16);
+});
+
+test('stirrupGeometry: radiusklemmen hindrer at en tynn plate sprekker', () => {
+  // En 60 mm plate med cover 25 og dia 8: innerH = 60 - 2*(25+4) = 2 mm.
+  // Uten klemmen ville radius blitt 2*8 = 16 — over SEKS ganger for stor for
+  // en 2 mm høy innerside. Med klemmen skal radius aldri overstige innerH/2.
+  const thin = { geometry: { b: 1000, h: 60 }, cover: 25, cover_side: 25,
+    shear: { stirrups: [STIRRUP_S1] } };
+  const g = stirrupGeometry(thin);
+  assert.ok(g.z1 > g.z0, 'innersiden skal fortsatt ha positiv høyde');
+  assert.ok(g.radius <= (g.z1 - g.z0) / 2 + 1e-9, `radius = ${g.radius} sprekker figuren`);
+  assert.ok(g.radius < 2 * 8, 'klemmen skal faktisk ha grepet inn her');
+  assert.ok(g.radius >= 0, 'radius skal aldri bli negativ');
+});
+
+test('stirrupGeometry: legs > 2 fordeler indre ben jevnt mellom ytterbena', () => {
+  const g = stirrupGeometry({
+    ...BEAM,
+    shear: { stirrups: [{ ...STIRRUP_S1, legs: 4 }] },
+  });
+  // innerW = 228, leg_pitch = 228 / (4-1) = 76 -> indre ben ved y0+76 og y0+152.
+  assert.equal(g.legY.length, 2, 'legs=4 gir 2 indre ben');
+  assert.ok(Math.abs(g.legY[0] - -38) < 1e-9, `legY[0] = ${g.legY[0]}`);
+  assert.ok(Math.abs(g.legY[1] - 38) < 1e-9, `legY[1] = ${g.legY[1]}`);
+  assert.equal(g.label, 'Ø8 c/c 150 (4 legs)');
+
+  const two = stirrupGeometry({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } });
+  assert.equal(two.legY.length, 0, 'legs=2 skal ikke gi noen indre ben');
+});
+
+test('drawSection: bøylene tegnes bare når lista ikke er tom, og nedtonet', () => {
+  const uten = drawSection(BEAM, {});
+  assert.ok(!/data-role="stirrup"/.test(uten), 'BEAM har ingen shear -> ingen bøyletegning');
+
+  const med = drawSection({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } }, {});
+  assert.match(med, /data-role="stirrup"/);
+  assert.match(med, /<rect[^>]*rx="[\d.]+"/, 'avrundet rektangel');
+  assert.match(med, />Ø8 c\/c 150 \(2 legs\)</);
+
+  // Nedtonet: tynnere strek enn konkretomrisset, og ingen kotering (ingen
+  // ny <line>-basert målstrek med piler slik `dims`-gruppa har).
+  const outlineSw = Number(/<g data-role="concrete">[\s\S]*?stroke-width="([\d.]+)"/.exec(med)[1]);
+  const stirrupSw = Number(/data-role="stirrup" stroke="[^"]+" stroke-width="([\d.]+)"/.exec(med)[1]);
+  assert.ok(stirrupSw < outlineSw, `bøylestrek (${stirrupSw}) skal være tynnere enn omrisset (${outlineSw})`);
+});
+
+test('drawSection: legs > 2 tegner ekstra loddrette ben inne i bøylerektangelet', () => {
+  const svg = drawSection({ ...BEAM, shear: { stirrups: [{ ...STIRRUP_S1, legs: 4 }] } }, {});
+  const g = /<g data-role="stirrup"[^>]*>([\s\S]*?)<\/g>/.exec(svg);
+  assert.ok(g, 'mangler bøylegruppa');
+  const lines = [...g[1].matchAll(/<line /g)];
+  assert.equal(lines.length, 2, 'legs=4 skal gi nøyaktig 2 indre loddrette streker');
+
+  const svgTwo = drawSection({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } }, {});
+  const gTwo = /<g data-role="stirrup"[^>]*>([\s\S]*?)<\/g>/.exec(svgTwo);
+  assert.equal([...gTwo[1].matchAll(/<line /g)].length, 0, 'legs=2 skal ikke gi noen indre streker');
+});
+
+test('drawSection: bøylene ligger innenfor betongomrisset, ikke utenfor', () => {
+  const vb = sectionViewBox(BEAM, { width: 174 });
+  const svg = drawSection({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } }, { width: 174 });
+  const rect = /<rect x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="([\d.]+)" rx="[\d.]+"/.exec(svg);
+  assert.ok(rect, 'mangler bøylerektangelet');
+  const [x, y, w, h] = rect.slice(1).map(Number);
+  // Papirkoordinat -> modell-y for venstre og høyre kant.
+  const yLeft = x / vb.scale + vb.minY;
+  const yRight = (x + w) / vb.scale + vb.minY;
+  assert.ok(yLeft > -BEAM.geometry.b / 2 && yRight < BEAM.geometry.b / 2,
+    `bøylen skal ligge innenfor b: [${yLeft}, ${yRight}]`);
+});
+
+/**
+ * Regresjon: figuren og motoren MÅ vise samme tverrsnitt.
+ *
+ * `sectionWidth()` gir 1000 for enhver plate, mens `geometry.b` kan ligge
+ * igjen på bjelkens bredde når staten kommer inn via `setInputs` eller et
+ * innlastet dokument. Leste tegningen `geometry.b` direkte — slik den gjorde
+ * før endringsrunde 4 — ble plata TEGNET 300 mm bred og målsatt «b = 300 mm
+ * (per metre)» under en rapport der geometritabellen sa 1000. Ingen test
+ * feilet; feilen ble bare synlig i et skjermbilde.
+ */
+test('drawSection: plata tegnes 1000 mm bred selv med en bjelkebredde i geometry.b', () => {
+  const stale = { ...SLAB, geometry: { b: 300, h: 200 } };
+  const vb = sectionViewBox(stale, { width: 174 });
+  const vbRef = sectionViewBox(SLAB, { width: 174 });
+  assert.deepEqual(vb, vbRef, 'utsnittet skal være uavhengig av den utdaterte geometry.b');
+
+  const svg = drawSection(stale, { width: 174 });
+  assert.match(svg, /b = 1000 mm \(per metre\)/, 'målsettingen skal si 1000, ikke 300');
+  assert.ok(!/b = 300 mm/.test(svg), 'bjelkebredden skal ikke stå noe sted i plate-figuren');
+});
+
+test('drawSection: bjelken bruker fortsatt sin egen geometry.b', () => {
+  const svg = drawSection(BEAM, { width: 174 });
+  assert.match(svg, /b = 300 mm/, 'bjelken skal målsettes med den oppgitte bredden');
+  assert.ok(!/per metre/.test(svg), 'bjelken skal ikke merkes per meter');
+});
+
+/**
+ * Regresjon: bøylemerkelappen skal ikke havne oppå armeringen.
+ *
+ * Den lå før rett over bøylens nedre indre hjørne — altså nøyaktig der
+ * underkantjernene tegnes. Siden armeringsgruppa kommer ETTER bøylegruppa i
+ * SVG-en, malte jernene rett og slett over teksten, og for et smalt tverrsnitt
+ * stakk den i tillegg ut av betongkanten. Ingen test så det; det ble bare
+ * synlig i et skjermbilde.
+ */
+test('drawSection: bøylemerkelappen kolliderer ikke med jernene', () => {
+  const svg = drawSection({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } }, { width: 174 });
+  const g = /<g data-role="stirrup"[\s\S]*?<\/g>\s*(<text[^>]*>[^<]*<\/text>)/.exec(svg);
+  assert.ok(g, 'fant ikke bøylemerkelappen');
+  const label = g[1];
+  assert.match(label, /text-anchor="middle"/, 'merkelappen skal være sentrert');
+  const ly = Number(/ y="([-\d.]+)"/.exec(label)[1]);
+
+  const bars = [...svg.matchAll(/<circle cx="([-\d.]+)" cy="([-\d.]+)" r="([\d.]+)"/g)]
+    .map((m) => ({ cy: Number(m[2]), r: Number(m[3]) }));
+  assert.ok(bars.length > 0, 'fant ingen jern å sammenlikne med');
+  for (const bar of bars) {
+    assert.ok(Math.abs(ly - bar.cy) > bar.r * 2,
+      `merkelappen (y=${ly}) ligger oppå et jern (cy=${bar.cy}, r=${bar.r})`);
+  }
 });

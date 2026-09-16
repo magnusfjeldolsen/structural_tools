@@ -1,7 +1,7 @@
 /**
  * section-draw.js — tverrsnittstegningen, som SVG-streng.
  *
- * Fem ting som er verdt å lese før noe endres her:
+ * Seks ting som er verdt å lese før noe endres her:
  *
  *  1. **`barPositions()` fra `rebar.js` er eneste kilde til jernkoordinater.**
  *     Denne fila regner dem ALDRI selv. Regnet tegningen og `payload.js` ut
@@ -36,12 +36,28 @@
  *     Den er den eneste stedet utsnitt og målestokk bestemmes; `drawSection()`
  *     spør den og tegner. Endres marginene, endres begge samtidig.
  *
+ *  6. **Bøyler (endringsrunde 4, §5.3) er bevisst NEDTONET og bruker bare
+ *     `stirrups[0]`.** `state.shear.stirrups` er en liste fordi ulike rader
+ *     langs bjelkens lengde kan ha ulik senneavstand (se `rebar.js`), men én
+ *     tverrsnittstegning kan bare vise ÉN fysisk bøyle om gangen — radene er
+ *     alternative soner, ikke bøyler som eksisterer samtidig i samme snitt.
+ *     `stirrupGeometry()` er skilt ut av samme grunn som `sectionViewBox()`:
+ *     radiusklemmen (`min(2·dia, halve korteste innersiden)`) skal kunne
+ *     testes som rene tall, ikke gjettes fra en tegnet figur.
+ *
  * Aksesystemet er planens (§3.6): `y` er horisontalt, `z` er vertikalt og peker
  * OPP, og tverrsnittet er sentrert om origo — samme nullpunkt som motoren
  * refererer `N` og `M` til. SVG har y nedover, så `toPaper()` snur z.
  */
 
 import { barPositions } from './rebar.js';
+// `sectionWidth` og ALDRI `state.geometry.b`: plata regnes per meter, og for
+// `sectionType === 'slab'` returnerer `sectionWidth` 1000 uansett hva som ligger
+// igjen i `geometry.b` fra en bjelke. Leste figuren `geometry.b` direkte, kunne
+// en plate lastet inn via `setInputs`/dokumentlasting bli TEGNET 300 mm bred
+// mens motoren regnet 1000 mm — figur og tall ville vist to ulike tverrsnitt
+// uten at noen test feilet. Samme prinsipp som punkt 1 over.
+import { sectionWidth } from './section.js';
 
 /* ------------------------------------------------------------------ *
  * Papir: referansebredden og marginene
@@ -79,6 +95,7 @@ const THEMES = Object.freeze({
     text: '#18181b',
     na: '#b91c1c',
     compression: '#93c5fd',
+    stirrup: '#71717a',    // nedtonet med vilje (planen §5.3) — ikke like mørk som omrisset
   },
   dark: {
     bg: '#0f172a',
@@ -89,6 +106,7 @@ const THEMES = Object.freeze({
     text: '#e2e8f0',
     na: '#f87171',
     compression: '#38bdf8',
+    stirrup: '#94a3b8',
   },
 });
 
@@ -148,7 +166,7 @@ function resolveOpts(opts = {}) {
  */
 export function sectionViewBox(state, opts = {}) {
   const o = resolveOpts(opts);
-  const b = Math.max(1e-9, Number(state?.geometry?.b) || 0);
+  const b = Math.max(1e-9, Number(sectionWidth(state || {})) || 0);
   const h = Math.max(1e-9, Number(state?.geometry?.h) || 0);
 
   const mLeft = (o.showDims ? MARGIN.left.on : MARGIN.left.off) * o.u;
@@ -178,6 +196,76 @@ export function sectionViewBox(state, opts = {}) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Bøyler (skjærarmering) — rene tall, skilt ut av samme grunn som
+ * `sectionViewBox`: radiusklemmen og bengeometrien skal kunne påstås uten å
+ * parse SVG.
+ * ------------------------------------------------------------------ */
+
+/**
+ * `stirrupGeometry(state) -> {y0, y1, z0, z1, radius, dia, legs, legY, label} | null`
+ *
+ * Planen (§5.3): avrundet rektangel innenfor overdekningen. `y0`/`y1`/`z0`/`z1`
+ * er INNERSIDEN av bøylen i tverrsnittets millimeter — `inset = cover_side +
+ * dia/2` horisontalt (langs `b`), `cover + dia/2` vertikalt (langs `h`).
+ *
+ * **`radius = min(2·dia, halve korteste innersiden)`.** Uten klemmen ville en
+ * tynn plate (liten `h`, altså liten `innerH`) fått en hjørneradius som er
+ * større enn halve platetykkelsen — et rektangel som «sprekker», med negative
+ * eller selvoverlappende sider. Klemmen er ikke kosmetikk; uten den blir
+ * `<rect rx=...>` udefinert for enkelte tynne plater.
+ *
+ * `state.shear.stirrups` er en LISTE (flere rader med ulik senneavstand kan
+ * tenkes langs bjelkens lengde, se `rebar.js`), men én tverrsnittstegning kan
+ * bare vise ÉN fysisk bøyle om gangen — radene representerer alternative
+ * soner langs spennet, ikke bøyler som eksisterer samtidig i samme snitt.
+ * Derfor brukes bare `stirrups[0]`, den som også er «S1»-eksempelet i planen.
+ *
+ * `legs > 2` gir `legY`: y-koordinatene til de INDRE bena, jevnt fordelt
+ * mellom de to ytterbena med samme `leg_pitch`-formel som skjærmotoren
+ * (planen §3.3): `(innerW) / (legs - 1)`.
+ *
+ * Returnerer `null` når lista er tom — «tegnes bare når lista er ikke-tom»
+ * (§5.3) blir dermed en enkel `if (stirrup)` hos kalleren.
+ */
+export function stirrupGeometry(state) {
+  const list = Array.isArray(state?.shear?.stirrups) ? state.shear.stirrups : [];
+  if (!list.length) return null;
+  const st = list[0];
+
+  const b = Math.max(1e-9, Number(sectionWidth(state || {})) || 0);
+  const h = Math.max(1e-9, Number(state?.geometry?.h) || 0);
+  const dia = Math.max(0, Number(st?.dia) || 0);
+  const legs = Math.max(2, Math.round(Number(st?.legs) || 2));
+  const spacing = Number(st?.spacing) || 0;
+  const coverSide = Number(state?.cover_side) || 0;
+  const cover = Number(state?.cover) || 0;
+
+  const insetY = coverSide + dia / 2;
+  const insetZ = cover + dia / 2;
+  const y0 = -b / 2 + insetY;
+  const y1 = b / 2 - insetY;
+  const z0 = -h / 2 + insetZ;
+  const z1 = h / 2 - insetZ;
+  const innerW = Math.max(0, y1 - y0);
+  const innerH = Math.max(0, z1 - z0);
+
+  // Klemmen (§5.3): uten `Math.min` mot halve korteste innerside ville en
+  // tynn plate fått en hjørneradius figuren ikke kan tegne.
+  const radius = Math.max(0, Math.min(2 * dia, Math.min(innerW, innerH) / 2));
+
+  const legY = [];
+  if (legs > 2 && innerW > 0) {
+    const pitch = innerW / (legs - 1);
+    for (let i = 1; i < legs - 1; i++) legY.push(y0 + i * pitch);
+  }
+
+  return {
+    y0, y1, z0, z1, radius, dia, legs, spacing, legY,
+    label: `Ø${fmt(dia, 0)} c/c ${fmt(spacing, 0)} (${legs} legs)`,
+  };
+}
+
+/* ------------------------------------------------------------------ *
  * Tegning
  * ------------------------------------------------------------------ */
 
@@ -196,7 +284,7 @@ export function drawSection(state, opts = {}) {
   const o = resolveOpts(opts);
   const c = THEMES[o.theme];
   const vb = sectionViewBox(state, opts);
-  const b = Math.max(1e-9, Number(state?.geometry?.b) || 0);
+  const b = Math.max(1e-9, Number(sectionWidth(state || {})) || 0);
   const h = Math.max(1e-9, Number(state?.geometry?.h) || 0);
   const s = vb.scale;
   const paperW = vb.w * s;
@@ -247,6 +335,37 @@ export function drawSection(state, opts = {}) {
     parts.push(g + `</g>`);
   }
 
+  /* --- Bøyler (skjærarmering), nedtonet ------------------------------ *
+   * FØR armeringen (samme grunn som trykksoneskyggen over): jernene skal
+   * aldri havne under bøyleomrisset. Tegnes bare når lista er ikke-tom
+   * (§5.3) — `stirrupGeometry` returnerer `null` ellers.
+   */
+  const stirrup = stirrupGeometry(state);
+  if (stirrup && stirrup.y1 > stirrup.y0 && stirrup.z1 > stirrup.z0) {
+    const swStirrup = 0.18 * o.u;   // tynnere enn omrisset (swThick) OG grunnstreken (sw)
+    const rx = stirrup.radius * s;
+    let g = `<g data-role="stirrup" stroke="${c.stirrup}" stroke-width="${r(swStirrup)}" fill="none">`;
+    g += `<rect x="${r(px(stirrup.y0))}" y="${r(py(stirrup.z1))}" ` +
+         `width="${r((stirrup.y1 - stirrup.y0) * s)}" height="${r((stirrup.z1 - stirrup.z0) * s)}" ` +
+         `rx="${r(rx)}" ry="${r(rx)}"/>`;
+    // Ekstra ben (legs > 2): loddrette streker jevnt fordelt mellom ytterbena.
+    for (const ly of stirrup.legY) {
+      g += `<line x1="${r(px(ly))}" y1="${r(py(stirrup.z1))}" ` +
+           `x2="${r(px(ly))}" y2="${r(py(stirrup.z0))}"/>`;
+    }
+    g += `</g>`;
+    // Én liten etikett, ingen kotering (§5.3 — bevisst nedtonet). Plassert
+    // MIDT i bøylen, både vannrett og loddrett: der er tverrsnittet nesten
+    // alltid tomt. Den lå før rett over det nedre indre hjørnet — altså
+    // nøyaktig oppå underkantarmeringen, som tegnes ETTER bøylen og dermed
+    // malte over teksten, og for et smalt tverrsnitt stakk den ut av kanten.
+    g += `<text x="${r((px(stirrup.y0) + px(stirrup.y1)) / 2)}" ` +
+         `y="${r((py(stirrup.z0) + py(stirrup.z1)) / 2)}" text-anchor="middle" ` +
+         `font-family="${FONT}" font-size="${r(fsDim * 0.9)}" fill="${c.stirrup}">` +
+         `${esc(stirrup.label)}</text>`;
+    parts.push(g);
+  }
+
   /* --- Armering ----------------------------------------------------- */
   const layers = Array.isArray(state?.layers) ? state.layers : [];
   const barOpts = {
@@ -286,7 +405,7 @@ export function drawSection(state, opts = {}) {
     g += `</g>`;
     g += `<text x="${r((px(-b / 2) + px(b / 2)) / 2)}" y="${r(yDim + 4 * o.u)}" ` +
          `text-anchor="middle" font-family="${FONT}" font-size="${r(fsDim)}" fill="${c.text}">` +
-         `b = ${esc(fmt(b, 0))} mm${state?.sectionType === 'slab' ? ' (per meter)' : ''}</text>`;
+         `b = ${esc(fmt(b, 0))} mm${state?.sectionType === 'slab' ? ' (per metre)' : ''}</text>`;
 
     // Høyde, til venstre
     const xDim = px(-b / 2) - off;
