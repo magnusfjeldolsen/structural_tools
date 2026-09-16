@@ -47,6 +47,15 @@
  * `renderResult()` under leser dem uendret — den vet ikke, og trenger ikke
  * vite, at det finnes flere rader bak tallet.
  *
+ * SKJÆR ER FØRSTEKLASSES (endringsrunde 5 §B/§C)
+ * Bøylene legges inn i geometriseksjonen, rett under «Stirrup Ø» — det er
+ * SAMME fysiske bøyle, og bindingen (`store.js:syncStirrupDia`) er bare
+ * troverdig hvis de to feltene kan ses i samme blikk. Skjærresultatet vises
+ * med et EGET η_V-merke ved siden av η, aldri slått sammen med det: bøying og
+ * skjær kan styres av helt ulike lastkombinasjoner, og et snitt skal aldri
+ * vise to ulike η under samme navn. Alt skjærinnhold leses gjennom
+ * `analysisBlock`, så det står der uansett hvilken analyse som ble kjørt.
+ *
  * `markLoadChange()`-HEURISTIKKEN ER BORTE (§4.7)
  * Før var `M_Ed` det eneste feltet som IKKE kastet resultatet. Med
  * kombinasjoner holder ikke det: `governing` kan bytte rad når en `M_Ed`
@@ -58,21 +67,24 @@
 import { BAR_DIAMETERS, CONCRETE_GRADES, CONCRETE_LAWS, STEEL_GRADES, STEEL_LAWS, derivedMaterials }
   from './materials.js';
 import { bindNumericInput, evaluate } from './numeric-input.js';
-import { layerArea, layerBarCount, layerDepth, recomputeAutoDc, stackedDc, suggestedDc, totalArea }
-  from './rebar.js';
+import { aswPerSpacing, layerArea, layerBarCount, layerDepth, recomputeAutoDc, stackedDc,
+  suggestedDc, totalArea, totalAswPerSpacing } from './rebar.js';
 import { activeComboTheta, allowedAnalyses, axialForcesPresent, derived, sectionHeight, sectionWidth, thetaFor, validate }
   from './section.js';
 import { drawSection } from './section-draw.js';
 import { momentCurvatureSvg, nmDomainSvg, radialUtilisation } from './charts.js';
 import { attachChartTips } from './chart-tips.js';
 import { isCancellable, phaseLabel, TOTAL_DOWNLOAD_BYTES } from './solver-client.js';
+import { RUN_ALL } from './store.js';
 import { fromDocument, toDocument } from './serialize.js';
 import {
-  DASH, analysisBlock, analysisLabel, checkRows, compressionEdgeLabel, describeWarnings,
+  DASH, analysisBlock, analysisLabel, checkRows, comboLabel, compressionEdgeLabel, describeWarnings,
   designMoment, directionFromTheta, directionLabel, failureModeLabel, failureModeNote, fmtArea,
-  fmtCurvature, fmtLength, fmtMomentKNm, fmtNumber, fmtPercent, fmtRatio, fmtStrainPermille,
-  fmtStress, headlineUtilisation, lawLabel, messageForCode, momentCapacity, sectionTypeLabel, toNum,
-  utilisationStatus, HEADLINE_UTILISATION_LABEL, RADIAL_UTILISATION_LABEL,
+  fmtCurvature, fmtForceKN, fmtLength, fmtMomentKNm, fmtNumber, fmtPercent, fmtRatio,
+  fmtStrainPermille, fmtStress, governingCombo, headlineUtilisation, lawLabel, messageForCode,
+  momentCapacity, sectionTypeLabel, shearGoverningCombo, shearGoverningModeLabel,
+  shearHeadlineUtilisation, toNum, utilisationStatus, HEADLINE_UTILISATION_LABEL,
+  RADIAL_UTILISATION_LABEL, SHEAR_UTILISATION_LABEL,
 } from './results.js';
 
 /* ================================================================== *
@@ -100,13 +112,26 @@ const ANALYSES = [
   ['bending', 'M_Rd for every load combination. About 55 ms per combination.'],
   ['moment_curvature', 'M(κ) for the active load combination only. 20 points, about 1.8 s.'],
   ['nm_domain', 'Full capacity envelope with every load combination plotted. About 125 ms plus 55 ms per combination.'],
+  // «Kjør alle» (§D) er en KLIENTSIDE-analyse: `solver-client.js` kjører de
+  // lovlige analysene etter hverandre og fletter blokkene til ett resultat.
+  // Motoren kjenner den ikke, og tasten `4` velger den som de tre andre.
+  [RUN_ALL, 'Runs every analysis that is available and keeps all of them — three phases, one after the other. The report then prints both plots.'],
 ];
+
+/**
+ * Merkelappen på «Kjør alle»-chippen. Står HER og ikke i `results.js` sin
+ * `ANALYSIS_LABELS` fordi den fila eies av en annen arbeidsstrøm denne runden
+ * — når `'all'` kommer inn der, skal DEN være kilden, og denne konstanten skal
+ * bort. Fram til da ville `analysisLabel('all')` gitt «–» på chippen.
+ */
+const RUN_ALL_LABEL = 'Run all';
 
 /** «Beregn»-knappen sier hva den kjører (endringsrunde 2 §6). */
 const CALC_VERB = {
   bending: 'Calculate bending resistance',
   moment_curvature: 'Calculate moment–curvature',
   nm_domain: 'Calculate N–M interaction domain',
+  [RUN_ALL]: 'Run all analyses',
 };
 
 /* ================================================================== *
@@ -186,6 +211,105 @@ export function shorthandOf(layer = {}) {
 /* ================================================================== *
  * UI-et
  * ================================================================== */
+
+/* ================================================================== *
+ * Resultatvisning — rene strengbyggere
+ *
+ * Ligger på MODULNIVÅ og ikke inne i `createUI`: de rører ikke DOM-en, bare
+ * `result`, og da kan de testes i `node --test` uten en nettleser. Det er
+ * nettopp her feilen `governingLabel` bar på kunne levd uoppdaget — den
+ * returnerte alltid `null`, og ingen test kunne nå den.
+ * ================================================================== */
+
+/**
+ * Navn/id på GOVERNING kombinasjon — vises ved siden av η/M_Rd slik at det
+ * alltid er synlig at toppnivåfeltene gjelder ÉN bestemt rad, ikke et
+ * gjennomsnitt eller den siste raden brukeren rørte (§4.3, §4.7).
+ */
+export function governingLabel(result) {
+  // `governing` og `combinations` ligger i ANALYSEBLOKKA, ikke på toppnivå
+  // (`engine.py:1299-1301`, og likedan for M–κ og M–N). Funksjonen leste dem
+  // på `result` selv og returnerte derfor ALLTID `null` — merkelappen har
+  // aldri vært synlig. `analysisBlock`/`governingCombo` i `results.js` er de
+  // samme oppslagene rapporten bruker, så de to kan ikke komme i utakt.
+  const id = analysisBlock(result)?.governing;
+  if (!id) return null;
+  const combo = governingCombo(result);
+  return combo && combo.name ? `${combo.name} (${id})` : id;
+}
+
+/**
+ * Skjærmerket: ETT eget tall, ved siden av η — ALDRI slått sammen med det.
+ * De svarer på to ulike spørsmål, og en rad med stor `V_Ed` og lite `M_Ed`
+ * kan styre skjær uten å være i nærheten av å styre bøying. Samme utforming
+ * som rapporten (`report.js`), slik at skjerm og papir viser samme merke.
+ *
+ * `null` når INGEN kombinasjon fikk skjær evaluert — da skal det ikke stå
+ * noe oppdiktet merke der.
+ */
+export function shearBadge(result) {
+  const combo = shearGoverningCombo(result);
+  if (!combo) return '';
+  const eta = shearHeadlineUtilisation(result);
+  const st = utilisationStatus(eta);
+  return `<div class="rounded-lg border px-3 py-1.5 ${esc(st.classes)}">
+    <div class="text-[11px] uppercase tracking-wide opacity-80">Shear <span class="normal-case">η<sub>V</sub></span></div>
+    <div class="text-2xl font-bold num">${fmtRatio(eta, 2)}</div>
+    <div class="text-[11px] opacity-70 num">${esc(SHEAR_UTILISATION_LABEL)} · ${esc(comboLabel(combo))}</div>
+  </div>`;
+}
+
+/**
+ * Skjærpanelet i høyre kolonne. Samme tall, samme rekkefølge og samme note
+ * som rapportens skjærkapittel (`report.js`) — `V_Rd,c` LEGGES ALDRI TIL
+ * `V_Rd,s` (EC2 6.2.3(2)); `governing_mode` velger hvilket tall som ER
+ * `V_Rd`. Tre V_Rd-tall ved siden av hverandre er akkurat der en leser
+ * ellers ville gjettet på en sum.
+ *
+ * Vises UANSETT analyse: motoren fyller `shear` i alle tre analyseblokkene
+ * (`engine.py`), og `shearGoverningCombo` leser gjennom `analysisBlock`.
+ */
+export function shearPanel(result) {
+  const combo = shearGoverningCombo(result);
+  const sh = combo?.shear;
+  if (!sh || !sh.evaluated) {
+    return `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+      <div class="text-xs text-slate-400 mb-1.5">Shear (EC2 6.2)</div>
+      <p class="text-[12px] text-slate-500">No shear capacity could be evaluated for any load combination.</p></div>`;
+  }
+  const asw = (v) => (v === null || v === undefined ? DASH : fmtNumber(v, 4));
+  return panel('Shear (EC2 6.2)', [
+    ['Governing combination', esc(comboLabel(combo)), ''],
+    ['V<sub>Ed</sub>', fmtForceKN(sh.V_Ed), 'kN'],
+    ['V<sub>Rd</sub>', fmtForceKN(sh.V_Rd), 'kN'],
+    [SHEAR_UTILISATION_LABEL, fmtRatio(sh.utilisation, 2), ''],
+    ['Governing mode', esc(shearGoverningModeLabel(sh.governing_mode)), ''],
+    ['V<sub>Rd,c</sub>', fmtForceKN(sh.V_Rd_c), 'kN'],
+    ['V<sub>Rd,s</sub>', fmtForceKN(sh.V_Rd_s), 'kN'],
+    ['V<sub>Rd,max</sub>', fmtForceKN(sh.V_Rd_max), 'kN'],
+    ['d (shear)', fmtLength(sh.d, 1), 'mm'],
+    ['z = z<sub>factor</sub>·d', fmtLength(sh.z, 1), 'mm'],
+    ['A<sub>sl</sub>', fmtArea(sh.Asl), 'mm²'],
+    ['A<sub>sw</sub>/s', asw(sh.asw_s), 'mm²/mm'],
+    ['A<sub>sw</sub>/s,min', asw(sh.asw_s_min), 'mm²/mm'],
+    ['A<sub>sw</sub>/s,required', asw(sh.asw_s_required), 'mm²/mm'],
+    ['s<sub>l,max</sub>', fmtLength(sh.sl_max, 0), 'mm'],
+    ['s<sub>t,max</sub>', fmtLength(sh.st_max, 0), 'mm'],
+  ]) + `<p class="text-[11px] text-slate-500 mt-1 leading-snug">V<sub>Rd,c</sub> is never added to ` +
+    `V<sub>Rd,s</sub> (EC2 6.2.3(2)) — the governing mode decides which one is V<sub>Rd</sub>. ` +
+    `V<sub>Rd,c</sub> is reported either way: it is the number that says whether stirrups were needed at all.</p>`;
+}
+
+function panel(title, items) {
+  return `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+    <div class="text-xs text-slate-400 mb-1.5">${esc(title)}</div>${rows(items)}</div>`;
+}
+
+function rows(items) {
+  return items.map(([k, v, u]) => `<div class="flex justify-between gap-3 py-[3px] border-b border-slate-800">
+    <span class="text-slate-400">${k}</span>
+    <span class="num text-slate-100">${v}${u ? ` <span class="text-slate-500">${u}</span>` : ''}</span></div>`).join('');
+}
 
 /**
  * Kobler DOM-en i `index.html` til tilstanden.
@@ -300,6 +424,18 @@ export function createUI(deps) {
     bindField('#i-epsuk', (s) => s.steel.epsuk, (v) => store.patch('steel', { epsuk: v }), { min: 0.0001 });
     bindField('#i-gamma-eps', (s) => s.steel.gamma_eps, (v) => store.patch('steel', { gamma_eps: v }), { min: 0.0001 });
 
+    // Skjær, «Advanced» (§B). INGEN `min`/`max` på trykkstavvinkelen med
+    // vilje: `evaluateBounded` AVVISER en verdi utenfor området og legger
+    // stille tilbake den gamle, mens `validate()` i `section.js` allerede har
+    // den ferdige EC2 6.2.3(2)-meldingen med både grensen og verdien brukeren
+    // skrev. En stille avvisning ville tatt den forklaringen fra brukeren.
+    bindField('#i-strut-angle', (s) => s.shear.strut_angle_deg,
+      (v) => store.patch('shear', { strut_angle_deg: v }));
+    // `z_factor` har derimot INGEN validering bak seg, og z = z_factor·d er
+    // meningsløs utenfor (0, 1]. Her er avvisningen det eneste vernet.
+    bindField('#i-z-factor', (s) => s.shear.z_factor,
+      (v) => store.patch('shear', { z_factor: v }), { min: 0.01, max: 1 });
+
     // EC2 8.2(2) — k1/k2 er NA-parametere, d_g er ikke det, men inngår i
     // samme formel (endringsrunde 2 §2). `store.patch('spacing', …)` regner
     // selv `dc_auto`-lagene på nytt.
@@ -340,6 +476,8 @@ export function createUI(deps) {
     put('#i-cover', s.cover, 1);
     put('#i-stirrup', s.stirrup_dia, 1);
     put('#i-cover-side', s.cover_side, 1);
+    put('#i-strut-angle', s.shear.strut_angle_deg, 1);
+    put('#i-z-factor', s.shear.z_factor, 3);
     put('#i-k1', s.spacing.k1);
     put('#i-k2', s.spacing.k2);
     put('#i-dg', s.spacing.d_g, 1);
@@ -360,7 +498,11 @@ export function createUI(deps) {
     }
     const stir = $('#w-stirrup');
     const side = $('#w-cover-side');
-    if (stir) stir.style.display = isSlab ? 'none' : '';
+    // «Stirrup Ø» skjules for plata fordi den normalt ikke har bøyler — men
+    // legger brukeren inn en bøylerad likevel, ER tallet i bruk (det er SAMME
+    // verdi som radens Ø, §B), og et felt som styrer noe skal ikke være
+    // usynlig. Merknaden i bøyleraden peker nettopp hit.
+    if (stir) stir.style.display = isSlab && !(s.shear?.stirrups || []).length ? 'none' : '';
     if (side) side.style.display = isSlab ? 'none' : '';
 
     const lawC = $('#i-law-c');
@@ -583,6 +725,109 @@ export function createUI(deps) {
     store.updateLayer(id, { [field]: value });
     invalidate();
     render();
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Skjærarmering (§B)
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Samme vakt som `comboEditInFlight` under, og av nøyaktig samme grunn:
+   * `render()` bygger radlista på nytt med `innerHTML`, og `blur` fyrer FØR
+   * TAB flytter fokus. Uten flagget finnes elementet nettleseren var på vei
+   * til ikke lenger, og fokus faller ut av gruppa midt i inntastingen — den
+   * regresjonen ble merket med én gang forrige gang den slapp gjennom.
+   * Strukturelle endringer (legg til / fjern rad) setter det IKKE: der er
+   * omtegningen hele poenget.
+   */
+  let stirrupEditInFlight = false;
+
+  function renderStirrups() {
+    const host = $('#stirrups');
+    if (!host) return;
+    if (stirrupEditInFlight) return;
+    const s = store.getState();
+    // `list`, ikke `rows`: `rows()` er den modulnivå-funksjonen som bygger
+    // nøkkel/verdi-linjene i resultatpanelet, og en skygge her ville vært en
+    // felle for den neste som skulle bruke den.
+    const list = s.shear?.stirrups || [];
+
+    if (!list.length) {
+      // Tom liste er IKKE et hull i skjemaet: den er signalet til motoren om å
+      // ta V_Rd,c-veien (EC2 6.2.1(4)), og riktig svar for en plate og for en
+      // bjelke som ennå ikke har fått bøyler.
+      host.innerHTML =
+        `<div class="px-3 py-3 text-[12px] text-slate-500">No stirrups. The shear capacity is then ` +
+        `V<sub>Rd</sub> = V<sub>Rd,c</sub> — the concrete alone (EC2 6.2.1(4)), which is what a slab ` +
+        `normally relies on. Press "+ Add stirrups" to add shear reinforcement.</div>`;
+      return;
+    }
+
+    host.innerHTML = list.map((st, i) => `<div class="px-3 py-2 text-[13px]">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="w-6 text-slate-500 text-[11px]">${esc(st.id)}</span>
+        <label class="flex items-center gap-1 text-[11px] text-slate-500"
+               title="The same physical stirrup as &quot;Stirrup Ø&quot; above — changing it moves every automatic d_c.">Ø
+          <input type="text" class="!w-16" data-sf="dia" data-s="${esc(st.id)}" value="${fmtNumber(st.dia, 1)}" aria-label="Stirrup diameter [mm]"></label>
+        <label class="flex items-center gap-1 text-[11px] text-slate-500">c/c
+          <input type="text" class="!w-20" data-sf="spacing" data-s="${esc(st.id)}" value="${fmtNumber(st.spacing, 1)}" aria-label="Stirrup spacing s [mm]"></label>
+        <label class="flex items-center gap-1 text-[11px] text-slate-500"
+               title="Number of legs crossing the shear plane — all of them count in A_sw (EC2 6.2.3).">legs
+          <input type="text" class="!w-14" data-sf="legs" data-s="${esc(st.id)}" value="${fmtNumber(st.legs, 0)}" aria-label="Number of legs"></label>
+        <label class="flex items-center gap-1 text-[11px] text-slate-500">f<sub>ywk</sub>
+          <input type="text" class="!w-20" data-sf="fywk" data-s="${esc(st.id)}" value="${fmtNumber(st.fywk, 0)}" aria-label="f_ywk [MPa]"></label>
+        <span class="text-[11px] text-slate-500 num hidden md:inline">A<sub>sw</sub>/s ${fmtNumber(aswPerSpacing(st), 3)} mm²/mm</span>
+        <button type="button" class="ml-auto px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300"
+                data-remove-stirrup="${esc(st.id)}" title="Remove stirrup row">✕</button>
+      </div>
+      ${i === 0 ? `<div class="mt-1 text-[11px] text-slate-500">Ø is the same number as "Stirrup Ø" in the cover row above — one physical stirrup, one value. Changing it moves every layer whose d<sub>c</sub> is derived.</div>` : ''}
+    </div>`).join('');
+
+    bindStirrupRows(host);
+  }
+
+  function bindStirrupRows(host) {
+    host.querySelectorAll('[data-remove-stirrup]').forEach((el) => {
+      el.onclick = () => { store.removeStirrup(el.dataset.removeStirrup); invalidate(); render(); };
+    });
+    host.querySelectorAll('input[data-sf]').forEach((el) => {
+      const field = el.dataset.sf;
+      // `legs` er et ANTALL (heltall, minst 2 — en bøyle har to ben). `dia` og
+      // `spacing` avvises under 1 mm: `aswPerSpacing` deler på `spacing`, og
+      // en null der ville gitt et uendelig A_sw/s som ingen validering fanger.
+      // `fywk` har ingen øvre grense her — valideringen krever bare at alle
+      // rader er enige.
+      const rules = field === 'legs' ? { min: 2, integer: true } : { min: 1 };
+      bindNumericInput(el, (value) => {
+        if (value === null) { render(); return; }
+        store.updateStirrup(el.dataset.s, { [field]: value });
+        // Feltet normaliseres PÅ STEDET, og raden bygges IKKE om — se
+        // `stirrupEditInFlight`. Resten av sida (tegning, validering,
+        // bunnlinje) skal derimot oppdateres, derfor et fullt `render()`.
+        el.value = fmtNumber(value, field === 'legs' ? 0 : 1);
+        stirrupEditInFlight = true;
+        invalidate();
+        render();
+        stirrupEditInFlight = false;
+      }, rules);
+    });
+  }
+
+  function setupShear() {
+    const add = $('#add-stirrup');
+    if (!add) return;
+    add.onclick = () => {
+      // BARE NAAR LISTA ER TOM. `python/engine.py:617-625` summerer alle rader
+      // som PARALLELLE boeylesett, mens `section-draw.js` bare tegner rad 0 og
+      // `store.js:syncStirrupDia` bare binder rad 0 til `stirrup_dia`. To rader
+      // ga derfor maalt 2,7x kapasiteten uten at figuren endret seg med en
+      // eneste piksel. Lista forblir en LISTE i modellen — veikartet lover
+      // flere soner — men UI-et tilbyr én rad til den stoetten er reell.
+      if ((store.getState().shear?.stirrups || []).length > 0) return;
+      store.addStirrup();
+      invalidate();
+      render();
+    };
   }
 
   /* ---------------------------------------------------------------- *
@@ -1010,19 +1255,6 @@ export function createUI(deps) {
    * Resultat
    * ---------------------------------------------------------------- */
 
-  /**
-   * Navn/id på GOVERNING kombinasjon — vises ved siden av η/M_Rd slik at det
-   * alltid er synlig at toppnivåfeltene gjelder ÉN bestemt rad, ikke et
-   * gjennomsnitt eller den siste raden brukeren rørte (§4.3, §4.7).
-   */
-  function governingLabel(result) {
-    const id = result?.governing;
-    if (!id) return null;
-    const combos = Array.isArray(result?.combinations) ? result.combinations : [];
-    const combo = combos.find((c) => c.id === id);
-    return combo && combo.name ? `${combo.name} (${id})` : id;
-  }
-
   function renderResult() {
     const body = $('#res-body');
     const summary = $('#res-summary');
@@ -1062,8 +1294,13 @@ export function createUI(deps) {
     const perMeter = s.sectionType === 'slab' ? '/m' : '';
     const gov = governingLabel(result);
 
+    const etaV = shearHeadlineUtilisation(result);
+
     if (summary) {
       summary.innerHTML = `M<sub>Rd</sub> ${fmtMomentKNm(mRd)} kNm${perMeter} · η ${fmtRatio(eta, 2)}` +
+        // η_V står med EGEN merkelapp også her. Uten den ville to tall stått
+        // ved siden av hverandre uten å si hvilket spørsmål de svarer på.
+        (shearGoverningCombo(result) ? ` · η<sub>V</sub> ${fmtRatio(etaV, 2)}` : '') +
         (gov ? ` · governing ${esc(gov)}` : '');
     }
 
@@ -1090,6 +1327,7 @@ export function createUI(deps) {
                 <div class="text-lg font-medium text-sky-300">${esc(failureModeLabel(bending.failure_mode))}</div>
                 <div class="text-[11px] text-slate-400 num">x/d = ${fmtRatio(bending.x_over_d)}</div>
               </div>
+              ${shearBadge(result)}
               <div class="ml-auto text-right text-slate-100">
                 <div class="text-[11px] text-slate-400 uppercase tracking-wide">Status</div>
                 <div class="text-lg">${esc(status.label)}</div>
@@ -1143,6 +1381,7 @@ export function createUI(deps) {
             ['A<sub>s,max</sub>', fmtArea(props.As_max), 'mm²'],
             ['N<sub>min</sub> … N<sub>max</sub>', `${fmtNumber(toNum(props.n_min) / 1e3, 0)} … ${fmtNumber(toNum(props.n_max) / 1e3, 0)}`, 'kN'],
           ])}
+          ${shearPanel(result)}
           <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
             <div class="text-xs text-slate-400 mb-1.5">Checks</div>
             ${checkRows(result.checks).map((r) => `<div class="flex items-start gap-2 py-1">
@@ -1188,17 +1427,6 @@ export function createUI(deps) {
     }
   }
 
-  function panel(title, items) {
-    return `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
-      <div class="text-xs text-slate-400 mb-1.5">${esc(title)}</div>${rows(items)}</div>`;
-  }
-
-  function rows(items) {
-    return items.map(([k, v, u]) => `<div class="flex justify-between gap-3 py-[3px] border-b border-slate-800">
-      <span class="text-slate-400">${k}</span>
-      <span class="num text-slate-100">${v}${u ? ` <span class="text-slate-500">${u}</span>` : ''}</span></div>`).join('');
-  }
-
   function layerTable(bending, mats) {
     const layers = Array.isArray(bending.layers) ? bending.layers : [];
     if (!layers.length) return `<p class="text-[12px] text-slate-500">${DASH}</p>`;
@@ -1221,15 +1449,30 @@ export function createUI(deps) {
       }).join('')}</tbody></table>`;
   }
 
+  /**
+   * Figurene under resultatkortet.
+   *
+   * PÅ HVILKEN BLOKK SOM FINNES, IKKE PÅ `result.analysis`. «Kjør alle» (§D)
+   * leverer ett resultat med FLERE analyseblokker, og da skal begge figurene
+   * trykkes — akkurat som rapporten gjør. For de tre enkeltanalysene er dette
+   * nøyaktig samme oppførsel som før: `bending` har ingen av blokkene, og de
+   * to andre har bare sin egen.
+   */
   function renderChart(result, s) {
+    return [mcChart(result, s), nmChart(result, s)].filter(Boolean).join('');
+  }
+
+  function mcChart(result, s) {
     const perMeter = s.sectionType === 'slab' ? '/m' : '';
-    if (result.analysis === 'moment_curvature') {
+    if (result.moment_curvature) {
       const mc = result.moment_curvature || {};
       // Motoren regner moment–krumning for ÉN kombinasjon (§4.3, `meta.mc_active_combo`)
       // — kortet sier det med navn, slik at det aldri kan leses som «for alle».
       const comboId = result.meta?.mc_active_combo;
       const combo = comboId ? s.combos.find((c) => c.id === comboId) : null;
-      const comboLabel = combo ? `${combo.name || combo.id} (${combo.id})` : comboId || DASH;
+      // Lokalt navn, IKKE `comboLabel` — det er importert fra `results.js` og
+      // ville blitt skygget bare inne i denne funksjonen.
+      const mcCombo = combo ? `${combo.name || combo.id} (${combo.id})` : comboId || DASH;
       const nEdKN = toNum(mc.N_Ed) / 1e3;
       // Moment–krumning er UNNTATT fra auto-N–M-regelen (§2): M(κ) ved fast N er
       // én entydig kurve, ikke ett punkt plukket fra en flate. Men kortet
@@ -1240,7 +1483,7 @@ export function createUI(deps) {
         ? `<p class="text-[11px] text-amber-300 mt-1 num">M<sub>Rd</sub> at N<sub>Ed</sub> = ${fmtNumber(nEdKN, 1)} kN — see the interaction domain for the full picture.</p>`
         : '';
       return `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
-        <div class="text-xs text-slate-400 mb-1">Moment–curvature for ${esc(comboLabel)} — the active combination only — at N<sub>Ed</sub> = ${fmtNumber(nEdKN, 1)} kN</div>
+        <div class="text-xs text-slate-400 mb-1">Moment–curvature for ${esc(mcCombo)} — the active combination only — at N<sub>Ed</sub> = ${fmtNumber(nEdKN, 1)} kN</div>
         ${axialNote}
         <div class="svg-fit">${momentCurvatureSvg(mc, { width: 620, unit: 'px', theme: 'dark' })}</div>
         <p class="text-[11px] text-slate-500 mt-1 num">
@@ -1249,7 +1492,11 @@ export function createUI(deps) {
           The final point should equal M<sub>Rd</sub> = ${fmtMomentKNm(mc.M_Rd)} kNm${perMeter}.
         </p></div>`;
     }
-    if (result.analysis === 'nm_domain') {
+    return '';
+  }
+
+  function nmChart(result) {
+    if (result.nm_domain) {
       const dom = result.nm_domain || {};
       const rad = radialUtilisation(dom, toNum(dom.N_Ed) / 1e3, toNum(dom.M_Ed) / 1e6);
       return `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
@@ -1324,11 +1571,26 @@ export function createUI(deps) {
           `<div class="num text-slate-200">${value}</div></div>`;
         // Fargen og merkelappen kommer fra `results.js` sin `utilisationStatus`
         // — samme kilde som rapporten bruker (plan §7: tersklene står ETT sted).
+        // η_V får sitt EGET merke ved siden av η, med sin egen farge. De to
+        // slås aldri sammen: bøying og skjær kan ha helt ulik utnyttelse, og
+        // ofte i helt ulike lastkombinasjoner. Merket står bare når noen
+        // kombinasjon faktisk fikk skjær evaluert.
+        const etaV = shearHeadlineUtilisation(result);
+        const shearStatus = utilisationStatus(etaV);
+        const shearCell = shearGoverningCombo(result)
+          ? `<div class="leading-tight px-2 py-0.5 rounded border ${esc(shearStatus.classes)}" title="${esc(SHEAR_UTILISATION_LABEL)} — ${esc(shearStatus.label)}">
+               <div class="text-[9px] opacity-70">η_V</div>
+               <div class="text-xl font-bold num">${fmtRatio(etaV, 2)}</div></div>`
+          : '';
         strip.innerHTML =
           `<div class="leading-tight px-2 py-0.5 rounded border ${esc(status.classes)}" title="${esc(status.label)}">
              <div class="text-[9px] opacity-70">η</div>
              <div class="text-xl font-bold num">${fmtRatio(eta, 2)}</div></div>` +
+          shearCell +
           cell('M_Rd', `${fmtMomentKNm(momentCapacity(result))} kNm${perMeter}`) +
+          (shearGoverningCombo(result)
+            ? cell('V_Rd', `${fmtForceKN(shearGoverningCombo(result).shear?.V_Rd)} kN${perMeter}`)
+            : '') +
           cell('x', `${fmtLength(bending.x)} mm`) +
           cell('x/d', fmtRatio(bending.x_over_d)) +
           cell('Failure mode', esc(failureModeLabel(bending.failure_mode)));
@@ -1360,9 +1622,14 @@ export function createUI(deps) {
       el.style.display = busy ? '' : 'none';
       el.disabled = !cancellable;
       el.classList.toggle('opacity-40', !cancellable);
-      el.title = cancellable
-        ? 'Cancel the moment–curvature run. Points already calculated are kept.'
-        : 'This analysis takes under a tenth of a second and cannot be cancelled.';
+      el.title = !cancellable
+        ? 'This analysis takes under a tenth of a second and cannot be cancelled.'
+        // «Kjør alle» ER avbrytbar fordi den inneholder moment–krumning
+        // (`CANCELLABLE_ANALYSES` i `solver-client.js`), men den stopper
+        // mellom faser — «punktene» er bare det halve svaret der.
+        : s.analysis === RUN_ALL
+        ? 'Cancel the run. The phases that already finished are kept.'
+        : 'Cancel the moment–curvature run. Points already calculated are kept.';
     }
     // «Beregn» sier hva den kjører (endringsrunde 2 §6).
     const runLabel = CALC_VERB[s.analysis] || 'Calculate';
@@ -1407,10 +1674,14 @@ export function createUI(deps) {
     // plukket fra en flate, ikke et selvstendig svar. `allowedAnalyses` er den
     // ENE kilden til hvilke analyser som er lovlige — samme funksjon tast `1`
     // under sjekker, og som `serialize.js` normaliserer en lastet fil mot.
-    const allowedAna = allowedAnalyses(s);
+    // `RUN_ALL` er ALLTID lovlig: den kjører nettopp de analysene
+    // `allowedAnalyses` slipper gjennom, så regelen kan ikke brytes av å velge
+    // den. Unntaket står også i `store.js:enforceAnalysis` — begge to skal bort
+    // den dagen `section.js:allowedAnalyses` kjenner verdien selv.
+    const allowedAna = allowedAnalyses(s).concat(RUN_ALL);
     renderChips('#ana-chips', ANALYSES.map(([value, desc]) => ({
       value,
-      label: analysisLabel(value),
+      label: value === RUN_ALL ? RUN_ALL_LABEL : analysisLabel(value),
       disabled: !allowedAna.includes(value),
       title: allowedAna.includes(value)
         ? desc
@@ -1465,7 +1736,27 @@ export function createUI(deps) {
     }
 
     renderLayers();
+    renderStirrups();
     renderCombos();
+
+    const shearSum = $('#shear-summary');
+    if (shearSum) {
+      // `list`, ikke `rows` — se `renderStirrups`.
+      const list = s.shear?.stirrups || [];
+      // `totalAswPerSpacing` fra `rebar.js` — SAMME funksjon `section.js` sin
+      // minstekrav-kontroll og motoren summerer med. Regnes den om her, kan
+      // skjemaet og feilmeldingen komme til å si to ulike ting.
+      shearSum.innerHTML = list.length
+        ? `${list.length} row${list.length === 1 ? '' : 's'} · ΣA<sub>sw</sub>/s ` +
+          `${fmtNumber(totalAswPerSpacing(list), 3)} mm²/mm · θ ${fmtNumber(s.shear.strut_angle_deg, 1)}°`
+        : 'No stirrups · V<sub>Rd</sub> = V<sub>Rd,c</sub>';
+    }
+    const shearHint = $('#shear-hint');
+    if (shearHint) {
+      shearHint.innerHTML = (s.shear?.stirrups || []).length
+        ? 'The legs are drawn in the section, bent around the bars they meet.'
+        : '';
+    }
 
     const est = derived(s);
     const perMeter = s.sectionType === 'slab' ? '/m' : '';
@@ -1547,13 +1838,16 @@ export function createUI(deps) {
       else if (k === 'p') { store.setSectionType('slab'); invalidate(); render(); }
       // `f`/`s` (retning) er fjernet (§6, §7) — retningen finnes ikke lenger
       // som et eget felt å snarveie til, bare som fortegnet på M_Ed.
-      else if ('123'.includes(k)) {
+      // `4` er «kjør alle» — samme rekkefølge som chippene, som er `ANALYSES`
+      // sin egen. Tallene leses av lista, ikke skrevet av: en femte analyse
+      // skal ikke kunne havne i chipraden uten å få tasten sin.
+      else if (Number(k) >= 1 && Number(k) <= ANALYSES.length) {
         const value = ANALYSES[Number(k) - 1][0];
         // Samme dør som chippen (§2): tast `1` skal IKKE kunne sette
         // `analysis: 'bending'` når en kombinasjon har aksialkraft. Uten denne
         // sjekken var snarveien den ANDRE veien inn regelen ellers glemte å
         // stenge.
-        if (allowedAnalyses(store.getState()).includes(value)) {
+        if (allowedAnalyses(store.getState()).concat(RUN_ALL).includes(value)) {
           store.setState({ analysis: value }); invalidate(); render();
         }
       }
@@ -1605,6 +1899,7 @@ export function createUI(deps) {
     mount() {
       setupFields();
       setupShorthand();
+      setupShear();
       setupCombos();
       setupDocIO();
       setupButtons();

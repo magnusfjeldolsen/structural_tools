@@ -11,7 +11,7 @@
     "theta": 0.0,
     "direction": "sagging",
     "subtract_bar_area": false,
-    "wall_time_ms": 15.6
+    "wall_time_ms": 14.6
   },
   "materials": {
     "fck": 30.0,
@@ -113,7 +113,8 @@
             "compression": false
           }
         ],
-        "within_limits": true
+        "within_limits": true,
+        "flexure_solved": true
       }
     ],
     "governing": "C1",

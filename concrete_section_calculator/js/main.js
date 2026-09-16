@@ -25,7 +25,7 @@
 
 import { MODULE_ID, MODULE_NAME, MODULE_VERSION, SCHEMA_VERSION, STRUCTURALCODES_VERSION }
   from './meta.js';
-import { createStore } from './store.js';
+import { createStore, RUN_ALL } from './store.js';
 import { buildPayload } from './payload.js';
 import { validate } from './section.js';
 import { createSolverClient, shouldDeferWarmup } from './solver-client.js';
@@ -123,6 +123,16 @@ export function startApp() {
 
     running = (async () => {
       try {
+        if (state.analysis === RUN_ALL) {
+          // «Run all» er KLIENTSIDE (plan §D): motoren kjenner bare sine tre
+          // analysenavn, og `analysis: 'all'` ville kommet tilbake som
+          // `unknown_analysis`. `runAll` overstyrer derfor `analysis` per
+          // delkall og fletter blokkene selv — ingen motorendring.
+          return await client.runAll(payload, {
+            onStart,
+            isCancelled: () => cancelRequested,
+          });
+        }
         if (state.analysis === 'moment_curvature') {
           return await client.runMomentCurvature(payload, {
             onStart,

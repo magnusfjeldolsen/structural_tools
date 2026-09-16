@@ -779,8 +779,32 @@ def _normalise_loads(payload, opts):
     return [combo], 'C1'
 
 
+def _unsolved_combo(combo, n_ed, m_ed, theta_c, v_ed, shear, within_limits):
+    """En `combinations[i]`-rad UTEN bøyeløsning — skjæret står, bøyefeltene er `None`.
+
+    Formen er den samme som `_solve_combo` ellers returnerer, slik at leserne (`results.js`,
+    `report.js`) ikke trenger å vite hvorfor feltene er tomme. To grunner gir denne raden:
+    kombinasjonen ligger utenfor `[n_min, n_max]` (§4.4, `within_limits: False`), eller
+    M–κ tok med raden BARE for skjærets skyld (§10 C2, `within_limits: True`).
+    """
+    return {
+        'id': combo['id'], 'name': combo['name'],
+        'N_Ed': _num(n_ed), 'M_Ed': _num(m_ed), 'theta': _num(theta_c),
+        'V_Ed': _num(v_ed), 'shear': shear,
+        'M_Rd': None, 'utilisation': None,
+        'x': None, 'x_over_d': None, 'eps_a': None, 'chi_y': None,
+        'eps_c_top': None, 'eps_s_max': None, 'failure_mode': None, 'layers': None,
+        'within_limits': bool(within_limits),
+        # EKSPLISITT, ikke utledet. En leser kunne i prinsippet sluttet seg til det
+        # samme av at `M_Rd is None` mens `within_limits` er True, men da ville
+        # rapporten stått med en tom statuscelle den dagen noen la til enda en grunn
+        # til at bøyningen ikke ble løst.
+        'flexure_solved': False,
+    }
+
+
 def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_max,
-                  shear_ctx, warnings_out):
+                  shear_ctx, warnings_out, solve_flexure=True):
     """Løser bruddtilstanden for ÉN lastkombinasjon.
 
     Returnerer `(public, extra)`. `public` er NØYAKTIG formen `combinations[i]` skal ha i
@@ -797,6 +821,10 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
     Skjær (§4.1b) regnes FØR denne aksialsjekken og er ikke omfattet av den — `A_sl`/`d`
     er geometriske, ikke hentet fra bøyeløsningen, så skjær har et svar for ENHVER
     kombinasjon uansett hva aksialsjekken under sier.
+
+    `solve_flexure=False` gir skjær og aksialsjekk, men hopper over selve bruddtilstanden
+    (§10 C2). Det er M–κ sine ikke-aktive rader: de er med i lista utelukkende for at
+    `shear_governing` og skjærkontrollene skal bli de samme som i de to andre analysene.
     """
     n_ed = combo['N_Ed']
     m_ed = combo['M_Ed']
@@ -804,6 +832,7 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
     v_ed = float(combo.get('V_Ed', 0.0) or 0.0)
 
     shear = _shear_result(combo, rebar, h, shear_ctx, warnings_out)
+    no_extra = {'d_eff': None, 'as_tension': None, 'd_eff_all': None, 'z_na': None}
 
     if n_ed < n_min or n_ed > n_max:
         warning = _warning(
@@ -817,17 +846,17 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
         warning['combo'] = combo['id']
         warning['combo_name'] = combo['name']
         warnings_out.append(warning)
-        public = {
-            'id': combo['id'], 'name': combo['name'],
-            'N_Ed': _num(n_ed), 'M_Ed': _num(m_ed), 'theta': _num(theta_c),
-            'V_Ed': _num(v_ed), 'shear': shear,
-            'M_Rd': None, 'utilisation': None,
-            'x': None, 'x_over_d': None, 'eps_a': None, 'chi_y': None,
-            'eps_c_top': None, 'eps_s_max': None, 'failure_mode': None, 'layers': None,
-            'within_limits': False,
-        }
-        extra = {'d_eff': None, 'as_tension': None, 'd_eff_all': None, 'z_na': None}
+        public = _unsolved_combo(combo, n_ed, m_ed, theta_c, v_ed, shear, False)
+        extra = dict(no_extra)
         return public, extra
+
+    if not solve_flexure:
+        # Raden er med BARE for skjæret (§10 C2). Bøyeløsningen under koster en full
+        # bruddtilstand — og M–κ betaler den på nytt for HVERT κ-punkt, fordi
+        # `solver-client.js` kjører én motorrunde per punkt. Med 20+ punkter ville
+        # «skjær for alle kombinasjoner» blitt 20+ ganger dyrere enn den er verdt, mens
+        # selve skjæret koster mikrosekunder og er allerede regnet over.
+        return _unsolved_combo(combo, n_ed, m_ed, theta_c, v_ed, shear, True), dict(no_extra)
 
     with _Capture() as cap:
         bend = sc.calculate_bending_strength(theta=theta_c, n=n_ed)
@@ -859,6 +888,7 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
         'eps_c_top': _num(eps_edge), 'eps_s_max': _num(eps_s_max),
         'failure_mode': failure_mode, 'layers': layers,
         'within_limits': True,
+        'flexure_solved': True,
     }
     extra = {
         'd_eff': d_eff, 'as_tension': as_tension, 'd_eff_all': d_eff_all, 'z_na': z_na,
@@ -1019,46 +1049,70 @@ def _run_inner(payload, progress, t0):
     eps_yd = float(steel.epsyd)
     eps_ud = float(steel.epsud())
 
-    if analysis == 'moment_curvature':
-        # M–κ regner bare på DEN AKTIVE kombinasjonen (§4.3) — å løse alle de andre ville
-        # vært bortkastet arbeid ingen leser noensinne får se, og `chi_plan` er uansett
-        # bare meningsfullt for én kombinasjon om gangen (§3.7).
-        active_combo = next((c for c in combos if c['id'] == active_id), combos[0])
+    # Kombinasjonsløkka går over ALLE radene i alle tre analysene (§10 C2). Skjær er rent
+    # geometrisk — `_shear_result` leser bare `bw`, `A_sl`/`d`, kombinasjonens fortegn på
+    # `M_Ed`, `N_Ed`, `V_Ed` og materialene, ALDRI et tøyningsplan — så det har et svar for
+    # enhver rad uten at bruddtilstanden er løst. Løste M–κ som før bare den aktive raden,
+    # kunne `shear_governing` per definisjon aldri peke på noen annen enn den aktive, og
+    # skjærtallene ble dermed avhengige av HVILKEN analyse brukeren tilfeldigvis kjørte.
+    # Det er nettopp det skjær ikke skal være.
+    #
+    # BØYNINGEN løses derimot fortsatt bare for den aktive raden i M–κ (`solve_flexure`):
+    # `solver-client.js` kjører én motorrunde per κ-punkt, så alt løkka gjør her betales
+    # 20+ ganger per kurve. Skjær tåler det (mikrosekunder), en bruddtilstand gjør det ikke.
+    #
+    # Framdrift: løkka er den ENESTE skriveren av 'solve'-fasen — men bare for bøying og
+    # M–N. M–κ har sin egen, indre skriver i `_moment_curvature` (§4.5), og to skrivere til
+    # samme fase ville vært en felle, ikke en funksjon; derfor tier løkka for M–κ.
+    is_mc = analysis == 'moment_curvature'
+    emit_solve_progress = progress is not None and not is_mc
+    # Den aktive radens indeks må stå FØR løkka: det er den ene raden M–κ løser bøyning for.
+    # Reserven `0` er samme regel som `_normalise_loads` bruker når `active` ikke finnes.
+    active_index = next((i for i, c in enumerate(combos) if c['id'] == active_id), 0)
+    combo_results = []
+    combo_extras = []
+    n_combos = len(combos)
+    for i, combo in enumerate(combos):
+        if emit_solve_progress:
+            progress('solve', i, n_combos)
         public, extra = _solve_combo(
-            active_combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_max,
+            combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_max,
             shear_ctx, warnings_out,
+            solve_flexure=(not is_mc or i == active_index),
         )
-        combo_results = [public]
-        combo_extras = [extra]
-        governing_index = 0 if public['within_limits'] else None
+        combo_results.append(public)
+        combo_extras.append(extra)
+    if emit_solve_progress:
+        progress('solve', n_combos, n_combos)
+
+    if is_mc:
+        # KURVEN regnes for DEN AKTIVE kombinasjonen alene (§4.3): `chi_plan` er bare
+        # meningsfullt for én kombinasjon om gangen (§3.7), og alt M–κ-blokka ellers speiler
+        # (θ, N_Ed, M_Rd, `section_props`) hører til nettopp den raden. Derfor er den aktive
+        # raden også `ref` her, og ikke den med størst utnyttelse — ellers ville
+        # overskriftens retning og kurven beskrevet to forskjellige kombinasjoner.
+        # `fallback_index` MÅ av samme grunn være den aktive raden og ikke rad 0: de andre
+        # radene har ingen bøyeløsning (`solve_flexure=False`), så `_moment_curvature` og
+        # `_compression_zone_warning` ville fått `M_Rd = None` i hendene.
+        fallback_index = active_index
+        governing_index = (
+            active_index if combo_results[active_index]['within_limits'] else None
+        )
     else:
-        # Bøying og M–N-diagrammet løser HVER kombinasjon (§10 B2 punkt 2). Løkka er den
-        # ENESTE skriveren av 'solve'-framdrift her (§4.5) — M–κ har sin egen, indre, og to
-        # skrivere til samme fase ville vært en felle, ikke en funksjon.
-        combo_results = []
-        combo_extras = []
-        n_combos = len(combos)
-        for i, combo in enumerate(combos):
-            if progress is not None:
-                progress('solve', i, n_combos)
-            public, extra = _solve_combo(
-                combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_max,
-                shear_ctx, warnings_out,
-            )
-            combo_results.append(public)
-            combo_extras.append(extra)
-        if progress is not None:
-            progress('solve', n_combos, n_combos)
+        fallback_index = 0
         governing_index = _select_governing(combo_results)
 
     # Skjær har sitt EGET, uavhengige governing-valg (§4.3) — en rad med stor `V_Ed` og
-    # lite `M_Ed` kan styre skjær uten å være i nærheten av å styre bøying.
+    # lite `M_Ed` kan styre skjær uten å være i nærheten av å styre bøying. Etter at løkka
+    # ble felles er dette valget det samme i alle tre analysene, som det skal være.
     shear_governing_id = _select_shear_governing(combo_results)
 
     # §4.3 regel 4: ingen kandidater ⇒ `governing: null`, og toppnivåfeltene speiler i
-    # stedet den FØRSTE kombinasjonen, slik at figurer og tabeller har noe å vise.
+    # stedet reserveraden, slik at figurer og tabeller har noe å vise. Reserven er den
+    # FØRSTE kombinasjonen for bøying og M–N, men den AKTIVE for M–κ — der er det den
+    # aktive raden blokka handler om, også når den ligger utenfor [n_min, n_max].
     has_candidate = governing_index is not None
-    ref_index = governing_index if has_candidate else 0
+    ref_index = governing_index if has_candidate else fallback_index
     ref = combo_results[ref_index]
     ref_extra = combo_extras[ref_index]
     governing_id = ref['id'] if has_candidate else None

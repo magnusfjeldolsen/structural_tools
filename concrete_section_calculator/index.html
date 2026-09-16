@@ -168,6 +168,37 @@
           <label id="w-stirrup"><span class="field-label">Stirrup Ø [mm]</span><input id="i-stirrup" type="text" inputmode="decimal"></label>
           <label id="w-cover-side"><span class="field-label">Side cover c [mm]</span><input id="i-cover-side" type="text" inputmode="decimal"></label>
         </div>
+        <!-- Skjærarmering. Ligger i geometriseksjonen, rett under «Stirrup Ø»:
+             det er SAMME fysiske bøyle, og de to feltene skal kunne ses i
+             samme blikk. `stirrups` er en LISTE — veikartet lover flere soner,
+             så raden er én av flere, ikke ETT skjema. -->
+        <div class="rounded-lg border border-slate-700 bg-slate-900/40">
+          <div class="flex items-baseline gap-3 px-3 pt-2.5 pb-1.5">
+            <span class="text-xs text-slate-300">Shear reinforcement — stirrups (EC2 6.2)</span>
+            <span id="shear-summary" class="text-[11px] text-slate-500 num ml-auto"></span>
+          </div>
+          <div id="stirrups" class="divide-y divide-slate-700/70 border-y border-slate-700/70"></div>
+          <div class="flex flex-wrap items-center gap-2 px-3 py-2.5 text-xs">
+            <button type="button" id="add-stirrup"
+                    class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">+ Add stirrups</button>
+            <span id="shear-hint" class="text-[11px] text-slate-500 num"></span>
+          </div>
+          <details class="border-t border-slate-700/70">
+            <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
+              <span class="text-slate-500">▸</span><span>Advanced — strut angle and lever arm</span>
+            </summary>
+            <div class="grid grid-cols-2 gap-3 px-3 pb-3 pt-1 max-w-md">
+              <label><span class="field-label">θ — strut angle [°]</span><input id="i-strut-angle" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">z<sub>factor</sub> — z = z<sub>factor</sub>·d</span><input id="i-z-factor" type="text" inputmode="decimal"></label>
+            </div>
+            <p class="px-3 pb-3 text-[11px] text-slate-500 leading-snug">
+              The variable strut inclination method, EC2 6.2.3(2): cot θ between 1.0 and 2.5,
+              that is θ between 45° and 21.8°. A flatter strut (θ → 21.8°) raises V<sub>Rd,s</sub>
+              and lowers V<sub>Rd,max</sub>. The lever arm is taken as z = z<sub>factor</sub>·d with
+              z<sub>factor</sub> = 0.9 as the usual approximation. Both apply to every stirrup row.
+            </p>
+          </details>
+        </div>
         <details class="rounded-lg border border-slate-700 bg-slate-900/40">
           <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
             <span class="text-slate-500">▸</span><span>Clear spacing (EC2 8.2) — k<sub>1</sub>, k<sub>2</sub> are NA parameters</span>
@@ -350,7 +381,7 @@
         <tr><td><kbd>↑</kbd></td><td class="text-slate-300">Recall the previous line</td></tr>
         <tr><td><kbd>Alt</kbd> <kbd>D</kbd></td><td class="text-slate-300">Duplicate last layer</td></tr>
         <tr><td><kbd>B</kbd> / <kbd>P</kbd></td><td class="text-slate-300">Beam / slab</td></tr>
-        <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></td><td class="text-slate-300">Bending / M–κ / M–N — bending is skipped when it is unavailable</td></tr>
+        <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd></td><td class="text-slate-300">Bending / M–κ / M–N / run all — bending is skipped when it is unavailable</td></tr>
         <tr><td><kbd>?</kbd></td><td class="text-slate-300">This list</td></tr>
       </tbody>
     </table>

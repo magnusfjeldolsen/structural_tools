@@ -819,20 +819,156 @@ def test_mc_active_combo_is_set_only_for_moment_curvature():
 
 
 def test_every_analysis_block_carries_combinations_and_governing():
-    """§4.3: `combinations` OG `governing` skal finnes i HVER analyseblokk.
+    """§4.3: `combinations`, `governing` OG `shear_governing` skal finnes i HVER analyseblokk.
 
     M–κ har bare én kombinasjon å velge governing blant, men nøkkelen skal likevel stå
     der — den committede fixturen har `M_Ed = 0` og altså `utilisation = 0.0`, nøyaktig
     regel 3 sitt uavgjort-tilfelle, så et manglende `governing` her ville vist seg som
     `None` i stedet for `'C1'`.
+
+    `shear_governing` skal stå der på samme vilkår, og være `None` når fixturen ikke har
+    noen `section.shear` i det hele tatt — nøkkelen skal finnes, ikke verdien gjettes.
     """
     payload = load('payload-beam-300x600.json')
+    assert 'shear' not in payload['section']       # forutsetningen for None-påstanden under
     for analysis in ('bending', 'moment_curvature', 'nm_domain'):
         payload['analysis'] = analysis
         block = engine.run(payload)[analysis]
         assert 'combinations' in block, analysis
         assert 'governing' in block, analysis
         assert block['governing'] == 'C1', analysis
+        assert 'shear_governing' in block, analysis
+        assert block['shear_governing'] is None, analysis
+
+
+def _shear_analysis_independence_payload():
+    """To kombinasjoner der SKJÆR styres av en ANNEN rad enn bøyning og enn den aktive.
+
+    `C1` er aktiv og styrer bøyning (stor `M_Ed`, ingen skjærlast). `C2` styrer skjær
+    (liten `M_Ed`, stor `V_Ed`) og er hverken aktiv eller bøyningens governing. Det er
+    nettopp den konstellasjonen som avslører at en analyse bare skjærløser den aktive
+    raden: da MÅ `shear_governing` bli `C1`, som er feil.
+    """
+    payload = _shear_reference_payload()
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'bending-critical', 'N_Ed': 0.0, 'M_Ed': -200000000.0,
+             'theta': 0.0, 'V_Ed': 0.0},
+            {'id': 'C2', 'name': 'shear-critical', 'N_Ed': 0.0, 'M_Ed': -1000000.0,
+             'theta': 0.0, 'V_Ed': 300000.0},
+        ],
+        'active': 'C1',
+    }
+    return payload
+
+
+def test_shear_governing_is_the_same_row_in_every_analysis():
+    """§10 C2: skjærresultatet skal være det samme uansett hvilken analyse som kjøres.
+
+    Før rettelsen løste `moment_curvature` bare den AKTIVE kombinasjonen, og
+    `shear_governing` kunne per definisjon aldri peke på noen annen rad enn den aktive.
+    Her er den aktive raden (`C1`) ikke skjærkritisk, så M–κ ville svart `C1` der bøying
+    og M–N svarte `C2`.
+    """
+    seen = {}
+    for analysis in ('bending', 'moment_curvature', 'nm_domain'):
+        payload = _shear_analysis_independence_payload()
+        payload['analysis'] = analysis
+        block = engine.run(payload)[analysis]
+        assert block['shear_governing'] == 'C2', analysis
+        assert block['governing'] == 'C1', analysis     # bøying styres fortsatt av C1
+        seen[analysis] = [c['id'] for c in block['combinations']]
+    assert seen['moment_curvature'] == ['C1', 'C2']     # alle radene, i payload-rekkefølge
+    assert seen['moment_curvature'] == seen['bending'] == seen['nm_domain']
+
+
+def test_shear_block_and_shear_checks_are_bit_identical_across_analyses():
+    """Kjernekravet i §10 C2: SAMME payload ⇒ nøyaktig samme skjærtall i alle tre analysene.
+
+    Sammenligningen er `==` på hele skjærdikten per kombinasjon — ikke `close()` — fordi
+    skjær ikke bruker tøyningsplanet i det hele tatt (`_shear_result` leser bare geometri,
+    `M_Ed`-fortegnet, `N_Ed`, `V_Ed` og materialene). Da finnes det ingen numerisk drift
+    som kan unnskylde et avvik: tallene skal være identiske, ikke bare like.
+    """
+    shear_keys = ('shear_ok', 'asw_min_ok', 'stirrup_spacing_ok')
+    per_combo = {}
+    checks = {}
+    governing = {}
+    for analysis in ('bending', 'moment_curvature', 'nm_domain'):
+        payload = _shear_analysis_independence_payload()
+        payload['analysis'] = analysis
+        result = engine.run(payload)
+        block = result[analysis]
+        per_combo[analysis] = {c['id']: c['shear'] for c in block['combinations']}
+        checks[analysis] = {k: result['checks'][k] for k in shear_keys}
+        governing[analysis] = block['shear_governing']
+
+    ref = per_combo['bending']
+    assert set(ref) == {'C1', 'C2'}
+    # Skjæret er evaluert for BEGGE radene, ellers sier likheten under ingenting.
+    assert all(ref[cid]['evaluated'] is True for cid in ref)
+    for analysis in ('moment_curvature', 'nm_domain'):
+        assert per_combo[analysis] == ref, analysis
+        assert checks[analysis] == checks['bending'], analysis
+        assert governing[analysis] == governing['bending'], analysis
+
+
+def test_moment_curvature_curve_still_belongs_to_the_active_combination():
+    """Bare kombinasjonsløkka og skjæret ble utvidet — KURVEN er fortsatt den aktive radens.
+
+    `C2` har både mindre `M_Ed` og en helt annen last enn den aktive `C1`. Ville kurven
+    blitt regnet for governing eller for første rad, ville `M_Ed`/`mc_active_combo` her
+    pekt et annet sted.
+    """
+    payload = _shear_analysis_independence_payload()
+    payload['analysis'] = 'moment_curvature'
+    payload['loads']['active'] = 'C2'
+    result = engine.run(payload)
+    mc = result['moment_curvature']
+
+    assert result['meta']['mc_active_combo'] == 'C2'
+    assert close(mc['M_Ed'], -1000000.0)
+    assert mc['governing'] == 'C2'                  # blokka handler om den aktive raden
+    assert mc['shear_governing'] == 'C2'
+    assert len(mc['combinations']) == 2             # men skjæret dekker begge radene
+    assert len(mc['kappa']) > 0
+
+    # Den IKKE-aktive raden er med bare for skjæret: bøyefeltene står tomme med vilje,
+    # fordi en bruddtilstand her ville blitt betalt på nytt for hvert κ-punkt.
+    idle = next(c for c in mc['combinations'] if c['id'] == 'C1')
+    assert idle['M_Rd'] is None and idle['utilisation'] is None
+    assert idle['within_limits'] is True            # aksialsjekken er likevel gjort
+    assert idle['shear']['evaluated'] is True
+
+
+def test_moment_curvature_falls_back_to_the_active_row_not_the_first_one():
+    """Er den AKTIVE raden utenfor `[n_min, n_max]`, finnes ingen `governing` — og da må
+    M–κ-blokka fortsatt speile den aktive raden, ikke bare snuble tilbake til `combinations[0]`.
+
+    Denne raden ville ikke eksistert før rettelsen (M–κ hadde bare én rad i lista), så
+    reserveregelen «første rad» er nå aktivt farlig: her er første rad en helt annen,
+    gyldig kombinasjon.
+    """
+    payload = _shear_reference_payload()
+    payload['analysis'] = 'moment_curvature'
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'valid', 'N_Ed': 0.0, 'M_Ed': -150000000.0,
+             'theta': 0.0, 'V_Ed': 10000.0},
+            {'id': 'C2', 'name': 'out-of-range', 'N_Ed': -5000000.0, 'M_Ed': -1000000.0,
+             'theta': 0.0, 'V_Ed': 0.0},
+        ],
+        'active': 'C2',
+    }
+    result = engine.run(payload)
+    mc = result['moment_curvature']
+
+    assert result['meta']['mc_active_combo'] == 'C2'
+    assert mc['governing'] is None                  # den aktive raden er ikke en kandidat
+    assert result['ok'] is False
+    assert close(mc['M_Ed'], -1000000.0)            # den AKTIVE radens last, ikke C1 sin
+    assert mc['kappa'] == []
+    assert result['checks']['axial_ok'] is False
 
 
 def test_bar_in_compression_zone_warning_is_quantitative():

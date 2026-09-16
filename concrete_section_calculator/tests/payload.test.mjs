@@ -24,6 +24,7 @@ import assert from 'node:assert/strict';
 
 import { buildPayload } from '../js/payload.js';
 import { barPositions, equivalentStrip } from '../js/rebar.js';
+import { createStore } from '../js/store.js';
 
 /** Referansebjelken, plan §3.6. Merk α_cc = 1,0 og overdekning 40 uten bøyle. */
 const BEAM_STATE = {
@@ -351,4 +352,39 @@ test('payloaden er ren JSON — ingen NaN, Infinity eller undefined', () => {
   const text = JSON.stringify(buildPayload(BEAM_STATE));
   assert.ok(!/null/.test(text.replace('"mc_chi":null', '')), 'uventet null i payloaden');
   assert.doesNotThrow(() => JSON.parse(text));
+});
+
+/* ---------------- endringsrunde 5 §B — bindingen når helt ut i kontrakten ---------------- */
+
+/**
+ * Den fysiske bøyla er ETT tall, og det må gjelde HELE veien: fra feltet
+ * brukeren skriver i, via jernkoordinatene, til `section.shear` motoren
+ * regner V_Rd,s av. Testen går gjennom `store.js`, ikke gjennom en håndskrevet
+ * stat, nettopp fordi det er DER bindingen bor — en payload bygget av to tall
+ * som spriker er akkurat feilen som ikke gir noe utslag før noen måler bjelka.
+ */
+test('bøylediameteren er ÉN verdi i payloaden: jernkoordinatene og section.shear ser samme bøyle', () => {
+  const store = createStore({
+    geometry: { b: 300, h: 600 },
+    cover: 35,
+    cover_side: 35,
+    stirrup_dia: 8,
+    layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 53, dc_auto: true }],
+  });
+  store.addStirrup();
+  store.updateStirrup('S1', { dia: 12 });
+
+  const s = store.getState();
+  const built = buildPayload(s);
+  assert.equal(built.section.shear.stirrups[0].dia, 12);
+  // Jernene ligger nå 12 mm inn fra sidedekket, ikke 8 — `barPositions` leser
+  // `state.stirrup_dia`, som bindingen har flyttet.
+  assert.deepEqual(
+    built.section.rebar[0].bars,
+    barPositions(s.layers[0], { b: 300, h: 600 }, s)
+  );
+  assert.equal(built.section.rebar[0].bars[2].y, 300 / 2 - 35 - 12 - 10);
+  // …og jernet har flyttet seg NEDOVER like mye: dc = 35 + 12 + 10 = 57 måles
+  // fra underkanten, altså z = −300 + 57.
+  assert.equal(built.section.rebar[0].bars[0].z, -600 / 2 + 57);
 });

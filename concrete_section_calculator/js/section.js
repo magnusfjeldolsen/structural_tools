@@ -380,6 +380,23 @@ export function validate(state = {}) {
     const stMax = Math.min(0.75 * d, 600);
     const bw = sectionWidth(state);
 
+    // Motoren summerer radene som PARALLELLE bøylesett (`engine.py:617-625`),
+    // men figuren tegner bare rad 0 og `stirrup_dia`/`dc` følger bare rad 0.
+    // To rader ga målt 2,7 ganger kapasiteten uten at figuren endret seg. UI-et
+    // tilbyr derfor bare én rad — men en fil eller et `setInputs`-kall går
+    // utenom UI-et, og da skal det si fra i stedet for å regne i stillhet.
+    if (stirrups.length > 1) {
+      out.push(
+        issue(
+          'stirrup_multiple_rows_unsupported',
+          'error',
+          'Bare én bøylerad støttes i denne versjonen. Motoren ville summert radene '
+            + 'som parallelle bøylesett, mens tegningen og overdekningen bare viser den første.',
+          'shear.stirrups'
+        )
+      );
+    }
+
     // Alle rader må ha samme f_ywk i v1 — `VRds` tar én felles `fyk`.
     const distinctFywk = new Set(stirrups.map((st) => num(st.fywk)));
     if (distinctFywk.size > 1) {

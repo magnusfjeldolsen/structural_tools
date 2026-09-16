@@ -488,6 +488,10 @@ function combinationsBlock(result) {
   const combos = allCombinations(result);
   if (!combos.length) return '';
   const governingId = analysisBlock(result)?.governing;
+  // I moment–krumning ER `governing` den AKTIVE raden — den kurven tilhører —
+  // ikke raden med størst utnyttelse. Å trykke «Governing» på den ville vært
+  // direkte feil: en annen rad kan ha mange ganger momentet og stå uten tall.
+  const governingWord = result?.analysis === 'moment_curvature' ? 'Curve row' : 'Governing';
   const shearGoverningId = analysisBlock(result)?.shear_governing;
   const hasShearGoverning = shearGoverningId !== null && shearGoverningId !== undefined;
   const rows = combos
@@ -495,9 +499,22 @@ function combinationsBlock(result) {
       const isGoverning = governingId !== null && governingId !== undefined && c.id === governingId;
       const isShearGoverning = hasShearGoverning && c.id === shearGoverningId;
       const outOfRange = c.within_limits === false;
+      // `flexure_solved === false` med `within_limits` i behold betyr at
+      // moment–krumning tok raden med BARE for skjærets skyld: kurven hører til
+      // den aktive kombinasjonen, og de øvrige radene er ikke bøyeregnet.
+      // Uten denne cellen sto slike rader HELT tomme, med «–» under η, rett ved
+      // siden av en rad merket «Governing» som kunne ha en tjuendedel av
+      // momentet. Leseren hadde da ingen måte å se at tallet manglet med vilje.
+      const shearOnly = !outOfRange && c.flexure_solved === false;
       const dir = directionFromTheta(c.theta);
       const label = esc(comboLabel(c));
-      const status = outOfRange ? 'Outside [N_min, N_max]' : isGoverning ? 'Governing' : '';
+      const status = outOfRange
+        ? 'Outside [N_min, N_max]'
+        : shearOnly
+          ? 'Shear only'
+          : isGoverning
+            ? governingWord
+            : '';
       const shear = c.shear;
       const shearEta = shear && shear.evaluated ? toNum(shear.utilisation) : null;
       const shearCell = shearEta === null ? DASH : fmtRatio(shearEta, 3);
@@ -508,13 +525,19 @@ function combinationsBlock(result) {
         `<td class="num">${fmtForceKN(c.N_Ed)}</td>` +
         `<td class="num">${fmtMomentKNm(c.M_Ed)}</td>` +
         `<td>${esc(dir ? directionLabel(dir) : DASH)}</td>` +
-        `<td class="num">${outOfRange ? DASH : fmtRatio(c.utilisation, 3)}</td>` +
+        `<td class="num">${outOfRange || shearOnly ? DASH : fmtRatio(c.utilisation, 3)}</td>` +
         `<td class="num">${fmtForceKN(c.V_Ed)}</td>` +
         `<td class="num">${isShearGoverning ? `<b>${shearCell}</b>` : shearCell}</td>` +
         `<td>${esc(status)}</td>` +
         `</tr>`;
     })
     .join('');
+  const mcNote = result?.analysis === 'moment_curvature' && combos.some((c) => c.flexure_solved === false)
+    ? `<p class="note">Moment–curvature solves the bending state for the active load ` +
+      `combination only — the curve belongs to that row. The other rows are carried ` +
+      `along for the shear check, and are marked <b>Shear only</b>. Run the bending ` +
+      `resistance or the N–M interaction domain to get η for every row.</p>`
+    : '';
   const shearNote = hasShearGoverning
     ? `<p class="note">Bold η_V marks the load combination governing shear. It may be a ` +
       `different row than the one governing bending (above): a large V_Ed with a small ` +
@@ -525,7 +548,7 @@ function combinationsBlock(result) {
     `<table><thead><tr><th>Combination</th><th class="num">N_Ed [kN]</th>` +
     `<th class="num">M_Ed [kNm]</th><th>Direction</th><th class="num">η [–]</th>` +
     `<th class="num">V_Ed [kN]</th><th class="num">η_V [–]</th>` +
-    `<th>Status</th></tr></thead><tbody>${rows}</tbody></table>${shearNote}`
+    `<th>Status</th></tr></thead><tbody>${rows}</tbody></table>${mcNote}${shearNote}`
   );
 }
 
@@ -866,11 +889,16 @@ function resultChapter(state, result) {
  * ------------------------------------------------------------------ */
 
 /**
- * Resultatet tegnet. Hvilken tegning avhenger av analysen — se
- * hodekommentaren om hvorfor bøyekapasitet får en figur og ikke et diagram.
+ * Resultatet tegnet. ETT kapittel 6, men ikke nødvendigvis én figur: kapitlet
+ * trykker hvert plott resultatet bærer en blokk for (se `plotParts`). For de
+ * tre enkeltanalysene er det fortsatt nøyaktig én — og da beholder kapitlet
+ * sin egen, presise overskrift i stedet for et intetsigende «Plots».
+ *
+ * Kapittelnummeret er og blir 6. Et «kjør alle» som la hvert plott i sitt eget
+ * kapittel ville flyttet kapittel 7 til 8 og brutt rekkefølgen plan §8 krever
+ * — den ene egenskapen ved rapporten en senere endring kan ødelegge helt stille.
  */
 function plotChapter(state, result) {
-  const analysis = result?.analysis || state?.analysis;
   if (!result || !result.ok) {
     return chapter(
       6,
@@ -880,7 +908,86 @@ function plotChapter(state, result) {
     );
   }
 
-  if (analysis === 'moment_curvature' && result.moment_curvature) {
+  const parts = plotParts(state, result);
+  if (!parts.length) {
+    // Et `ok: true`-svar uten en eneste analyseblokk bryter kontrakten (§5.2).
+    // Da er en ærlig setning riktigere enn å tegne inndatasnittet under
+    // overskriften «ved brudd» — den figuren ville sett ut som et resultat.
+    return chapter(
+      6,
+      'Plot',
+      '<p class="muted">The result carries no analysis block, so there is nothing to ' +
+        'plot.</p>',
+      'atomic'
+    );
+  }
+  if (parts.length === 1) return chapter(6, `Plot — ${parts[0].suffix}`, parts[0].html);
+  return chapter(
+    6,
+    'Plots',
+    parts.map((p) => `<h4>${esc(p.heading)}</h4>${p.html}`).join('')
+  );
+}
+
+/**
+ * Plottene resultatet FAKTISK bærer, i den rekkefølgen «kjør alle» regner dem
+ * (`runAllPlan` i `solver-client.js`): kapasiteten først, kurven sist.
+ *
+ * GATEN ER «FINNES BLOKKA», IKKE «HVILKEN ANALYSE» (endringsrunde 5 §D).
+ * Før stod det `analysis === 'moment_curvature' && result.moment_curvature`,
+ * og et «kjør alle»-resultat — som har `analysis: 'all'` og alle tre blokkene
+ * — ville falt helt gjennom til bøyegrenen og trykket ÉN figur. Både M–κ og
+ * M–N ville vært borte fra papiret uten at noe feilet. Med blokka som gate får
+ * hver enkeltanalyse nøyaktig sitt ene plott som før, og «kjør alle» får dem
+ * alle sammen.
+ */
+function plotParts(state, result) {
+  const parts = [];
+
+  // Bøyekapasitet: snittet med nøytralakse og trykksone. `x === null` betyr at
+  // nøytralaksen er praktisk talt uendelig langt unna — da tegnes ingen linje,
+  // og figuren sier det i stedet for å plassere en strek på slump.
+  if (result.bending) {
+    // BØYEBLOKKAS eget `x`, ikke `failureState(result)`: i et «kjør alle»-svar
+    // peker `failureState` på KAPASITETSanalysen, og er den `nm_domain`, ville
+    // nøytralaksen fra omhyllingen blitt tegnet inn i bøyefiguren.
+    const x = toNum(result.bending.x);
+    const theta = thetaOf(state, result);
+    const caption =
+      x === null
+        ? 'Cross-section at failure. The neutral axis is not drawn: it lies outside any ' +
+          'meaningful range (near pure compression).'
+        : `Cross-section at failure, with the neutral axis and the hatched compression ` +
+          `zone. Compression at the ${compressionEdgeLabel(theta)}, x = ${fmtLength(x, 1)} mm.`;
+    parts.push({
+      suffix: 'strain state at failure',
+      heading: 'Strain state at failure',
+      html: figure(state, x === null ? null : { x, theta }, caption),
+    });
+  }
+
+  if (result.nm_domain) {
+    const svg = nmDomainSvg(result.nm_domain, {
+      width: REPORT_FIGURE_WIDTH_MM,
+      unit: 'mm',
+      theme: 'print',
+    });
+    // ENDRINGSRUNDE 4 §5.2: «+M er den analyserte retningen» var sant bare
+    // under den gamle speilingen (θ-avhengig fortegn). Omhyllingen er nå RÅ —
+    // samme fortegnskonvensjon som resten av rapporten, ALDRI speilet per
+    // kombinasjon — så teksten sier konvensjonen rett ut i stedet.
+    parts.push({
+      suffix: 'N–M diagram',
+      heading: 'N–M diagram',
+      html: `<figure class="atomic report-figure-wrap">${svg}<figcaption>Capacity envelope
+        with the load point(s) and the load path. Sign convention follows fib
+        structuralcodes: sagging (compression at the top face) is negative, hogging is
+        positive; N points upward with its own sign, i.e. compression downward. The
+        strain plane and failure mode at N_Ed are given in chapter 5.</figcaption></figure>`,
+    });
+  }
+
+  if (result.moment_curvature) {
     const svg = momentCurvatureSvg(result.moment_curvature, {
       width: REPORT_FIGURE_WIDTH_MM,
       unit: 'mm',
@@ -892,53 +999,17 @@ function plotChapter(state, result) {
     // `momentCurvatureSvg` (D5, det ENESTE tillatte unntaket, §5.1) — teksten
     // her sier derfor uttrykkelig at det er PLOTTET som magnitude, og henviser
     // til konvensjonen i stedet for å late som fortegnet ikke fantes.
-    return chapter(
-      6,
-      'Plot — moment–curvature',
-      `<figure class="atomic report-figure-wrap">${svg}<figcaption>M(κ) at N_Ed, with
+    parts.push({
+      suffix: 'moment–curvature',
+      heading: 'Moment–curvature',
+      html: `<figure class="atomic report-figure-wrap">${svg}<figcaption>M(κ) at N_Ed, with
         M_Ed and the yield point plotted as magnitudes. Sagging moment is negative in
         the underlying data (chapter 4); the curve has only one branch, so the sign
-        carries no information here.</figcaption></figure>`
-    );
-  }
-
-  if (analysis === 'nm_domain' && result.nm_domain) {
-    const svg = nmDomainSvg(result.nm_domain, {
-      width: REPORT_FIGURE_WIDTH_MM,
-      unit: 'mm',
-      theme: 'print',
+        carries no information here.</figcaption></figure>`,
     });
-    // ENDRINGSRUNDE 4 §5.2: «+M er den analyserte retningen» var sant bare
-    // under den gamle speilingen (θ-avhengig fortegn). Omhyllingen er nå RÅ —
-    // samme fortegnskonvensjon som resten av rapporten, ALDRI speilet per
-    // kombinasjon — så teksten sier konvensjonen rett ut i stedet.
-    return chapter(
-      6,
-      'Plot — N–M diagram',
-      `<figure class="atomic report-figure-wrap">${svg}<figcaption>Capacity envelope
-        with the load point(s) and the load path. Sign convention follows fib
-        structuralcodes: sagging (compression at the top face) is negative, hogging is
-        positive; N points upward with its own sign, i.e. compression downward. The
-        strain plane and failure mode at N_Ed are given in chapter 5.</figcaption></figure>`
-    );
   }
 
-  // Bøyekapasitet: snittet med nøytralakse og trykksone. `x === null` betyr at
-  // nøytralaksen er praktisk talt uendelig langt unna — da tegnes ingen linje,
-  // og figuren sier det i stedet for å plassere en strek på slump.
-  const x = toNum(failureState(result)?.x);
-  const theta = thetaOf(state, result);
-  const caption =
-    x === null
-      ? 'Cross-section at failure. The neutral axis is not drawn: it lies outside any ' +
-        'meaningful range (near pure compression).'
-      : `Cross-section at failure, with the neutral axis and the hatched compression ` +
-        `zone. Compression at the ${compressionEdgeLabel(theta)}, x = ${fmtLength(x, 1)} mm.`;
-  return chapter(
-    6,
-    'Plot — strain state at failure',
-    figure(state, x === null ? null : { x, theta }, caption)
-  );
+  return parts;
 }
 
 /* ------------------------------------------------------------------ *
