@@ -31,6 +31,7 @@ import {
   reinforcementRatio,
   recomputeAutoDc,
   stackedDc,
+  createStirrup,
   stirrupArea,
   suggestedDc,
   tensionArea,
@@ -491,4 +492,33 @@ test('totalAswPerSpacing summerer flere bøylesett, ikke bare tar det siste', ()
   assert.ok(Math.abs(total - (one + aswPerSpacing(list[1]))) < 1e-12);
   assert.ok(total > one, 'summen skal være større enn ett enkelt sett');
   assert.equal(totalAswPerSpacing([]), 0);
+});
+
+/* ---------------- endringsrunde 5 §B — createStirrup ---------------- */
+
+test('createStirrup arver dia fra state.stirrup_dia — det er SAMME fysiske bøyle', () => {
+  const row = createStirrup({ stirrup_dia: 10, steel: { fyk: 500 } });
+  assert.equal(row.dia, 10);
+  assert.equal(row.id, 'S1');
+  assert.equal(row.spacing, 150);
+  assert.equal(row.legs, 2);
+});
+
+test('createStirrup gir ALLTID alpha = 90 — section.js avviser alt annet i v1', () => {
+  // Uten feltet ville valideringen svart «kun α = 90° støttes. Har α =
+  // undefined°» på hver eneste kjøring med bøyler.
+  assert.equal(createStirrup({}).alpha, 90);
+  assert.equal(createStirrup({}, { spacing: 200 }).alpha, 90);
+});
+
+test('createStirrup arver fywk fra hovedarmeringens fyk, med 500 som reserve', () => {
+  assert.equal(createStirrup({ steel: { fyk: 400 } }).fywk, 400);
+  assert.equal(createStirrup({}).fywk, 500);
+  assert.equal(createStirrup({ steel: { fyk: 500 } }, { fywk: 350 }).fywk, 350, 'patchen vinner');
+});
+
+test('createStirrup faller tilbake på Ø8 når stirrup_dia er tom eller null', () => {
+  assert.equal(createStirrup({ stirrup_dia: 0 }).dia, 8);
+  assert.equal(createStirrup({ stirrup_dia: '' }).dia, 8);
+  assert.equal(createStirrup({}).dia, 8);
 });

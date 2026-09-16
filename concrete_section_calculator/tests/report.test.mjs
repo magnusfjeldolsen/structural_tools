@@ -104,6 +104,30 @@ const MC = fixture('result-mc-beam-300x600');
 const NMDOM = fixture('result-nmdomain-beam-300x600');
 const SLAB_BENDING = fixture('result-bending-slab-1000x200');
 
+/**
+ * Et «kjør alle»-svar, bygget slik `solver-client.js` sin `runAll()` bygger
+ * det (endringsrunde 5 §D): MOTORENS egne blokker, uendret, under sine egne
+ * navn, og `primary` som peker på kapasitetsanalysen. Det finnes INGEN
+ * `result.all`, og `analysis` er 'all' — derfor kan ingenting i rapporten
+ * lenger gate på analysenavnet.
+ */
+function runAllResult(primary = 'bending', blocks = ['bending', 'nm_domain', 'moment_curvature']) {
+  const src = { bending: BENDING, nm_domain: NMDOM, moment_curvature: MC };
+  const r = {
+    ok: true,
+    schema: BENDING.schema,
+    analysis: 'all',
+    primary,
+    meta: BENDING.meta,
+    materials: BENDING.materials,
+    section_props: BENDING.section_props,
+    checks: BENDING.checks,
+    warnings: [],
+  };
+  for (const b of blocks) r[b] = clone(src[b][b]);
+  return r;
+}
+
 /** Kapittelnumrene i den rekkefølgen de står i dokumentet. */
 function chapterOrder(html) {
   return [...html.matchAll(/data-sec="(\d+)"/g)].map((m) => Number(m[1]));
@@ -201,6 +225,102 @@ test('plottet er 174 mm bredt i alle tre analysene', () => {
     const ch6 = chapterBody(buildReportHtml(BEAM_STATE, res), 6);
     assert.match(ch6, /<svg[^>]*width="174mm"/, `mangler 174 mm-figur for ${res.analysis}`);
   }
+});
+
+/* ------------------------------------------------------------------ *
+ * «Kjør alle»: rapporten trykker ALLE plottene som finnes (§D)
+ * ------------------------------------------------------------------ */
+
+/**
+ * KJERNEKRAVET I §D: «alt skal vises i rapporten».
+ *
+ * Før sto gaten på ANALYSETYPEN (`analysis === 'moment_curvature'`), og et
+ * «kjør alle»-resultat — `analysis: 'all'`, alle tre blokkene — falt gjennom
+ * begge grenene og trykket ÉN figur. Både M–κ-kurven og M–N-omhyllingen var
+ * borte fra papiret uten at noe feilet: kapitlet var der, det var bare
+ * fattigere enn dataen. Gaten er nå «finnes blokka».
+ */
+test('«kjør alle»: kapittel 6 trykker både M–κ-kurven og M–N-omhyllingen', () => {
+  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, runAllResult('bending')), 6);
+  assert.ok(ch6.includes('data-role="curve"'), 'M–κ-kurven mangler');
+  assert.ok(ch6.includes('data-role="envelope"'), 'M–N-omhyllingen mangler');
+  assert.ok(ch6.includes('data-role="na"'), 'bøyefiguren med nøytralaksen mangler');
+  assert.equal((ch6.match(/<figure/g) || []).length, 3, 'tre plott, tre figurer');
+  assert.equal((ch6.match(/width="174mm"/g) || []).length, 3, 'alle tre fyller trykkflaten');
+  // Hver figur har sin egen overskrift — tre figurer under én tittel er en
+  // rebus for leseren.
+  assert.match(ch6, /<h4>Strain state at failure<\/h4>/);
+  assert.match(ch6, /<h4>N–M diagram<\/h4>/);
+  assert.match(ch6, /<h4>Moment–curvature<\/h4>/);
+});
+
+/**
+ * Kapittelnummereringen er den ene egenskapen ved rapporten en endring kan
+ * ødelegge helt stille (hodekommentaren). Tre plott skal ligge i ETT kapittel
+ * 6, ikke i 6, 7 og 8 — ellers blir «Forutsetninger og metode» kapittel 9.
+ */
+test('«kjør alle» endrer ikke kapittelrekkefølgen — tre plott, ett kapittel 6', () => {
+  const html = buildReportHtml(BEAM_STATE, runAllResult('bending'));
+  assert.deepEqual(chapterOrder(html), [1, 2, 3, 4, 5, 6, 7]);
+  assert.match(html, /<h3>6\. Plots<\/h3>/, 'flere plott gir flertallsoverskrift');
+  assert.match(html, /<h3>7\. Assumptions and method<\/h3>/);
+  // Kapittel 1 skal si hvilken analyse som ble kjørt, ikke tankestrek.
+  assert.match(chapterBody(html, 1), /Run all/);
+});
+
+/**
+ * Motsatsen, og grunnen til at gaten ikke bare kunne fjernes: en ren
+ * bøyeberegning skal fortsatt IKKE trykke to tomme diagrammer, og hvert av de
+ * tre enkeltsvarene beholder sin egen, presise kapitteltittel.
+ */
+test('én analyse gir nøyaktig ett plott — ingen tomme diagrammer, ingen flertallstittel', () => {
+  const cases = [
+    [BENDING, 'Plot — strain state at failure', 'data-role="na"'],
+    [MC, 'Plot — moment–curvature', 'data-role="curve"'],
+    [NMDOM, 'Plot — N–M diagram', 'data-role="envelope"'],
+  ];
+  for (const [res, title, marker] of cases) {
+    const html = buildReportHtml(BEAM_STATE, res);
+    const ch6 = chapterBody(html, 6);
+    assert.ok(ch6.includes(marker), `${res.analysis}: feil eller manglende plott`);
+    assert.equal((ch6.match(/<figure/g) || []).length, 1, `${res.analysis}: ett plott, ikke flere`);
+    assert.ok(html.includes(`<h3>6. ${title}</h3>`), `${res.analysis}: feil kapitteltittel`);
+    assert.ok(!ch6.includes('<h4>'), `${res.analysis}: ett plott trenger ingen underoverskrift`);
+  }
+  // Den rene bøyerapporten har INGEN av de to diagrammene, akkurat som i dag.
+  const bend6 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 6);
+  assert.ok(!bend6.includes('data-role="curve"'));
+  assert.ok(!bend6.includes('data-role="envelope"'));
+});
+
+/**
+ * En DELVIS «kjør alle» (én analyse falt ut, `run_all_partial`) skal trykke
+ * det som kom gjennom — verken en tom overskrift for den som mangler, eller
+ * en bøyefigur det ikke finnes en bøyeblokk til.
+ */
+test('delvis «kjør alle»: bare plottene for blokkene som faktisk kom gjennom', () => {
+  const ch6 = chapterBody(
+    buildReportHtml(BEAM_STATE, runAllResult('nm_domain', ['nm_domain', 'moment_curvature'])),
+    6
+  );
+  assert.ok(ch6.includes('data-role="envelope"'));
+  assert.ok(ch6.includes('data-role="curve"'));
+  assert.ok(!ch6.includes('data-role="na"'), 'ingen bøyefigur uten en bøyeblokk');
+  assert.equal((ch6.match(/<figure/g) || []).length, 2);
+  assert.ok(!ch6.includes('Strain state at failure'), 'ingen overskrift uten innhold');
+});
+
+/**
+ * Et `ok: true`-svar uten en eneste analyseblokk bryter kontrakten, men skal
+ * gi én ærlig setning — ikke inndatasnittet trykt under en overskrift som
+ * lover et resultat.
+ */
+test('et resultat uten analyseblokk gir en ærlig setning, ikke en villedende figur', () => {
+  const empty = runAllResult('bending', []);
+  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, empty), 6);
+  assert.ok(!ch6.includes('<figure'));
+  assert.ok(!ch6.includes('at failure'));
+  assert.match(ch6, /nothing to\s+plot/);
 });
 
 test('uten nøytralakse tegnes ingen linje, og rapporten sier hvorfor', () => {
@@ -459,48 +579,76 @@ test('uten skjærdata i det hele tatt: ingen skjærmerke, og kapittel 5 sier det
  */
 function withShear(base, governing = 'C1') {
   const r = clone(base);
-  const blk = r[r.analysis];
-  blk.shear_governing = governing;
-  const combo = blk.combinations.find((c) => c.id === governing) || blk.combinations[0];
-  combo.V_Ed = 120000.0;
-  combo.shear = {
-    evaluated: true, V_Ed: 120000.0,
-    V_Rd: 143453.3, V_Rd_c: 81615.2393, V_Rd_s: 143453.3, V_Rd_max: 779803.2,
-    governing_mode: 'stirrups', utilisation: 0.83651,
-    Asl: 942.4778, d: 547.0, bw: 300.0, z: 492.3,
-    asw_s: 0.670206, asw_s_min: 0.262907, asw_s_required: 0.560634,
-    sl_max: 410.25, st_max: 410.25,
-  };
+  // ENDRINGSRUNDE 5: skjæret legges i HVER analyseblokk resultatet bærer, ikke
+  // bare i `r[r.analysis]`. To grunner: motoren garanterer nå bit-identisk
+  // skjær i alle tre analysene (bølge 1), og et «kjør alle»-resultat har
+  // `analysis: 'all'` — det finnes ingen `r.all` å legge noe i.
+  for (const key of ['bending', 'nm_domain', 'moment_curvature']) {
+    const blk = r[key];
+    if (!blk || !Array.isArray(blk.combinations)) continue;
+    blk.shear_governing = governing;
+    const combo = blk.combinations.find((c) => c.id === governing) || blk.combinations[0];
+    combo.V_Ed = 120000.0;
+    combo.shear = {
+      evaluated: true, V_Ed: 120000.0,
+      V_Rd: 143453.3, V_Rd_c: 81615.2393, V_Rd_s: 143453.3, V_Rd_max: 779803.2,
+      governing_mode: 'stirrups', utilisation: 0.83651,
+      Asl: 942.4778, d: 547.0, bw: 300.0, z: 492.3,
+      asw_s: 0.670206, asw_s_min: 0.262907, asw_s_required: 0.560634,
+      sl_max: 410.25, st_max: 410.25,
+    };
+  }
   return r;
 }
 
+/**
+ * SKJÆRET ER ANALYSE-AGNOSTISK (§4.3, endringsrunde 5 §D punkt 4).
+ *
+ * Motoren garanterer fra bølge 1 at skjærblokka og de tre skjærkontrollene er
+ * BIT-IDENTISKE i alle analysene for samme payload. Testene under kjørte
+ * tidligere bare mot BENDING-fixturen, og hadde derfor ikke fanget at
+ * `analysisBlock()` ikke kjente 'all' — da forsvinner hele skjærkapitlet og
+ * skjærmerket fra en «kjør alle»-rapport, stille.
+ */
+const SHEAR_CASES = () => [
+  ['bending', withShear(BENDING)],
+  ['moment_curvature', withShear(MC)],
+  ['nm_domain', withShear(NMDOM)],
+  ['all', withShear(runAllResult('bending'))],
+];
+
 test('skjærmerket viser η_V ved siden av η_M, EGET tall, ikke slått sammen (§4.3)', () => {
-  const html = buildReportHtml(BEAM_STATE, withShear(BENDING));
-  const ch5 = chapterBody(html, 5);
-  assert.match(ch5, /class="result-main result-shear"/);
-  assert.match(ch5, /η_V = V_Ed \/ V_Rd/);
-  assert.match(ch5, /V 0\.84/, 'V_Ed\\/V_Rd = 0,83651, avrundet til 2 desimaler');
-  // η_M (hovedtallet) skal FORTSATT stå, uendret av at skjæret er lagt til.
-  assert.match(ch5, /η = M_Ed \/ M_Rd\(N_Ed\)/);
+  for (const [name, res] of SHEAR_CASES()) {
+    const ch5 = chapterBody(buildReportHtml(BEAM_STATE, res), 5);
+    assert.match(ch5, /class="result-main result-shear"/, name);
+    assert.match(ch5, /η_V = V_Ed \/ V_Rd/, name);
+    assert.match(ch5, /V 0\.84/, `${name}: V_Ed/V_Rd = 0,83651, avrundet til 2 desimaler`);
+    // η_M (hovedtallet) skal FORTSATT stå, uendret av at skjæret er lagt til.
+    assert.match(ch5, /η = M_Ed \/ M_Rd\(N_Ed\)/, name);
+  }
 });
 
 test('skjærdelen av kapittel 5 viser V_Rd,c/V_Rd,s/V_Rd,max og governing mode, aldri summert', () => {
-  const ch5 = chapterBody(buildReportHtml(BEAM_STATE, withShear(BENDING)), 5);
-  assert.match(ch5, /<h4>Shear<\/h4>/);
-  assert.ok(ch5.includes('143.5'), 'V_Rd i kN');
-  assert.ok(ch5.includes('81.6'), 'V_Rd,c i kN');
-  assert.match(ch5, /Stirrups govern/);
-  assert.ok(ch5.includes('942'), 'A_sl');
-  assert.match(ch5, /V_Rd,c is never added to V_Rd,s/);
+  for (const [name, res] of SHEAR_CASES()) {
+    const ch5 = chapterBody(buildReportHtml(BEAM_STATE, res), 5);
+    assert.match(ch5, /<h4>Shear<\/h4>/, name);
+    assert.ok(ch5.includes('143.5'), `${name}: V_Rd i kN`);
+    assert.ok(ch5.includes('81.6'), `${name}: V_Rd,c i kN`);
+    assert.match(ch5, /Stirrups govern/, name);
+    assert.ok(ch5.includes('942'), `${name}: A_sl`);
+    assert.match(ch5, /V_Rd,c is never added to V_Rd,s/, name);
+  }
 });
 
 test('lastkombinasjonstabellen (kapittel 4) får V_Ed- og η_V-kolonner, og markerer skjær-governing', () => {
-  const ch4 = chapterBody(buildReportHtml(BEAM_STATE, withShear(BENDING)), 4);
-  assert.match(ch4, /V_Ed \[kN\]/);
-  assert.match(ch4, /η_V \[–\]/);
-  assert.match(ch4, /data-shear-governing="true"/);
-  assert.ok(ch4.includes('120.0'), 'V_Ed i kN');
-  assert.ok(ch4.includes('0.837'), 'η_V med tre desimaler, som η_M');
+  for (const [name, res] of SHEAR_CASES()) {
+    const ch4 = chapterBody(buildReportHtml(BEAM_STATE, res), 4);
+    assert.match(ch4, /V_Ed \[kN\]/, name);
+    assert.match(ch4, /η_V \[–\]/, name);
+    assert.match(ch4, /data-shear-governing="true"/, name);
+    assert.ok(ch4.includes('120.0'), `${name}: V_Ed i kN`);
+    assert.ok(ch4.includes('0.837'), `${name}: η_V med tre desimaler, som η_M`);
+  }
 });
 
 test('den radielle λ er merket som sekundær lastvei, ikke som η', () => {
@@ -804,6 +952,8 @@ test('ingen rapportvariant lekker NaN, undefined eller [object Object]', () => {
     [BEAM_STATE, NMDOM],
     [SLAB_STATE, SLAB_BENDING],
     [BEAM_STATE, threeCombos(BENDING)],
+    [BEAM_STATE, runAllResult('bending')],
+    [BEAM_STATE, runAllResult('nm_domain', ['nm_domain', 'moment_curvature'])],
     [BEAM_STATE, null],
     [{}, null],
   ]) {
@@ -882,6 +1032,7 @@ test('§1.5: buildReportHtml() inneholder ingen norsk tekst, for alle tre analys
     [BEAM_STATE, MC],
     [BEAM_STATE, NMDOM],
     [SLAB_STATE, SLAB_BENDING],
+    [BEAM_STATE, runAllResult('bending')],
   ]) {
     const html = buildReportHtml(state, result);
     // Fjern SVG-en: `section-draw.js`/`charts.js` er B5 sitt ansvar og har sin

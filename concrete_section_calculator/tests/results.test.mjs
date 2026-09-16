@@ -67,6 +67,8 @@ import {
   compressionEdgeLabel,
   tensionEdgeLabel,
   analysisBlock,
+  RUN_ALL_ANALYSIS,
+  RUN_ALL_BLOCK_ORDER,
   failureState,
   failureStateIsAtNEd,
   headlineUtilisation,
@@ -81,6 +83,10 @@ import {
   SHEAR_GOVERNING_MODE_LABELS,
   shearGoverningModeLabel,
 } from '../js/results.js';
+// `RUN_ALL` hentes fra kilden sin: testen «samme streng som store.js» er
+// hele grunnen til at `results.js` kan skrive av strengen 'all' i stedet for
+// å importere hele tilstandslaget.
+import { RUN_ALL } from '../js/store.js';
 
 const fixture = (name) =>
   JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}.json`, import.meta.url)), 'utf8'));
@@ -148,6 +154,22 @@ test('de nye kodene fra endringsrunde 2 er med (§1.3, §2.4, §5)', () => {
  * engelsk melding») dekker dem allerede — denne testen låser i tillegg at de
  * faktisk STÅR i riktig kodeliste, som er nøyaktig det plan §10 punkt 3 ber om.
  */
+/**
+ * `run_all_partial` beskriver en KJØRING som falt ut, ikke noe galt med
+ * tverrsnittet — derfor `RUNTIME_CODES` og ikke `VALIDATION_CODES`. Uten
+ * teksten ville en delvis «kjør alle» vist plassholderen «Unspecified
+ * message from the calculation engine», som leses som en motorfeil.
+ */
+test('run_all_partial er med, i RUNTIME_CODES, og sier hva som mangler', () => {
+  assert.ok(RUNTIME_CODES.includes('run_all_partial'));
+  assert.ok(!VALIDATION_CODES.includes('run_all_partial'), 'den beskriver ikke tverrsnittet');
+  const msg = messageForCode('run_all_partial');
+  assert.ok(!msg.includes('Unspecified message'));
+  assert.match(msg, /Run all/);
+  assert.match(msg, /did not complete/i);
+  assert.match(msg, /detail/i, 'leseren må få vite HVOR den ser hvilken analyse som falt ut');
+});
+
 test('de nye kodene fra endringsrunde 4 er med, i riktig liste (§4.4, §4.5, §2)', () => {
   assert.ok(ENGINE_CODES.includes('shear_asl_ambiguous'));
   assert.ok(ENGINE_CODES.includes('shear_not_evaluated'));
@@ -503,6 +525,17 @@ test('§1.4 sine ordrette ANALYSIS_LABELS og SECTION_TYPE_LABELS', () => {
   assert.equal(SECTION_TYPE_LABELS.slab, 'Slab (per metre width)');
 });
 
+/**
+ * «Kjør alle» er en analyse brukeren VELGER, og står i rapportens kapittel 1
+ * («Analysis»). Uten en oppføring her ga `analysisLabel('all')` tankestrek — en
+ * rapport med tall fra tre analyser og et tomt felt for hvilken som ble kjørt.
+ */
+test('«kjør alle» har sin egen merkelapp, ikke tankestrek', () => {
+  assert.equal(ANALYSIS_LABELS[RUN_ALL_ANALYSIS], 'Run all');
+  assert.equal(analysisLabel(RUN_ALL_ANALYSIS), 'Run all');
+  assert.equal(analysisLabel('finnes_ikke'), DASH, 'en ukjent analyse er fortsatt tankestrek');
+});
+
 test('lovnavnene kommer fra materials.js, ikke fra en avskrift', () => {
   assert.ok(lawLabel('parabolarectangle').length > 0);
   assert.ok(lawLabel('elasticplastic').length > 0);
@@ -591,6 +624,128 @@ test('analysisBlock tåler et resultat uten analyse', () => {
   assert.equal(analysisBlock(null), null);
   assert.equal(analysisBlock({}), null);
   assert.equal(analysisBlock({ analysis: 'bending' }), null);
+});
+
+/* ================================================================== *
+ * «Kjør alle» — én analyse som ikke har sin egen blokk (endringsrunde 5 §D)
+ * ================================================================== */
+
+/**
+ * Et sammenflettet «kjør alle»-svar, bygget som `solver-client.js` sin
+ * `runAll()` bygger det: MOTORENS egne blokker, uendret, under sine egne navn,
+ * og `primary` som peker på kapasitetsanalysen. Det finnes ingen `result.all`
+ * — det er nettopp derfor `analysisBlock()` trenger en egen gren.
+ */
+function runAllResult(primary = 'bending', blocks = ['bending', 'nm_domain', 'moment_curvature']) {
+  const src = { bending: BENDING, nm_domain: NMDOM, moment_curvature: MC };
+  const r = {
+    ok: true,
+    schema: 1,
+    analysis: RUN_ALL_ANALYSIS,
+    primary,
+    meta: BENDING.meta,
+    materials: BENDING.materials,
+    section_props: BENDING.section_props,
+    checks: BENDING.checks,
+    warnings: [],
+  };
+  for (const b of blocks) r[b] = src[b][b];
+  return r;
+}
+
+test('«samme streng som store.js»: RUN_ALL_ANALYSIS kan ikke drive fra RUN_ALL', async () => {
+  // Duplikatet er tillatt fordi DENNE testen finnes. Endres den ene, faller den.
+  assert.equal(RUN_ALL_ANALYSIS, RUN_ALL);
+  assert.equal(RUN_ALL_ANALYSIS, 'all');
+  // Og den TREDJE kopien: `solver-client.js` skriver strengen inn i resultatet.
+  // Driver den, blir `merged.analysis` ulik `RUN_ALL_ANALYSIS`, `analysisBlock()`
+  // returnerer null, og hele panelet og rapporten går til bindestrek.
+  const client = await import('../js/solver-client.js');
+  assert.equal(client.RUN_ALL_ANALYSIS, RUN_ALL_ANALYSIS);
+  assert.ok(client.CANCELLABLE_ANALYSES.includes(RUN_ALL_ANALYSIS),
+    '«Run all» er den lengste kjøringen i modulen og MÅ kunne avbrytes');
+});
+
+test('analysisBlock peker på primary når analysis === «all», og på analysen ellers', () => {
+  const bendingFirst = runAllResult('bending');
+  assert.equal(analysisBlock(bendingFirst), bendingFirst.bending, 'primary bending');
+  assert.equal(headlineUtilisation(bendingFirst), BENDING.bending.utilisation);
+  assert.equal(momentCapacity(bendingFirst), BENDING.bending.M_Rd);
+
+  const domainFirst = runAllResult('nm_domain');
+  assert.equal(analysisBlock(domainFirst), domainFirst.nm_domain, 'primary nm_domain');
+  assert.equal(headlineUtilisation(domainFirst), NMDOM.nm_domain.utilisation);
+  assert.equal(momentCapacity(domainFirst), NMDOM.nm_domain.M_Rd_at_N);
+
+  // Øvrige analyser er urørt: regelen gjelder BARE 'all'.
+  assert.equal(analysisBlock(BENDING), BENDING.bending);
+  assert.equal(analysisBlock(MC), MC.moment_curvature);
+  assert.equal(analysisBlock(NMDOM), NMDOM.nm_domain);
+});
+
+test('en blokk som mangler i «kjør alle» gir en DEFINERT reserve, ikke et kast', () => {
+  assert.deepEqual([...RUN_ALL_BLOCK_ORDER], ['bending', 'nm_domain', 'moment_curvature']);
+  assert.ok(Object.isFrozen(RUN_ALL_BLOCK_ORDER));
+
+  // `primary` mangler helt (eldre klient, eller et håndskrevet resultat).
+  const noPrimary = runAllResult('bending');
+  delete noPrimary.primary;
+  assert.equal(analysisBlock(noPrimary), noPrimary.bending);
+
+  // `primary` peker på analysen som FALT UT — den vanligste varianten, og
+  // grunnen til at `run_all_partial` finnes i det hele tatt.
+  const lostPrimary = runAllResult('nm_domain', ['bending', 'moment_curvature']);
+  assert.equal(analysisBlock(lostPrimary), lostPrimary.bending);
+
+  // Bare kurven kom gjennom: da er den svaret, ikke `null`.
+  const onlyCurve = runAllResult('bending', ['moment_curvature']);
+  assert.equal(analysisBlock(onlyCurve), onlyCurve.moment_curvature);
+
+  // Ingen blokker i det hele tatt: `null`, og ingen unntak.
+  const empty = runAllResult('bending', []);
+  assert.equal(analysisBlock(empty), null);
+  assert.equal(headlineUtilisation(empty), null);
+  assert.deepEqual(allCombinations(empty), []);
+});
+
+test('oppslagene arver «kjør alle» fra analysisBlock — regelen står ETT sted', () => {
+  const r = runAllResult('bending');
+  assert.equal(allCombinations(r).length, BENDING.bending.combinations.length);
+  assert.equal(governingCombo(r)?.id, BENDING.bending.governing);
+  assert.equal(failureState(r), r.bending);
+
+  // Skjær leses gjennom samme blokk. Fixturen har ingen `section.shear`, så
+  // skjæret settes inn her — samme mønster som `report.test.mjs` bruker.
+  const withShear = runAllResult('nm_domain');
+  withShear.nm_domain = {
+    ...withShear.nm_domain,
+    shear_governing: 'C2',
+    combinations: [
+      { id: 'C1', name: 'ULS 1', shear: { evaluated: true, utilisation: 0.11 } },
+      { id: 'C2', name: 'ULS 2', shear: { evaluated: true, utilisation: 0.84 } },
+    ],
+  };
+  assert.equal(shearGoverningCombo(withShear)?.id, 'C2');
+  assert.equal(shearHeadlineUtilisation(withShear), 0.84);
+});
+
+/**
+ * «Ved N_Ed»-merkingen følger BLOKKA, ikke analysenavnet. Med
+ * `analysis: 'all'` heter analysen 'all' selv når tallene kommer fra
+ * omhyllingen — en test mot navnet ville sluppet tøyningsplanet ut i rapporten
+ * UTEN forbeholdet om at det gjelder ett eneste punkt.
+ */
+test('failureStateIsAtNEd følger blokka også i «kjør alle»', () => {
+  const domainFirst = runAllResult('nm_domain');
+  assert.equal(failureState(domainFirst), domainFirst.nm_domain);
+  assert.equal(failureStateIsAtNEd(domainFirst), true);
+
+  const bendingFirst = runAllResult('bending');
+  assert.equal(failureStateIsAtNEd(bendingFirst), false, 'bøyekapasitet trenger ingen påminnelse');
+
+  // Enkeltanalysene oppfører seg nøyaktig som før.
+  assert.equal(failureStateIsAtNEd(NMDOM), true);
+  assert.equal(failureStateIsAtNEd(BENDING), false);
 });
 
 test('{ok:false} er et gyldig svar, men ikke et brukbart resultat', () => {

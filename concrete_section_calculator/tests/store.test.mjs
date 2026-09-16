@@ -12,7 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createStore } from '../js/store.js';
+import { createStore, RUN_ALL } from '../js/store.js';
 
 /**
  * START fra §3.3-tabellen: L1 og L2, begge Ø20 i bunn, begge `dc_auto`,
@@ -229,4 +229,146 @@ test('createStore: en plate gitt som initial-stat får riktig bredde', () => {
   const store = createStore({ sectionType: 'slab', geometry: { b: 250, h: 180 } });
   assert.equal(store.getState().geometry.b, 1000);
   assert.equal(store.getState().geometry.h, 180, 'høyden skal ikke røres');
+});
+
+/* ---------------- endringsrunde 5 §B — ÉN fysisk bøyle, ETT tall ---------------- */
+// `state.stirrup_dia` (feltet «Stirrup Ø») og `shear.stirrups[0].dia` var TO
+// uavhengige tall: det første styrte jernenes plassering og `dc`
+// (`rebar.js:suggestedDc`), det andre skjærkapasiteten og bøyletegningen.
+// Ingen validering bandt dem, så Ø10 i skjærraden ga jern som fortsatt ble
+// regnet med Ø8. Testene under er skrevet mot bindingen, ikke mot koden:
+// hver av dem feiler på den gamle `store.js`.
+
+/** dc for standardlaget (Ø20 i bunn) = cover + bøyle + Ø/2. */
+const dcOfL1 = (store) => store.getState().layers.find((l) => l.id === 'L1').dc;
+
+test('addStirrup arver dia fra stirrup_dia — å legge inn bøyler flytter ALDRI jernene av seg selv', () => {
+  const store = createStore();
+  assert.equal(dcOfL1(store), 53); // 35 + 8 + 10
+  const row = store.addStirrup();
+  assert.equal(row.dia, 8, 'den nye raden skal være den bøyla det alt er regnet plass til');
+  assert.equal(row.alpha, 90, 'section.js avviser alt annet enn α = 90° i v1');
+  assert.equal(row.id, 'S1');
+  assert.equal(dcOfL1(store), 53, 'dc skal stå stille når diameteren er den samme');
+});
+
+test('updateStirrup({dia}) flytter dc_auto-lagene — bøylediameteren er ETT tall (§B)', () => {
+  const store = createStore();
+  store.addStirrup();
+  store.updateStirrup('S1', { dia: 12 });
+  assert.equal(store.getState().stirrup_dia, 12, 'geometrifeltet skal følge bøyleraden');
+  assert.equal(dcOfL1(store), 57, 'dc = 35 + 12 + 10 — jernene flytter seg med bøyla');
+});
+
+test('setState({stirrup_dia}) skriver GJENNOM til bøyleraden — ikke to tall som spriker', () => {
+  const store = createStore();
+  store.addStirrup();
+  store.setState({ stirrup_dia: 10 });
+  const s = store.getState();
+  assert.equal(s.shear.stirrups[0].dia, 10);
+  assert.equal(s.stirrup_dia, 10);
+  assert.equal(dcOfL1(store), 55, 'dc = 35 + 10 + 10');
+});
+
+test('et LÅST lag (dc_auto: false) står stille når bøylediameteren endres', () => {
+  const store = createStore();
+  store.addStirrup();
+  store.updateLayer('L1', { dc: 60 }); // brukerens egen verdi låser laget
+  store.updateStirrup('S1', { dia: 16 });
+  assert.equal(store.getState().stirrup_dia, 16);
+  assert.equal(dcOfL1(store), 60, 'en overstyrt dc eies av brukeren, ikke av bøyla');
+});
+
+test('removeStirrup: uten bøyler oppfører stirrup_dia seg som før — verdien blir stående', () => {
+  const store = createStore();
+  store.addStirrup();
+  store.updateStirrup('S1', { dia: 12 });
+  store.removeStirrup('S1');
+  const s = store.getState();
+  assert.equal(s.shear.stirrups.length, 0);
+  assert.equal(s.stirrup_dia, 12, 'bøyla er borte, men overdekningen jernene ligger etter er ikke det');
+  assert.equal(dcOfL1(store), 57);
+});
+
+test('bøylerad-id-er teller aldri ned — S1 skal ikke kunne bety to ulike rader i samme økt', () => {
+  const store = createStore();
+  store.addStirrup();
+  store.removeStirrup('S1');
+  assert.equal(store.addStirrup().id, 'S2');
+});
+
+test('replaceState: en fil der de to tallene spriker løses i BØYLERADENS favør, og lagene flytter seg', () => {
+  const store = createStore();
+  // Håndredigert/eldre fil: Ø10-bøyler, men geometrifeltet ligger igjen på 8.
+  const next = store.replaceState({
+    stirrup_dia: 8,
+    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S1', dia: 10, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] },
+  });
+  assert.equal(next.stirrup_dia, 10, 'bøyla brukeren faktisk har lagt inn er fasit');
+  assert.equal(next.layers.find((l) => l.id === 'L1').dc, 55, 'dc = 35 + 10 + 10');
+});
+
+test('replaceState normaliserer bøylerader gjennom createStirrup — en fil uten alpha får α = 90', () => {
+  const store = createStore();
+  const next = store.replaceState({
+    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S1', dia: 8, spacing: 200, legs: 4, fywk: 500 }] },
+  });
+  assert.equal(next.shear.stirrups[0].alpha, 90);
+  assert.equal(next.shear.stirrups[0].legs, 4, 'radens egne verdier skal overleve normaliseringen');
+  assert.equal(next.shear.stirrups[0].spacing, 200);
+});
+
+test('createStore: initialtilstand med en bøylerad binder stirrup_dia med det samme', () => {
+  const store = createStore({
+    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S1', dia: 12, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] },
+  });
+  assert.equal(store.getState().stirrup_dia, 12);
+});
+
+/* ---------------- endringsrunde 5 §D — «Kjør alle» ---------------- */
+
+test('enforceAnalysis slipper RUN_ALL gjennom — den kjører nettopp de lovlige analysene', () => {
+  const store = createStore();
+  store.setState({ analysis: RUN_ALL });
+  // En aksialkraft stenger `bending`, men ikke «kjør alle»: den hopper bare
+  // over den analysen. Uten unntaket ville ethvert tastetrykk i
+  // kombinasjonstabellen kastet brukeren tilbake til nm_domain.
+  store.updateCombo('C1', { N_Ed: -500 });
+  assert.equal(store.getState().analysis, RUN_ALL);
+});
+
+test('RUN_ALL overlever replaceState (setInputs og en lastet fil)', () => {
+  const store = createStore();
+  assert.equal(store.replaceState({ analysis: RUN_ALL }).analysis, RUN_ALL);
+});
+
+/**
+ * REGRESJON: et lag med `dc_auto: true` men UTEN `dc` hadde ingen plassering.
+ * `layerCentroidZ` ga `null`, tegningen forkastet jernet fra bøylesnappingen og
+ * plasserte det i `py(z || 0)` — midt i tverrsnittet, uten en eneste advarsel.
+ * En lagret fil har alltid `dc`, så dette gjelder `setInputs()` fra et
+ * arbeidsflyt-kall. Fella i vakten: `Number(null)` er 0, og 0 er endelig.
+ */
+test('replaceState: et dc_auto-lag uten dc får plasseringen sin regnet ut', () => {
+  const store = createStore();
+  const s = store.replaceState({
+    sectionType: 'beam',
+    geometry: { b: 300, h: 600 },
+    cover: 35, cover_side: 35, stirrup_dia: 8,
+    layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 4, edge: 'bottom', dc: null, dc_auto: true }],
+  });
+  // suggestedDc = cover + stirrup_dia + dia/2 = 35 + 8 + 10
+  assert.equal(s.layers[0].dc, 53);
+  assert.ok(Number.isFinite(s.layers[0].dc), 'dc skal være et tall, ikke null');
+});
+
+test('replaceState: en lagret fil med dc runder tilbake UENDRET', () => {
+  const store = createStore();
+  const s = store.replaceState({
+    sectionType: 'beam',
+    geometry: { b: 300, h: 600 },
+    cover: 35, cover_side: 35, stirrup_dia: 8,
+    layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 120, dc_auto: true }],
+  });
+  assert.equal(s.layers[0].dc, 120, 'utfyllingen skal BARE gjelde lag som mangler dc');
 });

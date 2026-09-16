@@ -20,6 +20,14 @@
  * Se `runMomentCurvature()`. Det er den eneste analysen som tar mer enn et
  * blunk, og den eneste som derfor får ekte framdrift og ekte avbrudd.
  *
+ * «RUN ALL» DRIVES OGSÅ HERFRA, UTEN EN ENESTE MOTORENDRING
+ * Se `runAll()`. Motoren kjenner bare sine tre analysenavn; `analysis: 'all'`
+ * ville gitt `unknown_analysis` fra `engine.py` sin egen sjekk. Klienten kjører
+ * derfor de LOVLIGE analysene etter hverandre og fletter blokkene til ett
+ * §5.2-formet resultat med `analysis: 'all'` og en `primary`-peker. At
+ * flettingen bor her og ikke i `main.js`, er samme begrunnelse som for resten
+ * av fila: det er protokollarbeid, og protokollarbeid skal ha ett sted.
+ *
  * DOM-fri: fila rører verken `document` eller `localStorage`. Den bruker
  * `Worker`, `URL` og (for oppvarmingsvalget) `navigator` — alt sammen
  * kjøretidsting, ikke DOM.
@@ -95,11 +103,69 @@ const PROBE_CHI = 1e-8;
  * der koster i praksis `worker.terminate()` og en ny 10 MB oppstart for å angre
  * en 50 ms jobb — et elendig bytte, og en knapp som lover noe den ikke kan
  * levere billig.
+ *
+ * `'all'` ER avbrytbar: den inneholder moment–krumning, og er derfor den
+ * LENGSTE kjøringen i modulen. Uten denne oppføringen ville «Avbryt» stått grå
+ * gjennom hele den kjøringen brukeren mest sannsynlig vil stoppe.
  */
-export const CANCELLABLE_ANALYSES = Object.freeze(['moment_curvature']);
+/**
+ * Samme streng som `store.js` sin `RUN_ALL` og `results.js` sin
+ * `RUN_ALL_ANALYSIS`. Denne fila importerer med vilje ingenting — den skal
+ * kunne kjøres uten resten av modulen — så duplikatet er tillatt NETTOPP fordi
+ * testen i `tests/results.test.mjs` låser alle tre mot hverandre. Uten den
+ * kunne `merged.analysis` blitt ulik `RUN_ALL_ANALYSIS`, og da ville
+ * `analysisBlock()` returnert `null`: hele resultatpanelet og hele rapporten
+ * til bindestrek, uten at en eneste test falt.
+ */
+export const RUN_ALL_ANALYSIS = 'all';
+
+export const CANCELLABLE_ANALYSES = Object.freeze(['moment_curvature', RUN_ALL_ANALYSIS]);
 
 export function isCancellable(analysis) {
   return CANCELLABLE_ANALYSES.includes(analysis);
+}
+
+/**
+ * Advarselskoden «Run all» bruker når én av analysene falt ut.
+ *
+ * En delvis «Run all» er mye bedre enn ingen, men den skal ALDRI se komplett
+ * ut: koden ligger i `result.warnings`, og `detail` navngir hvilken analyse som
+ * mangler og hvorfor. `results.js` har kodetabellen og må ha en tekst for
+ * denne koden — uten den faller `messageForCode` tilbake på plassholderen
+ * «Unspecified message …», som er synlig, men stygg.
+ */
+export const RUN_ALL_PARTIAL_CODE = 'run_all_partial';
+
+/**
+ * Hvilke analyser «Run all» kjører, og hvilken av dem som er KAPASITETS-
+ * analysen (`primary`).
+ *
+ * REGELEN FRA RUNDE 4 GJELDER UENDRET og leses her ut av payloaden, ikke ut av
+ * tilstanden: har en kombinasjon aksialkraft, er `bending` ett punkt plukket
+ * fra en flate og skal ikke kjøres i det hele tatt. Å la «Run all» være
+ * bakdøra inn til nettopp den analysen regelen stenger, ville vært å omgå
+ * regelen — derfor er `'bending'` da ikke med i lista, ikke bare skjult.
+ * Testen `axialForcesPresent` i `section.js` bruker samme kriterium
+ * (`Number.isFinite(n) && n !== 0`); et tomt felt er ikke aksialkraft.
+ *
+ * REKKEFØLGEN ER VALGT, IKKE TILFELDIG: kapasitetsanalysen først, fordi det er
+ * den `checks`, `warnings`, `meta`, `materials` og `section_props` hentes fra.
+ * Moment–krumning SIST, fordi den er den eneste som tar sekunder og den eneste
+ * «Avbryt» virker på — kjørt sist koster et avbrudd bare kurven, mens
+ * kapasiteten og kontrollene allerede er levert.
+ *
+ * @param {object} payload §5.1-payload
+ * @returns {{primary: 'bending'|'nm_domain', analyses: string[]}}
+ */
+export function runAllPlan(payload) {
+  const combos = payload?.loads?.combinations || [];
+  const axial = combos.some((c) => {
+    const n = Number(c?.N_Ed);
+    return Number.isFinite(n) && n !== 0;
+  });
+  return axial
+    ? { primary: 'nm_domain', analyses: ['nm_domain', 'moment_curvature'] }
+    : { primary: 'bending', analyses: ['bending', 'nm_domain', 'moment_curvature'] };
 }
 
 /**
@@ -116,6 +182,19 @@ export function shouldDeferWarmup(nav) {
 /* ================================================================== *
  * Feil
  * ================================================================== */
+
+/**
+ * Nøkkelen to advarsler må dele for å regnes som DEN SAMME advarselen.
+ *
+ * HVORFOR IKKE BARE `code`: etter endringsrunde 4 regner alle tre analysene
+ * skjær for ALLE kombinasjoner, og da er `stirrup_spacing_exceeds_max` for
+ * rad K1 og for rad K2 to forskjellige beskjeder med samme kode. En dedupe på
+ * kode alene ville stilnet den andre — i et verktøy som dimensjonerer betong
+ * er en tapt advarsel verre enn en gjentatt.
+ */
+function warningKey(w) {
+  return `${w?.code ?? ''}|${w?.combo ?? ''}`;
+}
 
 /**
  * En feil fra worker/kjøretid. Bærer `code` slik at `results.js` kan slå opp
@@ -159,11 +238,25 @@ export function createSolverClient(options = {}) {
   /** Memoisert init. Nullstilles ved feil, slik at «Prøv igjen» virker (§3.9 krav 3). */
   let initPromise = null;
   /**
-   * Sant mens `runMomentCurvature` driver løkka. Da er HVERT punkt et eget
-   * `result`, og uten dette flagget ville statusen blinket «klar» 20 ganger
-   * midt i en beregning som pågår.
+   * Antall drivere som står over oss i stakken. `runMomentCurvature` sender
+   * HVERT punkt som et eget `run`, og uten denne telleren ville statusen
+   * blinket «klar» 20 ganger midt i en beregning som pågår.
+   *
+   * HVORFOR EN TELLER OG IKKE ET FLAGG: «Run all» driver `runMomentCurvature`
+   * inne i sin egen løkke. Med et flagg ville M–κ sin `finally` skrudd det av
+   * — og meldt «klar» — mens «Run all» fortsatt hadde analyser igjen.
    */
-  let driving = false;
+  let driving = 0;
+
+  function beginDrive() {
+    driving += 1;
+  }
+
+  /** Melder «klar» bare når den YTTERSTE driveren er ferdig. */
+  function endDrive() {
+    driving = Math.max(0, driving - 1);
+    if (driving === 0) emit({ state: 'ready', phase: null, pct: 100, message: '' });
+  }
 
   const status = {
     /** 'idle' | 'loading' | 'ready' | 'solving' | 'failed' */
@@ -179,6 +272,15 @@ export function createSolverClient(options = {}) {
     error: null,
     /** `{runtime, structuralcodes_version}` når motoren er klar */
     ready: null,
+    /**
+     * Hvilken analyse som kjører NÅ under «Run all» — `null` ellers.
+     *
+     * `message` kunne ikke brukes: `start()` nullstiller den ved hvert eneste
+     * `run`, og «Run all» sender ett `run` per κ-punkt gjennom
+     * `runMomentCurvature`. Feltet her røres bare av `runAll` og overlever
+     * derfor hele fasen.
+     */
+    analysis: null,
   };
 
   function emit(patch) {
@@ -252,7 +354,7 @@ export function createSolverClient(options = {}) {
 
     if (type === 'result') {
       // §3.3: `ok: false` er et GYLDIG svar og løses opp, ikke avvises.
-      if (!driving) emit({ state: 'ready', phase: null, pct: 100, message: '' });
+      if (driving === 0) emit({ state: 'ready', phase: null, pct: 100, message: '' });
       job.resolve(payload);
       return;
     }
@@ -407,12 +509,11 @@ export function createSolverClient(options = {}) {
       const onStart = typeof opts.onStart === 'function' ? opts.onStart : () => {};
       const step = (p) => client.run(p, { onStart });
 
-      driving = true;
+      beginDrive();
       try {
         return await drive();
       } finally {
-        driving = false;
-        emit({ state: 'ready', phase: null, pct: 100, message: '' });
+        endDrive();
       }
 
       async function drive() {
@@ -443,7 +544,7 @@ export function createSolverClient(options = {}) {
         const kappa = [];
         const moment = [];
         const warnings = probe.warnings ? [...probe.warnings] : [];
-        const seen = new Set(warnings.map((w) => w?.code));
+        const seen = new Set(warnings.map(warningKey));
         let wallTime = Number(probe.meta?.wall_time_ms) || 0;
         let cancelled = false;
 
@@ -467,7 +568,7 @@ export function createSolverClient(options = {}) {
           moment.push(m[0]);
           wallTime += Number(point.meta?.wall_time_ms) || 0;
           for (const w of point.warnings || []) {
-            if (w && !seen.has(w.code)) { seen.add(w.code); warnings.push(w); }
+            if (w && !seen.has(warningKey(w))) { seen.add(warningKey(w)); warnings.push(w); }
           }
           const pct = Math.round((kappa.length / total) * 100);
           report({ done: kappa.length, total, pct });
@@ -476,7 +577,7 @@ export function createSolverClient(options = {}) {
 
         const got = kappa.length;
         const truncated = got < total;
-        if (truncated && !seen.has('mc_truncated')) {
+        if (truncated && !seen.has(warningKey({ code: 'mc_truncated' }))) {
           warnings.push({
             code: 'mc_truncated',
             severity: 'warning',
@@ -502,6 +603,159 @@ export function createSolverClient(options = {}) {
           warnings,
         };
       }
+    },
+
+    /**
+     * «Run all» (plan §D): kjører hver LOVLIG analyse etter hverandre og
+     * fletter blokkene til ett resultat.
+     *
+     * FORMEN, som `results.js` og `report.js` leser:
+     *
+     *   { ok: true, schema, analysis: 'all', primary: 'nm_domain'|'bending',
+     *     bending?: {...}, moment_curvature?: {...}, nm_domain?: {...},
+     *     meta, materials, section_props, checks, warnings }
+     *
+     * Analyseblokkene beholder NØYAKTIG navnet og innholdet motoren ga dem, og
+     * `result[result.primary]` er derfor den blokka `analysisBlock()` skal
+     * peke på. Ingenting er regnet om her; fletting er alt denne funksjonen
+     * gjør. Regner den, finnes tallet to steder — og det ene sakker etter.
+     *
+     * EN DELVIS «RUN ALL» ER ET GYLDIG SVAR. Feiler én analyse, leveres de
+     * andre, og `warnings` får en `run_all_partial` som navngir den som falt
+     * ut. Faller ALLE ut, returneres motorens eget svar på kapasitetskjøringen
+     * uendret — med sin egen `analysis` — slik at feilvisningen i `ui.js` og
+     * `results.js` virker som før uten å kjenne til «Run all».
+     *
+     * FRAMDRIFTEN ER TRE FASER ETTER HVERANDRE, ikke én sammenslått prosent:
+     * `pct` nullstilles ved hver analyse, og `onProgress` bærer `analysis`,
+     * `step` og `steps` slik at kalleren kan si HVILKEN fase som går.
+     *
+     * @param {object} payload §5.1-payload; `analysis` overstyres per delkall
+     * @param {object} [opts]
+     * @param {(p: object) => void} [opts.onProgress]
+     * @param {() => boolean} [opts.isCancelled] spørres FØR hver analyse
+     * @param {(msgId: string) => void} [opts.onStart]
+     * @returns {Promise<object>} §5.2-formet resultat
+     */
+    async runAll(payload, opts = {}) {
+      const isCancelled = typeof opts.isCancelled === 'function' ? opts.isCancelled : () => false;
+      const report = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
+      const onStart = typeof opts.onStart === 'function' ? opts.onStart : () => {};
+      const { primary, analyses } = runAllPlan(payload);
+
+      /** analysenavn -> svaret fra den kjøringen, `ok` eller ikke. */
+      const answers = new Map();
+      /** `{analysis, code}` for hver analyse som ikke ga et brukbart svar. */
+      const lost = [];
+
+      beginDrive();
+      try {
+        for (let i = 0; i < analyses.length; i++) {
+          const analysis = analyses[i];
+          // Avbrudd er å LA VÆRE Å SENDE neste analyse — samme prinsipp som
+          // mellom to κ-punkter, og derfor like billig.
+          if (isCancelled()) { lost.push({ analysis, code: 'cancelled' }); continue; }
+
+          const step = { analysis, step: i + 1, steps: analyses.length };
+          const sub = { ...payload, analysis };
+          // Ny fase: `pct` tilbake til 0, ellers ville linja hoppet bakover
+          // uten forklaring når analyse nummer to begynte.
+          emit({ state: 'solving', phase: 'section', pct: 0, done: null, total: null,
+                 error: null, analysis });
+          report({ ...step, done: null, total: null, pct: 0 });
+
+          let answer = null;
+          try {
+            answer = analysis === 'moment_curvature'
+              ? await client.runMomentCurvature(sub, {
+                  onStart,
+                  isCancelled,
+                  onProgress: (p) => report({ ...step, ...p }),
+                })
+              : await client.run(sub, { onStart, onProgress: (p) => report({ ...step, ...p }) });
+          } catch (err) {
+            // En worker-/kjøretidsfeil i ÉN analyse skal ikke kaste de to
+            // andre: `run` avviser bare ved SVIKT, ikke ved motorens egne
+            // «nei» (de kommer som `ok: false`).
+            lost.push({ analysis, code: err?.code || 'worker_error' });
+            continue;
+          }
+          if (!answer || answer.ok !== true) {
+            lost.push({ analysis, code: answer?.error?.code || 'engine_error' });
+            // Motorens eget `{ok:false}` beholdes: er det det ENESTE vi har,
+            // er det svaret brukeren skal se.
+            if (answer) answers.set(analysis, answer);
+            continue;
+          }
+          answers.set(analysis, answer);
+        }
+      } finally {
+        emit({ analysis: null });
+        endDrive();
+      }
+
+      const done = analyses.filter((a) => answers.get(a)?.ok === true);
+      if (done.length === 0) {
+        const fallback = answers.get(primary) || answers.get(analyses.find((a) => answers.has(a)));
+        // Ingen analyse kom gjennom OG ingen av dem rakk å svare: da er
+        // avbrudd/svikt det eneste vi vet, og det skal bli en feil hos
+        // kalleren, ikke et tomt «resultat».
+        if (!fallback) {
+          throw new SolverError({
+            code: lost.every((l) => l.code === 'cancelled') ? 'cancelled' : lost[0]?.code || 'worker_error',
+            detail: lost.map((l) => `${l.analysis}: ${l.code}`).join(', '),
+          });
+        }
+        return fallback;
+      }
+
+      // Kapasitetskjøringen er kilden til `checks`, `warnings`, `meta`,
+      // `materials` og `section_props` (plan §D). Falt DEN ut, tar vi den
+      // første som kom gjennom — kontrollene er uansett like i alle tre
+      // grenene (`engine.py:1119-1157`), så tallene er de samme.
+      const base = answers.get(primary)?.ok === true ? answers.get(primary) : answers.get(done[0]);
+
+      const warnings = base.warnings ? [...base.warnings] : [];
+      const seen = new Set(warnings.map(warningKey));
+      let wallTime = 0;
+      let mcActiveCombo;
+      for (const a of done) {
+        const r = answers.get(a);
+        wallTime += Number(r.meta?.wall_time_ms) || 0;
+        if (r.meta?.mc_active_combo !== undefined) mcActiveCombo = r.meta.mc_active_combo;
+        for (const w of r.warnings || []) {
+          if (w && !seen.has(warningKey(w))) { seen.add(warningKey(w)); warnings.push(w); }
+        }
+      }
+      if (lost.length) {
+        warnings.push({
+          code: RUN_ALL_PARTIAL_CODE,
+          severity: 'warning',
+          message: '',
+          detail: lost.map((l) => `${l.analysis}: ${l.code}`).join(', '),
+        });
+      }
+
+      const merged = {
+        ok: true,
+        schema: base.schema,
+        analysis: RUN_ALL_ANALYSIS,
+        primary,
+        // `mc_active_combo` overlever fra M–κ-kjøringen: uten den kan ikke
+        // kortet si HVILKEN kombinasjon kurven gjelder, og «for den aktive»
+        // ville blitt lest som «for alle».
+        meta: { ...base.meta, ...(mcActiveCombo !== undefined ? { mc_active_combo: mcActiveCombo } : {}),
+                wall_time_ms: wallTime },
+        materials: base.materials,
+        section_props: base.section_props,
+        checks: base.checks,
+        warnings,
+      };
+      for (const a of done) {
+        const block = answers.get(a)?.[a];
+        if (block) merged[a] = block;
+      }
+      return merged;
     },
   };
 

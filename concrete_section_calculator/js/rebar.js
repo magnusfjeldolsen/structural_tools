@@ -462,6 +462,45 @@ export function createCombo(state = {}, patch = {}) {
 }
 
 /**
+ * Ny bøylerad. Ligger her, sammen med `createLayer` og `createCombo`, av samme
+ * grunn: alle tre er per-rad-fabrikker som `store.js` (nye rader) og
+ * `serialize.js`/`replaceState` (normalisering av en lastet fil) kaller likt,
+ * slik at en rad fra en fil ikke kan ha en annen form enn en rad fra UI-en.
+ *
+ * `dia` ARVES FRA `state.stirrup_dia` OG ER IKKE ET NYTT TALL.
+ * Feltet «Stirrup Ø» i geometriseksjonen og bøylas `dia` var to uavhengige
+ * verdier: det første styrte jernenes plassering og `dc` (`suggestedDc`), det
+ * andre skjærkapasiteten og bøyletegningen. Ingen validering bandt dem, så
+ * Ø10 i skjærraden ga jern regnet med Ø8 og en bøyle tegnet 2 mm inn i
+ * armeringen. Det er ÉN fysisk bøyle og skal være ETT tall — se
+ * `syncStirrupDia` i `store.js`, som holder de to like etter enhver endring.
+ *
+ * `alpha: 90` er PÅKREVD, ikke pynt: `section.js` sin `stirrup_alpha_unsupported`
+ * avviser alt annet enn nøyaktig 90 i v1, og en rad uten feltet ville gitt
+ * «α = undefined°» på hver eneste kjøring.
+ *
+ * `fywk` arves fra hovedarmeringens `fyk` — bøyler kommer i praksis fra samme
+ * stålkvalitet, og et nytt felt som starter på 500 mens brukeren har valgt
+ * B400 er en felle. Brukeren kan overskrive.
+ *
+ * @param {object} state
+ * @param {object} [patch]
+ */
+export function createStirrup(state = {}, patch = {}) {
+  const inherited = num(state.stirrup_dia);
+  const fyk = num((state.steel || {}).fyk);
+  return {
+    id: patch.id || 'S1',
+    dia: inherited > 0 ? inherited : 8,
+    spacing: 150,
+    legs: 2,
+    fywk: fyk > 0 ? fyk : 500,
+    alpha: 90,
+    ...patch,
+  };
+}
+
+/**
  * Bøylens tverrsnittsareal, `legs · π·Ø²/4` [mm²]. EC2 6.2.3: alle ben i
  * samme skjæresnitt bidrar. Egen funksjon, ikke bare `legs * barArea(dia)`
  * inline — `payload.js` og `section.js` skal begge lese DENNE, ikke regne sin

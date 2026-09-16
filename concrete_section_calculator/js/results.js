@@ -266,6 +266,7 @@ export const VALIDATION_CODES = Object.freeze([
   'invalid_strut_angle',
   'stirrup_alpha_unsupported',
   'stirrup_mixed_fywk',
+  'stirrup_multiple_rows_unsupported',
 ]);
 
 /** Kodene som beskriver svikt i worker/runtime eller i et lastet dokument, ikke i tverrsnittet. */
@@ -283,6 +284,11 @@ export const RUNTIME_CODES = Object.freeze([
   // Serialisering, endringsrunde 4 §2 — en lagret fil med `analysis: 'bending'`
   // og `N_Ed ≠ 0` normaliseres til `nm_domain` ved lasting.
   'analysis_forced_to_nm_domain',
+  // «Kjør alle», endringsrunde 5 §D. Den hører hjemme HER og ikke blant
+  // valideringskodene: den beskriver en KJØRING som falt ut, ikke noe galt
+  // med tverrsnittet. `solver-client.js` eksporterer den som
+  // `RUN_ALL_PARTIAL_CODE`.
+  'run_all_partial',
 ]);
 
 /**
@@ -368,6 +374,9 @@ export const CODE_MESSAGES = Object.freeze({
     'The strut angle must be between 21.8° and 45° (EC2 6.2.3(2)).',
   stirrup_alpha_unsupported:
     'Only vertical stirrups (α = 90°) are supported by this module.',
+  stirrup_multiple_rows_unsupported:
+    'Only one stirrup row is supported in this version. The engine would add the rows '
+    + 'together as parallel stirrup sets, while the drawing and the cover only show the first.',
   stirrup_mixed_fywk:
     'All stirrup rows must share the same f_ywk: the shear capacity is computed from ' +
     'a single yield strength for the whole section.',
@@ -391,6 +400,11 @@ export const CODE_MESSAGES = Object.freeze({
   document_not_recognised: 'This is not a concrete section calculator file.',
   document_field_ignored: 'An unknown field in the file was ignored.',
   document_field_defaulted: 'A missing field in the file was filled with its default.',
+  run_all_partial:
+    'One of the analyses in "Run all" did not complete. The results shown are from the ' +
+    'analyses that did — the technical detail says which one is missing and why. ' +
+    'Anything that analysis alone would have shown is absent from the result and from ' +
+    'the report.',
   analysis_forced_to_nm_domain:
     'The file requested bending resistance with a non-zero axial force. A resistance ' +
     'quoted at a single axial force is one point on a curve, so the analysis was ' +
@@ -589,10 +603,34 @@ export function directionFromTheta(theta) {
   return Math.abs(t) > Math.PI / 2 ? 'hogging' : 'sagging';
 }
 
+/**
+ * «Kjør alle» (endringsrunde 5 §D). Verdien er den SAMME strengen som
+ * `store.js` eksporterer som `RUN_ALL`, men den er skrevet av her i stedet for
+ * importert: `results.js` er ren og avhenger bare av `materials.js` (jf.
+ * hodekommentaren), mens `store.js` drar med seg `rebar.js` og `section.js` —
+ * hele tilstandslaget inn i en formateringsfil. Duplikatet er i stedet låst av
+ * en test som importerer BEGGE og påstår at de er like, slik at de ikke kan
+ * drive fra hverandre uten at testen faller.
+ */
+export const RUN_ALL_ANALYSIS = 'all';
+
+/**
+ * Rekkefølgen `analysisBlock()` leter i når et «kjør alle»-resultat MANGLER
+ * `primary` (eller peker på en analyse som falt ut). Bøying står først med
+ * vilje: `solver-client.js` sin `runAllPlan` tar bare bøying med når INGEN
+ * kombinasjon har aksialkraft, så finnes blokka i det hele tatt, ER den
+ * kapasitetsanalysen. `moment_curvature` står sist fordi den ikke bærer noe
+ * bruddplan — den er en kurve, ikke en kapasitetsberegning.
+ */
+export const RUN_ALL_BLOCK_ORDER = Object.freeze(['bending', 'nm_domain', 'moment_curvature']);
+
 export const ANALYSIS_LABELS = Object.freeze({
   bending: 'Bending resistance',
   moment_curvature: 'Moment–curvature',
   nm_domain: 'N–M interaction domain',
+  // Samme ordlyd som chippen i `ui.js` har i dag, slik at den lokale
+  // `RUN_ALL_LABEL` der kan slettes uten at teksten på skjermen endrer seg.
+  [RUN_ALL_ANALYSIS]: 'Run all',
 });
 
 export function analysisLabel(analysis) {
@@ -648,9 +686,36 @@ export function tensionEdgeLabel(theta) {
  * Oppslag i resultatet
  * ================================================================== */
 
-/** Analysens egen blokk (`bending` | `moment_curvature` | `nm_domain`). */
+/**
+ * Analysens egen blokk (`bending` | `moment_curvature` | `nm_domain`).
+ *
+ * «KJØR ALLE» HAR INGEN EGEN BLOKK (endringsrunde 5 §D). `analysis: 'all'` er
+ * en KLIENTSIDE-analyse: `solver-client.js` kjører de lovlige analysene etter
+ * hverandre og legger hver motorblokk under sitt eget navn, med `primary` som
+ * peker på KAPASITETSanalysen (`nm_domain` når en kombinasjon har aksialkraft,
+ * ellers `bending`). `result.all` finnes altså ikke, og uten denne grenen
+ * ville funksjonen returnert `null` — og hele resultatpanelet og rapporten
+ * ville vist tankestrek for en kjøring som faktisk har alle tallene.
+ *
+ * REGELEN STÅR BARE HER (plan §D). `headlineUtilisation`, `momentCapacity`,
+ * `failureState`, `allCombinations`, `governingCombo` og
+ * `shearGoverningCombo` går alle gjennom denne ene funksjonen og arver den.
+ * Skrives regelen av ett sted til, er det det stedet som blir stående igjen
+ * når «kjør alle» en dag får en fjerde blokk.
+ *
+ * EN BLOKK KAN MANGLE: feiler én analyse, leverer klienten de andre og setter
+ * en `run_all_partial`-advarsel. Da kan `result[result.primary]` være
+ * `undefined`, og vi faller tilbake på `RUN_ALL_BLOCK_ORDER` i stedet for å
+ * kaste eller å svare `null` mens det fortsatt finnes tall å vise.
+ */
 export function analysisBlock(result) {
   if (!result || !result.analysis) return null;
+  if (result.analysis === RUN_ALL_ANALYSIS) {
+    for (const key of [result.primary, ...RUN_ALL_BLOCK_ORDER]) {
+      if (key && result[key]) return result[key];
+    }
+    return null;
+  }
   return result[result.analysis] || null;
 }
 
@@ -693,7 +758,13 @@ export function failureState(result) {
  * fordi resten av blokka beskriver 69 andre punkter.
  */
 export function failureStateIsAtNEd(result) {
-  return result?.analysis === 'nm_domain' && failureState(result) !== null;
+  // MARKEREN ER BLOKKA, IKKE ANALYSENAVNET (endringsrunde 5 §D). Med
+  // `analysis: 'all'` er navnet 'all' selv om tallene kommer fra
+  // `nm_domain`-blokka, og en test mot analysenavnet ville droppet nettopp
+  // den merknaden som sier at tallene gjelder ett punkt og ikke hele
+  // omhyllingen — riktige tall uten forbeholdet de trenger.
+  const fs = failureState(result);
+  return fs !== null && fs === result?.nm_domain;
 }
 
 /**

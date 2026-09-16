@@ -19,7 +19,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { drawSection, sectionViewBox, layerLabel, stirrupGeometry } from '../js/section-draw.js';
-import { barPositions } from '../js/rebar.js';
+import { barPositions, suggestedDc } from '../js/rebar.js';
 
 /**
  * Referansebjelken fra planen §3.6. `cover_side = 32` og `stirrup_dia = 8` er
@@ -297,11 +297,33 @@ test('stirrupGeometry: inset = cover_side/cover + dia/2, målt mot referansebjel
   assert.equal(g.label, 'Ø8 c/c 150 (2 legs)');
 });
 
-test('stirrupGeometry: hjørneradius er min(2*dia, halve korteste innerside) — normaltilfelle', () => {
+/**
+ * Endret i denne runden (planen A2): radien var før `min(2·dia, …)` uansett
+ * hva som lå i hjørnet. En bøyle bøyes rundt HJØRNEJERNET, og senterlinjen
+ * tangerer det i `(dia_jern + dia_bøyle)/2`. Uten hjørnejern finnes det
+ * ingenting å bøye rundt, og dorradien `2·dia` gjelder som før.
+ */
+test('stirrupGeometry: hjørneradius tangerer hjørnejernet når det finnes et', () => {
   const g = stirrupGeometry({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } });
+  // Hjørnejernet er Ø20 (3Ø20, ytterjernene i y = ±100, z = -250):
+  // (20 + 8)/2 = 14, ikke 2*8 = 16.
+  assert.equal(g.radius, 14);
+});
+
+test('stirrupGeometry: uten hjørnejern gjelder dorradien 2*dia', () => {
   // innerW = 228, innerH = 548 -> korteste er 228, halvparten er 114 > 2*8 = 16.
-  // 2*dia er derfor det strengeste, og skal vinne.
+  const g = stirrupGeometry({ ...BEAM, layers: [], shear: { stirrups: [STIRRUP_S1] } });
   assert.equal(g.radius, 16);
+
+  // Et jern som ligger langt inne i tverrsnittet er ikke i bøyen. dc = 300 gir
+  // z = 0, altså midt i snittet — vinduet (dia_jern + dia_bøyle = 28 fra begge
+  // innersidene) skal ikke strekke seg dit.
+  const midt = stirrupGeometry({
+    ...BEAM,
+    layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 300 }],
+    shear: { stirrups: [STIRRUP_S1] },
+  });
+  assert.equal(midt.radius, 16);
 });
 
 test('stirrupGeometry: radiusklemmen hindrer at en tynn plate sprekker', () => {
@@ -332,6 +354,30 @@ test('stirrupGeometry: legs > 2 fordeler indre ben jevnt mellom ytterbena', () =
   assert.equal(two.legY.length, 0, 'legs=2 skal ikke gi noen indre ben');
 });
 
+/**
+ * Figuren og `s_t,max`-kontrollen MÅ vise samme benavstand.
+ *
+ * `section.js` regner `legPitch = (b_w − 2·(cover_side + dia/2)) / (legs − 1)`
+ * i valideringen og advarer når den overskrider `s_t,max`. Skulle figuren
+ * fordele bena etter en annen formel, ville brukeren fått en advarsel om en
+ * avstand han ikke kan se, eller — verre — ingen advarsel om en avstand
+ * figuren viser. Formelen er skrevet ut i ren aritmetikk her, ikke importert,
+ * nettopp for å fange at DEN i `section.js` endres.
+ */
+test('stirrupGeometry: benavstanden er den samme formelen som s_t,max-kontrollen', () => {
+  for (const legs of [3, 4, 5, 6]) {
+    // Uten armering skjer ingen snapping, så den jevne fordelingen står igjen rå.
+    const g = stirrupGeometry({
+      ...BEAM, layers: [], shear: { stirrups: [{ ...STIRRUP_S1, legs }] },
+    });
+    const pitch = (BEAM.geometry.b - 2 * (BEAM.cover_side + STIRRUP_S1.dia / 2)) / (legs - 1);
+    assert.equal(g.legY.length, legs - 2, `legs=${legs}`);
+    g.legY.forEach((y, i) => {
+      assert.ok(Math.abs(y - (g.y0 + (i + 1) * pitch)) < 1e-9, `legs=${legs}, ben ${i}: ${y}`);
+    });
+  }
+});
+
 test('drawSection: bøylene tegnes bare når lista ikke er tom, og nedtonet', () => {
   const uten = drawSection(BEAM, {});
   assert.ok(!/data-role="stirrup"/.test(uten), 'BEAM har ingen shear -> ingen bøyletegning');
@@ -341,23 +387,157 @@ test('drawSection: bøylene tegnes bare når lista ikke er tom, og nedtonet', ()
   assert.match(med, /<rect[^>]*rx="[\d.]+"/, 'avrundet rektangel');
   assert.match(med, />Ø8 c\/c 150 \(2 legs\)</);
 
-  // Nedtonet: tynnere strek enn konkretomrisset, og ingen kotering (ingen
-  // ny <line>-basert målstrek med piler slik `dims`-gruppa har).
-  const outlineSw = Number(/<g data-role="concrete">[\s\S]*?stroke-width="([\d.]+)"/.exec(med)[1]);
-  const stirrupSw = Number(/data-role="stirrup" stroke="[^"]+" stroke-width="([\d.]+)"/.exec(med)[1]);
-  assert.ok(stirrupSw < outlineSw, `bøylestrek (${stirrupSw}) skal være tynnere enn omrisset (${outlineSw})`);
+  // Nedtonet er nå en FARGE, ikke en tykkelse: strekbredden er bøylas ekte
+  // diameter (se testen under), og den er bredere enn omrisset for en vanlig
+  // bjelke. Nedtoningen ligger i `THEMES.print.stirrup`, som er lysere enn
+  // omrissfargen `concreteStroke`.
+  const stirrupFill = /data-role="stirrup" stroke="([^"]+)"/.exec(med)[1];
+  const outlineFill = /<g data-role="concrete">[\s\S]*?stroke="([^"]+)"/.exec(med)[1];
+  assert.notEqual(stirrupFill, outlineFill, 'bøylen skal ha sin egen, nedtonede farge');
 });
 
-test('drawSection: legs > 2 tegner ekstra loddrette ben inne i bøylerektangelet', () => {
-  const svg = drawSection({ ...BEAM, shear: { stirrups: [{ ...STIRRUP_S1, legs: 4 }] } }, {});
+/**
+ * Regresjon, planen A1: strekbredden var `0,18 · o.u` — en fast brøkdel av
+ * tegneenheten, helt frikoblet fra `dia`. For referansebjelken på 174 mm papir
+ * er `scale = 89/600 ≈ 0,14833`, så en Ø8-bøyle skal være `8 · 0,14833 ≈ 1,187`
+ * rapport-mm bred. Den ble tegnet 0,18 — 6,6 ganger for tynn. Jernene gjorde
+ * det riktig hele tiden, så figuren viste en bøyle som var tynnere enn
+ * armeringen den binder.
+ */
+test('drawSection: bøylas strekbredde ER dia * scale, ikke en fast brøkdel', () => {
+  for (const [width, dia] of [[174, 8], [174, 12], [87, 8], [600, 10]]) {
+    const vb = sectionViewBox(BEAM, { width });
+    const svg = drawSection(
+      { ...BEAM, shear: { stirrups: [{ ...STIRRUP_S1, dia }] } },
+      { width, unit: width === 600 ? 'px' : 'mm' }
+    );
+    const sw = Number(/data-role="stirrup" stroke="[^"]+" stroke-width="([\d.]+)"/.exec(svg)[1]);
+    // r() runder til tre desimaler, derfor 1e-3 og ikke maskinepsilon.
+    assert.ok(Math.abs(sw - dia * vb.scale) < 1e-3,
+      `Ø${dia} @ ${width}: ${sw} mot ${dia * vb.scale}`);
+  }
+  // Eksakt tall for referansebjelken, så en endring i målestokken ikke kan
+  // gjemme seg bak en beregnet forventning.
+  const svg = drawSection({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } }, { width: 174 });
+  assert.match(svg, /data-role="stirrup" stroke="[^"]+" stroke-width="1\.187"/);
+});
+
+test('drawSection: strekbredden har et gulv, så bøylen ikke forsvinner i et svært snitt', () => {
+  // h = 6000 mm gir scale = 89/6000 ≈ 0,014833 og dermed 8 · scale ≈ 0,119 —
+  // under gulvet på 0,18 · o.u, som da skal gripe inn.
+  const svg = drawSection(
+    { ...BEAM, geometry: { b: 3000, h: 6000 }, shear: { stirrups: [STIRRUP_S1] } },
+    { width: 174 }
+  );
+  const sw = Number(/data-role="stirrup" stroke="[^"]+" stroke-width="([\d.]+)"/.exec(svg)[1]);
+  assert.ok(Math.abs(sw - 0.18) < 1e-9, `strekbredde = ${sw}`);
+});
+
+/** Bena tegnes som `<path>` etter denne runden — en `<line>` kan ikke bøye seg. */
+function stirrupLegPaths(svg) {
   const g = /<g data-role="stirrup"[^>]*>([\s\S]*?)<\/g>/.exec(svg);
   assert.ok(g, 'mangler bøylegruppa');
-  const lines = [...g[1].matchAll(/<line /g)];
-  assert.equal(lines.length, 2, 'legs=4 skal gi nøyaktig 2 indre loddrette streker');
+  return [...g[1].matchAll(/<path d="([^"]+)"\/>/g)].map((m) => m[1]);
+}
+
+test('drawSection: legs > 2 tegner ekstra ben inne i bøylerektangelet', () => {
+  const svg = drawSection({ ...BEAM, shear: { stirrups: [{ ...STIRRUP_S1, legs: 4 }] } }, {});
+  assert.equal(stirrupLegPaths(svg).length, 2, 'legs=4 skal gi nøyaktig 2 indre ben');
 
   const svgTwo = drawSection({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } }, {});
-  const gTwo = /<g data-role="stirrup"[^>]*>([\s\S]*?)<\/g>/.exec(svgTwo);
-  assert.equal([...gTwo[1].matchAll(/<line /g)].length, 0, 'legs=2 skal ikke gi noen indre streker');
+  assert.equal(stirrupLegPaths(svgTwo).length, 0, 'legs=2 skal ikke gi noen indre ben');
+});
+
+/* ------------------------------------------------------------------ *
+ * Jernet i bøyen (planen A2)
+ * ------------------------------------------------------------------ */
+
+/**
+ * MÅLT KOLLISJON, og grunnen til at hele A2 finnes.
+ *
+ * Referansebjelken med `count = 4` gir jern i y = ±33,33 (`yMax = 100`,
+ * `step = 200/3`), mens fire ben jevnt fordelt havner i y = ±38. Det er 4,67 mm
+ * mellom senterlinjene der tangering krever `(20 + 8)/2 = 14` — benet ble
+ * tegnet tvers gjennom jernet. Etter snappingen skal hvert ben enten stå
+ * NØYAKTIG i et jernsenter (det ligger da i bøyen) eller være minst 14 mm unna.
+ */
+test('drawSection: ingen bøyleben ligger inntil et jern uten å være snappet til det', () => {
+  const states = [
+    { count: 4, legs: 4 },
+    { count: 4, legs: 3 },
+    { count: 5, legs: 4 },
+    { count: 3, legs: 5 },
+    { count: 6, legs: 6 },
+  ].map(({ count, legs }) => ({
+    ...BEAM,
+    layers: [{ ...BEAM.layers[0], count }],
+    shear: { stirrups: [{ ...STIRRUP_S1, legs }] },
+  }));
+
+  for (const state of states) {
+    const g = stirrupGeometry(state);
+    const bars = barPositions(state.layers[0], state.geometry, {
+      sectionType: state.sectionType,
+      cover: state.cover,
+      cover_side: state.cover_side,
+      stirrup_dia: state.stirrup_dia,
+    });
+    for (const y of g.legY) {
+      for (const bar of bars) {
+        const d = Math.abs(y - bar.y);
+        const tangent = (bar.dia + g.dia) / 2;
+        assert.ok(d < 1e-9 || d >= tangent - 1e-9,
+          `ben i y = ${y} ligger ${d.toFixed(2)} mm fra et Ø${bar.dia}-jern ` +
+          `(krever ${tangent} mm eller snapping) — ${state.layers[0].count} jern, ${g.legs} ben`);
+      }
+    }
+    assert.equal(new Set(g.legY.map((y) => y.toFixed(6))).size, g.legY.length,
+      'to ben skal aldri havne i samme y');
+  }
+});
+
+test('drawSection: buen finnes der benet er snappet, og ikke der det ikke er noe jern', () => {
+  // count = 4: benene snappes til jernene i y = ±33,33, og skal da ha en bue.
+  const snappet = drawSection({
+    ...BEAM,
+    layers: [{ ...BEAM.layers[0], count: 4 }],
+    shear: { stirrups: [{ ...STIRRUP_S1, legs: 4 }] },
+  }, { width: 174 });
+  const paths = stirrupLegPaths(snappet);
+  assert.equal(paths.length, 2);
+  for (const d of paths) {
+    assert.match(d, / A /, `benet skal bøye seg rundt jernet: ${d}`);
+    // Halvsirkel om jernets senter: buen starter og slutter i samme x, og
+    // radien er (20 + 8)/2 = 14 mm ganget med målestokken.
+    const m = / A ([\d.]+) ([\d.]+) 0 0 [01] ([-\d.]+) /.exec(d);
+    assert.ok(m, `buen skal ha lik rx og ry: ${d}`);
+    const vb = sectionViewBox(BEAM, { width: 174 });
+    assert.ok(Math.abs(Number(m[1]) - 14 * vb.scale) < 1e-3, `radius = ${m[1]}`);
+    assert.equal(m[1], m[2], 'rx og ry skal være like — det er en sirkelbue');
+    assert.equal(Number(m[3]), Number(/^M ([-\d.]+) /.exec(d)[1]),
+      'buen skal ende i samme x som benet — ellers er den ikke en halvsirkel');
+  }
+  // De to bena speiler hverandre: motsatt sweep-flag om y = 0.
+  assert.notEqual(/ A [\d.]+ [\d.]+ 0 0 ([01]) /.exec(paths[0])[1],
+                  / A [\d.]+ [\d.]+ 0 0 ([01]) /.exec(paths[1])[1]);
+
+  // Uten armering er det ingenting å bøye seg rundt — da er en bue løgn.
+  const rett = drawSection({
+    ...BEAM, layers: [], shear: { stirrups: [{ ...STIRRUP_S1, legs: 4 }] },
+  }, { width: 174 });
+  for (const d of stirrupLegPaths(rett)) {
+    assert.ok(!/A/.test(d), `benet skal være rett uten jern å bøye rundt: ${d}`);
+    assert.match(d, /^M [-\d.]+ [-\d.]+ L [-\d.]+ [-\d.]+$/, 'rett ben: topp til bunn, uten bue');
+  }
+
+  // count = 3 gir jern i y = 0, nøyaktig pitch/2 = 38 fra begge bena. Vinduet
+  // er strengt, så ingen av dem trekkes dit — symmetrien beholdes.
+  const uavgjort = drawSection({
+    ...BEAM, shear: { stirrups: [{ ...STIRRUP_S1, legs: 4 }] },
+  }, { width: 174 });
+  for (const d of stirrupLegPaths(uavgjort)) {
+    assert.ok(!/A/.test(d), `uavgjort skal ikke snappes: ${d}`);
+  }
 });
 
 test('drawSection: bøylene ligger innenfor betongomrisset, ikke utenfor', () => {
@@ -423,5 +603,77 @@ test('drawSection: bøylemerkelappen kolliderer ikke med jernene', () => {
   for (const bar of bars) {
     assert.ok(Math.abs(ly - bar.cy) > bar.r * 2,
       `merkelappen (y=${ly}) ligger oppå et jern (cy=${bar.cy}, r=${bar.r})`);
+  }
+});
+
+/**
+ * REGRESJON — buen forsvant i nøyaktig standardtilfellet.
+ *
+ * `dc` for et `dc_auto`-lag er `suggestedDc = cover + stirrup_dia + dia/2`
+ * (`rebar.js:309`). Setter man det inn, blir
+ *   bar.z − (dia + dia_bøyle)/2  =  −h/2 + cover + dia_bøyle/2  =  z0
+ * EKSAKT, for enhver overdekning og enhver diameter. Betingelsen het
+ * `bar.z − rad <= z0`, så buen ble hoppet over for hvert eneste automatisk
+ * plasserte lag — altså alltid, i appen. Tangering ER at jernet ligger i
+ * bøyen; det er ikke overlapp.
+ *
+ * Testen som fantes brukte et HÅNDSKREVET `dc: 50` der avledet verdi er 40,
+ * og traff derfor aldri tangeringen. Denne bygger `dc` slik appen gjør.
+ */
+test('stirrupGeometry: jernet ligger i bøyen også når dc er den AVLEDEDE verdien', () => {
+  const dia = 20;
+  const base = { ...BEAM, cover: 35, cover_side: 35, stirrup_dia: 8 };
+  const dc = suggestedDc(base, dia);
+  const state = {
+    ...base,
+    layers: [{ id: 'L1', mode: 'bars', dia, count: 4, edge: 'bottom', dc, dc_auto: true }],
+    shear: { stirrups: [{ ...STIRRUP_S1, legs: 4 }] },
+  };
+  const g = stirrupGeometry(state);
+
+  // Forutsetningen: dette ER tangeringstilfellet, ellers tester vi noe annet.
+  const bar = barPositions(state.layers[0], state.geometry,
+    { cover_side: state.cover_side, stirrup_dia: state.stirrup_dia })[0];
+  const rad = (dia + STIRRUP_S1.dia) / 2;
+  assert.ok(Math.abs((bar.z - rad) - g.z0) < 1e-9,
+    `forutsetningen: jernet skal tangere bøylas underside (${bar.z - rad} mot ${g.z0})`);
+
+  assert.equal(g.legBends.length, 2, 'legs = 4 gir to indre ben');
+  for (const bends of g.legBends) {
+    assert.equal(bends.length, 1, 'hvert snappet ben skal ha NØYAKTIG én bue');
+    assert.ok(Math.abs(bends[0].radius - rad) < 1e-9,
+      `radius skal være (Ø_jern + Ø_bøyle)/2 = ${rad}, ikke ${bends[0].radius}`);
+  }
+  // Og den skal faktisk komme ut i SVG-en, ikke bare i geometrien.
+  const svg = drawSection(state, { width: 174 });
+  const paths = [...svg.matchAll(/<path d="([^"]*)"/g)].map((m) => m[1]);
+  const legPaths = paths.filter((d) => /^M [-\d.]+ [-\d.]+ L/.test(d));
+  assert.ok(legPaths.length >= 2, 'fant ikke bena i SVG-en');
+  for (const d of legPaths) {
+    assert.match(d, /A /, `benet skal ha en bue, ikke være en rett strek: ${d}`);
+  }
+});
+
+/**
+ * Følgefeil av den samme betingelsen: med TO underkantlag bøyde figuren rundt
+ * det INDRE jernet — det som henger fritt — og tegnet en rett strek gjennom det
+ * ytre, som er det som faktisk er bundet i bøylen.
+ */
+test('stirrupGeometry: med to underkantlag bøyes benet rundt det YTRE jernet', () => {
+  const base = { ...BEAM, cover: 35, cover_side: 35, stirrup_dia: 8 };
+  const state = {
+    ...base,
+    layers: [
+      { id: 'L1', mode: 'bars', dia: 20, count: 4, edge: 'bottom', dc: 53, dc_auto: true },
+      { id: 'L2', mode: 'bars', dia: 20, count: 4, edge: 'bottom', dc: 94, dc_auto: true },
+    ],
+    shear: { stirrups: [{ ...STIRRUP_S1, legs: 4 }] },
+  };
+  const g = stirrupGeometry(state);
+  const zOuter = -state.geometry.h / 2 + 53;
+  for (const bends of g.legBends) {
+    assert.equal(bends.length, 1, 'bare det ytre jernet ligger i en bøy');
+    assert.ok(Math.abs(bends[0].z - zOuter) < 1e-9,
+      `buen skal ligge om det ytre jernet (z = ${zOuter}), ikke om det indre (${bends[0].z})`);
   }
 });
