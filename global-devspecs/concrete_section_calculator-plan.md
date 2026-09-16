@@ -198,7 +198,7 @@ byggesteg hver gang.
 ```
 { type: 'init',   msgId }
 { type: 'run',    msgId, payload: <payload, §5.1> }
-{ type: 'cancel', msgId }
+{ type: 'cancel', msgId, payload: { target } }   // target = msgId-en som skal avbrytes
 ```
 **Ut (worker → solver-client)**
 ```
@@ -213,6 +213,11 @@ byggesteg hver gang.
 - `bytes` er nedlastet mengde når kjent, ellers `null` (§3.9 krav 1).
 - `msgId` lages av klienten; worker ekkoer den alltid.
 - Worker svarer **alltid**; en feil er en `error`-melding, aldri et uhåndtert unntak.
+- **`cancel` MÅ ha `payload.target`.** Uten å vite hvilket løp som avbrytes kan workeren ikke
+  kaste noe ut av køa. A4a skal alltid sende den.
+- **`{ok: false}` fra motoren sendes som `type: 'result'`, ikke `error`.** `error` er reservert
+  for worker-/runtime-svikt. `axial_out_of_range` er et svar brukeren skal se, ikke en krasj.
+  `solver-client.js` må behandle `result` med `ok: false` som et gyldig svar.
 
 ### 3.4 Stubbene: `triangle` og `scipy` — dette er modulens mest kritiske valg
 
@@ -538,9 +543,19 @@ omhylling å treffe for et støttemoment.
 ### 5.2 Ut (`result`)
 
 **Fortegnsregelen, den viktigste enkeltsetningen i denne fila:**
-`moment_curvature.kappa`, `moment_curvature.moment` og `nm_domain.m` krysser JSON-grensa som
-**størrelser i den analyserte retningen** (`abs`). `nm_domain.n` forblir **fortegnsatt**
-(trykk negativ). `meta.moment_sign` bærer motorens rå fortegn.
+`moment_curvature.kappa` og `moment_curvature.moment` krysser JSON-grensa som **størrelser**
+(`abs`) — M–κ har bare én gren, så det er ufarlig og enklest å plotte.
+
+`nm_domain.m` er derimot **FORTEGNSATT I DEN ANALYSERTE KONVENSJONEN**: `m_y · moment_sign`,
+slik at kapasitet i den analyserte retningen blir **positiv** og motsatt retning **negativ**.
+`nm_domain.n` forblir fortegnsatt (trykk negativ). `meta.moment_sign` bærer motorens rå
+fortegn.
+
+**Hvorfor ikke `abs` her.** `complete_domain=True` gir begge grener. Bretter man dem inn i
+samme halvplan, havner støttegrenen — som for et enkeltarmert snitt er bitteliten, ~1,4 kNm
+mot 215 kNm — NÆRMEST origo. «Minste positive λ» ville da systematisk plukket støttegrenen
+for en feltmomentlast og gitt η ≈ 3,67 der den vertikale utnyttelsen er 0,49. Lastpunktet
+plottes i `+M_Ed`, siden `M_Ed` er en størrelse i den analyserte retningen (§4.1).
 
 Uten dette ville `radialUtilisation` sendt en stråle inn i +M-halvplanet mot en omhylling som
 ligger helt i −M: tomt diagram, `eta = 0` eller `NaN`. A1 og A3 ser ikke hverandres kode.
@@ -565,7 +580,7 @@ ligger helt i −M: tomt diagram, `eta = 0` eller `NaN`. A1 og A3 ser ikke hvera
   },
   "section_props": {
     "Ag": 180000.0, "As_total": 942.478, "rho": 0.005712,
-    "b_t": 300.0, "d_eff": 550.0,
+    "b_t": 300.0, "d_eff": 550.0,          // STREKKARMERING alene, se under
     "As_min": 234.5, "As_max": 7200.0,
     "n_min": -4010438.41, "n_max": 442554.79
   },
@@ -612,6 +627,36 @@ Ved feil: `{ "ok": false, "schema": 1, "error": { "code", "message", "detail" } 
 
 > Tallene over er **illustrative**, ikke en fixtur. Sannheten ligger i
 > `tests/fixtures/`. Ikke bak dem inn i tester.
+
+**`d_eff` regnes over STREKKARMERINGEN alene, ikke over alle lag.** EC2 9.2.1.1 definerer
+`d` som avstanden fra trykkanten til tyngdepunktet i strekkarmeringen, og
+`A_s,min = 0.26·f_ctm/f_yk·b_t·d` blir for liten — altså på usikker side — hvis
+trykkarmeringen trekker `d` oppover. Et dobbeltarmert 300×600-snitt med 3Ø20 i UK og 2Ø12 i
+OK gir arealvektet over alle lag `d_eff = 453 mm` mot riktige 550.
+
+Hvilke lag som er i strekk avgjøres av tøyningsplanet ved brudd (`eps(z) = eps_a + chi_y·z > 0`).
+Finnes ikke noe tøyningsplan ennå — `A_s,min` vises i UI før første beregning — brukes den
+geometriske strekksiden for den analyserte retningen. Resultatet bærer i tillegg
+`section_props.As_tension` og `section_props.d_eff_all`, slik at rapporten kan vise begge og
+ikke skjuler valget. **JS-siden kan ikke gjengi dette tallet, og skal ikke prøve.** `rebar.js` har ikke
+tøyningsplanet før motoren har kjart, så `effectiveDepth` der er `d_eff_all`, og
+`effectiveDepthGeometric` er et ESTIMAT basert på geometrisk strekkside, brukt bare til å
+vise `A_s,min` før første beregning. **Etter en kjøring henter UI og rapport `d` fra
+`result.section_props.d_eff`**, aldri fra JS.
+
+At geometri ikke holder er ikke en detalj: i et snitt der nøytralaksen havner under begge
+armeringslagene står **begge** i strekk, og EC2-`d` er tyngdepunktet av begge. Målt på
+referansebjelken som støttemoment med 3Ø20 i UK og 2Ø12 i OK: `d = 146,77 mm`, ikke 550. En
+geometrisk regel ville kalt UK-jernene trykkarmering og gitt feil `d`.
+
+**`chi_plan`** ligger i `moment_curvature`-blokka (størrelser): krumningsrutenettet regnes
+inne i pakka, og JS kan ikke gjette det når den driver løkka ett punkt om gangen via
+`mc_chi`. Feltet er `null` hvis pakka endrer seg.
+
+**Nulltelleren i nedre grense:** ved `N = n_min` er `chi_y` ikke 0, men ~1e-13, og `x` blir et
+endelig, meningsløst tall (målt 3,47e10 mm) som passerer `allow_nan=False` og tegnes som om
+det betydde noe. `x` settes derfor til `null` når nøytralaksen ligger lenger enn `10·h` fra
+senter — ikke `h/2`, siden EC2-felt 1 legitimt har nøytralakse utenfor snittet.
 
 **`x` utledes eksplisitt:** `z_na = -eps_a/chi_y`, `x = h/2 - z_na` for θ = 0. Ved
 `chi_y ≈ 0` (N nær `n_min`, EC2-felt 1, rent trykk) blir dette `±Infinity` — se §5.4.
@@ -674,7 +719,11 @@ radialUtilisation(dom, N_Ed, M_Ed) -> {eta, lambda, hitN, hitM}
 funksjonene konverterer fra payload-enhetene selv.
 
 **`radialUtilisation` — fullstendig spesifikasjon.** Argumentene er i **kN og kNm**.
-Omhyllingen lukkes langs `M = 0` fra `(N_min, 0)` til `(N_max, 0)`. Stråle fra origo, og
+Omhyllingen lukkes som en **kjede**: ytterpunktet med minst `n` → `(N_min, 0)` →
+`(N_max, 0)` → ytterpunktet med størst `n`. Bare M=0-strekket holder ikke: `n_min`/`n_max`
+er ikke punkter i domenet (for referansebjelken er `n_min = −4010,4 kN` mens ytterpunktet
+ligger på `n = −3977,0 kN, m = 94,2 kNm`), så randen ville fått et gap som en nesten ren
+trykklast smetter rett gjennom — ingen kryssing, `eta = 0` for en last på ~99 % utnyttelse. Stråle fra origo, og
 **minste positive λ** velges: omhyllingen *er* ikke-konveks rundt balansepunktet (§3.6 viser
 `|m|` som vokser mens `n` faller), så en stråle kan krysse flere ganger, og origo ligger inne
 i domenet. `eta = 1/λ`. Punktrekkefølgen i arrayene følger EC2-feltene 1→6 og har **ingen**

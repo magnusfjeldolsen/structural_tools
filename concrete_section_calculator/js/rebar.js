@@ -1,0 +1,309 @@
+/**
+ * rebar.js — armeringslag: areal, dybde, og HVOR jernene ligger.
+ *
+ * HVORFOR DENNE FILA ER MODULENS VIKTIGSTE
+ * `barPositions()` er den ENESTE kilden til jernkoordinater. Både `payload.js`
+ * (som sender dem til motoren) og `section-draw.js` (som tegner dem) SKAL kalle
+ * den. Regnet de hver for seg, ville tegningen kunne være uenig med tallet uten
+ * at noen test feilet og uten at noe krasjet — den verste sviktformen som
+ * finnes, fordi den ser helt riktig ut. `payload.test.mjs` påstår derfor
+ * eksplisitt at `payload.section.rebar[i].bars` er dypt lik `barPositions(...)`.
+ *
+ * AKSESYSTEMET
+ * `y` er horisontalt, `z` er VERTIKALT og positivt oppover, med origo i
+ * tverrsnittets senter (plan §3.6). Shapely-koordinaten `(x, y)` betyr `(Y, Z)`.
+ * Derfor heter funksjonen som gir vertikal koordinat `layerCentroidZ` — en
+ * y/z-forveksling her er usynlig og katastrofal, så navnet bærer aksen.
+ *
+ * TO REGNEMÅTER, ETT AREAL
+ * `mode: 'bars'` (bjelke) er `antall × Ø`. `mode: 'spacing'` (plate) er
+ * `Ø c/c s` og gir areal PER METER: `A_s = (1000/s)·π·Ø²/4`. Antallet jern som
+ * TEGNES er `Math.round(1000/s)` med minimum 1 — arealet regnes eksakt, men
+ * tegningen må vise noe. Uten minimumet blir armeringen usynlig ved stor
+ * senteravstand selv om kapasiteten er riktig (plan §4.2).
+ *
+ * DOM-fri og ren (plan §2.3 punkt 2).
+ */
+
+/** Sikker tallkonvertering: tomt felt blir `NaN`, ikke 0. */
+function num(v) {
+  if (v === null || v === undefined || v === '') return NaN;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/** Arealet av ETT jern, `π·d²/4`. Motoren regner alltid slik for `PointGeometry`. */
+export function barArea(dia) {
+  const d = num(dia);
+  return (Math.PI * d * d) / 4;
+}
+
+/**
+ * Lagets armeringsareal [mm²]. For `mode: 'spacing'` er det PER METER, fordi
+ * plata alltid er 1000 mm bred.
+ *
+ * @param {object} layer
+ * @returns {number}
+ */
+export function layerArea(layer = {}) {
+  const a = barArea(layer.dia);
+  if (layer.mode === 'spacing') return (1000 / num(layer.spacing)) * a;
+  return num(layer.count) * a;
+}
+
+/**
+ * Antall jern som TEGNES. `Math.round`, minimum 1 — se hodekommentaren.
+ * Merk at arealet IKKE regnes fra dette tallet: `layerArea` bruker den eksakte
+ * brøken `1000/s`, så avrundingen påvirker bare figuren.
+ *
+ * @param {object} layer
+ * @returns {number}
+ */
+export function layerBarCount(layer = {}) {
+  const raw = layer.mode === 'spacing' ? 1000 / num(layer.spacing) : num(layer.count);
+  if (!Number.isFinite(raw)) return 1;
+  return Math.max(1, Math.round(raw));
+}
+
+/**
+ * Jernsenterets vertikale koordinat, med z = 0 i tverrsnittssenteret og
+ * z positiv OPPOVER. `dc` måles fra kanten `edge` peker på.
+ *
+ * @param {object} layer
+ * @param {number} h  tverrsnittshøyde [mm]
+ * @returns {number} z [mm]
+ */
+export function layerCentroidZ(layer = {}, h) {
+  const H = num(h);
+  const dc = num(layer.dc);
+  return layer.edge === 'top' ? H / 2 - dc : -H / 2 + dc;
+}
+
+/**
+ * Lagets effektive høyde `d` — avstanden fra TRYKKANTEN til jernsenteret.
+ *
+ * `theta` ER PÅKREVD og har ingen standardverdi med vilje: θ = 0 gir trykksone
+ * ØVERST (feltmoment), θ = π gir trykksone NEDERST (støttemoment). Et defaultet
+ * θ ville gitt et stille feil `d` for støttemoment, som er nøyaktig den feilen
+ * ingen oppdager.
+ *
+ * @param {object} layer
+ * @param {number} h
+ * @param {number} theta  0 eller Math.PI [rad]
+ * @returns {number} d [mm]
+ */
+export function layerDepth(layer, h, theta) {
+  if (!Number.isFinite(num(theta))) {
+    throw new Error('layerDepth: theta er påkrevd (0 = feltmoment, π = støttemoment).');
+  }
+  const H = num(h);
+  const z = layerCentroidZ(layer, H);
+  // cos(θ) = +1 ved θ = 0 (trykk oppe), −1 ved θ = π (trykk nede).
+  return Math.cos(num(theta)) >= 0 ? H / 2 - z : H / 2 + z;
+}
+
+/**
+ * ENESTE kilde til jernkoordinater. Se hodekommentaren.
+ *
+ * Bjelke: `count` jern fordeles jevnt mellom `±(b/2 − cover_side −
+ * stirrup_dia − dia/2)`. `count === 1` gir ett jern i `y = 0` — ikke i
+ * ytterkant, som en naiv «fordel jevnt» ville gitt.
+ *
+ * Plate: `Math.round(1000/s)` jern, minimum 1, sentrert om `y = 0` med FAKTISK
+ * senteravstand `s` (ikke utsmurt) — tegningen skal vise virkeligheten selv om
+ * motoren får stripa fra `equivalentStrip()`.
+ *
+ * @param {object} layer
+ * @param {{b:number, h:number}} geometry
+ * @param {{cover_side?:number, stirrup_dia?:number}} [opts] hele `state` kan sendes inn
+ * @returns {Array<{y:number, z:number, dia:number}>} sortert stigende på y
+ */
+export function barPositions(layer = {}, geometry = {}, opts = {}) {
+  const b = num(geometry.b);
+  const h = num(geometry.h);
+  const dia = num(layer.dia);
+  const z = layerCentroidZ(layer, h);
+  const n = layerBarCount(layer);
+
+  if (layer.mode === 'spacing') {
+    const s = num(layer.spacing);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      // Sentrert om y = 0: for n = 1 gir dette eksakt 0, ikke s/2.
+      out.push({ y: (i - (n - 1) / 2) * s, z, dia });
+    }
+    return out;
+  }
+
+  const coverSide = num(opts.cover_side) || 0;
+  const stirrup = num(opts.stirrup_dia) || 0;
+  const yMax = b / 2 - coverSide - stirrup - dia / 2;
+  if (n === 1) return [{ y: 0, z, dia }];
+  const step = (2 * yMax) / (n - 1);
+  const out = [];
+  for (let i = 0; i < n; i++) out.push({ y: -yMax + i * step, z, dia });
+  return out;
+}
+
+/**
+ * Utsmurt platearmering (plan §4.3). Stripa har `høyde = Ø` og
+ * `bredde = A_s/Ø`, slik at arealet blir eksakt `A_s` og tyngdepunktet havner i
+ * `layerCentroidZ`. Verifisert innenfor 0,17 % mot diskrete jern — dette ER
+ * platemodellen, ikke en tilnærming som skal unnskyldes.
+ *
+ * Stripa kan aldri bli bredere enn plata (`bredde ≥ 1000` krever
+ * `s ≤ 0,785·Ø`, fysisk umulig), så det er BEVISST ingen vakt mot det.
+ *
+ * @param {object} layer
+ * @param {number} h
+ * @returns {{width:number, height:number, z:number}}
+ */
+export function equivalentStrip(layer = {}, h) {
+  const dia = num(layer.dia);
+  return {
+    width: layerArea(layer) / dia,
+    height: dia,
+    z: layerCentroidZ(layer, h),
+  };
+}
+
+/**
+ * Sum armeringsareal [mm²] (per meter for plate).
+ * @param {Array<object>} layers
+ */
+export function totalArea(layers = []) {
+  return layers.reduce((sum, l) => sum + layerArea(l), 0);
+}
+
+/**
+ * Lagene på STREKKSIDEN for den analyserte retningen.
+ *
+ * EC2 9.2.1.1 definerer `d` som avstanden fra trykkanten til tyngdepunktet i
+ * STREKKARMERINGEN. Tar man trykkarmeringen med i vektingen, trekkes `d` opp
+ * mot trykkanten, og `A_s,min = 0,26·f_ctm/f_yk·b_t·d` blir for LITEN — altså
+ * på usikker side. Et dobbeltarmert 300×600 med 3Ø20 i UK og 2Ø12 i OK gir
+ * ~452 mm vektet over alle lag, der riktig svar er 550 mm.
+ *
+ * Uten et tøyningsplan finnes ingen ekte nøytralakse her, så vi bruker den
+ * GEOMETRISKE strekksiden: θ = 0 (trykk oppe) ⇒ lag med `z < 0`, θ = π
+ * (trykk nede) ⇒ lag med `z > 0`. Det er eksakt så lenge nøytralaksen ligger i
+ * øvre halvdel, som den gjør for alle normalarmerte snitt.
+ *
+ * DEGENERERT TILFELLE: ligger ALLE lag på trykksiden (eller nøyaktig i `z = 0`)
+ * finnes ingen strekkarmering å veie, og vi faller tilbake på alle lagene i
+ * stedet for å svare `NaN`. Et snitt uten strekkarmering har uansett ikke noe
+ * meningsfylt `d`, og et `NaN` som forplanter seg til ρ og `A_s,min` er
+ * vanskeligere å tolke enn et tall som åpenbart er rart.
+ *
+ * @param {Array<object>} layers
+ * @param {number} h
+ * @param {number} theta 0 eller Math.PI [rad] — PÅKREVD
+ * @returns {Array<object>}
+ */
+export function tensionLayers(layers = [], h, theta) {
+  if (!Number.isFinite(num(theta))) {
+    throw new Error('tensionLayers: theta er påkrevd (0 = feltmoment, π = støttemoment).');
+  }
+  const compressionOnTop = Math.cos(num(theta)) >= 0;
+  const picked = layers.filter((l) => {
+    const z = layerCentroidZ(l, h);
+    return compressionOnTop ? z < 0 : z > 0;
+  });
+  return picked.length ? picked : layers;
+}
+
+/** Armeringsareal på STREKKSIDEN [mm²]. Motorens `section_props.As_tension`. */
+export function tensionArea(layers = [], h, theta) {
+  return totalArea(tensionLayers(layers, h, theta));
+}
+
+/**
+ * Arealvektet dybde over ALLE lag, trykkarmering inkludert:
+ * `d = Σ(A_i·d_i) / ΣA_i`.
+ *
+ * Dette er IKKE EC2 sin `d` — se `effectiveDepth()`. Den finnes likevel fordi
+ * den er tyngdepunktet til hele armeringsmengden, et opplysende tall ved siden
+ * av `d` i rapporten, og fordi motoren rapporterer den som
+ * `section_props.d_eff_all`. De to sidene må være enige om begge.
+ *
+ * @returns {number} d [mm], `NaN` uten armering
+ */
+export function effectiveDepthAll(layers = [], h, theta) {
+  let sumA = 0;
+  let sumAd = 0;
+  for (const l of layers) {
+    const a = layerArea(l);
+    sumA += a;
+    sumAd += a * layerDepth(l, h, theta);
+  }
+  return sumA > 0 ? sumAd / sumA : NaN;
+}
+
+/**
+ * EC2 sin effektive høyde `d`: arealvektet over STREKKARMERINGEN alene.
+ *
+ * Med bare ett lag er dette trivielt likt `layerDepth` — derfor fanger
+ * referansefixturene IKKE forskjellen, og derfor finnes det en egen test med to
+ * lag. Med trykkarmering er det forskjellen mellom 550 og 452 mm.
+ *
+ * @param {Array<object>} layers
+ * @param {number} h
+ * @param {number} theta
+ * @returns {number} d [mm], `NaN` uten armering
+ */
+export function effectiveDepth(layers = [], h, theta) {
+  return effectiveDepthAll(tensionLayers(layers, h, theta), h, theta);
+}
+
+/**
+ * Armeringsforhold etter EC2-definisjonen, `ρ = A_s/(b_t·d)`, der `b_t` er
+ * strekksonens bredde. For et rektangulært snitt er `b_t = b`; for plata er
+ * `b_t = 1000` fordi alt regnes per meter.
+ *
+ * `d` er EC2 sin — altså strekkarmeringens tyngdepunkt, ikke hele
+ * armeringsmengdens (`effectiveDepthAll`).
+ *
+ * @param {Array<object>} layers
+ * @param {{b:number, h:number}} geometry
+ * @param {number} theta
+ */
+export function reinforcementRatio(layers = [], geometry = {}, theta) {
+  const d = effectiveDepth(layers, geometry.h, theta);
+  return totalArea(layers) / (num(geometry.b) * d);
+}
+
+/**
+ * UI-hjelperen for `dc`: `overdekning + bøyle + Ø/2`. Ligger her og ikke i
+ * `ui.js` fordi den definerer hva `dc` BETYR (avstand til jernets SENTER), og
+ * den definisjonen hører sammen med `layerCentroidZ`.
+ *
+ * @param {{cover:number, stirrup_dia:number}} state
+ * @param {number} dia
+ */
+export function suggestedDc(state = {}, dia) {
+  return num(state.cover) + num(state.stirrup_dia) + num(dia) / 2;
+}
+
+/**
+ * Nytt armeringslag med fornuftige verdier for gjeldende tverrsnittstype.
+ * Plate får `spacing`-modus, bjelke får `bars` — det er tverrsnittstypen, ikke
+ * brukeren, som avgjør hvilken regnemåte som gir mening.
+ *
+ * @param {object} state
+ * @param {object} [patch]
+ */
+export function createLayer(state = {}, patch = {}) {
+  const isSlab = state.sectionType === 'slab';
+  const dia = patch.dia !== undefined ? num(patch.dia) : isSlab ? 12 : 20;
+  const base = isSlab
+    ? { mode: 'spacing', dia, spacing: 150 }
+    : { mode: 'bars', dia, count: 3 };
+  return {
+    id: patch.id || 'L1',
+    ...base,
+    edge: 'bottom',
+    dc: suggestedDc(state, dia),
+    ...patch,
+    dia,
+  };
+}

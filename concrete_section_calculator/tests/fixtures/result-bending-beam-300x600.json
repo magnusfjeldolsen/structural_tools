@@ -11,7 +11,7 @@
     "theta": 0.0,
     "direction": "sagging",
     "subtract_bar_area": false,
-    "wall_time_ms": 14.2
+    "wall_time_ms": 14.8
   },
   "materials": {
     "fck": 30.0,
