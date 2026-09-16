@@ -165,18 +165,32 @@ det er å la være å sende neste punkt.
 ### 5.2 Moment–krumning drives fra JS, ett punkt om gangen
 
 `options.mc_chi` lar `engine.py` regne **ett** krumningspunkt per kall. Det gir determinat framdrift
-(«punkt 7 av 20») og ekte avbrytbarhet. To ting er målt på ekte motor og er lette å ta feil av:
+(«punkt 7 av 20») og ekte avbrytbarhet.
 
-- **`chi_plan` er størrelser, men motoren trenger fortegnet krumning.** Målt på referansebjelken:
-  punkt 5 med `+3,173·10⁻⁶` gir 0,396 MNmm — tøys — mens `−3,173·10⁻⁶` gir 114,408 MNmm, som er
-  nøyaktig det samlede kallet gir. Fortegnet er `meta.moment_sign` (θ = 0 gir −1, θ = π gir +1).
-  `solver-client.js` sender derfor `chi_plan[i] * moment_sign`. Hele den drevne kurven er verifisert
-  mot ett samlet kall: største relative avvik **4,9·10⁻⁸**, og siste punkt treffer `M_Rd`.
-- **`chi_plan` kan ha feil lengde.** Målt for θ = π på referansebjelken: 10 punkter i planen mot 20
-  i det samlede kallet. Da er planen ikke det rutenettet et samlet kall ville brukt, og å drive på
-  den ville gitt en **annen kurve** enn «Beregn» ga i går — uten at noe feilet. `solver-client.js`
-  faller derfor tilbake til ett samlet kall når
-  `chi_plan.length !== mc_pre_yield + mc_post_yield`: dårligere framdrift, riktig kurve.
+Framgangsmåten i `solver-client.js`:
+
+1. Ett **probe-kall** med en triviell `mc_chi`, bare for å få `moment_curvature.chi_plan` —
+   krumningsrutenettet regnes inne i pakken, og JS kan ikke gjette det. Probepunktets egen verdi
+   kastes; det hører ikke til rutenettet.
+2. Ett kall per verdi i `chi_plan`, i rekkefølge, med framdrift og avbruddssjekk mellom hvert.
+3. Kurven settes sammen av punktene. `yield_index` settes etter motorens egen regel (`pre − 1`, og
+   bare når vi kom så langt), `truncated` når kurven stoppet før planen var kjørt ferdig.
+
+**Enhetene er størrelser hele veien.** `chi_plan` kommer som størrelser, og `mc_chi` **tas** som
+størrelse: motoren gjør `abs()` og setter fortegnet selv ut fra θ. Planverdiene sendes derfor
+uendret. Tidligere ganget klienten med `meta.moment_sign`, fordi motoren den gangen tolket `mc_chi`
+fortegnsatt og et positivt tall ga et tøvete moment. Det er rettet i `engine.py`, og kompensasjonen
+er fjernet — en kompensasjon for en feil som ikke finnes lenger, er selv en feil som venter.
+
+**Avbrudd** er å la være å sende neste punkt. Et punkt som allerede regner kan ikke stoppes, men det
+tar ~30 ms, så det merkes ikke. Punktene som alt er regnet beholdes, og kurven merkes `truncated`
+med en `mc_truncated`-advarsel.
+
+Den ene reserven som står igjen: er `chi_plan` `null` eller tom, kjøres ett samlet kall med ubestemt
+framdrift. Plan §5.2 sier at feltet er `null` hvis pakken endrer seg — rutenettet bygges via en
+**privat** metode i `structuralcodes`, og forsvinner den i en oppgradering, mister JS bare
+muligheten til å drive punktvis. Reserven er altså for en framtidig oppgradering, ikke for noe som
+forventes i dag.
 
 ---
 
