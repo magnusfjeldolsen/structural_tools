@@ -759,29 +759,39 @@ def _run_inner(payload, progress, t0):
         'warnings': warnings_out,
     }
 
+    # Bruddtilstanden ved N_Ed, med de nøkkelnavnene UI og rapport leser GENERISK. Den
+    # hører hjemme i mer enn én analyseblokk: `calculate_bending_strength(theta, N_Ed)`
+    # kjøres uansett hvilken analyse som er valgt, og tøyningsplanet den gir er det samme
+    # uansett hva vi tegner ved siden av. Å la det bli liggende ubrukt i M–N-analysen —
+    # der brukeren oftest VIL inspisere nøytralakse og bruddform, fordi det er søyler med
+    # aksialkraft — ville vært å kaste bort et svar vi allerede har regnet.
+    ultimate_state = {
+        'eps_a': _num(eps_a),
+        'chi_y': _num(chi_y),
+        'x': _num(x),
+        'x_over_d': _num(x / d_eff) if (x is not None and d_eff) else None,
+        'eps_c_top': _num(eps_edge),
+        'eps_s_max': _num(eps_s_max),
+        'failure_mode': failure_mode,
+        'layers': layers,
+    }
+
     if analysis == 'bending':
-        common['bending'] = {
-            'N_Ed': _num(n_ed),
-            'M_Rd': _num(m_rd),
-            'eps_a': _num(eps_a),
-            'chi_y': _num(chi_y),
-            'x': _num(x),
-            'x_over_d': _num(x / d_eff) if (x is not None and d_eff) else None,
-            'eps_c_top': _num(eps_edge),
-            'eps_s_max': _num(eps_s_max),
-            'failure_mode': failure_mode,
-            'layers': layers,
-            'M_Ed': _num(m_ed),
-            'utilisation': _num(_utilisation(m_ed, m_rd)),
-        }
+        common['bending'] = dict(
+            ultimate_state,
+            N_Ed=_num(n_ed),
+            M_Rd=_num(m_rd),
+            M_Ed=_num(m_ed),
+            utilisation=_num(_utilisation(m_ed, m_rd)),
+        )
     elif analysis == 'moment_curvature':
         common['moment_curvature'] = _moment_curvature(
-            sc, theta, n_ed, m_ed, m_rd, opts, warnings_out, progress
+            sc, theta, n_ed, m_ed, m_rd, chi_y, opts, warnings_out, progress
         )
     else:
         common['nm_domain'] = _nm_domain(
             sc, theta, n_ed, m_ed, m_rd, moment_sign, n_min, n_max,
-            opts, warnings_out, progress,
+            ultimate_state, opts, warnings_out, progress,
         )
 
     if progress is not None:
@@ -797,7 +807,13 @@ def _runtime_name():
     return f'cpython {platform.python_version()}'
 
 
-def _moment_curvature(sc, theta, n_ed, m_ed, m_rd, opts, warnings_out, progress):
+# Hvor mye det siste M–κ-punktet får avvike fra M_Rd før vi sier fra. Noen få promille er
+# konvergenstoleranse; mer enn det er et annet likevektspunkt.
+_MC_ENDPOINT_TOL = 3e-3
+
+
+def _moment_curvature(sc, theta, n_ed, m_ed, m_rd, bend_chi_y, opts,
+                      warnings_out, progress):
     """M–κ. Enten hele kurven i ett kall, eller ETT punkt når JS driver den.
 
     JS-drevet modus finnes fordi moment–krumning er den eneste analysen som tar mer enn et
@@ -807,6 +823,24 @@ def _moment_curvature(sc, theta, n_ed, m_ed, m_rd, opts, warnings_out, progress)
     `chi_plan` er alltid med i svaret, også når vi regner alt selv. Det er den eneste
     måten JS kan vite HVILKE krumninger som skal kjøres — grensene regnes inne i pakka av
     `_prepare_chi_array`, og JS har ingen mulighet til å gjette dem.
+
+    BRUDDPUNKTET REGNES SOM BØYEKAPASITET, IKKE SOM ET FASTKRUMNINGS-LØS
+    Pakkas løkke fører forrige punkts tøyningsnivå videre som startgjett. Deler man løkka
+    opp — som JS må for å få determinat framdrift — mister man det, og ved bruddkrumningen
+    er det nettopp der det betyr mest: målt på standardtilstanden (C30/37, α_cc 0,85,
+    3Ø20) ga siste punkt **126,2 kNm drevet mot 201,0 kNm samlet**, 37 % for lavt, og
+    ingenting feilet. Ved bruddkrumningen finnes det mer enn ett likevektsplan, og et
+    dårlig startgjett lander på feil ett.
+
+    Løsningen er ikke å føre startgjettet videre, men å slutte å gjette: bruddpunktet på
+    M–κ-kurven ER bøyekapasiteten, og `calculate_bending_strength` regner den eksakt med
+    fastpunkt-metoden. Vi bytter derfor inn det tallet i BEGGE modi. At det gjelder begge
+    er poenget — ellers ville en drevet kurve og et samlet kall endt på ulike verdier, og
+    da er «driv kurven punkt for punkt» ikke lenger den samme beregningen.
+
+    Uansett legges `mc_endpoint_mismatch` når pakkas eget siste punkt avviker fra `M_Rd`
+    med mer enn noen få promille. At en 37 %-feil kunne vises helt uten varsel er den
+    delen av dette som er verst; sjekken står igjen selv om innbyttet skulle svikte.
     """
     pre = int(opts.get('mc_pre_yield', 10) or 10)
     post = int(opts.get('mc_post_yield', 10) or 10)
@@ -855,13 +889,51 @@ def _moment_curvature(sc, theta, n_ed, m_ed, m_rd, opts, warnings_out, progress)
 
     yield_index = pre - 1 if (mc_chi is None and got >= pre) else None
 
+    kappa = _abs_arr(res.chi_y)
+    moment = _abs_arr(res.m_y)
+
+    # Hvilke av punktene vi nettopp regnet ER bruddkrumningen?
+    ultimate = chi_plan[-1] if chi_plan else None
+    targets = []
+    if ultimate:
+        if chi_input is None:
+            # Samlet kall: bruddpunktet er det siste, med mindre kurven ble avkortet.
+            if not truncated and got:
+                targets = [got - 1]
+        else:
+            targets = [i for i, c in enumerate(chi_input)
+                       if i < got and math.isclose(abs(c), ultimate, rel_tol=1e-9)]
+
+    for i in targets:
+        package_m = moment[i]
+        if package_m is not None and m_rd and \
+                abs(package_m - m_rd) / abs(m_rd) > _MC_ENDPOINT_TOL:
+            # `info`, ikke `warning`: α_cc 0,85 er norsk NA og UI-ets standard, så denne
+            # utløses ved omtrent hver eneste M–κ-kjøring. En advarsel som alltid står der
+            # slutter å bety noe og lærer brukeren å overse de som teller. Og innholdet
+            # forsvarer den ikke — sluttpunktet som RAPPORTERES er eksakt. Meldinga sier
+            # derfor hva som skjedde, og ingenting spekulativt om resten av kurven:
+            # nabopunktene er målt til å ligge der de skal.
+            warnings_out.append(_warning(
+                'mc_endpoint_mismatch',
+                f'Ved bruddkrumningen ga fastkrumnings-løsningen {package_m / 1e6:.1f} kNm, '
+                f'mens bøyekapasiteten er {m_rd / 1e6:.1f} kNm — likevektssøket ved brudd '
+                'fant et annet tøyningsplan. Kurven avsluttes i bøyekapasiteten, som er '
+                'den eksakte verdien.',
+                f'fixed-curvature m_y = {package_m}, calculate_bending_strength M_Rd = '
+                f'{m_rd}, rel = {(package_m - m_rd) / m_rd:.6e}',
+                severity='info',
+            ))
+        kappa[i] = _num(abs(bend_chi_y)) if bend_chi_y else kappa[i]
+        moment[i] = _num(m_rd)
+
     if progress is not None:
         progress('solve', got, expected)
 
     return {
         'N_Ed': _num(n_ed),
-        'kappa': _abs_arr(res.chi_y),
-        'moment': _abs_arr(res.m_y),
+        'kappa': kappa,
+        'moment': moment,
         'chi_plan': chi_plan,
         'yield_index': yield_index,
         'M_Rd': _num(m_rd),
@@ -911,7 +983,7 @@ def _chi_plan(sc, theta, n_ed, pre, post, warnings_out):
 
 
 def _nm_domain(sc, theta, n_ed, m_ed, m_rd, moment_sign, n_min, n_max,
-               opts, warnings_out, progress):
+               ultimate_state, opts, warnings_out, progress):
     """Full kapasitetsomhylling. `complete_domain` er alltid True.
 
     Uten begge halvplan finnes det ingen omhylling å treffe for et støttemoment, og 69
@@ -926,6 +998,16 @@ def _nm_domain(sc, theta, n_ed, m_ed, m_rd, moment_sign, n_min, n_max,
     Derfor dreies momentene med `meta.moment_sign`: kapasitet i analysert retning blir
     positiv, motsatt retning negativ, og de to grenene ligger i hvert sitt halvplan der
     de hører hjemme. M–κ har bare én gren, så der er folding ufarlig.
+
+    HVA `ultimate_state` ER, OG HVA DEN IKKE ER
+    Feltene `eps_a`, `chi_y`, `x`, `x_over_d`, `eps_c_top`, `eps_s_max`, `failure_mode` og
+    `layers` beskriver bruddtilstanden **ved N_Ed**, altså i lastpunktet — ikke et
+    vilkårlig punkt på omhyllingen. De kommer fra det samme
+    `calculate_bending_strength(theta, N_Ed)`-kallet som gir `M_Rd_at_N`, og de har med
+    vilje NØYAKTIG samme nøkkelnavn som i `bending`-blokka, slik at UI og rapport kan lese
+    bruddtilstanden generisk uten et særtilfelle per analyse. Uten dem sto hele
+    inspeksjonspanelet tomt i den ene analysen der man oftest vil se nøytralaksen — søyler
+    med aksialkraft — selv om tallene alt var regnet.
     """
     complete = bool(opts.get('complete_domain', True))
     if progress is not None:
@@ -934,17 +1016,18 @@ def _nm_domain(sc, theta, n_ed, m_ed, m_rd, moment_sign, n_min, n_max,
         dom = sc.calculate_nm_interaction_domain(theta=theta, complete_domain=complete)
     _drain(cap.records, warnings_out)
 
-    return {
-        'n': _arr(dom.n),                          # FORTEGNSATT: trykk negativ
-        'm': _signed_arr(dom.m_y, moment_sign),    # FORTEGNSATT: analysert retning positiv
-        'field_num': _int_arr(dom.field_num),
-        'N_Ed': _num(n_ed),
-        'M_Ed': _num(m_ed),
-        'M_Rd_at_N': _num(m_rd),
-        'utilisation': _num(_utilisation(m_ed, m_rd)),
-        'N_min': _num(n_min),
-        'N_max': _num(n_max),
-    }
+    return dict(
+        ultimate_state,                                # bruddtilstanden VED N_Ed, se over
+        n=_arr(dom.n),                                 # FORTEGNSATT: trykk negativ
+        m=_signed_arr(dom.m_y, moment_sign),           # FORTEGNSATT: analysert retn. positiv
+        field_num=_int_arr(dom.field_num),
+        N_Ed=_num(n_ed),
+        M_Ed=_num(m_ed),
+        M_Rd_at_N=_num(m_rd),
+        utilisation=_num(_utilisation(m_ed, m_rd)),
+        N_min=_num(n_min),
+        N_max=_num(n_max),
+    )
 
 
 def run_json(payload_json: str, progress=None) -> str:

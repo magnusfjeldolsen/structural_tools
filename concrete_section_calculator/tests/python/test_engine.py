@@ -317,6 +317,90 @@ def test_mc_chi_is_a_magnitude_not_a_signed_curvature():
     assert close(a['moment'][0], 114408358.78818576)
 
 
+def _mc_payload(theta=0.0, alpha_cc=1.0, law_steel=None):
+    payload = load('payload-beam-300x600.json')
+    payload['analysis'] = 'moment_curvature'
+    payload['options']['theta'] = theta
+    payload['section']['concrete']['alpha_cc'] = alpha_cc
+    if law_steel:
+        payload['section']['steel']['law'] = law_steel
+    if theta:
+        payload['section']['rebar'][0]['bars'] = [
+            {'y': y, 'z': 250.0, 'dia': 20.0} for y in (-100.0, 0.0, 100.0)
+        ]
+    return payload
+
+
+@pytest.mark.parametrize('label,theta,alpha_cc,law', [
+    # α_cc = 1,0 er fixturens tilstand; α_cc = 0,85 er UI-standarden (norsk NA), og det er
+    # DEN som utløser feilen. En test på fixturtilstanden alene ville vært grønn hele veien.
+    ('felt, alpha_cc=1.0', 0.0, 1.0, 'elasticplastic'),
+    ('felt, alpha_cc=0.85', 0.0, 0.85, 'elasticperfectlyplastic'),
+    ('stotte, alpha_cc=0.85', math.pi, 0.85, 'elasticperfectlyplastic'),
+])
+def test_driven_curve_equals_a_batch_run_including_the_last_point(label, theta, alpha_cc, law):
+    """Punkt for punkt drevet kurve mot ett samlet kall — SÆRLIG bruddpunktet.
+
+    Målt før rettelsen, på standardtilstanden (α_cc 0,85): siste punkt ga 126,2 kNm drevet
+    mot 201,0 kNm samlet — 37 % for lavt, `truncated: false`, `warnings: []`. Punkt 0–18
+    var en ren monoton kurve, så feilen så ut som et resultat. Nå regnes bruddpunktet som
+    bøyekapasitet i BEGGE modi, og de to må da være identiske.
+    """
+    payload = _mc_payload(theta, alpha_cc, law)
+    full = engine.run(payload)['moment_curvature']
+    plan = full['chi_plan']
+    assert len(plan) == 20, label
+
+    for index in range(len(plan)):
+        single = copy.deepcopy(payload)
+        single['options']['mc_chi'] = plan[index]
+        one = engine.run(single)['moment_curvature']
+        assert close(one['kappa'][0], full['kappa'][index]), f'{label}[{index}]'
+        assert close(one['moment'][0], full['moment'][index], rel=1e-6), \
+            f'{label}[{index}]: {one["moment"][0]} != {full["moment"][index]}'
+
+    # Bruddpunktet skal være EKSAKT likt, ikke bare nær — det er kapasiteten i begge modi.
+    last = copy.deepcopy(payload)
+    last['options']['mc_chi'] = plan[-1]
+    assert engine.run(last)['moment_curvature']['moment'][0] == full['moment'][-1], label
+    assert full['moment'][-1] == full['M_Rd'], label
+
+
+def test_endpoint_mismatch_is_reported_not_silently_swallowed():
+    """En 37 %-feil skal aldri kunne vises uten at noe sier fra."""
+    quiet = engine.run(_mc_payload(0.0, 1.0, 'elasticplastic'))
+    assert not [w for w in quiet['warnings'] if w['code'] == 'mc_endpoint_mismatch']
+
+    loud = engine.run(_mc_payload(0.0, 0.85, 'elasticperfectlyplastic'))
+    hits = [w for w in loud['warnings'] if w['code'] == 'mc_endpoint_mismatch']
+    assert len(hits) == 1
+    assert 'kNm' in hits[0]['message']
+    # `info`, ikke `warning`: α_cc 0,85 er norsk NA og UI-ets standard, så denne utløses på
+    # nesten hver M–κ-kjøring — og sluttpunktet som RAPPORTERES er eksakt. En advarsel som
+    # alltid står der lærer brukeren å overse dem som faktisk teller.
+    assert hits[0]['severity'] == 'info'
+    # Ingen spekulasjon om resten av kurven: nabopunktene er målt til å ligge der de skal.
+    assert 'resten av kurven' not in hits[0]['message']
+    # Begge tallene skal stå i detail, ellers kan ingen etterprøve merknaden.
+    assert 'fixed-curvature m_y' in hits[0]['detail']
+    assert 'M_Rd' in hits[0]['detail']
+    # Kurven avsluttes i kapasiteten uansett.
+    assert loud['moment_curvature']['moment'][-1] == loud['moment_curvature']['M_Rd']
+
+
+def test_the_first_point_after_yield_needs_no_special_handling():
+    """Pakka gjør et sprang ved flytning også — målt, og der er startgjettet uskyldig."""
+    for alpha_cc, law in ((1.0, 'elasticplastic'), (0.85, 'elasticperfectlyplastic')):
+        payload = _mc_payload(0.0, alpha_cc, law)
+        full = engine.run(payload)['moment_curvature']
+        for index in (9, 10):       # siste før flyt og første etter
+            single = copy.deepcopy(payload)
+            single['options']['mc_chi'] = full['chi_plan'][index]
+            one = engine.run(single)['moment_curvature']
+            rel = abs(one['moment'][0] - full['moment'][index]) / abs(full['moment'][index])
+            assert rel < 1e-7, f'alpha_cc={alpha_cc} punkt {index}: {rel:.3e}'
+
+
 @pytest.mark.parametrize('label,theta,top_steel', [
     ('sagging', 0.0, False),
     ('hogging', math.pi, True),
@@ -408,6 +492,40 @@ def test_nm_domain_matches_fixture():
     assert close(dom['M_Rd_at_N'], M_RD_BEAM)
     assert close(dom['N_min'], expected['N_min'])
     assert close(dom['N_max'], expected['N_max'])
+
+
+# Bruddtilstanden UI og rapport leser generisk. Nøkkelnavnene må være de samme i `bending`
+# og `nm_domain`, ellers trenger hver leser et særtilfelle per analyse.
+ULTIMATE_STATE_KEYS = (
+    'eps_a', 'chi_y', 'x', 'x_over_d', 'eps_c_top', 'eps_s_max', 'failure_mode', 'layers',
+)
+
+
+def test_nm_domain_carries_the_ultimate_state_at_the_load_point():
+    """Uten dette sto hele inspeksjonspanelet tomt i M–N-analysen.
+
+    Tallene er alt regnet: `M_Rd_at_N` kommer fra et eget
+    `calculate_bending_strength(theta, N_Ed)`, og det kallet har tøyningsplanet. Å la det
+    ligge ubrukt i akkurat den analysen der man oftest vil se nøytralaksen — søyler med
+    aksialkraft — er å kaste bort et svar vi har.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['loads']['N_Ed'] = -500000.0
+
+    bending = engine.run(payload)['bending']
+    domain_payload = copy.deepcopy(payload)
+    domain_payload['analysis'] = 'nm_domain'
+    dom = engine.run(domain_payload)['nm_domain']
+
+    for key in ULTIMATE_STATE_KEYS:
+        assert key in dom, key
+        # Identiske nøkkelnavn OG identiske verdier: det er den samme bruddtilstanden,
+        # ved N_Ed, ikke et vilkårlig punkt på omhyllingen.
+        assert dom[key] == bending[key], key
+
+    assert dom['x'] is not None and dom['failure_mode'] is not None
+    assert dom['layers'] and dom['layers'][0]['eps'] is not None
+    assert close(dom['M_Rd_at_N'], bending['M_Rd'])
 
 
 # ------------------------------------------------------------------ #
