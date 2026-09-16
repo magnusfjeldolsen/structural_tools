@@ -1,12 +1,31 @@
 {
   "_meta": {
-    "generated": "2026-08-11T09:07:45.629Z",
-    "total_modules": 27,
+    "generated": "2026-09-16T08:58:36.166Z",
+    "total_modules": 29,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
   },
   "modules": [
+    {
+      "id": "clustering",
+      "title": "1D Clustering Tool | Paste Table Data, Cluster and Visualise",
+      "description": "Paste a table straight out of Excel and split one numeric column into natural groups. Exact 1D k-means, clusters numbered low to high, an interactive scatter plot coloured by cluster with per-point detail on hover, and copy-back-to-sheet output.",
+      "keywords": [
+        "1d clustering",
+        "k-means",
+        "natural breaks",
+        "jenks",
+        "cluster csv",
+        "paste excel data",
+        "group numeric column",
+        "utilisation grouping",
+        "data binning",
+        "structural engineering data tool"
+      ],
+      "url": "./clustering/index.html",
+      "category": "structural-analysis"
+    },
     {
       "id": "2dfea",
       "title": "2D FEM - Interactive GUI",
@@ -24,6 +43,42 @@
       ],
       "url": "./2dfea/index.html",
       "category": "structural-analysis"
+    },
+    {
+      "id": "concrete_section_calculator",
+      "title": "Betongtverrsnitt ULS — momentkapasitet, M–κ og M–N etter EC2",
+      "description": "Bruddgrensekapasitet for armerte betongtverrsnitt etter Eurocode 2, regnet av fib structuralcodes i nettleseren. Bjelke b×h eller plate per meter, felt- og støttemoment, flere armeringslag. Gir M_Rd ved gitt N_Ed, nøytralakse, tøyninger og spenninger per lag, bruddform, A_s,min og A_s,max, moment–krumningskurve og full M–N-kapasitetsomhylling med lastpunktet inntegnet — med utskriftsklar A4-rapport.",
+      "keywords": [
+        "betong",
+        "betongtverrsnitt",
+        "armert betong",
+        "bruddgrensetilstand",
+        "uls",
+        "eurocode 2",
+        "ec2",
+        "momentkapasitet",
+        "m_rd",
+        "bøyekapasitet",
+        "nøytralakse",
+        "tøyning",
+        "moment-krumning",
+        "m-n-diagram",
+        "kapasitetsomhylling",
+        "interaksjonsdiagram",
+        "minimumsarmering",
+        "as_min",
+        "armeringslag",
+        "bjelke",
+        "plate",
+        "dekke",
+        "feltmoment",
+        "støttemoment",
+        "structuralcodes",
+        "pyodide",
+        "betongberegning"
+      ],
+      "url": "./concrete_section_calculator/index.html",
+      "category": "concrete"
     },
     {
       "id": "cable_designer",
@@ -154,14 +209,6 @@
       "category": "concrete"
     },
     {
-      "id": "clustering",
-      "title": "CSV Clustering Tool - Structural Tools",
-      "description": "",
-      "keywords": [],
-      "url": "./clustering/index.html",
-      "category": "other"
-    },
-    {
       "id": "deliveryhub",
       "title": "Delivery Hub - Advanced Document Management",
       "description": "",
@@ -230,8 +277,8 @@
     },
     {
       "id": "geometry_workspace",
-      "title": "Geometri-workspace — Tyngdepunkt og nøytralakse",
-      "description": "Geometri-workspace for å finne tyngdepunkt og nøytralakse i sammensatte tverrsnitt. Tegn rektangler, skallelementer og polygoner i XY-planet, håndter overlapp, og les av tyngdepunkt, arealmomenter og hovedakser.",
+      "title": "Geometri-workspace — Tverrsnitt og forsterkning",
+      "description": "Geometri-workspace for sammensatte tverrsnitt: tyngdepunkt, nøytralakse og arealmomenter — og skjøtekrefter ved forsterkning eller kontroll av eksisterende profiler. Tegn skjøtelinjer (skruer, lim eller sveis) og få skjærstrømmen q = V·ES*/EI fra to lasttilstander før/etter forsterkning, forankringskraften ΔN/L, nødvendig skrueavstand, limspenning eller sveiseutnyttelse, og Volkersen-toppen i skjøteendene.",
       "keywords": [
         "tyngdepunkt",
         "nøytralakse",
@@ -243,7 +290,23 @@
         "fem-design",
         "virtual bar",
         "skallelement",
-        "geometri"
+        "geometri",
+        "forsterkning",
+        "skjøt",
+        "skjøtekrefter",
+        "skjærstrøm",
+        "vq/i",
+        "skjærflyt",
+        "samvirke",
+        "limt forbindelse",
+        "skruavstand",
+        "sveis",
+        "sveisekapasitet",
+        "volkersen",
+        "forankringslengde",
+        "cfrp",
+        "påforing",
+        "eksisterende konstruksjon"
       ],
       "url": "./geometry_workspace/index.html",
       "category": "structural-analysis"
@@ -368,6 +431,30 @@
       ],
       "url": "./THP/index.html",
       "category": "steel"
+    },
+    {
+      "id": "concrete_wall_minimum_reinforcement",
+      "title": "Wall Minimum Reinforcement Calculator | Eurocode 2 + Norwegian NA",
+      "description": "Minimum reinforcement for concrete walls to EC2 and the Norwegian National Annex. Vertical and horizontal minima to 9.6.2 and NA.9.6.3, restraint crack control to 7.3.2 with Table 7.2N and direct calculation to 7.3.4, watertight walls to EN 1992-3, and a bar-by-bar spacing matrix showing what each crack requirement actually costs.",
+      "keywords": [
+        "minimum reinforcement wall",
+        "minimumsarmering vegg",
+        "ec2 9.6.2",
+        "na.9.6.3",
+        "7.3.2 crack control",
+        "restraint cracking",
+        "edge restraint",
+        "yttervegg",
+        "innervegg",
+        "vanntett vegg",
+        "heisgrube",
+        "table 7.2n",
+        "en 1992-3",
+        "basement wall reinforcement",
+        "retaining wall minimum reinforcement"
+      ],
+      "url": "./concrete_wall_minimum_reinforcement/index.html",
+      "category": "concrete"
     },
     {
       "id": "weld_capacity",
