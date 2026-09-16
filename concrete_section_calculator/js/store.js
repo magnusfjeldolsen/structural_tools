@@ -25,7 +25,7 @@
  */
 
 import { SCHEMA_VERSION } from './meta.js';
-import { createLayer, suggestedDc } from './rebar.js';
+import { createCombo, createLayer, recomputeAutoDc, stackedDc } from './rebar.js';
 
 /**
  * Standardtilstand. Tallene er norsk praksis: α_cc = 0,85 (NA), γ_c = 1,5,
@@ -58,12 +58,16 @@ export function defaultState() {
     cover: 35,
     stirrup_dia: 8,
     cover_side: 35,
+    // EC2 8.2(2). k1/k2 er NA-parametere (anbefalt 1 og 5); d_g er ikke det,
+    // men inngår i samme formel. 16 mm er vanlig, 8/22/32 forekommer.
+    spacing: { k1: 1.0, k2: 5.0, d_g: 16 },
     layers: [
-      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 35 + 8 + 10 },
+      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 35 + 8 + 10, dc_auto: true },
     ],
     // kN og kNm. TRYKK er NEGATIV N. `M_Ed` er en STØRRELSE i retningen
-    // `direction` angir — det finnes ingen fortegn å tolke her.
-    loads: { N_Ed: 0, M_Ed: 0 },
+    // kombinasjonens `direction` angir — det finnes ingen fortegn å tolke her.
+    combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, direction: 'sagging' }],
+    activeCombo: 'C1',
     direction: 'sagging',
     analysis: 'bending',
     // Det finnes BEVISST ingen `options.integrator`: marin er hardkodet i
@@ -74,17 +78,24 @@ export function defaultState() {
   };
 }
 
-/** Grunn klone av tilstanden. Nok, fordi tilstanden er flat og serialiserbar. */
+/**
+ * Grunn klone av tilstanden. Nok, fordi tilstanden er flat og serialiserbar.
+ *
+ * `combos` MÅ klones som array, ikke spres inn i et objekt. `{ ...s.combos }`
+ * ville gjort `[{...}, {...}]` om til `{0: {...}, 1: {...}}` — stille, uten at
+ * noe kaster — og det er nøyaktig slik denne feilen så ut før den ble rettet.
+ */
 function cloneState(s) {
   return {
     ...s,
     geometry: { ...s.geometry },
     concrete: { ...s.concrete },
     steel: { ...s.steel },
-    loads: { ...s.loads },
+    spacing: { ...s.spacing },
     options: { ...s.options },
     doc: { ...s.doc },
     layers: (s.layers || []).map((l) => ({ ...l })),
+    combos: (s.combos || []).map((c) => ({ ...c })),
   };
 }
 
@@ -100,6 +111,8 @@ export function createStore(initial) {
   // ikke kunne bety to ulike lag i samme økt, ellers peker en gammel
   // feilmelding på feil rad.
   let layerSeq = state.layers.length;
+  // Samme prinsipp for kombinasjons-id-er, se `nextLayerId`.
+  let comboSeq = state.combos.length;
 
   function notify() {
     for (const fn of listeners) fn(state);
@@ -108,6 +121,16 @@ export function createStore(initial) {
   function nextLayerId() {
     layerSeq += 1;
     return `L${layerSeq}`;
+  }
+
+  function nextComboId() {
+    comboSeq += 1;
+    return `C${comboSeq}`;
+  }
+
+  /** Kjører `recomputeAutoDc` og skriver resultatet inn i `state.layers`. */
+  function applyAutoDc() {
+    state = { ...state, layers: recomputeAutoDc(state) };
   }
 
   const store = {
@@ -129,20 +152,35 @@ export function createStore(initial) {
       return () => listeners.delete(fn);
     },
 
-    /** Grunn sammenslåing på toppnivå. */
+    /**
+     * Grunn sammenslåing på toppnivå. `cover`/`stirrup_dia` er inndata til
+     * `suggestedDc`, så en endring her flytter ethvert `dc_auto`-lag som ikke
+     * er eksplisitt låst (§3.4) — ellers viser tegningen en overdekning
+     * brukeren nettopp endret, men jernet står igjen på gammel plass.
+     */
     setState(patch) {
       state = cloneState({ ...state, ...patch });
+      if ('cover' in patch || 'stirrup_dia' in patch) {
+        applyAutoDc();
+      }
       notify();
       return state;
     },
 
     /**
      * Sammenslåing inne i én undergruppe (`geometry`, `concrete`, `steel`,
-     * `loads`, `options`, `doc`). Skrevet ut som egen metode fordi
+     * `spacing`, `options`, `doc`). Skrevet ut som egen metode fordi
      * `setState({concrete: {...}})` ellers ville slettet feltene man ikke nevnte.
+     *
+     * `spacing` går ALLTID via `recomputeAutoDc`: k1/k2/d_g styrer plasseringen
+     * av ethvert `dc_auto`-lag, så en endring her er identisk i virkning med å
+     * endre overdekningen.
      */
     patch(group, values) {
       state = cloneState({ ...state, [group]: { ...state[group], ...values } });
+      if (group === 'spacing') {
+        applyAutoDc();
+      }
       notify();
       return state;
     },
@@ -156,14 +194,20 @@ export function createStore(initial) {
       const isSlab = type === 'slab';
       const next = cloneState(state);
       next.sectionType = isSlab ? 'slab' : 'beam';
+      // `dc_auto` MÅ med i feltlista: uten den ville hvert bjelke/plate-bytte
+      // stille nullstilt låsen på ethvert lag (plan §3.4).
       if (isSlab) {
         next.geometry = { ...next.geometry, b: 1000 };
         next.layers = next.layers.map((l) =>
-          l.mode === 'spacing' ? l : { id: l.id, mode: 'spacing', dia: l.dia, spacing: 150, edge: l.edge, dc: l.dc }
+          l.mode === 'spacing'
+            ? l
+            : { id: l.id, mode: 'spacing', dia: l.dia, spacing: 150, edge: l.edge, dc: l.dc, dc_auto: l.dc_auto }
         );
       } else {
         next.layers = next.layers.map((l) =>
-          l.mode === 'bars' ? l : { id: l.id, mode: 'bars', dia: l.dia, count: 3, edge: l.edge, dc: l.dc }
+          l.mode === 'bars'
+            ? l
+            : { id: l.id, mode: 'bars', dia: l.dia, count: 3, edge: l.edge, dc: l.dc, dc_auto: l.dc_auto }
         );
       }
       state = next;
@@ -171,27 +215,55 @@ export function createStore(initial) {
       return state;
     },
 
+    /** Nytt lag stables UTENFOR det ytterste på samme kant (EC2 8.2, §3.4). */
     addLayer(patch = {}) {
-      const layer = createLayer(state, { id: nextLayerId(), ...patch });
+      const created = createLayer(state, { id: nextLayerId(), ...patch });
+      const layer = { ...created, dc: stackedDc(state, created.edge, created.dia), dc_auto: true };
       state = cloneState({ ...state, layers: [...state.layers, layer] });
+      applyAutoDc();
       notify();
-      return layer;
+      return state.layers.find((l) => l.id === layer.id);
     },
 
+    /**
+     * `dia`/`edge` flytter et `dc_auto`-lag (og alt som stables på det).
+     * En eksplisitt `dc` i patchen er brukerens egen formulering (§3.1): den
+     * låser laget FØRST, så `recomputeAutoDc` ikke overskriver den med det
+     * samme.
+     */
     updateLayer(id, values) {
+      const touchesDc = 'dc' in values;
       state = cloneState({
         ...state,
-        layers: state.layers.map((l) => (l.id === id ? { ...l, ...values } : l)),
+        layers: state.layers.map((l) => {
+          if (l.id !== id) return l;
+          const next = { ...l, ...values };
+          if (touchesDc) next.dc_auto = false;
+          return next;
+        }),
       });
+      if (touchesDc || 'dia' in values || 'edge' in values || 'dc_auto' in values) {
+        applyAutoDc();
+      }
       notify();
       return state;
     },
 
-    /** ⧉-knappen. Dupliserer ALT unntatt id-en — der ligger gjentakelsen (plan §7). */
+    /**
+     * ⧉-knappen. Dupliserer ALT unntatt id-en — der ligger gjentakelsen (plan
+     * §7) — MEN kopien får ALLTID `dc_auto: true` og en frisk `dc` fra
+     * `stackedDc`, uansett om kilden var låst. En kopi som arvet en låst `dc`
+     * ville landet oppå originalen (bestillingens punkt 2).
+     */
     duplicateLayer(id) {
       const src = state.layers.find((l) => l.id === id);
       if (!src) return null;
-      const copy = { ...src, id: nextLayerId() };
+      const copy = {
+        ...src,
+        id: nextLayerId(),
+        dc_auto: true,
+        dc: stackedDc(state, src.edge, src.dia),
+      };
       const at = state.layers.indexOf(src) + 1;
       const layers = state.layers.slice();
       layers.splice(at, 0, copy);
@@ -202,20 +274,7 @@ export function createStore(initial) {
 
     removeLayer(id) {
       state = cloneState({ ...state, layers: state.layers.filter((l) => l.id !== id) });
-      notify();
-      return state;
-    },
-
-    /**
-     * Setter `dc` på nytt fra overdekning og bøylediameter for alle lag.
-     * Kalles når `cover` eller `stirrup_dia` endres — ellers står `dc` igjen
-     * med gamle tall og tegningen viser en overdekning brukeren nettopp endret.
-     */
-    resyncCover() {
-      state = cloneState({
-        ...state,
-        layers: state.layers.map((l) => ({ ...l, dc: suggestedDc(state, l.dia) })),
-      });
+      applyAutoDc();
       notify();
       return state;
     },
@@ -227,10 +286,48 @@ export function createStore(initial) {
       return state;
     },
 
+    /** Ny rad i lastkombinasjonstabellen. Retningen arves fra `createCombo`. */
+    addCombo(patch = {}) {
+      const combo = createCombo(state, { id: nextComboId(), ...patch });
+      state = cloneState({ ...state, combos: [...state.combos, combo] });
+      notify();
+      return combo;
+    },
+
+    updateCombo(id, values) {
+      state = cloneState({
+        ...state,
+        combos: state.combos.map((c) => (c.id === id ? { ...c, ...values } : c)),
+      });
+      notify();
+      return state;
+    },
+
+    /**
+     * Den SISTE kombinasjonen kan ikke fjernes — det finnes alltid minst én
+     * lastvirkning å regne på. Fjernes den AKTIVE, flytter aktiv til den
+     * første gjenværende, ellers ville `activeCombo` pekt på et slettet id.
+     */
+    removeCombo(id) {
+      if (state.combos.length <= 1) return state;
+      const combos = state.combos.filter((c) => c.id !== id);
+      const activeCombo = state.activeCombo === id ? combos[0].id : state.activeCombo;
+      state = cloneState({ ...state, combos, activeCombo });
+      notify();
+      return state;
+    },
+
+    setActiveCombo(id) {
+      state = cloneState({ ...state, activeCombo: id });
+      notify();
+      return state;
+    },
+
     /** `setInputs()` i arbeidsflyt-API-et. Nullstiller resultatet: det gjelder gamle tall. */
     replaceState(next) {
       state = cloneState({ ...defaultState(), ...next, result: null });
       layerSeq = Math.max(layerSeq, state.layers.length);
+      comboSeq = Math.max(comboSeq, state.combos.length);
       notify();
       return state;
     },

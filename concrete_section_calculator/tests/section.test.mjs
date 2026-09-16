@@ -44,8 +44,10 @@ const beamState = (patch = {}) => ({
   cover: 40,
   stirrup_dia: 0,
   cover_side: 40,
-  layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50 }],
-  loads: { N_Ed: 0, M_Ed: 0 },
+  spacing: { k1: 1, k2: 5, d_g: 16 },
+  layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50, dc_auto: false }],
+  combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, direction: 'sagging' }],
+  activeCombo: 'C1',
   direction: 'sagging',
   analysis: 'bending',
   options: { subtract_bar_area: false, mc_pre_yield: 10, mc_post_yield: 10 },
@@ -182,10 +184,11 @@ test('validate regel 2: laget får ikke plass i bredden', () => {
   assert.equal(m.severity, 'error');
   assert.match(m.message, /plass i bredden/);
 
-  // Fri avstand har et gulv på 20 mm (EC2 8.2): 10Ø8 trenger
-  // 2·40 + 80 + 9·20 = 340 mm, selv om 9·Ø bare er 72 mm.
+  // Fri avstand følger nå minClearDistance(dia, spacing): std-spacing
+  // (k1=1, k2=5, d_g=16) gir max(8, 21, 20) = 21 mm, ikke det gamle gulvet på
+  // 20. 10Ø8 trenger derfor 2·40 + 80 + 9·21 = 349 mm, selv om 9·Ø bare er 72 mm.
   const thin = beamState({ layers: [{ id: 'L1', mode: 'bars', dia: 8, count: 10, edge: 'bottom', dc: 44 }] });
-  assert.ok(find(thin, 'layer_too_wide'), 'minste fri avstand 20 mm mangler');
+  assert.ok(find(thin, 'layer_too_wide'), 'minste fri avstand etter EC2 8.2 mangler');
 
   // Plata har ingen bøyler og ingen sidekant å sprenge — regelen gjelder ikke.
   const slab = beamState({
@@ -239,6 +242,53 @@ test('validate regel 5: overlappende lag er ADVARSEL, ikke feil', () => {
     ],
   });
   assert.ok(!find(ok, 'layers_overlap'));
+});
+
+test('validate ny regel: insufficient_layer_spacing er ADVARSEL, ikke feil (EC2 8.2(2))', () => {
+  // To Ø20 på SAMME kant: senteravstand 30 mm ⇒ fri avstand (overflate til
+  // overflate) = 30 − 20 = 10 mm, som er mindre enn kravet på 21 mm
+  // (max(k1·Ø, d_g+k2, 20) = max(20, 21, 20) = 21) — men IKKE så lite at
+  // sylindrene overlapper (det ville krevd fri avstand < 0).
+  const s = beamState({
+    layers: [
+      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 53 },
+      { id: 'L2', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 83 },
+    ],
+  });
+  const m = find(s, 'insufficient_layer_spacing');
+  assert.ok(m, 'mangler insufficient_layer_spacing');
+  assert.equal(m.severity, 'warning');
+  assert.equal(isValid(s), true);
+  // Ikke samtidig et overlapp — de er to ulike terskler.
+  assert.ok(!find(s, 'layers_overlap'));
+
+  // Samme to lag, men langt nok fra hverandre (30 mm ekstra) skal ikke varsles.
+  const ok = beamState({
+    layers: [
+      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 53 },
+      { id: 'L2', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 94 },
+    ],
+  });
+  assert.ok(!find(ok, 'insufficient_layer_spacing'));
+
+  // Lag på ULIKE kanter skal aldri sammenliknes mot hverandre av denne regelen.
+  const otherEdge = beamState({
+    layers: [
+      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 53 },
+      { id: 'L2', mode: 'bars', dia: 20, count: 3, edge: 'top', dc: 60 },
+    ],
+  });
+  assert.ok(!find(otherEdge, 'insufficient_layer_spacing'));
+
+  // k1/k2/d_g fra state.spacing slår gjennom i kravet.
+  const wideGravel = beamState({
+    spacing: { k1: 1, k2: 5, d_g: 32 },
+    layers: [
+      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 53 },
+      { id: 'L2', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 94 },
+    ],
+  });
+  assert.ok(find(wideGravel, 'insufficient_layer_spacing'), 'd_g = 32 skjerper kravet til 37 mm');
 });
 
 test('validate melder flere feil samtidig, i rekkefølge geometri → material → lag', () => {

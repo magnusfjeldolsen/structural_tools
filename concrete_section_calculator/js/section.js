@@ -33,6 +33,9 @@ import {
   layerBarCount,
   layerCentroidZ,
   layerDepth,
+  layersOnEdge,
+  minClearBetween,
+  minClearDistance,
   tensionArea,
   totalArea,
 } from './rebar.js';
@@ -40,8 +43,11 @@ import {
 /** Plata er ALLTID 1000 mm bred — alt regnes per meter (plan §1). */
 export const SLAB_WIDTH = 1000;
 
-/** Minste fri avstand mellom jern i et lag, EC2 8.2. */
-export const MIN_CLEAR_SPACING = 20;
+// Selve konstanten bor i `rebar.js` (`minClearDistance` sin forbruker), for å
+// unngå en sirkulær import mellom denne fila og den. Re-eksportert her fordi
+// dette er der navnet historisk har hørt hjemme, og andre filer importerer
+// det herfra.
+export { MIN_CLEAR_SPACING } from './rebar.js';
 
 function num(v) {
   if (v === null || v === undefined || v === '') return NaN;
@@ -222,7 +228,9 @@ export function validate(state = {}) {
     }
     if (state.sectionType !== 'slab' && layer.mode !== 'spacing') {
       const n = layerBarCount(layer);
-      const clear = Math.max(dia, MIN_CLEAR_SPACING);
+      // EC2 8.2(2), ikke lenger bare et gulv på 20 mm — k1/k2/d_g er
+      // brukerstyrte NA-parametere (§2 i endringsrunde 2).
+      const clear = minClearDistance(dia, state.spacing);
       const needed =
         2 * (num(state.cover_side) + num(state.stirrup_dia)) + n * dia + (n - 1) * clear;
       if (b < needed) {
@@ -255,6 +263,33 @@ export function validate(state = {}) {
             `Lag ${a.id || i + 1} og ${c.id || j + 1} overlapper hverandre. ` +
               'Arealene regnes hver for seg, så kontroller inndataen.',
             `layers.${j}.dc`
+          )
+        );
+      }
+    }
+  }
+
+  // --- 6. Fri avstand mellom lag på samme kant, EC2 8.2(2) ---
+  // Sortert etter dc (`layersOnEdge`), IKKE arrayrekkefølge — to lag på samme
+  // kant kan være tegnet i vilkårlig rekkefølge i `state.layers`. Advarsel,
+  // ikke feil: beregningen er gyldig (arealene integreres uavhengig), det er
+  // et utførbarhetsproblem, og brukeren kan ha overstyrt `dc` bevisst.
+  for (const edge of ['bottom', 'top']) {
+    const onEdge = layersOnEdge(layers, edge);
+    for (let i = 0; i < onEdge.length - 1; i++) {
+      const a = onEdge[i];
+      const b = onEdge[i + 1];
+      const free = Math.abs(num(b.dc) - num(a.dc)) - (num(a.dia) + num(b.dia)) / 2;
+      const minClear = minClearBetween(a.dia, b.dia, state.spacing);
+      if (free < minClear) {
+        out.push(
+          issue(
+            'insufficient_layer_spacing',
+            'warning',
+            `Lag ${a.id ?? layers.indexOf(a) + 1} og ${b.id ?? layers.indexOf(b) + 1}: ` +
+              `fri avstand ${free.toFixed(1)} mm er mindre enn kravet ${minClear} mm ` +
+              'etter EC2 8.2(2).',
+            `layers.${layers.indexOf(b)}.dc`
           )
         );
       }

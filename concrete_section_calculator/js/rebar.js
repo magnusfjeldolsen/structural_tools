@@ -25,6 +25,15 @@
  * DOM-fri og ren (plan §2.3 punkt 2).
  */
 
+// Ligger her, ikke i `section.js`: `minClearDistance` under er selve
+// forbrukeren, og `section.js` importerer FRA denne fila — å legge
+// konstanten der ville laget en sirkel som i dag bare virker fordi den leses
+// inne i funksjonskropper. `section.js` re-eksporterer den for at det
+// offentlige API-et (og `MIN_CLEAR_SPACING`-navnet valideringen kjenner) skal
+// stå uendret.
+/** Minste fri avstand mellom jern i et lag, EC2 8.2. */
+export const MIN_CLEAR_SPACING = 20;
+
 /** Sikker tallkonvertering: tomt felt blir `NaN`, ikke 0. */
 function num(v) {
   if (v === null || v === undefined || v === '') return NaN;
@@ -290,6 +299,9 @@ export function reinforcementRatio(layers = [], geometry = {}, theta) {
  * `ui.js` fordi den definerer hva `dc` BETYR (avstand til jernets SENTER), og
  * den definisjonen hører sammen med `layerCentroidZ`.
  *
+ * Brukes som STARTVERDI for et lag uten nabo på samme kant. Har laget en
+ * nabo, er det `stackedDc` under som gjelder — se den for hvorfor.
+ *
  * @param {{cover:number, stirrup_dia:number}} state
  * @param {number} dia
  */
@@ -298,9 +310,103 @@ export function suggestedDc(state = {}, dia) {
 }
 
 /**
+ * Minste fri avstand mellom parallelle stenger/lag, EC2 8.2(2): den STØRSTE av
+ * `k1·Ø`, `(d_g + k2)` og et gulv på 20 mm. Gulvet er `MIN_CLEAR_SPACING` fra
+ * `section.js` — samme konstant som validerer bredden, ikke et nytt magisk
+ * tall. `k1`/`k2` er NA-parametere (anbefalt 1 og 5); `d_g` er ikke det, men
+ * inngår i samme formel.
+ *
+ * Fri avstand er OVERFLATE TIL OVERFLATE — senteravstand er dette pluss
+ * halve summen av de to diametrene (§0, plan-notatet). Det er her det er
+ * lettest å ta feil i hele runden.
+ *
+ * @param {number} dia stangdiameter [mm]
+ * @param {{k1?:number, k2?:number, d_g?:number}} [spacing]
+ * @returns {number} fri avstand [mm]
+ */
+export function minClearDistance(dia, spacing = {}) {
+  const k1 = Number(spacing.k1 ?? 1);
+  const k2 = Number(spacing.k2 ?? 5);
+  const dg = Number(spacing.d_g ?? 16);
+  return Math.max(k1 * Number(dia || 0), dg + k2, MIN_CLEAR_SPACING);
+}
+
+/** To lag med ulik diameter: den STØRSTE styrer. EC2 sier ikke hvilken; den
+ *  største er den konservative og eneste entydige lesningen. */
+export function minClearBetween(diaA, diaB, spacing = {}) {
+  return minClearDistance(Math.max(Number(diaA || 0), Number(diaB || 0)), spacing);
+}
+
+/** Lagene på `edge`, sortert etter STIGENDE dc (ytterst først). Ikke-endelige
+ *  dc behandles som Infinity, så de havner sist og blir aldri referanse. */
+export function layersOnEdge(layers = [], edge) {
+  return layers
+    .filter((l) => l && l.edge === edge)
+    .slice()
+    .sort((a, b) => (Number.isFinite(a.dc) ? a.dc : Infinity)
+                  - (Number.isFinite(b.dc) ? b.dc : Infinity));
+}
+
+/** Laget lengst INN fra kanten (størst endelig dc), eller null. */
+export function innermostLayer(layers = [], edge) {
+  const on = layersOnEdge(layers, edge).filter((l) => Number.isFinite(l.dc));
+  return on.length ? on[on.length - 1] : null;
+}
+
+/**
+ * `dc` for et NYTT lag på `edge` med diameter `dia`, stablet UTENFOR det
+ * lengste inn liggende laget på samme kant (bestillingens punkt 2 og 7). Uten
+ * nabo faller den tilbake på `suggestedDc` — det opprinnelige, enkle tilfellet.
+ *
+ * @param {object} state
+ * @param {string} edge `'bottom'` eller `'top'`
+ * @param {number} dia
+ */
+export function stackedDc(state = {}, edge, dia) {
+  const inner = innermostLayer(state.layers, edge);
+  if (!inner) return suggestedDc(state, dia);
+  return inner.dc + (inner.dia + dia) / 2
+       + minClearBetween(inner.dia, dia, state.spacing);
+}
+
+/**
+ * Regner `dc` på nytt for alle lag som IKKE er låst (`dc_auto: true`),
+ * kant for kant, ytterst-til-innerst-uavhengig — sorteringen skjer på `dc`,
+ * ikke arrayrekkefølge (§3.2). Et låst lag (`dc_auto: false`) beholder sin
+ * `dc` urørt, men fungerer FORTSATT som referanse for det neste laget: en
+ * bruker som har overstyrt ett lag skal ikke se de andre stable seg oppå det.
+ *
+ * Ren funksjon: returnerer en NY array og bevarer rekkefølgen fra
+ * `state.layers` — kalleren (`store.js`) trenger ikke vite at det har skjedd
+ * en sortering underveis.
+ *
+ * @param {object} state
+ * @returns {Array<object>}
+ */
+export function recomputeAutoDc(state = {}) {
+  const layers = (state.layers || []).map((l) => ({ ...l }));
+  for (const edge of ['bottom', 'top']) {
+    let prev = null;
+    for (const layer of layersOnEdge(layers, edge)) {
+      if (layer.dc_auto) {
+        layer.dc = prev
+          ? prev.dc + (prev.dia + layer.dia) / 2
+                    + minClearBetween(prev.dia, layer.dia, state.spacing)
+          : suggestedDc(state, layer.dia);
+      }
+      prev = layer; // også når dc_auto er false — et låst lag er referanse.
+    }
+  }
+  return layers;
+}
+
+/**
  * Nytt armeringslag med fornuftige verdier for gjeldende tverrsnittstype.
  * Plate får `spacing`-modus, bjelke får `bars` — det er tverrsnittstypen, ikke
  * brukeren, som avgjør hvilken regnemåte som gir mening.
+ *
+ * `dc_auto: true` med vilje: et nytt lag skal flytte seg når diameteren
+ * endres, helt til brukeren selv skriver en verdi i `d_c`-feltet (§3.1).
  *
  * @param {object} state
  * @param {object} [patch]
@@ -316,7 +422,31 @@ export function createLayer(state = {}, patch = {}) {
     ...base,
     edge: 'bottom',
     dc: suggestedDc(state, dia),
+    dc_auto: true,
     ...patch,
     dia,
+  };
+}
+
+/**
+ * Ny lastkombinasjon. Ligger her, ved siden av `createLayer`, av samme grunn:
+ * begge er per-rad-fabrikker som `store.js` (nye rader) og `serialize.js`
+ * (normalisering av lastede filer, §5) kaller på samme måte.
+ *
+ * Retningen arves fra tilstandens `direction` — en rad uten eget valg skal
+ * oppføre seg som brukeren allerede har satt opp (§4.1), ikke stille anta
+ * feltmoment.
+ *
+ * @param {object} state
+ * @param {object} [patch]
+ */
+export function createCombo(state = {}, patch = {}) {
+  return {
+    id: patch.id || 'C1',
+    name: '',
+    N_Ed: 0,
+    M_Ed: 0,
+    direction: state.direction || 'sagging',
+    ...patch,
   };
 }

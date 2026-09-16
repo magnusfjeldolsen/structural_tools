@@ -14,20 +14,38 @@ import { fileURLToPath } from 'node:url';
 import {
   barArea,
   barPositions,
+  createCombo,
   createLayer,
   effectiveDepth,
   effectiveDepthGeometric,
   equivalentStrip,
+  innermostLayer,
   layerArea,
   layerBarCount,
   layerCentroidZ,
   layerDepth,
+  layersOnEdge,
+  minClearBetween,
+  minClearDistance,
   reinforcementRatio,
+  recomputeAutoDc,
+  stackedDc,
   suggestedDc,
   tensionArea,
   tensionLayers,
   totalArea,
 } from '../js/rebar.js';
+
+/** Standardtilstanden for §2.3/§3.3 i endringsrunde 2 — brukes gjennomgående. */
+const STD = { k1: 1, k2: 5, d_g: 16 };
+const stdState = (patch = {}) => ({
+  cover: 35,
+  stirrup_dia: 8,
+  cover_side: 35,
+  spacing: STD,
+  layers: [],
+  ...patch,
+});
 
 const fixture = (name) =>
   JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}.json`, import.meta.url)), 'utf8'));
@@ -273,4 +291,169 @@ test('createLayer velger regnemåte etter tverrsnittstype', () => {
   assert.equal(slab.mode, 'spacing');
   assert.equal(slab.dia, 12);
   assert.equal(slab.dc, 31);
+});
+
+test('createLayer setter dc_auto: true — et nytt lag skal flytte seg med diameteren', () => {
+  assert.equal(createLayer({ sectionType: 'beam' }).dc_auto, true);
+  // Eksplisitt overstyring (t.d. fra `serialize.js` sin normalisering) skal slå gjennom.
+  assert.equal(createLayer({ sectionType: 'beam' }, { dc_auto: false }).dc_auto, false);
+});
+
+test('createCombo: retningen arves fra tilstandens direction', () => {
+  const c = createCombo({ direction: 'hogging' }, {});
+  assert.equal(c.direction, 'hogging');
+  assert.equal(c.N_Ed, 0);
+  assert.equal(c.M_Ed, 0);
+  // Uten en tilstand med direction: fall tilbake på feltmoment, ikke NaN/undefined.
+  assert.equal(createCombo({}, {}).direction, 'sagging');
+  // Patch vinner over arven, akkurat som for createLayer.
+  assert.equal(createCombo({ direction: 'hogging' }, { direction: 'sagging' }).direction, 'sagging');
+  assert.equal(createCombo({}, { id: 'C3', name: 'ULS 3' }).id, 'C3');
+});
+
+/* ---------------- §2 — EC2 8.2, fri avstand ---------------- */
+
+test('minClearDistance — §2.3 testtall, eksakte', () => {
+  assert.equal(minClearDistance(20, STD), 21);
+  assert.equal(minClearDistance(8, STD), 21);
+  assert.equal(minClearDistance(32, STD), 32);
+  assert.equal(minClearDistance(20, { k1: 1, k2: 5, d_g: 32 }), 37);
+  assert.equal(minClearDistance(20, { k1: 1.5, k2: 5, d_g: 16 }), 30);
+});
+
+test('minClearBetween — den STØRSTE diameteren styrer', () => {
+  assert.equal(minClearBetween(20, 25, STD), 25);
+});
+
+test('suggestedDc — §2.3', () => {
+  assert.equal(suggestedDc(stdState(), 20), 53);
+});
+
+test('layersOnEdge sorterer stigende på dc, og ikke-endelige dc havner sist', () => {
+  const layers = [
+    { id: 'L3', edge: 'bottom', dc: NaN, dia: 20 },
+    { id: 'L1', edge: 'bottom', dc: 53, dia: 20 },
+    { id: 'L2', edge: 'bottom', dc: 94, dia: 20 },
+    { id: 'T1', edge: 'top', dc: 50, dia: 20 },
+  ];
+  assert.deepEqual(layersOnEdge(layers, 'bottom').map((l) => l.id), ['L1', 'L2', 'L3']);
+  assert.deepEqual(layersOnEdge(layers, 'top').map((l) => l.id), ['T1']);
+  assert.deepEqual(layersOnEdge(layers, 'nonexistent'), []);
+});
+
+test('innermostLayer: laget med størst endelig dc, eller null uten noen', () => {
+  const layers = [
+    { id: 'L1', edge: 'bottom', dc: 53, dia: 20 },
+    { id: 'L2', edge: 'bottom', dc: 94, dia: 20 },
+  ];
+  assert.equal(innermostLayer(layers, 'bottom').id, 'L2');
+  assert.equal(innermostLayer(layers, 'top'), null);
+});
+
+test('stackedDc — §2.3: L2 og L3 stables utenfor det forrige laget', () => {
+  const s1 = stdState({ layers: [] });
+  const l1dc = stackedDc(s1, 'bottom', 20);
+  assert.equal(l1dc, 53); // ingen nabo ennå: samme som suggestedDc
+
+  const s2 = stdState({ layers: [{ id: 'L1', edge: 'bottom', dia: 20, dc: 53 }] });
+  const l2dc = stackedDc(s2, 'bottom', 20);
+  assert.equal(l2dc, 94);
+
+  const s3 = stdState({
+    layers: [
+      { id: 'L1', edge: 'bottom', dia: 20, dc: 53 },
+      { id: 'L2', edge: 'bottom', dia: 20, dc: 94 },
+    ],
+  });
+  assert.equal(stackedDc(s3, 'bottom', 25), 141.5);
+
+  // Samme L2 (Ø20 etter L1 Ø20@53), men med andre spacing-parametere —
+  // §2.3-tabellens to siste rader.
+  const afterL1 = { layers: [{ id: 'L1', edge: 'bottom', dia: 20, dc: 53 }] };
+  assert.equal(stackedDc(stdState({ ...afterL1, spacing: { k1: 1, k2: 5, d_g: 32 } }), 'bottom', 20), 110);
+  assert.equal(stackedDc(stdState({ ...afterL1, spacing: { k1: 1.5, k2: 5, d_g: 16 } }), 'bottom', 20), 103);
+});
+
+/* ---------------- §3 — automatisk dc, recomputeAutoDc ---------------- */
+
+test('recomputeAutoDc — START: to nye Ø20-lag i bunn, begge dc_auto', () => {
+  const state = stdState({
+    layers: [
+      { id: 'L1', edge: 'bottom', dia: 20, dc_auto: true },
+      { id: 'L2', edge: 'bottom', dia: 20, dc_auto: true },
+    ],
+  });
+  const layers = recomputeAutoDc(state);
+  assert.equal(layers.find((l) => l.id === 'L1').dc, 53);
+  assert.equal(layers.find((l) => l.id === 'L2').dc, 94);
+  // Ren funksjon: input er urørt, rekkefølgen i state.layers er bevart.
+  assert.equal(state.layers[0].dc, undefined);
+  assert.deepEqual(layers.map((l) => l.id), ['L1', 'L2']);
+});
+
+test('recomputeAutoDc — §3.3: L1 → Ø32 flytter begge lag', () => {
+  const state = stdState({
+    layers: [
+      { id: 'L1', edge: 'bottom', dia: 32, dc_auto: true, dc: 53 },
+      { id: 'L2', edge: 'bottom', dia: 20, dc_auto: true, dc: 94 },
+    ],
+  });
+  const layers = recomputeAutoDc(state);
+  assert.equal(layers.find((l) => l.id === 'L1').dc, 59);
+  assert.equal(layers.find((l) => l.id === 'L2').dc, 117);
+});
+
+test('recomputeAutoDc — §3.3: L2 låst holder seg, L1 flytter fortsatt', () => {
+  const state = stdState({
+    layers: [
+      { id: 'L1', edge: 'bottom', dia: 20, dc_auto: true, dc: 53 },
+      { id: 'L2', edge: 'bottom', dia: 20, dc_auto: false, dc: 120 },
+    ],
+  });
+  const layers = recomputeAutoDc(state);
+  assert.equal(layers.find((l) => l.id === 'L1').dc, 53);
+  // Låst lag: urørt, MEN fortsatt referanse for neste (her er det ingen neste).
+  assert.equal(layers.find((l) => l.id === 'L2').dc, 120);
+});
+
+test('recomputeAutoDc — §3.3: cover 35 → 45 flytter begge auto-lag', () => {
+  const state = stdState({
+    cover: 45,
+    layers: [
+      { id: 'L1', edge: 'bottom', dia: 20, dc_auto: true, dc: 53 },
+      { id: 'L2', edge: 'bottom', dia: 20, dc_auto: true, dc: 94 },
+    ],
+  });
+  const layers = recomputeAutoDc(state);
+  assert.equal(layers.find((l) => l.id === 'L1').dc, 63);
+  assert.equal(layers.find((l) => l.id === 'L2').dc, 104);
+});
+
+// De to neste er §2.3 sine «samme, d_g = 32»/«samme, k1 = 1,5»-rader — de
+// gjelder stackedDc (og dermed recomputeAutoDc, som bruker samme formel) for
+// L2 stablet etter L1 Ø20@53, IKKE §3.3-scenariet med diameterbytte.
+test('recomputeAutoDc — §2.3: d_g = 32 gir L2 = 110, L1 uendret', () => {
+  const state = stdState({
+    spacing: { k1: 1, k2: 5, d_g: 32 },
+    layers: [
+      { id: 'L1', edge: 'bottom', dia: 20, dc_auto: true, dc: 53 },
+      { id: 'L2', edge: 'bottom', dia: 20, dc_auto: true, dc: 94 },
+    ],
+  });
+  const layers = recomputeAutoDc(state);
+  assert.equal(layers.find((l) => l.id === 'L1').dc, 53); // suggestedDc uendret av d_g
+  assert.equal(layers.find((l) => l.id === 'L2').dc, 110);
+});
+
+test('recomputeAutoDc — §2.3: k1 = 1,5 gir L2 = 103, L1 uendret', () => {
+  const state = stdState({
+    spacing: { k1: 1.5, k2: 5, d_g: 16 },
+    layers: [
+      { id: 'L1', edge: 'bottom', dia: 20, dc_auto: true, dc: 53 },
+      { id: 'L2', edge: 'bottom', dia: 20, dc_auto: true, dc: 94 },
+    ],
+  });
+  const layers = recomputeAutoDc(state);
+  assert.equal(layers.find((l) => l.id === 'L1').dc, 53); // suggestedDc uendret av k1
+  assert.equal(layers.find((l) => l.id === 'L2').dc, 103);
 });

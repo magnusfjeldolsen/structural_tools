@@ -3,10 +3,15 @@
  *
  * TO PÅSTANDER BÆRER HELE FILA
  *
- * 1. Payloaden er IDENTISK med den frosne fixturen — samme tall, samme
- *    nøkkelrekkefølge. `test_engine.py` leser den SAMME fila som inndata, så
- *    dette er det som gjør akseptkravet «samme M_Rd i CPython som i
- *    nettleseren» etterprøvbart (plan §2.2, §12).
+ * 1. Payloadens FORM stemmer med kontrakten i endringsrunde 2 §4.2 — særlig at
+ *    `loads` nå er `{combinations: [...], active}`, ikke `{N_Ed, M_Ed}`
+ *    direkte. De to formtestene sammenlikner mot en LITERAL skrevet her, ikke
+ *    mot `tests/fixtures/payload-beam-300x600.json` / `payload-slab-1000x200.json`
+ *    — de fixturene bærer ennå den GAMLE `loads`-formen og blir regenerert av
+ *    koordinatoren etter denne runden (endringsrunde 2, §8). Når det er gjort,
+ *    kan disse to testene igjen lese fixturen i stedet for literalen, men
+ *    frem til da ville en sammenlikning mot fila bare bevist at payloaden er
+ *    lik en kontrakt vi vet er utdatert.
  *
  * 2. `payload.section.rebar[i].bars` er dypt lik `barPositions(...)`. Det er
  *    den eneste maskinelle garantien for at tegningen og motoren ser det samme
@@ -16,15 +21,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 
 import { buildPayload } from '../js/payload.js';
 import { barPositions, equivalentStrip } from '../js/rebar.js';
-
-const fixturePath = (name) =>
-  fileURLToPath(new URL(`./fixtures/${name}.json`, import.meta.url));
-const fixture = (name) => JSON.parse(readFileSync(fixturePath(name), 'utf8'));
 
 /** Referansebjelken, plan §3.6. Merk α_cc = 1,0 og overdekning 40 uten bøyle. */
 const BEAM_STATE = {
@@ -44,8 +43,10 @@ const BEAM_STATE = {
   cover: 40,
   stirrup_dia: 0,
   cover_side: 40,
-  layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50 }],
-  loads: { N_Ed: 0, M_Ed: 0 },
+  layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50, dc_auto: false }],
+  // Endringsrunde 2 §4.1: `loads` er erstattet av `combos` + `activeCombo`.
+  combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, direction: 'sagging' }],
+  activeCombo: 'C1',
   direction: 'sagging',
   analysis: 'bending',
   options: { subtract_bar_area: false, mc_pre_yield: 10, mc_post_yield: 10 },
@@ -60,25 +61,105 @@ const SLAB_STATE = {
   geometry: { b: 1000, h: 200 },
   cover: 25,
   cover_side: 25,
-  layers: [{ id: 'L1', mode: 'spacing', dia: 12, spacing: 113, edge: 'bottom', dc: 31 }],
+  layers: [{ id: 'L1', mode: 'spacing', dia: 12, spacing: 113, edge: 'bottom', dc: 31, dc_auto: false }],
 };
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
-test('bjelkepayloaden er identisk med den frosne fixturen', () => {
+/** Formen §4.2 krever — delt av begge testene pga. felles struktur. */
+const oneCombo = { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, theta: 0 };
+
+test('bjelkepayloaden har formen fra endringsrunde 2 §4.2', () => {
   const built = buildPayload(BEAM_STATE);
-  const frozen = fixture('payload-beam-300x600');
-  assert.deepEqual(built, frozen);
-  // …og med SAMME nøkkelrekkefølge. En omstokket payload er lik nok for
-  // `deepEqual`, men ikke for en diff mot fixturfila.
-  assert.equal(JSON.stringify(built), JSON.stringify(frozen));
+  const expected = {
+    schema: 1,
+    analysis: 'bending',
+    section: {
+      type: 'beam',
+      b: 300,
+      h: 600,
+      concrete: { fck: 30, gamma_c: 1.5, alpha_cc: 1.0, law: 'parabolarectangle' },
+      steel: {
+        fyk: 500,
+        Es: 200000,
+        ftk: 540,
+        k: 1.08,
+        epsuk: 0.075,
+        gamma_eps: 0.9,
+        gamma_s: 1.15,
+        law: 'elasticplastic',
+      },
+      rebar: [
+        {
+          id: 'L1',
+          kind: 'bars',
+          area: 942.4777960769379,
+          bars: [
+            { y: -100, z: -250, dia: 20 },
+            { y: 0, z: -250, dia: 20 },
+            { y: 100, z: -250, dia: 20 },
+          ],
+        },
+      ],
+    },
+    loads: { combinations: [oneCombo], active: 'C1' },
+    options: {
+      theta: 0,
+      integrator: 'marin',
+      subtract_bar_area: false,
+      complete_domain: true,
+      mc_pre_yield: 10,
+      mc_post_yield: 10,
+      mc_chi: null,
+    },
+  };
+  assert.deepEqual(built, expected);
+  // …og med SAMME nøkkelrekkefølge, ikke bare `deepEqual`-lik.
+  assert.equal(JSON.stringify(built), JSON.stringify(expected));
 });
 
-test('platepayloaden er identisk med den frosne fixturen', () => {
+test('platepayloaden har formen fra endringsrunde 2 §4.2', () => {
   const built = buildPayload(SLAB_STATE);
-  const frozen = fixture('payload-slab-1000x200');
-  assert.deepEqual(built, frozen);
-  assert.equal(JSON.stringify(built), JSON.stringify(frozen));
+  const expected = {
+    schema: 1,
+    analysis: 'bending',
+    section: {
+      type: 'slab',
+      b: 1000,
+      h: 200,
+      concrete: { fck: 30, gamma_c: 1.5, alpha_cc: 1.0, law: 'parabolarectangle' },
+      steel: {
+        fyk: 500,
+        Es: 200000,
+        ftk: 540,
+        k: 1.08,
+        epsuk: 0.075,
+        gamma_eps: 0.9,
+        gamma_s: 1.15,
+        law: 'elasticplastic',
+      },
+      rebar: [
+        {
+          id: 'L1',
+          kind: 'strip',
+          area: 1000.8613763648898,
+          strip: { width: 83.40511469707415, height: 12, z: -69 },
+        },
+      ],
+    },
+    loads: { combinations: [oneCombo], active: 'C1' },
+    options: {
+      theta: 0,
+      integrator: 'marin',
+      subtract_bar_area: false,
+      complete_domain: true,
+      mc_pre_yield: 10,
+      mc_post_yield: 10,
+      mc_chi: null,
+    },
+  };
+  assert.deepEqual(built, expected);
+  assert.equal(JSON.stringify(built), JSON.stringify(expected));
 });
 
 test('bars kommer FRA barPositions — ingen parallell koordinatregning', () => {
@@ -123,28 +204,52 @@ test('plata sender b = 1000 selv om geometry.b sier noe annet', () => {
   );
 });
 
-test('enheter konverteres ÉN gang: kN → N og kNm → Nmm', () => {
+test('enheter konverteres ÉN gang: kN → N og kNm → Nmm, per kombinasjon', () => {
   const state = clone(BEAM_STATE);
-  state.loads = { N_Ed: -200, M_Ed: 250 };
+  state.combos = [{ id: 'C1', name: 'ULS 1', N_Ed: -200, M_Ed: 250, direction: 'sagging' }];
   const built = buildPayload(state);
-  assert.equal(built.loads.N_Ed, -200000);
-  assert.equal(built.loads.M_Ed, 250000000);
+  assert.equal(built.loads.combinations[0].N_Ed, -200000);
+  assert.equal(built.loads.combinations[0].M_Ed, 250000000);
 });
 
-test('M_Ed er en STØRRELSE — fortegn på inndata skal ikke lekke gjennom', () => {
+test('M_Ed er en STØRRELSE per kombinasjon — fortegn på inndata skal ikke lekke gjennom', () => {
   const state = clone(BEAM_STATE);
-  state.loads = { N_Ed: 0, M_Ed: -250 };
-  assert.equal(buildPayload(state).loads.M_Ed, 250000000);
+  state.combos = [{ id: 'C1', name: '', N_Ed: 0, M_Ed: -250, direction: 'sagging' }];
+  assert.equal(buildPayload(state).loads.combinations[0].M_Ed, 250000000);
   // N_Ed beholder derimot fortegnet: n < 0 er TRYKK.
-  state.loads = { N_Ed: -500, M_Ed: 0 };
-  assert.equal(buildPayload(state).loads.N_Ed, -500000);
+  state.combos = [{ id: 'C1', name: '', N_Ed: -500, M_Ed: 0, direction: 'sagging' }];
+  assert.equal(buildPayload(state).loads.combinations[0].N_Ed, -500000);
 });
 
-test('theta følger retningsvalget', () => {
+test('theta følger RETNINGEN PER KOMBINASJON, ikke bare tilstandens direction', () => {
+  assert.equal(buildPayload(BEAM_STATE).loads.combinations[0].theta, 0);
+  const state = clone(BEAM_STATE);
+  state.combos = [{ id: 'C1', name: '', N_Ed: 0, M_Ed: 0, direction: 'hogging' }];
+  assert.equal(buildPayload(state).loads.combinations[0].theta, Math.PI);
+  // `options.theta` styres fortsatt av tilstandens EGEN direction — den er
+  // tverrsnittstegningens, ikke en bestemt kombinasjons (§4.1).
   assert.equal(buildPayload(BEAM_STATE).options.theta, 0);
   const hog = clone(BEAM_STATE);
   hog.direction = 'hogging';
   assert.equal(buildPayload(hog).options.theta, Math.PI);
+});
+
+test('flere kombinasjoner blir flere rader, i samme rekkefølge', () => {
+  const state = clone(BEAM_STATE);
+  state.combos = [
+    { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 150, direction: 'sagging' },
+    { id: 'C2', name: 'ULS 2', N_Ed: -500, M_Ed: 250, direction: 'hogging' },
+  ];
+  state.activeCombo = 'C2';
+  const built = buildPayload(state);
+  assert.equal(built.loads.combinations.length, 2);
+  assert.equal(built.loads.combinations[0].id, 'C1');
+  assert.equal(built.loads.combinations[0].M_Ed, 150000000);
+  assert.equal(built.loads.combinations[0].theta, 0);
+  assert.equal(built.loads.combinations[1].id, 'C2');
+  assert.equal(built.loads.combinations[1].N_Ed, -500000);
+  assert.equal(built.loads.combinations[1].theta, Math.PI);
+  assert.equal(built.loads.active, 'C2');
 });
 
 test('ftk regnes som k·fyk og sendes alltid med', () => {
