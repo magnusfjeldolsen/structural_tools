@@ -98,10 +98,10 @@ const FONT = 'Helvetica, Arial, sans-serif';
  * Småting
  * ------------------------------------------------------------------ */
 
-/** Norsk desimaltegn. Rapporten er norsk; «86.1» er ikke. */
+/** Engelsk desimalpunktum, som resten av siden. */
 export function fmt(value, decimals = 0) {
   if (value === null || value === undefined || !Number.isFinite(value)) return '–';
-  return value.toFixed(decimals).replace('.', ',');
+  return value.toFixed(decimals);
 }
 
 function esc(s) {
@@ -328,7 +328,7 @@ export function drawSection(state, opts = {}) {
   const widthAttr = o.unit === 'px' ? `${r(o.width)}px` : `${r(o.width)}mm`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${widthAttr}" ` +
          `viewBox="0 0 ${r(paperW)} ${r(paperH)}" role="img" ` +
-         `aria-label="Tverrsnitt ${esc(fmt(b, 0))} x ${esc(fmt(h, 0))} mm">` +
+         `aria-label="Cross-section ${esc(fmt(b, 0))} x ${esc(fmt(h, 0))} mm">` +
          parts.join('') + `</svg>`;
 }
 

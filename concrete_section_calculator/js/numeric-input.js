@@ -73,7 +73,7 @@ export function evaluateBounded(expr, rules = {}) {
 }
 
 /**
- * Formaterer et tall for visning i et felt: norsk desimalkomma, ingen
+ * Formaterer et tall for visning i et felt: engelsk desimalpunktum, ingen
  * unødvendige nuller. `null`/`NaN` blir «–», som er det rapporten og UI-en
  * skal vise for et tall som ikke krysset JSON-grensa (plan §5.4).
  *
@@ -86,7 +86,7 @@ export function formatNumber(v, decimals = 3) {
   // `toFixed` + strip: gir 53 for 53.0 og 0.85 for 0.8500.
   let s = n.toFixed(decimals);
   if (s.includes('.')) s = s.replace(/\.?0+$/, '');
-  return s.replace('.', ',');
+  return s;
 }
 
 /**

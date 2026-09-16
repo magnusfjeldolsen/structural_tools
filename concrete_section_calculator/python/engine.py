@@ -1009,11 +1009,18 @@ def _run_inner(payload, progress, t0):
             utilisation=ref['utilisation'],
             N_min=_num(n_min), N_max=_num(n_max),
             combinations=combo_results, governing=governing_id,
+            # Duplisert med vilje: `meta` beskriver KJØRINGEN, men `charts.js` får bare
+            # `result.nm_domain` alene — `meta` er en søsken, ikke nestet inni. Uten
+            # `domain_theta` HER kan ikke plottkoden vite hvilken retning omhyllingen ble
+            # signert med, og da havner en støttemomentkombinasjon feilaktig på samme side
+            # (+M) som en feltmomentkombinasjon i stedet for på sin egen, negative gren.
+            domain_theta=_num(domain_theta),
         )
         # `meta.moment_sign` er GOVERNING sitt rå fortegn (§4.3) og signerer verken `m` her
-        # eller noe annet i denne blokka lenger. `domain_theta` er retningen omhyllingen
-        # FAKTISK ble signert med, slik at plottkode og rapport kan merke aksen presist i
-        # stedet for å anta at den er lik `meta.theta`/governing sin retning.
+        # eller noe annet i denne blokka lenger. `meta.domain_theta` er samme tall som
+        # `nm_domain.domain_theta` over — retningen omhyllingen FAKTISK ble signert med,
+        # slik at plottkode og rapport kan merke aksen presist i stedet for å anta at den
+        # er lik `meta.theta`/governing sin retning.
         common['meta']['domain_theta'] = _num(domain_theta)
 
     common['meta']['wall_time_ms'] = _num(round((time.perf_counter() - t0) * 1000, 1))

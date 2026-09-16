@@ -229,7 +229,7 @@ test('drawSection: nøytralaksen legges etter theta, ikke etter håp', () => {
   const felt = drawSection(BEAM, { overlay: { x: 86.089, theta: 0 } });
   const stotte = drawSection(BEAM, { overlay: { x: 86.089, theta: Math.PI } });
   assert.match(felt, /data-role="na"/);
-  assert.match(felt, />x = 86,1 mm</);
+  assert.match(felt, />x = 86\.1 mm</);
 
   const yOf = (svg) => Number(/<line x1="[-\d.]+" y1="([-\d.]+)"[^>]*stroke-dasharray/.exec(svg)[1]);
   const vb = sectionViewBox(BEAM, {});
