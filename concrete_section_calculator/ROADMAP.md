@@ -10,10 +10,13 @@ Motoren er fib `structuralcodes` 0.7.2 under Pyodide, med `marin`-integratoren.
 
 ---
 
-## NÅ — endringsrunde 4
+## FERDIG — endringsrunde 4 (`fe1030c` motor og modell, `f9586b9` grensesnitt)
 
 Plan: `global-devspecs/concrete_section_calculator-v4-sign-and-shear.md`.
-Angrepunkt før runden: **`611776e`**.
+Angrepunkt før runden: **`611776e`** — `git reset --hard 611776e` tar alt tilbake.
+
+Alle fire postene under er levert og verifisert i nettleser. 297 JS-tester,
+70 Python-tester.
 
 | # | hva | målt begrunnelse |
 |---|---|---|
@@ -21,6 +24,22 @@ Angrepunkt før runden: **`611776e`**.
 | **0.2** | **Aksialkraft ⇒ M–N-diagram automatisk.** «Bending resistance» deaktiveres når en kombinasjon har `N_Ed ≠ 0`. | En `M_Rd` ved én aksialkraft er ett punkt på en kurve, og ser ut som en kapasitet. |
 | **0.3** | **Skjærkapasitet** etter EC2 6.2, med og uten bøyler. | `VRdc`/`VRds`/`VRdmax` finnes oppstrøms; vi regner bare ρ_w,min, s_l,max, s_t,max selv. |
 | **0.4** | **Fortegn i skjær**: `A_sl` og `d` følger kombinasjonens moment; `NEd` snus for EC2-funksjonene. | Feil side: **+26 %** på usikker side. Feil `NEd`-fortegn: **11×**. |
+
+### Funnet ved gjennomgang av skjermbildene, rettet i `f9586b9`
+
+Fem feil som ingen test dekket. De står her fordi de deler én form: **to kilder til
+samme tall**, der bare den ene ble lest av den som tegnet.
+
+| hva | hvorfor det ikke ble oppdaget |
+|---|---|
+| Plata ble **tegnet** 300 mm bred mens motoren regnet 1000 | `section-draw.js` leste `geometry.b` rått, alt annet leser `sectionWidth()`. Begge «riktige» hver for seg. |
+| «UTILISATION **H**» | CSS-en storbokstaverte `η` til gresk Eta, som ikke kan skilles fra latinsk H. |
+| Bøylemerkelappen usynlig | Lå oppå underkantarmeringen, som tegnes etter bøylen og malte over den. |
+| `λ` betydde 1,24 i figuren, 1,242 i rapporten og 0,81 på siden | `radialUtilisation` returnerer `{lambda}` = faktoren og `{eta}` = 1/λ. Tre kallsteder valgte hver sin. |
+| Knappene sa Ctrl+Enter | Ctrl+Mellomrom var implementert, men bare i tastaturlytteren. |
+
+**Læren for neste runde:** en test som sammenlikner *figurens* tall med *motorens* tall er
+verdt mer enn ti tester som sjekker at figuren har riktig struktur.
 
 0.1 er også en **forenkling**: «størrelse»-regelen fra v2 med `meta.moment_sign` og
 `meta.domain_theta` oppheves, fordi den bare fantes for å bygge bro mellom en
@@ -196,6 +215,12 @@ fleste; de skal ikke kreve oppmerksomhet.
 
 **Binding.** Bør gjøres **etter** post 1 og 2, ellers omarbeides den samme seksjonen tre
 ganger.
+
+**Konkret sak som venter her.** Tverrsnittsfiguren i geometriseksjonen fyller bare rundt
+en fjerdedel av panelet sitt: `viewBox`-en reserverer plass til armeringsmerkelappene til
+høyre, og en høy, smal bjelke etterlater derfor luft på alle kanter. Figuren er den
+viktigste tilbakemeldingen på siden og bør fylle boksen. Rettes sammen med resten av
+seksjonen, ikke som en løsrevet CSS-lapp.
 
 ---
 
