@@ -508,3 +508,67 @@ test('§1.5: ingen norsk brukersynlig tekst i noen av de tre SVG-funksjonene', (
     'drawSection(overlay, hogging)',
   );
 });
+
+/* ================================================================== *
+ * Treffflater for pekeren (hover)
+ * ================================================================== */
+
+/** Alle `data-hit`-elementer av én type, med attributtene sine. */
+function hits(svg, kind) {
+  return [...svg.matchAll(/<circle([^>]* data-hit="([^"]+)"[^>]*)\/>/g)]
+    .filter((m) => m[2] === kind)
+    .map((m) => Object.fromEntries(
+      [...m[1].matchAll(/data-([a-z]+)="([^"]*)"/g)].map((a) => [a[1], a[2]])));
+}
+
+test('momentCurvatureSvg: ett treffpunkt per kurvepunkt, med kappa og moment', () => {
+  const mc = MC_BEAM;
+  const svg = momentCurvatureSvg(mc, { width: 600, unit: 'px' });
+  const h = hits(svg, 'mc');
+  assert.equal(h.length, mc.kappa.length, 'ett treffpunkt per punkt paa kurven');
+  // Siste punkt skal baere bruddmomentet, som er selve invarianten i kurven.
+  const last = h[h.length - 1];
+  assert.ok(Math.abs(Number(last.moment) - mc.M_Rd / 1e6) < 1e-6,
+    `siste treffpunkt baerer M_Rd: ${last.moment} vs ${mc.M_Rd / 1e6}`);
+  assert.ok(Number(last.kappa) > 0, 'kappa er med og positiv');
+});
+
+test('nmDomainSvg: treffpunkt for hvert omhyllingspunkt, med EC2-feltnummer', () => {
+  const dom = DOM_BEAM;
+  const svg = nmDomainSvg(dom, { width: 600, unit: 'px' });
+  const h = hits(svg, 'env');
+  assert.equal(h.length, dom.n.length, 'ett treffpunkt per punkt i omhyllingen');
+  assert.ok(Math.abs(Number(h[0].n) - dom.n[0] / 1000) < 1e-6, 'N i kN');
+  assert.ok(Math.abs(Number(h[0].m) - dom.m[0] / 1e6) < 1e-6, 'M i kNm, FORTEGNSATT');
+  if (Array.isArray(dom.field_num) && dom.field_num.length) {
+    assert.equal(Number(h[0].field), dom.field_num[0], 'EC2-feltnummeret foelger med');
+  }
+});
+
+test('nmDomainSvg: treffpunkt per lastkombinasjon, governing merket', () => {
+  const dom = {
+    ...DOM_BEAM,
+    governing: 'C2',
+    combinations: [
+      { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 150e6, theta: 0, within_limits: true },
+      { id: 'C2', name: 'ULS 2', N_Ed: -500e3, M_Ed: 250e6, theta: 0, within_limits: true },
+    ],
+  };
+  const h = hits(nmDomainSvg(dom, { width: 600, unit: 'px' }), 'load');
+  assert.equal(h.length, 2);
+  assert.equal(h[0].combo, 'ULS 1');
+  assert.equal(h[0].governing, '0');
+  assert.equal(h[1].combo, 'ULS 2');
+  assert.equal(h[1].governing, '1', 'governing er merket, og det er den strålen peker paa');
+  assert.ok(Math.abs(Number(h[1].n) - (-500)) < 1e-6, 'N_Ed i kN');
+});
+
+test('treffflatene er usynlige — de skal ikke tegne noe paa papiret', () => {
+  const svg = nmDomainSvg(DOM_BEAM, { width: 600, unit: 'px' });
+  const g = svg.match(/<g data-role="hits"[^>]*>/);
+  assert.ok(g, 'treffpunktene ligger i en egen gruppe');
+  assert.match(g[0], /fill="transparent"/, 'gjennomsiktig fyll tegner ingenting');
+  assert.match(g[0], /stroke="none"/, 'ingen strek');
+  assert.match(g[0], /pointer-events="all"/,
+    'uten denne faar et ufylt element ikke pekerhendelser i sitt indre');
+});
