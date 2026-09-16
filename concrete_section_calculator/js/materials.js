@@ -43,9 +43,9 @@ export const CONCRETE_GRADES = [
 
 /** Armeringskvaliteter. `k = f_tk/f_yk` er duktilitetsklassen (EC2 tillegg C). */
 export const STEEL_GRADES = [
-  { label: 'B500NC (k = 1,08)', fyk: 500, k: 1.08, epsuk: 0.075 },
-  { label: 'B500NB (k = 1,08)', fyk: 500, k: 1.08, epsuk: 0.05 },
-  { label: 'B500NA (k = 1,05)', fyk: 500, k: 1.05, epsuk: 0.025 },
+  { label: 'B500NC (k = 1.08)', fyk: 500, k: 1.08, epsuk: 0.075 },
+  { label: 'B500NB (k = 1.08)', fyk: 500, k: 1.08, epsuk: 0.05 },
+  { label: 'B500NA (k = 1.05)', fyk: 500, k: 1.05, epsuk: 0.025 },
 ];
 
 /**
@@ -53,14 +53,14 @@ export const STEEL_GRADES = [
  * tilbys ikke — se hodekommentaren.
  */
 export const CONCRETE_LAWS = [
-  { value: 'parabolarectangle', label: 'Parabel–rektangel (EC2 3.1.7(1))' },
-  { value: 'bilinearcompression', label: 'Bilineær (EC2 3.1.7(2))' },
+  { value: 'parabolarectangle', label: 'Parabola–rectangle (EC2 3.1.7(1))' },
+  { value: 'bilinearcompression', label: 'Bilinear (EC2 3.1.7(2))' },
 ];
 
 /** Arbeidsdiagram for armering. `elasticplastic` = med fasthetsøkning. */
 export const STEEL_LAWS = [
-  { value: 'elasticperfectlyplastic', label: 'Ideelt elastoplastisk (horisontal gren)' },
-  { value: 'elasticplastic', label: 'Med fasthetsøkning (stigende gren til ε_ud)' },
+  { value: 'elasticperfectlyplastic', label: 'Ideally elastoplastic (horizontal branch)' },
+  { value: 'elasticplastic', label: 'With strain hardening (rising branch to ε_ud)' },
 ];
 
 /** Standarddiameter for armering [mm]. */

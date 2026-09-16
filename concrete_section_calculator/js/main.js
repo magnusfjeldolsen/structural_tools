@@ -147,7 +147,10 @@ export function startApp() {
     }
 
     store.setResult(result);
-    ui.clearStale();
+    // Ingen `clearStale()` lenger: foreldelsesbegrepet er borte. Enhver endring i
+    // `combos` ugyldiggjør resultatet med én gang (§4.7), fordi `governing` kan
+    // bytte rad når en `M_Ed` endres — og da er både toppnivåfeltene og plottet
+    // feil. Da finnes det ingen mellomtilstand å rydde opp i.
     // Speiling for arbeidsflyt-API-et (plan §7 og §9).
     window.lastCalculationResults = result;
     window.lastCalculationInputs = store.snapshot();

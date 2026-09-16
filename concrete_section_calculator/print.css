@@ -196,6 +196,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Governing lastkombinasjon (endringsrunde 2, §4.3/§10 B4). Markert med et
+   data-attributt fra rapportbyggeren — samme mønster som `[data-level]` over
+   — ikke en klasse noen kan endre i farten uten å vite hva den styrer. */
+.report-content tr[data-role="combo-governing"] { font-weight: 600; }
+
 /* Nøkkel/verdi-tabellene: etiketten til venstre er ikke en overskrift som skal
    rope, den er en merkelapp på tallet ved siden av. */
 .report-content table.kv th {

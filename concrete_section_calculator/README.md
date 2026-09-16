@@ -210,14 +210,14 @@ bruker 10–30 sekunder på skjemaet, og det skjuler hele kaldstarten på ~10,2 
 
 ---
 
-## 7. `window.ModuleAPI` — fire avvik fra `plan_IO-structure_for_modules.md`
+## 7. `window.ModuleAPI` — fem avvik fra `plan_IO-structure_for_modules.md`
 
 `index.html` eksponerer `MODULE_CONFIG` og `window.ModuleAPI` med
 `getConfig / getInputs / setInputs / calculate / getLastResults / getLastInputs / getOutput /
 getAllOutputs / hasResults`, **pluss `ready(): Promise<void>`**.
 
 Spesifikasjonen er skrevet for moduler som regner synkront i JavaScript. Denne regner i Python i en
-worker, bak 10 MB kjøremotor. Fire ting kan derfor ikke oppfylles, og de står her fordi en konsument
+worker, bak 10 MB kjøremotor. Fem ting kan derfor ikke oppfylles, og de står her fordi en konsument
 som ikke vet om dem får feil svar uten at noe feiler:
 
 ### Avvik 1 — `calculate()` er asynkron
@@ -276,6 +276,36 @@ Står ikke i spesifikasjonen, men en konsument som vil vite om den første bereg
 ta 3 sekunder eller 50 millisekunder har ingen annen måte å finne det ut på.
 
 ---
+
+### Avvik 5 — lastvirkningen er en LISTE, ikke to skalarer
+
+Fram til endringsrunde 2 hadde `MODULE_CONFIG.inputs` feltene `loads.N_Ed` og `loads.M_Ed`.
+**De finnes ikke lenger.** Lastvirkningen er nå `combos`, en liste med én rad per
+lastkombinasjon, pluss `activeCombo`:
+
+```js
+combos: [
+  { id: 'C1', name: 'ULS 1', N_Ed: -500, M_Ed: 250, direction: 'sagging' },
+  { id: 'C2', name: 'ULS 2', N_Ed: 0,    M_Ed: 150, direction: 'hogging' },
+],
+activeCombo: 'C1',
+```
+
+kN og kNm, trykk negativ, `M_Ed` som størrelse i radens egen retning.
+
+En konsument som satte `loads.N_Ed` må sette `combos` i stedet. Det er et brudd, og det
+står her fordi et brutt felt som INGEN har dokumentert er verre enn bruddet selv — da
+setter man verdien, ingenting feiler, og beregningen kjører på en last som aldri ble
+lest.
+
+Merk også at **retningen ligger per kombinasjon**, ikke på tverrsnittet. Et støttesnitt
+har ofte både felt- og støttemoment. Tilstandens egen `direction` styrer bare tegningen
+fram til det finnes et resultat; etter en kjøring viser den den dimensjonerende
+kombinasjonens retning.
+
+`bending` og `nm_domain` regner **alle** kombinasjonene og rapporterer den dimensjonerende
+i `<analyse>.governing`. `moment_curvature` regner bare `activeCombo`, fordi en
+M–κ-kurve per natur gjelder én aksialkraft.
 
 ## 8. Distribusjon
 

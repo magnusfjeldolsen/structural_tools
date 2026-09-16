@@ -18,7 +18,7 @@
 export const MODULE_ID = 'concrete_section_calculator';
 
 /** Vises i rapportens topptekst og i modulkortet. Norsk. */
-export const MODULE_NAME = 'Betongtverrsnitt — ULS';
+export const MODULE_NAME = 'Concrete section — ULS';
 
 /** Semver for selve modulen, ikke for `structuralcodes`. */
 export const MODULE_VERSION = '1.0.0';
