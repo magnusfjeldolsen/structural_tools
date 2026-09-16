@@ -180,7 +180,7 @@ def run(name):
     dom = sc.calculate_nm_interaction_domain(theta=theta, complete_domain=True)
     r3 = dict(common, analysis="nm_domain")
     r3["nm_domain"] = {
-        "n": _arr(dom.n), "m": [abs(v) for v in _arr(dom.m_y)],
+        "n": _arr(dom.n), "m": [_num(v * sign) for v in _arr(dom.m_y)],
         "field_num": [int(v) for v in np.asarray(dom.field_num).tolist()],
         "N_Ed": _num(p["loads"]["N_Ed"]), "M_Ed": _num(p["loads"]["M_Ed"]),
         "M_Rd_at_N": _num(abs(bend.m_y)), "utilisation": 0.0,

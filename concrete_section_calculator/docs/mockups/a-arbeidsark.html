@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="no" class="dark">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-BFVZQQ2LYN');
+  </script>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <meta name="description" content="UX-mockup A for concrete_section_calculator: ett rullende arbeidsark, materiale til resultat, med armering lagt inn som korthånd." />
+  <title>Mockup A — Arbeidsark · Betongtverrsnitt ULS</title>
+
+  <script>tailwind = window.tailwind || {}; tailwind.config = { darkMode: 'class' };</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    html { scroll-behavior: smooth; scroll-padding-top: 108px; }
+    body { background:#0f172a; }
+    .num { font-variant-numeric: tabular-nums; }
+    input[type="text"], input[type="number"], select {
+      background:#334155; border:1px solid #475569; border-radius:.375rem;
+      padding:.35rem .55rem; color:#f1f5f9; width:100%; font-size:.8125rem;
+    }
+    input:focus, select:focus { outline:none; border-color:#38bdf8; box-shadow:0 0 0 2px rgba(56,189,248,.22); }
+    input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0 }
+    .field-label { font-size:.6875rem; color:#94a3b8; margin-bottom:.15rem; display:block }
+    .seg { display:inline-flex; background:#1e293b; border:1px solid #475569; border-radius:.5rem; overflow:hidden }
+    .seg > button { padding:.4rem .9rem; font-size:.8125rem; color:#cbd5e1; transition:background .12s }
+    .seg > button:hover { background:#334155 }
+    .seg > button[data-on="true"] { background:#0284c7; color:#fff }
+    .chip { padding:.25rem .6rem; font-size:.75rem; border-radius:9999px; border:1px solid #475569; background:#1e293b; color:#cbd5e1; transition:all .12s }
+    .chip:hover { background:#334155 }
+    .chip[data-on="true"] { background:#0369a1; border-color:#0ea5e9; color:#fff }
+    kbd { font-family:ui-monospace,monospace; font-size:.6875rem; background:#1e293b; border:1px solid #475569;
+          border-bottom-width:2px; border-radius:.3rem; padding:.05rem .35rem; color:#e2e8f0 }
+    .sec-h { font-size:.75rem; letter-spacing:.09em; text-transform:uppercase; color:#94a3b8 }
+    .navlink[data-on="true"] { color:#f8fafc; border-bottom-color:#0ea5e9 }
+    details > summary { cursor:pointer; list-style:none } details > summary::-webkit-details-marker { display:none }
+    .lrow:hover .lact { opacity:1 }
+    .lact { opacity:0; transition:opacity .12s }
+    @media (max-width:900px){ .lact { opacity:1 } }
+  </style>
+</head>
+
+<body class="bg-slate-900 text-slate-100 font-sans">
+
+<!-- ═══════════════ topplinje + seksjonsnavigasjon ═══════════════ -->
+<header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-700">
+  <div class="max-w-5xl mx-auto px-5 flex items-center gap-4 h-12">
+    <a href="../../../index.html" class="text-sky-400 hover:text-sky-300 text-sm shrink-0">← Verktøy</a>
+    <h1 class="text-base font-semibold text-white whitespace-nowrap">Betongtverrsnitt · ULS</h1>
+    <span class="text-xs text-slate-500 hidden md:inline truncate">Bøyekapasitet, moment–krumning og M–N etter EC2</span>
+    <div class="ml-auto flex items-center gap-2 shrink-0">
+      <div id="pill" class="flex items-center gap-2 text-xs px-2.5 py-1 rounded-full border border-slate-600 bg-slate-800"></div>
+      <button id="btn-help" class="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded border border-slate-600">?</button>
+      <button class="px-2.5 py-1 text-xs bg-sky-700 hover:bg-sky-600 rounded border border-sky-600">Rapport</button>
+    </div>
+  </div>
+  <nav class="max-w-5xl mx-auto px-5 flex gap-1 text-[13px] overflow-x-auto">
+    <a href="#s-mat"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">1 Materiale</a>
+    <a href="#s-geo"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">2 Geometri</a>
+    <a href="#s-arm"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">3 Armering</a>
+    <a href="#s-last" class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">4 Last</a>
+    <a href="#s-ber"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">5 Beregn</a>
+    <a href="#s-res"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">6 Resultat</a>
+  </nav>
+</header>
+
+<main class="max-w-5xl mx-auto px-5 pb-32 pt-6 space-y-5">
+
+  <!-- ═════════════ 1 MATERIALE ═════════════ -->
+  <section id="s-mat" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">1 · Materiale</span>
+      <span id="mat-sum" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-4 space-y-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-xs text-slate-400 w-16">Betong</span>
+        <div id="fck-chips" class="flex flex-wrap gap-1.5"></div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-xs text-slate-400 w-16">Armering</span>
+        <div id="fyk-chips" class="flex flex-wrap gap-1.5"></div>
+      </div>
+      <details class="rounded-lg border border-slate-700 bg-slate-900/40">
+        <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
+          <span class="text-slate-500">▸</span>
+          <span id="fac-sum" class="num"></span>
+        </summary>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 px-3 pb-3 pt-1">
+          <label><span class="field-label">γ<sub>c</sub></span><input id="i-gc" type="text"></label>
+          <label><span class="field-label">α<sub>cc</sub></span><input id="i-acc" type="text"></label>
+          <label><span class="field-label">γ<sub>s</sub></span><input id="i-gs" type="text"></label>
+          <label><span class="field-label">k = f<sub>tk</sub>/f<sub>yk</sub></span><input id="i-k" type="text"></label>
+          <label><span class="field-label">ε<sub>uk</sub></span><input id="i-euk" type="text"></label>
+          <label><span class="field-label">γ<sub>ε</sub></span><input id="i-ge" type="text"></label>
+          <label><span class="field-label">Betonglov</span>
+            <select id="i-clav"><option value="parabolarectangle">Parabel–rektangel</option><option value="bilinearcompression">Bilineær</option></select></label>
+          <label><span class="field-label">Stållov</span>
+            <select id="i-slav"><option value="elasticplastic">Elastisk–plastisk m/ herding</option><option value="elasticperfectlyplastic">Elastisk–ideelt plastisk</option></select></label>
+        </div>
+      </details>
+      <div id="mat-der" class="grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-1 text-[12px] num pt-1"></div>
+    </div>
+  </section>
+
+  <!-- ═════════════ 2 GEOMETRI ═════════════ -->
+  <section id="s-geo" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">2 · Geometri</span>
+      <span id="geo-sum" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-5 grid md:grid-cols-[1fr_300px] gap-6">
+      <div class="space-y-4">
+        <div class="seg" id="type-seg">
+          <button data-v="beam">Bjelke</button><button data-v="slab">Plate (per meter)</button>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <label><span class="field-label">b — bredde [mm]</span><input id="i-b" type="text"></label>
+          <label><span class="field-label">h — høyde [mm]</span><input id="i-h" type="text"></label>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <label><span class="field-label">Overdekning c [mm]</span><input id="i-cov" type="text"></label>
+          <label id="w-stir"><span class="field-label">Bøyle Ø [mm]</span><input id="i-stir" type="text"></label>
+          <label id="w-cside"><span class="field-label">Sidekant c [mm]</span><input id="i-cside" type="text"></label>
+        </div>
+        <p class="text-[11px] text-slate-500 leading-snug">
+          Feltene godtar uttrykk: <span class="num text-slate-400">35+8</span>, <span class="num text-slate-400">600/2</span>.
+          Tegningen er ren JS og oppdateres mens du skriver — den venter aldri på motoren.
+        </p>
+      </div>
+      <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+        <div id="draw-geo"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ 3 ARMERING ═════════════ -->
+  <section id="s-arm" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">3 · Armering</span>
+      <span id="arm-sum" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-5 space-y-3">
+
+      <!-- KORTHÅND: én linje i stedet for fem småbokser -->
+      <div class="rounded-lg border border-sky-700/50 bg-sky-950/20 p-3">
+        <div class="flex items-center gap-2">
+          <span class="text-sky-400 text-sm shrink-0">＋</span>
+          <input id="sh" type="text" autocomplete="off" spellcheck="false"
+                 class="!bg-slate-900 !border-sky-700 !text-[15px] !py-2 font-mono"
+                 placeholder="">
+          <button id="sh-add" class="shrink-0 px-3 py-2 text-xs rounded bg-sky-700 hover:bg-sky-600 border border-sky-600">Legg til <kbd>⏎</kbd></button>
+        </div>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-500">
+          <span id="sh-hint" class="num"></span>
+          <span id="sh-prev" class="ml-auto num text-sky-300"></span>
+        </div>
+      </div>
+
+      <div id="layers" class="rounded-lg border border-slate-700 divide-y divide-slate-700/70 overflow-hidden"></div>
+
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <button id="add-plain" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">+ Tomt lag</button>
+        <button id="dup-last" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">⧉ Dupliser siste <kbd>Alt+D</kbd></button>
+        <span id="arm-warn" class="text-amber-300"></span>
+        <span id="arm-tot" class="ml-auto num text-slate-300"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ 4 LAST ═════════════ -->
+  <section id="s-last" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">4 · Lastvirkning</span>
+      <span id="last-sum" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-5 grid md:grid-cols-[auto_1fr] gap-6 items-start">
+      <div class="space-y-3">
+        <div>
+          <span class="field-label">Momentretning</span>
+          <div class="seg" id="dir-seg">
+            <button data-v="sagging">Feltmoment ⌣ <span class="text-[10px] opacity-70">θ=0</span></button>
+            <button data-v="hogging">Støttemoment ⌢ <span class="text-[10px] opacity-70">θ=π</span></button>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3 max-w-sm">
+          <label><span class="field-label">N<sub>Ed</sub> [kN] — trykk negativ</span><input id="i-n" type="text"></label>
+          <label><span class="field-label">M<sub>Ed</sub> [kNm] — størrelse</span><input id="i-m" type="text"></label>
+        </div>
+        <p class="text-[11px] text-slate-500 max-w-sm leading-snug">
+          M<sub>Ed</sub> er en størrelse i den retningen du valgte over. Ingen fortegn å tolke.
+        </p>
+      </div>
+      <div>
+        <span class="field-label">Analyse</span>
+        <div class="flex flex-wrap gap-1.5" id="ana-chips"></div>
+        <p id="ana-desc" class="text-[11px] text-slate-500 mt-2 max-w-md leading-snug"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ 5 BEREGN ═════════════ -->
+  <section id="s-ber" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2"><span class="sec-h">5 · Beregn</span></div>
+    <div class="px-5 pb-5 flex flex-wrap items-center gap-4">
+      <button id="run-big" class="px-6 py-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold
+                                   border border-sky-400/50 shadow-lg shadow-sky-900/40 flex items-center gap-3">
+        Beregn <kbd class="!bg-sky-900 !border-sky-500">Ctrl</kbd><kbd class="!bg-sky-900 !border-sky-500">⏎</kbd>
+      </button>
+      <div class="flex-1 min-w-[280px]">
+        <div id="eng-card" class="rounded-lg border border-slate-700 bg-slate-900/50 p-3"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ 6 RESULTAT ═════════════ -->
+  <section id="s-res" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">6 · Resultat</span>
+      <span id="res-sum" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div id="res-body" class="px-5 pb-6"></div>
+  </section>
+
+  <p class="text-[11px] text-slate-600 leading-relaxed pt-2">
+    <b class="text-slate-500">Mockup A — arbeidsark.</b> Statisk. Motoren er simulert, men alle
+    resultattall, kurver og omhyllinger er lest ordrett fra
+    <span class="num">concrete_section_calculator/tests/fixtures/</span>.
+    M<sub>Ed</sub> er en inndata jeg har valgt (180 kNm for bjelken, 55 kNm/m for plata);
+    η er regnet av den som M<sub>Ed</sub>/M<sub>Rd</sub>(N<sub>Ed</sub>).
+    N<sub>Ed</sub> = 0 holdes fast, fordi et annet N ville gitt en annen M<sub>Rd</sub> som jeg ikke har målt.
+  </p>
+</main>
+
+<!-- ═══════════════ fast handlingslinje — «Beregn» innen rekkevidde overalt ═══════════════ -->
+<div class="fixed bottom-0 inset-x-0 z-30 border-t border-slate-700 bg-slate-900/95 backdrop-blur">
+  <div class="max-w-5xl mx-auto px-5 h-16 flex items-center gap-4">
+    <div id="thumb" class="w-12 h-12 shrink-0 rounded border border-slate-700 bg-slate-800 p-1 overflow-hidden"></div>
+    <div class="text-[12px] num leading-tight min-w-0">
+      <div id="bar-geo" class="text-slate-300 truncate"></div>
+      <div id="bar-arm" class="text-slate-500 truncate"></div>
+    </div>
+    <div id="bar-eta" class="hidden sm:block text-right leading-tight ml-4"></div>
+    <div class="ml-auto flex items-center gap-3 shrink-0">
+      <div id="bar-eng" class="text-[11px] text-slate-400 num text-right max-w-[220px] leading-tight"></div>
+      <button id="run-bar" class="px-5 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 font-semibold text-sm border border-sky-400/50">
+        Beregn <kbd class="!bg-sky-900 !border-sky-500 ml-1">⌃⏎</kbd>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- hjelpeoverlegg -->
+<div id="help" class="hidden fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-6">
+  <div class="max-w-md w-full rounded-xl border border-slate-600 bg-slate-800 p-5 space-y-3">
+    <div class="flex items-center"><h2 class="font-semibold">Tastatur</h2>
+      <button id="help-x" class="ml-auto text-slate-400 hover:text-white">✕</button></div>
+    <table class="w-full text-[13px]">
+      <tbody class="[&_td]:py-1 [&_td:first-child]:w-28">
+        <tr><td><kbd>Ctrl</kbd> <kbd>⏎</kbd></td><td class="text-slate-300">Beregn — fra hvor som helst</td></tr>
+        <tr><td><kbd>A</kbd></td><td class="text-slate-300">Hopp til armeringslinja</td></tr>
+        <tr><td><kbd>⏎</kbd></td><td class="text-slate-300">Legg til laget i armeringslinja</td></tr>
+        <tr><td><kbd>↑</kbd></td><td class="text-slate-300">Hent forrige linje tilbake</td></tr>
+        <tr><td><kbd>Alt</kbd> <kbd>D</kbd></td><td class="text-slate-300">Dupliser siste lag</td></tr>
+        <tr><td><kbd>B</kbd> / <kbd>P</kbd></td><td class="text-slate-300">Bjelke / plate</td></tr>
+        <tr><td><kbd>F</kbd> / <kbd>S</kbd></td><td class="text-slate-300">Felt- / støttemoment</td></tr>
+        <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></td><td class="text-slate-300">Bøying / M–κ / M–N</td></tr>
+        <tr><td><kbd>?</kbd></td><td class="text-slate-300">Denne lista</td></tr>
+      </tbody>
+    </table>
+    <p class="text-[11px] text-slate-500">Bokstavsnarveiene virker bare når du ikke står i et skrivefelt.</p>
+  </div>
+</div>
+
+<!-- mockup-kontroller -->
+<div class="fixed left-3 bottom-20 z-30 text-[10px] rounded-lg border border-slate-700 bg-slate-800/95 p-2 space-y-1">
+  <div class="text-slate-500 uppercase tracking-wide">Mockup</div>
+  <button id="m-warm" class="block w-full text-left px-1.5 py-0.5 rounded hover:bg-slate-700 text-slate-300">Varm opp på nytt</button>
+  <button id="m-fail" class="block w-full text-left px-1.5 py-0.5 rounded hover:bg-slate-700 text-rose-300">Simuler feilet last</button>
+</div>
+
+<script>
+/* ===== FIXTURDATA — ordrett fra concrete_section_calculator/tests/fixtures/ ===== */
+/* Ikke rediger for hånd. Skalarer i full presisjon, arrayer i 6 signifikante siffer. */
+const FIX = {
+  beam: {
+    materials: {"fck": 30.0, "fcd": 20.0, "fctm": 2.896468153816889, "alpha_cc": 1.0, "gamma_c": 1.5, "Ecm": 32836.56803133079, "law_concrete": "parabolarectangle", "eps_c": 0.002, "eps_cu": 0.0035, "eps_c_name": "eps_c2", "eps_cu_name": "eps_cu2", "fyk": 500.0, "ftk": 540.0, "Es": 200000.0, "k": 1.08, "gamma_s": 1.15, "gamma_eps": 0.9, "law_steel": "elasticplastic", "fyd": 434.7826086956522, "ftd": 469.5652173913044, "eps_yd": 0.002173913043478261, "eps_uk": 0.075, "eps_ud": 0.0675},
+    section_props: {"Ag": 180000.0, "As_total": 942.4777960769379, "rho": 0.005711986642890533, "b_t": 300.0, "d_eff": 550.0, "As_min": 248.51696759748907, "As_max": 7200.0, "n_min": -4010438.409731036, "n_max": 442554.7912013448},
+    checks: {"as_min_ok": true, "as_max_ok": true, "ductility_ok": true, "axial_ok": true, "geometry_ok": true, "all_ok": true},
+    meta: {"structuralcodes_version": "0.7.2", "engine_version": "0.0.0-fixture", "runtime": "cpython (fixturegenerator)", "integrator": "marin", "scipy": "real", "moment_sign": -1, "theta": 0.0, "direction": "sagging", "subtract_bar_area": false, "wall_time_ms": 14.2},
+    bending: {"N_Ed": 0.0, "M_Rd": 215006759.18601915, "eps_a": 0.008696678493065367, "chi_y": -4.065559497688457e-05, "x": 86.0890119057411, "x_over_d": 0.15652547619225654, "eps_c_top": -0.003500000000000003, "eps_s_max": 0.01886057723728651, "failure_mode": "concrete_crushing", "layers": [{"id": "L1", "z": -250.0, "eps": 0.01886057723728651, "sigma": 443.6673550218064, "compression": false}], "M_Ed": 0.0, "utilisation": 0.0},
+    mc: { yield_index: 9, M_Rd: 215006759.18601915, truncated: false,
+      kappa: [1e-08,6.42695e-07,1.27539e-06,1.90808e-06,2.54078e-06,3.17347e-06,3.80617e-06,4.43886e-06,5.07156e-06,5.70425e-06,9.19939e-06,1.26945e-05,1.61897e-05,1.96848e-05,2.31799e-05,2.66751e-05,3.01702e-05,3.36653e-05,3.71605e-05,4.06556e-05],
+      moment: [368506,2.35889e+07,4.66154e+07,6.94364e+07,9.20388e+07,1.14408e+08,1.36529e+08,1.58382e+08,1.79948e+08,2.01202e+08,2.05784e+08,2.08358e+08,2.1006e+08,2.11264e+08,2.12149e+08,2.12857e+08,2.13466e+08,2.14015e+08,2.14524e+08,2.15007e+08] },
+    nm: { M_Rd_at_N: 215006759.18601915, N_min: -4010438.409731036, N_max: 442554.7912013448,
+      n: [442555,442555,390868,310865,272109,227697,176082,115711,45097,-37079.2,-131817,-239614,-360280,-492778,-635146,-784542,-937432,-1.08992e+06,-1.23812e+06,-1.34475e+06,-1.45683e+06,-1.57506e+06,-1.70029e+06,-1.8335e+06,-1.97589e+06,-2.1289e+06,-2.29429e+06,-2.47423e+06,-2.67143e+06,-2.76608e+06,-2.86522e+06,-2.96926e+06,-3.45755e+06,-3.79346e+06,-3.97699e+06,-3.9337e+06,-3.70533e+06,-3.32458e+06,-1.02766e+06,-551300,-242857,-187678,-134068,-81780.2,-30618.2,19578.4,68940.7,117577,165578,213019,259965,273693,287876,302179,316268,329848,342696,354674,365743,375950,385426,394367,403026,411706,420756,430583,437856,442555,442555],
+      m: [1.10639e+08,1.10639e+08,1.25881e+08,1.48661e+08,1.55669e+08,1.64741e+08,1.75985e+08,1.89468e+08,2.05171e+08,2.22935e+08,2.42415e+08,2.63043e+08,2.84022e+08,3.0437e+08,3.23019e+08,3.38954e+08,3.51373e+08,3.59822e+08,3.64251e+08,3.54803e+08,3.44588e+08,3.33394e+08,3.20949e+08,3.06901e+08,2.90793e+08,2.72023e+08,2.49792e+08,2.23024e+08,1.90255e+08,1.73148e+08,1.54217e+08,1.33194e+08,2.47272e+07,5.10868e+07,9.42478e+07,1.18798e+08,1.67829e+08,2.49512e+08,2.54741e+08,1.44837e+08,6.78061e+07,5.38746e+07,4.03215e+07,2.70917e+07,1.41402e+07,1.42999e+06,1.10697e+07,2.33847e+07,3.55366e+07,4.7544e+07,5.94227e+07,6.31976e+07,6.71283e+07,7.11225e+07,7.5085e+07,7.89285e+07,8.25823e+07,8.59996e+07,8.91599e+07,9.20685e+07,9.47541e+07,9.7265e+07,9.9666e+07,1.02035e+08,1.04465e+08,1.07059e+08,1.09231e+08,1.10639e+08,1.10639e+08],
+      field_num: [1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 1] },
+    payload_rebar: [{"id": "L1", "kind": "bars", "area": 942.4777960769379, "bars": [{"y": -100.0, "z": -250.0, "dia": 20.0}, {"y": 0.0, "z": -250.0, "dia": 20.0}, {"y": 100.0, "z": -250.0, "dia": 20.0}]}],
+  },
+  slab: {
+    materials: {"fck": 30.0, "fcd": 20.0, "fctm": 2.896468153816889, "alpha_cc": 1.0, "gamma_c": 1.5, "Ecm": 32836.56803133079, "law_concrete": "parabolarectangle", "eps_c": 0.002, "eps_cu": 0.0035, "eps_c_name": "eps_c2", "eps_cu_name": "eps_cu2", "fyk": 500.0, "ftk": 540.0, "Es": 200000.0, "k": 1.08, "gamma_s": 1.15, "gamma_eps": 0.9, "law_steel": "elasticplastic", "fyd": 434.7826086956522, "ftd": 469.5652173913044, "eps_yd": 0.002173913043478261, "eps_uk": 0.075, "eps_ud": 0.0675},
+    section_props: {"Ag": 200000.0, "As_total": 1000.8613763648898, "rho": 0.005922256664881004, "b_t": 1000.0, "d_eff": 169.0, "As_min": 254.5416213574282, "As_max": 8000.0, "n_min": -4435863.797944463, "n_max": 469969.6897713397},
+    checks: {"as_min_ok": true, "as_max_ok": true, "ductility_ok": true, "axial_ok": true, "geometry_ok": true, "all_ok": true},
+    meta: {"structuralcodes_version": "0.7.2", "engine_version": "0.0.0-fixture", "runtime": "cpython (fixturegenerator)", "integrator": "marin", "scipy": "real", "moment_sign": -1, "theta": 0.0, "direction": "sagging", "subtract_bar_area": false, "wall_time_ms": 15.5},
+    bending: {"N_Ed": 0.0, "M_Rd": 69918940.09775558, "eps_a": 0.009273202070633552, "chi_y": -0.00012773202070633555, "x": 27.401116655366607, "x_over_d": 0.16213678494299769, "eps_c_top": -0.003500000000000003, "eps_s_max": 0.018086711499370703, "failure_mode": "concrete_crushing", "layers": [{"id": "L1", "z": -69.0, "eps": 0.018086711499370703, "sigma": 443.255313364347, "compression": false}], "M_Ed": 0.0, "utilisation": 0.0},
+    mc: { yield_index: 9, M_Rd: 69918940.09775558, truncated: false,
+      kappa: [1e-08,1.98131e-06,3.95263e-06,5.92394e-06,7.89525e-06,9.86657e-06,1.18379e-05,1.38092e-05,1.57805e-05,1.77518e-05,2.87498e-05,3.97479e-05,5.07459e-05,6.17439e-05,7.27419e-05,8.37399e-05,9.4738e-05,0.000105736,0.000116734,0.000127732],
+      moment: [36691.2,7.24103e+06,1.43861e+07,2.14685e+07,2.84845e+07,3.54296e+07,4.22994e+07,4.90885e+07,5.57909e+07,6.24001e+07,6.68819e+07,6.77484e+07,6.83162e+07,6.87144e+07,6.90039e+07,6.92335e+07,6.94291e+07,6.96042e+07,6.9766e+07,6.99189e+07] },
+    nm: { M_Rd_at_N: 69918940.09775558, N_min: -4435863.797944463, N_max: 469969.6897713397,
+      n: [469970,468736,413885,329001,288140,241230,186640,122733,47936.3,-39143,-139561,-253842,-381782,-522280,-673252,-831682,-993822,-1.15553e+06,-1.35155e+06,-1.4632e+06,-1.58064e+06,-1.7046e+06,-1.83598e+06,-1.97583e+06,-2.12541e+06,-2.28626e+06,-2.46023e+06,-2.64964e+06,-2.85735e+06,-3.00873e+06,-3.17131e+06,-3.34669e+06,-3.86722e+06,-4.21844e+06,-4.40034e+06,-4.35058e+06,-4.09678e+06,-3.67367e+06,-1.73266e+06,-1.09557e+06,-712659,-641168,-573548,-509190,-447609,-388409,-331267,-275916,-222132,-169729,-118548,-6993.04,89790.7,161614,201440,233832,264131,291928,317030,339441,359337,377018,392877,407370,420999,434304,452395,464137,469970],
+      m: [3.24279e+07,3.23453e+07,3.77359e+07,4.58069e+07,4.84193e+07,5.17428e+07,5.58244e+07,6.0696e+07,6.63597e+07,7.27699e+07,7.98157e+07,8.73087e+07,9.49797e+07,1.02493e+08,1.09479e+08,1.15581e+08,1.20514e+08,1.24103e+08,1.23712e+08,1.21395e+08,1.18845e+08,1.15994e+08,1.12755e+08,1.09014e+08,1.04621e+08,9.93815e+07,9.30335e+07,8.52248e+07,7.54739e+07,6.75209e+07,5.81326e+07,4.69709e+07,1.00123e+07,1.48526e+07,2.76238e+07,3.60781e+07,5.42304e+07,8.44765e+07,1.16065e+08,8.38765e+07,5.87514e+07,5.37934e+07,4.90539e+07,4.45064e+07,4.01282e+07,3.58999e+07,3.18049e+07,2.78286e+07,2.39585e+07,2.01839e+07,1.64952e+07,8.33193e+06,1.01158e+06,4.65427e+06,8.0377e+06,1.09002e+07,1.36201e+07,1.61484e+07,1.84544e+07,2.05263e+07,2.23686e+07,2.39995e+07,2.54471e+07,2.67464e+07,2.79369e+07,2.90616e+07,3.0848e+07,3.20138e+07,3.24279e+07],
+      field_num: [1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 1] },
+    payload_rebar: [{"id": "L1", "kind": "strip", "area": 1000.8613763648898, "strip": {"width": 83.40511469707415, "height": 12.0, "z": -69.0}}],
+  },
+};
+
+/* =========================================================================
+   FELLES KJERNE for begge mockupene.
+   Modell, armeringshjelpere, tverrsnittstegning og plott.
+   Speiler §4.2 (rebar.js) og §6 (section-draw.js / charts.js) i planen, slik
+   at mockupen kan vurderes på ekte tall. Dette er IKKE produksjonskode.
+   ========================================================================= */
+
+/* Utnyttelsesterskler — i produksjon bor disse ETT sted, i results.js (§7). */
+const UTIL = {
+  level(eta){ return eta == null ? 'unknown' : eta > 1.0 ? 'over' : eta > 0.9 ? 'near' : 'ok'; },
+  cls(eta){ return { ok:'text-emerald-300', near:'text-amber-300', over:'text-rose-300', unknown:'text-slate-400' }[UTIL.level(eta)]; },
+  bg(eta){ return { ok:'bg-emerald-500', near:'bg-amber-500', over:'bg-rose-500', unknown:'bg-slate-600' }[UTIL.level(eta)]; },
+  ring(eta){ return { ok:'border-emerald-500/60 bg-emerald-500/10', near:'border-amber-500/60 bg-amber-500/10', over:'border-rose-500/60 bg-rose-500/10', unknown:'border-slate-600 bg-slate-800' }[UTIL.level(eta)]; },
+  hex(eta){ return { ok:'#34d399', near:'#fbbf24', over:'#fb7185', unknown:'#94a3b8' }[UTIL.level(eta)]; }
+};
+
+const FAILURE_NO = {
+  concrete_crushing: 'Betongbrudd i trykksonen',
+  steel_rupture: 'Stålbrudd (strekk)',
+  over_reinforced: 'Overarmert — stålet flyter ikke',
+  compression_no_tension: 'Rent trykk — ingen strekksone'
+};
+const PHASE_NO = {
+  runtime: 'Laster Python-kjøremotor',
+  packages: 'Laster structuralcodes',
+  engine: 'Starter beregningsmotor',
+  section: 'Bygger tverrsnitt',
+  solve: 'Regner'
+};
+
+/* ---------------------------------------------------------------- tilstand */
+let LID = 1;
+const S = {
+  schema: 1,
+  sectionType: 'beam',
+  geometry: { b: 300, h: 600 },
+  concrete: { fck: 30, gamma_c: 1.5, alpha_cc: 1.0, law: 'parabolarectangle' },
+  steel: { fyk: 500, Es: 200000, k: 1.08, epsuk: 0.075, gamma_eps: 0.9, gamma_s: 1.15, law: 'elasticplastic' },
+  cover: 32, stirrup_dia: 8, cover_side: 32,
+  layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50 }],
+  loads: { N_Ed: 0, M_Ed: 180 },
+  direction: 'sagging',
+  analysis: 'bending',
+  result: null,
+  stale: false,
+  editing: null
+};
+
+/* Plate-oppsettet er PLATE-fixturen 1000x200, Ø12 c/c 113, dc 31. */
+const PRESETS = {
+  beam: { geometry:{b:300,h:600}, cover:32, stirrup_dia:8, cover_side:32,
+          layers:[{id:'L1',mode:'bars',dia:20,count:3,edge:'bottom',dc:50}], M_Ed:180 },
+  slab: { geometry:{b:1000,h:200}, cover:25, stirrup_dia:0, cover_side:25,
+          layers:[{id:'L1',mode:'spacing',dia:12,spacing:113,edge:'bottom',dc:31}], M_Ed:55 }
+};
+function applyPreset(t){
+  const p = PRESETS[t];
+  S.sectionType = t;
+  S.geometry = { ...p.geometry };
+  S.cover = p.cover; S.stirrup_dia = p.stirrup_dia; S.cover_side = p.cover_side;
+  S.layers = p.layers.map((l,i)=>({ ...l, id:'L'+(i+1) }));
+  LID = S.layers.length;
+  S.loads.M_Ed = p.M_Ed;
+}
+function fx(){ return FIX[S.sectionType]; }
+function theta(){ return S.direction === 'sagging' ? 0 : Math.PI; }
+
+/* ------------------------------------------------- armering (§4.2 rebar.js) */
+const AR = d => Math.PI * d * d / 4;
+function layerArea(L){ return L.mode === 'bars' ? L.count * AR(L.dia) : (1000 / L.spacing) * AR(L.dia); }
+function layerBarCount(L){ return L.mode === 'bars' ? Math.max(1, Math.round(L.count)) : Math.max(1, Math.round(1000 / L.spacing)); }
+function layerCentroidZ(L, h){ return L.edge === 'bottom' ? -(h/2 - L.dc) : (h/2 - L.dc); }
+function layerDepth(L, h, th){ const z = layerCentroidZ(L, h); return th === 0 ? h/2 - z : z + h/2; }
+/* barPositions er ENESTE kilde til jernkoordinater (§4.2) — tegningen og
+   payloaden skal kalle den samme funksjonen, ellers kan de bli uenige stille. */
+function barPositions(L, g, o){
+  const z = layerCentroidZ(L, g.h), n = layerBarCount(L), out = [];
+  if (L.mode === 'bars'){
+    const yMax = g.b/2 - o.cover_side - o.stirrup_dia - L.dia/2;
+    if (n === 1) out.push({ y:0, z, dia:L.dia });
+    else for (let i=0;i<n;i++) out.push({ y: -yMax + 2*yMax*i/(n-1), z, dia:L.dia });
+  } else {
+    const y0 = -(n-1) * L.spacing / 2;
+    for (let i=0;i<n;i++) out.push({ y: y0 + i*L.spacing, z, dia:L.dia });
+  }
+  return out;
+}
+function totalArea(){ return S.layers.reduce((a,L)=>a+layerArea(L), 0); }
+function effectiveDepth(){
+  const th = theta(); let sa=0, sd=0;
+  for (const L of S.layers){ const a = layerArea(L); sa += a; sd += a*layerDepth(L, S.geometry.h, th); }
+  return sa ? sd/sa : 0;
+}
+function rhoLive(){ const d = effectiveDepth(); return d ? totalArea()/(S.geometry.b*d) : 0; }
+function autoDc(dia){ return S.cover + S.stirrup_dia + dia/2; }
+function newLayer(p){
+  LID++;
+  return Object.assign({ id:'L'+LID, mode: S.sectionType==='beam'?'bars':'spacing',
+    dia:20, count:2, spacing:150, edge:'bottom', dc:autoDc(20) }, p||{});
+}
+
+/* ----------------------------------------------------------- tallformatering */
+function nf(x, d){
+  if (x == null || !isFinite(x)) return '–';
+  return x.toLocaleString('nb-NO', { minimumFractionDigits:d, maximumFractionDigits:d });
+}
+const kNm = v => v == null ? null : v/1e6;
+const kN  = v => v == null ? null : v/1e3;
+const pm  = v => v == null ? null : v*1000;   /* promille */
+
+/* Hovedtallet: ALLTID vertikal utnyttelse M_Ed / M_Rd(N_Ed) — §5.2. */
+function etaLive(){
+  const r = fx(); const MRd = kNm(r.bending.M_Rd);
+  return MRd ? Math.abs(S.loads.M_Ed)/MRd : null;
+}
+
+/* ====================================================== TVERRSNITTSTEGNING */
+/* Ren JS, venter aldri på motoren (§3.9). z opp, SVG-y = -z. */
+function sectionSvg(opt){
+  opt = Object.assign({ strains:false, overlay:false, dims:true, labels:true, h:null }, opt||{});
+  const g = S.geometry, b = g.b, hh = g.h;
+  const bars = S.layers.flatMap(L => barPositions(L, g, S).map(p => ({...p, edge:L.edge, lid:L.id})));
+  const fs = Math.max(b, hh) / 26;
+  const sw = Math.max(b, hh) / 320;
+
+  /* resultatdata brukes bare når det som vises stemmer med det som ble regnet */
+  const R = (opt.overlay && S.result) ? fx().bending : null;
+  const zNa = R ? (hh/2 - R.x) : null;
+
+  /* tøyningsdiagram til høyre, samme vertikale skala */
+  const gap = b*0.28, strainW = b*0.85;
+  let epsTop=0, epsBot=0, sx=0, x0=0, xS=b/2+gap;
+  if (opt.strains && R){
+    epsTop = R.eps_a + R.chi_y*(hh/2);
+    epsBot = R.eps_a + R.chi_y*(-hh/2);
+    const lo = Math.min(epsTop, epsBot, 0), hi = Math.max(epsTop, epsBot, 0);
+    sx = strainW/(hi-lo); x0 = xS + (0-lo)*sx;
+  }
+  const rightEdge = (opt.strains && R) ? xS + strainW : b/2;
+
+  const padL = Math.max(b*0.30, 74), padR = Math.max(b*0.16, 46);
+  const padT = Math.max(hh*0.10, 42), padB = Math.max(hh*0.16, 56);
+  const vb = [-b/2-padL, -hh/2-padT, (rightEdge + b/2 + padL + padR), hh+padT+padB];
+
+  const P = [];
+  P.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.join(' ')}" ${opt.h?`height="${opt.h}"`:''} style="width:100%;height:auto;display:block" font-family="ui-sans-serif,system-ui,sans-serif">`);
+
+  /* trykksone */
+  if (zNa != null && zNa < hh/2 && zNa > -hh/2)
+    P.push(`<rect x="${-b/2}" y="${-hh/2}" width="${b}" height="${hh/2-zNa}" fill="#0ea5e9" opacity="0.16"/>`);
+
+  /* betong */
+  P.push(`<rect x="${-b/2}" y="${-hh/2}" width="${b}" height="${hh}" fill="#334155" stroke="#cbd5e1" stroke-width="${sw*2.4}"/>`);
+
+  /* bøyle (bjelke) */
+  if (S.sectionType === 'beam' && S.stirrup_dia > 0){
+    const ix = b/2 - S.cover_side, iy = hh/2 - S.cover;
+    P.push(`<rect x="${-ix}" y="${-iy}" width="${ix*2}" height="${iy*2}" rx="${S.stirrup_dia*2}" fill="none" stroke="#64748b" stroke-width="${sw*1.8}"/>`);
+  }
+
+  /* nøytralakse */
+  if (zNa != null){
+    const y = -zNa;
+    P.push(`<line x1="${-b/2-b*0.14}" y1="${y}" x2="${(opt.strains&&R)? rightEdge : b/2+b*0.14}" y2="${y}" stroke="#38bdf8" stroke-width="${sw*2}" stroke-dasharray="${fs*0.5} ${fs*0.35}"/>`);
+    P.push(`<text x="${-b/2-b*0.16}" y="${y-fs*0.35}" font-size="${fs*0.82}" fill="#38bdf8" text-anchor="end">x = ${nf(R.x,1)} mm</text>`);
+  }
+
+  /* jern */
+  for (const p of bars){
+    P.push(`<circle cx="${p.y}" cy="${-p.z}" r="${p.dia/2}" fill="#f59e0b" stroke="#78350f" stroke-width="${sw*1.2}"/>`);
+  }
+
+  /* lagetiketter */
+  if (opt.labels){
+    for (const L of S.layers){
+      const ps = barPositions(L, g, S); if (!ps.length) continue;
+      const z = ps[0].z, right = Math.max(...ps.map(p=>p.y));
+      const txt = L.mode==='bars' ? `${L.count}Ø${L.dia}` : `Ø${L.dia} c/c ${nf(L.spacing,0)}`;
+      P.push(`<text x="${right + L.dia*0.9 + b*0.02}" y="${-z + fs*0.32}" font-size="${fs*0.8}" fill="#fcd34d">${txt}</text>`);
+    }
+  }
+
+  /* målsetting */
+  if (opt.dims){
+    const yb = hh/2 + Math.max(hh*0.085, 26);
+    P.push(`<line x1="${-b/2}" y1="${yb}" x2="${b/2}" y2="${yb}" stroke="#94a3b8" stroke-width="${sw*1.4}"/>`);
+    P.push(`<line x1="${-b/2}" y1="${yb-fs*0.4}" x2="${-b/2}" y2="${yb+fs*0.4}" stroke="#94a3b8" stroke-width="${sw*1.4}"/>`);
+    P.push(`<line x1="${b/2}" y1="${yb-fs*0.4}" x2="${b/2}" y2="${yb+fs*0.4}" stroke="#94a3b8" stroke-width="${sw*1.4}"/>`);
+    P.push(`<text x="0" y="${yb+fs*1.25}" font-size="${fs*0.88}" fill="#cbd5e1" text-anchor="middle">b = ${nf(b,0)} mm${S.sectionType==='slab'?' (per meter)':''}</text>`);
+    const xl = -b/2 - Math.max(b*0.11, 26);
+    P.push(`<line x1="${xl}" y1="${-hh/2}" x2="${xl}" y2="${hh/2}" stroke="#94a3b8" stroke-width="${sw*1.4}"/>`);
+    P.push(`<line x1="${xl-fs*0.4}" y1="${-hh/2}" x2="${xl+fs*0.4}" y2="${-hh/2}" stroke="#94a3b8" stroke-width="${sw*1.4}"/>`);
+    P.push(`<line x1="${xl-fs*0.4}" y1="${hh/2}" x2="${xl+fs*0.4}" y2="${hh/2}" stroke="#94a3b8" stroke-width="${sw*1.4}"/>`);
+    P.push(`<text x="${xl-fs*0.5}" y="0" font-size="${fs*0.88}" fill="#cbd5e1" text-anchor="middle" transform="rotate(-90 ${xl-fs*0.5} 0)">h = ${nf(hh,0)} mm</text>`);
+  }
+
+  /* trykk-pil / retning */
+  const compTop = theta() === 0;
+  P.push(`<text x="${-b/2}" y="${(compTop?-hh/2-fs*0.6:hh/2+fs*1.4)}" font-size="${fs*0.78}" fill="#7dd3fc">${compTop?'trykk (felt)':'trykk (støtte)'}</text>`);
+
+  /* tøyningsdiagram */
+  if (opt.strains && R){
+    const xe = e => x0 + e*sx;
+    P.push(`<line x1="${x0}" y1="${-hh/2}" x2="${x0}" y2="${hh/2}" stroke="#64748b" stroke-width="${sw*1.4}"/>`);
+    P.push(`<polygon points="${x0},${-hh/2} ${xe(epsTop)},${-hh/2} ${xe(epsBot)},${hh/2} ${x0},${hh/2}" fill="#38bdf8" opacity="0.14"/>`);
+    P.push(`<line x1="${xe(epsTop)}" y1="${-hh/2}" x2="${xe(epsBot)}" y2="${hh/2}" stroke="#38bdf8" stroke-width="${sw*2.6}"/>`);
+    P.push(`<text x="${xe(epsTop)}" y="${-hh/2-fs*0.55}" font-size="${fs*0.78}" fill="#7dd3fc" text-anchor="middle">${nf(pm(epsTop),2)} ‰</text>`);
+    P.push(`<text x="${x0}" y="${-hh/2-fs*0.55}" font-size="${fs*0.7}" fill="#94a3b8" text-anchor="middle">ε = 0</text>`);
+    for (const lay of R.layers){
+      const e = R.eps_a + R.chi_y*lay.z;
+      P.push(`<circle cx="${xe(e)}" cy="${-lay.z}" r="${fs*0.28}" fill="#f59e0b"/>`);
+      P.push(`<line x1="${x0}" y1="${-lay.z}" x2="${xe(e)}" y2="${-lay.z}" stroke="#f59e0b" stroke-width="${sw*1.2}" stroke-dasharray="${fs*0.3} ${fs*0.25}"/>`);
+      P.push(`<text x="${xe(e)+fs*0.4}" y="${-lay.z+fs*0.3}" font-size="${fs*0.78}" fill="#fcd34d">${nf(pm(e),2)} ‰</text>`);
+    }
+    P.push(`<text x="${xS+strainW/2}" y="${hh/2+Math.max(hh*0.085,26)+fs*1.25}" font-size="${fs*0.88}" fill="#cbd5e1" text-anchor="middle">tøyning ε</text>`);
+  }
+
+  P.push('</svg>');
+  return P.join('');
+}
+
+/* ================================================================== PLOTT */
+function niceStep(range, n){
+  if (!(range > 0)) return 1;
+  const raw = range/n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw/p;
+  return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p;
+}
+function ticks(lo, hi, n){
+  const st = niceStep(hi-lo, n), out = [];
+  for (let v = Math.ceil(lo/st)*st; v <= hi+st*1e-9; v += st) out.push(Math.abs(v) < st*1e-9 ? 0 : v);
+  return out;
+}
+function frame(W, H, L, R, T, B){
+  return { W,H,L,R,T,B, pw: W-L-R, ph: H-T-B };
+}
+
+/* M–κ, tegnet fra fixturens 20 målte punkter. */
+function mcSvg(W, H){
+  const f = fx(), d = f.mc;
+  const K = d.kappa.map(v => v*1e6);           /* 10^-6 / mm */
+  const M = d.moment.map(v => v/1e6);          /* kNm */
+  const MEd = Math.abs(S.loads.M_Ed);
+  const F = frame(W, H, 62, 96, 22, 46);
+  const xhi = Math.max(...K)*1.06, yhi = Math.max(Math.max(...M), MEd)*1.12;
+  const X = v => F.L + v/xhi*F.pw, Y = v => F.T + F.ph - v/yhi*F.ph;
+  const P = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">`];
+  P.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="none"/>`);
+  for (const t of ticks(0, yhi, 5)){
+    P.push(`<line x1="${F.L}" y1="${Y(t)}" x2="${F.L+F.pw}" y2="${Y(t)}" stroke="#334155" stroke-width="1"/>`);
+    P.push(`<text x="${F.L-7}" y="${Y(t)+3.5}" fill="#94a3b8" text-anchor="end">${nf(t,0)}</text>`);
+  }
+  for (const t of ticks(0, xhi, 6)){
+    P.push(`<line x1="${X(t)}" y1="${F.T}" x2="${X(t)}" y2="${F.T+F.ph}" stroke="#1e293b" stroke-width="1"/>`);
+    P.push(`<text x="${X(t)}" y="${F.T+F.ph+15}" fill="#94a3b8" text-anchor="middle">${nf(t,0)}</text>`);
+  }
+  P.push(`<line x1="${F.L}" y1="${F.T}" x2="${F.L}" y2="${F.T+F.ph}" stroke="#64748b"/>`);
+  P.push(`<line x1="${F.L}" y1="${F.T+F.ph}" x2="${F.L+F.pw}" y2="${F.T+F.ph}" stroke="#64748b"/>`);
+  P.push(`<text x="${F.L+F.pw/2}" y="${H-6}" fill="#cbd5e1" text-anchor="middle">κ [10⁻⁶ mm⁻¹]</text>`);
+  P.push(`<text x="14" y="${F.T+F.ph/2}" fill="#cbd5e1" text-anchor="middle" transform="rotate(-90 14 ${F.T+F.ph/2})">M [kNm]</text>`);
+
+  /* M_Ed */
+  if (MEd > 0){
+    P.push(`<line x1="${F.L}" y1="${Y(MEd)}" x2="${F.L+F.pw}" y2="${Y(MEd)}" stroke="#fbbf24" stroke-width="1.6" stroke-dasharray="6 4"/>`);
+    P.push(`<text x="${F.L+F.pw+6}" y="${Y(MEd)+3.5}" fill="#fbbf24">M_Ed ${nf(MEd,1)}</text>`);
+  }
+  /* M_Rd */
+  const MRd = d.M_Rd/1e6;
+  P.push(`<line x1="${F.L}" y1="${Y(MRd)}" x2="${F.L+F.pw}" y2="${Y(MRd)}" stroke="#34d399" stroke-width="1.2" stroke-dasharray="3 4"/>`);
+  P.push(`<text x="${F.L+F.pw+6}" y="${Y(MRd)+3.5}" fill="#34d399">M_Rd ${nf(MRd,1)}</text>`);
+
+  P.push(`<polyline points="${K.map((k,i)=>`${X(k).toFixed(1)},${Y(M[i]).toFixed(1)}`).join(' ')}" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linejoin="round"/>`);
+  K.forEach((k,i)=>P.push(`<circle cx="${X(k).toFixed(1)}" cy="${Y(M[i]).toFixed(1)}" r="2.3" fill="#0ea5e9"/>`));
+
+  const yi = d.yield_index;
+  if (yi != null){
+    P.push(`<circle cx="${X(K[yi])}" cy="${Y(M[yi])}" r="5.5" fill="none" stroke="#fb7185" stroke-width="2"/>`);
+    P.push(`<text x="${X(K[yi])+9}" y="${Y(M[yi])+14}" fill="#fb7185">flytning · ${nf(M[yi],1)} kNm</text>`);
+  }
+  P.push(`<text x="${F.L+F.pw}" y="${F.T+12}" fill="#64748b" text-anchor="end">20 målte punkter · marin · N_Ed = ${nf(S.loads.N_Ed,0)} kN</text>`);
+  P.push('</svg>');
+  return P.join('');
+}
+
+/* M–N-omhylling, tegnet fra fixturens 69 punkter. */
+function nmSvg(W, H){
+  const f = fx(), d = f.nm;
+  const N = d.n.map(v => v/1e3), Mv = d.m.map(v => v/1e6);
+  const MEd = Math.abs(S.loads.M_Ed), NEd = S.loads.N_Ed;
+  const F = frame(W, H, 70, 108, 22, 46);
+  const xhi = Math.max(...Mv)*1.10;
+  const ylo = Math.min(...N)*1.05, yhi = Math.max(Math.max(...N)*1.35, 200);
+  const X = v => F.L + v/xhi*F.pw;
+  const Y = v => F.T + F.ph - (v-ylo)/(yhi-ylo)*F.ph;
+  const P = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">`];
+  for (const t of ticks(ylo, yhi, 6)){
+    P.push(`<line x1="${F.L}" y1="${Y(t)}" x2="${F.L+F.pw}" y2="${Y(t)}" stroke="#1e293b"/>`);
+    P.push(`<text x="${F.L-7}" y="${Y(t)+3.5}" fill="#94a3b8" text-anchor="end">${nf(t,0)}</text>`);
+  }
+  for (const t of ticks(0, xhi, 6)){
+    P.push(`<line x1="${X(t)}" y1="${F.T}" x2="${X(t)}" y2="${F.T+F.ph}" stroke="#1e293b"/>`);
+    P.push(`<text x="${X(t)}" y="${F.T+F.ph+15}" fill="#94a3b8" text-anchor="middle">${nf(t,0)}</text>`);
+  }
+  P.push(`<text x="${F.L+F.pw/2}" y="${H-6}" fill="#cbd5e1" text-anchor="middle">M [kNm] — størrelse i valgt retning</text>`);
+  P.push(`<text x="14" y="${F.T+F.ph/2}" fill="#cbd5e1" text-anchor="middle" transform="rotate(-90 14 ${F.T+F.ph/2})">N [kN] — trykk negativ</text>`);
+
+  /* omhylling (lukket) */
+  P.push(`<polygon points="${Mv.map((m,i)=>`${X(m).toFixed(1)},${Y(N[i]).toFixed(1)}`).join(' ')}" fill="#0ea5e9" fill-opacity="0.12" stroke="#38bdf8" stroke-width="2"/>`);
+
+  /* N = 0 */
+  P.push(`<line x1="${F.L}" y1="${Y(0)}" x2="${F.L+F.pw}" y2="${Y(0)}" stroke="#64748b" stroke-dasharray="4 4"/>`);
+
+  /* balansepunkt = største |M| */
+  let bi = 0; Mv.forEach((m,i)=>{ if (m > Mv[bi]) bi = i; });
+  P.push(`<circle cx="${X(Mv[bi])}" cy="${Y(N[bi])}" r="3.5" fill="#a78bfa"/>`);
+  P.push(`<text x="${X(Mv[bi])+7}" y="${Y(N[bi])+4}" fill="#a78bfa">balanse ${nf(Mv[bi],0)} kNm / ${nf(N[bi],0)} kN</text>`);
+
+  /* kapasitet ved N_Ed + lastpunkt: VERTIKAL utnyttelse (§5.2) */
+  const MRdN = d.M_Rd_at_N/1e6;
+  P.push(`<line x1="${X(MEd)}" y1="${Y(NEd)}" x2="${X(MRdN)}" y2="${Y(NEd)}" stroke="${UTIL.hex(etaLive())}" stroke-width="2.4"/>`);
+  P.push(`<circle cx="${X(MRdN)}" cy="${Y(NEd)}" r="5" fill="none" stroke="#34d399" stroke-width="2"/>`);
+  P.push(`<text x="${X(MRdN)+8}" y="${Y(NEd)-8}" fill="#34d399">M_Rd(N_Ed) = ${nf(MRdN,1)}</text>`);
+  P.push(`<circle cx="${X(MEd)}" cy="${Y(NEd)}" r="5" fill="${UTIL.hex(etaLive())}"/>`);
+  P.push(`<text x="${X(MEd)}" y="${Y(NEd)+20}" fill="${UTIL.hex(etaLive())}" text-anchor="middle">lastpunkt ${nf(MEd,0)} / ${nf(NEd,0)}</text>`);
+
+  /* nedre gren = motsatt momentretning foldet opp av abs() */
+  P.push(`<text x="${F.L+6}" y="${F.T+F.ph-8}" fill="#64748b">nedre gren: motsatt momentretning, foldet av |M|</text>`);
+  P.push(`<text x="${F.L+F.pw}" y="${F.T+12}" fill="#64748b" text-anchor="end">69 punkter · N ∈ [${nf(kN(d.N_min),0)}, ${nf(kN(d.N_max),0)}] kN</text>`);
+  P.push('</svg>');
+  return P.join('');
+}
+
+/* ============================================= MOTOROPPVARMING (simulert) */
+/* §3.9: determinat framdrift, nedlastet mengde, og en klikkbar «Prøv igjen». */
+const ENG = { state:'idle', phase:'runtime', pct:0, mb:0, total:10.2, msg:'', timer:null, failNext:false };
+function engSet(p){ Object.assign(ENG, p); renderEngine(); }
+function engWarm(){
+  clearInterval(ENG.timer);
+  engSet({ state:'loading', phase:'runtime', pct:0, mb:0 });
+  ENG.timer = setInterval(()=>{
+    ENG.pct += 2 + Math.random()*3;
+    if (ENG.failNext && ENG.pct > 38){
+      clearInterval(ENG.timer);
+      engSet({ state:'failed', msg:'Fikk ikke tak i kjøremotoren. Blokkert CDN, offline eller bedriftsproxy?' });
+      ENG.failNext = false; return;
+    }
+    ENG.phase = ENG.pct < 46 ? 'runtime' : ENG.pct < 88 ? 'packages' : 'engine';
+    ENG.mb = Math.min(ENG.total, ENG.total*Math.min(1, ENG.pct/92));
+    if (ENG.pct >= 100){
+      clearInterval(ENG.timer);
+      engSet({ state:'ready', pct:100, mb:ENG.total });
+    } else renderEngine();
+  }, 120);
+}
+function engFail(){ ENG.failNext = true; engWarm(); }
+function engStatusText(){
+  if (ENG.state === 'ready') return 'Motor klar · structuralcodes 0.7.2';
+  if (ENG.state === 'failed') return ENG.msg;
+  if (ENG.state === 'solving') return PHASE_NO[ENG.phase] + '…';
+  if (ENG.state === 'loading') return `${PHASE_NO[ENG.phase]} · ${nf(ENG.mb,1)} / ${nf(ENG.total,1)} MB`;
+  return 'Motor ikke startet';
+}
+
+/* Kjør: motoren simuleres, men RESULTATTALLENE er fixturverdier. */
+function runSolve(done){
+  if (ENG.state === 'failed' || ENG.state === 'idle'){ engWarm(); }
+  const go = () => {
+    clearInterval(ENG.timer);
+    engSet({ state:'solving', phase: S.analysis==='nm_domain' ? 'solve' : 'section', pct:0 });
+    let p = 0;
+    ENG.timer = setInterval(()=>{
+      p += S.analysis === 'bending' ? 22 : 9;
+      ENG.pct = Math.min(100, p); ENG.phase = p > 25 ? 'solve' : 'section';
+      if (p >= 100){
+        clearInterval(ENG.timer);
+        S.result = fx(); S.stale = false;
+        engSet({ state:'ready', pct:100 });
+        done && done();
+      } else renderEngine();
+    }, 90);
+  };
+  if (ENG.state === 'ready') go();
+  else { const w = setInterval(()=>{ if (ENG.state==='ready'){ clearInterval(w); go(); } if (ENG.state==='failed') clearInterval(w); }, 120); }
+}
+
+/* ------------------------------------------------- uttrykksfelt (§7, lett) */
+function evalExpr(v){
+  const s = String(v).replace(/,/g, '.').replace(/\^/g, '**').trim();
+  if (!s) return 0;
+  if (!/^[-+*/().0-9\s*]+$/.test(s)) return NaN;
+  try { const r = Function('"use strict";return (' + s + ')')(); return isFinite(r) ? r : NaN; }
+  catch(e){ return NaN; }
+}
+function bindNum(el, get, set){
+  el.value = get();
+  el.addEventListener('focus', () => el.select());
+  el.addEventListener('change', () => {
+    const v = evalExpr(el.value);
+    if (isNaN(v)) { el.value = get(); return; }
+    set(v); render();
+  });
+}
+
+/* --------------------------------------------------- korthånd for armering */
+/* Én linje i stedet for fem småbokser. Grammatikken vises i UI-et. */
+function parseShorthand(raw){
+  let t = ' ' + String(raw).toLowerCase().replace(/,/g, '.').trim() + ' ';
+  if (!t.trim()) return null;
+  let edge = 'bottom';
+  if (/\b(ok|overkant|topp)\b/.test(t)){ edge = 'top'; t = t.replace(/\b(ok|overkant|topp)\b/g, ' '); }
+  else t = t.replace(/\b(uk|underkant|bunn)\b/g, ' ');
+
+  let spacing = null, m;
+  m = t.match(/(?:c\/?c|cc|c|\/)\s*(\d+(?:\.\d+)?)/);
+  if (m){ spacing = +m[1]; t = t.replace(m[0], ' '); }
+
+  let count = null, dia = null;
+  m = t.match(/(\d+)\s*[x×*]\s*(?:ø|o)?\s*(\d+(?:\.\d+)?)/);
+  if (m){ count = +m[1]; dia = +m[2]; t = t.replace(m[0], ' '); }
+  if (dia == null){
+    m = t.match(/(\d+)\s*ø\s*(\d+(?:\.\d+)?)/);
+    if (m){ count = +m[1]; dia = +m[2]; t = t.replace(m[0], ' '); }
+  }
+  if (dia == null){
+    m = t.match(/ø\s*(\d+(?:\.\d+)?)/);
+    if (m){ dia = +m[1]; t = t.replace(m[0], ' '); }
+  }
+  if (dia == null) return null;
+
+  const rest = (t.match(/\d+(?:\.\d+)?/g) || []).map(Number);
+  const dc = rest.length ? rest[0] : autoDc(dia);
+
+  if (spacing != null) return { mode:'spacing', dia, spacing, edge, dc };
+  return { mode:'bars', dia, count: count == null ? 1 : count, edge, dc };
+}
+function shorthandOf(L){
+  const e = L.edge === 'top' ? 'ok' : 'uk';
+  return L.mode === 'bars' ? `${L.count}ø${L.dia} ${e} ${nf(L.dc,0)}`
+                           : `ø${L.dia} c${nf(L.spacing,0)} ${e} ${nf(L.dc,0)}`;
+}
+
+/* ------------------------------------------------------ delte tabellbiter */
+function layerLabel(L){
+  return L.mode === 'bars'
+    ? `<b class="text-amber-300">${L.count}</b> × <b class="text-amber-300">Ø${L.dia}</b>`
+    : `<b class="text-amber-300">Ø${L.dia}</b> c/c <b class="text-amber-300">${nf(L.spacing,0)}</b>`;
+}
+function edgeLabel(L){ return L.edge === 'bottom' ? 'UK' : 'OK'; }
+
+function checksHtml(){
+  const c = fx().checks, sp = fx().section_props;
+  const row = (ok, t, sub) => `<div class="flex items-start gap-2 py-1">
+    <span class="${ok?'text-emerald-400':'text-rose-400'} mt-px">${ok?'✓':'✕'}</span>
+    <span class="text-slate-200">${t}</span><span class="text-slate-500 ml-auto num">${sub}</span></div>`;
+  return row(c.as_min_ok, 'A<sub>s</sub> ≥ A<sub>s,min</sub>', `${nf(sp.As_total,0)} ≥ ${nf(sp.As_min,0)} mm²`)
+    + row(c.as_max_ok, 'A<sub>s</sub> ≤ A<sub>s,max</sub>', `${nf(sp.As_total,0)} ≤ ${nf(sp.As_max,0)} mm²`)
+    + row(c.ductility_ok, 'Duktilitet — x/d', `${nf(fx().bending.x_over_d,3)}`)
+    + row(c.axial_ok, 'N<sub>Ed</sub> innenfor [n<sub>min</sub>, n<sub>max</sub>]', `${nf(kN(sp.n_min),0)} … ${nf(kN(sp.n_max),0)} kN`)
+    + row(c.geometry_ok, 'Geometri og jernplassering', 'OK');
+}
+
+function inspectRows(){
+  const b = fx().bending, sp = fx().section_props, ma = fx().materials;
+  const r = (k, v, u) => `<div class="flex justify-between gap-3 py-[3px] border-b border-slate-800"><span class="text-slate-400">${k}</span><span class="num text-slate-100">${v}${u?' <span class="text-slate-500">'+u+'</span>':''}</span></div>`;
+  return {
+    brudd: r('Nøytralakse x', nf(b.x,1), 'mm')
+         + r('x / d', nf(b.x_over_d,3), '')
+         + r('ε<sub>c,topp</sub>', nf(pm(b.eps_c_top),2), '‰')
+         + r('ε<sub>s,maks</sub>', nf(pm(b.eps_s_max),2), '‰')
+         + r('ε<sub>a</sub> (senter)', nf(pm(b.eps_a),3), '‰')
+         + r('χ<sub>y</sub>', b.chi_y == null ? '–' : b.chi_y.toExponential(4).replace('.',','), '1/mm'),
+    snitt: r('A<sub>g</sub>', nf(sp.Ag,0), 'mm²')
+         + r('ΣA<sub>s</sub>', nf(sp.As_total,1), 'mm²')
+         + r('ρ = A<sub>s</sub>/(b<sub>t</sub>·d)', nf(sp.rho*100,3), '%')
+         + r('d (arealvektet)', nf(sp.d_eff,1), 'mm')
+         + r('A<sub>s,min</sub>', nf(sp.As_min,1), 'mm²')
+         + r('A<sub>s,max</sub>', nf(sp.As_max,0), 'mm²'),
+    mat: r('f<sub>cd</sub>', nf(ma.fcd,1), 'MPa')
+       + r('f<sub>ctm</sub>', nf(ma.fctm,2), 'MPa')
+       + r('E<sub>cm</sub>', nf(ma.Ecm,0), 'MPa')
+       + r(`ε<sub>${ma.eps_c_name.replace('eps_','')}</sub>`, nf(pm(ma.eps_c),2), '‰')
+       + r(`ε<sub>${ma.eps_cu_name.replace('eps_','')}</sub>`, nf(pm(ma.eps_cu),2), '‰')
+       + r('f<sub>yd</sub>', nf(ma.fyd,1), 'MPa')
+       + r('f<sub>td</sub>', nf(ma.ftd,1), 'MPa')
+       + r('ε<sub>yd</sub>', nf(pm(ma.eps_yd),3), '‰')
+       + r('ε<sub>ud</sub>', nf(pm(ma.eps_ud),1), '‰')
+  };
+}
+
+function layerStrainTable(){
+  const b = fx().bending;
+  return `<table class="w-full text-[12px] num">
+    <thead><tr class="text-slate-400 text-left border-b border-slate-700">
+      <th class="py-1 font-medium">Lag</th><th class="font-medium">z</th><th class="font-medium">ε</th>
+      <th class="font-medium">σ<sub>s</sub></th><th class="font-medium">σ/f<sub>yd</sub></th><th class="font-medium">Tilstand</th></tr></thead>
+    <tbody>${b.layers.map(l=>{
+      const ratio = l.sigma/fx().materials.fyd;
+      return `<tr class="border-b border-slate-800">
+        <td class="py-1 text-amber-300">${l.id}</td>
+        <td>${nf(l.z,0)} mm</td>
+        <td>${nf(pm(l.eps),2)} ‰</td>
+        <td>${nf(l.sigma,1)} MPa</td>
+        <td>${nf(ratio,3)}</td>
+        <td class="${l.compression?'text-sky-300':'text-amber-200'}">${l.compression?'trykk':'strekk — flyter'}</td></tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+
+/* ══════════════════════════════ SKALL A ══════════════════════════════
+   Ett rullende arbeidsark. Alt står åpent, leses ovenfra og ned, og
+   resultatet legger seg nederst i samme dokument. «Beregn» ligger i den
+   faste bunnlinja og er derfor i rekkevidde fra hver eneste seksjon. */
+
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const FCK = [20,25,30,35,45,55];
+const FYK = [400,500,600];
+const ANA = [
+  ['bending','Bøyekapasitet','M_Rd ved gitt N_Ed. Ett kall, ~0,4 s. Gir nøytralakse, tøyninger og bruddform.'],
+  ['moment_curvature','Moment–krumning','M(κ) i 20 steg med M_Ed inntegnet. Determinat framdrift, kan avbrytes.'],
+  ['nm_domain','M–N-diagram','Full kapasitetsomhylling med lastpunktet inntegnet. Tyngst av de tre.']
+];
+
+/* ---------- oppsett av felter som bindes én gang ---------- */
+function setupInputs(){
+  bindNum($('#i-b'), ()=>S.geometry.b, v=>{ if(S.sectionType==='beam') S.geometry.b=v; S.stale=true; });
+  bindNum($('#i-h'), ()=>S.geometry.h, v=>{ S.geometry.h=v; S.stale=true; });
+  bindNum($('#i-cov'), ()=>S.cover, v=>{ S.cover=v; S.stale=true; });
+  bindNum($('#i-stir'), ()=>S.stirrup_dia, v=>{ S.stirrup_dia=v; S.stale=true; });
+  bindNum($('#i-cside'), ()=>S.cover_side, v=>{ S.cover_side=v; S.stale=true; });
+  bindNum($('#i-gc'), ()=>S.concrete.gamma_c, v=>{ S.concrete.gamma_c=v; S.stale=true; });
+  bindNum($('#i-acc'), ()=>S.concrete.alpha_cc, v=>{ S.concrete.alpha_cc=v; S.stale=true; });
+  bindNum($('#i-gs'), ()=>S.steel.gamma_s, v=>{ S.steel.gamma_s=v; S.stale=true; });
+  bindNum($('#i-k'), ()=>S.steel.k, v=>{ S.steel.k=v; S.stale=true; });
+  bindNum($('#i-euk'), ()=>S.steel.epsuk, v=>{ S.steel.epsuk=v; S.stale=true; });
+  bindNum($('#i-ge'), ()=>S.steel.gamma_eps, v=>{ S.steel.gamma_eps=v; S.stale=true; });
+  bindNum($('#i-n'), ()=>S.loads.N_Ed, v=>{ S.loads.N_Ed=v; S.stale=true; });
+  bindNum($('#i-m'), ()=>S.loads.M_Ed, v=>{ S.loads.M_Ed=v; });
+  $('#i-clav').value = S.concrete.law; $('#i-slav').value = S.steel.law;
+  $('#i-clav').onchange = e => { S.concrete.law = e.target.value; S.stale=true; render(); };
+  $('#i-slav').onchange = e => { S.steel.law = e.target.value; S.stale=true; render(); };
+}
+function syncInputs(){
+  $('#i-b').value = S.geometry.b; $('#i-h').value = S.geometry.h;
+  $('#i-cov').value = S.cover; $('#i-stir').value = S.stirrup_dia; $('#i-cside').value = S.cover_side;
+  $('#i-n').value = S.loads.N_Ed; $('#i-m').value = S.loads.M_Ed;
+  $('#i-b').disabled = S.sectionType === 'slab';
+  $('#i-b').classList.toggle('opacity-60', S.sectionType === 'slab');
+  $('#w-stir').style.display = S.sectionType === 'beam' ? '' : 'none';
+  $('#w-cside').style.display = S.sectionType === 'beam' ? '' : 'none';
+}
+
+/* ---------- segmenter og chips ---------- */
+function seg(el, cur, fn){
+  [...el.children].forEach(b => {
+    b.dataset.on = (b.dataset.v === cur);
+    b.onclick = () => fn(b.dataset.v);
+  });
+}
+function chips(el, items, cur, fn){
+  el.innerHTML = items.map(i => `<button class="chip" data-v="${i[0]}" data-on="${i[0]==cur}">${i[1]}</button>`).join('');
+  [...el.children].forEach(b => b.onclick = () => fn(b.dataset.v));
+}
+
+/* ---------- armeringsrader ---------- */
+function renderLayers(){
+  const host = $('#layers');
+  if (!S.layers.length){
+    host.innerHTML = `<div class="px-4 py-6 text-center text-sm text-slate-500">
+      Ingen lag ennå. Skriv f.eks. <span class="font-mono text-sky-300">${S.sectionType==='beam'?'3ø20 uk 50':'ø12 c113 uk 31'}</span> i linja over.</div>`;
+    return;
+  }
+  host.innerHTML = S.layers.map(L => {
+    const A = layerArea(L), d = layerDepth(L, S.geometry.h, theta()), n = layerBarCount(L);
+    const isEd = S.editing === L.id;
+    return `<div class="lrow bg-slate-800/40">
+      <div class="flex items-center gap-3 px-3 py-2.5 text-[13px] cursor-text" data-edit="${L.id}">
+        <span class="w-6 text-slate-500 text-[11px]">${L.id}</span>
+        <span class="min-w-[112px] num">${layerLabel(L)}</span>
+        <span class="chip !py-0.5 !px-2 !text-[11px]" data-edge="${L.id}" title="Klikk for å snu til ${L.edge==='bottom'?'overkant':'underkant'}">${edgeLabel(L)}</span>
+        <span class="text-slate-400 num">d<sub>c</sub> ${nf(L.dc,0)}</span>
+        <span class="text-slate-500 num hidden md:inline ml-4">A<sub>s</sub> ${nf(A,0)} mm²${S.sectionType==='slab'?'/m':''} · d ${nf(d,0)} mm · ${n} jern</span>
+        <span class="lact ml-auto flex gap-1">
+          <button class="px-2 py-1 rounded hover:bg-slate-700 text-slate-400" data-dup="${L.id}" title="Dupliser">⧉</button>
+          <button class="px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300" data-del="${L.id}" title="Slett">✕</button>
+        </span>
+      </div>
+      ${isEd ? `<div class="px-3 pb-3 flex items-center gap-2">
+        <input type="text" class="!bg-slate-900 font-mono !text-sm" data-shed="${L.id}" value="${shorthandOf(L)}">
+        <button class="shrink-0 px-3 py-1.5 text-xs rounded bg-sky-700 hover:bg-sky-600" data-save="${L.id}">Lagre ⏎</button>
+        <button class="shrink-0 px-3 py-1.5 text-xs rounded bg-slate-700 hover:bg-slate-600" data-cancel="1">Avbryt</button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  host.querySelectorAll('[data-edit]').forEach(el => el.onclick = e => {
+    if (e.target.closest('[data-dup],[data-del],[data-edge]')) return;
+    S.editing = S.editing === el.dataset.edit ? null : el.dataset.edit; render();
+    const f = host.querySelector('[data-shed]'); if (f){ f.focus(); f.select(); }
+  });
+  host.querySelectorAll('[data-edge]').forEach(el => el.onclick = () => {
+    const L = S.layers.find(x => x.id === el.dataset.edge);
+    L.edge = L.edge === 'bottom' ? 'top' : 'bottom'; S.stale = true; render();
+  });
+  host.querySelectorAll('[data-dup]').forEach(el => el.onclick = () => {
+    const i = S.layers.findIndex(x => x.id === el.dataset.dup);
+    S.layers.splice(i+1, 0, newLayer({ ...S.layers[i] })); S.stale = true; render();
+  });
+  host.querySelectorAll('[data-del]').forEach(el => el.onclick = () => {
+    S.layers = S.layers.filter(x => x.id !== el.dataset.del); S.stale = true; render();
+  });
+  const f = host.querySelector('[data-shed]');
+  if (f){
+    const save = () => {
+      const p = parseShorthand(f.value);
+      if (!p){ f.classList.add('!border-rose-500'); return; }
+      Object.assign(S.layers.find(x => x.id === S.editing), p);
+      S.editing = null; S.stale = true; render();
+    };
+    f.oninput = () => f.classList.remove('!border-rose-500');
+    f.onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); save(); }
+                         if (e.key === 'Escape'){ S.editing = null; render(); } };
+    host.querySelector('[data-save]').onclick = save;
+    host.querySelector('[data-cancel]').onclick = () => { S.editing = null; render(); };
+  }
+}
+
+/* ---------- motorstatus (§3.9) ---------- */
+function renderEngine(){
+  const s = ENG.state;
+  const dot = { idle:'bg-slate-500', loading:'bg-amber-400 animate-pulse', solving:'bg-sky-400 animate-pulse',
+                ready:'bg-emerald-400', failed:'bg-rose-500' }[s];
+  $('#pill').innerHTML = `<span class="w-2 h-2 rounded-full ${dot}"></span>
+    <span class="text-slate-300 num">${s==='ready'?'Motor klar':s==='failed'?'Motor feilet':engStatusText()}</span>`;
+  $('#bar-eng').innerHTML = s === 'ready'
+    ? `<span class="text-emerald-400">● klar</span> · 10,2 MB bufret`
+    : `<span class="num">${engStatusText()}</span>`;
+
+  const c = $('#eng-card');
+  if (s === 'failed'){
+    c.innerHTML = `<div class="flex items-start gap-3">
+        <span class="text-rose-400 text-lg leading-none mt-0.5">⚠</span>
+        <div class="flex-1">
+          <p class="text-sm text-rose-300">${ENG.msg}</p>
+          <p class="text-[11px] text-slate-500 mt-1">Skjemaet virker fortsatt, og tegningen er ren JS. Bare tallene mangler.</p>
+        </div>
+        <button id="eng-retry" class="shrink-0 px-3 py-1.5 text-xs rounded bg-rose-800 hover:bg-rose-700 border border-rose-600">Prøv igjen</button>
+      </div>`;
+    $('#eng-retry').onclick = () => engWarm();
+    return;
+  }
+  const pct = s === 'ready' ? 100 : Math.min(100, Math.round(ENG.pct));
+  const bar = s === 'ready' ? 'bg-emerald-500' : s === 'solving' ? 'bg-sky-500' : 'bg-amber-500';
+  c.innerHTML = `
+    <div class="flex items-baseline gap-2 text-[12px]">
+      <span class="text-slate-300">${engStatusText()}</span>
+      <span class="ml-auto num text-slate-500">${pct} %</span>
+    </div>
+    <div class="h-1.5 mt-2 rounded-full bg-slate-700 overflow-hidden">
+      <div class="h-full ${bar} transition-[width] duration-150" style="width:${pct}%"></div>
+    </div>
+    <p class="text-[11px] text-slate-500 mt-2 leading-snug">
+      ${s === 'ready'
+        ? 'Kjøremotoren ble lastet mens du fylte ut skjemaet. Neste beregning starter med en gang.'
+        : 'Kjøremotoren lastes i bakgrunnen mens du fyller ut. Du kan trykke Beregn nå — den kjører så snart den er klar.'}
+    </p>`;
+}
+
+/* ---------- resultat ---------- */
+function renderResult(){
+  const body = $('#res-body');
+  if (!S.result){
+    body.innerHTML = `<div class="rounded-lg border border-dashed border-slate-700 px-5 py-10 text-center">
+      <p class="text-slate-400 text-sm">Ingen beregning kjørt ennå.</p>
+      <p class="text-slate-600 text-xs mt-1">Trykk <kbd>Ctrl</kbd> <kbd>⏎</kbd> — eller Beregn nederst.</p></div>`;
+    $('#res-sum').textContent = '';
+    return;
+  }
+  const b = fx().bending, ma = fx().materials, me = fx().meta, sp = fx().section_props;
+  const eta = etaLive(), MRd = kNm(b.M_Rd), ins = inspectRows();
+  $('#res-sum').innerHTML = `M<sub>Rd</sub> ${nf(MRd,1)} kNm · η ${nf(eta,2)}`;
+
+  const chart = S.analysis === 'moment_curvature'
+    ? `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+         <div class="text-xs text-slate-400 mb-1">Moment–krumning ved N<sub>Ed</sub> = ${nf(S.loads.N_Ed,0)} kN</div>
+         ${mcSvg(720, 330)}
+         <p class="text-[11px] text-slate-500 mt-1">Flytepunktet er punkt ${fx().mc.yield_index+1} av 20 (<span class="num">yield_index = ${fx().mc.yield_index}</span>). Ikke avkortet.</p>
+       </div>`
+    : S.analysis === 'nm_domain'
+    ? `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+         <div class="text-xs text-slate-400 mb-1">M–N-omhylling</div>
+         ${nmSvg(720, 400)}
+         <p class="text-[11px] text-slate-500 mt-1">
+           η er <b>vertikal</b>: M<sub>Ed</sub>/M<sub>Rd</sub>(N<sub>Ed</sub>) — samme tall i alle tre analysene.
+           Radiell λ er et sekundært «lastvei»-tall og merkes som det.</p>
+       </div>`
+    : '';
+
+  body.innerHTML = `
+    <div class="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-5 items-start">
+      <div class="space-y-4">
+
+        <!-- hovedtall -->
+        <div class="rounded-xl border ${UTIL.ring(eta)} p-4">
+          <div class="flex flex-wrap items-end gap-x-8 gap-y-3">
+            <div>
+              <div class="text-[11px] text-slate-400 uppercase tracking-wide">Utnyttelse η</div>
+              <div class="text-4xl font-bold num ${UTIL.cls(eta)}">${nf(eta,2)}</div>
+              <div class="text-[11px] text-slate-500 num">M<sub>Ed</sub>/M<sub>Rd</sub>(N<sub>Ed</sub>)</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-slate-400 uppercase tracking-wide">M<sub>Rd</sub></div>
+              <div class="text-2xl font-semibold num text-slate-100">${nf(MRd,1)} <span class="text-sm text-slate-400">kNm${S.sectionType==='slab'?'/m':''}</span></div>
+              <div class="text-[11px] text-slate-500 num">M<sub>Ed</sub> = ${nf(S.loads.M_Ed,1)}</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-slate-400 uppercase tracking-wide">Bruddform</div>
+              <div class="text-lg font-medium text-sky-300">${FAILURE_NO[b.failure_mode]}</div>
+              <div class="text-[11px] text-slate-500 num">x/d = ${nf(b.x_over_d,3)} · ${b.x_over_d<0.45?'duktil':'sjekk duktilitet'}</div>
+            </div>
+            <div class="ml-auto text-right">
+              <div class="text-[11px] text-slate-400 uppercase tracking-wide">Kontroller</div>
+              <div class="text-lg ${fx().checks.all_ok?'text-emerald-300':'text-rose-300'}">${fx().checks.all_ok?'Alle OK':'Se under'}</div>
+            </div>
+          </div>
+          <div class="mt-3 h-2 rounded-full bg-slate-700 overflow-hidden relative">
+            <div class="h-full ${UTIL.bg(eta)}" style="width:${Math.min(100, (eta||0)*100)}%"></div>
+            <div class="absolute inset-y-0" style="left:90%;width:1px;background:#64748b"></div>
+          </div>
+          <div class="flex justify-between text-[10px] text-slate-500 num mt-0.5"><span>0</span><span>0,90</span><span>M<sub>Rd</sub></span></div>
+        </div>
+
+        <!-- figur: tverrsnitt + tøyningsdiagram -->
+        <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+          <div class="text-xs text-slate-400 mb-1">Tverrsnitt, trykksone og tøyningsprofil</div>
+          <div id="draw-res"></div>
+          <p class="text-[11px] text-slate-500 mt-1 num">
+            ε(z) = ε<sub>a</sub> + χ<sub>y</sub>·z · nøytralakse i z = ${nf(S.geometry.h/2 - b.x,1)} mm · trykk negativ
+          </p>
+        </div>
+
+        ${chart}
+
+        <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+          <div class="text-xs text-slate-400 mb-2">Tøyning og spenning per lag</div>
+          ${layerStrainTable()}
+        </div>
+      </div>
+
+      <!-- inspeksjonsspalte -->
+      <div class="space-y-3 text-[12px]">
+        <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+          <div class="text-xs text-slate-400 mb-1.5">Bruddtilstand</div>${ins.brudd}</div>
+        <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+          <div class="text-xs text-slate-400 mb-1.5">Tverrsnitt</div>${ins.snitt}</div>
+        <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+          <div class="text-xs text-slate-400 mb-1.5">Kontroller</div>${checksHtml()}</div>
+        <details class="rounded-lg border border-slate-700 bg-slate-900/50">
+          <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200">Materialverdier ▸</summary>
+          <div class="px-3 pb-3">${ins.mat}</div></details>
+        <p class="text-[11px] text-slate-600 num leading-relaxed">
+          structuralcodes ${me.structuralcodes_version} · integrator ${me.integrator} ·
+          θ = ${nf(me.theta,2)} · ${nf(me.wall_time_ms,1)} ms
+        </p>
+      </div>
+    </div>`;
+
+  $('#draw-res').innerHTML = sectionSvg({ strains:true, overlay:true, dims:true, labels:true });
+}
+
+/* ---------- full render ---------- */
+function render(){
+  syncInputs();
+  seg($('#type-seg'), S.sectionType, v => { if (v !== S.sectionType){ applyPreset(v); S.result = null; S.editing = null; render(); } });
+  seg($('#dir-seg'), S.direction, v => { S.direction = v; S.stale = true; render(); });
+  chips($('#fck-chips'), FCK.map(v => [String(v), 'C'+v+'/'+({20:25,25:30,30:37,35:45,45:55,55:67})[v]]),
+        String(S.concrete.fck), v => { S.concrete.fck = +v; S.stale = true; render(); });
+  chips($('#fyk-chips'), FYK.map(v => [String(v), 'B'+v+'NC']),
+        String(S.steel.fyk), v => { S.steel.fyk = +v; S.stale = true; render(); });
+  chips($('#ana-chips'), ANA.map(a => [a[0], a[1]]), S.analysis, v => { S.analysis = v; S.stale = true; render(); });
+  $('#ana-desc').textContent = ANA.find(a => a[0] === S.analysis)[2];
+
+  const ma = fx().materials;
+  $('#mat-sum').innerHTML = `C${S.concrete.fck}/${({20:25,25:30,30:37,35:45,45:55,55:67})[S.concrete.fck]} · B${S.steel.fyk}NC`;
+  $('#fac-sum').innerHTML = `Faktorer og materiallover — γ<sub>c</sub> ${nf(S.concrete.gamma_c,2)} · α<sub>cc</sub> ${nf(S.concrete.alpha_cc,2)} · γ<sub>s</sub> ${nf(S.steel.gamma_s,2)} · k ${nf(S.steel.k,2)}`;
+  const der = (k,v,u) => `<div><span class="text-slate-500">${k}</span> <span class="text-slate-200">${v}</span> <span class="text-slate-600">${u}</span></div>`;
+  $('#mat-der').innerHTML =
+      der('f<sub>cd</sub>', nf(ma.fcd,1), 'MPa') + der('f<sub>ctm</sub>', nf(ma.fctm,2), 'MPa')
+    + der('E<sub>cm</sub>', nf(ma.Ecm,0), 'MPa') + der('f<sub>yd</sub>', nf(ma.fyd,1), 'MPa')
+    + der('ε<sub>ud</sub>', nf(pm(ma.eps_ud),1), '‰');
+
+  $('#geo-sum').innerHTML = `${nf(S.geometry.b,0)} × ${nf(S.geometry.h,0)} mm`;
+  $('#draw-geo').innerHTML = sectionSvg({ dims:true, labels:true });
+  $('#thumb').innerHTML = sectionSvg({ dims:false, labels:false });
+
+  renderLayers();
+  const As = totalArea(), d = effectiveDepth();
+  $('#arm-sum').innerHTML = `${S.layers.length} lag · ΣA<sub>s</sub> ${nf(As,0)} mm²${S.sectionType==='slab'?'/m':''}`;
+  $('#arm-tot').innerHTML = `ΣA<sub>s</sub> ${nf(As,0)} mm²${S.sectionType==='slab'?'/m':''} · d ${nf(d,0)} mm · ρ ${nf(rhoLive()*100,3)} %`;
+  const asmin = fx().section_props.As_min;
+  $('#arm-warn').innerHTML = As < asmin ? `⚠ under A<sub>s,min</sub> = ${nf(asmin,0)} mm²` : '';
+
+  $('#sh').placeholder = S.sectionType === 'beam' ? '3ø20 uk 50' : 'ø12 c113 uk 31';
+  $('#sh-hint').innerHTML = S.sectionType === 'beam'
+    ? `<span class="font-mono text-slate-400">3ø20 uk 50</span> · <span class="font-mono text-slate-400">2x25 ok</span> · d<sub>c</sub> utelatt = c + bøyle + Ø/2 = ${nf(autoDc(20),0)} mm`
+    : `<span class="font-mono text-slate-400">ø12 c113 uk 31</span> · <span class="font-mono text-slate-400">ø10/150 ok</span> · d<sub>c</sub> utelatt = c + Ø/2 = ${nf(autoDc(12),0)} mm`;
+
+  $('#last-sum').innerHTML = `N<sub>Ed</sub> ${nf(S.loads.N_Ed,0)} kN · M<sub>Ed</sub> ${nf(S.loads.M_Ed,1)} kNm · ${S.direction==='sagging'?'felt':'støtte'}`;
+  $('#bar-geo').innerHTML = `${S.sectionType==='beam'?'Bjelke':'Plate'} ${nf(S.geometry.b,0)}×${nf(S.geometry.h,0)} · C${S.concrete.fck}`;
+  $('#bar-arm').innerHTML = `ΣA<sub>s</sub> ${nf(As,0)} mm² · d ${nf(d,0)} mm`;
+
+  const eta = etaLive();
+  $('#bar-eta').innerHTML = S.result
+    ? `<div class="text-[10px] text-slate-500 uppercase">η${S.stale?' (foreldet)':''}</div>
+       <div class="text-xl font-bold num ${S.stale?'text-slate-500':UTIL.cls(eta)}">${nf(eta,2)}</div>`
+    : `<div class="text-[10px] text-slate-600 uppercase">η</div><div class="text-xl font-bold num text-slate-700">–</div>`;
+
+  renderResult();
+  renderEngine();
+  if (S.result && S.stale) markStale();
+}
+function markStale(){
+  const b = $('#res-body').firstElementChild;
+  if (!b) return;
+  const n = document.createElement('div');
+  n.className = 'mb-3 rounded-lg border border-amber-600/50 bg-amber-950/30 px-3 py-2 text-[12px] text-amber-200';
+  n.innerHTML = 'Inndataene er endret etter siste beregning — tallene under er foreldet. <kbd>Ctrl</kbd> <kbd>⏎</kbd> for å regne på nytt.';
+  $('#res-body').prepend(n);
+}
+
+/* ---------- korthåndslinja ---------- */
+let shHist = [];
+function addFromShorthand(){
+  const f = $('#sh'), p = parseShorthand(f.value);
+  if (!p){ f.classList.add('!border-rose-500'); setTimeout(()=>f.classList.remove('!border-rose-500'), 700); return; }
+  shHist.push(f.value);
+  S.layers.push(newLayer(p));
+  S.stale = true; f.value = ''; $('#sh-prev').textContent = '';
+  render(); $('#sh').focus();
+}
+function bindShorthand(){
+  const f = $('#sh');
+  f.addEventListener('input', () => {
+    const p = parseShorthand(f.value);
+    $('#sh-prev').innerHTML = !f.value.trim() ? '' : p
+      ? `→ ${p.mode==='bars'?p.count+' × Ø'+p.dia:'Ø'+p.dia+' c/c '+p.spacing} · ${p.edge==='bottom'?'UK':'OK'} · d<sub>c</sub> ${nf(p.dc,0)} · A<sub>s</sub> ${nf(layerArea(p),0)} mm²`
+      : '<span class="text-rose-400">forstår ikke — se eksemplene til venstre</span>';
+  });
+  f.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); addFromShorthand(); }
+    if (e.key === 'ArrowUp' && !f.value && shHist.length){ f.value = shHist[shHist.length-1]; f.dispatchEvent(new Event('input')); }
+    if (e.key === 'Escape') f.blur();
+  });
+  $('#sh-add').onclick = addFromShorthand;
+  $('#add-plain').onclick = () => { S.layers.push(newLayer()); S.stale = true; render(); };
+  $('#dup-last').onclick = dupLast;
+}
+function dupLast(){
+  if (!S.layers.length) return;
+  S.layers.push(newLayer({ ...S.layers[S.layers.length-1] }));
+  S.stale = true; render();
+}
+
+/* ---------- kjør ---------- */
+function doRun(){
+  S.editing = null;
+  runSolve(() => { render(); document.getElementById('s-res').scrollIntoView({ block:'start' }); });
+  render();
+}
+
+/* ---------- tastatur ---------- */
+const inField = () => { const a = document.activeElement; return a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); };
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter'){ e.preventDefault(); doRun(); return; }
+  if (e.altKey && (e.key === 'd' || e.key === 'D')){ e.preventDefault(); dupLast(); return; }
+  if (e.key === 'Escape'){ $('#help').classList.add('hidden'); }
+  if (inField() || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'a'){ e.preventDefault(); $('#sh').scrollIntoView({ block:'center' }); $('#sh').focus(); }
+  else if (k === 'b'){ applyPreset('beam'); S.result = null; render(); }
+  else if (k === 'p'){ applyPreset('slab'); S.result = null; render(); }
+  else if (k === 'f'){ S.direction = 'sagging'; S.stale = true; render(); }
+  else if (k === 's'){ S.direction = 'hogging'; S.stale = true; render(); }
+  else if ('123'.includes(k)){ S.analysis = ANA[+k-1][0]; S.stale = true; render(); }
+  else if (k === '?' || (e.shiftKey && k === '/')) $('#help').classList.toggle('hidden');
+});
+
+/* ---------- rullemarkør i navigasjonen ---------- */
+const secs = ['s-mat','s-geo','s-arm','s-last','s-ber','s-res'];
+if ('IntersectionObserver' in window){
+  secs.forEach(id => {
+    const o = new IntersectionObserver(es => es.forEach(en => {
+      if (en.isIntersecting) $$('.navlink').forEach(a => a.dataset.on = (a.getAttribute('href') === '#'+id));
+    }), { rootMargin:'-110px 0px -55% 0px', threshold:0 });
+    o.observe(document.getElementById(id));
+  });
+}
+
+/* ---------- oppstart ---------- */
+setupInputs();
+bindShorthand();
+$('#run-big').onclick = doRun;
+$('#run-bar').onclick = doRun;
+$('#btn-help').onclick = () => $('#help').classList.toggle('hidden');
+$('#help-x').onclick = () => $('#help').classList.add('hidden');
+$('#help').onclick = e => { if (e.target.id === 'help') $('#help').classList.add('hidden'); };
+$('#m-warm').onclick = () => engWarm();
+$('#m-fail').onclick = () => engFail();
+render();
+engWarm();   /* §3.9: oppvarming starter ved sidelast, parallelt med utfyllingen */
+</script>
+</body>
+</html>
