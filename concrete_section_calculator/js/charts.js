@@ -99,10 +99,10 @@ function r(v) {
   return Number.isFinite(v) ? String(Math.round(v * 1000) / 1000) : '0';
 }
 
-/** Norsk desimaltegn, som i rapporten ellers. */
+/** Engelsk desimalpunktum, som i rapporten ellers. */
 function fmt(v, decimals = 1) {
   if (!Number.isFinite(v)) return '–';
-  return v.toFixed(decimals).replace('.', ',');
+  return v.toFixed(decimals);
 }
 
 function resolveOpts(opts = {}) {
@@ -213,11 +213,17 @@ function wrap(o, body, label) {
          body + `</svg>`;
 }
 
-/** Lastpunktmarkør: sirkel pluss kryss. Sirkelen alene forsvinner i kurven. */
-function loadMarker(px, py, color, u) {
+/**
+ * Lastpunktmarkør: sirkel pluss kryss. Sirkelen alene forsvinner i kurven.
+ *
+ * `filled` skiller GOVERNING kombinasjonen (fylt sirkel) fra de øvrige (§7:
+ * `fill="none"`, samme strek). `role` setter `data-role`, slik at testene og
+ * en eventuell rapportleser kan skille governing fra resten uten å telle piksler.
+ */
+function loadMarker(px, py, color, u, { filled = false, role = 'load-point' } = {}) {
   const a = 1.8 * u;
-  return `<g data-role="load-point" stroke="${color}" stroke-width="${r(0.4 * u)}">` +
-         `<circle cx="${r(px)}" cy="${r(py)}" r="${r(a)}" fill="none"/>` +
+  return `<g data-role="${role}" stroke="${color}" stroke-width="${r(0.4 * u)}">` +
+         `<circle cx="${r(px)}" cy="${r(py)}" r="${r(a)}" fill="${filled ? color : 'none'}"/>` +
          `<line x1="${r(px - a * 1.7)}" y1="${r(py)}" x2="${r(px + a * 1.7)}" y2="${r(py)}"/>` +
          `<line x1="${r(px)}" y1="${r(py - a * 1.7)}" x2="${r(px)}" y2="${r(py + a * 1.7)}"/>` +
          `</g>`;
@@ -284,16 +290,16 @@ export function momentCurvatureSvg(mc, opts = {}) {
             `fill="${c.yield}"/>` +
             `<text x="${r(ax.px(kx[yi]) + 2.4 * o.u)}" y="${r(ax.py(my[yi]) + 3.2 * o.u)}" ` +
             `font-family="${FONT}" font-size="${r(2.2 * o.u)}" fill="${c.yield}">` +
-            `flyt: ${esc(fmt(my[yi], 1))} kNm</text></g>`;
+            `yield: ${esc(fmt(my[yi], 1))} kNm</text></g>`;
   }
 
   if (mc?.truncated) {
     body += `<text data-role="truncated" x="${r(f.x0 + 1.5 * o.u)}" y="${r(f.y0 - 2 * o.u)}" ` +
             `font-family="${FONT}" font-size="${r(2.2 * o.u)}" fill="${c.ed}">` +
-            `avkortet: manglende konvergens</text>`;
+            `truncated: no convergence</text>`;
   }
 
-  return wrap(o, body, 'Moment–krumning');
+  return wrap(o, body, 'Moment–curvature');
 }
 
 /* ------------------------------------------------------------------ *
@@ -442,8 +448,32 @@ export function radialUtilisation(dom, N_Ed, M_Ed) {
  * stille, leser en bruker av feil fortegn på `N_Ed` uten å ane det.
  *
  * Figuren tegner selv omhyllingen, lastpunktet OG strålen fra origo ut til
- * treffpunktet, med λ og η påskrevet. Strålen er merket «lastvei» fordi den
+ * treffpunktet, med λ og η påskrevet. Strålen er merket «load path» fordi den
  * radielle utnyttelsen er sekundær — hovedtallet er den vertikale (§5.2).
+ *
+ * **Endringsrunde 2, §7 — flere lastpunkter.** Finnes `dom.combinations` og er
+ * ikke-tom, tegnes ETT punkt per kombinasjon med `within_limits: true`:
+ * governing fylt og merket med navn/id, resten tomme sirkler uten etikett.
+ * Strålen følger fortsatt bare governing — det er allerede sikret ved at
+ * `dom.N_Ed`/`dom.M_Ed` på toppnivå speiler governing (motorens §4.3), så
+ * `rad` under trenger ingen egen logikk for det.
+ *
+ * **Hver kombinasjon har sin EGEN retning (`cb.theta`), omhyllingen har bare
+ * ÉN (`dom.domain_theta`).** En støttemomentkombinasjon (`theta` motsatt av
+ * `dom.domain_theta`) hører hjemme på omhyllingens −M-gren, ikke på +M sammen
+ * med feltmomentet — ellers ser figuren riktig ut helt til noen legger inn en
+ * hogging-rad, og da havner den synlig i feil gren. Fortegnet per punkt er
+ * derfor `+1` når `cb.theta` matcher `dom.domain_theta`, ellers `−1`. Mangler
+ * et av feltene, faller punktet tilbake til `abs()` — samme som reserveveien,
+ * og det er riktig for eldre resultater som ikke kjenner til `domain_theta`.
+ *
+ * Mangler `dom.combinations` (eller er den tom), er dette en ren no-op: koden
+ * faller tilbake til det ENE lastpunktet i `dom.N_Ed`/`dom.M_Ed`, nøyaktig som
+ * før kombinasjoner fantes. Det ENE lastpunktet har alltid `options.theta`,
+ * altså samme retning som omhyllingen selv — derfor er `abs()` riktig DER, og
+ * skal IKKE få samme fortegnsbehandling som listen over kombinasjoner. Det er
+ * det som holder eldre resultater og enhver kaller som ikke er oppdatert
+ * ennå, i gang.
  */
 export function nmDomainSvg(dom, opts = {}) {
   const o = resolveOpts(opts);
@@ -462,9 +492,32 @@ export function nmDomainSvg(dom, opts = {}) {
   const mEd = Math.abs(Number(dom?.M_Ed) || 0) / 1e6;
   const rad = radialUtilisation(dom, nEd, mEd);
 
+  // §7: samme /1000 og /1e6 som over. `within_limits` filtreres her, ikke i
+  // motoren — motoren sender dem alle, figuren velger hvem som får et punkt.
+  const domainTheta = Number(dom?.domain_theta);
+  const comboPoints = (Array.isArray(dom?.combinations) ? dom.combinations : [])
+    .filter((cb) => cb && cb.within_limits === true)
+    .map((cb) => {
+      const theta = Number(cb?.theta);
+      // Samme retning som omhyllingen -> +M, motsatt -> −M. Mangler ett av
+      // feltene, er `sign = 1` nøyaktig `abs()` — reserven for eldre data.
+      const sign = Number.isFinite(domainTheta) && Number.isFinite(theta)
+        && Math.abs(theta - domainTheta) > 1e-9 ? -1 : 1;
+      return {
+        n: (Number(cb.N_Ed) || 0) / 1000,
+        m: sign * Math.abs(Number(cb.M_Ed) || 0) / 1e6,
+        governing: cb.id === dom?.governing,
+        label: cb.name || cb.id,
+      };
+    });
+
   const nVals = pts.map((p) => p[0]).concat([nEd, 0]);
   const mVals = pts.map((p) => p[1]).concat([mEd, 0]);
   if (rad.hitN !== null) { nVals.push(rad.hitN); mVals.push(rad.hitM); }
+  // §7: ALLE kombinasjonspunktene inn i autoskaleringen, med det FORTEGNSATTE
+  // `p.m` — ellers strekker ikke aksen seg til en hogging-kombinasjon på −M,
+  // og en kombinasjon utenfor omhyllingen kan havne off-canvas uten varsel.
+  for (const p of comboPoints) { nVals.push(p.n); mVals.push(p.m); }
 
   const nLo = Math.min(...nVals);
   const nHi = Math.max(...nVals);
@@ -475,7 +528,7 @@ export function nmDomainSvg(dom, opts = {}) {
   const nPad = (nHi - nLo) * 0.06 || 1;
   const mPad = (mHi - mLo) * 0.06 || 1;
   const ax = axes(o, f, mLo - mPad, mHi + mPad, nLo - nPad, nHi + nPad,
-    'M [kNm]', 'N [kN]  (trykk negativ)');
+    'M [kNm]', 'N [kN]  (compression negative)');
 
   let body = ax.svg;
 
@@ -495,16 +548,30 @@ export function nmDomainSvg(dom, opts = {}) {
             `r="${r(1.2 * o.u)}" fill="${c.ray}"/></g>`;
     body += `<text data-role="ray-label" x="${r(f.x0 + 1.8 * o.u)}" y="${r(f.y0 - 2.2 * o.u)}" ` +
             `font-family="${FONT}" font-size="${r(2.2 * o.u)}" fill="${c.ray}">` +
-            `lastvei (sekundær): λ = ${esc(fmt(rad.lambda, 2))}, ` +
+            `load path (secondary): λ = ${esc(fmt(rad.lambda, 2))}, ` +
             `η = ${esc(fmt(rad.eta, 2))}</text>`;
   }
 
-  if (Math.abs(nEd) > EPS || mEd > EPS) {
-    body += loadMarker(ax.px(mEd), ax.py(nEd), c.load, o.u);
+  if (comboPoints.length) {
+    for (const p of comboPoints) {
+      if (p.governing) {
+        body += loadMarker(ax.px(p.m), ax.py(p.n), c.load, o.u,
+          { filled: true, role: 'load-point-governing' });
+        body += `<text x="${r(ax.px(p.m) + 3.4 * o.u)}" y="${r(ax.py(p.n) + 0.8 * o.u)}" ` +
+                `font-family="${FONT}" font-size="${r(2.2 * o.u)}" fill="${c.load}">` +
+                `${esc(p.label)}</text>`;
+      } else {
+        body += loadMarker(ax.px(p.m), ax.py(p.n), c.load, o.u,
+          { filled: false, role: 'load-point' });
+      }
+    }
+  } else if (Math.abs(nEd) > EPS || mEd > EPS) {
+    // Reserve (§7): ingen `dom.combinations` — oppfør deg nøyaktig som før.
+    body += loadMarker(ax.px(mEd), ax.py(nEd), c.load, o.u, { filled: false, role: 'load-point' });
     body += `<text x="${r(ax.px(mEd) + 3.4 * o.u)}" y="${r(ax.py(nEd) + 0.8 * o.u)}" ` +
             `font-family="${FONT}" font-size="${r(2.2 * o.u)}" fill="${c.load}">` +
             `(${esc(fmt(mEd, 1))} kNm; ${esc(fmt(nEd, 1))} kN)</text>`;
   }
 
-  return wrap(o, body, 'M–N-diagram');
+  return wrap(o, body, 'N–M interaction domain');
 }

@@ -506,6 +506,10 @@ def test_nm_domain_sign_convention_follows_options_theta_not_governing():
     kombinasjonstabellen (§4.1). `meta.domain_theta` skal si hvilken retning som ble brukt,
     og `meta.moment_sign` skal fortsatt være GOVERNING sitt eget, rå fortegn — ikke det
     samme tallet lenger.
+
+    `nm_domain.domain_theta` skal duplisere `meta.domain_theta` — `charts.js` får bare
+    `result.nm_domain` alene, `meta` er en søsken og ikke nestet inni, så blokka må være
+    selvforsynt for å kunne sette fortegnet på egen hånd.
     """
     payload = load('payload-beam-300x600.json')
     payload['analysis'] = 'nm_domain'
@@ -527,6 +531,11 @@ def test_nm_domain_sign_convention_follows_options_theta_not_governing():
     assert dom['governing'] == 'C2'                    # hogging vant på utnyttelse
     assert result['meta']['domain_theta'] == 0.0       # men omhyllingen fulgte options.theta
     assert result['meta']['moment_sign'] == 1          # governing (hogging) sitt EGNE fortegn
+
+    # `nm_domain` sendes videre ALENE til `charts.js` — den må derfor ha sin egen kopi,
+    # ikke bare den i `meta`.
+    assert dom['domain_theta'] == result['meta']['domain_theta']
+    assert dom['domain_theta'] == 0.0
 
     # Selve omhyllingen er UENDRET fra den rene sagging-fixturen, byte for byte — governing
     # sitt bytte av retning skal ikke speilvende diagrammet.

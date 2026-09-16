@@ -12,7 +12,7 @@
     "theta": 0.0,
     "direction": "sagging",
     "subtract_bar_area": false,
-    "wall_time_ms": 65.3,
+    "wall_time_ms": 61.5,
     "domain_theta": 0.0
   },
   "materials": {
@@ -329,6 +329,7 @@
         "within_limits": true
       }
     ],
-    "governing": "C1"
+    "governing": "C1",
+    "domain_theta": 0.0
   }
 }
