@@ -607,49 +607,55 @@ function mcSvg(W, H){
   return P.join('');
 }
 
-/* M–N-omhylling, tegnet fra fixturens 69 punkter. */
+/* M–N-omhylling, tegnet fra fixturens 69 punkter.
+   MERK: fixturens `m` er FORTEGNSATT (13 av 69 punkter er negative), ikke
+   `abs` slik plan §5.2 sier. Jeg plotter det som står i fila — det gir den
+   ekte lukkede omhyllingen med begge momentretninger. Se docs/mockups/README.md. */
 function nmSvg(W, H){
   const f = fx(), d = f.nm;
   const N = d.n.map(v => v/1e3), Mv = d.m.map(v => v/1e6);
   const MEd = Math.abs(S.loads.M_Ed), NEd = S.loads.N_Ed;
-  const F = frame(W, H, 70, 108, 22, 46);
-  const xhi = Math.max(...Mv)*1.10;
+  const F = frame(W, H, 72, 112, 24, 48);
+  const xlo = Math.min(0, ...Mv)*1.10, xhi = Math.max(0, MEd, ...Mv)*1.12;
   const ylo = Math.min(...N)*1.05, yhi = Math.max(Math.max(...N)*1.35, 200);
-  const X = v => F.L + v/xhi*F.pw;
+  const X = v => F.L + (v-xlo)/(xhi-xlo)*F.pw;
   const Y = v => F.T + F.ph - (v-ylo)/(yhi-ylo)*F.ph;
   const P = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">`];
   for (const t of ticks(ylo, yhi, 6)){
     P.push(`<line x1="${F.L}" y1="${Y(t)}" x2="${F.L+F.pw}" y2="${Y(t)}" stroke="#1e293b"/>`);
     P.push(`<text x="${F.L-7}" y="${Y(t)+3.5}" fill="#94a3b8" text-anchor="end">${nf(t,0)}</text>`);
   }
-  for (const t of ticks(0, xhi, 6)){
+  for (const t of ticks(xlo, xhi, 6)){
     P.push(`<line x1="${X(t)}" y1="${F.T}" x2="${X(t)}" y2="${F.T+F.ph}" stroke="#1e293b"/>`);
     P.push(`<text x="${X(t)}" y="${F.T+F.ph+15}" fill="#94a3b8" text-anchor="middle">${nf(t,0)}</text>`);
   }
-  P.push(`<text x="${F.L+F.pw/2}" y="${H-6}" fill="#cbd5e1" text-anchor="middle">M [kNm] — størrelse i valgt retning</text>`);
+  P.push(`<text x="${F.L+F.pw/2}" y="${H-6}" fill="#cbd5e1" text-anchor="middle">M [kNm] — positiv = valgt retning (${S.direction==='sagging'?'felt':'støtte'})</text>`);
   P.push(`<text x="14" y="${F.T+F.ph/2}" fill="#cbd5e1" text-anchor="middle" transform="rotate(-90 14 ${F.T+F.ph/2})">N [kN] — trykk negativ</text>`);
 
-  /* omhylling (lukket) */
+  /* omhylling (lukket kurve gjennom EC2-feltene 1→6) */
   P.push(`<polygon points="${Mv.map((m,i)=>`${X(m).toFixed(1)},${Y(N[i]).toFixed(1)}`).join(' ')}" fill="#0ea5e9" fill-opacity="0.12" stroke="#38bdf8" stroke-width="2"/>`);
 
-  /* N = 0 */
+  /* aksekors */
   P.push(`<line x1="${F.L}" y1="${Y(0)}" x2="${F.L+F.pw}" y2="${Y(0)}" stroke="#64748b" stroke-dasharray="4 4"/>`);
+  P.push(`<line x1="${X(0)}" y1="${F.T}" x2="${X(0)}" y2="${F.T+F.ph}" stroke="#64748b" stroke-dasharray="4 4"/>`);
+  P.push(`<text x="${X(xlo*0.55)}" y="${F.T+F.ph-8}" fill="#64748b" text-anchor="middle">motsatt momentretning</text>`);
 
-  /* balansepunkt = største |M| */
-  let bi = 0; Mv.forEach((m,i)=>{ if (m > Mv[bi]) bi = i; });
-  P.push(`<circle cx="${X(Mv[bi])}" cy="${Y(N[bi])}" r="3.5" fill="#a78bfa"/>`);
-  P.push(`<text x="${X(Mv[bi])+7}" y="${Y(N[bi])+4}" fill="#a78bfa">balanse ${nf(Mv[bi],0)} kNm / ${nf(N[bi],0)} kN</text>`);
+  /* topp-punkt i hver retning */
+  let bi = 0, hi = 0;
+  Mv.forEach((m,i)=>{ if (m > Mv[bi]) bi = i; if (m < Mv[hi]) hi = i; });
+  for (const [i, col] of [[bi,'#a78bfa'], [hi,'#64748b']]){
+    P.push(`<circle cx="${X(Mv[i])}" cy="${Y(N[i])}" r="3.5" fill="${col}"/>`);
+    P.push(`<text x="${X(Mv[i])+(i===hi?-7:7)}" y="${Y(N[i])+4}" fill="${col}" text-anchor="${i===hi?'end':'start'}">${nf(Mv[i],0)} kNm / ${nf(N[i],0)} kN</text>`);
+  }
 
   /* kapasitet ved N_Ed + lastpunkt: VERTIKAL utnyttelse (§5.2) */
   const MRdN = d.M_Rd_at_N/1e6;
   P.push(`<line x1="${X(MEd)}" y1="${Y(NEd)}" x2="${X(MRdN)}" y2="${Y(NEd)}" stroke="${UTIL.hex(etaLive())}" stroke-width="2.4"/>`);
   P.push(`<circle cx="${X(MRdN)}" cy="${Y(NEd)}" r="5" fill="none" stroke="#34d399" stroke-width="2"/>`);
-  P.push(`<text x="${X(MRdN)+8}" y="${Y(NEd)-8}" fill="#34d399">M_Rd(N_Ed) = ${nf(MRdN,1)}</text>`);
+  P.push(`<text x="${X(MRdN)+8}" y="${Y(NEd)-9}" fill="#34d399">M_Rd(N_Ed) = ${nf(MRdN,1)}</text>`);
   P.push(`<circle cx="${X(MEd)}" cy="${Y(NEd)}" r="5" fill="${UTIL.hex(etaLive())}"/>`);
   P.push(`<text x="${X(MEd)}" y="${Y(NEd)+20}" fill="${UTIL.hex(etaLive())}" text-anchor="middle">lastpunkt ${nf(MEd,0)} / ${nf(NEd,0)}</text>`);
 
-  /* nedre gren = motsatt momentretning foldet opp av abs() */
-  P.push(`<text x="${F.L+6}" y="${F.T+F.ph-8}" fill="#64748b">nedre gren: motsatt momentretning, foldet av |M|</text>`);
   P.push(`<text x="${F.L+F.pw}" y="${F.T+12}" fill="#64748b" text-anchor="end">69 punkter · N ∈ [${nf(kN(d.N_min),0)}, ${nf(kN(d.N_max),0)}] kN</text>`);
   P.push('</svg>');
   return P.join('');
