@@ -12,8 +12,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import {
+  allowedAnalyses,
   asMax,
   asMin,
+  axialForcesPresent,
   derived,
   grossArea,
   isValid,
@@ -46,10 +48,15 @@ const beamState = (patch = {}) => ({
   cover_side: 40,
   spacing: { k1: 1, k2: 5, d_g: 16 },
   layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50, dc_auto: false }],
-  combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, direction: 'sagging' }],
+  // `M_Ed = 0` er feltmoment etter regelen (M_Ed <= 0 ⇒ θ = 0) — samme som
+  // den gamle default-retningen «sagging» ga. Ingen `direction` lenger.
+  combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
   activeCombo: 'C1',
-  direction: 'sagging',
   analysis: 'bending',
+  // Standard skjærtilstand: ingen bøyler, gyldig trykkstavvinkel — et snitt
+  // uten denne skal IKKE feile skjærvalideringen bare fordi det ikke handler
+  // om skjær.
+  shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] },
   options: { subtract_bar_area: false, mc_pre_yield: 10, mc_post_yield: 10 },
   ...patch,
 });
@@ -73,9 +80,40 @@ test('tverrsnittet er sentrert om origo', () => {
   });
 });
 
-test('thetaFor: feltmoment = 0, støttemoment = π', () => {
-  assert.equal(thetaFor('sagging'), 0);
-  assert.equal(thetaFor('hogging'), Math.PI);
+test('thetaFor: M_Ed <= 0 gir feltmoment (θ=0), M_Ed > 0 gir støttemoment (θ=π) — endringsrunde 4 §1.3', () => {
+  assert.equal(thetaFor(-250), 0);
+  assert.equal(thetaFor(0), 0);
+  assert.equal(thetaFor(250), Math.PI);
+  // NaN/manglende: samme fallback som den gamle default-retningen «sagging».
+  assert.equal(thetaFor(NaN), 0);
+  assert.equal(thetaFor(undefined), 0);
+});
+
+test('axialForcesPresent: eksakt null, ingen toleranse — NaN/tom teller som fravær (§2)', () => {
+  assert.equal(axialForcesPresent(beamState()), false);
+  assert.equal(axialForcesPresent(beamState({ combos: [{ id: 'C1', N_Ed: -500, M_Ed: 0 }] })), true);
+  assert.equal(axialForcesPresent(beamState({ combos: [{ id: 'C1', N_Ed: 500, M_Ed: 0 }] })), true);
+  assert.equal(axialForcesPresent(beamState({ combos: [{ id: 'C1', N_Ed: 0.0001, M_Ed: 0 }] })), true);
+  assert.equal(axialForcesPresent(beamState({ combos: [{ id: 'C1', N_Ed: NaN, M_Ed: 0 }] })), false);
+  assert.equal(axialForcesPresent(beamState({ combos: [{ id: 'C1', N_Ed: '', M_Ed: 0 }] })), false);
+  // Én av flere er nok.
+  assert.equal(
+    axialForcesPresent(
+      beamState({
+        combos: [
+          { id: 'C1', N_Ed: 0, M_Ed: 0 },
+          { id: 'C2', N_Ed: -100, M_Ed: 0 },
+        ],
+      })
+    ),
+    true
+  );
+});
+
+test('allowedAnalyses: uten aksialkraft alle tre, med aksialkraft uten bending (§2)', () => {
+  assert.deepEqual(allowedAnalyses(beamState()), ['bending', 'moment_curvature', 'nm_domain']);
+  const withN = beamState({ combos: [{ id: 'C1', N_Ed: -500, M_Ed: 0 }] });
+  assert.deepEqual(allowedAnalyses(withN), ['moment_curvature', 'nm_domain']);
 });
 
 test('derived() stemmer med section_props fra motoren', () => {
@@ -103,12 +141,13 @@ test('As_min og As_max etter EC2 9.2.1.1, ikke pakkens rissviddeminimum', () => 
 });
 
 /** Dobbeltarmert: 3Ø20 i UK + 2Ø12 i OK, begge med dc = 50. */
-const doubleState = () =>
+const doubleState = (patch = {}) =>
   beamState({
     layers: [
       { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50 },
       { id: 'L2', mode: 'bars', dia: 12, count: 2, edge: 'top', dc: 50 },
     ],
+    ...patch,
   });
 
 test('derived(): d_eff er et ESTIMAT, d_eff_all er vektet over alle lag', () => {
@@ -151,6 +190,32 @@ test('layerSummary gir id, areal, z og d per lag', () => {
   assert.equal(l.z, -250);
   assert.equal(l.d, 550);
   assert.equal(l.count, 3);
+});
+
+test('asMin/derived/layerSummary følger den AKTIVE kombinasjonens M_Ed-fortegn, ikke en fjernet state.direction (§7)', () => {
+  const hog = doubleState({
+    combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 250, V_Ed: 0 }],
+    activeCombo: 'C1',
+  });
+  // M_Ed > 0 ⇒ støttemoment ⇒ strekksiden snur til OK-laget (L2, dc=50, altså
+  // 550 mm fra den NÅ nederste trykkanten).
+  const d = derived(hog);
+  assert.equal(d.theta, Math.PI);
+  assert.equal(d.d_eff, 550);
+  assert.ok(Math.abs(d.As_tension - 2 * ((Math.PI * 144) / 4)) < 1e-12);
+
+  const rows = layerSummary(hog);
+  // Lagets EGEN dybde snur også — L1 (UK) er nå nær trykkanten, L2 (OK) langt unna.
+  assert.equal(rows[0].d, 50);
+  assert.equal(rows[1].d, 550);
+
+  // Et annet aktivt combo-id enn den eneste raden faller tilbake på θ=0
+  // (ingen match ⇒ M_Ed undefined ⇒ thetaFor(undefined) = 0).
+  const noMatch = doubleState({
+    combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 250, V_Ed: 0 }],
+    activeCombo: 'C9',
+  });
+  assert.equal(derived(noMatch).theta, 0);
 });
 
 /* ---------------- validate: regel for regel ---------------- */
@@ -300,4 +365,142 @@ test('validate melder flere feil samtidig, i rekkefølge geometri → material �
   assert.ok(c.includes('invalid_height'));
   assert.ok(c.includes('invalid_gamma_c'));
   assert.ok(c.indexOf('invalid_height') < c.indexOf('invalid_gamma_c'));
+});
+
+/* ---------------- §4.4 (endringsrunde 4) — skjærvalidering, regel for regel ---------------- */
+
+// Referansebjelken i beamState() har d_eff = 550 (L1 bottom, dc=50) ⇒
+// sl_max = 0,75·550 = 412,5, st_max = min(412.5, 600) = 412.5.
+// rho_w_min = 0,08·√30/500 = 8,7636e-4, uavhengig av d ⇒ Asw_s_min ved
+// bw = 300 er 0,262907 mm²/mm — tallet plan v4 §4.2 selv oppgir.
+
+test('validate: tom bøyleliste gir INGEN skjærmeldinger utover en evt. ugyldig vinkel (minimumsunntaket)', () => {
+  const s = beamState({ shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] } });
+  assert.ok(!find(s, 'asw_below_minimum'), 'minstekravet skal IKKE gjelde uten bøyler');
+  assert.ok(!find(s, 'stirrup_spacing_exceeds_max'));
+  assert.ok(!find(s, 'stirrup_legs_spacing_exceeds_max'));
+  assert.ok(!find(s, 'stirrup_alpha_unsupported'));
+  assert.ok(!find(s, 'stirrup_mixed_fywk'));
+  assert.equal(isValid(s), true);
+});
+
+test('validate skjær 1: stirrup_spacing_exceeds_max — spacing > sl_max = 0,75·d', () => {
+  const s = beamState({
+    shear: {
+      strut_angle_deg: 45,
+      z_factor: 0.9,
+      stirrups: [{ id: 'S1', dia: 12, spacing: 413, legs: 2, fywk: 500, alpha: 90 }],
+    },
+  });
+  const m = find(s, 'stirrup_spacing_exceeds_max');
+  assert.ok(m, 'mangler stirrup_spacing_exceeds_max');
+  assert.equal(m.severity, 'error');
+  // Akkurat innenfor (412 < 412,5) skal ikke varsles.
+  const ok = beamState({
+    shear: {
+      strut_angle_deg: 45,
+      z_factor: 0.9,
+      stirrups: [{ id: 'S1', dia: 12, spacing: 412, legs: 2, fywk: 500, alpha: 90 }],
+    },
+  });
+  assert.ok(!find(ok, 'stirrup_spacing_exceeds_max'));
+});
+
+test('validate skjær 2: asw_below_minimum — KUN når lista er ikke-tom (§4.4)', () => {
+  const s = beamState({
+    shear: {
+      strut_angle_deg: 45,
+      z_factor: 0.9,
+      stirrups: [{ id: 'S1', dia: 6, spacing: 300, legs: 2, fywk: 500, alpha: 90 }],
+    },
+  });
+  const m = find(s, 'asw_below_minimum');
+  assert.ok(m, 'mangler asw_below_minimum');
+  assert.equal(m.severity, 'error');
+  assert.match(m.message, /0\.2629/);
+});
+
+test('validate skjær 3: stirrup_legs_spacing_exceeds_max — kun med legs > 2, ADVARSEL', () => {
+  // Bred plate/bjelke, slik at benavstanden faktisk kan bli stor nok.
+  const wide = beamState({
+    geometry: { b: 2000, h: 600 },
+    layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50 }],
+    shear: {
+      strut_angle_deg: 45,
+      z_factor: 0.9,
+      stirrups: [{ id: 'S1', dia: 12, spacing: 100, legs: 3, fywk: 500, alpha: 90 }],
+    },
+  });
+  const m = find(wide, 'stirrup_legs_spacing_exceeds_max');
+  assert.ok(m, 'mangler stirrup_legs_spacing_exceeds_max');
+  assert.equal(m.severity, 'warning');
+  assert.equal(isValid(wide), true, 'en advarsel skal ikke gjøre snittet ugyldig');
+
+  // legs = 2: ingen indre benavstand å sjekke, uansett bredde.
+  const twoLegs = beamState({
+    geometry: { b: 2000, h: 600 },
+    layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50 }],
+    shear: {
+      strut_angle_deg: 45,
+      z_factor: 0.9,
+      stirrups: [{ id: 'S1', dia: 12, spacing: 100, legs: 2, fywk: 500, alpha: 90 }],
+    },
+  });
+  assert.ok(!find(twoLegs, 'stirrup_legs_spacing_exceeds_max'));
+});
+
+test('validate skjær 4: invalid_strut_angle — utenfor 21,8–45°, gjelder ALLTID', () => {
+  const tooFlat = beamState({ shear: { strut_angle_deg: 20, z_factor: 0.9, stirrups: [] } });
+  const m = find(tooFlat, 'invalid_strut_angle');
+  assert.ok(m, 'mangler invalid_strut_angle for 20°');
+  assert.equal(m.severity, 'error');
+
+  const tooSteep = beamState({ shear: { strut_angle_deg: 46, z_factor: 0.9, stirrups: [] } });
+  assert.ok(find(tooSteep, 'invalid_strut_angle'), 'mangler invalid_strut_angle for 46°');
+
+  // Grensene selv skal være gyldige.
+  assert.ok(!find(beamState({ shear: { strut_angle_deg: 21.8, z_factor: 0.9, stirrups: [] } }), 'invalid_strut_angle'));
+  assert.ok(!find(beamState({ shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] } }), 'invalid_strut_angle'));
+});
+
+test('validate skjær 5: stirrup_alpha_unsupported — kun α = 90° i v1', () => {
+  const s = beamState({
+    shear: {
+      strut_angle_deg: 45,
+      z_factor: 0.9,
+      stirrups: [{ id: 'S1', dia: 20, spacing: 100, legs: 2, fywk: 500, alpha: 45 }],
+    },
+  });
+  const m = find(s, 'stirrup_alpha_unsupported');
+  assert.ok(m, 'mangler stirrup_alpha_unsupported');
+  assert.equal(m.severity, 'error');
+});
+
+test('validate skjær 6: stirrup_mixed_fywk — alle rader må ha samme f_ywk i v1', () => {
+  const s = beamState({
+    shear: {
+      strut_angle_deg: 45,
+      z_factor: 0.9,
+      stirrups: [
+        { id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 },
+        { id: 'S2', dia: 8, spacing: 150, legs: 2, fywk: 400, alpha: 90 },
+      ],
+    },
+  });
+  const m = find(s, 'stirrup_mixed_fywk');
+  assert.ok(m, 'mangler stirrup_mixed_fywk');
+  assert.equal(m.severity, 'error');
+
+  // Samme f_ywk på begge rader: ingen melding.
+  const same = beamState({
+    shear: {
+      strut_angle_deg: 45,
+      z_factor: 0.9,
+      stirrups: [
+        { id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 },
+        { id: 'S2', dia: 6, spacing: 200, legs: 2, fywk: 500, alpha: 90 },
+      ],
+    },
+  });
+  assert.ok(!find(same, 'stirrup_mixed_fywk'));
 });

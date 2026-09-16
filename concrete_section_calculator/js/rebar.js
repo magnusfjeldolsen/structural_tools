@@ -433,9 +433,13 @@ export function createLayer(state = {}, patch = {}) {
  * begge er per-rad-fabrikker som `store.js` (nye rader) og `serialize.js`
  * (normalisering av lastede filer, §5) kaller på samme måte.
  *
- * Retningen arves fra tilstandens `direction` — en rad uten eget valg skal
- * oppføre seg som brukeren allerede har satt opp (§4.1), ikke stille anta
- * feltmoment.
+ * INGEN `direction` LENGER (endringsrunde 4 §1.2): retningen ER fortegnet på
+ * `M_Ed`. `M_Ed <= 0` er feltmoment, `M_Ed > 0` er støttemoment — se
+ * `section.js:thetaFor`. En rad uten eget valg er `M_Ed: 0`, som per regelen
+ * betyr feltmoment, akkurat som den gamle default-retningen gjorde.
+ *
+ * `V_Ed` er nytt (§3.4/§4.1c): en STØRRELSE, fortegnet betyr ingenting for
+ * skjærkapasiteten.
  *
  * @param {object} state
  * @param {object} [patch]
@@ -452,7 +456,40 @@ export function createCombo(state = {}, patch = {}) {
     name: nr ? `ULS ${nr[1]}` : '',
     N_Ed: 0,
     M_Ed: 0,
-    direction: state.direction || 'sagging',
+    V_Ed: 0,
     ...patch,
   };
+}
+
+/**
+ * Bøylens tverrsnittsareal, `legs · π·Ø²/4` [mm²]. EC2 6.2.3: alle ben i
+ * samme skjæresnitt bidrar. Egen funksjon, ikke bare `legs * barArea(dia)`
+ * inline — `payload.js` og `section.js` skal begge lese DENNE, ikke regne sin
+ * egen kopi (samme begrunnelse som `barPositions`, se hodekommentaren).
+ *
+ * @param {{dia:number, legs:number}} st
+ * @returns {number} A_sw [mm²]
+ */
+export function stirrupArea(st = {}) {
+  return num(st.legs) * barArea(st.dia);
+}
+
+/**
+ * Én bøylerads `A_sw/s` [mm²/mm] — det VRds og Asw_s_required faktisk bruker.
+ *
+ * @param {{dia:number, legs:number, spacing:number}} st
+ */
+export function aswPerSpacing(st = {}) {
+  return stirrupArea(st) / num(st.spacing);
+}
+
+/**
+ * Summen av `A_sw/s` over ALLE bøylerader [mm²/mm]. Riktig for parallelle
+ * bøylesett med ulik senteravstand — det er derfor `shear.stirrups` er en
+ * LISTE fra dag én, selv om UI-en i v1 bare tilbyr én rad (plan v3 §3.2).
+ *
+ * @param {Array<object>} list
+ */
+export function totalAswPerSpacing(list = []) {
+  return list.reduce((sum, st) => sum + aswPerSpacing(st), 0);
 }

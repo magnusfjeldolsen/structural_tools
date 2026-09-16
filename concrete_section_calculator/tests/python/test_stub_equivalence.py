@@ -159,8 +159,12 @@ def test_reference_moment_still_holds_in_both(runs):
     import math
 
     for flavour in ('real', 'stub'):
+        # Fortegnet snudde i endringsrunde 4: vi bruker structuralcodes sin egen
+        # konvensjon, der feltmoment er NEGATIVT. Absoluttverdien er uendret, og
+        # det er den som er regresjonsgrunnlaget — denne testen handler om at
+        # scipy-stubben gir samme tall som ekte scipy, ikke om fortegn.
         assert math.isclose(
-            runs[flavour]['bending_0'][0], 215006759.19, rel_tol=1e-6
+            abs(runs[flavour]['bending_0'][0]), 215006759.19, rel_tol=1e-6
         ), flavour
 
 

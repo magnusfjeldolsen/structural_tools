@@ -36,7 +36,7 @@
 
 import { SCHEMA_VERSION } from './meta.js';
 import { ftkOf } from './materials.js';
-import { sectionHeight, sectionWidth, thetaFor } from './section.js';
+import { activeComboTheta, sectionHeight, sectionWidth, thetaFor } from './section.js';
 import { barPositions, equivalentStrip, layerArea } from './rebar.js';
 
 /** kN → N. */
@@ -96,6 +96,34 @@ function rebarEntry(layer, state) {
 }
 
 /**
+ * Skjærkonfigurasjonen → kontraktens `section.shear` (endringsrunde 3 §4.1,
+ * feltnavnet oppdatert til `strut_angle_deg` per endringsrunde 4 §3.4 —
+ * IKKE `theta`, det navnet betyr bøyeretning i radianer overalt ellers i
+ * kontrakten, og en strøket 45 ville lest som feltmoment uten feilmelding).
+ *
+ * ALLTID med, også med tom `stirrups`-liste: endringsrunde 4 vil ha skjær
+ * regnet for ALLE kombinasjoner i alle tre analysene (§3.4, §9), ikke bare
+ * når brukeren har lagt inn bøyler — en tom liste ER signalet til motoren om
+ * å ta `V_Rd,c`-veien (`governing_mode: 'no_stirrups'`), ikke et signal om å
+ * hoppe over skjær.
+ */
+function shearSection(state) {
+  const shear = state.shear || {};
+  return {
+    strut_angle_deg: num(shear.strut_angle_deg),
+    z_factor: num(shear.z_factor),
+    stirrups: (shear.stirrups || []).map((st) => ({
+      id: st.id,
+      dia: num(st.dia),
+      spacing: num(st.spacing),
+      legs: num(st.legs),
+      fywk: num(st.fywk),
+      alpha: num(st.alpha),
+    })),
+  };
+}
+
+/**
  * Bygger payloaden.
  *
  * @param {object} state tilstanden fra `store.js`
@@ -145,6 +173,7 @@ export function buildPayload(state = {}, overrides = {}) {
         law: steel.law,
       },
       rebar: (state.layers || []).map((layer) => rebarEntry(layer, state)),
+      shear: shearSection(state),
     },
     // Én kombinasjon per rad i lastkombinasjonstabellen (§4.2). Motoren
     // regner alle og finner selv hvilken som er GOVERNING (§4.3) — det er
@@ -155,15 +184,25 @@ export function buildPayload(state = {}, overrides = {}) {
         name: c.name || '',
         // Fortegn beholdes: n > 0 er STREKK, n < 0 er TRYKK (plan §3.6).
         N_Ed: num(c.N_Ed) * KN_TO_N,
-        // `M_Ed` er en STØRRELSE i retningen kombinasjonens `direction`
-        // angir — derfor `abs`.
-        M_Ed: Math.abs(num(c.M_Ed)) * KNM_TO_NMM,
-        theta: thetaFor(c.direction),
+        // `M_Ed` er SIGNERT, `structuralcodes` sin egen konvensjon —
+        // endringsrunde 4 §1.2/§1.4: IKKE `abs` lenger, fortegnet ER
+        // retningen. `theta` overlever likevel (§1.3), utledet fra RADENS
+        // EGEN `M_Ed`, ikke fra tilstandens.
+        M_Ed: num(c.M_Ed) * KNM_TO_NMM,
+        // `V_Ed` er en STØRRELSE — fortegnet på skjærkraften betyr ingenting
+        // for kapasiteten (§4.1c), så vi tar `abs` her, i motsetning til M_Ed.
+        V_Ed: Math.abs(num(c.V_Ed)) * KN_TO_N,
+        theta: thetaFor(c.M_Ed),
       })),
       active: state.activeCombo,
     },
     options: {
-      theta: thetaFor(state.direction),
+      // §1.3: DETTE ER IKKE en forenkling som kan fjernes. Seks
+      // pytest-tilfeller driver støttemoment gjennom `options.theta` med
+      // fixturer der `M_Ed = 0` — uten dette feltet finnes ingen måte å be om
+      // en støttemoment-M–κ på. Utledes fra den AKTIVE kombinasjonens
+      // `M_Ed`, IKKE fra en fjernet `state.direction`.
+      theta: activeComboTheta(state),
       integrator: 'marin',
       subtract_bar_area: !!options.subtract_bar_area,
       complete_domain: true,

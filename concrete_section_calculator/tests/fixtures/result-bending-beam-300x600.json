@@ -8,11 +8,10 @@
     "runtime": "cpython 3.11.9",
     "integrator": "marin",
     "scipy": "real",
-    "moment_sign": -1,
     "theta": 0.0,
     "direction": "sagging",
     "subtract_bar_area": false,
-    "wall_time_ms": 14.1
+    "wall_time_ms": 15.6
   },
   "materials": {
     "fck": 30.0,
@@ -58,13 +57,16 @@
     "ductility_ok": true,
     "axial_ok": true,
     "geometry_ok": true,
+    "shear_ok": true,
+    "asw_min_ok": true,
+    "stirrup_spacing_ok": true,
     "all_ok": true
   },
   "warnings": [],
   "bending": {
     "N_Ed": 0.0,
     "M_Ed": 0.0,
-    "M_Rd": 215006759.18601915,
+    "M_Rd": -215006759.18601915,
     "eps_a": 0.008696678493065367,
     "chi_y": -4.065559497688457e-05,
     "x": 86.0890119057411,
@@ -90,7 +92,9 @@
         "N_Ed": 0.0,
         "M_Ed": 0.0,
         "theta": 0.0,
-        "M_Rd": 215006759.18601915,
+        "V_Ed": 0.0,
+        "shear": null,
+        "M_Rd": -215006759.18601915,
         "utilisation": 0.0,
         "x": 86.0890119057411,
         "x_over_d": 0.15652547619225654,
@@ -112,6 +116,7 @@
         "within_limits": true
       }
     ],
-    "governing": "C1"
+    "governing": "C1",
+    "shear_governing": null
   }
 }

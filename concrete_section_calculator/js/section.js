@@ -38,6 +38,7 @@ import {
   minClearDistance,
   tensionArea,
   totalArea,
+  totalAswPerSpacing,
 } from './rebar.js';
 
 /** Plata er ALLTID 1000 mm bred — alt regnes per meter (plan §1). */
@@ -69,11 +70,66 @@ export function sectionHeight(state = {}) {
 }
 
 /**
- * Momentretning → θ i radianer. θ = 0 gir trykksone ØVERST (feltmoment),
- * θ = π gir trykksone NEDERST (støttemoment).
+ * `M_Ed` (signert, `structuralcodes` sin egen konvensjon) → θ i radianer.
+ *
+ * ENDRINGSRUNDE 4 §1.2/§1.3: `direction` finnes ikke lenger — retningen ER
+ * fortegnet. Regelen er eksakt `M_Ed <= 0 ⇒ θ = 0` (trykksone ØVERST,
+ * feltmoment — sagging er NEGATIV i denne konvensjonen, IKKE norsk praksis),
+ * `M_Ed > 0 ⇒ θ = π` (trykksone NEDERST, støttemoment). `NaN`/`undefined`
+ * havner i `<= 0`-grenen, samme fallback som den gamle default-retningen
+ * («sagging») ga.
+ *
+ * @param {number} M_Ed
+ * @returns {number} 0 eller Math.PI
  */
-export function thetaFor(direction) {
-  return direction === 'hogging' ? Math.PI : 0;
+export function thetaFor(M_Ed) {
+  return Number(M_Ed) > 0 ? Math.PI : 0;
+}
+
+/** Kombinasjonen `state.activeCombo` peker på, eller `null`. */
+export function activeCombo(state = {}) {
+  return (state.combos || []).find((c) => c.id === state.activeCombo) || null;
+}
+
+/**
+ * θ for den AKTIVE kombinasjonen. Brukt til estimatene som skal vises FØR
+ * første beregning (`asMin`, `derived`, `layerSummary`) og til payloadens
+ * `options.theta` (§1.3) — som er tverrsnittstegningens retning, ikke en
+ * bestemt rads. Erstatter det gamle `state.direction`.
+ */
+export function activeComboTheta(state = {}) {
+  const c = activeCombo(state);
+  return thetaFor(c ? c.M_Ed : undefined);
+}
+
+/**
+ * Sant når NOEN kombinasjon har en ikke-null aksialkraft (§2, endringsrunde 4).
+ *
+ * EKSAKT NULL, ingen toleranse — verdiene kommer rett fra brukerens felt via
+ * `evaluate()`. `NaN`/tom teller som FRAVÆR, ikke som «har aksialkraft»: et
+ * tomt felt er ikke det samme som en bevisst 0, men her skal begge tolkes
+ * likt (ingen grunn til å automatisk kreve N–M for et tomt/ugyldig felt).
+ *
+ * @param {object} state
+ */
+export function axialForcesPresent(state = {}) {
+  return (state.combos || []).some((c) => {
+    const n = num(c.N_Ed);
+    return Number.isFinite(n) && n !== 0;
+  });
+}
+
+/**
+ * Analysene brukeren får velge blant. Uten aksialkraft: alle tre. Med: uten
+ * `'bending'` — «et resistance quoted at a single axial force is one point on
+ * a curve» (§2). Rekkefølgen er den UI-en viser dem i.
+ *
+ * @param {object} state
+ * @returns {Array<'bending'|'moment_curvature'|'nm_domain'>}
+ */
+export function allowedAnalyses(state = {}) {
+  const all = ['bending', 'moment_curvature', 'nm_domain'];
+  return axialForcesPresent(state) ? all.filter((a) => a !== 'bending') : all;
 }
 
 /** Tverrsnittets ytterkanter, sentrert om origo (plan §3.6: nullpunkt i (0,0)). */
@@ -104,7 +160,7 @@ export function asMin(state = {}) {
   const d = effectiveDepthGeometric(
     state.layers || [],
     sectionHeight(state),
-    thetaFor(state.direction)
+    activeComboTheta(state)
   );
   const fctm = concreteProps(state.concrete).fctm;
   const fyk = num((state.steel || {}).fyk);
@@ -135,7 +191,7 @@ export function asMax(state = {}) {
 export function derived(state = {}) {
   const b = sectionWidth(state);
   const h = sectionHeight(state);
-  const theta = thetaFor(state.direction);
+  const theta = activeComboTheta(state);
   const layers = state.layers || [];
   // `d_eff` = estimatet fra den geometriske strekksiden. `d_eff_all` = vektet
   // over alle lag, som er motorens `d_eff_all` og et eksakt geometrisk tall.
@@ -296,6 +352,108 @@ export function validate(state = {}) {
     }
   }
 
+  // --- 7. Skjær, EC2 6.2.3(2) og 9.2.2 (endringsrunde 4 §4.4) ---
+  const shear = state.shear || {};
+  const stirrups = shear.stirrups || [];
+  const strutAngle = num(shear.strut_angle_deg);
+  // Gjelder ALLTID, uansett om bøyler finnes: trykkstavvinkelen inngår også i
+  // V_Rd,max (steg-knusing), som er relevant selv for et snitt uten bøyler
+  // dersom brukeren senere legger dem til. Standardverdien 45° er gyldig, så
+  // dette gir ingen falsk feil på en fersk plate.
+  if (!(strutAngle >= 21.8 && strutAngle <= 45)) {
+    out.push(
+      issue(
+        'invalid_strut_angle',
+        'error',
+        `Trykkstavvinkelen må ligge mellom 21,8° og 45° (EC2 6.2.3(2)). Har ${shear.strut_angle_deg}°.`,
+        'shear.strut_angle_deg'
+      )
+    );
+  }
+
+  if (stirrups.length > 0) {
+    // `d` til sl_max/st_max: samme geometriske ESTIMAT resten av skjemaet
+    // viser FØR første beregning (se `derived()`) — motorens egen skjær-`d`
+    // (endringsrunde 4 §4.1b) er per KOMBINASJON og finnes ikke før en kjøring.
+    const d = derived(state).d_eff;
+    const slMax = 0.75 * d;
+    const stMax = Math.min(0.75 * d, 600);
+    const bw = sectionWidth(state);
+
+    // Alle rader må ha samme f_ywk i v1 — `VRds` tar én felles `fyk`.
+    const distinctFywk = new Set(stirrups.map((st) => num(st.fywk)));
+    if (distinctFywk.size > 1) {
+      out.push(
+        issue(
+          'stirrup_mixed_fywk',
+          'error',
+          'Alle bøylerader må ha samme f_ywk i v1 — VRds tar bare én felles f_yk.',
+          'shear.stirrups'
+        )
+      );
+    }
+
+    stirrups.forEach((st, i) => {
+      if (num(st.spacing) > slMax) {
+        out.push(
+          issue(
+            'stirrup_spacing_exceeds_max',
+            'error',
+            `Bøyle ${st.id || i + 1}: senteravstand ${st.spacing} mm overskrider ` +
+              `s_l,max = 0,75·d = ${slMax.toFixed(1)} mm (EC2 9.2.2(6)).`,
+            `shear.stirrups.${i}.spacing`
+          )
+        );
+      }
+      if (num(st.alpha) !== 90) {
+        out.push(
+          issue(
+            'stirrup_alpha_unsupported',
+            'error',
+            `Bøyle ${st.id || i + 1}: kun α = 90° støttes i v1. Har α = ${st.alpha}°.`,
+            `shear.stirrups.${i}.alpha`
+          )
+        );
+      }
+      // Benavstand er bare et tema med mer enn to ben — med to ben ER benene
+      // de ytre, og det finnes ingen indre avstand å sjekke (§3.3).
+      if (num(st.legs) > 2) {
+        const legPitch =
+          (bw - 2 * (num(state.cover_side) + num(st.dia) / 2)) / (num(st.legs) - 1);
+        if (legPitch > stMax) {
+          out.push(
+            issue(
+              'stirrup_legs_spacing_exceeds_max',
+              'warning',
+              `Bøyle ${st.id || i + 1}: benavstand ${legPitch.toFixed(1)} mm overskrider ` +
+                `s_t,max = min(0,75·d, 600) = ${stMax.toFixed(1)} mm (EC2 9.2.2(8)).`,
+              `shear.stirrups.${i}.legs`
+            )
+          );
+        }
+      }
+    });
+
+    // MINIMUMSKRAVET GJELDER BARE NÅR BØYLER FINNES (EC2 6.2.1(4) og 9.3.2) —
+    // uten dette unntaket ville standardplata (b_w = 1000, ingen bøyler)
+    // fått en HARD feil på hver eneste kjøring, og det samme ville hver
+    // bjelke gjort før brukeren rakk å legge inn bøyler.
+    const rhoWMin = (0.08 * Math.sqrt(num((state.concrete || {}).fck))) / num(stirrups[0].fywk);
+    const aswSMin = rhoWMin * bw;
+    const aswS = totalAswPerSpacing(stirrups);
+    if (aswS < aswSMin) {
+      out.push(
+        issue(
+          'asw_below_minimum',
+          'error',
+          `A_sw/s = ${aswS.toFixed(4)} mm²/mm er mindre enn minstekravet ` +
+            `${aswSMin.toFixed(4)} mm²/mm etter EC2 9.2.2(5).`,
+          'shear.stirrups'
+        )
+      );
+    }
+  }
+
   return out;
 }
 
@@ -307,7 +465,7 @@ export function isValid(state) {
 /** Gjenbrukt av `payload.js` og UI-en — armering per lag, ferdig avledet. */
 export function layerSummary(state = {}) {
   const h = sectionHeight(state);
-  const theta = thetaFor(state.direction);
+  const theta = activeComboTheta(state);
   return (state.layers || []).map((layer) => ({
     id: layer.id,
     area: layerArea(layer),

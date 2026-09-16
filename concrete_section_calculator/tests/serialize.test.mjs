@@ -32,7 +32,7 @@ test('rundtur: fromDocument(toDocument(s)).state er dypt lik s, uten særtilfell
   assert.deepEqual(notes, []);
 });
 
-test('rundtur med to lag og to kombinasjoner, ulik retning', () => {
+test('rundtur med to lag og to kombinasjoner, signert M_Ed og V_Ed, uten aksialkraft', () => {
   const s = {
     ...defaultState(),
     layers: [
@@ -40,8 +40,8 @@ test('rundtur med to lag og to kombinasjoner, ulik retning', () => {
       { id: 'L2', mode: 'bars', dia: 12, count: 2, edge: 'top', dc: 41, dc_auto: false },
     ],
     combos: [
-      { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 150, direction: 'sagging' },
-      { id: 'C2', name: 'ULS 2', N_Ed: -500, M_Ed: 250, direction: 'hogging' },
+      { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: -150, V_Ed: 0 },
+      { id: 'C2', name: 'ULS 2', N_Ed: 0, M_Ed: 250, V_Ed: 120 },
     ],
     activeCombo: 'C2',
     result: null,
@@ -108,4 +108,68 @@ test('state.result settes ALLTID til null, selv om fila skulle inneholde noe ann
   doc.state.result = { M_Rd: 999 }; // skal ikke kunne skje via toDocument, men fromDocument er robust uansett
   const { state } = fromDocument(doc);
   assert.equal(state.result, null);
+});
+
+/* ---------------- endringsrunde 4 §8 — shear i NESTED_GROUPS ---------------- */
+
+test('fil uten shear: standardverdien {strut_angle_deg:45, z_factor:0.9, stirrups:[]} og ett document_field_defaulted', () => {
+  const doc = toDocument(defaultState());
+  delete doc.state.shear;
+  const { state, notes } = fromDocument(doc);
+  assert.deepEqual(state.shear, { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] });
+  const defaulted = notes.filter((n) => n.code === 'document_field_defaulted' && n.field === 'shear');
+  assert.equal(defaulted.length, 1);
+});
+
+test('fil med DELVIS shear-objekt: manglende felt fylles fra standarden, IKKE undefined (§8, five-things #5)', () => {
+  const doc = toDocument(defaultState());
+  // Bare z_factor lagret — strut_angle_deg og stirrups mangler.
+  doc.state.shear = { z_factor: 0.8 };
+  const { state, notes } = fromDocument(doc);
+  assert.deepEqual(state.shear, { strut_angle_deg: 45, z_factor: 0.8, stirrups: [] });
+  assert.ok(state.shear.strut_angle_deg !== undefined, 'strut_angle_deg skal IKKE bli undefined');
+  // Toppnivånøkkelen `shear` FANTES i fila — ingen defaulted-melding for den.
+  assert.ok(!notes.some((n) => n.code === 'document_field_defaulted' && n.field === 'shear'));
+});
+
+test('fil med FULLT shear-objekt inkludert bøylerader: bevares uendret', () => {
+  const doc = toDocument(defaultState());
+  doc.state.shear = {
+    strut_angle_deg: 30,
+    z_factor: 0.85,
+    stirrups: [{ id: 'S1', dia: 10, spacing: 200, legs: 4, fywk: 400, alpha: 90 }],
+  };
+  const { state } = fromDocument(doc);
+  assert.deepEqual(state.shear, doc.state.shear);
+});
+
+/* ---------------- endringsrunde 4 §2 — normalisering av analysis ved N_Ed ≠ 0 ---------------- */
+
+test('fil med analysis:"bending" og N_Ed ≠ 0 normaliseres til nm_domain, med en analysis_forced_to_nm_domain-note', () => {
+  const doc = toDocument(defaultState());
+  doc.state.analysis = 'bending';
+  doc.state.combos = [{ id: 'C1', name: 'ULS 1', N_Ed: -500, M_Ed: 0, V_Ed: 0 }];
+  const { state, notes } = fromDocument(doc);
+  assert.equal(state.analysis, 'nm_domain');
+  const forced = notes.filter((n) => n.code === 'analysis_forced_to_nm_domain');
+  assert.equal(forced.length, 1);
+  assert.equal(forced[0].severity, 'info');
+});
+
+test('fil med analysis:"bending" og N_Ed = 0 for ALLE kombinasjoner: ingen normalisering', () => {
+  const doc = toDocument(defaultState());
+  doc.state.analysis = 'bending';
+  doc.state.combos = [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 150, V_Ed: 0 }];
+  const { state, notes } = fromDocument(doc);
+  assert.equal(state.analysis, 'bending');
+  assert.ok(!notes.some((n) => n.code === 'analysis_forced_to_nm_domain'));
+});
+
+test('fil med analysis:"moment_curvature" og N_Ed ≠ 0: IKKE normalisert — regelen gjelder bare bending', () => {
+  const doc = toDocument(defaultState());
+  doc.state.analysis = 'moment_curvature';
+  doc.state.combos = [{ id: 'C1', name: 'ULS 1', N_Ed: -500, M_Ed: 0, V_Ed: 0 }];
+  const { state, notes } = fromDocument(doc);
+  assert.equal(state.analysis, 'moment_curvature');
+  assert.ok(!notes.some((n) => n.code === 'analysis_forced_to_nm_domain'));
 });

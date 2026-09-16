@@ -122,6 +122,16 @@ test('cloneState via setState: combos forblir en ARRAY, aldri {0:…,1:…}', ()
   assert.equal(combos[0].id, 'C1');
 });
 
+test('cloneState kloner shear.stirrups som en NY array — mutasjon utenfra skal ikke nå tilstanden', () => {
+  const store = createStore({ shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] } });
+  const before = store.getState().shear.stirrups;
+  store.setState({ analysis: 'bending' }); // hvilken som helst setState trigger cloneState
+  const after = store.getState().shear.stirrups;
+  assert.notEqual(before, after, 'stirrups skal være en NY array etter cloneState');
+  assert.notEqual(before[0], after[0], 'hver bøylerad skal også være et NYTT objekt');
+  assert.deepEqual(after, before);
+});
+
 test('removeCombo av den AKTIVE flytter activeCombo; den siste kan ikke fjernes', () => {
   const store = createStore();
   const c2 = store.addCombo({ name: 'ULS 2', N_Ed: -500, M_Ed: 250 });

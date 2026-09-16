@@ -64,12 +64,20 @@ export function defaultState() {
     layers: [
       { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 35 + 8 + 10, dc_auto: true },
     ],
-    // kN og kNm. TRYKK er NEGATIV N. `M_Ed` er en STØRRELSE i retningen
-    // kombinasjonens `direction` angir — det finnes ingen fortegn å tolke her.
-    combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, direction: 'sagging' }],
+    // kN, kNm og kN. TRYKK er NEGATIV N. `M_Ed` er SIGNERT etter
+    // `structuralcodes` sin egen konvensjon: sagging er NEGATIV, IKKE norsk
+    // praksis (endringsrunde 4 §1). `direction` finnes ikke lenger — retningen
+    // ER fortegnet, se `section.js:thetaFor`. `V_Ed` er en STØRRELSE: fortegnet
+    // på skjærkraften betyr ingenting for kapasiteten (§4.1c).
+    combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
     activeCombo: 'C1',
-    direction: 'sagging',
     analysis: 'bending',
+    // Skjær (endringsrunde 4 §3.4). Tom `stirrups`-liste = ingen
+    // skjærarmering ⇒ V_Rd,c-veien — standard for både plate og en fersk
+    // bjelke, helt til brukeren legger inn bøyler. `strut_angle_deg`, IKKE
+    // `theta`: det navnet betyr bøyeretning i radianer overalt ellers i denne
+    // kodebasen, og en strøket 45 ville lest som feltmoment uten feilmelding.
+    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] },
     // Det finnes BEVISST ingen `options.integrator`: marin er hardkodet i
     // `payload.js`, og `fiber` er kuttet med begrunnelse i plan §1.2.
     options: { subtract_bar_area: false, mc_pre_yield: 10, mc_post_yield: 10 },
@@ -92,6 +100,10 @@ function cloneState(s) {
     concrete: { ...s.concrete },
     steel: { ...s.steel },
     spacing: { ...s.spacing },
+    // `stirrups` klones som ARRAY av nye objekter, av samme grunn som
+    // `combos` under: `{ ...s.shear }` ville kopiert selve arrayen ved
+    // REFERANSE, og en bøylerad endret utenfra ville mutert tilstanden.
+    shear: { ...s.shear, stirrups: (s.shear?.stirrups || []).map((st) => ({ ...st })) },
     options: { ...s.options },
     doc: { ...s.doc },
     layers: (s.layers || []).map((l) => ({ ...l })),
