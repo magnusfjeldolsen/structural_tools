@@ -176,24 +176,47 @@ export function totalArea(layers = []) {
 }
 
 /**
- * Lagene på STREKKSIDEN for den analyserte retningen.
+ * Arealvektet dybde over ALLE lag: `d = Σ(A_i·d_i) / ΣA_i`.
  *
- * EC2 9.2.1.1 definerer `d` som avstanden fra trykkanten til tyngdepunktet i
- * STREKKARMERINGEN. Tar man trykkarmeringen med i vektingen, trekkes `d` opp
- * mot trykkanten, og `A_s,min = 0,26·f_ctm/f_yk·b_t·d` blir for LITEN — altså
- * på usikker side. Et dobbeltarmert 300×600 med 3Ø20 i UK og 2Ø12 i OK gir
- * ~452 mm vektet over alle lag, der riktig svar er 550 mm.
+ * DETTE ER MOTORENS `d_eff_all`, IKKE EC2 SIN `d`.
+ * EC2 9.2.1.1 definerer `d` til tyngdepunktet i STREKKARMERINGEN, og hvilke
+ * lag som står i strekk avgjøres av TØYNINGSPLANET ved brudd — ikke av
+ * geometrien. Ligger nøytralaksen under begge lagene, står begge i strekk, og
+ * EC2-`d` er tyngdepunktet av begge. JS-siden har ikke tøyningsplanet før
+ * motoren har kjørt, så denne funksjonen kan og skal ikke prøve å gjengi
+ * motorens `d_eff`. Etter en kjøring er `result.section_props.d_eff` fasiten.
  *
- * Uten et tøyningsplan finnes ingen ekte nøytralakse her, så vi bruker den
- * GEOMETRISKE strekksiden: θ = 0 (trykk oppe) ⇒ lag med `z < 0`, θ = π
- * (trykk nede) ⇒ lag med `z > 0`. Det er eksakt så lenge nøytralaksen ligger i
- * øvre halvdel, som den gjør for alle normalarmerte snitt.
+ * Navnet er beholdt fordi det er det `derived()`, `reinforcementRatio()` og
+ * A3 allerede kaller. `effectiveDepthGeometric()` under er estimatet.
+ *
+ * @returns {number} d [mm], `NaN` uten armering
+ */
+export function effectiveDepth(layers = [], h, theta) {
+  let sumA = 0;
+  let sumAd = 0;
+  for (const l of layers) {
+    const a = layerArea(l);
+    sumA += a;
+    sumAd += a * layerDepth(l, h, theta);
+  }
+  return sumA > 0 ? sumAd / sumA : NaN;
+}
+
+/**
+ * Lagene på den GEOMETRISKE strekksiden: θ = 0 (trykk oppe) ⇒ `z < 0`,
+ * θ = π (trykk nede) ⇒ `z > 0`.
+ *
+ * Dette er et ESTIMAT, ikke motorens utvalg, og det er IKKE eksakt — heller
+ * ikke for normalarmerte snitt. Motoren leser strekksiden av tøyningsplanet ved
+ * brudd. Ligger nøytralaksen under BEGGE armeringslagene står begge i strekk,
+ * og EC2-`d` blir tyngdepunktet av begge: A1 har målt 146,8 mm i et tilfelle
+ * der denne geometriske regelen sier 550. Ikke «forbedre» JS-siden til å tro at
+ * den er autoritativ — den kan ikke bli det uten tøyningsplanet.
  *
  * DEGENERERT TILFELLE: ligger ALLE lag på trykksiden (eller nøyaktig i `z = 0`)
- * finnes ingen strekkarmering å veie, og vi faller tilbake på alle lagene i
- * stedet for å svare `NaN`. Et snitt uten strekkarmering har uansett ikke noe
- * meningsfylt `d`, og et `NaN` som forplanter seg til ρ og `A_s,min` er
- * vanskeligere å tolke enn et tall som åpenbart er rart.
+ * faller vi tilbake på alle lagene i stedet for å svare `NaN`. Et `NaN` som
+ * forplanter seg til ρ og `A_s,min` er vanskeligere å tolke enn et tall som
+ * åpenbart er rart.
  *
  * @param {Array<object>} layers
  * @param {number} h
@@ -212,64 +235,54 @@ export function tensionLayers(layers = [], h, theta) {
   return picked.length ? picked : layers;
 }
 
-/** Armeringsareal på STREKKSIDEN [mm²]. Motorens `section_props.As_tension`. */
+/** Armeringsareal på den geometriske strekksiden [mm²]. Estimat, se over. */
 export function tensionArea(layers = [], h, theta) {
   return totalArea(tensionLayers(layers, h, theta));
 }
 
 /**
- * Arealvektet dybde over ALLE lag, trykkarmering inkludert:
- * `d = Σ(A_i·d_i) / ΣA_i`.
+ * ESTIMAT av EC2-`d`: arealvektet over den geometriske strekksiden.
  *
- * Dette er IKKE EC2 sin `d` — se `effectiveDepth()`. Den finnes likevel fordi
- * den er tyngdepunktet til hele armeringsmengden, et opplysende tall ved siden
- * av `d` i rapporten, og fordi motoren rapporterer den som
- * `section_props.d_eff_all`. De to sidene må være enige om begge.
+ * HVA DEN ER TIL
+ * `A_s,min` og ρ skal kunne vises i skjemaet FØR første beregning — ellers står
+ * feltet tomt helt til brukeren har trykket «Beregn», og armeringsvalget gjøres
+ * i blinde. Vektet over alle lag ville trykkarmeringen trukket `d` ned og gitt
+ * et for lite minimum, altså på usikker side, så et rent `effectiveDepth()` er
+ * ikke brukbart til dette.
+ *
+ * HVA DEN IKKE ER
+ * Den er ikke motorens `d_eff` og skal ikke sammenlignes med den. Etter en
+ * kjøring bruker UI og rapport `result.section_props.d_eff`, aldri dette tallet.
+ *
+ * Med bare ett lag er alle tre tallene like — derfor fanger referansefixturene
+ * ingen av forskjellene, og derfor finnes det en egen test med to lag.
  *
  * @returns {number} d [mm], `NaN` uten armering
  */
-export function effectiveDepthAll(layers = [], h, theta) {
-  let sumA = 0;
-  let sumAd = 0;
-  for (const l of layers) {
-    const a = layerArea(l);
-    sumA += a;
-    sumAd += a * layerDepth(l, h, theta);
-  }
-  return sumA > 0 ? sumAd / sumA : NaN;
+export function effectiveDepthGeometric(layers = [], h, theta) {
+  return effectiveDepth(tensionLayers(layers, h, theta), h, theta);
 }
 
 /**
- * EC2 sin effektive høyde `d`: arealvektet over STREKKARMERINGEN alene.
+ * EC2 sin ρ_l: `ρ = A_s,strekk/(b_t·d)`, der `b_t` er strekksonens bredde. For
+ * et rektangulært snitt er `b_t = b`; for plata er `b_t = 1000` fordi alt
+ * regnes per meter.
  *
- * Med bare ett lag er dette trivielt likt `layerDepth` — derfor fanger
- * referansefixturene IKKE forskjellen, og derfor finnes det en egen test med to
- * lag. Med trykkarmering er det forskjellen mellom 550 og 452 mm.
+ * TELLER OG NEVNER MÅ KOMME FRA SAMME UTVALG. Total armering delt på en dybde
+ * som bare gjelder strekkarmeringen er innbyrdes inkonsistent og betyr
+ * ingenting for et dobbeltarmert snitt — derfor `tensionArea` over
+ * `effectiveDepthGeometric`, begge fra den geometriske strekksiden.
  *
- * @param {Array<object>} layers
- * @param {number} h
- * @param {number} theta
- * @returns {number} d [mm], `NaN` uten armering
- */
-export function effectiveDepth(layers = [], h, theta) {
-  return effectiveDepthAll(tensionLayers(layers, h, theta), h, theta);
-}
-
-/**
- * Armeringsforhold etter EC2-definisjonen, `ρ = A_s/(b_t·d)`, der `b_t` er
- * strekksonens bredde. For et rektangulært snitt er `b_t = b`; for plata er
- * `b_t = 1000` fordi alt regnes per meter.
- *
- * `d` er EC2 sin — altså strekkarmeringens tyngdepunkt, ikke hele
- * armeringsmengdens (`effectiveDepthAll`).
+ * Som alt annet her er dette et ESTIMAT før første kjøring. Etter en kjøring
+ * gjelder `result.section_props.rho` fra motoren.
  *
  * @param {Array<object>} layers
  * @param {{b:number, h:number}} geometry
  * @param {number} theta
  */
 export function reinforcementRatio(layers = [], geometry = {}, theta) {
-  const d = effectiveDepth(layers, geometry.h, theta);
-  return totalArea(layers) / (num(geometry.b) * d);
+  const d = effectiveDepthGeometric(layers, geometry.h, theta);
+  return tensionArea(layers, geometry.h, theta) / (num(geometry.b) * d);
 }
 
 /**

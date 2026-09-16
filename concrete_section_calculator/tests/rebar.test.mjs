@@ -16,7 +16,7 @@ import {
   barPositions,
   createLayer,
   effectiveDepth,
-  effectiveDepthAll,
+  effectiveDepthGeometric,
   equivalentStrip,
   layerArea,
   layerBarCount,
@@ -104,36 +104,47 @@ test('layerDepth krever theta — et defaultet θ ville gitt stille feil d', () 
   assert.throws(() => layerDepth(beamLayer(), 600, null), /theta/);
 });
 
-test('DOBBELTARMERT: d_eff er strekkarmeringen ALENE, ikke alle lag', () => {
+test('DOBBELTARMERT: effectiveDepth vekter over ALLE lag, geometrisk over strekksiden', () => {
   // Tilfellet fixturene ikke dekker, fordi de har ett lag: 3Ø20 i UK
-  // (z = −250, d = 550) + 2Ø12 i OK (z = +259, d = 41).
+  // (z = −250, d = 550) + 2Ø12 i OK (z = +250, d = 50).
   const layers = [
     beamLayer({ id: 'L1', dia: 20, count: 3, edge: 'bottom', dc: 50 }),
-    beamLayer({ id: 'L2', dia: 12, count: 2, edge: 'top', dc: 41 }),
+    beamLayer({ id: 'L2', dia: 12, count: 2, edge: 'top', dc: 50 }),
   ];
   const asBottom = 3 * barArea(20);
   const asTop = 2 * barArea(12);
 
-  // EC2 9.2.1.1: d måles til tyngdepunktet i STREKKARMERINGEN. Med bare ett
-  // lag i strekk er det lagets egen dybde.
-  assert.equal(effectiveDepth(layers, 600, 0), 550);
+  // `effectiveDepth` = motorens `d_eff_all`: hele armeringsmengdens tyngdepunkt.
+  const all = (asBottom * 550 + asTop * 50) / (asBottom + asTop);
+  assert.ok(Math.abs(effectiveDepth(layers, 600, 0) - all) < 1e-9);
+  assert.ok(
+    Math.abs(effectiveDepth(layers, 600, 0) - 453.23) < 0.01,
+    `d_eff_all = ${effectiveDepth(layers, 600, 0)}, ventet ≈ 453,23`
+  );
+
+  // `effectiveDepthGeometric` = estimatet: bare lagene under nøytralaksen slik
+  // geometrien antyder. Brukes til A_s,min og ρ FØR første beregning.
+  assert.equal(effectiveDepthGeometric(layers, 600, 0), 550);
   assert.equal(tensionArea(layers, 600, 0), asBottom);
   assert.deepEqual(tensionLayers(layers, 600, 0), [layers[0]]);
 
-  // Vektet over ALLE lag blir det ~452 mm. Det var den gamle oppførselen, og
-  // den gjorde A_s,min = 0,26·f_ctm/f_yk·b_t·d for liten — på usikker side.
-  const all = (asBottom * 550 + asTop * 41) / (asBottom + asTop);
-  assert.ok(Math.abs(effectiveDepthAll(layers, 600, 0) - all) < 1e-9);
-  assert.ok(all > 450 && all < 455, `d_eff_all = ${all} skal ligge rundt 452 mm`);
-  // Selve feilen: de to tallene MÅ være forskjellige her.
-  assert.notEqual(effectiveDepth(layers, 600, 0), effectiveDepthAll(layers, 600, 0));
+  // De to MÅ være forskjellige her — ellers tester vi ingenting.
+  assert.notEqual(effectiveDepth(layers, 600, 0), effectiveDepthGeometric(layers, 600, 0));
 
-  // Støttemoment snur hvilket lag som er strekkarmering: nå er OK-laget det.
-  assert.equal(effectiveDepth(layers, 600, Math.PI), 559);
+  // Ingen av dem er motorens `d_eff`: den leser strekksiden av tøyningsplanet
+  // ved brudd, og kan svare noe helt annet (A1 har målt 146,8 mm i et tilfelle
+  // der den geometriske regelen sier 550). Derfor står det INGEN påstand her om
+  // hva motoren ville sagt.
+
+  // Støttemoment snur hvilket lag estimatet regner som strekkarmering.
+  assert.equal(effectiveDepthGeometric(layers, 600, Math.PI), 550);
   assert.equal(tensionArea(layers, 600, Math.PI), asTop);
+  // …mens vektingen over alle lag er symmetrisk speilvendt.
+  const allHog = (asBottom * 50 + asTop * 550) / (asBottom + asTop);
+  assert.ok(Math.abs(effectiveDepth(layers, 600, Math.PI) - allHog) < 1e-9);
 });
 
-test('effectiveDepthAll er arealvektet over alle lag — arealet, ikke antallet, styrer', () => {
+test('effectiveDepth er arealvektet — arealet, ikke antallet, styrer', () => {
   const mixed = [
     beamLayer({ id: 'L1', count: 1, dia: 32, edge: 'bottom', dc: 50 }),
     beamLayer({ id: 'L2', count: 1, dia: 8, edge: 'top', dc: 50 }),
@@ -141,17 +152,18 @@ test('effectiveDepthAll er arealvektet over alle lag — arealet, ikke antallet,
   const a32 = barArea(32);
   const a8 = barArea(8);
   const expected = (a32 * 550 + a8 * 50) / (a32 + a8);
-  assert.ok(Math.abs(effectiveDepthAll(mixed, 600, 0) - expected) < 1e-9);
+  assert.ok(Math.abs(effectiveDepth(mixed, 600, 0) - expected) < 1e-9);
   // Et UVEKTET snitt ville gitt 300 — sjekk at vi ikke er der.
-  assert.ok(effectiveDepthAll(mixed, 600, 0) > 500);
+  assert.ok(effectiveDepth(mixed, 600, 0) > 500);
   // …og at det faktisk er arealvekting, ikke bare «ta det nederste laget».
-  assert.notEqual(effectiveDepthAll(mixed, 600, 0), 550);
+  assert.notEqual(effectiveDepth(mixed, 600, 0), 550);
 });
 
-test('ett lag: d_eff og d_eff_all er like — derfor fanger fixturene ikke feilen', () => {
+test('ett lag: alle tre tallene er like — derfor fanger fixturene ingen forskjell', () => {
   const one = [beamLayer()];
   assert.equal(effectiveDepth(one, 600, 0), 550);
-  assert.equal(effectiveDepthAll(one, 600, 0), 550);
+  assert.equal(effectiveDepthGeometric(one, 600, 0), 550);
+  assert.equal(tensionArea(one, 600, 0), totalArea(one));
 });
 
 test('tensionLayers krever theta og faller tilbake når ingen ligger i strekk', () => {
@@ -160,14 +172,26 @@ test('tensionLayers krever theta og faller tilbake når ingen ligger i strekk', 
   // Da er alternativet NaN, som er verre å lese enn et åpenbart rart tall.
   const onlyTop = [beamLayer({ edge: 'top', dc: 50 }), beamLayer({ id: 'L2', edge: 'top', dc: 100 })];
   assert.deepEqual(tensionLayers(onlyTop, 600, 0), onlyTop);
-  assert.ok(Number.isFinite(effectiveDepth(onlyTop, 600, 0)));
+  assert.ok(Number.isFinite(effectiveDepthGeometric(onlyTop, 600, 0)));
 });
 
 test('effectiveDepth uten armering er NaN, ikke 0', () => {
   // 0 ville gitt ρ = ∞ og en As_min på 0 — begge deler ser ut som tall.
   assert.ok(Number.isNaN(effectiveDepth([], 600, 0)));
-  assert.ok(Number.isNaN(effectiveDepthAll([], 600, 0)));
+  assert.ok(Number.isNaN(effectiveDepthGeometric([], 600, 0)));
   assert.equal(tensionArea([], 600, 0), 0);
+});
+
+test('reinforcementRatio: teller og nevner fra SAMME utvalg', () => {
+  const layers = [
+    beamLayer({ id: 'L1', dia: 20, count: 3, edge: 'bottom', dc: 50 }),
+    beamLayer({ id: 'L2', dia: 12, count: 2, edge: 'top', dc: 50 }),
+  ];
+  // EC2 ρ_l: strekkarmeringen over b_t·d, ikke TOTAL armering over samme d.
+  const expected = 3 * barArea(20) / (300 * 550);
+  assert.ok(Math.abs(reinforcementRatio(layers, BEAM_GEOM, 0) - expected) < 1e-15);
+  // Den gamle, inkonsistente formen ville tatt trykkarmeringen med i telleren.
+  assert.notEqual(reinforcementRatio(layers, BEAM_GEOM, 0), totalArea(layers) / (300 * 550));
 });
 
 test('barPositions bjelke: jevnt fordelt mellom bøylens innerkant', () => {

@@ -100,38 +100,47 @@ test('As_min og As_max etter EC2 9.2.1.1, ikke pakkens rissviddeminimum', () => 
   assert.ok(Math.abs(asMin(hard) - 0.0013 * 300 * 550) < 1e-9);
 });
 
-test('derived() skiller d_eff (strekk) fra d_eff_all (alle lag)', () => {
-  // Samme feltnavn som motoren bruker i `section_props` — de to sidene MÅ være
-  // enige, ellers trykker rapporten ett d mens kapasiteten er regnet med et annet.
-  const s = beamState({
+/** Dobbeltarmert: 3Ø20 i UK + 2Ø12 i OK, begge med dc = 50. */
+const doubleState = () =>
+  beamState({
     layers: [
       { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50 },
-      { id: 'L2', mode: 'bars', dia: 12, count: 2, edge: 'top', dc: 41 },
+      { id: 'L2', mode: 'bars', dia: 12, count: 2, edge: 'top', dc: 50 },
     ],
   });
+
+test('derived(): d_eff er et ESTIMAT, d_eff_all er vektet over alle lag', () => {
+  const s = doubleState();
   const d = derived(s);
+
+  // Estimatet fra den geometriske strekksiden — det UI-en viser før første
+  // beregning.
   assert.equal(d.d_eff, 550);
-  assert.ok(d.d_eff_all > 450 && d.d_eff_all < 455, `d_eff_all = ${d.d_eff_all}`);
+  assert.equal(d.d_eff_source, 'geometric-estimate');
+  // Vektet over alle lag: motorens `d_eff_all`.
+  assert.ok(Math.abs(d.d_eff_all - 453.23) < 0.01, `d_eff_all = ${d.d_eff_all}`);
+
   assert.ok(Math.abs(d.As_tension - 3 * ((Math.PI * 400) / 4)) < 1e-12);
   assert.ok(d.As_total > d.As_tension, 'trykkarmeringen skal telle med i As_total');
 
-  // A_s,min skal følge d = 550, ikke ~452. Med det gamle tallet ble minimumet
+  // ρ er EC2 sin ρ_l: strekkarmeringen over b_t·d, ikke total armering.
+  assert.ok(Math.abs(d.rho - d.As_tension / (300 * 550)) < 1e-15);
+  assert.notEqual(d.rho, d.As_total / (300 * 550));
+
+  // A_s,min følger estimatet d = 550, ikke 453. Med 453 ville minimumet blitt
   // ~18 % for lite — på usikker side.
   assert.ok(Math.abs(asMin(s) - 248.51696759748907) < 1e-9);
   assert.ok(asMin(s) > (0.26 * 2.896468153816889 * 300 * 455) / 500);
+
+  // INGEN påstand her om hva motoren ville sagt: EC2-d avhenger av
+  // tøyningsplanet ved brudd, som JS-siden ikke har.
 });
 
 test('layerSummary gir lagets EGEN dybde, også for trykkarmering', () => {
-  const s = beamState({
-    layers: [
-      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50 },
-      { id: 'L2', mode: 'bars', dia: 12, count: 2, edge: 'top', dc: 41 },
-    ],
-  });
-  const rows = layerSummary(s);
+  const rows = layerSummary(doubleState());
   assert.equal(rows[0].d, 550);
-  // Trykkarmeringen skal vise 41 mm fra trykkanten, ikke snittets d_eff.
-  assert.equal(rows[1].d, 41);
+  // Trykkarmeringen skal vise 50 mm fra trykkanten, ikke snittets d_eff.
+  assert.equal(rows[1].d, 50);
 });
 
 test('layerSummary gir id, areal, z og d per lag', () => {

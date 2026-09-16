@@ -17,13 +17,18 @@
  * `N_Ed` mot `n_min`/`n_max` sjekkes IKKE her: de tallene finnes først etter at
  * motoren har regnet dem, og hører derfor hjemme i `engine.py` (plan §5.3).
  *
+ * SAMME GRENSE GJELDER `derived()`: `d_eff`, `As_tension` og `rho` derfra er
+ * ESTIMATER for skjemaet før første beregning. EC2-`d` avhenger av
+ * tøyningsplanet ved brudd, som bare motoren har. Se `derived()` og
+ * `rebar.js:effectiveDepthGeometric()`.
+ *
  * DOM-fri og ren (plan §2.3 punkt 2).
  */
 
 import { concreteProps } from './materials.js';
 import {
   effectiveDepth,
-  effectiveDepthAll,
+  effectiveDepthGeometric,
   layerArea,
   layerBarCount,
   layerCentroidZ,
@@ -82,14 +87,19 @@ export function grossArea(state = {}) {
  * `ec2_2004.As_min` er rissviddeminimum etter 7.3.2 med en helt annen
  * signatur (plan §3.6). Derfor regnes det her.
  *
- * `d` er STREKKARMERINGENS tyngdepunkt (`effectiveDepth`). Vektet over alle
- * lag ville trykkarmeringen trukket `d` ned og gitt et for lite minimum —
- * altså på usikker side. Det er hele grunnen til at `effectiveDepth` og
- * `effectiveDepthAll` er to ulike funksjoner.
+ * `d` er ESTIMATET `effectiveDepthGeometric`, ikke `effectiveDepth` (som er
+ * vektet over alle lag). Med trykkarmeringen med i vektingen trekkes `d` ned,
+ * og minimumet blir for LITE — altså på usikker side. Estimatet finnes for at
+ * `A_s,min` skal kunne vises i skjemaet FØR første beregning; etter en kjøring
+ * gjelder motorens tall.
  */
 export function asMin(state = {}) {
   const b_t = sectionWidth(state);
-  const d = effectiveDepth(state.layers || [], sectionHeight(state), thetaFor(state.direction));
+  const d = effectiveDepthGeometric(
+    state.layers || [],
+    sectionHeight(state),
+    thetaFor(state.direction)
+  );
   const fctm = concreteProps(state.concrete).fctm;
   const fyk = num((state.steel || {}).fyk);
   return Math.max((0.26 * fctm * b_t * d) / fyk, 0.0013 * b_t * d);
@@ -102,31 +112,42 @@ export function asMax(state = {}) {
 
 /**
  * Alle avledede tverrsnittsstørrelser, med SAMME feltnavn som
- * `result.section_props` (plan §5.2), slik at rapporten kan vise dem før
- * motoren har svart og etterpå uten å bytte kodevei.
+ * `result.section_props` (plan §5.2), slik at skjemaet kan vise dem FØR motoren
+ * har svart.
+ *
+ * ⚠ `d_eff`, `As_tension` og `rho` herfra er ESTIMATER.
+ * De bygger på den GEOMETRISKE strekksiden, fordi JS-siden ikke har noe
+ * tøyningsplan. Motoren leser strekksiden av tøyningsplanet ved brudd, og der
+ * nøytralaksen havner under begge armeringslagene står begge i strekk — A1 har
+ * målt `d = 146,8 mm` i et tilfelle der den geometriske regelen sier 550.
+ *
+ * ETTER EN KJØRING SKAL UI OG RAPPORT BRUKE `result.section_props`, ALDRI
+ * DISSE TALLENE. `d_eff_source` er satt nettopp for at ingen skal kunne blande
+ * dem sammen ved et uhell. `Ag`, `As_total`, `b_t` og `As_max` er derimot ren
+ * geometri og gjelder uansett.
  */
 export function derived(state = {}) {
   const b = sectionWidth(state);
   const h = sectionHeight(state);
   const theta = thetaFor(state.direction);
   const layers = state.layers || [];
-  const As = totalArea(layers);
-  // `d_eff` er EC2 sin: strekkarmeringen alene. `d_eff_all` er hele
-  // armeringsmengdens tyngdepunkt. Motoren (A1) leverer BEGGE med nøyaktig
-  // disse navnene i `section_props`, og de to sidene må være enige — det er
-  // den enigheten krysskontrollen mot resultatfixturen fanger.
-  const d = effectiveDepth(layers, h, theta);
+  // `d_eff` = estimatet fra den geometriske strekksiden. `d_eff_all` = vektet
+  // over alle lag, som er motorens `d_eff_all` og et eksakt geometrisk tall.
+  const d = effectiveDepthGeometric(layers, h, theta);
+  const asT = tensionArea(layers, h, theta);
   return {
     Ag: b * h,
-    As_total: As,
-    As_tension: tensionArea(layers, h, theta),
-    rho: As / (b * d),
+    As_total: totalArea(layers),
+    As_tension: asT,
+    // EC2 sin ρ_l: teller og nevner fra SAMME utvalg.
+    rho: asT / (b * d),
     b_t: b,
     d_eff: d,
-    d_eff_all: effectiveDepthAll(layers, h, theta),
+    d_eff_all: effectiveDepth(layers, h, theta),
     As_min: asMin(state),
     As_max: asMax(state),
     theta,
+    d_eff_source: 'geometric-estimate',
   };
 }
 
