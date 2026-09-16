@@ -10,6 +10,24 @@ Motoren er fib `structuralcodes` 0.7.2 under Pyodide, med `marin`-integratoren.
 
 ---
 
+## NÅ — endringsrunde 4
+
+Plan: `global-devspecs/concrete_section_calculator-v4-sign-and-shear.md`.
+Angrepunkt før runden: **`611776e`**.
+
+| # | hva | målt begrunnelse |
+|---|---|---|
+| **0.1** | **Signert `M_Ed`, `structuralcodes` sin konvensjon** — sagging **negativ**, hogging positiv. `direction`-bryteren fjernes. | θ=0 (trykk oppe, feltmoment) gir `m_y = −215,01 kNm`. Følger av høyrehåndsregelen om Y-aksen. |
+| **0.2** | **Aksialkraft ⇒ M–N-diagram automatisk.** «Bending resistance» deaktiveres når en kombinasjon har `N_Ed ≠ 0`. | En `M_Rd` ved én aksialkraft er ett punkt på en kurve, og ser ut som en kapasitet. |
+| **0.3** | **Skjærkapasitet** etter EC2 6.2, med og uten bøyler. | `VRdc`/`VRds`/`VRdmax` finnes oppstrøms; vi regner bare ρ_w,min, s_l,max, s_t,max selv. |
+| **0.4** | **Fortegn i skjær**: `A_sl` og `d` følger kombinasjonens moment; `NEd` snus for EC2-funksjonene. | Feil side: **+26 %** på usikker side. Feil `NEd`-fortegn: **11×**. |
+
+0.1 er også en **forenkling**: «størrelse»-regelen fra v2 med `meta.moment_sign` og
+`meta.domain_theta` oppheves, fordi den bare fantes for å bygge bro mellom en
+retningsbryter og en motor som regner med fortegn.
+
+---
+
 ## Tre ting som binder alt annet
 
 **1. `marin`-integratoren, ikke `fiber`.** `triangle` kjører ikke noe sted; stubben kaster
@@ -55,7 +73,8 @@ materiale». Å bygge CFRP først ville betydd å bygge katalogen to ganger.
 
 ## 2. Skjær
 
-Egen plan: `global-devspecs/concrete_section_calculator-v3-shear.md`.
+Egen plan: `global-devspecs/concrete_section_calculator-v4-sign-and-shear.md`
+(erstatter `-v3-shear.md`, som ble skrevet før fortegnskonvensjonen var avklart).
 
 Kort: EC2 6.2 er **ferdig implementert** i `structuralcodes` (`VRdc`, `VRds`, `VRdmax`,
 `Asw_max`, `Asw_s_required`), inkludert aksialkraftens virkning. Vi regner bare ρ_w,min,
