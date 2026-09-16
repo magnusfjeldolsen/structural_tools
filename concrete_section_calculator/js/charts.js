@@ -220,6 +220,30 @@ function wrap(o, body, label) {
  * `fill="none"`, samme strek). `role` setter `data-role`, slik at testene og
  * en eventuell rapportleser kan skille governing fra resten uten å telle piksler.
  */
+/**
+ * Usynlige treffflater for pekeren. `ui.js` leser `data-*` og viser en boble.
+ *
+ * HVORFOR EGNE SIRKLER OG IKKE MARKØRENE SELV
+ * Kurvepunktene er 1,2–1,5 enheter store; et treffmål på den størrelsen er
+ * uråd å treffe med mus. Disse er 3 enheter og `fill="transparent"`, som gir
+ * treff uten å tegne noe. `stroke="none"` er ikke nok alene — et element uten
+ * fyll får ikke pekerhendelser i sitt indre.
+ *
+ * De er harmløse på papir: gjennomsiktig fyll tegner ingenting, og
+ * `print.css` skjuler dem uansett.
+ */
+function hitDots(items, o) {
+  if (!items.length) return '';
+  const rr = r(3 * o.u);
+  return `<g data-role="hits" fill="transparent" stroke="none" pointer-events="all">`
+    + items.map((it) => {
+      const attrs = Object.entries(it.data)
+        .map(([k, v]) => `data-${k}="${esc(String(v))}"`).join(' ');
+      return `<circle cx="${r(it.px)}" cy="${r(it.py)}" r="${rr}" ${attrs}/>`;
+    }).join('')
+    + `</g>`;
+}
+
 function loadMarker(px, py, color, u, { filled = false, role = 'load-point' } = {}) {
   const a = 1.8 * u;
   return `<g data-role="${role}" stroke="${color}" stroke-width="${r(0.4 * u)}">` +
@@ -264,11 +288,19 @@ export function momentCurvatureSvg(mc, opts = {}) {
   const ax = axes(o, f, 0, xHi, 0, yHi, 'κ [10⁻⁶/mm]', 'M [kNm]');
 
   let body = ax.svg;
+  // Treffflatene samles her og legges SIST i figuren. Ligger de tidligere,
+  // havner M_Ed-linja og markørene oppå dem, og da treffer pekeren en `<line>`
+  // i stedet for punktet — målt i nettleseren, ikke antatt.
+  let hits = '';
 
   if (n > 1) {
     const pts = kx.map((x, i) => `${r(ax.px(x))},${r(ax.py(my[i]))}`).join(' ');
     body += `<polyline data-role="curve" points="${pts}" fill="none" stroke="${c.curve}" ` +
             `stroke-width="${r(0.6 * o.u)}" stroke-linejoin="round"/>`;
+    hits = hitDots(kx.map((x, i) => ({
+      px: ax.px(x), py: ax.py(my[i]),
+      data: { hit: 'mc', i, kappa: x, moment: my[i] },
+    })), o);
   }
 
   // M_Ed-linja. Tegnes også når M_Ed = 0 ville vært meningsløst — da hoppes den
@@ -299,7 +331,7 @@ export function momentCurvatureSvg(mc, opts = {}) {
             `truncated: no convergence</text>`;
   }
 
-  return wrap(o, body, 'Moment–curvature');
+  return wrap(o, body + hits, 'Moment–curvature');
 }
 
 /* ------------------------------------------------------------------ *
@@ -531,11 +563,24 @@ export function nmDomainSvg(dom, opts = {}) {
     'M [kNm]', 'N [kN]  (compression negative)');
 
   let body = ax.svg;
+  // Som i M–κ: treffflatene sist, ellers ligger markørenes kryss og strålen
+  // oppå dem og stjeler pekeren.
+  let hits = '';
 
   if (pts.length > 1) {
     const poly = pts.map((p) => `${r(ax.px(p[1]))},${r(ax.py(p[0]))}`).join(' ');
     body += `<polyline data-role="envelope" points="${poly}" fill="none" ` +
             `stroke="${c.envelope}" stroke-width="${r(0.6 * o.u)}" stroke-linejoin="round"/>`;
+    // EC2-feltnummeret følger med når motoren har det: det er den ene opplysningen
+    // som forklarer HVORFOR omhyllingen skifter form akkurat der.
+    const fields = Array.isArray(dom?.field_num) ? dom.field_num : [];
+    hits += hitDots(pts.map((pt, i) => ({
+      px: ax.px(pt[1]), py: ax.py(pt[0]),
+      data: {
+        hit: 'env', i, n: pt[0], m: pt[1],
+        ...(fields[i] === undefined ? {} : { field: fields[i] }),
+      },
+    })), o);
   }
 
   if (rad.hitN !== null) {
@@ -553,6 +598,13 @@ export function nmDomainSvg(dom, opts = {}) {
   }
 
   if (comboPoints.length) {
+    hits += hitDots(comboPoints.map((p) => ({
+      px: ax.px(p.m), py: ax.py(p.n),
+      data: {
+        hit: 'load', combo: p.label, n: p.n, m: p.m,
+        governing: p.governing ? '1' : '0',
+      },
+    })), o);
     for (const p of comboPoints) {
       if (p.governing) {
         body += loadMarker(ax.px(p.m), ax.py(p.n), c.load, o.u,
@@ -573,5 +625,5 @@ export function nmDomainSvg(dom, opts = {}) {
             `(${esc(fmt(mEd, 1))} kNm; ${esc(fmt(nEd, 1))} kN)</text>`;
   }
 
-  return wrap(o, body, 'N–M interaction domain');
+  return wrap(o, body + hits, 'N–M interaction domain');
 }

@@ -97,6 +97,12 @@
   padding: 16px 0 48px;
   display: flex;
   justify-content: center;
+  /* `align-items` MÅ stå her. Standardverdien oppfører seg som `stretch`, og en
+     flex-item med `stretch` får CONTAINERENS høyde — ikke innholdets. Arket ble
+     da én skjermhøyde høyt mens rapporten fortsatte å flyte utenfor det, slik at
+     alt under første skjerm sto på den mørke sidebakgrunnen og var så vidt
+     leselig. Målt: arket 791 px, innholdet 3090 px. */
+  align-items: flex-start;
 }
 
 /* Papiret speilet på skjerm: samme 174 mm trykkflate, samme hvite bakgrunn.
@@ -112,7 +118,11 @@
   max-width: none;
   background: #fff;
   color: #111;
-  padding: 8mm;
+  /* Samme marger som `@page` under. Da er arket et EKTE A4: 20 + 174 + 16 = 210 mm
+     bredt, med tekstkolonnen der den faktisk havner på papiret. Med symmetriske
+     8 mm var tekstkolonnen riktig, men papiret rundt den var feil — og da kan man
+     ikke se på skjermen hvor nær en figur ligger margen. */
+  padding: 18mm 16mm 20mm 20mm;
   box-shadow: 0 4px 24px rgba(0, 0, 0, .5);
   font-size: 9.5pt;
   line-height: 1.45;
@@ -123,6 +133,10 @@
    ikke nøyaktig der sideskiftet havner. Men den fanger «figuren er for høy» og
    «tabellen strekker seg over grensen» på et halvt sekund. */
 #report-overlay .report-content[data-page-guides] {
+  /* `content-box` er nødvendig etter at padding ble ekte sidemarger: uten den
+     starter stripemønsteret ved padding-kanten og ligger 18 mm for høyt, slik at
+     hver strek peker på feil sted i teksten. */
+  background-origin: content-box;
   background-image: repeating-linear-gradient(
     to bottom, transparent 0, transparent 258mm, #ef4444 258mm, #ef4444 259mm);
 }

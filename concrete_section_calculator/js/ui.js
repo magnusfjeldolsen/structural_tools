@@ -63,6 +63,7 @@ import { layerArea, layerBarCount, layerDepth, recomputeAutoDc, stackedDc, sugge
 import { derived, sectionHeight, sectionWidth, thetaFor, validate } from './section.js';
 import { drawSection } from './section-draw.js';
 import { momentCurvatureSvg, nmDomainSvg, radialUtilisation } from './charts.js';
+import { attachChartTips } from './chart-tips.js';
 import { isCancellable, phaseLabel, TOTAL_DOWNLOAD_BYTES } from './solver-client.js';
 import { fromDocument, toDocument } from './serialize.js';
 import {
@@ -1482,6 +1483,9 @@ export function createUI(deps) {
       setupButtons();
       setupKeyboard();
       setupNav();
+      // Pekerboblene henges på resultatseksjonen én gang. Figurene byttes ut
+      // ved hver beregning, men lytteren sitter over dem og overlever det.
+      attachChartTips(document.getElementById('s-res'));
       render();
     },
     render,
