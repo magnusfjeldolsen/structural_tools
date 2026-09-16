@@ -1,0 +1,451 @@
+/*
+ * print.css — skjerm- og utskriftsoppsett for rapporten i
+ * concrete_section_calculator.
+ *
+ * ===========================================================================
+ * HVORFOR DENNE FILA IKKE ER ../assets/css/report-print.css
+ * ===========================================================================
+ * Fordi den delte fila løser et annet problem, og løser det på en måte som
+ * brekker stille her.
+ *
+ * Den former om den LEVENDE siden til et dokument, ved å skjule appens egne
+ * elementer klasse for klasse: `body > main > *:not(...)`, `[class*="bg-gray-"]`
+ * og en liste over Tailwind-klassenavn. Den kobler altså utskriften til
+ * markupens nåværende klassenavn. Endrer noen en `bg-gray-800` til
+ * `bg-slate-800` i `index.html` — en ren fargejustering — forsvinner eller
+ * dukker det opp innhold i PDF-en, uten at noe feiler og uten at noen ser det
+ * før en kunde har rapporten i hånda. `concrete_slab_design/print.css` og
+ * `geometry_workspace/print.css` skrev begge ned den samme erfaringen på
+ * toppen av sine egne filer; dette er den tredje gangen.
+ *
+ * SPESIELT FOR DENNE MODULEN, og grunnen til at problemet er verre her:
+ *
+ *  1. Rapporten inneholder SVG-er med EKSPLISITTE mm-mål (174 mm, plan §8).
+ *     Den delte fila har en generell `img, svg { max-width: 100% !important;
+ *     height: auto !important }`. Den ene regelen overstyrer figurens faste
+ *     bredde, og en tverrsnittstegning uten målestokk er ikke en
+ *     tverrsnittstegning. Her er `svg.report-figure` uttrykkelig unntatt.
+ *
+ *  2. Kapasitetstallene i rapporten er FARGEKODET etter utnyttelse, og fargen
+ *     bærer informasjon. Den må overleve `print-color-adjust`, og den må komme
+ *     fra de samme tersklene som statuspillen på skjerm — `results.js` sin
+ *     `utilisationStatus()`. Derfor er `[data-level]` under et
+ *     data-attributt fra rapportbyggeren, ikke en Tailwind-klasse noen kan
+ *     endre i farten.
+ *
+ *  3. Appen er et mørkt tema med Tailwind. ALT må tvinges til nær-svart blekk;
+ *     en delt fil som bare traff noen av klassene ville gitt grå, uleselige
+ *     tabeller på papir.
+ *
+ * Konsolider derfor IKKE denne fila inn i den delte. Den delte fila kan ikke
+ * gjøre det denne gjør uten å bli en liste over alle modulers klassenavn, og
+ * det er nøyaktig konstruksjonen som skapte problemet i utgangspunktet.
+ *
+ * ===========================================================================
+ * MØNSTERET
+ * ===========================================================================
+ * Rapporten bygges PÅ FORESPØRSEL av `js/report.js` og legges i
+ * `#report-overlay .report-content` for skjerm. Rett før utskrift KLONES
+ * `.report-content` inn i `#cscPrintRoot`, som er et DIREKTE barn av <body>.
+ *
+ * Hvorfor klone i stedet for å style overlegget direkte: utskriften trenger da
+ * bare ÉN strukturell regel — «skjul alle direkte barn av body, vis
+ * utskriftsroten» — og ingenting ved appens markup, nesting eller
+ * scroll-containere kan påvirke den. Klone og ikke flytte, fordi en avbrutt
+ * utskrift skal etterlate skjermvisningen urørt.
+ *
+ * Fila lenkes UTEN `media="print"`. Den eier også SKJERMVISNINGEN av
+ * overlegget, slik at man ser papirbredden, linjeskiftene og figurstørrelsen
+ * før man skriver ut. Alt som gjelder selve arket ligger inne i `@media print`.
+ *
+ * MÅLENE
+ * A4 stående med margene under gir 210 − 20 − 16 = 174 mm trykkflate i bredden
+ * og 297 − 18 − 20 = 259 mm i høyden. De 174 mm er samme tall som
+ * `REPORT_FIGURE_WIDTH_MM` i `report.js`; endres det ene, må det andre følge.
+ */
+
+/* ===========================================================================
+   SKJERM — overlegget
+   =========================================================================== */
+
+#report-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: #0f172a;
+}
+#report-overlay[hidden] { display: none; }
+
+#report-overlay .report-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .5rem .75rem;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  color: #e2e8f0;
+  font-size: 12px;
+}
+
+#report-overlay .report-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 0 48px;
+  display: flex;
+  justify-content: center;
+  /* `align-items` MÅ stå her. Standardverdien oppfører seg som `stretch`, og en
+     flex-item med `stretch` får CONTAINERENS høyde — ikke innholdets. Arket ble
+     da én skjermhøyde høyt mens rapporten fortsatte å flyte utenfor det, slik at
+     alt under første skjerm sto på den mørke sidebakgrunnen og var så vidt
+     leselig. Målt: arket 791 px, innholdet 3090 px. */
+  align-items: flex-start;
+}
+
+/* Papiret speilet på skjerm: samme 174 mm trykkflate, samme hvite bakgrunn.
+   Det er dette som gjør at man ser at en tabell er for bred FØR utskrift. */
+#report-overlay .report-content {
+  /* `content-box` er ikke en detalj: Tailwind setter `box-sizing: border-box`
+     globalt, og da ville `width: 174mm` + `padding: 8mm` gitt en tekstkolonne
+     på 158 mm, mens papiret gir 174. Figurene har FASTE 174 mm og ville stukket
+     ut til høyre for tabellene. Skjermen skal speile papiret; margen legges
+     UTENFOR de 174 mm. */
+  box-sizing: content-box;
+  width: 174mm;
+  max-width: none;
+  background: #fff;
+  color: #111;
+  /* Samme marger som `@page` under. Da er arket et EKTE A4: 20 + 174 + 16 = 210 mm
+     bredt, med tekstkolonnen der den faktisk havner på papiret. Med symmetriske
+     8 mm var tekstkolonnen riktig, men papiret rundt den var feil — og da kan man
+     ikke se på skjermen hvor nær en figur ligger margen. */
+  padding: 18mm 16mm 20mm 20mm;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, .5);
+  font-size: 9.5pt;
+  line-height: 1.45;
+}
+
+/* Sidegrenser: en tynn strek hver 259. mm. En INDIKASJON, ikke en fasit —
+   utskriftsmotoren skyver innhold nedover for å unngå brudd, så streken treffer
+   ikke nøyaktig der sideskiftet havner. Men den fanger «figuren er for høy» og
+   «tabellen strekker seg over grensen» på et halvt sekund. */
+#report-overlay .report-content[data-page-guides] {
+  /* `content-box` er nødvendig etter at padding ble ekte sidemarger: uten den
+     starter stripemønsteret ved padding-kanten og ligger 18 mm for høyt, slik at
+     hver strek peker på feil sted i teksten. */
+  background-origin: content-box;
+  background-image: repeating-linear-gradient(
+    to bottom, transparent 0, transparent 258mm, #ef4444 258mm, #ef4444 259mm);
+}
+
+/* ===========================================================================
+   DOKUMENTET — gjelder BÅDE på skjerm og på papir
+   ===========================================================================
+
+   Disse reglene ligger bevisst UTENFOR `@media print`, scopet til
+   `.report-content`, som finnes både i overlegget og i utskriftsroten. Lå de
+   inne i `@media print`, ville skjermen vist nettleserens standardavstander
+   mens papiret hadde rapportens egne — og skjermspeilingen over ville sluttet
+   å være en speiling. Bare det som beskriver ARKET (sideboks, skjuling av
+   appen, sidebrudd, blekk) ligger i `@media print`.
+   =========================================================================== */
+
+/* ---- typografi ----------------------------------------------------------- */
+.report-content h1 { font-size: 15pt;   margin: 0 0 3mm; }
+.report-content h2 { font-size: 12.5pt; margin: 0 0 2.5mm; }
+.report-content h3 { font-size: 10.5pt; margin: 4mm 0 1.5mm; letter-spacing: .02em; }
+.report-content h4 { font-size: 9.5pt;  margin: 3mm 0 1.5mm; }
+.report-content section.chapter > h3:first-child { margin-top: 3mm; }
+.report-content section.chapter:first-of-type > h3:first-child { margin-top: 0; }
+.report-content p  { margin: 0 0 1.5mm; }
+.report-content p, .report-content li, .report-content td { orphans: 3; widows: 3; }
+
+.report-content .text-xs   { font-size: 8pt; }
+.report-content .text-sm   { font-size: 8.5pt; }
+.report-content .muted     { color: #555; }
+.report-content .warn      { color: #b91c1c; }
+
+/* Merknadene under tabellene er forklaringer, ikke resultater — de skal leses
+   etter tallene, ikke i stedet for dem. */
+.report-content .note {
+  font-size: 8pt;
+  color: #444;
+  margin: 1mm 0 2mm;
+}
+
+/* ---- topptekst ----------------------------------------------------------- */
+.report-content .print-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 0.6pt solid #999;
+  padding-bottom: 2mm;
+  margin-bottom: 3mm;
+  font-size: 8pt;
+  color: #444;
+}
+.report-content .print-head b { font-size: 11pt; color: #111; }
+
+/* ---- tabeller ------------------------------------------------------------ */
+.report-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 2.5mm;
+  font-size: 8.5pt;
+}
+.report-content th, .report-content td {
+  border: 0.5pt solid #bbb;
+  padding: 0.6mm 1.2mm;
+  line-height: 1.25;
+  text-align: left;
+  vertical-align: top;
+}
+.report-content thead { display: table-header-group; }   /* gjentas på hver side */
+.report-content th { background: #eef0f3; font-weight: 600; }
+.report-content td.num, .report-content th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Governing lastkombinasjon (endringsrunde 2, §4.3/§10 B4). Markert med et
+   data-attributt fra rapportbyggeren — samme mønster som `[data-level]` over
+   — ikke en klasse noen kan endre i farten uten å vite hva den styrer. */
+.report-content tr[data-role="combo-governing"] { font-weight: 600; }
+
+/* Nøkkel/verdi-tabellene: etiketten til venstre er ikke en overskrift som skal
+   rope, den er en merkelapp på tallet ved siden av. */
+.report-content table.kv th {
+  background: transparent;
+  font-weight: 400;
+  width: 62%;
+}
+
+/* ---- to spalter ---------------------------------------------------------- */
+/* MERK grid-fella: `break-inside: avoid` virker ikke på et element som er
+   grid-ITEM i Chromium. Derfor merkes `.two-col` SELV som `.atomic`, aldri
+   kolonnene inni. Grid brukes til innholdet i en atomblokk, aldri til å stable
+   atomblokker. */
+.report-content .two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4mm;
+  align-items: start;
+}
+.report-content .two-col > * { min-width: 0; }
+
+/* ---- resultatboksen ------------------------------------------------------ */
+/* Fargen her BÆRER INFORMASJON: nivået kommer fra `utilisationStatus()` i
+   `results.js`, altså fra nøyaktig de samme tersklene som statuspillen på
+   skjerm. Den må derfor overleve `print-color-adjust` (se `@media print`). */
+.report-content .result-box {
+  display: flex;
+  align-items: baseline;
+  gap: 6mm;
+  border: 1pt solid #666;
+  border-left-width: 2mm;
+  padding: 2mm 3mm;
+  margin-bottom: 3mm;
+  background: #f6f7f9;
+}
+.report-content .result-main { display: flex; align-items: baseline; gap: 2mm; }
+.report-content .result-label { font-size: 8.5pt; color: #444; }
+.report-content .result-value { font-size: 13pt; font-weight: 700; }
+.report-content .result-status { margin-left: auto; font-size: 9pt; font-weight: 600; }
+
+.report-content .result-box[data-level="ok"]      { border-color: #15803d; }
+.report-content .result-box[data-level="high"]    { border-color: #a16207; }
+.report-content .result-box[data-level="over"]    { border-color: #b91c1c; }
+.report-content .result-box[data-level="unknown"] { border-color: #777777; }
+.report-content .result-box[data-level="ok"]      .result-status { color: #15803d; }
+.report-content .result-box[data-level="high"]    .result-status { color: #a16207; }
+.report-content .result-box[data-level="over"]    .result-status { color: #b91c1c; }
+.report-content .result-box[data-level="unknown"] .result-status { color: #555555; }
+
+/* Skjærmerket (endringsrunde 4 §4.3): et EGET tall ved siden av hovedtallet
+   η_M, farget etter SIN EGEN `data-level` — ikke boksens. De to η-ene kan
+   ligge på hver sin side av terskelen samtidig (skjær kan svikte et snitt
+   bøying tåler fint, og omvendt), og fargen må derfor kunne avvike fra
+   `.result-box[data-level]` over uten å endre boksens ramme. */
+.report-content .result-shear[data-level="ok"]      .result-value { color: #15803d; }
+.report-content .result-shear[data-level="high"]    .result-value { color: #a16207; }
+.report-content .result-shear[data-level="over"]    .result-value { color: #b91c1c; }
+.report-content .result-shear[data-level="unknown"] .result-value { color: #555555; }
+
+/* ---- figurer ------------------------------------------------------------- */
+.report-content figure { margin: 0 0 3mm; }
+.report-content figcaption {
+  font-size: 8pt;
+  color: #444;
+  margin-top: 1mm;
+}
+/* Figurene kommer fra `section-draw.js` og `charts.js` med `width` i mm og en
+   `viewBox`. De skal stå som de er — se punkt 1 i hodekommentaren. */
+.report-content .report-figure-wrap svg {
+  display: block;
+  margin: 0 auto;
+}
+
+/* ---- metodelista --------------------------------------------------------- */
+.report-content ul.method {
+  margin: 0 0 2mm;
+  padding-left: 4.5mm;
+  font-size: 8.5pt;
+}
+.report-content ul.method li { margin-bottom: 1.2mm; }
+
+.report-content code {
+  font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+  font-size: 8.2pt;
+  background: transparent;
+  padding: 0;
+}
+.report-content .whitespace-pre-wrap { white-space: pre-wrap; }
+
+/* Utskriftsroten er usynlig på skjerm — den fylles først av
+   `stageReportForPrint()`, rett før utskrift. */
+#cscPrintRoot { display: none; }
+
+/* ===========================================================================
+   UTSKRIFT
+   =========================================================================== */
+
+@media print {
+
+  /* ---- papirflaten ---------------------------------------------------------
+     A4 stående. 210 − 20 − 16 = 174 mm trykkflate i bredden, 297 − 18 − 20 =
+     259 mm i høyden. Hvert mål i rapporten er målt mot disse to tallene. */
+  @page {
+    size: A4 portrait;
+    margin: 18mm 16mm 20mm 20mm;
+  }
+
+  html, body {
+    background: #fff !important;
+    color: #111 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 9.5pt !important;
+    line-height: 1.45 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+
+    /* Nullstilling av en eventuell fullhøyde-app. Innhold inne i en
+       scroll-container klippes til ÉN side ved utskrift, uansett hvor riktig
+       alt annet er. Dette er den enkeltregelen som er lettest å utelate og
+       verst å feilsøke. */
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* ---- den ene strukturelle regelen ---------------------------------------
+     Alt appen tegner skjules; bare utskriftsroten vises. Ingenting her avhenger
+     av Tailwind-klassenavn eller av hvor dypt rapporten er nestet. Det er
+     nettopp DETTE den delte report-print.css ikke kan gjøre. */
+  body > *              { display: none !important; }
+  body > #cscPrintRoot  { display: block !important; }
+
+  #cscPrintRoot {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #111 !important;
+  }
+
+  #cscPrintRoot .report-content {
+    background: #fff !important;
+    color: #111 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background-image: none !important;   /* sidegrensene er en skjermting */
+  }
+
+  /* `position: static` på ALT er tryggere enn å lete opp enkelttilfeller:
+     `position: fixed` gjentas på hver side i Chrome og forsvinner i Firefox.
+     `overflow: visible` fjerner enhver arvet scroll-container. */
+  #cscPrintRoot, #cscPrintRoot * {
+    overflow: visible !important;
+    position: static !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    max-width: 100% !important;
+    overflow-wrap: break-word !important;
+    word-break: normal;
+  }
+
+  /* ---- blekk ---------------------------------------------------------------
+     Appen er mørk, så alt må tvinges nær-svart. Unntakene er de fargene som
+     BÆRER informasjon: statusfargen i resultatboksen og advarselsteksten. */
+  .report-content,
+  .report-content p, .report-content div, .report-content span,
+  .report-content li, .report-content td, .report-content th { color: #111; }
+  .report-content .muted, .report-content .note { color: #555; }
+  .report-content .warn { color: #b91c1c; }
+
+  /* ---- sidebrudd -----------------------------------------------------------
+     ATOMBLOKK — det som aldri skal splittes. Hva som er atomært avgjøres i
+     markupen med class="atomic", ikke av en liste over Tailwind-klasser i
+     CSS-en. Det var nettopp klasselistene som gjorde den delte fila skjør.
+
+     FALLGRUVE: `break-inside: avoid` virker IKKE på et element som er flex-
+     eller grid-ITEM i Chromium. Atomblokkene skal derfor være vanlige
+     blokkelementer. */
+  #cscPrintRoot .atomic,
+  #cscPrintRoot .keep-with-next,
+  #cscPrintRoot table,
+  #cscPrintRoot tr,
+  #cscPrintRoot figure,
+  #cscPrintRoot svg {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* En overskrift skal ikke bli stående alene nederst på en side.
+     `break-after: avoid` på en <h3> er IKKE pålitelig i Chromium — den
+     ignoreres i flere layoutsituasjoner — så den robuste løsningen er
+     `.keep-with-next` over. Regelen her er en gratis forbedring der
+     nettleseren faktisk respekterer den. */
+  #cscPrintRoot h1, #cscPrintRoot h2, #cscPrintRoot h3, #cscPrintRoot h4 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Eksplisitt sideskift der markupen ber om det. Begge regler, ikke bare den
+     ene: en `break-after` på siste barn ignoreres i noen motorer, mens en
+     `break-before` på det neste respekteres — og motsatt. */
+  #cscPrintRoot .page-break-before { page-break-before: always; break-before: page; }
+  #cscPrintRoot .page-break-after  { page-break-after: always;  break-after: page; }
+
+  /* ---- figuren -------------------------------------------------------------
+     Rapportfigurene har EKSPLISITTE mm-mål i `width`. De skal stå. En SVG med
+     prosent- eller auto-høyde måles feil i Safari ved utskrift, og
+     `height: auto` under ville overstyrt de faste målene. Derfor er figurene
+     unntatt fra den generelle bilderegelen — se punkt 1 i hodekommentaren. */
+  #cscPrintRoot img, #cscPrintRoot canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  #cscPrintRoot .report-figure-wrap svg {
+    display: block !important;
+    max-width: none !important;
+  }
+
+  /* Resultatboksens ramme og status er informasjon, ikke pynt. */
+  #cscPrintRoot .result-box {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #cscPrintRoot a { color: #1d4ed8 !important; text-decoration: none !important; }
+  #cscPrintRoot a[href]::after { content: "" !important; }
+}

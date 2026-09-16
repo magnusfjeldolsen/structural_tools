@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-BFVZQQ2LYN');
+  </script>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Ultimate limit state capacity for reinforced concrete cross-sections to Eurocode 2, computed by fib structuralcodes in the browser. Beam b×h or slab per metre width, sagging and hogging moment, several reinforcement layers and load combinations. Gives M_Rd at a given N_Ed, neutral axis, strain and stress per layer, failure mode, A_s,min and A_s,max, moment–curvature curve and the full M–N capacity envelope with every load point plotted. Shear capacity to EC2 6.2 with and without stirrups, V_Rd,c, V_Rd,s and V_Rd,max per load combination, including the effect of axial force. Print-ready A4 report.">
+  <meta name="keywords" content="concrete, concrete section, reinforced concrete, ultimate limit state, ULS, Eurocode 2, EC2, moment capacity, M_Rd, bending resistance, neutral axis, strain, moment-curvature, M-N diagram, interaction domain, minimum reinforcement, As_min, reinforcement layers, beam, slab, load combinations, sagging, hogging, shear, shear capacity, shear reinforcement, stirrups, links, V_Rd, VRdc, VRds, EC2 6.2, axial force, structuralcodes, pyodide, concrete design">
+  <title>Concrete section ULS — bending, shear, M–κ and N–M to EC2</title>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Concrete section ULS — bending resistance, M–κ and N–M to EC2">
+  <meta property="og:description" content="Compute bending resistance, moment–curvature and the N–M interaction domain for reinforced concrete cross-sections in the browser, with fib structuralcodes and a print-ready A4 report.">
+  <meta property="og:type" content="website">
+
+  <!--
+    Oppvarmingen (plan §3.9) starter så snart workeren er oppe, men de store
+    hentene kan begynne før det: disse lenkene lar nettleseren laste ned
+    kjernen parallelt med at modulskriptene tolkes. `pyodide.asm.wasm` og
+    `python_stdlib.zip` er de to tyngste enkeltfilene i budsjettet på 10,2 MB.
+  -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="modulepreload" href="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs">
+  <link rel="preload" as="fetch" crossorigin href="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.asm.wasm">
+  <link rel="preload" as="fetch" crossorigin href="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/python_stdlib.zip">
+  <link rel="preload" as="fetch" crossorigin href="./vendor/structuralcodes-0.7.2-py3-none-any.whl">
+
+  <script>tailwind = window.tailwind || {}; tailwind.config = { darkMode: 'class' };</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!--
+    UTEN `media="print"` med vilje: `print.css` eier også SKJERMVISNINGEN av
+    rapportoverlegget (#report-overlay), ikke bare utskriften. Legges `media`
+    på her, blir overlegget usynlig på skjerm og rapporten ser ut til å være
+    ødelagt. Se hodekommentaren i fila.
+  -->
+  <link rel="stylesheet" href="print.css">
+
+  <style>
+    html { scroll-behavior: smooth; scroll-padding-top: 108px; }
+    body { background: #0f172a; }
+    .num { font-variant-numeric: tabular-nums; }
+    input[type="text"], input[type="date"], select, textarea {
+      background: #334155; border: 1px solid #475569; border-radius: .375rem;
+      padding: .35rem .55rem; color: #f1f5f9; width: 100%; font-size: .8125rem;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56,189,248,.22);
+    }
+    .field-label { font-size: .6875rem; color: #94a3b8; margin-bottom: .15rem; display: block; }
+    .seg { display: inline-flex; background: #1e293b; border: 1px solid #475569; border-radius: .5rem; overflow: hidden; }
+    .seg > button { padding: .4rem .9rem; font-size: .8125rem; color: #cbd5e1; transition: background .12s; }
+    .seg > button:hover { background: #334155; }
+    .seg > button[data-on="true"] { background: #0284c7; color: #fff; }
+    .chip { padding: .25rem .6rem; font-size: .75rem; border-radius: 9999px; border: 1px solid #475569;
+            background: #1e293b; color: #cbd5e1; transition: all .12s; }
+    .chip:hover { background: #334155; }
+    .chip[data-on="true"] { background: #0369a1; border-color: #0ea5e9; color: #fff; }
+    kbd { font-family: ui-monospace, monospace; font-size: .6875rem; background: #1e293b;
+          border: 1px solid #475569; border-bottom-width: 2px; border-radius: .3rem;
+          padding: .05rem .35rem; color: #e2e8f0; }
+    .sec-h { font-size: .75rem; letter-spacing: .09em; text-transform: uppercase; color: #94a3b8; }
+    .navlink[data-on="true"] { color: #f8fafc; border-bottom-color: #0ea5e9; }
+    details > summary { cursor: pointer; list-style: none; }
+    details > summary::-webkit-details-marker { display: none; }
+    .lrow:hover .lact { opacity: 1; }
+    .lact { opacity: 0; transition: opacity .12s; }
+    @media (max-width: 900px) { .lact { opacity: 1; } }
+    /* `section-draw.js` og `charts.js` setter en FAST bredde i px eller mm på
+       rot-SVG-en, fordi den samme funksjonen tegner papirfiguren. På skjerm
+       skal figuren i stedet fylle boksen sin; viewBox-en gjør det trygt. */
+    .svg-fit > svg { width: 100%; height: auto; display: block; }
+  </style>
+</head>
+
+<body class="bg-slate-900 text-slate-100 font-sans">
+
+<!-- ═══════════════════ topplinje og seksjonsnavigasjon ═══════════════════ -->
+<header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-700">
+  <div class="max-w-5xl mx-auto px-5 flex items-center gap-4 h-12">
+    <a href="../index.html" class="text-sky-400 hover:text-sky-300 text-sm shrink-0">← Tools</a>
+    <h1 class="text-base font-semibold text-white whitespace-nowrap">Concrete section · ULS</h1>
+    <span class="text-xs text-slate-500 hidden md:inline truncate">Bending resistance, moment–curvature and N–M to EC2</span>
+    <div class="ml-auto flex items-center gap-2 shrink-0">
+      <div id="engine-pill" class="flex items-center gap-2 text-xs px-2.5 py-1 rounded-full border border-slate-600 bg-slate-800"></div>
+      <button type="button" id="btn-help" class="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded border border-slate-600" title="Keyboard shortcuts">?</button>
+      <button type="button" id="btn-report" class="px-2.5 py-1 text-xs bg-sky-700 hover:bg-sky-600 rounded border border-sky-600">Report</button>
+    </div>
+  </div>
+  <nav class="max-w-5xl mx-auto px-5 flex gap-1 text-[13px] overflow-x-auto">
+    <a href="#s-mat"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">1 Material</a>
+    <a href="#s-geo"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">2 Geometry</a>
+    <a href="#s-arm"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">3 Reinforcement</a>
+    <a href="#s-last" class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">4 Loads</a>
+    <a href="#s-ana"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">5 Analysis</a>
+    <a href="#s-calc" class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">6 Calculate</a>
+    <a href="#s-res"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">7 Result</a>
+  </nav>
+</header>
+
+<main class="max-w-5xl mx-auto px-5 pb-32 pt-6 space-y-5">
+
+  <!-- ═══════════════ 1 MATERIALE ═══════════════ -->
+  <section id="s-mat" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">1 · Material</span>
+      <span id="mat-summary" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-4 space-y-3">
+      <div class="flex flex-wrap items-start gap-2">
+        <span class="text-xs text-slate-400 w-16 pt-1.5">Concrete</span>
+        <div id="fck-chips" class="flex flex-wrap gap-1.5"></div>
+      </div>
+      <div class="flex flex-wrap items-start gap-2">
+        <span class="text-xs text-slate-400 w-16 pt-1.5">Steel</span>
+        <div id="fyk-chips" class="flex flex-wrap gap-1.5"></div>
+      </div>
+      <details class="rounded-lg border border-slate-700 bg-slate-900/40">
+        <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
+          <span class="text-slate-500">▸</span><span id="fac-summary" class="num"></span>
+        </summary>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 px-3 pb-3 pt-1">
+          <label><span class="field-label">γ<sub>c</sub></span><input id="i-gamma-c" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">α<sub>cc</sub></span><input id="i-alpha-cc" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">γ<sub>s</sub></span><input id="i-gamma-s" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">k = f<sub>tk</sub>/f<sub>yk</sub></span><input id="i-k" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">ε<sub>uk</sub></span><input id="i-epsuk" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">γ<sub>ε</sub></span><input id="i-gamma-eps" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">Concrete stress–strain law</span><select id="i-law-c"></select></label>
+          <label><span class="field-label">Steel stress–strain law</span><select id="i-law-s"></select></label>
+        </div>
+        <p class="px-3 pb-3 text-[11px] text-slate-500 leading-snug">
+          α<sub>cc</sub>, γ<sub>c</sub> and γ<sub>s</sub> cannot be 0: the calculation engine silently
+          treats 0 as 1.0 / 1.5 / 1.15, and the result would then not match what the report prints.
+        </p>
+      </details>
+      <div id="mat-derived" class="grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-1 text-[12px] num pt-1"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 2 GEOMETRI ═══════════════ -->
+  <section id="s-geo" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">2 · Geometry</span>
+      <span id="geo-summary" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-5 grid md:grid-cols-[1fr_320px] gap-6">
+      <div class="space-y-4">
+        <div class="seg" id="type-seg">
+          <button type="button" data-v="beam">Beam</button>
+          <button type="button" data-v="slab">Slab (per metre)</button>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <label><span class="field-label">b — width [mm]</span><input id="i-b" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">h — height [mm]</span><input id="i-h" type="text" inputmode="decimal"></label>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <label><span class="field-label">Cover c [mm]</span><input id="i-cover" type="text" inputmode="decimal"></label>
+          <label id="w-stirrup"><span class="field-label">Stirrup Ø [mm]</span><input id="i-stirrup" type="text" inputmode="decimal"></label>
+          <label id="w-cover-side"><span class="field-label">Side cover c [mm]</span><input id="i-cover-side" type="text" inputmode="decimal"></label>
+        </div>
+        <details class="rounded-lg border border-slate-700 bg-slate-900/40">
+          <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
+            <span class="text-slate-500">▸</span><span>Clear spacing (EC2 8.2) — k<sub>1</sub>, k<sub>2</sub> are NA parameters</span>
+          </summary>
+          <div class="grid grid-cols-3 gap-3 px-3 pb-3 pt-1">
+            <label><span class="field-label">k<sub>1</sub></span><input id="i-k1" type="text" inputmode="decimal"></label>
+            <label><span class="field-label">k<sub>2</sub></span><input id="i-k2" type="text" inputmode="decimal"></label>
+            <label><span class="field-label">d<sub>g</sub> — max. aggregate size [mm]</span><input id="i-dg" type="text" inputmode="decimal"></label>
+          </div>
+          <p class="px-3 pb-3 text-[11px] text-slate-500 leading-snug">
+            Minimum clear distance between parallel bars or horizontal layers, EC2 8.2(2): the
+            greatest of k<sub>1</sub>·Ø, (d<sub>g</sub> + k<sub>2</sub>) and 20 mm. Recommended
+            k<sub>1</sub> = 1, k<sub>2</sub> = 5. Applies both to bar spacing within a layer and
+            between stacked layers.
+          </p>
+        </details>
+        <p class="text-[11px] text-slate-500 leading-snug">
+          All number fields accept expressions: <span class="num text-slate-400">35+8</span>,
+          <span class="num text-slate-400">600/2</span>, <span class="num text-slate-400">20*5^2/8</span>.
+          The drawing is plain JavaScript and updates as you type — it never waits for the
+          calculation engine.
+        </p>
+      </div>
+      <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+        <div id="draw-geo" class="svg-fit"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 3 ARMERING ═══════════════ -->
+  <section id="s-arm" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">3 · Reinforcement</span>
+      <span id="arm-summary" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-5 space-y-3">
+
+      <!-- Korthånden er den RASKE veien inn. Hvert felt kan også redigeres i
+           radeditoren (✎) uten å kjenne grammatikken. -->
+      <div class="rounded-lg border border-sky-700/50 bg-sky-950/20 p-3">
+        <div class="flex items-center gap-2">
+          <span class="text-sky-400 text-sm shrink-0">＋</span>
+          <input id="sh-input" type="text" autocomplete="off" spellcheck="false"
+                 class="!bg-slate-900 !border-sky-700 !text-[15px] !py-2 font-mono"
+                 aria-label="Add reinforcement layer with shorthand">
+          <button type="button" id="sh-add"
+                  class="shrink-0 px-3 py-2 text-xs rounded bg-sky-700 hover:bg-sky-600 border border-sky-600">Add <kbd>⏎</kbd></button>
+        </div>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-500">
+          <span id="sh-hint" class="num"></span>
+          <span id="sh-preview" class="ml-auto num text-sky-300"></span>
+        </div>
+      </div>
+
+      <div id="layers" class="rounded-lg border border-slate-700 divide-y divide-slate-700/70 overflow-hidden"></div>
+
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <button type="button" id="add-layer" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">+ New layer (fill in fields)</button>
+        <button type="button" id="dup-last" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">⧉ Duplicate last <kbd>Alt+D</kbd></button>
+        <span id="arm-warn" class="text-amber-300"></span>
+        <span id="arm-total" class="ml-auto num text-slate-300"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 4 LASTVIRKNING ═══════════════ -->
+  <section id="s-last" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">4 · Loads</span>
+      <span id="load-summary" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div class="px-5 pb-5 space-y-3">
+      <div id="combos" class="rounded-lg border border-slate-700 divide-y divide-slate-700/70 overflow-hidden"></div>
+
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <button type="button" id="add-combo" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">+ Add combination</button>
+      </div>
+
+      <p class="text-[11px] text-slate-500 max-w-xl leading-snug">
+        N<sub>Ed</sub> keeps its sign — compression is negative. M<sub>Ed</sub> is signed too:
+        <b>sign convention follows fib structuralcodes — sagging (compression at the top face)
+        is negative</b>, which is the opposite of common Norwegian practice. V<sub>Ed</sub> is a
+        magnitude; its sign does not affect the shear capacity. The capacity check runs every
+        combination; the one with the highest utilisation within [N<sub>min</sub>, N<sub>max</sub>]
+        governs the headline numbers and the drawing.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 5 ANALYSE ═══════════════ -->
+  <section id="s-ana" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2"><span class="sec-h">5 · Analysis</span></div>
+    <div class="px-5 pb-5">
+      <div class="flex flex-wrap gap-1.5" id="ana-chips"></div>
+      <p id="ana-desc" class="text-[11px] text-slate-500 mt-2 max-w-md leading-snug"></p>
+      <p id="ana-active-combo" class="text-[11px] text-slate-500 mt-1 max-w-md leading-snug num"></p>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 6 BEREGN ═══════════════ -->
+  <section id="s-calc" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2"><span class="sec-h">6 · Calculate</span></div>
+    <div class="px-5 pb-5 space-y-3">
+      <div id="validation" class="space-y-2"></div>
+      <div class="flex flex-wrap items-center gap-4">
+        <button type="button" id="btn-run"
+                class="px-6 py-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold border border-sky-400/50 shadow-lg shadow-sky-900/40 flex items-center gap-3">
+          <span id="btn-run-label">Calculate</span> <kbd class="!bg-sky-900 !border-sky-500">Ctrl</kbd><kbd class="!bg-sky-900 !border-sky-500">Space</kbd>
+        </button>
+        <button type="button" id="btn-cancel" style="display:none"
+                class="px-4 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm">Cancel</button>
+        <div class="flex-1 min-w-[280px]">
+          <div id="engine-card" class="rounded-lg border border-slate-700 bg-slate-900/50 p-3"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 7 RESULTAT ═══════════════ -->
+  <section id="s-res" class="rounded-xl border border-slate-700 bg-slate-800/60">
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
+      <span class="sec-h">7 · Result</span>
+      <span id="res-summary" class="text-xs text-slate-500 num"></span>
+    </div>
+    <div id="res-body" class="px-5 pb-4"></div>
+    <details class="mx-5 mb-5 rounded-lg border border-slate-700 bg-slate-900/40">
+      <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200">Report details — project, author, date, note ▸</summary>
+      <div class="grid md:grid-cols-4 gap-3 px-3 pb-3">
+        <label><span class="field-label">Project</span><input id="doc-project" type="text"></label>
+        <label><span class="field-label">Title</span><input id="doc-title" type="text"></label>
+        <label><span class="field-label">Author</span><input id="doc-author" type="text"></label>
+        <label><span class="field-label">Date</span><input id="doc-date" type="date"></label>
+        <label class="md:col-span-4"><span class="field-label">Note</span><textarea id="doc-note" rows="2"></textarea></label>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 px-3 pb-3 text-xs">
+        <button type="button" id="doc-save-json" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">⬇ Save JSON</button>
+        <button type="button" id="doc-load-json" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">⬆ Load JSON</button>
+        <input type="file" id="doc-load-input" accept=".json" class="hidden">
+        <span class="text-slate-500">Save or load the whole setup — geometry, materials, reinforcement and load combinations — as a file.</span>
+      </div>
+      <div id="doc-load-notes" class="px-3 pb-3 space-y-1.5"></div>
+    </details>
+  </section>
+</main>
+
+<!-- ═══════ fast handlingslinje: «Beregn» i rekkevidde, og inspeksjonsstripa ═══════ -->
+<div class="fixed bottom-0 inset-x-0 z-30 border-t border-slate-700 bg-slate-900/95 backdrop-blur">
+  <div class="max-w-5xl mx-auto px-5 h-16 flex items-center gap-4">
+    <div id="bar-thumb" class="w-12 h-12 shrink-0 rounded border border-slate-700 bg-slate-800 p-1 overflow-hidden svg-fit"></div>
+    <div class="text-[12px] num leading-tight min-w-0">
+      <div id="bar-geo" class="text-slate-300 truncate"></div>
+      <div id="bar-arm" class="text-slate-500 truncate"></div>
+    </div>
+    <!-- Inspeksjonsstripa (hentet fra mockup B): η, M_Rd, x, x/d og bruddform,
+         slik at man ser hva en endring gjorde uten å rulle ned til resultatet. -->
+    <div id="bar-inspect" class="hidden md:flex items-center gap-5 ml-4 text-[12px]"></div>
+    <div class="ml-auto flex items-center gap-3 shrink-0">
+      <div id="bar-engine" class="text-[11px] text-slate-400 num text-right max-w-[220px] leading-tight hidden lg:block"></div>
+      <button type="button" id="btn-cancel-bar" style="display:none"
+              class="px-3 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm">Cancel</button>
+      <button type="button" id="btn-run-bar"
+              class="px-5 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 font-semibold text-sm border border-sky-400/50">
+        <span id="btn-run-bar-label">Calculate</span> <kbd class="!bg-sky-900 !border-sky-500 ml-1">⌃Space</kbd>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ hjelpeoverlegg ═══════════════ -->
+<div id="help" class="hidden fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-6">
+  <div class="max-w-md w-full rounded-xl border border-slate-600 bg-slate-800 p-5 space-y-3">
+    <div class="flex items-center"><h2 class="font-semibold">Keyboard</h2>
+      <button type="button" id="help-close" class="ml-auto text-slate-400 hover:text-white">✕</button></div>
+    <table class="w-full text-[13px]">
+      <tbody class="[&amp;_td]:py-1 [&amp;_td:first-child]:w-28">
+        <tr><td><kbd>Ctrl</kbd> <kbd>Space</kbd></td><td class="text-slate-300">Calculate — from anywhere, without leaving the mouse</td></tr>
+        <tr><td><kbd>Ctrl</kbd> <kbd>⏎</kbd></td><td class="text-slate-300">Calculate — alias for Ctrl+Space</td></tr>
+        <tr><td><kbd>A</kbd></td><td class="text-slate-300">Jump to the reinforcement line</td></tr>
+        <tr><td><kbd>⏎</kbd></td><td class="text-slate-300">Add the layer in the reinforcement line</td></tr>
+        <tr><td><kbd>↑</kbd></td><td class="text-slate-300">Recall the previous line</td></tr>
+        <tr><td><kbd>Alt</kbd> <kbd>D</kbd></td><td class="text-slate-300">Duplicate last layer</td></tr>
+        <tr><td><kbd>B</kbd> / <kbd>P</kbd></td><td class="text-slate-300">Beam / slab</td></tr>
+        <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></td><td class="text-slate-300">Bending / M–κ / M–N — bending is skipped when it is unavailable</td></tr>
+        <tr><td><kbd>?</kbd></td><td class="text-slate-300">This list</td></tr>
+      </tbody>
+    </table>
+    <p class="text-[11px] text-slate-500">The letter shortcuts only work when you are not in a text field.</p>
+  </div>
+</div>
+
+<!-- ═══════════════ rapportoverlegg (formet av print.css, fylt av report.js) ═══════════════ -->
+<div id="report-overlay" hidden>
+  <div class="report-toolbar">
+    <b>Report</b>
+    <button type="button" id="report-print" class="px-2.5 py-1 rounded bg-sky-700 hover:bg-sky-600 border border-sky-600">Print / PDF</button>
+    <button type="button" id="report-guides" class="px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600" data-on="false">Show page guides</button>
+    <span class="text-slate-400">A4 portrait · 174 mm print width</span>
+    <button type="button" id="report-close" class="ml-auto px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">Close ✕</button>
+  </div>
+  <div class="report-scroll">
+    <div class="report-content"></div>
+  </div>
+</div>
+
+<!--
+  Utskriftsroten MÅ være et DIREKTE barn av <body>: hele utskriftsregelen i
+  print.css er `body > * { display:none }` og `body > #cscPrintRoot { display:block }`.
+  Nestes den inn i en beholder, blir utskriften tom.
+-->
+<div id="cscPrintRoot" aria-hidden="true" hidden></div>
+
+<script type="module">
+/**
+ * MODULE_CONFIG og window.ModuleAPI — arbeidsflytlaget (plan §9).
+ *
+ * FEM AVVIK FRA `plan_IO-structure_for_modules.md`, alle dokumentert i
+ * README.md og gjentatt kort her fordi det er her de møter konsumenten:
+ *   1. `calculate()` er ASYNKRON og gir et Promise. Den venter selv på
+ *      initialisering framfor å avvise.
+ *   2. Resultatformen er plan §5.2, ikke `{success, inputs, ...}`. `outputs[].path`
+ *      peker derfor inn i §5.2.
+ *   3. `calculate()` er ikke en ren funksjon av argumentet — den avhenger av
+ *      worker-tilstand.
+ *   4. «Returner ALLE mellomverdier» er ikke oppnåelig: `structuralcodes`
+ *      eksponerer ikke sine indre trinn.
+ *   5. Lastvirkningen er en LISTE av kombinasjoner (`combos` + `activeCombo`),
+ *      ikke to skalarer `loads.N_Ed`/`loads.M_Ed`. En konsument som satte de
+ *      to gamle feltene direkte må sette `combos` i stedet (endringsrunde 2 §4.8).
+ * I tillegg finnes `ready(): Promise<void>`, som ikke står i spesifikasjonen.
+ */
+import { startApp } from './js/main.js';
+import { MODULE_ID, MODULE_NAME, MODULE_VERSION } from './js/meta.js';
+
+const app = startApp();
+
+const MODULE_CONFIG = {
+  module_id: MODULE_ID,
+  module_name: MODULE_NAME,
+  version: MODULE_VERSION,
+  standard: 'Eurocode 2 (EN 1992-1-1:2004) — ultimate limit state',
+  description:
+    'Bending resistance, moment–curvature and N–M capacity envelope for reinforced ' +
+    'concrete cross-sections, computed by fib structuralcodes 0.7.2 in the browser.',
+
+  // `inputs` speiler tilstanden i plan §4.1. Sammensatte felt (`layers`, `combos`)
+  // er oppgitt som `object`/`array`: en flat felt-for-felt-beskrivelse av en liste
+  // med varierende lengde ville vært en løgn om formen.
+  inputs: {
+    sectionType: { label: 'Section type', symbol: '', type: 'select', unit: '',
+      options: ['beam', 'slab'], default: 'beam', required: true, category: 'geometry',
+      description: 'beam = b×h, slab = always 1000 mm wide and everything per metre' },
+    'geometry.b': { label: 'Width', symbol: 'b', type: 'expression', unit: 'mm',
+      default: 300, min: 1, required: true, category: 'geometry',
+      description: 'Locked to 1000 for a slab' },
+    'geometry.h': { label: 'Height', symbol: 'h', type: 'expression', unit: 'mm',
+      default: 600, min: 1, required: true, category: 'geometry', description: 'Overall section height' },
+    cover: { label: 'Cover', symbol: 'c', type: 'expression', unit: 'mm',
+      default: 35, min: 0, required: true, category: 'geometry',
+      description: 'To the outer edge of the reinforcement. Used for the derived d_c' },
+    stirrup_dia: { label: 'Stirrup diameter', symbol: 'Ø_b', type: 'expression', unit: 'mm',
+      default: 8, min: 0, required: false, category: 'geometry', description: 'Beam only' },
+    cover_side: { label: 'Side cover', symbol: 'c_side', type: 'expression', unit: 'mm',
+      default: 35, min: 0, required: false, category: 'geometry', description: 'Beam only' },
+    'spacing.k1': { label: 'Clear spacing factor k1', symbol: 'k_1', type: 'expression', unit: '-',
+      default: 1.0, required: true, category: 'geometry',
+      description: 'EC2 8.2(2) NA parameter, recommended 1.0' },
+    'spacing.k2': { label: 'Clear spacing factor k2', symbol: 'k_2', type: 'expression', unit: 'mm',
+      default: 5.0, required: true, category: 'geometry',
+      description: 'EC2 8.2(2) NA parameter, recommended 5' },
+    'spacing.d_g': { label: 'Maximum aggregate size', symbol: 'd_g', type: 'expression', unit: 'mm',
+      default: 16, required: true, category: 'geometry',
+      description: 'Not an NA parameter, but enters the same EC2 8.2(2) formula' },
+    'concrete.fck': { label: 'Concrete strength', symbol: 'f_ck', type: 'number', unit: 'MPa',
+      default: 30, required: true, category: 'material', description: 'A NUMBER, not "C30/37"' },
+    'concrete.gamma_c': { label: 'Concrete material factor', symbol: 'γ_c', type: 'expression',
+      unit: '-', default: 1.5, min: 0.0001, required: true, category: 'material',
+      description: 'Cannot be 0 — the engine silently treats 0 as 1.5' },
+    'concrete.alpha_cc': { label: 'Long-term factor', symbol: 'α_cc', type: 'expression',
+      unit: '-', default: 0.85, min: 0.0001, required: true, category: 'material',
+      description: 'Cannot be 0 — the engine silently treats 0 as 1.0' },
+    'concrete.law': { label: 'Concrete stress–strain law', symbol: '', type: 'select', unit: '',
+      options: ['parabolarectangle', 'bilinearcompression'], default: 'parabolarectangle',
+      required: true, category: 'material', description: 'Governs which strain limits apply' },
+    'steel.fyk': { label: 'Yield strength', symbol: 'f_yk', type: 'number', unit: 'MPa',
+      default: 500, required: true, category: 'material', description: '' },
+    'steel.Es': { label: 'Reinforcement elastic modulus', symbol: 'E_s', type: 'expression', unit: 'MPa',
+      default: 200000, required: true, category: 'material', description: '' },
+    'steel.k': { label: 'Ductility ratio', symbol: 'k = f_tk/f_yk', type: 'expression',
+      unit: '-', default: 1.08, min: 1, required: true, category: 'material',
+      description: 'ALWAYS set — f_tk = k·f_yk is required by the engine' },
+    'steel.epsuk': { label: 'Characteristic rupture strain', symbol: 'ε_uk', type: 'expression', unit: '-',
+      default: 0.075, required: true, category: 'material', description: '' },
+    'steel.gamma_eps': { label: 'Strain factor', symbol: 'γ_ε', type: 'expression', unit: '-',
+      default: 0.9, required: true, category: 'material', description: 'ε_ud = ε_uk·γ_ε' },
+    'steel.gamma_s': { label: 'Reinforcement material factor', symbol: 'γ_s', type: 'expression',
+      unit: '-', default: 1.15, min: 0.0001, required: true, category: 'material', description: '' },
+    'steel.law': { label: 'Steel stress–strain law', symbol: '', type: 'select', unit: '',
+      options: ['elasticperfectlyplastic', 'elasticplastic'], default: 'elasticperfectlyplastic',
+      required: true, category: 'material', description: '' },
+    layers: { label: 'Reinforcement layers', symbol: 'A_s', type: 'object', unit: '',
+      default: [], required: true, category: 'geometry',
+      description: 'List of {id, mode: bars|spacing, dia, count|spacing, edge: bottom|top, dc, dc_auto}' },
+    shear: { label: 'Shear reinforcement', symbol: '', type: 'object', unit: '',
+      default: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] }, required: true,
+      category: 'geometry',
+      description: '{strut_angle_deg [21.8-45, EC2 6.2.3(2)], z_factor [z = z_factor*d], ' +
+        'stirrups: list of {id, dia, spacing, legs, fywk, alpha}}. An empty stirrups list ' +
+        'means no shear reinforcement (the V_Rd,c path), not "do not check shear" — ' +
+        'section.shear is always sent, and shear is evaluated for every load combination.' },
+    combos: { label: 'Load combinations', symbol: '', type: 'array', unit: '',
+      default: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
+      required: true, category: 'loads',
+      description: 'List of {id, name, N_Ed [kN, compression negative], M_Ed [kNm, SIGNED — ' +
+        'sagging negative, hogging positive, following fib structuralcodes — NOT common ' +
+        'Norwegian practice], V_Ed [kN, magnitude, the sign does not matter]}. Replaces the ' +
+        'old scalar loads.N_Ed/loads.M_Ed. There is no separate "direction" field — the sign ' +
+        'of M_Ed IS the direction.' },
+    activeCombo: { label: 'Active combination', symbol: '', type: 'string', unit: '',
+      default: 'C1', required: true, category: 'loads',
+      description: 'Combination id used for moment_curvature. Ignored by bending and ' +
+        'nm_domain, which run every combination and report the governing one.' },
+    analysis: { label: 'Analysis', symbol: '', type: 'select', unit: '',
+      options: ['bending', 'moment_curvature', 'nm_domain'], default: 'bending',
+      required: true, category: 'meta', description: '' },
+  },
+
+  // AVVIK 2: `path` peker inn i plan §5.2, ikke i spesifikasjonens
+  // `results.*`/`intermediate_calculations.*`.
+  outputs: {
+    M_Rd: { label: 'Moment resistance', symbol: 'M_Rd', type: 'number', unit: 'Nmm',
+      precision: 0, category: 'primary', path: 'bending.M_Rd' },
+    utilisation: { label: 'Utilisation (vertical)', symbol: 'η', type: 'number', unit: '-',
+      precision: 3, category: 'primary', path: 'bending.utilisation' },
+    x: { label: 'Compression zone height', symbol: 'x', type: 'number', unit: 'mm',
+      precision: 2, category: 'primary', path: 'bending.x' },
+    x_over_d: { label: 'Relative compression zone height', symbol: 'x/d', type: 'number', unit: '-',
+      precision: 4, category: 'primary', path: 'bending.x_over_d' },
+    failure_mode: { label: 'Failure mode', symbol: '', type: 'string', unit: '',
+      precision: 0, category: 'primary', path: 'bending.failure_mode' },
+    eps_c_top: { label: 'Concrete strain at compression face', symbol: 'ε_c', type: 'number', unit: '-',
+      precision: 6, category: 'intermediate', path: 'bending.eps_c_top' },
+    eps_s_max: { label: 'Largest reinforcement strain', symbol: 'ε_s,max', type: 'number', unit: '-',
+      precision: 6, category: 'intermediate', path: 'bending.eps_s_max' },
+    eps_a: { label: 'Strain at the origin', symbol: 'ε_a', type: 'number', unit: '-',
+      precision: 8, category: 'intermediate', path: 'bending.eps_a' },
+    chi_y: { label: 'Curvature', symbol: 'χ_y', type: 'number', unit: '1/mm',
+      precision: 10, category: 'intermediate', path: 'bending.chi_y' },
+    d_eff: { label: 'Effective depth (EC2, tension reinforcement)', symbol: 'd', type: 'number',
+      unit: 'mm', precision: 2, category: 'intermediate', path: 'section_props.d_eff' },
+    As_total: { label: 'Reinforcement area', symbol: 'ΣA_s', type: 'number', unit: 'mm²',
+      precision: 2, category: 'intermediate', path: 'section_props.As_total' },
+    As_min: { label: 'Minimum reinforcement', symbol: 'A_s,min', type: 'number', unit: 'mm²',
+      precision: 2, category: 'intermediate', path: 'section_props.As_min' },
+    As_max: { label: 'Maximum reinforcement', symbol: 'A_s,max', type: 'number', unit: 'mm²',
+      precision: 2, category: 'intermediate', path: 'section_props.As_max' },
+    rho: { label: 'Reinforcement ratio', symbol: 'ρ', type: 'number', unit: '-',
+      precision: 6, category: 'intermediate', path: 'section_props.rho' },
+    n_min: { label: 'Lower axial limit', symbol: 'N_min', type: 'number', unit: 'N',
+      precision: 1, category: 'intermediate', path: 'section_props.n_min' },
+    n_max: { label: 'Upper axial limit', symbol: 'N_max', type: 'number', unit: 'N',
+      precision: 1, category: 'intermediate', path: 'section_props.n_max' },
+    fcd: { label: 'Design concrete strength', symbol: 'f_cd', type: 'number', unit: 'MPa',
+      precision: 3, category: 'intermediate', path: 'materials.fcd' },
+    fyd: { label: 'Design yield strength', symbol: 'f_yd', type: 'number', unit: 'MPa',
+      precision: 3, category: 'intermediate', path: 'materials.fyd' },
+    all_ok: { label: 'All checks OK', symbol: '', type: 'boolean', unit: '',
+      precision: 0, category: 'status', path: 'checks.all_ok' },
+    ok: { label: 'The calculation produced an answer', symbol: '', type: 'boolean', unit: '',
+      precision: 0, category: 'status', path: 'ok' },
+  },
+};
+
+function getOutputByPath(path, results) {
+  if (!results) return undefined;
+  return String(path).split('.').reduce((obj, key) => (obj == null ? undefined : obj[key]), results);
+}
+
+window.ModuleAPI = {
+  getConfig: () => MODULE_CONFIG,
+
+  /** Hele tilstanden (plan §4.1) som en ren kopi. */
+  getInputs: () => app.store.snapshot(),
+
+  /** Erstatter tilstanden. Nullstiller resultatet — det gjaldt gamle tall. */
+  setInputs: (inputs) => {
+    app.store.replaceState(inputs || {});
+    app.ui.render();
+    return app.store.snapshot();
+  },
+
+  /**
+   * AVVIK 1 og 3: asynkron, og avhengig av worker-tilstand. Venter selv på at
+   * motoren er oppe i stedet for å avvise.
+   */
+  calculate: async (inputs) => {
+    if (inputs) window.ModuleAPI.setInputs(inputs);
+    await app.ready();
+    return app.calculate();
+  },
+
+  /** Ikke i spesifikasjonen, men nødvendig: 10 MB kjøremotor tar tid. */
+  ready: () => app.ready(),
+
+  getLastResults: () => window.lastCalculationResults || null,
+  getLastInputs: () => window.lastCalculationInputs || null,
+
+  getOutput: (key) => {
+    const def = MODULE_CONFIG.outputs[key];
+    if (!def) return undefined;
+    return getOutputByPath(def.path, window.lastCalculationResults);
+  },
+
+  getAllOutputs: () => {
+    const out = {};
+    for (const [key, def] of Object.entries(MODULE_CONFIG.outputs)) {
+      out[key] = getOutputByPath(def.path, window.lastCalculationResults);
+    }
+    return out;
+  },
+
+  hasResults: () => Boolean(window.lastCalculationResults),
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+/**
+ * serialize.test.mjs — lagre/laste-kontrakten (endringsrunde 2 §5.1).
+ *
+ * `fromDocument` skal ALDRI kaste — en korrupt eller feilvalgt fil er en
+ * hverdagslig brukerfeil, ikke en programfeil. Halve fila handler derfor om
+ * å mate den søppel og se at den svarer med et notat i stedet for et unntak.
+ */
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { DOCUMENT_FORMAT, DOCUMENT_SCHEMA, fromDocument, toDocument } from '../js/serialize.js';
+import { defaultState } from '../js/store.js';
+import { MODULE_VERSION } from '../js/meta.js';
+
+test('toDocument: konvolutt med format, doc_schema, app_version, saved_at og state', () => {
+  const state = { ...defaultState(), result: { M_Rd: 123 } };
+  const doc = toDocument(state);
+  assert.equal(doc.format, DOCUMENT_FORMAT);
+  assert.equal(doc.doc_schema, DOCUMENT_SCHEMA);
+  assert.equal(doc.app_version, MODULE_VERSION);
+  assert.ok(!Number.isNaN(Date.parse(doc.saved_at)));
+  // `result` er ALDRI med — det gjelder tall som var sanne DA fila ble lagret.
+  assert.ok(!('result' in doc.state));
+  assert.equal(doc.state.geometry.b, 300);
+});
+
+test('rundtur: fromDocument(toDocument(s)).state er dypt lik s, uten særtilfeller', () => {
+  const s = { ...defaultState(), result: null };
+  const { state, notes } = fromDocument(toDocument(s));
+  assert.deepEqual(state, s);
+  assert.deepEqual(notes, []);
+});
+
+test('rundtur med to lag og to kombinasjoner, signert M_Ed og V_Ed, uten aksialkraft', () => {
+  const s = {
+    ...defaultState(),
+    layers: [
+      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 53, dc_auto: true },
+      { id: 'L2', mode: 'bars', dia: 12, count: 2, edge: 'top', dc: 41, dc_auto: false },
+    ],
+    combos: [
+      { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: -150, V_Ed: 0 },
+      { id: 'C2', name: 'ULS 2', N_Ed: 0, M_Ed: 250, V_Ed: 120 },
+    ],
+    activeCombo: 'C2',
+    result: null,
+  };
+  const { state, notes } = fromDocument(toDocument(s));
+  assert.deepEqual(state, s);
+  assert.deepEqual(notes, []);
+});
+
+test('fromDocument(null/{}/{format:"annet"}) gjenkjenner ikke fila, og kaster aldri', () => {
+  for (const bad of [null, {}, { format: 'annet' }, undefined, 42, 'tekst', []]) {
+    assert.doesNotThrow(() => fromDocument(bad));
+    const { state, notes } = fromDocument(bad);
+    assert.equal(state, null);
+    assert.deepEqual(notes, [{ code: 'document_not_recognised', severity: 'error' }]);
+  }
+});
+
+test('fil uten spacing: standard {k1:1,k2:5,d_g:16} og ett document_field_defaulted', () => {
+  const doc = toDocument(defaultState());
+  delete doc.state.spacing;
+  const { state, notes } = fromDocument(doc);
+  assert.deepEqual(state.spacing, { k1: 1, k2: 5, d_g: 16 });
+  const defaulted = notes.filter((n) => n.code === 'document_field_defaulted');
+  assert.equal(defaulted.length, 1);
+  assert.equal(defaulted[0].field, 'spacing');
+});
+
+test('fil som mangler ETT felt i en nøstet gruppe: standardverdien fylles inn stille', () => {
+  const doc = toDocument(defaultState());
+  delete doc.state.spacing.k2; // ikke hele gruppa, bare ett felt i den
+  const { state, notes } = fromDocument(doc);
+  assert.deepEqual(state.spacing, { k1: 1, k2: 5, d_g: 16 });
+  // Toppnivånøkkelen `spacing` FANTES — ingen defaulted-melding for den.
+  assert.ok(!notes.some((n) => n.code === 'document_field_defaulted' && n.field === 'spacing'));
+});
+
+test('fil med state.tullefelt: ett document_field_ignored, resten uendret', () => {
+  const doc = toDocument(defaultState());
+  doc.state.tullefelt = 'noe rart';
+  const { state, notes } = fromDocument(doc);
+  const ignored = notes.filter((n) => n.code === 'document_field_ignored');
+  assert.equal(ignored.length, 1);
+  assert.equal(ignored[0].field, 'tullefelt');
+  assert.ok(!('tullefelt' in state));
+  assert.deepEqual(state, { ...defaultState(), result: null });
+});
+
+test('layers[i]/combos[i] renses IKKE feltvis — normaliseres gjennom createLayer/createCombo', () => {
+  const doc = toDocument(defaultState());
+  // `mode: 'spacing'` mangler legitimt `count`, og har et felt slabene bruker
+  // som bjelker ikke har. En feltvis rensing ville kastet dette.
+  doc.state.layers = [{ id: 'L1', mode: 'spacing', dia: 12, spacing: 150, edge: 'bottom', dc: 31, dc_auto: true }];
+  doc.state.sectionType = 'slab';
+  doc.state.geometry = { b: 1000, h: 200 };
+  const { state } = fromDocument(doc);
+  assert.equal(state.layers[0].mode, 'spacing');
+  assert.equal(state.layers[0].spacing, 150);
+  assert.ok(!('count' in state.layers[0]));
+});
+
+test('state.result settes ALLTID til null, selv om fila skulle inneholde noe annet', () => {
+  const doc = toDocument(defaultState());
+  doc.state.result = { M_Rd: 999 }; // skal ikke kunne skje via toDocument, men fromDocument er robust uansett
+  const { state } = fromDocument(doc);
+  assert.equal(state.result, null);
+});
+
+/* ---------------- endringsrunde 4 §8 — shear i NESTED_GROUPS ---------------- */
+
+test('fil uten shear: standardverdien {strut_angle_deg:45, z_factor:0.9, stirrups:[]} og ett document_field_defaulted', () => {
+  const doc = toDocument(defaultState());
+  delete doc.state.shear;
+  const { state, notes } = fromDocument(doc);
+  assert.deepEqual(state.shear, { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] });
+  const defaulted = notes.filter((n) => n.code === 'document_field_defaulted' && n.field === 'shear');
+  assert.equal(defaulted.length, 1);
+});
+
+test('fil med DELVIS shear-objekt: manglende felt fylles fra standarden, IKKE undefined (§8, five-things #5)', () => {
+  const doc = toDocument(defaultState());
+  // Bare z_factor lagret — strut_angle_deg og stirrups mangler.
+  doc.state.shear = { z_factor: 0.8 };
+  const { state, notes } = fromDocument(doc);
+  assert.deepEqual(state.shear, { strut_angle_deg: 45, z_factor: 0.8, stirrups: [] });
+  assert.ok(state.shear.strut_angle_deg !== undefined, 'strut_angle_deg skal IKKE bli undefined');
+  // Toppnivånøkkelen `shear` FANTES i fila — ingen defaulted-melding for den.
+  assert.ok(!notes.some((n) => n.code === 'document_field_defaulted' && n.field === 'shear'));
+});
+
+test('fil med FULLT shear-objekt inkludert bøylerader: bevares uendret', () => {
+  const doc = toDocument(defaultState());
+  doc.state.shear = {
+    strut_angle_deg: 30,
+    z_factor: 0.85,
+    stirrups: [{ id: 'S1', dia: 10, spacing: 200, legs: 4, fywk: 400, alpha: 90 }],
+  };
+  const { state } = fromDocument(doc);
+  assert.deepEqual(state.shear, doc.state.shear);
+});
+
+/* ---------------- endringsrunde 4 §2 — normalisering av analysis ved N_Ed ≠ 0 ---------------- */
+
+test('fil med analysis:"bending" og N_Ed ≠ 0 normaliseres til nm_domain, med en analysis_forced_to_nm_domain-note', () => {
+  const doc = toDocument(defaultState());
+  doc.state.analysis = 'bending';
+  doc.state.combos = [{ id: 'C1', name: 'ULS 1', N_Ed: -500, M_Ed: 0, V_Ed: 0 }];
+  const { state, notes } = fromDocument(doc);
+  assert.equal(state.analysis, 'nm_domain');
+  const forced = notes.filter((n) => n.code === 'analysis_forced_to_nm_domain');
+  assert.equal(forced.length, 1);
+  assert.equal(forced[0].severity, 'info');
+});
+
+test('fil med analysis:"bending" og N_Ed = 0 for ALLE kombinasjoner: ingen normalisering', () => {
+  const doc = toDocument(defaultState());
+  doc.state.analysis = 'bending';
+  doc.state.combos = [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 150, V_Ed: 0 }];
+  const { state, notes } = fromDocument(doc);
+  assert.equal(state.analysis, 'bending');
+  assert.ok(!notes.some((n) => n.code === 'analysis_forced_to_nm_domain'));
+});
+
+test('fil med analysis:"moment_curvature" og N_Ed ≠ 0: IKKE normalisert — regelen gjelder bare bending', () => {
+  const doc = toDocument(defaultState());
+  doc.state.analysis = 'moment_curvature';
+  doc.state.combos = [{ id: 'C1', name: 'ULS 1', N_Ed: -500, M_Ed: 0, V_Ed: 0 }];
+  const { state, notes } = fromDocument(doc);
+  assert.equal(state.analysis, 'moment_curvature');
+  assert.ok(!notes.some((n) => n.code === 'analysis_forced_to_nm_domain'));
+});

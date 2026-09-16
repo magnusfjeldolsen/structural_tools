@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-09-07T12:45:34.636Z",
-    "total_modules": 28,
+    "generated": "2026-09-16T18:16:07.485Z",
+    "total_modules": 29,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
@@ -153,6 +153,51 @@
         "structural calculator"
       ],
       "url": "./concrete_minimum_reinforcement/index.html",
+      "category": "concrete"
+    },
+    {
+      "id": "concrete_section_calculator",
+      "title": "Concrete section ULS — bending, shear, M–κ and N–M to EC2",
+      "description": "Ultimate limit state capacity for reinforced concrete cross-sections to Eurocode 2, computed by fib structuralcodes in the browser. Beam b×h or slab per metre width, sagging and hogging moment, several reinforcement layers and load combinations. Gives M_Rd at a given N_Ed, neutral axis, strain and stress per layer, failure mode, A_s,min and A_s,max, moment–curvature curve and the full M–N capacity envelope with every load point plotted. Shear capacity to EC2 6.2 with and without stirrups, V_Rd,c, V_Rd,s and V_Rd,max per load combination, including the effect of axial force. Print-ready A4 report.",
+      "keywords": [
+        "concrete",
+        "concrete section",
+        "reinforced concrete",
+        "ultimate limit state",
+        "uls",
+        "eurocode 2",
+        "ec2",
+        "moment capacity",
+        "m_rd",
+        "bending resistance",
+        "neutral axis",
+        "strain",
+        "moment-curvature",
+        "m-n diagram",
+        "interaction domain",
+        "minimum reinforcement",
+        "as_min",
+        "reinforcement layers",
+        "beam",
+        "slab",
+        "load combinations",
+        "sagging",
+        "hogging",
+        "shear",
+        "shear capacity",
+        "shear reinforcement",
+        "stirrups",
+        "links",
+        "v_rd",
+        "vrdc",
+        "vrds",
+        "ec2 6.2",
+        "axial force",
+        "structuralcodes",
+        "pyodide",
+        "concrete design"
+      ],
+      "url": "./concrete_section_calculator/index.html",
       "category": "concrete"
     },
     {

@@ -749,6 +749,54 @@
         <p class="text-gray-300 max-w-2xl mx-auto">Ultimate Limit State calculations for concrete structural elements</p>
       </div>
       
+      <!-- Row 0: Concrete Section Calculator (new) -->
+      <div class="grid md:grid-cols-1 gap-8 mb-8">
+
+        <!-- Concrete Section Calculator -->
+        <div class="tool-card rounded-xl p-8">
+          <div class="flex items-center mb-4">
+            <div class="w-12 h-12 bg-amber-500 rounded-lg flex items-center justify-center mr-4">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 17l4-6 3 4 5-8" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white">Concrete Section Calculator</h3>
+          </div>
+
+          <p class="text-gray-300 mb-6 leading-relaxed">
+            ULS capacity of reinforced concrete beams and slabs, computed in the browser by the
+            fib <strong>structuralcodes</strong> package running under WebAssembly. Bending
+            resistance, shear capacity to EC2 6.2 with or without stirrups, moment&ndash;curvature
+            and the full M&ndash;N interaction domain, with every load combination plotted against the
+            capacity envelope and an A4 report.
+          </p>
+
+          <div class="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+            <p class="text-yellow-300 text-sm font-medium">
+              &#9888;&#65039; Under Development: This tool is new and still being actively developed &mdash; expect rough edges.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap gap-2 mb-6">
+            <span class="px-3 py-1 bg-amber-500/20 text-amber-300 rounded-full text-sm">ULS Design</span>
+            <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">Moment&ndash;Curvature</span>
+            <span class="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-sm">M&ndash;N Domain</span>
+            <span class="px-3 py-1 bg-sky-500/20 text-sky-300 rounded-full text-sm">Shear EC2 6.2</span>
+            <span class="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-sm">structuralcodes</span>
+            <span class="px-3 py-1 bg-rose-500/20 text-rose-300 rounded-full text-sm">Pyodide</span>
+          </div>
+
+          <a href="./concrete_section_calculator/index.html"
+             class="inline-flex items-center px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg transition group">
+            Launch Calculator
+            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+      </div>
+
       <!-- Row 1: Concrete Slab Design and Concrete Beam Design -->
       <div class="grid md:grid-cols-2 gap-8 mb-8">
 

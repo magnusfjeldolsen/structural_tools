@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-BFVZQQ2LYN');
+  </script>
+
+  <meta charset="UTF-8">
+  <title>Røyktest — motoren i nettleseren</title>
+  <style>
+    body { font: 13px/1.5 ui-monospace, Consolas, monospace; background:#0f172a; color:#e2e8f0;
+           margin:0; padding:16px; }
+    h1 { font-size:15px; margin:0 0 4px; }
+    p.lead { color:#94a3b8; margin:0 0 14px; max-width:70ch; }
+    #log { white-space:pre-wrap; border:1px solid #334155; padding:10px; border-radius:6px;
+           background:#1e293b; max-height:60vh; overflow:auto; }
+    .ok { color:#4ade80; } .bad { color:#f87171; } .dim { color:#64748b; }
+  </style>
+</head>
+<body>
+<h1>Røyktest — motoren i nettleseren</h1>
+<p class="lead">
+  Den eneste delen av modulen som ikke kan verifiseres fra kommandolinja: at Pyodide 314
+  laster som <em>modulworker</em>, at det vendored hjulet godtas av <code>loadPackage</code>
+  over HTTP, at stubbene for <code>triangle</code> og <code>scipy</code> installeres før
+  <code>structuralcodes</code> importeres, og at motoren gir samme tall som skrivebordet.
+  Fasit er <code>fixtures/result-bending-beam-300x600.json</code>.
+</p>
+<div id="log">starter…</div>
+
+<script type="module">
+const logEl = document.getElementById('log');
+const t0 = performance.now();
+const line = (s, cls = '') => {
+  const ms = String(Math.round(performance.now() - t0)).padStart(6);
+  logEl.innerHTML += `\n<span class="dim">${ms} ms</span>  <span class="${cls}">${s}</span>`;
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log(`[smoke ${ms}ms] ${s}`);
+};
+window.__smoke = { done: false, ok: false, lines: [] };
+
+// Pyodide 314 er en ES-modul; klassisk worker VIRKER IKKE.
+const worker = new Worker(new URL('../workers/solver-worker.mjs', import.meta.url),
+                          { type: 'module' });
+
+const payload = await (await fetch(new URL('./fixtures/payload-beam-300x600.json',
+                                           import.meta.url))).json();
+const expect = await (await fetch(new URL('./fixtures/result-bending-beam-300x600.json',
+                                          import.meta.url))).json();
+
+let lastPct = -1;
+worker.onerror = (e) => {
+  line(`WORKER-FEIL: ${e.message}`, 'bad');
+  window.__smoke = { done: true, ok: false, error: e.message };
+};
+worker.onmessage = ({ data }) => {
+  const { type, payload: p } = data;
+  if (type === 'progress') {
+    if (p.pct !== lastPct) { lastPct = p.pct; line(`  ${String(p.pct).padStart(3)} %  ${p.phase}  ${p.message ?? ''}`, 'dim'); }
+    return;
+  }
+  if (type === 'ready') {
+    line(`KLAR: ${p.runtime}, structuralcodes ${p.structuralcodes_version}`, 'ok');
+    line('kjører bøyekapasitet for referansebjelken…');
+    worker.postMessage({ type: 'run', msgId: 'run-1', payload });
+    return;
+  }
+  if (type === 'error') {
+    line(`FEIL: ${p.message}`, 'bad');
+    line(p.detail ?? '', 'dim');
+    window.__smoke = { done: true, ok: false, error: p.message, detail: p.detail };
+    return;
+  }
+  if (type === 'result') {
+    if (!p.ok) {
+      line(`motoren svarte ok:false — ${p.error?.message}`, 'bad');
+      window.__smoke = { done: true, ok: false, error: p.error?.message };
+      return;
+    }
+    const got = p.bending.M_Rd, want = expect.bending.M_Rd;
+    const rel = Math.abs(got - want) / Math.abs(want);
+    line(`M_Rd = ${got} Nmm`);
+    line(`fasit = ${want} Nmm`);
+    line(`relativt avvik = ${rel.toExponential(3)}`, rel < 1e-9 ? 'ok' : 'bad');
+    line(`x = ${p.bending.x}  x/d = ${p.bending.x_over_d}  ${p.bending.failure_mode}`);
+    line(`d_eff = ${p.section_props.d_eff}  A_s,min = ${p.section_props.As_min}`);
+    line(`runtime = ${p.meta.runtime}  scipy = ${p.meta.scipy}  ${p.meta.wall_time_ms} ms`);
+    const ok = rel < 1e-9;
+    line(ok ? 'RØYKTEST BESTÅTT' : 'RØYKTEST FEILET', ok ? 'ok' : 'bad');
+    window.__smoke = { done: true, ok, M_Rd: got, rel, meta: p.meta,
+                       section_props: p.section_props, bending: p.bending };
+  }
+};
+
+line('laster motoren (Pyodide 314 + numpy + shapely + vendored hjul, ~10 MB)…');
+worker.postMessage({ type: 'init', msgId: 'init-1' });
+</script>
+</body>
+</html>
