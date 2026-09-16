@@ -1,0 +1,148 @@
+"""Pure-Python stand-in for the `triangle` package (Shewchuk bindings).
+
+Implements only `triangulate(tri, opts)` with the subset of behaviour that
+`structuralcodes` relies on:
+
+  input  : {'vertices': (N,2), 'segments': (M,2), 'holes': (K,2) optional}
+  opts   : string, e.g. 'p', 'pq30.0Aa1234.5o1'
+  output : {'vertices': (V,2), 'triangles': (T,3), 'segments', 'holes'}
+
+Strategy: rebuild the shapely polygon from the PSLG, sprinkle Steiner points
+(densified boundary + interior grid) sized from the `a<max_area>` switch,
+run an unconstrained Delaunay via scipy, then drop every triangle whose
+centroid lies outside the polygon.
+"""
+
+import re
+
+import numpy as np
+from scipy.spatial import Delaunay
+from shapely.geometry import MultiPoint, Polygon
+from shapely.prepared import prep
+
+__version__ = '0.0.0-shim'
+
+
+def _rings_from_segments(vertices, segments):
+    """Walk the segment graph and return closed vertex-index loops."""
+    adj = {}
+    for a, b in segments:
+        adj.setdefault(int(a), []).append(int(b))
+        adj.setdefault(int(b), []).append(int(a))
+    seen = set()
+    rings = []
+    for start in adj:
+        if start in seen:
+            continue
+        ring = [start]
+        seen.add(start)
+        prev, cur = None, start
+        while True:
+            nxt = None
+            for cand in adj[cur]:
+                if cand != prev and cand not in seen:
+                    nxt = cand
+                    break
+            if nxt is None:
+                break
+            ring.append(nxt)
+            seen.add(nxt)
+            prev, cur = cur, nxt
+        if len(ring) >= 3:
+            rings.append(ring)
+    return rings
+
+
+def _polygon_from_pslg(vertices, segments):
+    rings = _rings_from_segments(vertices, segments)
+    polys = [Polygon(vertices[r]) for r in rings if len(r) >= 3]
+    polys = [p for p in polys if p.area > 0]
+    if not polys:
+        return Polygon(vertices)
+    polys.sort(key=lambda p: p.area, reverse=True)
+    shell = polys[0]
+    holes = [list(p.exterior.coords) for p in polys[1:]]
+    return Polygon(list(shell.exterior.coords), holes)
+
+
+def _parse_max_area(opts):
+    m = re.search(r'a([0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)', opts or '')
+    return float(m.group(1)) if m else None
+
+
+def _densify(coords, h):
+    out = []
+    for i in range(len(coords) - 1):
+        (x0, y0), (x1, y1) = coords[i], coords[i + 1]
+        L = np.hypot(x1 - x0, y1 - y0)
+        n = max(1, int(np.ceil(L / h)))
+        for k in range(n):
+            t = k / n
+            out.append((x0 + t * (x1 - x0), y0 + t * (y1 - y0)))
+    return out
+
+
+def triangulate(tri, opts=''):
+    """Triangulate a PSLG. Drop-in subset of `triangle.triangulate`."""
+    vertices = np.asarray(tri['vertices'], dtype=float)
+    segments = np.asarray(tri.get('segments', []), dtype=int).reshape(-1, 2)
+
+    poly = (
+        _polygon_from_pslg(vertices, segments)
+        if len(segments)
+        else Polygon(vertices)
+    )
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+
+    max_area = _parse_max_area(opts)
+    pts = [tuple(p) for p in vertices]
+
+    if max_area is not None and max_area > 0:
+        # Target an (almost) right isoceles triangle of legs h: A = h^2/2.
+        h = float(np.sqrt(2.0 * max_area))
+        # 1. boundary refinement (keeps the outline conforming)
+        pts += _densify(list(poly.exterior.coords), h)
+        for ring in poly.interiors:
+            pts += _densify(list(ring.coords), h)
+        # 2. interior grid, offset to avoid degenerate collinear fans
+        minx, miny, maxx, maxy = poly.bounds
+        nx = max(2, int(np.ceil((maxx - minx) / h)) + 1)
+        ny = max(2, int(np.ceil((maxy - miny) / h)) + 1)
+        gx = np.linspace(minx, maxx, nx)
+        gy = np.linspace(miny, maxy, ny)
+        gxx, gyy = np.meshgrid(gx, gy)
+        gxx = gxx.copy()
+        gxx[1::2, :] += (gx[1] - gx[0]) * 0.5 if nx > 1 else 0.0
+        grid = np.column_stack((gxx.ravel(), gyy.ravel()))
+        # keep grid points strictly inside (shrink by ~10% of h)
+        inner = poly.buffer(-0.1 * h)
+        if not inner.is_empty:
+            keep = prep(inner)
+            mp = MultiPoint(grid)
+            pts += [
+                (g.x, g.y) for g in mp.geoms if keep.contains(g)
+            ]
+
+    P = np.unique(np.asarray(pts, dtype=float), axis=0)
+    dt = Delaunay(P)
+
+    # Keep only triangles whose centroid lies inside the polygon.
+    simp = dt.simplices
+    cent = P[simp].mean(axis=1)
+    keep = prep(poly)
+    mask = np.fromiter(
+        (keep.contains(g) for g in MultiPoint(cent).geoms),
+        dtype=bool,
+        count=len(cent),
+    )
+    out = {
+        'vertices': P,
+        'triangles': simp[mask].astype(np.int32),
+        'vertex_markers': np.zeros((len(P), 1), dtype=np.int32),
+    }
+    if 'segments' in tri:
+        out['segments'] = segments
+    if 'holes' in tri:
+        out['holes'] = np.asarray(tri['holes'], dtype=float)
+    return out
