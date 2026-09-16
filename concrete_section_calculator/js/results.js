@@ -1,12 +1,12 @@
 /**
- * results.js — resultatformatering og norske statustekster.
+ * results.js — resultatformatering og engelske statustekster.
  *
  * HVORFOR DENNE FILA FINNES
  * Motoren snakker maskin: koder, SI-enheter, `null` der et tall ikke finnes,
- * og engelsk pakketekst i `detail`. UI-et og rapporten snakker norsk, kN og
- * kNm. Oversettelsen må skje ETT sted, ellers får statuspillen og rapporten
- * hver sin formulering av samme forhold — og da er det ikke lenger mulig å se
- * om de er uenige om ORDET eller om TALLET.
+ * og engelsk pakketekst i `detail`. UI-et og rapporten er nå ALLE engelske
+ * (endringsrunde 2, §1), og kN/kNm. Oversettelsen må skje ETT sted, ellers får
+ * statuspillen og rapporten hver sin formulering av samme forhold — og da er
+ * det ikke lenger mulig å se om de er uenige om ORDET eller om TALLET.
  *
  * TRE INVARIANTER SOM BESKYTTES HER
  *
@@ -14,9 +14,9 @@
  *    exceptions med engelsk pakketekst (plan §3.5), og de er skrevet for den
  *    som leser pakkens kildekode — ikke for en prosjekterende. Derfor er
  *    `CODE_MESSAGES` under den eneste kilden til hovedmeldingen, og en UKJENT
- *    kode gir en norsk plassholder med koden i, ikke den engelske teksten.
- *    Faller det tilbake til engelsk «ved et uhell», oppdages det aldri — det
- *    ser bare ut som en detaljert melding.
+ *    kode gir en plassholder MED koden i, ikke pakkens egen `message`. Faller
+ *    det tilbake til pakketeksten «ved et uhell», oppdages det aldri — det ser
+ *    bare ut som en detaljert melding.
  *
  * 2. UTNYTTELSESTERSKLENE STÅR BARE HER (plan §7). Statuspillen i UI-et og
  *    resultatboksen i rapporten leser samme `UTILISATION_THRESHOLDS` og samme
@@ -37,6 +37,14 @@
  * `HEADLINE_UTILISATION_LABEL` mot `RADIAL_UTILISATION_LABEL` — nettopp fordi
  * de ikke er utbyttbare, og fordi samme snitt og last ikke skal kunne vise to
  * ulike η i to faner.
+ *
+ * LASTKOMBINASJONER (endringsrunde 2, §4.3)
+ * Hver analyseblokk bærer nå `combinations` (alle kombinasjonene som ble
+ * regnet) og `governing` (id-en til den som styrer toppnivåfeltene, eller
+ * `null` hvis ingen var innenfor [N_min, N_max]). `governingCombo()` og
+ * `comboLabel()` slår opp DEN kombinasjonen, slik at rapporten kan si
+ * uttrykkelig hvilken av flere lastkombinasjoner et tall gjelder — i stedet
+ * for å late som om det bare fantes én.
  *
  * DOM-fri og ren (plan §2.3 punkt 2).
  */
@@ -62,9 +70,10 @@ export function toNum(v) {
 }
 
 /**
- * Norsk tallformat. Desimalkomma, og tankestrek for alt som ikke er et tall.
+ * Engelsk tallformat. Desimalpunktum, og tankestrek for alt som ikke er et
+ * tall.
  *
- * `-0,0` lukes bort med vilje: en tøyning på −4·10⁻⁷ er null, og «−0,0 ‰» får
+ * `-0.0` lukes bort med vilje: en tøyning på −4·10⁻⁷ er null, og «−0.0 ‰» får
  * en leser til å lure på hvilken vei det går.
  */
 export function fmtNumber(value, decimals = 2) {
@@ -72,7 +81,7 @@ export function fmtNumber(value, decimals = 2) {
   if (x === null) return DASH;
   let s = x.toFixed(decimals);
   if (/^-0(\.0*)?$/.test(s)) s = s.slice(1);
-  return s.replace('.', ',');
+  return s;
 }
 
 /** Lengde [mm] slik motoren gir den. */
@@ -103,7 +112,7 @@ export function fmtMomentKNm(nmm, decimals = 1) {
 }
 
 /**
- * Tøyning i promille. Rå tøyning gir merkelapper som `0,0035` som ingen leser
+ * Tøyning i promille. Rå tøyning gir merkelapper som `0.0035` som ingen leser
  * av et betongsnitt; ‰ er den enheten EC2 selv bruker i figurene.
  */
 export function fmtStrainPermille(eps, decimals = 2) {
@@ -122,7 +131,7 @@ export function fmtRatio(v, decimals = 3) {
   return fmtNumber(v, decimals);
 }
 
-/** Andel som prosent. `0.93` -> `93,0`. */
+/** Andel som prosent. `0.93` -> `93.0`. */
 export function fmtPercent(v, decimals = 1) {
   const x = toNum(v);
   return x === null ? DASH : fmtNumber(x * 100, decimals);
@@ -163,19 +172,19 @@ export const UTILISATION_LEVELS = Object.freeze({
   }),
   high: Object.freeze({
     level: 'high',
-    label: 'Nær kapasitetsgrensa',
+    label: 'Near capacity limit',
     color: '#a16207',
     classes: 'bg-amber-500/15 text-amber-300 border-amber-500/40',
   }),
   over: Object.freeze({
     level: 'over',
-    label: 'Kapasiteten er overskredet',
+    label: 'Capacity exceeded',
     color: '#b91c1c',
     classes: 'bg-red-500/15 text-red-300 border-red-500/40',
   }),
   unknown: Object.freeze({
     level: 'unknown',
-    label: 'Ikke beregnet',
+    label: 'Not calculated',
     color: '#555555',
     classes: 'bg-slate-500/15 text-slate-300 border-slate-500/40',
   }),
@@ -200,21 +209,21 @@ export function utilisationStatus(eta) {
 export const HEADLINE_UTILISATION_LABEL = 'η = M_Ed / M_Rd(N_Ed)';
 
 /**
- * Merkelappen på den radielle λ fra `charts.js`. Ordet «lastvei» står i den
+ * Merkelappen på den radielle λ fra `charts.js`. Ordet «load path» står i den
  * fordi det er DET som skiller de to tallene: λ følger en proporsjonal økning
  * av både N og M, η holder N fast. De besvarer ulike spørsmål.
  */
-export const RADIAL_UTILISATION_LABEL = 'λ (lastvei — sekundært)';
+export const RADIAL_UTILISATION_LABEL = 'λ (load path — secondary)';
 
 /* ================================================================== *
- * Koder -> norsk (plan §5.3)
+ * Koder -> engelsk (plan §5.3, §1.3, §1.4)
  * ================================================================== */
 
 /**
  * Minimumssettet fra plan §5.3. Står som egen liste slik at
- * `results.test.mjs` kan påstå at hver eneste av dem har en norsk tekst — det
- * er den testen som fanger en ny motorkode som ellers ville dukket opp i UI-et
- * som «Uspesifisert melding».
+ * `results.test.mjs` kan påstå at hver eneste av dem har en engelsk tekst —
+ * det er den testen som fanger en ny motorkode som ellers ville dukket opp i
+ * UI-et som «Unspecified message».
  */
 export const ENGINE_CODES = Object.freeze([
   'no_convergence',
@@ -227,7 +236,7 @@ export const ENGINE_CODES = Object.freeze([
   'bar_outside_section',
   // Lagt til etter at motoren begynte å sammenligne pakkas eget sistepunkt på
   // M–κ med M_Rd. Den utløses på STANDARDOPPSETTET (α_cc = 0,85), så uten en
-  // norsk tekst ville den vanligste kjøringen vist «Uspesifisert melding».
+  // tekst ville den vanligste kjøringen vist «Unspecified message».
   'mc_endpoint_mismatch',
 ]);
 
@@ -242,9 +251,11 @@ export const VALIDATION_CODES = Object.freeze([
   'invalid_k',
   'layer_too_wide',
   'layers_overlap',
+  // EC2 8.2(2) fri avstand mellom lag (endringsrunde 2, §2.4).
+  'insufficient_layer_spacing',
 ]);
 
-/** Kodene som beskriver svikt i worker/runtime, ikke i tverrsnittet. */
+/** Kodene som beskriver svikt i worker/runtime eller i et lastet dokument, ikke i tverrsnittet. */
 export const RUNTIME_CODES = Object.freeze([
   'runtime_load_failed',
   'engine_error',
@@ -252,6 +263,10 @@ export const RUNTIME_CODES = Object.freeze([
   'cancelled',
   'invalid_payload',
   'schema_mismatch',
+  // Serialisering (endringsrunde 2, §5) — `fromDocument()` sine merknadskoder.
+  'document_not_recognised',
+  'document_field_ignored',
+  'document_field_defaulted',
 ]);
 
 /**
@@ -262,95 +277,101 @@ export const RUNTIME_CODES = Object.freeze([
 export const CODE_MESSAGES = Object.freeze({
   /* --- motoren (plan §5.3) --- */
   no_convergence:
-    'Beregningen konvergerte ikke for hele tøyningsområdet. Resultatet som vises ' +
-    'er det siste punktet som ble funnet, og kapasiteten kan være undervurdert.',
+    'The calculation did not converge across the full strain range. The result shown ' +
+    'is the last point found, and the capacity may be underestimated.',
   mc_truncated:
-    'Moment–krumningskurven er avkortet: motoren stoppet før siste planlagte ' +
-    'krumningspunkt. Kurven er riktig så langt den går, men bruddpunktet mangler.',
+    'The moment–curvature curve is truncated: the engine stopped before the last ' +
+    'planned curvature point. The curve is correct as far as it goes, but the failure ' +
+    'point is missing.',
   mc_endpoint_mismatch:
-    'Kurven avsluttes i bøyekapasiteten M_Rd, som er den eksakte verdien. ' +
-    'Pakkens eget siste krumningspunkt ligger litt ved siden av, fordi ' +
-    'likevektssøket ved brudd fant et annet tøyningsplan enn krumningsrutenettet ' +
-    'traff. Forskjellen er en opplysning om kurvens endepunkt, ikke om ' +
-    'kapasiteten — M_Rd står uendret.',
+    'The curve ends at the bending resistance M_Rd, which is the exact value. The ' +
+    "package's own last curvature point lies slightly off, because the equilibrium " +
+    'search at failure found a different strain plane than the curvature grid reached. ' +
+    "The difference is information about the curve's endpoint, not about the capacity " +
+    '— M_Rd is unchanged.',
   bar_in_compression_zone:
-    'Ett eller flere armeringsjern ligger i trykksonen ved brudd. Med ' +
-    'subtract_bar_area = av telles betongen jernet fortrenger dobbelt, slik at ' +
-    'kapasiteten blir liggende litt på usikker side.',
+    'One or more reinforcement bars lie in the compression zone at failure. With ' +
+    'subtract_bar_area = off, the concrete the bar displaces is counted twice, so the ' +
+    'capacity ends up slightly on the unsafe side.',
   axial_out_of_range:
-    'Aksialkraften N_Ed ligger utenfor tverrsnittets aksialkapasitet ' +
-    '[N_min, N_max]. Ingen bøyekapasitet finnes for denne normalkraften.',
+    "N_Ed is outside the section's axial capacity [N_min, N_max].",
   as_min_not_met:
-    'Armeringsarealet er mindre enn minimumsarmeringen A_s,min etter EC2 ' +
-    '9.2.1.1. Snittet kan få et sprøtt brudd ved opprissing.',
+    'The reinforcement area is less than the minimum reinforcement A_s,min per EC2 ' +
+    '9.2.1.1. The section may fail in a brittle manner at cracking.',
   as_max_exceeded:
-    'Armeringsarealet overskrider A_s,max = 0,04·A_c etter EC2 9.2.1.1(3). ' +
-    'Kontroller også støpbarheten.',
+    'The reinforcement area exceeds A_s,max = 0.04·A_c per EC2 9.2.1.1(3). Also check ' +
+    'the constructability.',
   ductility_limit:
-    'Duktilitetskravet er ikke oppfylt: strekkarmeringen flyter ikke før ' +
-    'betongen knuses. Bruddet blir sprøtt og uten forvarsel.',
+    'The ductility requirement is not met: the tension reinforcement does not yield ' +
+    'before the concrete crushes. The failure is brittle and without warning.',
   bar_outside_section:
-    'Et armeringslag ligger helt eller delvis utenfor betongtverrsnittet. ' +
-    'Jernet integreres uten omkringliggende betong, og kapasiteten blir tøvete.',
+    'A reinforcement layer lies wholly or partly outside the concrete cross-section. ' +
+    'The bar is integrated without surrounding concrete, and the capacity becomes ' +
+    'unreliable.',
 
   /* --- validering (`section.js`) --- */
-  invalid_height: 'Høyden h må være større enn 0.',
-  invalid_width: 'Bredden b må være større enn 0.',
-  no_reinforcement: 'Tverrsnittet må ha minst ett armeringslag.',
+  invalid_height: 'Height h must be greater than 0.',
+  invalid_width: 'Width b must be greater than 0.',
+  no_reinforcement: 'The cross-section must have at least one reinforcement layer.',
   invalid_alpha_cc:
-    'α_cc må være større enn 0. Pakken tolker 0 stille som 1,0, så feltet kan ' +
-    'ikke stå tomt.',
+    'α_cc must be greater than 0. The package silently interprets 0 as 1.0, so the ' +
+    'field cannot be left empty.',
   invalid_gamma_c:
-    'γ_c må være større enn 0. Pakken tolker 0 stille som 1,5, så feltet kan ' +
-    'ikke stå tomt.',
-  invalid_gamma_s: 'γ_s må være større enn 0.',
-  invalid_k: 'k = f_tk/f_yk må være minst 1,0.',
+    'γ_c must be greater than 0. The package silently interprets 0 as 1.5, so the ' +
+    'field cannot be left empty.',
+  invalid_gamma_s: 'γ_s must be greater than 0.',
+  invalid_k: 'k = f_tk/f_yk must be at least 1.0.',
   layer_too_wide:
-    'Armeringslaget får ikke plass i bredden med kravet til fri avstand ' +
-    '(EC2 8.2).',
+    'The reinforcement layer does not fit within the width given the clear distance ' +
+    'requirement (EC2 8.2).',
   layers_overlap:
-    'To armeringslag overlapper hverandre. Arealene integreres uavhengig, så ' +
-    'ULS-momentet blir riktig — men inndataen er nesten alltid feil.',
+    'Reinforcement layers overlap. The calculation is still valid, but the input is ' +
+    'almost certainly wrong.',
+  insufficient_layer_spacing:
+    'Clear distance between reinforcement layers is below the EC2 8.2(2) minimum.',
 
-  /* --- kjøretid --- */
+  /* --- kjøretid og dokument --- */
   runtime_load_failed:
-    'Beregningsmotoren kunne ikke lastes. Sjekk nettforbindelsen, eller om et ' +
-    'filter blokkerer cdn.jsdelivr.net, og prøv igjen.',
+    'The calculation engine could not be loaded. Check the network connection, or ' +
+    'whether a filter blocks cdn.jsdelivr.net, and try again.',
   engine_error:
-    'Beregningsmotoren stoppet med en intern feil. Tallene i denne kjøringen ' +
-    'kan ikke brukes.',
+    'The calculation engine stopped with an internal error. The numbers from this run ' +
+    'cannot be used.',
   worker_error:
-    'Beregnetråden svarte ikke som forventet. Last siden på nytt og prøv igjen.',
-  cancelled: 'Beregningen ble avbrutt.',
+    'The calculation thread did not respond as expected. Reload the page and try again.',
+  cancelled: 'The calculation was cancelled.',
   invalid_payload:
-    'Inndataene til motoren var ufullstendige. Kontroller geometri, materialer ' +
-    'og armering.',
+    'The input sent to the engine was incomplete. Check the geometry, materials and ' +
+    'reinforcement.',
   schema_mismatch:
-    'Motoren og grensesnittet bruker ulik versjon av datakontrakten. Tøm ' +
-    'nettleserens buffer og last siden på nytt.',
+    'The engine and the interface use different versions of the data contract. Clear ' +
+    'the browser cache and reload the page.',
+  document_not_recognised: 'This is not a concrete section calculator file.',
+  document_field_ignored: 'An unknown field in the file was ignored.',
+  document_field_defaulted: 'A missing field in the file was filled with its default.',
 });
 
 /**
- * Norsk melding for en kode.
+ * Engelsk melding for en kode.
  *
- * Ukjent kode gir en norsk plassholder MED koden i — ikke `detail`, og ikke
+ * Ukjent kode gir en plassholder MED koden i — ikke `detail`, og ikke
  * motorens egen `message`. Det er poenget: en kode ingen har oversatt skal
- * være synlig som nettopp det, ikke gjemme seg bak engelsk pakketekst som ser
- * ut som en grundig melding.
+ * være synlig som nettopp det, ikke gjemme seg bak rå pakketekst som ser ut
+ * som en grundig melding.
  */
 export function messageForCode(code, fallback) {
   const key = String(code || '').trim();
   if (Object.prototype.hasOwnProperty.call(CODE_MESSAGES, key)) return CODE_MESSAGES[key];
   if (fallback) return fallback;
-  return `Uspesifisert melding fra beregningsmotoren (kode: «${key || 'ukjent'}»). ` +
-         'Detaljene er rå pakketekst.';
+  return `Unspecified message from the calculation engine (code: "${key || 'unknown'}"). ` +
+         'The details are raw package text.';
 }
 
-/** Alvorlighetsgradene, norsk. `info` finnes i kontrakten og skal ikke se ut som en feil. */
+/** Alvorlighetsgradene, engelsk. `info` finnes i kontrakten og skal ikke se ut som en feil. */
 export const SEVERITY_LABELS = Object.freeze({
-  info: 'Merknad',
-  warning: 'Advarsel',
-  error: 'Feil',
+  info: 'Note',
+  warning: 'Warning',
+  error: 'Error',
 });
 
 export function severityLabel(severity) {
@@ -362,9 +383,17 @@ export function severityLabel(severity) {
  *
  * `detail` samler ALL rå tekst: både `w.detail` og en eventuell `w.message`
  * som ikke kom fra kodetabellen. Dermed går ingenting tapt for den som vil
- * grave, samtidig som hovedmeldingen garantert er norsk.
+ * grave, samtidig som hovedmeldingen garantert er den oversatte teksten.
  *
- * @param {{code?:string, severity?:string, message?:string, detail?:string}} w
+ * `combo`/`combo_name` (endringsrunde 2, §4.4): en `axial_out_of_range`-
+ * advarsel er merket med HVILKEN lastkombinasjon den gjelder, fordi
+ * `messageForCode` kaster motorens egen `message` for kjente koder — uten
+ * dette feltet ville kombinasjonsnavnet forsvunnet bak kodetabellen. Er
+ * feltet satt, settes navnet (eller id-en, hvis navnet er tomt) foran
+ * hovedmeldingen.
+ *
+ * @param {{code?:string, severity?:string, message?:string, detail?:string,
+ *          combo?:string, combo_name?:string}} w
  */
 export function describeWarning(w = {}) {
   const code = String(w.code || '').trim();
@@ -374,11 +403,16 @@ export function describeWarning(w = {}) {
   // kjent, er tabellteksten den autoritative og `message` en dublett.
   if (!known && w.message) raw.push(String(w.message));
   if (w.detail) raw.push(String(w.detail));
+  const base = messageForCode(code);
+  const comboLabelText = String(w.combo_name || w.combo || '').trim();
+  const message = comboLabelText ? `${comboLabelText}: ${base}` : base;
   return {
-    code: code || 'ukjent',
+    code: code || 'unknown',
     severity: w.severity || 'warning',
     severityLabel: severityLabel(w.severity),
-    message: messageForCode(code),
+    message,
+    combo: w.combo ?? null,
+    combo_name: w.combo_name ?? null,
     detail: raw.length ? raw.join(' · ') : '',
     hasDetail: raw.length > 0,
   };
@@ -389,7 +423,7 @@ export function describeWarnings(warnings) {
   return (Array.isArray(warnings) ? warnings : []).map(describeWarning);
 }
 
-/** `{ok:false}`-svaret (plan §5.2). Samme regel: norsk melding, rå tekst i detail. */
+/** `{ok:false}`-svaret (plan §5.2). Samme regel: oversatt melding, rå tekst i detail. */
 export function describeError(error = {}) {
   return describeWarning({ ...error, severity: 'error' });
 }
@@ -404,33 +438,33 @@ export function describeError(error = {}) {
  */
 export const FAILURE_MODES = Object.freeze({
   concrete_crushing: Object.freeze({
-    label: 'Trykkbrudd i betongen',
+    label: 'Concrete crushing',
     note:
-      'Betongen når ε_cu mens strekkarmeringen har flytt. Dette er det ' +
-      'normale, varslede bruddet for et underarmert snitt.',
+      'The concrete reaches ε_cu while the tension reinforcement has yielded. This is ' +
+      'the normal, warned failure for an under-reinforced section.',
   }),
   steel_rupture: Object.freeze({
-    label: 'Strekkbrudd i armeringen',
+    label: 'Steel rupture',
     note:
-      'Armeringen når ε_ud før betongen knuses. Snittet er svakt armert; ' +
-      'bruddet varsles av store nedbøyninger og riss.',
+      'The reinforcement reaches ε_ud before the concrete crushes. The section is ' +
+      'under-reinforced; the failure is signalled by large deflections and cracking.',
   }),
   over_reinforced: Object.freeze({
-    label: 'Overarmert snitt',
+    label: 'Over-reinforced — steel does not yield',
     note:
-      'Betongen knuses uten at strekkarmeringen har nådd flytetøyningen. ' +
-      'Bruddet blir sprøtt og uten forvarsel.',
+      'The concrete crushes before the tension reinforcement reaches the yield ' +
+      'strain. The failure is brittle and without warning.',
   }),
   compression_no_tension: Object.freeze({
-    label: 'Rent trykk — ingen strekksone',
+    label: 'Compression only — no tension zone',
     note:
-      'Hele tverrsnittet er i trykk ved brudd. Bøyekapasiteten styres av ' +
-      'normalkraften, ikke av armeringen i strekk.',
+      'The entire cross-section is in compression at failure. The bending resistance ' +
+      'is governed by the axial force, not by the reinforcement in tension.',
   }),
 });
 
 export function failureModeLabel(mode) {
-  return FAILURE_MODES[mode]?.label || (mode ? `Ukjent bruddform («${mode}»)` : DASH);
+  return FAILURE_MODES[mode]?.label || (mode ? `Unknown failure mode ("${mode}")` : DASH);
 }
 
 export function failureModeNote(mode) {
@@ -452,16 +486,16 @@ export const CHECK_ORDER = Object.freeze([
 ]);
 
 export const CHECK_LABELS = Object.freeze({
-  geometry_ok: 'Geometri og armeringsplassering',
-  axial_ok: 'N_Ed innenfor [N_min, N_max]',
-  as_min_ok: 'Minimumsarmering A_s,min (EC2 9.2.1.1)',
-  as_max_ok: 'Maksimalarmering A_s,max = 0,04·A_c',
-  ductility_ok: 'Duktilitet — strekkarmeringen flyter ved brudd',
-  all_ok: 'Samlet vurdering',
+  geometry_ok: 'Geometry and reinforcement placement',
+  axial_ok: 'N_Ed within [N_min, N_max]',
+  as_min_ok: 'Minimum reinforcement A_s,min (EC2 9.2.1.1)',
+  as_max_ok: 'Maximum reinforcement A_s,max = 0.04·A_c',
+  ductility_ok: 'Ductility — tension reinforcement yields at failure',
+  all_ok: 'Overall assessment',
 });
 
 export const CHECK_PASS_TEXT = 'OK';
-export const CHECK_FAIL_TEXT = 'Ikke OK';
+export const CHECK_FAIL_TEXT = 'Not OK';
 /** En kontroll motoren ikke rapporterte er UBESVART, ikke bestått. */
 export const CHECK_UNKNOWN_TEXT = DASH;
 
@@ -481,18 +515,29 @@ export function checkRows(checks = {}) {
 
 /** Retningen, med hvilken kant som er i trykk — det er dét man må vite. */
 export const DIRECTION_LABELS = Object.freeze({
-  sagging: 'Feltmoment — trykk i overkant (θ = 0)',
-  hogging: 'Støttemoment — trykk i underkant (θ = π)',
+  sagging: 'Sagging — compression at the top face (θ = 0)',
+  hogging: 'Hogging — compression at the bottom face (θ = π)',
 });
 
 export function directionLabel(direction) {
   return DIRECTION_LABELS[direction] || DASH;
 }
 
+/**
+ * Retningen en KOMBINASJON selv bærer, avledet fra dens `theta` (plan §4.1,
+ * §4.3 — kombinasjonene lagres med `theta`, ikke med `direction`-strengen).
+ * `null` for et ikke-tall, slik at kallere kan skille «ukjent» fra «sagging».
+ */
+export function directionFromTheta(theta) {
+  const t = toNum(theta);
+  if (t === null) return null;
+  return Math.abs(t) > Math.PI / 2 ? 'hogging' : 'sagging';
+}
+
 export const ANALYSIS_LABELS = Object.freeze({
-  bending: 'Bøyekapasitet',
-  moment_curvature: 'Moment–krumning',
-  nm_domain: 'M–N-diagram',
+  bending: 'Bending resistance',
+  moment_curvature: 'Moment–curvature',
+  nm_domain: 'N–M interaction domain',
 });
 
 export function analysisLabel(analysis) {
@@ -500,8 +545,8 @@ export function analysisLabel(analysis) {
 }
 
 export const SECTION_TYPE_LABELS = Object.freeze({
-  beam: 'Bjelke',
-  slab: 'Plate (per meter bredde)',
+  beam: 'Beam',
+  slab: 'Slab (per metre width)',
 });
 
 export function sectionTypeLabel(type) {
@@ -527,20 +572,20 @@ export function lawLabel(value) {
  *
  * Dette er ikke pynt: `bending.eps_c_top` er tøyningen ved TRYKKANTEN for den
  * analyserte retningen (plan §5.2), og for støttemoment (θ = π) er det
- * UNDERKANTEN. Skriver rapporten «overkant» ukritisk, står det feil kant ved
+ * UNDERKANTEN. Skriver rapporten «top face» ukritisk, står det feil kant ved
  * riktig tall — den typen feil ingen oppdager fordi tallet stemmer.
  */
 export function compressionEdgeLabel(theta) {
   const t = toNum(theta);
   if (t === null) return DASH;
-  return Math.abs(Math.cos(t)) < 1e-9 ? 'trykkanten' : Math.cos(t) >= 0 ? 'overkant' : 'underkant';
+  return Math.abs(Math.cos(t)) < 1e-9 ? 'compression face' : Math.cos(t) >= 0 ? 'top face' : 'bottom face';
 }
 
 /** Motsatt kant av `compressionEdgeLabel`. */
 export function tensionEdgeLabel(theta) {
   const c = compressionEdgeLabel(theta);
-  if (c === 'overkant') return 'underkant';
-  if (c === 'underkant') return 'overkant';
+  if (c === 'top face') return 'bottom face';
+  if (c === 'bottom face') return 'top face';
   return c;
 }
 
@@ -619,6 +664,40 @@ export function designAxial(result) {
 /** Status for hovedtallet, klar til pille og rapportboks. */
 export function resultStatus(result) {
   return utilisationStatus(headlineUtilisation(result));
+}
+
+/**
+ * ALLE lastkombinasjonene analysen ble kjørt mot (endringsrunde 2, §4.3), i
+ * den rekkefølgen motoren ga dem. Tom array når blokka ikke bærer feltet
+ * (eldre fixtur, eller en test som bevisst strippet det).
+ */
+export function allCombinations(result) {
+  const blk = analysisBlock(result);
+  return Array.isArray(blk?.combinations) ? blk.combinations : [];
+}
+
+/**
+ * Kombinasjonen som STYRER toppnivåfeltene i analyseblokka (plan §4.3).
+ * `null` når blokka ikke har `governing` (eldre fixtur) eller når INGEN
+ * kombinasjon var innenfor [N_min, N_max] — da er toppnivåfeltene hentet fra
+ * den FØRSTE kombinasjonen i stedet, men ingen er «governing».
+ */
+export function governingCombo(result) {
+  const blk = analysisBlock(result);
+  const id = blk?.governing;
+  if (id === undefined || id === null) return null;
+  return allCombinations(result).find((c) => c.id === id) || null;
+}
+
+/**
+ * Visningsnavnet for en kombinasjon: navnet hvis satt, ellers id-en. Samme
+ * regel som `charts.js` sin `nmDomainSvg` bruker på lastpunktene (plan §7) —
+ * én kilde til «hva kaller vi denne raden», ikke to formuleringer av det.
+ */
+export function comboLabel(combo) {
+  if (!combo) return DASH;
+  const name = String(combo.name || '').trim();
+  return name || String(combo.id || '') || DASH;
 }
 
 /**
