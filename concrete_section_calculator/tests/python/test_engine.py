@@ -278,8 +278,8 @@ def test_moment_curvature_single_point_follows_the_plan():
 
     for index in (0, 9, 19):
         single = copy.deepcopy(payload)
-        # `chi_plan` er størrelser; motorens egen krumning er negativ for feltmoment.
-        single['options']['mc_chi'] = -plan[index]
+        # `chi_plan` mates rett inn, uten fortegnsbehandling. Se testen under.
+        single['options']['mc_chi'] = plan[index]
         one = engine.run(single)['moment_curvature']
         assert len(one['kappa']) == 1
         assert one['yield_index'] is None
@@ -287,6 +287,87 @@ def test_moment_curvature_single_point_follows_the_plan():
         # Punktvis kjøring mister pakkas videreføring av forrige tøyningsnivå som startgjett,
         # så momentet treffer ikke bit-identisk — men godt innenfor konvergenstoleransen.
         assert close(one['moment'][0], full['moment'][index], rel=1e-6)
+
+
+def test_mc_chi_is_a_magnitude_not_a_signed_curvature():
+    """`mc_chi` skal tolkes som STØRRELSE, som alt annet i den analyserte retningen.
+
+    Krevde motoren fortegnsatt krumning, måtte hver konsument gange `chi_plan` med
+    `meta.moment_sign` for å få riktig kurve — og glemte man det, ga punkt 5 på
+    referansebjelken 0,4 kNm i stedet for 114 kNm, uten at noe feilet. Et fortegn som
+    bare er dokumentert er et fortegn noen kommer til å bomme på.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['analysis'] = 'moment_curvature'
+    full = engine.run(payload)['moment_curvature']
+    index = 5
+
+    positive = copy.deepcopy(payload)
+    positive['options']['mc_chi'] = full['chi_plan'][index]
+    negative = copy.deepcopy(payload)
+    negative['options']['mc_chi'] = -full['chi_plan'][index]
+
+    a = engine.run(positive)['moment_curvature']
+    b = engine.run(negative)['moment_curvature']
+
+    assert a['moment'] == b['moment']
+    assert a['kappa'] == b['kappa']
+    assert close(a['moment'][0], full['moment'][index], rel=1e-6)
+    # Det målte tallet, ikke et omtrentlig: 114,4 MNmm, ikke 0,4.
+    assert close(a['moment'][0], 114408358.78818576)
+
+
+@pytest.mark.parametrize('label,theta,top_steel', [
+    ('sagging', 0.0, False),
+    ('hogging', math.pi, True),
+])
+def test_chi_plan_agrees_with_a_batch_run_in_both_directions(label, theta, top_steel):
+    """Planen MÅ være den samme kurven det samlede kallet ville gitt.
+
+    `calculate_moment_curvature` roterer den cachede `integration_data` med −θ før den
+    kaller `_prepare_chi_array`. Gjorde ikke `_chi_plan` det samme, leste pakka armeringen
+    i feil koordinatsystem: for θ = π ble planen 10 punkter mot 20 i det samlede kallet,
+    med verdier som ikke sammenfalt. For θ = 0 er rotasjonen identiteten, så feilen var
+    usynlig der — derfor er begge retninger med her.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['analysis'] = 'moment_curvature'
+    payload['options']['theta'] = theta
+    if top_steel:
+        payload['section']['rebar'][0]['bars'] = [
+            {'y': y, 'z': 250.0, 'dia': 20.0} for y in (-100.0, 0.0, 100.0)
+        ]
+
+    mc = engine.run(payload)['moment_curvature']
+    plan = mc['chi_plan']
+
+    assert plan is not None, label
+    assert len(plan) == 20, f'{label}: {len(plan)}'          # = mc_pre_yield + mc_post_yield
+    assert len(plan) == len(mc['kappa']), label
+    assert plan == mc['kappa'], label                        # eksakt, ikke bare nær
+    assert all(v >= 0 for v in plan), label
+
+    # Og punktvis drift på planen gir den samme kurven.
+    for index in (0, 9, 19):
+        single = copy.deepcopy(payload)
+        single['options']['mc_chi'] = plan[index]
+        one = engine.run(single)['moment_curvature']
+        assert close(one['kappa'][0], mc['kappa'][index]), f'{label}[{index}]'
+        assert close(one['moment'][0], mc['moment'][index], rel=1e-5), f'{label}[{index}]'
+
+
+def test_chi_plan_leaves_the_cached_integration_data_unrotated():
+    """Den forberedte seksjonen er delt mellom kall (§3.7) og må komme uendret tilbake."""
+    payload = load('payload-beam-300x600.json')
+    payload['options']['theta'] = math.pi
+
+    before = engine.run(payload)['bending']['M_Rd']
+    mc = copy.deepcopy(payload)
+    mc['analysis'] = 'moment_curvature'
+    engine.run(mc)
+    after = engine.run(payload)['bending']['M_Rd']
+
+    assert close(after, before)
 
 
 def test_moment_curvature_utilisation_is_vertical():
@@ -483,6 +564,23 @@ def test_progress_is_a_plain_callable():
     for _phase, done, total in events:
         assert done is None or isinstance(done, int)
         assert total is None or isinstance(total, int)
+
+
+class _NotCallable:
+    """Stand-in for JS sin `null`, som kommer inn i Python som et `JsNull`-objekt."""
+
+
+def test_a_non_callable_progress_is_ignored_not_fatal():
+    """Målt under ekte Pyodide: `run_json(payload, null)` krasjet på «JsNull not callable».
+
+    `null` er den naturlige måten en JS-konsument skriver «ingen framdrift» på, og et
+    argument som bare er til pynt skal aldri kunne velte en beregning.
+    """
+    payload = load('payload-beam-300x600.json')
+    for stand_in in (None, _NotCallable(), object(), 0, ''):
+        result = engine.run(payload, stand_in)
+        assert result['ok'] is True, stand_in
+        assert close(result['bending']['M_Rd'], M_RD_BEAM)
 
 
 def test_engine_never_imports_js_or_pyodide():
