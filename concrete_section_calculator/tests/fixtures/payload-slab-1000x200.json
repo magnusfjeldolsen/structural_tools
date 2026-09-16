@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "analysis": "bending",
+  "section": {
+    "type": "slab",
+    "b": 1000.0,
+    "h": 200.0,
+    "concrete": {
+      "fck": 30.0,
+      "gamma_c": 1.5,
+      "alpha_cc": 1.0,
+      "law": "parabolarectangle"
+    },
+    "steel": {
+      "fyk": 500.0,
+      "Es": 200000.0,
+      "ftk": 540.0,
+      "k": 1.08,
+      "epsuk": 0.075,
+      "gamma_eps": 0.9,
+      "gamma_s": 1.15,
+      "law": "elasticplastic"
+    },
+    "rebar": [
+      {
+        "id": "L1",
+        "kind": "strip",
+        "area": 1000.8613763648898,
+        "strip": {
+          "width": 83.40511469707415,
+          "height": 12.0,
+          "z": -69.0
+        }
+      }
+    ]
+  },
+  "loads": {
+    "N_Ed": 0.0,
+    "M_Ed": 0.0
+  },
+  "options": {
+    "theta": 0.0,
+    "integrator": "marin",
+    "subtract_bar_area": false,
+    "complete_domain": true,
+    "mc_pre_yield": 10,
+    "mc_post_yield": 10,
+    "mc_chi": null
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "ok": true,
+  "schema": 1,
+  "meta": {
+    "structuralcodes_version": "0.7.2",
+    "engine_version": "0.0.0-fixture",
+    "runtime": "cpython (fixturegenerator)",
+    "integrator": "marin",
+    "scipy": "real",
+    "moment_sign": -1,
+    "theta": 0.0,
+    "direction": "sagging",
+    "subtract_bar_area": false,
+    "wall_time_ms": 14.2
+  },
+  "materials": {
+    "fck": 30.0,
+    "fcd": 20.0,
+    "fctm": 2.896468153816889,
+    "alpha_cc": 1.0,
+    "gamma_c": 1.5,
+    "Ecm": 32836.56803133079,
+    "law_concrete": "parabolarectangle",
+    "eps_c": 0.002,
+    "eps_cu": 0.0035,
+    "eps_c_name": "eps_c2",
+    "eps_cu_name": "eps_cu2",
+    "fyk": 500.0,
+    "ftk": 540.0,
+    "Es": 200000.0,
+    "k": 1.08,
+    "gamma_s": 1.15,
+    "gamma_eps": 0.9,
+    "law_steel": "elasticplastic",
+    "fyd": 434.7826086956522,
+    "ftd": 469.5652173913044,
+    "eps_yd": 0.002173913043478261,
+    "eps_uk": 0.075,
+    "eps_ud": 0.0675
+  },
+  "section_props": {
+    "Ag": 180000.0,
+    "As_total": 942.4777960769379,
+    "rho": 0.005711986642890533,
+    "b_t": 300.0,
+    "d_eff": 550.0,
+    "As_min": 248.51696759748907,
+    "As_max": 7200.0,
+    "n_min": -4010438.409731036,
+    "n_max": 442554.7912013448
+  },
+  "checks": {
+    "as_min_ok": true,
+    "as_max_ok": true,
+    "ductility_ok": true,
+    "axial_ok": true,
+    "geometry_ok": true,
+    "all_ok": true
+  },
+  "warnings": [],
+  "analysis": "bending",
+  "bending": {
+    "N_Ed": 0.0,
+    "M_Rd": 215006759.18601915,
+    "eps_a": 0.008696678493065367,
+    "chi_y": -4.065559497688457e-05,
+    "x": 86.0890119057411,
+    "x_over_d": 0.15652547619225654,
+    "eps_c_top": -0.003500000000000003,
+    "eps_s_max": 0.01886057723728651,
+    "failure_mode": "concrete_crushing",
+    "layers": [
+      {
+        "id": "L1",
+        "z": -250.0,
+        "eps": 0.01886057723728651,
+        "sigma": 443.6673550218064,
+        "compression": false
+      }
+    ],
+    "M_Ed": 0.0,
+    "utilisation": 0.0
+  }
+}
