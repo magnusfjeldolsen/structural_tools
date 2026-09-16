@@ -264,6 +264,16 @@
 .report-content .result-box[data-level="over"]    .result-status { color: #b91c1c; }
 .report-content .result-box[data-level="unknown"] .result-status { color: #555555; }
 
+/* Skjærmerket (endringsrunde 4 §4.3): et EGET tall ved siden av hovedtallet
+   η_M, farget etter SIN EGEN `data-level` — ikke boksens. De to η-ene kan
+   ligge på hver sin side av terskelen samtidig (skjær kan svikte et snitt
+   bøying tåler fint, og omvendt), og fargen må derfor kunne avvike fra
+   `.result-box[data-level]` over uten å endre boksens ramme. */
+.report-content .result-shear[data-level="ok"]      .result-value { color: #15803d; }
+.report-content .result-shear[data-level="high"]    .result-value { color: #a16207; }
+.report-content .result-shear[data-level="over"]    .result-value { color: #b91c1c; }
+.report-content .result-shear[data-level="unknown"] .result-value { color: #555555; }
+
 /* ---- figurer ------------------------------------------------------------- */
 .report-content figure { margin: 0 0 3mm; }
 .report-content figcaption {

@@ -75,6 +75,11 @@ import {
   governingCombo,
   comboLabel,
   isUsable,
+  shearGoverningCombo,
+  shearHeadlineUtilisation,
+  SHEAR_UTILISATION_LABEL,
+  SHEAR_GOVERNING_MODE_LABELS,
+  shearGoverningModeLabel,
 } from '../js/results.js';
 
 const fixture = (name) =>
@@ -133,6 +138,35 @@ test('de nye kodene fra endringsrunde 2 er med (§1.3, §2.4, §5)', () => {
     'Reinforcement layers overlap. The calculation is still valid, but the input is ' +
       'almost certainly wrong.'
   );
+});
+
+/**
+ * Skjær og fortegn, endringsrunde 4 (§4.1b, §4.2, §4.4, §4.5, §2). Åtte nye
+ * koder totalt: to fra motoren (`shear_asl_ambiguous`, `shear_not_evaluated`),
+ * seks fra `section.js` sin skjærvalidering, og `analysis_forced_to_nm_domain`
+ * fra `serialize.js`. Den generiske testen over («alle koder ... har en
+ * engelsk melding») dekker dem allerede — denne testen låser i tillegg at de
+ * faktisk STÅR i riktig kodeliste, som er nøyaktig det plan §10 punkt 3 ber om.
+ */
+test('de nye kodene fra endringsrunde 4 er med, i riktig liste (§4.4, §4.5, §2)', () => {
+  assert.ok(ENGINE_CODES.includes('shear_asl_ambiguous'));
+  assert.ok(ENGINE_CODES.includes('shear_not_evaluated'));
+  assert.ok(VALIDATION_CODES.includes('stirrup_spacing_exceeds_max'));
+  assert.ok(VALIDATION_CODES.includes('asw_below_minimum'));
+  assert.ok(VALIDATION_CODES.includes('stirrup_legs_spacing_exceeds_max'));
+  assert.ok(VALIDATION_CODES.includes('invalid_strut_angle'));
+  assert.ok(VALIDATION_CODES.includes('stirrup_alpha_unsupported'));
+  assert.ok(VALIDATION_CODES.includes('stirrup_mixed_fywk'));
+  assert.ok(RUNTIME_CODES.includes('analysis_forced_to_nm_domain'));
+  // Ingen av dem skal lekke som «Unspecified message» — det er nettopp feilen
+  // testen finnes for.
+  for (const code of [
+    'shear_asl_ambiguous', 'shear_not_evaluated', 'stirrup_spacing_exceeds_max',
+    'asw_below_minimum', 'stirrup_legs_spacing_exceeds_max', 'invalid_strut_angle',
+    'stirrup_alpha_unsupported', 'stirrup_mixed_fywk', 'analysis_forced_to_nm_domain',
+  ]) {
+    assert.ok(!messageForCode(code).includes('Unspecified message'), `«${code}» mangler tekst`);
+  }
 });
 
 test('meldingene er engelske, ikke norske', () => {
@@ -394,6 +428,29 @@ test('§1.4 sine ordrette CHECK_LABELS', () => {
   assert.equal(CHECK_LABELS.ductility_ok, 'Ductility — tension reinforcement yields at failure');
 });
 
+/**
+ * De TRE nye skjærkontrollene (endringsrunde 4 §4.3/§10 punkt 2). Uten dem i
+ * `CHECK_ORDER` emitterer `checkRows()` dem aldri — motorens `checks.shear_ok`
+ * osv. ville da vært beregnet, men usynlig i rapporten. `all_ok` skal
+ * FORTSATT stå sist: den samler nå skjær òg (motorens §0 «checks gained
+ * shear_ok, asw_min_ok, stirrup_spacing_ok, and all_ok now folds in those
+ * three»).
+ */
+test('CHECK_ORDER er utvidet med skjær, og checkRows() viser dem faktisk', () => {
+  assert.ok(CHECK_ORDER.includes('shear_ok'));
+  assert.ok(CHECK_ORDER.includes('asw_min_ok'));
+  assert.ok(CHECK_ORDER.includes('stirrup_spacing_ok'));
+  assert.equal(CHECK_ORDER[CHECK_ORDER.length - 1], 'all_ok');
+  // Fixturen bærer nå motorens ekte `checks`-blokk med de tre nye feltene —
+  // se `result-bending-beam-300x600.json`.
+  const rows = checkRows(BENDING.checks);
+  const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+  assert.equal(byKey.shear_ok.text, 'OK');
+  assert.equal(byKey.asw_min_ok.text, 'OK');
+  assert.equal(byKey.stirrup_spacing_ok.text, 'OK');
+  assert.equal(byKey.shear_ok.label, CHECK_LABELS.shear_ok);
+});
+
 test('en kontroll motoren ikke rapporterte er ubesvart, ikke bestått', () => {
   const rows = checkRows({ as_min_ok: false });
   const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
@@ -596,6 +653,64 @@ test('en kombinasjon med flere rader: governing er den med størst utnyttelse bl
 });
 
 /* ================================================================== *
+ * Skjær — eget governing-valg (endringsrunde 4 §4.3)
+ * ================================================================== */
+
+/**
+ * `shear_governing` er et EGET, uavhengig valg fra `governing` (bøying) — en
+ * rad med stor V_Ed og lite M_Ed kan styre skjær uten i nærheten av å styre
+ * bøying (plan §4.3). `shearGoverningCombo` skal derfor kunne peke på en HELT
+ * ANNEN rad enn `governingCombo`, i én og samme analyseblokk.
+ */
+test('shearGoverningCombo er uavhengig av governingCombo (bøying vs. skjær kan være ulike rader)', () => {
+  const result = {
+    analysis: 'bending',
+    bending: {
+      governing: 'C1',
+      shear_governing: 'C2',
+      combinations: [
+        {
+          id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 250e6, utilisation: 0.9, within_limits: true,
+          V_Ed: 5000, shear: { evaluated: true, utilisation: 0.1 },
+        },
+        {
+          id: 'C2', name: 'ULS 2', N_Ed: 0, M_Ed: 10e6, utilisation: 0.03, within_limits: true,
+          V_Ed: 180000, shear: { evaluated: true, utilisation: 1.31 },
+        },
+      ],
+    },
+  };
+  assert.equal(governingCombo(result).id, 'C1', 'bøying styres av den store momentraden');
+  assert.equal(shearGoverningCombo(result).id, 'C2', 'skjær styres av den store skjærraden');
+  assert.equal(shearHeadlineUtilisation(result), 1.31);
+});
+
+test('shearGoverningCombo/shearHeadlineUtilisation er null uten skjærdata (eldre fixtur)', () => {
+  assert.equal(shearGoverningCombo(null), null);
+  assert.equal(shearGoverningCombo(BENDING), null, 'referansefixturen har ingen section.shear i payloaden');
+  assert.equal(shearHeadlineUtilisation(BENDING), null);
+  const noCandidate = {
+    analysis: 'bending',
+    bending: { shear_governing: null, combinations: [{ id: 'C1', name: 'ULS 1' }] },
+  };
+  assert.equal(shearGoverningCombo(noCandidate), null);
+});
+
+test('SHEAR_UTILISATION_LABEL og HEADLINE_UTILISATION_LABEL er to ulike merkelapper (§4.3: aldri slått sammen)', () => {
+  assert.notEqual(SHEAR_UTILISATION_LABEL, HEADLINE_UTILISATION_LABEL);
+  assert.match(SHEAR_UTILISATION_LABEL, /V_Ed/);
+  assert.match(SHEAR_UTILISATION_LABEL, /V_Rd/);
+});
+
+test('shearGoverningModeLabel oversetter governing_mode, og skjuler ikke en ukjent verdi', () => {
+  assert.equal(shearGoverningModeLabel('no_stirrups'), SHEAR_GOVERNING_MODE_LABELS.no_stirrups);
+  assert.equal(shearGoverningModeLabel('stirrups'), SHEAR_GOVERNING_MODE_LABELS.stirrups);
+  assert.equal(shearGoverningModeLabel('strut_crushing'), SHEAR_GOVERNING_MODE_LABELS.strut_crushing);
+  assert.match(shearGoverningModeLabel('noe_nytt'), /Unknown mode/);
+  assert.equal(shearGoverningModeLabel(null), DASH);
+});
+
+/* ================================================================== *
  * §1.5 — mekanisk kontroll: alle tabellene, ingen norsk tekst igjen
  * ================================================================== */
 
@@ -651,6 +766,7 @@ test('§1.5: ingen av tabellene i §1.3 inneholder norsk tekst', () => {
     ANALYSIS_LABELS,
     SECTION_TYPE_LABELS,
     UTILISATION_LEVELS,
+    SHEAR_GOVERNING_MODE_LABELS,
   };
 
   for (const [tableName, tbl] of Object.entries(tables)) {

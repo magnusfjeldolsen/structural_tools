@@ -50,10 +50,20 @@ function countPoints(svg, role) {
  * FORTEGNSATT `m`. Formen er en «kam» som omslutter origo: randen går opp,
  * tilbake ned forbi strålen, og opp igjen.
  *
+ * **Polaritet (endringsrunde 4):** denne kammen er ren algoritme-fixture og
+ * har ALDRI representert sagging/hogging — den tester bare at strålemetoden
+ * finner riktig kryssing i en ikke-konveks rand, uavhengig av hva fortegnet
+ * «betyr». Verdiene under er derfor uendret av at §1.1 snudde motorens egen
+ * konvensjon. Det som ER nytt: `radialUtilisation` tar ikke lenger `abs()` av
+ * `M_Ed`-argumentet, så en NEGATIV stråle prøver nå den motsatte halvdelen av
+ * kammen i stedet for å bli speilet til den positive — se testen rett under
+ * som prøver akkurat det.
+ *
  * Den loddrette strålen (N_Ed = 0, M_Ed > 0) krysser den ved m = 60, 30 og
  * 10 kNm. **60 kommer FØRST i arrayet, 10 er det riktige svaret.** Det er
- * nettopp fella planen §6 advarer mot: punktrekkefølgen følger EC2-feltene og
- * sier ingenting om hvor strålen treffer først.
+ * nettopp fella punkt 3 i `charts.js` sin hodekommentar advarer mot:
+ * punktrekkefølgen følger EC2-feltene og sier ingenting om hvor strålen
+ * treffer først.
  *
  * Origo ligger innenfor: langs `n = 0` krysser randen ved m = −20, 10, 30 og
  * 60 — tre kryssinger over origo, altså et oddetall.
@@ -81,6 +91,18 @@ test('radialUtilisation: ikke-konveks kryssing velger MINSTE positive lambda', (
   assert.ok(Math.abs(res.hitM - 10) < 1e-9);
 });
 
+test('radialUtilisation: negativ M_Ed treffer den MOTSATTE halvdelen, ikke en speilet positiv', () => {
+  // Regresjonsvakt for `Math.abs()`-fjerningen (§5.2): en positiv og en
+  // negativ stråle langs samme akse skal IKKE lenger gi samme svar — det ville
+  // de gjort dersom noen la `abs()` tilbake på argumentet inn i funksjonen.
+  const pos = radialUtilisation(NONCONVEX, 0, 1);
+  const neg = radialUtilisation(NONCONVEX, 0, -1);
+  assert.ok(neg.hitM < 0, `negativ stråle skal treffe i -M, fikk ${neg.hitM}`);
+  assert.notEqual(neg.lambda, pos.lambda);
+  assert.ok(Math.abs(neg.hitM - (-20)) < 1e-9, `hitM = ${neg.hitM}`);
+  assert.equal(neg.lambda, 20);
+});
+
 test('radialUtilisation: lastpunkt utenfor omhyllingen gir eta > 1', () => {
   const ute = radialUtilisation(NONCONVEX, 0, 100);
   assert.ok(ute.lambda < 1, `lambda = ${ute.lambda}`);
@@ -96,13 +118,17 @@ test('fixturene bærer et FORTEGNSATT moment, ikke en størrelse', () => {
   // Kontraktsvakt. Brettes `nm_domain.m` sammen til `abs` igjen — i motoren
   // eller i en «opprydding» her — feiler denne først, og med en melding som
   // sier hva som er galt i stedet for et plausibelt galt eta.
+  //
+  // Polariteten er snudd i forhold til forrige runde (endringsrunde 4, §1.1):
+  // sagging (felt) er nå NEGATIV, hogging (støtte) er POSITIV.
   for (const [navn, dom] of [['bjelke', DOM_BEAM], ['plate', DOM_SLAB]]) {
     const m = dom.m.map((v) => v / 1e6);
-    assert.ok(Math.min(...m) < 0, `${navn}: støttegrenen skal ligge i -M`);
-    assert.ok(Math.max(...m) > 0, `${navn}: feltgrenen skal ligge i +M`);
+    assert.ok(Math.min(...m) < 0, `${navn}: feltgrenen skal ligge i -M`);
+    assert.ok(Math.max(...m) > 0, `${navn}: støttegrenen skal ligge i +M`);
   }
-  // Moment–krumning har bare én gren og forblir en STØRRELSE.
-  assert.ok(Math.min(...MC_BEAM.moment) > 0, 'M–κ er fortsatt størrelser');
+  // Moment–krumning er RÅ på samme måte (§1.4) — bare én gren, men fortegnet
+  // følger likevel motoren. `momentCurvatureSvg` er den eneste som tar `abs()`.
+  assert.ok(Math.max(...MC_BEAM.moment) < 0, 'M–κ for referansebjelken er rå og sagging-negativ');
 });
 
 test('radialUtilisation: ren aksial last — omhyllingen styrer, ikke n_min', () => {
@@ -149,20 +175,27 @@ test('radialUtilisation: nesten ren trykklast gir et ekte treff, ikke eta = 0', 
   assert.ok(res.eta > 0.5 && res.eta < 0.6, `eta = ${res.eta}`);
 });
 
-test('radialUtilisation: (-500 kN, 150 kNm) treffer FELTGRENEN, ikke støttegrenen', () => {
-  // Regresjonen som ga navn til kontraktsendringen. Med `abs(m_y)` ble
-  // støttegrenen brettet opp i +M, havnet nærmest origo, og «minste positive
-  // lambda» plukket den: eta ble ~3,7 mot en gren lasten aldri går i. Med
-  // fortegnsatt m ligger støttegrenen i -M der den hører hjemme, og strålen
-  // treffer feltgrenen ved n ~ -1150 kN.
-  const res = radialUtilisation(DOM_BEAM, -500, 150);
-  assert.ok(res.hitM > 0, `treffet skal ligge i +M, fikk ${res.hitM}`);
+test('radialUtilisation: (-500 kN, -150 kNm) treffer FELTGRENEN, ikke støttegrenen', () => {
+  // Regresjonen som ga navn til kontraktsendringen — nå med rå,
+  // sagging-negativ konvensjon (§1.1). Tas `abs()` på `M_Ed`-argumentet
+  // (ELLER på `dom.m`) et sted i kjeden, faller strålen ned mot
+  // støttegrenens bitte små kapasitet i stedet, og eta blir ~3,7 mot en gren
+  // lasten aldri går i, i stedet for riktig ~0,41 mot feltgrenen.
+  const res = radialUtilisation(DOM_BEAM, -500, -150);
+  assert.ok(res.hitM < 0, `treffet skal ligge i -M, fikk ${res.hitM}`);
   assert.ok(res.hitN < 0, `treffet skal ligge i trykk, fikk ${res.hitN}`);
   assert.ok(res.eta > 0.35 && res.eta < 0.6, `eta = ${res.eta} (skal IKKE være ~3,7)`);
-  assert.ok(res.lambda > 1.7 && res.lambda < 2.9, `lambda = ${res.lambda}`);
+  assert.ok(res.lambda > 1.9 && res.lambda < 2.9, `lambda = ${res.lambda}`);
   // Treffet skal ligge på feltgrenen, altså i nærheten av toppmomentet
-  // 364,3 kNm ved n = -1238 kN — ikke nede på støttegrenens ~40 kNm.
-  assert.ok(res.hitM > 200, `hitM = ${res.hitM}`);
+  // -364,3 kNm ved n = -1238 kN — ikke oppe på støttegrenens ~+40 kNm.
+  assert.ok(res.hitM < -200, `hitM = ${res.hitM}`);
+});
+
+/** §9 i planen: den eksplisitte akseptpåstanden, ordrett. */
+test('radialUtilisation: akseptpunkt §9 — DOM_BEAM ved (-500, -150) gir eta ~ 0.413', () => {
+  const res = radialUtilisation(DOM_BEAM, -500, -150);
+  assert.ok(Math.abs(res.eta - 0.413) < 0.01, `eta = ${res.eta}, forventet ~0.413`);
+  assert.ok(Math.abs(res.eta - 3.67) > 1, 'skal IKKE være den gamle, feilaktige 3.67');
 });
 
 test('radialUtilisation: treffpunktet ligger på strålen', () => {
@@ -175,10 +208,19 @@ test('radialUtilisation: treffpunktet ligger på strålen', () => {
   }
 });
 
-test('radialUtilisation: fortegnet på M_Ed er likegyldig (M_Ed er en størrelse)', () => {
+test('radialUtilisation: fortegnet på M_Ed AVGJØR halvplanet — invertert akseptpåstand', () => {
+  // Denne testen påsto tidligere det STIKK MOTSATTE: at fortegnet på `M_Ed`
+  // var likegyldig fordi det ble tolket som en størrelse. Etter
+  // endringsrunde 4 (§1, §5.2) er `M_Ed` rå, og fortegnet er nøyaktig det
+  // som velger hvilken av de to grenene lasten prøves mot — +60 kNm er
+  // støttegrenen, -60 kNm er feltgrenen for denne plata. Er denne testen
+  // fortsatt grønn med `assert.deepEqual(a, b)`, er fortegnsendringen IKKE
+  // gjennomført (planens §9-akseptliste).
   const a = radialUtilisation(DOM_SLAB, -300, 60);
   const b = radialUtilisation(DOM_SLAB, -300, -60);
-  assert.deepEqual(a, b);
+  assert.notDeepEqual(a, b);
+  assert.ok(a.hitM > 0, `+60 kNm skal treffe støttegrenen (+M), fikk hitM=${a.hitM}`);
+  assert.ok(b.hitM < 0, `-60 kNm skal treffe feltgrenen (-M), fikk hitM=${b.hitM}`);
 });
 
 /* ================================================================== *
@@ -228,12 +270,46 @@ test('momentCurvatureSvg: tegner flytpunktet og M_Ed-linja selv', () => {
   assert.match(med, /M_Ed = 200\.0 kNm/);      // Nmm -> kNm, engelsk desimalpunktum
 });
 
-test('momentCurvatureSvg: aksene står i kNm', () => {
+test('momentCurvatureSvg: aksene står i kNm, som STØRRELSER (§5.1)', () => {
   const svg = momentCurvatureSvg(MC_BEAM, {});
-  assert.match(svg, />M \[kNm\]</);
-  assert.match(svg, />κ \[10⁻⁶\/mm\]</);
+  // `|M|`/`|κ|`: MC_BEAM sitt datasett er rått og sagging-negativt (§1.4), men
+  // M–κ har bare én gren og viser derfor absoluttverdier, med aksetitler som
+  // sier det uttrykkelig.
+  assert.match(svg, />\|M\| \[kNm\]</);
+  assert.match(svg, />\|κ\| \[10⁻⁶\/mm\]</);
   // Toppmomentet er 215,0 kNm; en akse i Nmm ville hatt merkelapper i 10^8.
   assert.match(svg, />200</);
+});
+
+test('momentCurvatureSvg: opplysningslinja om størrelser/fortegn er alltid med', () => {
+  // §5.1: den ENESTE tillatte `abs()` i fila skal forklares for leseren, ikke
+  // bare i kildekoden.
+  const svg = momentCurvatureSvg(MC_BEAM, {});
+  assert.match(svg, /data-role="caption"/);
+  assert.match(svg, /Magnitudes shown; sagging moment is negative\./);
+});
+
+/**
+ * §9 i planen: «M–κ-figuren har innhold innenfor viewBox» — egen påstand.
+ * Dette er nøyaktig den stille feilen unntaket i §5.1 skal forhindre: med rå
+ * (negative) verdier og akser som starter i 0 uten lokal `abs()`, ville
+ * `xHi`/`yHi` blitt et bitte lite negativt-nær-null-tall, og HELE kurven
+ * havnet utenfor lerretet — uten en eneste feilmelding.
+ */
+test('momentCurvatureSvg: kurven har faktisk innhold innenfor viewBox', () => {
+  const svg = momentCurvatureSvg(MC_BEAM, {});
+  const [, , vbW, vbH] = viewBox(svg);
+  const m = /<polyline data-role="curve" points="([^"]*)"/.exec(svg);
+  assert.ok(m, 'mangler kurven');
+  const coords = m[1].trim().split(/\s+/).map((pair) => pair.split(',').map(Number));
+  assert.ok(coords.length > 1, 'kurven skal ha flere punkter');
+  for (const [x, y] of coords) {
+    assert.ok(x >= -1e-6 && x <= vbW + 1e-6, `x = ${x} utenfor [0, ${vbW}]`);
+    assert.ok(y >= -1e-6 && y <= vbH + 1e-6, `y = ${y} utenfor [0, ${vbH}]`);
+  }
+  // Kurven skal faktisk BRUKE lerretet, ikke bare tilfeldigvis ligge i ett hjørne.
+  const xs = coords.map((c) => c[0]);
+  assert.ok(Math.max(...xs) - Math.min(...xs) > vbW * 0.3, 'kurven er mistenkelig smal i x');
 });
 
 test('momentCurvatureSvg: tomt datasett gir fortsatt gyldig svg', () => {
@@ -354,53 +430,49 @@ function firstCircle(svg, role) {
   return [Number(m[1]), Number(m[2])];
 }
 
-test('nmDomainSvg: hogging speiles til -M, sagging blir stående i +M (planens akseptpunkt 12)', () => {
-  // Samme N_Ed/M_Ed-STØRRELSE, men motsatt retning. `domain_theta = 0` (sagging)
-  // er omhyllingens egen retning — se DOM_BEAM/§4.3 sin `meta.domain_theta`.
+/**
+ * Erstatter de to «hogging speiles»/«domain_theta»-testene fra forrige runde.
+ * Den forrige runden holdt `nm_domain.m` i den ANALYSERTE retningen og måtte
+ * derfor speile hver kombinasjon etter `cb.theta` vs. `dom.domain_theta` for
+ * å havne i riktig halvplan (se den slettede logikken, git-historikken).
+ * Etter endringsrunde 4 (§1, §5.2) er BÅDE `dom.m` og `cb.M_Ed` rå i samme
+ * konvensjon fra motoren, så det trengs ingen sammenligning i det hele tatt
+ * — hver kombinasjon plottes rett på sin egen `M_Ed`. Testen under beviser
+ * nettopp DET: to kombinasjoner med samme `M_Ed`-størrelse men motsatt
+ * fortegn havner på hver sin side av m = 0, UAVHENGIG av om `theta`/
+ * `domain_theta` er til stede i det hele tatt.
+ */
+test('nmDomainSvg: hver kombinasjon plottes på sin egen rå M_Ed, uavhengig av theta/domain_theta', () => {
   const SIGNED = {
     ...DOM_BEAM,
-    domain_theta: 0,
+    domain_theta: 0,        // til stede i responsen, men skal IKKE lenger leses her
     combinations: [
-      { id: 'C1', name: 'Sagging', N_Ed: -500000, M_Ed: 150000000, theta: 0, within_limits: true },
+      { id: 'C1', name: 'Sagging', N_Ed: -500000, M_Ed: -150000000, theta: 0, within_limits: true },
       { id: 'C2', name: 'Hogging', N_Ed: -500000, M_Ed: 150000000, theta: Math.PI, within_limits: true },
     ],
     governing: 'C1',
     N_Ed: -500000,
-    M_Ed: 150000000,
+    M_Ed: -150000000,
   };
   const svg = nmDomainSvg(SIGNED, {});
   const zeroX = axesZeroLineX(svg);
-  const [sagCx] = firstCircle(svg, 'load-point-governing');   // C1, theta = domain_theta
-  const [hogCx] = firstCircle(svg, 'load-point');              // C2, theta = domain_theta + pi
+  const [sagCx] = firstCircle(svg, 'load-point-governing');   // C1, M_Ed < 0
+  const [hogCx] = firstCircle(svg, 'load-point');              // C2, M_Ed > 0
 
   // `cx` er M-aksen i dette diagrammet (M er horisontal, N er vertikal — se
-  // hodekommentaren og `axes(o, f, mLo.., 'M [kNm]', 'N [kN]..')`). Punktene
-  // skal derfor havne på HVER SIN SIDE av den vertikale m = 0-linja.
-  assert.ok(sagCx > zeroX, `sagging skal ligge i +M: cx=${sagCx}, m=0 ved cx=${zeroX}`);
-  assert.ok(hogCx < zeroX, `hogging skal ligge i -M: cx=${hogCx}, m=0 ved cx=${zeroX}`);
-});
+  // hodekommentaren og `axes(o, f, mLo.., 'M [kNm]', 'N [kN]..')`).
+  assert.ok(sagCx < zeroX, `sagging (M_Ed<0) skal ligge i -M: cx=${sagCx}, m=0 ved cx=${zeroX}`);
+  assert.ok(hogCx > zeroX, `hogging (M_Ed>0) skal ligge i +M: cx=${hogCx}, m=0 ved cx=${zeroX}`);
 
-test('nmDomainSvg: mangler domain_theta eller cb.theta, faller punktet tilbake til abs()', () => {
-  const noTheta = {
-    ...DOM_BEAM,
-    domain_theta: 0,
-    combinations: [
-      // `theta` mangler på selve kombinasjonen.
-      { id: 'C1', name: 'Uten theta', N_Ed: -500000, M_Ed: 150000000, within_limits: true },
-    ],
-    governing: 'C1',
-    N_Ed: -500000,
-    M_Ed: 150000000,
-  };
-  const medDomainTheta = nmDomainSvg(noTheta, {});
-  const utenDomainTheta = nmDomainSvg({ ...noTheta, domain_theta: undefined }, {});
-
-  const [cx1] = firstCircle(medDomainTheta, 'load-point-governing');
-  const [cx2] = firstCircle(utenDomainTheta, 'load-point-governing');
-  assert.ok(Math.abs(cx1 - cx2) < 1e-6, 'domain_theta alene, uten cb.theta, skal ikke endre plasseringen');
-
-  const zeroX = axesZeroLineX(medDomainTheta);
-  assert.ok(cx1 > zeroX, 'uten cb.theta skal punktet plottes i +M, som abs() ville gitt');
+  // Fjernes `theta`/`domain_theta` helt fra svaret, skal plasseringen være
+  // BYTE FOR BYTE den samme — funksjonen bruker dem ikke lenger.
+  const stripped = { ...SIGNED, domain_theta: undefined,
+    combinations: SIGNED.combinations.map(({ theta, ...rest }) => rest) };
+  const svg2 = nmDomainSvg(stripped, {});
+  const [sagCx2] = firstCircle(svg2, 'load-point-governing');
+  const [hogCx2] = firstCircle(svg2, 'load-point');
+  assert.ok(Math.abs(sagCx - sagCx2) < 1e-6, 'theta/domain_theta skal ikke påvirke plasseringen');
+  assert.ok(Math.abs(hogCx - hogCx2) < 1e-6, 'theta/domain_theta skal ikke påvirke plasseringen');
 });
 
 test('nmDomainSvg: kombinasjonenes N_Ed/M_Ed konverteres likt som reserveveien (N, Nmm)', () => {
@@ -527,9 +599,11 @@ test('momentCurvatureSvg: ett treffpunkt per kurvepunkt, med kappa og moment', (
   const h = hits(svg, 'mc');
   assert.equal(h.length, mc.kappa.length, 'ett treffpunkt per punkt paa kurven');
   // Siste punkt skal baere bruddmomentet, som er selve invarianten i kurven.
+  // `mc.M_Rd` er raatt (negativt for sagging, §1.4); treffpunktet baerer
+  // STOERRELSEN som vises paa figuren (§5.1), derfor abs() paa fasiten her.
   const last = h[h.length - 1];
-  assert.ok(Math.abs(Number(last.moment) - mc.M_Rd / 1e6) < 1e-6,
-    `siste treffpunkt baerer M_Rd: ${last.moment} vs ${mc.M_Rd / 1e6}`);
+  assert.ok(Math.abs(Number(last.moment) - Math.abs(mc.M_Rd) / 1e6) < 1e-6,
+    `siste treffpunkt baerer |M_Rd|: ${last.moment} vs ${Math.abs(mc.M_Rd) / 1e6}`);
   assert.ok(Number(last.kappa) > 0, 'kappa er med og positiv');
 });
 
@@ -571,4 +645,27 @@ test('treffflatene er usynlige — de skal ikke tegne noe paa papiret', () => {
   assert.match(g[0], /stroke="none"/, 'ingen strek');
   assert.match(g[0], /pointer-events="all"/,
     'uten denne faar et ufylt element ikke pekerhendelser i sitt indre');
+});
+
+/**
+ * Regresjon: figurens strålemerking må bruke SAMME navn som resten av siden.
+ *
+ * `radialUtilisation` returnerer `{lambda}` = faktoren ut til omhyllingen og
+ * `{eta}` = 1/λ. Utad heter den radielle utnyttelsen λ (results.js sin
+ * `RADIAL_UTILISATION_LABEL`), og η er ALLTID den vertikale utnyttelsen i
+ * resultatboksen. Figuren skrev feltnavnene rått, og et skjermbilde viste
+ * derfor «λ = 1,24, η = 0,81» rett over en bildetekst som sa «λ = 0,81» og en
+ * resultatboks som sa «η = 0,78» — tre tall, to symboler, ingen samsvar.
+ */
+test('nmDomainSvg: strålemerkingen kaller den radielle utnyttelsen λ, ikke η', () => {
+  const dom = { ...DOM_BEAM, N_Ed: -900e3, M_Ed: -250e6 };
+  const rad = radialUtilisation(dom, -900, -250);
+  const svg = nmDomainSvg(dom, {});
+  const label = /<text data-role="ray-label"[^>]*>([^<]*)<\/text>/.exec(svg);
+  assert.ok(label, 'fant ikke strålemerkingen');
+  const text = label[1];
+  assert.ok(rad.eta < 1 && rad.lambda > 1, 'forutsetningen: lasten ligger innenfor');
+  assert.match(text, new RegExp(`λ = ${rad.eta.toFixed(2)}`),
+    `λ skal være den radielle utnyttelsen (${rad.eta.toFixed(2)}), ikke faktoren`);
+  assert.ok(!/η/.test(text), 'η er den vertikale utnyttelsen og hører ikke hjemme i figuren');
 });

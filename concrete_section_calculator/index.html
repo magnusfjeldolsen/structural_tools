@@ -240,14 +240,6 @@
       <span id="load-summary" class="text-xs text-slate-500 num"></span>
     </div>
     <div class="px-5 pb-5 space-y-3">
-      <div>
-        <span class="field-label">Assumed direction — drives the drawing and the layer table until a result exists</span>
-        <div class="seg" id="dir-seg">
-          <button type="button" data-v="sagging">Sagging ⌣ <span class="text-[10px] opacity-70">θ=0</span></button>
-          <button type="button" data-v="hogging">Hogging ⌢ <span class="text-[10px] opacity-70">θ=π</span></button>
-        </div>
-      </div>
-
       <div id="combos" class="rounded-lg border border-slate-700 divide-y divide-slate-700/70 overflow-hidden"></div>
 
       <div class="flex flex-wrap items-center gap-2 text-xs">
@@ -255,10 +247,12 @@
       </div>
 
       <p class="text-[11px] text-slate-500 max-w-xl leading-snug">
-        N<sub>Ed</sub> keeps its sign — compression is negative. M<sub>Ed</sub> is a magnitude in
-        the combination's own direction. The capacity check runs every combination; the one with
-        the highest utilisation within [N<sub>min</sub>, N<sub>max</sub>] governs the headline
-        numbers and the drawing.
+        N<sub>Ed</sub> keeps its sign — compression is negative. M<sub>Ed</sub> is signed too:
+        <b>sign convention follows fib structuralcodes — sagging (compression at the top face)
+        is negative</b>, which is the opposite of common Norwegian practice. V<sub>Ed</sub> is a
+        magnitude; its sign does not affect the shear capacity. The capacity check runs every
+        combination; the one with the highest utilisation within [N<sub>min</sub>, N<sub>max</sub>]
+        governs the headline numbers and the drawing.
       </p>
     </div>
   </section>
@@ -281,7 +275,7 @@
       <div class="flex flex-wrap items-center gap-4">
         <button type="button" id="btn-run"
                 class="px-6 py-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold border border-sky-400/50 shadow-lg shadow-sky-900/40 flex items-center gap-3">
-          <span id="btn-run-label">Calculate</span> <kbd class="!bg-sky-900 !border-sky-500">Ctrl</kbd><kbd class="!bg-sky-900 !border-sky-500">⏎</kbd>
+          <span id="btn-run-label">Calculate</span> <kbd class="!bg-sky-900 !border-sky-500">Ctrl</kbd><kbd class="!bg-sky-900 !border-sky-500">Space</kbd>
         </button>
         <button type="button" id="btn-cancel" style="display:none"
                 class="px-4 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm">Cancel</button>
@@ -336,7 +330,7 @@
               class="px-3 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm">Cancel</button>
       <button type="button" id="btn-run-bar"
               class="px-5 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 font-semibold text-sm border border-sky-400/50">
-        <span id="btn-run-bar-label">Calculate</span> <kbd class="!bg-sky-900 !border-sky-500 ml-1">⌃⏎</kbd>
+        <span id="btn-run-bar-label">Calculate</span> <kbd class="!bg-sky-900 !border-sky-500 ml-1">⌃Space</kbd>
       </button>
     </div>
   </div>
@@ -349,14 +343,14 @@
       <button type="button" id="help-close" class="ml-auto text-slate-400 hover:text-white">✕</button></div>
     <table class="w-full text-[13px]">
       <tbody class="[&amp;_td]:py-1 [&amp;_td:first-child]:w-28">
-        <tr><td><kbd>Ctrl</kbd> <kbd>⏎</kbd></td><td class="text-slate-300">Calculate — from anywhere</td></tr>
+        <tr><td><kbd>Ctrl</kbd> <kbd>Space</kbd></td><td class="text-slate-300">Calculate — from anywhere, without leaving the mouse</td></tr>
+        <tr><td><kbd>Ctrl</kbd> <kbd>⏎</kbd></td><td class="text-slate-300">Calculate — alias for Ctrl+Space</td></tr>
         <tr><td><kbd>A</kbd></td><td class="text-slate-300">Jump to the reinforcement line</td></tr>
         <tr><td><kbd>⏎</kbd></td><td class="text-slate-300">Add the layer in the reinforcement line</td></tr>
         <tr><td><kbd>↑</kbd></td><td class="text-slate-300">Recall the previous line</td></tr>
         <tr><td><kbd>Alt</kbd> <kbd>D</kbd></td><td class="text-slate-300">Duplicate last layer</td></tr>
         <tr><td><kbd>B</kbd> / <kbd>P</kbd></td><td class="text-slate-300">Beam / slab</td></tr>
-        <tr><td><kbd>F</kbd> / <kbd>S</kbd></td><td class="text-slate-300">Sagging / hogging</td></tr>
-        <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></td><td class="text-slate-300">Bending / M–κ / M–N</td></tr>
+        <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></td><td class="text-slate-300">Bending / M–κ / M–N — bending is skipped when it is unavailable</td></tr>
         <tr><td><kbd>?</kbd></td><td class="text-slate-300">This list</td></tr>
       </tbody>
     </table>
@@ -476,19 +470,25 @@ const MODULE_CONFIG = {
     layers: { label: 'Reinforcement layers', symbol: 'A_s', type: 'object', unit: '',
       default: [], required: true, category: 'geometry',
       description: 'List of {id, mode: bars|spacing, dia, count|spacing, edge: bottom|top, dc, dc_auto}' },
+    shear: { label: 'Shear reinforcement', symbol: '', type: 'object', unit: '',
+      default: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] }, required: true,
+      category: 'geometry',
+      description: '{strut_angle_deg [21.8-45, EC2 6.2.3(2)], z_factor [z = z_factor*d], ' +
+        'stirrups: list of {id, dia, spacing, legs, fywk, alpha}}. An empty stirrups list ' +
+        'means no shear reinforcement (the V_Rd,c path), not "do not check shear" — ' +
+        'section.shear is always sent, and shear is evaluated for every load combination.' },
     combos: { label: 'Load combinations', symbol: '', type: 'array', unit: '',
-      default: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, direction: 'sagging' }],
+      default: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
       required: true, category: 'loads',
-      description: 'List of {id, name, N_Ed [kN, compression negative], M_Ed [kNm, magnitude], ' +
-        'direction: sagging|hogging}. Replaces the old scalar loads.N_Ed/loads.M_Ed.' },
+      description: 'List of {id, name, N_Ed [kN, compression negative], M_Ed [kNm, SIGNED — ' +
+        'sagging negative, hogging positive, following fib structuralcodes — NOT common ' +
+        'Norwegian practice], V_Ed [kN, magnitude, the sign does not matter]}. Replaces the ' +
+        'old scalar loads.N_Ed/loads.M_Ed. There is no separate "direction" field — the sign ' +
+        'of M_Ed IS the direction.' },
     activeCombo: { label: 'Active combination', symbol: '', type: 'string', unit: '',
       default: 'C1', required: true, category: 'loads',
       description: 'Combination id used for moment_curvature. Ignored by bending and ' +
         'nm_domain, which run every combination and report the governing one.' },
-    direction: { label: 'Assumed direction', symbol: 'θ', type: 'select', unit: '',
-      options: ['sagging', 'hogging'], default: 'sagging', required: true, category: 'loads',
-      description: 'Drives the drawing and layer table before a result exists. ' +
-        'sagging = θ 0 (compression at top), hogging = θ π (compression at bottom)' },
     analysis: { label: 'Analysis', symbol: '', type: 'select', unit: '',
       options: ['bending', 'moment_curvature', 'nm_domain'], default: 'bending',
       required: true, category: 'meta', description: '' },

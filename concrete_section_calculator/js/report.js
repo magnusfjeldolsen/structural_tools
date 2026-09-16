@@ -92,6 +92,10 @@ import {
   allCombinations,
   governingCombo,
   comboLabel,
+  shearGoverningCombo,
+  shearHeadlineUtilisation,
+  SHEAR_UTILISATION_LABEL,
+  shearGoverningModeLabel,
 } from './results.js';
 
 /**
@@ -226,12 +230,22 @@ function materialsOf(state, result) {
   }
 }
 
-/** Retningen motoren faktisk regnet med, ellers den valgte. */
+/**
+ * Retningen motoren faktisk regnet med, ellers den den aktive kombinasjonen
+ * ville gitt.
+ *
+ * ENDRINGSRUNDE 4 §1.2/§7: `state.direction` finnes ikke lenger — retningen
+ * ER fortegnet på `M_Ed`. Reserven leser derfor den aktive kombinasjonens
+ * `M_Ed` gjennom `thetaFor` (samme regel som `section.js:activeComboTheta`),
+ * IKKE `state.direction`: det feltet er alltid `undefined` nå, og
+ * `thetaFor(undefined)` ville stille gitt θ = 0 for ALT — inkludert et snitt
+ * hvor den aktive raden faktisk er et støttemoment.
+ */
 function thetaOf(state, result) {
   const t = toNum(result?.meta?.theta);
   if (t !== null) return t;
   try {
-    return thetaFor(state?.direction);
+    return thetaFor(activeComboOf(state)?.M_Ed);
   } catch {
     return 0;
   }
@@ -300,7 +314,13 @@ function figure(state, overlay, caption) {
   return `<figure class="atomic report-figure-wrap">${svg}${cap}</figure>`;
 }
 
-function geometryTable(state, props) {
+/**
+ * `theta` kommer INN fra `sectionChapter` (samme kilde som resten av
+ * rapporten bruker, `thetaOf`) — ikke fra `state?.direction`, som ikke
+ * finnes lenger (endringsrunde 4 §7). Retningen ER fortegnet på den aktive
+ * kombinasjonens `M_Ed`.
+ */
+function geometryTable(state, props, theta) {
   const type = state?.sectionType;
   const b = toNum(props.b_t) ?? sectionWidth(state || {});
   const h = sectionHeight(state || {});
@@ -309,7 +329,7 @@ function geometryTable(state, props) {
     [type === 'slab' ? 'Width b [mm] (per metre)' : 'Width b [mm]', fmtLength(b, 0)],
     ['Height h [mm]', fmtLength(h, 0)],
     ['Concrete area A_c [mm²]', fmtArea(props.Ag)],
-    ['Moment direction', esc(directionLabel(state?.direction))],
+    ['Moment direction', esc(directionLabel(directionFromTheta(theta)))],
   ]);
 }
 
@@ -346,10 +366,11 @@ function materialTable(m) {
 }
 
 function sectionChapter(state, result, props, materials) {
+  const theta = thetaOf(state, result);
   const body =
     figure(state, null, 'Cross-section with reinforcement, as entered.') +
     twoCol(
-      `<div><h4>Geometry</h4>${geometryTable(state, props)}</div>`,
+      `<div><h4>Geometry</h4>${geometryTable(state, props, theta)}</div>`,
       `<div><h4>Materials</h4>${materialTable(materials)}</div>`
     );
   return chapter(2, 'Cross-section and materials', body);
@@ -454,39 +475,66 @@ function rebarChapter(state, result, props) {
  * Kombinasjoner utenfor [N_min, N_max] (`within_limits: false`) stopper ikke
  * de andre (plan §4.4) og vises med egen status i stedet for oppdiktede tall.
  */
+/**
+ * `V_Ed`/η_V-kolonnene og markøren for skjær-dimensjonerende rad er nye
+ * (endringsrunde 4 §4.2/§4.3). `shear_governing` er et EGET, uavhengig valg
+ * fra `governing` (bøying) — en rad med stor `V_Ed` og lite `M_Ed` kan styre
+ * skjær helt uavhengig av hvilken rad som styrer bøying, derfor en egen
+ * `data-shear-governing`-markør i stedet for å gjenbruke `data-role`, som
+ * alt betyr «denne raden styrer BØYING» (plan §5.2 sin advarsel om å ikke slå
+ * sammen de to η-ene gjelder også hvilken RAD som fremheves).
+ */
 function combinationsBlock(result) {
   const combos = allCombinations(result);
   if (!combos.length) return '';
   const governingId = analysisBlock(result)?.governing;
+  const shearGoverningId = analysisBlock(result)?.shear_governing;
+  const hasShearGoverning = shearGoverningId !== null && shearGoverningId !== undefined;
   const rows = combos
     .map((c) => {
       const isGoverning = governingId !== null && governingId !== undefined && c.id === governingId;
+      const isShearGoverning = hasShearGoverning && c.id === shearGoverningId;
       const outOfRange = c.within_limits === false;
       const dir = directionFromTheta(c.theta);
       const label = esc(comboLabel(c));
       const status = outOfRange ? 'Outside [N_min, N_max]' : isGoverning ? 'Governing' : '';
-      return `<tr${isGoverning ? ' data-role="combo-governing"' : ''}>` +
+      const shear = c.shear;
+      const shearEta = shear && shear.evaluated ? toNum(shear.utilisation) : null;
+      const shearCell = shearEta === null ? DASH : fmtRatio(shearEta, 3);
+      return `<tr${isGoverning ? ' data-role="combo-governing"' : ''}${
+        isShearGoverning ? ' data-shear-governing="true"' : ''
+      }>` +
         `<td>${isGoverning ? `<b>${label}</b>` : label}</td>` +
         `<td class="num">${fmtForceKN(c.N_Ed)}</td>` +
         `<td class="num">${fmtMomentKNm(c.M_Ed)}</td>` +
         `<td>${esc(dir ? directionLabel(dir) : DASH)}</td>` +
         `<td class="num">${outOfRange ? DASH : fmtRatio(c.utilisation, 3)}</td>` +
+        `<td class="num">${fmtForceKN(c.V_Ed)}</td>` +
+        `<td class="num">${isShearGoverning ? `<b>${shearCell}</b>` : shearCell}</td>` +
         `<td>${esc(status)}</td>` +
         `</tr>`;
     })
     .join('');
+  const shearNote = hasShearGoverning
+    ? `<p class="note">Bold η_V marks the load combination governing shear. It may be a ` +
+      `different row than the one governing bending (above): a large V_Ed with a small ` +
+      `M_Ed can control shear without ever being close to controlling bending.</p>`
+    : '';
   return (
     `<h4>Load combinations</h4>` +
     `<table><thead><tr><th>Combination</th><th class="num">N_Ed [kN]</th>` +
     `<th class="num">M_Ed [kNm]</th><th>Direction</th><th class="num">η [–]</th>` +
-    `<th>Status</th></tr></thead><tbody>${rows}</tbody></table>`
+    `<th class="num">V_Ed [kN]</th><th class="num">η_V [–]</th>` +
+    `<th>Status</th></tr></thead><tbody>${rows}</tbody></table>${shearNote}`
   );
 }
 
 /**
- * `N_Ed` er fortegnsatt (trykk negativ), `M_Ed` er en STØRRELSE i den
- * analyserte retningen (plan §4.1). Begge deler står uttrykkelig i tabellen,
- * fordi fortegnskonvensjonen er det eneste ved lastene man kan ta feil av.
+ * `N_Ed` er fortegnsatt (trykk negativ). `M_Ed` er nå OGSÅ fortegnsatt,
+ * `structuralcodes` sin egen konvensjon (endringsrunde 4 §1.2): sagging er
+ * NEGATIV, støttemoment er POSITIV. Det er MOTSATT av norsk praksis, og
+ * derfor står konvensjonssetningen (§1.7) rett under tabellen — ikke bare i
+ * UI-et — og «Direction» er avledet fra fortegnet, ikke fra et eget felt.
  *
  * RESERVEN (endringsrunde 2, §4.7) er nå den AKTIVE kombinasjonen i
  * `state.combos`, ikke `state.loads` — det feltet finnes ikke lenger.
@@ -500,15 +548,20 @@ function loadsChapter(state, result, props) {
   const mEd = toNum(blk?.M_Ed) ?? (combo && toNum(combo.M_Ed) !== null
     ? toNum(combo.M_Ed) * 1e6
     : null);
+  // `null` betyr «ingen last kjent ennå», og skal IKKE lese som sagging
+  // (θ = 0 er `thetaFor`s fallback for et ikke-tall) — se `directionLabel(null) -> DASH`.
+  const dir = mEd === null ? null : directionFromTheta(thetaFor(mEd));
 
   const rows = [
     ['N_Ed [kN] (compression negative)', fmtForceKN(nEd)],
-    ['M_Ed [kNm] (magnitude in the analysed direction)', fmtMomentKNm(mEd)],
-    ['Direction', esc(directionLabel(state?.direction))],
+    ['M_Ed [kNm] (sagging negative — see note below)', fmtMomentKNm(mEd)],
+    ['Direction', esc(directionLabel(dir))],
     ['N_min [kN]', fmtForceKN(props.n_min ?? props.N_min)],
     ['N_max [kN]', fmtForceKN(props.n_max ?? props.N_max)],
   ];
   const note =
+    `<p class="note">Sign convention follows fib <code>structuralcodes</code>: sagging ` +
+    `(compression at the top face) is negative.</p>` +
     `<p class="note">The axial range [N_min, N_max] is the cross-section's pure ` +
     `compression and tension capacity. If N_Ed falls outside it, there is no bending ` +
     `resistance to check against, and the engine responds with ` +
@@ -537,6 +590,67 @@ function strainTable(fs, atNEd) {
       num: [1, 2, 3, 5],
     })
   );
+}
+
+/**
+ * Skjærdelen av resultatkapitlet (endringsrunde 4 §4.2/§4.3).
+ *
+ * Viser den SKJÆR-dimensjonerende kombinasjonen, som kan være en helt annen
+ * rad enn den som styrer bøying (`gCombo` over) — en rad med stor `V_Ed` og
+ * lite `M_Ed` styrer skjær uten å være i nærheten av å styre bøying.
+ *
+ * `V_Rd,c` LEGGES ALDRI TIL `V_Rd,s` (EC2 6.2.3(2)) — `governing_mode` velger
+ * hvilket tall som ER `V_Rd`, det summeres ikke. Notatet under tabellen sier
+ * dette eksplisitt, fordi det er akkurat den typen regel en leser ellers ville
+ * gjettet feil på ved synet av tre V_Rd-tall ved siden av hverandre.
+ *
+ * INGEN skjærdata i det hele tatt (eldre fixtur uten `section.shear` i
+ * payloaden, eller ingen kombinasjon kunne få skjær evaluert) gir én ærlig
+ * setning, ikke en tom tabell eller stillhet.
+ */
+function shearSection(result) {
+  if (!analysisBlock(result)) return '';
+  const combo = shearGoverningCombo(result);
+  if (!combo || !combo.shear || !combo.shear.evaluated) {
+    return (
+      `<h4>Shear</h4><p class="muted">No shear capacity could be evaluated for any load ` +
+      `combination.</p>`
+    );
+  }
+  const s = combo.shear;
+  const rows = [
+    ['Governing load combination', esc(comboLabel(combo))],
+    ['V_Ed [kN]', fmtForceKN(s.V_Ed)],
+    ['V_Rd [kN]', fmtForceKN(s.V_Rd)],
+    ['V_Rd,c [kN]', fmtForceKN(s.V_Rd_c)],
+    ['V_Rd,s [kN]', fmtForceKN(s.V_Rd_s)],
+    ['V_Rd,max [kN]', fmtForceKN(s.V_Rd_max)],
+    ['Governing mode', esc(shearGoverningModeLabel(s.governing_mode))],
+    [`${esc(SHEAR_UTILISATION_LABEL)} [–]`, fmtRatio(s.utilisation, 3)],
+    ['A_sl [mm²]', fmtArea(s.Asl)],
+    ['d [mm]', fmtLength(s.d, 1)],
+    ['b_w [mm]', fmtLength(s.bw, 0)],
+    ['z = z_factor·d [mm]', fmtLength(s.z, 1)],
+    ['A_sw/s [mm²/mm]', s.asw_s === null || s.asw_s === undefined ? DASH : fmtNumber(s.asw_s, 4)],
+    [
+      'A_sw/s,min [mm²/mm]',
+      s.asw_s_min === null || s.asw_s_min === undefined ? DASH : fmtNumber(s.asw_s_min, 4),
+    ],
+    [
+      'A_sw/s,required [mm²/mm]',
+      s.asw_s_required === null || s.asw_s_required === undefined
+        ? DASH
+        : fmtNumber(s.asw_s_required, 4),
+    ],
+    ['s_l,max [mm]', fmtLength(s.sl_max, 0)],
+    ['s_t,max [mm]', fmtLength(s.st_max, 0)],
+  ];
+  const note =
+    `<p class="note">V_Rd,c is never added to V_Rd,s (EC2 6.2.3(2)); the governing mode ` +
+    `above decides whether V_Rd,c (no stirrups needed) or min(V_Rd,s, V_Rd,max) applies. ` +
+    `V_Rd,c is reported regardless — it is the number that says whether stirrups were ` +
+    `needed at all.</p>`;
+  return `<h4>Shear</h4>${kvTable(rows)}${note}`;
 }
 
 /**
@@ -586,6 +700,23 @@ function resultChapter(state, result) {
   const combos = allCombinations(result);
   const gCombo = governingCombo(result);
 
+  /**
+   * Skjærmerket (endringsrunde 4 §4.3). ETT eget tall, ALDRI slått sammen med
+   * `eta`/`HEADLINE_UTILISATION_LABEL` over — hele poenget med at terskelen og
+   * etiketten bor ETT sted (`results.js`) er at samme snitt aldri viser to
+   * ulike η under samme navn. Vises bare når NOEN kombinasjon faktisk fikk
+   * skjær evaluert; en eldre fixtur uten `section.shear` skal ikke vise et
+   * oppdiktet merke.
+   */
+  const shearCombo = shearGoverningCombo(result);
+  const etaShear = shearHeadlineUtilisation(result);
+  const shearStatus = utilisationStatus(etaShear);
+  const shearBadge = shearCombo
+    ? `<div class="result-main result-shear" data-level="${esc(shearStatus.level)}">` +
+      `<span class="result-label">${esc(SHEAR_UTILISATION_LABEL)}</span>` +
+      `<span class="result-value">V ${fmtRatio(etaShear, 2)}</span></div>`
+    : '';
+
   const head =
     `<div class="result-box atomic" data-level="${esc(status.level)}">` +
     `<div class="result-main"><span class="result-label">M_Rd</span>` +
@@ -596,6 +727,7 @@ function resultChapter(state, result) {
       HEADLINE_UTILISATION_LABEL
     )}</span>` +
     `<span class="result-value">${fmtRatio(eta, 3)}</span></div>` +
+    shearBadge +
     `<div class="result-status">${esc(status.label)}</div>` +
     `</div>`;
 
@@ -640,18 +772,38 @@ function resultChapter(state, result) {
   }
   const dom = result.nm_domain;
   if (dom) {
+    /**
+     * INGEN `Math.abs()` PÅ `dom.M_Ed` HER (endringsrunde 4 §5.2).
+     *
+     * `dom.M_Ed` er nå RÅTT — fortegnet ER retningen (§1.4). `radialUtilisation`
+     * regner en lastvei fra origo gjennom PUNKTET (N_Ed, M_Ed) til der den
+     * krysser omhyllingen, og omhyllingen selv er nå rå (D5, §5.2). Tas `abs`
+     * her, havner et støttemoment-punkt på FELTGRENEN i stedet for sin egen —
+     * målt på (−500 kN, −150 kNm): η = 3,67 i stedet for riktig 0,413. Dette
+     * ER «den dyrekjøpte lærdommen» `charts.js` sin hodekommentar viser til.
+     */
     const rad = radialUtilisation(
       dom,
       (toNum(dom.N_Ed) || 0) / 1e3,
-      Math.abs(toNum(dom.M_Ed) || 0) / 1e6
+      (toNum(dom.M_Ed) || 0) / 1e6
     );
+    /*
+     * λ ER UTNYTTELSEN, IKKE FAKTOREN. `radialUtilisation` returnerer
+     * `lambda` = faktoren som skalerer lasten ut til omhyllingen (1,242 =
+     * 24 % reserve) og `eta` = 1/λ = 0,805. Rapporten skrev før `lambda`
+     * under merkelappen `RADIAL_UTILISATION_LABEL` mens `ui.js` skrev `eta`
+     * under NØYAKTIG samme merkelapp — «λ (load path — secondary)» betydde
+     * da 1,242 på papiret og 0,805 på skjermen. En utnyttelse er et tall som
+     * skal være ≤ 1 når det holder, så λ er `eta`, og faktoren får sin egen
+     * rad med sitt eget navn.
+     */
     rows.push(
       ['Points on the envelope', fmtNumber((dom.n || []).length, 0)],
+      [`${RADIAL_UTILISATION_LABEL} [–]`, rad.eta ? fmtRatio(rad.eta, 3) : DASH],
       [
-        `${RADIAL_UTILISATION_LABEL} [–]`,
+        'Load factor to the envelope [–]',
         Number.isFinite(rad.lambda) ? fmtRatio(rad.lambda, 3) : DASH,
-      ],
-      ['η_radial = 1/λ [–]', rad.eta ? fmtRatio(rad.eta, 3) : DASH]
+      ]
     );
   }
 
@@ -704,7 +856,8 @@ function resultChapter(state, result) {
       strainTable(fs, atNEd) +
       xNote +
       atNEdNote +
-      radNote
+      radNote +
+      shearSection(result)
   );
 }
 
@@ -733,11 +886,19 @@ function plotChapter(state, result) {
       unit: 'mm',
       theme: 'print',
     });
+    // ENDRINGSRUNDE 4 §5.1/§5.2: teksten under figuren sier ikke lenger «κ og
+    // M er størrelser» som et faktum om DATAEN — dataen er nå rå og fortegnsatt
+    // (§1.4). Størrelsene som vises i selve kurven kommer fra en LOKAL `abs` i
+    // `momentCurvatureSvg` (D5, det ENESTE tillatte unntaket, §5.1) — teksten
+    // her sier derfor uttrykkelig at det er PLOTTET som magnitude, og henviser
+    // til konvensjonen i stedet for å late som fortegnet ikke fantes.
     return chapter(
       6,
       'Plot — moment–curvature',
       `<figure class="atomic report-figure-wrap">${svg}<figcaption>M(κ) at N_Ed, with
-        M_Ed and the yield point plotted. κ and M are magnitudes.</figcaption></figure>`
+        M_Ed and the yield point plotted as magnitudes. Sagging moment is negative in
+        the underlying data (chapter 4); the curve has only one branch, so the sign
+        carries no information here.</figcaption></figure>`
     );
   }
 
@@ -747,12 +908,17 @@ function plotChapter(state, result) {
       unit: 'mm',
       theme: 'print',
     });
+    // ENDRINGSRUNDE 4 §5.2: «+M er den analyserte retningen» var sant bare
+    // under den gamle speilingen (θ-avhengig fortegn). Omhyllingen er nå RÅ —
+    // samme fortegnskonvensjon som resten av rapporten, ALDRI speilet per
+    // kombinasjon — så teksten sier konvensjonen rett ut i stedet.
     return chapter(
       6,
       'Plot — N–M diagram',
       `<figure class="atomic report-figure-wrap">${svg}<figcaption>Capacity envelope
-        with the load point(s) and the load path. +M is the analysed direction, −M the
-        opposite; N points upward with its own sign, i.e. compression downward. The
+        with the load point(s) and the load path. Sign convention follows fib
+        structuralcodes: sagging (compression at the top face) is negative, hogging is
+        positive; N points upward with its own sign, i.e. compression downward. The
         strain plane and failure mode at N_Ed are given in chapter 5.</figcaption></figure>`
     );
   }

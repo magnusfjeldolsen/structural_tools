@@ -238,6 +238,12 @@ export const ENGINE_CODES = Object.freeze([
   // M–κ med M_Rd. Den utløses på STANDARDOPPSETTET (α_cc = 0,85), så uten en
   // tekst ville den vanligste kjøringen vist «Unspecified message».
   'mc_endpoint_mismatch',
+  // Skjær, endringsrunde 4 (§4.1b, §4.2). `shear_asl_ambiguous` er `info` og
+  // ventet (M_Ed = 0 har ingen strekkside fra momentet). `shear_not_evaluated`
+  // er `warning` og kom av en ekte krasj VRdmax/Asw_max fanget under bølge 1 —
+  // se `engine.py:_shear_result`.
+  'shear_asl_ambiguous',
+  'shear_not_evaluated',
 ]);
 
 /** Kodene `section.js` sin `validate()` kan produsere. Samme tabell, ett oppslag. */
@@ -253,6 +259,13 @@ export const VALIDATION_CODES = Object.freeze([
   'layers_overlap',
   // EC2 8.2(2) fri avstand mellom lag (endringsrunde 2, §2.4).
   'insufficient_layer_spacing',
+  // Skjærvalidering, endringsrunde 4 §4.4 — samme tabell, ett oppslag.
+  'stirrup_spacing_exceeds_max',
+  'asw_below_minimum',
+  'stirrup_legs_spacing_exceeds_max',
+  'invalid_strut_angle',
+  'stirrup_alpha_unsupported',
+  'stirrup_mixed_fywk',
 ]);
 
 /** Kodene som beskriver svikt i worker/runtime eller i et lastet dokument, ikke i tverrsnittet. */
@@ -267,6 +280,9 @@ export const RUNTIME_CODES = Object.freeze([
   'document_not_recognised',
   'document_field_ignored',
   'document_field_defaulted',
+  // Serialisering, endringsrunde 4 §2 — en lagret fil med `analysis: 'bending'`
+  // og `N_Ed ≠ 0` normaliseres til `nm_domain` ved lasting.
+  'analysis_forced_to_nm_domain',
 ]);
 
 /**
@@ -308,6 +324,14 @@ export const CODE_MESSAGES = Object.freeze({
     'A reinforcement layer lies wholly or partly outside the concrete cross-section. ' +
     'The bar is integrated without surrounding concrete, and the capacity becomes ' +
     'unreliable.',
+  shear_asl_ambiguous:
+    'M_Ed = 0 for this combination gives no tension side from the moment. The side ' +
+    'with the least flexural tension reinforcement is used for A_sl and d — the more ' +
+    'conservative of the two.',
+  shear_not_evaluated:
+    'The shear capacity could not be computed for this load combination: the axial ' +
+    'force is too far outside the range the cross-section can carry for the ' +
+    'compression strut check to apply. V_Rd is not available for this row.',
 
   /* --- validering (`section.js`) --- */
   invalid_height: 'Height h must be greater than 0.',
@@ -329,6 +353,24 @@ export const CODE_MESSAGES = Object.freeze({
     'almost certainly wrong.',
   insufficient_layer_spacing:
     'Clear distance between reinforcement layers is below the EC2 8.2(2) minimum.',
+  stirrup_spacing_exceeds_max:
+    'Stirrup spacing s exceeds s_l,max = 0.75·d (EC2 9.2.2(6)). Add stirrups or reduce ' +
+    'the spacing.',
+  asw_below_minimum:
+    'The shear reinforcement ratio A_sw/s is below the EC2 9.2.2(5) minimum ' +
+    'ρ_w,min·b_w. This applies only where stirrups are present at all — a section ' +
+    'without shear reinforcement is not held to this minimum.',
+  stirrup_legs_spacing_exceeds_max:
+    'With more than two legs, the spacing between legs exceeds s_t,max = ' +
+    'min(0.75·d, 600 mm) (EC2 9.2.2(8)). The outer legs still confine the section; ' +
+    'the concrete between the inner legs may not.',
+  invalid_strut_angle:
+    'The strut angle must be between 21.8° and 45° (EC2 6.2.3(2)).',
+  stirrup_alpha_unsupported:
+    'Only vertical stirrups (α = 90°) are supported by this module.',
+  stirrup_mixed_fywk:
+    'All stirrup rows must share the same f_ywk: the shear capacity is computed from ' +
+    'a single yield strength for the whole section.',
 
   /* --- kjøretid og dokument --- */
   runtime_load_failed:
@@ -349,6 +391,10 @@ export const CODE_MESSAGES = Object.freeze({
   document_not_recognised: 'This is not a concrete section calculator file.',
   document_field_ignored: 'An unknown field in the file was ignored.',
   document_field_defaulted: 'A missing field in the file was filled with its default.',
+  analysis_forced_to_nm_domain:
+    'The file requested bending resistance with a non-zero axial force. A resistance ' +
+    'quoted at a single axial force is one point on a curve, so the analysis was ' +
+    'changed to the N–M interaction domain on load.',
 });
 
 /**
@@ -482,6 +528,12 @@ export const CHECK_ORDER = Object.freeze([
   'as_min_ok',
   'as_max_ok',
   'ductility_ok',
+  // Skjær, endringsrunde 4 §4.3 — FØR `all_ok`, som fortsatt skal stå sist:
+  // uten disse tre her emitterer `checkRows()` dem aldri, og de tre nye
+  // kontrollene ville vært stille fraværende fra rapporten (plan §10 punkt 2).
+  'shear_ok',
+  'asw_min_ok',
+  'stirrup_spacing_ok',
   'all_ok',
 ]);
 
@@ -491,6 +543,9 @@ export const CHECK_LABELS = Object.freeze({
   as_min_ok: 'Minimum reinforcement A_s,min (EC2 9.2.1.1)',
   as_max_ok: 'Maximum reinforcement A_s,max = 0.04·A_c',
   ductility_ok: 'Ductility — tension reinforcement yields at failure',
+  shear_ok: 'Shear capacity V_Ed ≤ V_Rd, all combinations (EC2 6.2)',
+  asw_min_ok: 'Minimum shear reinforcement A_sw/s ≥ A_sw/s,min (EC2 9.2.2(5))',
+  stirrup_spacing_ok: 'Stirrup spacing s ≤ s_l,max (EC2 9.2.2(6))',
   all_ok: 'Overall assessment',
 });
 
@@ -698,6 +753,44 @@ export function comboLabel(combo) {
   if (!combo) return DASH;
   const name = String(combo.name || '').trim();
   return name || String(combo.id || '') || DASH;
+}
+
+/**
+ * Kombinasjonen som styrer SKJÆR (`<analyse>.shear_governing`, plan §4.3) —
+ * et EGET, uavhengig valg fra `governing`: en rad med stor `V_Ed` og lite
+ * `M_Ed` kan styre skjær uten i nærheten av å styre bøying. `null` når ingen
+ * kombinasjon fikk `shear.evaluated: true` (eldre fixtur uten
+ * `section.shear` i payloaden, eller alle utenfor trykkstavens gyldige
+ * aksialintervall).
+ */
+export function shearGoverningCombo(result) {
+  const blk = analysisBlock(result);
+  const id = blk?.shear_governing;
+  if (id === undefined || id === null) return null;
+  return allCombinations(result).find((c) => c.id === id) || null;
+}
+
+/** η_V for den skjær-dimensjonerende kombinasjonen, eller `null`. */
+export function shearHeadlineUtilisation(result) {
+  return toNum(shearGoverningCombo(result)?.shear?.utilisation);
+}
+
+/**
+ * Merkelappen på skjærmerket. STÅR ALENE, ved siden av `HEADLINE_UTILISATION_LABEL`
+ * — de to slås ALDRI sammen til ett tall (plan §4.3): samme snitt skal aldri
+ * vise to ulike η under samme navn.
+ */
+export const SHEAR_UTILISATION_LABEL = 'η_V = V_Ed / V_Rd';
+
+/** `governing_mode` fra skjærresultatet (plan §4.2), engelsk. */
+export const SHEAR_GOVERNING_MODE_LABELS = Object.freeze({
+  no_stirrups: 'No stirrups — V_Rd = V_Rd,c',
+  stirrups: 'Stirrups govern — V_Rd = V_Rd,s',
+  strut_crushing: 'Strut crushing governs — V_Rd = V_Rd,max',
+});
+
+export function shearGoverningModeLabel(mode) {
+  return SHEAR_GOVERNING_MODE_LABELS[mode] || (mode ? `Unknown mode ("${mode}")` : DASH);
 }
 
 /**

@@ -61,9 +61,11 @@ const BEAM_STATE = {
   cover_side: 40,
   spacing: { k1: 1.0, k2: 5.0, d_g: 16 },
   layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50, dc_auto: false }],
-  combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, direction: 'sagging' }],
+  // ENDRINGSRUNDE 4 §1.2/§7: ingen `direction` — verken på kombinasjonen eller
+  // på `state`. Retningen ER fortegnet på `M_Ed` (`M_Ed <= 0` er sagging).
+  combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
   activeCombo: 'C1',
-  direction: 'sagging',
+  shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] },
   analysis: 'bending',
   options: { subtract_bar_area: false, mc_pre_yield: 10, mc_post_yield: 10 },
   doc: { project: 'Test project', title: 'Beam B1', author: 'MFO', date: '16.09.2026', note: '' },
@@ -260,10 +262,18 @@ test('plata merkes «per metre» der mengdene er per meter', () => {
  * Last og lastkombinasjoner (endringsrunde 2, §4.3, §10 B4 punkt 4)
  * ================================================================== */
 
+/**
+ * ENDRINGSRUNDE 4 §1.7: «magnitude in the analysed direction» var sant under
+ * den gamle speilte konvensjonen. `M_Ed` er nå RÅTT og fortegnsatt, sagging
+ * negativ (`structuralcodes` sin egen konvensjon, ikke norsk praksis) — og
+ * konvensjonssetningen fra §1.7 skal stå her, ikke bare i UI-et.
+ */
 test('lastkapitlet sier fortegnskonvensjonen og aksialintervallet', () => {
   const ch4 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 4);
   assert.match(ch4, /compression negative/i);
-  assert.match(ch4, /magnitude in the analysed direction/i);
+  assert.match(ch4, /sagging negative/i);
+  assert.match(ch4, /sagging \(compression at the top face\) is negative/i, 'ordrett fra §1.7');
+  assert.match(ch4, /structuralcodes/);
   assert.match(ch4, /N_min/);
   assert.match(ch4, /N_max/);
   assert.ok(ch4.includes('-4010.4'), 'N_min i kN');
@@ -346,30 +356,63 @@ test('kun én kombinasjon: kapittel 5 nevner den likevel, ikke bare et bart tall
  * Resultat
  * ================================================================== */
 
+/**
+ * ENDRINGSRUNDE 4 §1.4/§1.6: `M_Rd` er nå RÅTT og NEGATIVT for feltkapasitet
+ * (`bending.M_Rd = -215006759.186...`, samme absoluttverdi som før). `300e6 /
+ * over.bending.M_Rd` uten `abs` gir dermed et NEGATIVT tall som aldri kunne
+ * blitt 'over' — testen låste seg selv til den gamle, positive konvensjonen.
+ * `utilisation` er en STØRRELSE (§1.4: `|M_Ed| / |M_Rd|`), akkurat som motoren
+ * selv nå regner den.
+ */
 test('resultatboksen bærer status fra results.js sine terskler', () => {
   const low = buildReportHtml(BEAM_STATE, BENDING);
   assert.ok(low.includes('data-level="ok"'));
   assert.ok(low.includes(UTILISATION_LEVELS.ok.label));
 
   const over = clone(BENDING);
-  over.bending.M_Ed = 300e6;
-  over.bending.utilisation = 300e6 / over.bending.M_Rd;
+  over.bending.M_Ed = -300e6;
+  over.bending.utilisation = Math.abs(-300e6) / Math.abs(over.bending.M_Rd);
   const html = buildReportHtml(BEAM_STATE, over);
   assert.equal(utilisationStatus(over.bending.utilisation).level, 'over');
   assert.ok(html.includes('data-level="over"'));
   assert.ok(html.includes(UTILISATION_LEVELS.over.label));
 });
 
+/**
+ * ENDRINGSRUNDE 4 §1.2/§7: `state.direction` finnes ikke lenger. `thetaOf()`
+ * leser primært `result.meta.theta` (satt her), med den AKTIVE kombinasjonens
+ * fortegnsatte `M_Ed` som reserve — ALDRI et `direction`-felt på `state`.
+ */
 test('resultatkapitlet merker trykkanten etter retningen, ikke som «top face» ukritisk', () => {
   const sag = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 5);
   assert.match(sag, /ε_c at top face/);
 
   const hog = clone(BENDING);
   hog.meta.theta = Math.PI;
-  hog.meta.direction = 'hogging';
-  const html = buildReportHtml({ ...BEAM_STATE, direction: 'hogging' }, hog);
+  const html = buildReportHtml(BEAM_STATE, hog);
   assert.match(chapterBody(html, 5), /ε_c at bottom face/);
   assert.ok(!chapterBody(html, 5).includes('ε_c at top face'));
+});
+
+/**
+ * Reserven: UTEN `result.meta.theta` (f.eks. før første kjøring) skal
+ * retningen komme fra den AKTIVE kombinasjonens `M_Ed`-fortegn — positivt
+ * `M_Ed` er støttemoment (θ = π), akkurat som `section.js:thetaFor`.
+ */
+test('uten meta.theta faller retningen tilbake til den aktive kombinasjonens M_Ed-fortegn', () => {
+  const hoggingState = {
+    ...BEAM_STATE,
+    combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 250, V_Ed: 0 }],
+  };
+  const ch2 = chapterBody(buildReportHtml(hoggingState, null), 2);
+  assert.match(ch2, /Hogging — compression at the bottom face/);
+
+  const saggingState = {
+    ...BEAM_STATE,
+    combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: -250, V_Ed: 0 }],
+  };
+  const ch2sag = chapterBody(buildReportHtml(saggingState, null), 2);
+  assert.match(ch2sag, /Sagging — compression at the top face/);
 });
 
 test('kontrolltabellen står i resultatkapitlet', () => {
@@ -378,6 +421,86 @@ test('kontrolltabellen står i resultatkapitlet', () => {
   assert.match(ch5, /Ductility/);
   assert.match(ch5, /Overall assessment/);
   assert.match(ch5, /Concrete crushing/, 'bruddformen skal være oversatt');
+});
+
+/**
+ * ENDRINGSRUNDE 4 §10 punkt 2: uten `CHECK_ORDER` utvidet i `results.js`
+ * ville de tre skjærkontrollene motoren nå sender (`checks.shear_ok` osv.,
+ * fixturen bærer dem allerede) vært stille fraværende fra rapporten. Denne
+ * testen leser dem der leseren faktisk møter dem — i selve HTML-en.
+ */
+test('de tre nye skjærkontrollene står i kontrolltabellen', () => {
+  const ch5 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 5);
+  assert.match(ch5, /Shear capacity V_Ed/);
+  assert.match(ch5, /Minimum shear reinforcement/);
+  assert.match(ch5, /Stirrup spacing/);
+});
+
+/* ================================================================== *
+ * Skjær (endringsrunde 4 §4.2, §4.3)
+ * ================================================================== */
+
+/**
+ * Referansefixturen bærer `shear: null` per kombinasjon — motoren sender det
+ * når payloaden ikke hadde `section.shear` (eldre kontrakt). Rapporten skal
+ * si det ÆRLIG, ikke late som et merke eller en tabell fantes.
+ */
+test('uten skjærdata i det hele tatt: ingen skjærmerke, og kapittel 5 sier det rett ut', () => {
+  const html = buildReportHtml(BEAM_STATE, BENDING);
+  const ch5 = chapterBody(html, 5);
+  assert.ok(!ch5.includes('result-shear'), 'intet skjærmerke uten skjærdata');
+  assert.match(ch5, /No shear capacity could be evaluated/);
+});
+
+/**
+ * Tallene her er de MÅLTE fra plan §4.2 (referansebjelken, 2Ø8 c/c 150).
+ * Fixturen kjenner ikke skjær (eldre kontrakt), så testen setter den inn på
+ * én kombinasjon selv — samme mønster som `threeCombos()` bruker for bøying.
+ */
+function withShear(base, governing = 'C1') {
+  const r = clone(base);
+  const blk = r[r.analysis];
+  blk.shear_governing = governing;
+  const combo = blk.combinations.find((c) => c.id === governing) || blk.combinations[0];
+  combo.V_Ed = 120000.0;
+  combo.shear = {
+    evaluated: true, V_Ed: 120000.0,
+    V_Rd: 143453.3, V_Rd_c: 81615.2393, V_Rd_s: 143453.3, V_Rd_max: 779803.2,
+    governing_mode: 'stirrups', utilisation: 0.83651,
+    Asl: 942.4778, d: 547.0, bw: 300.0, z: 492.3,
+    asw_s: 0.670206, asw_s_min: 0.262907, asw_s_required: 0.560634,
+    sl_max: 410.25, st_max: 410.25,
+  };
+  return r;
+}
+
+test('skjærmerket viser η_V ved siden av η_M, EGET tall, ikke slått sammen (§4.3)', () => {
+  const html = buildReportHtml(BEAM_STATE, withShear(BENDING));
+  const ch5 = chapterBody(html, 5);
+  assert.match(ch5, /class="result-main result-shear"/);
+  assert.match(ch5, /η_V = V_Ed \/ V_Rd/);
+  assert.match(ch5, /V 0\.84/, 'V_Ed\\/V_Rd = 0,83651, avrundet til 2 desimaler');
+  // η_M (hovedtallet) skal FORTSATT stå, uendret av at skjæret er lagt til.
+  assert.match(ch5, /η = M_Ed \/ M_Rd\(N_Ed\)/);
+});
+
+test('skjærdelen av kapittel 5 viser V_Rd,c/V_Rd,s/V_Rd,max og governing mode, aldri summert', () => {
+  const ch5 = chapterBody(buildReportHtml(BEAM_STATE, withShear(BENDING)), 5);
+  assert.match(ch5, /<h4>Shear<\/h4>/);
+  assert.ok(ch5.includes('143.5'), 'V_Rd i kN');
+  assert.ok(ch5.includes('81.6'), 'V_Rd,c i kN');
+  assert.match(ch5, /Stirrups govern/);
+  assert.ok(ch5.includes('942'), 'A_sl');
+  assert.match(ch5, /V_Rd,c is never added to V_Rd,s/);
+});
+
+test('lastkombinasjonstabellen (kapittel 4) får V_Ed- og η_V-kolonner, og markerer skjær-governing', () => {
+  const ch4 = chapterBody(buildReportHtml(BEAM_STATE, withShear(BENDING)), 4);
+  assert.match(ch4, /V_Ed \[kN\]/);
+  assert.match(ch4, /η_V \[–\]/);
+  assert.match(ch4, /data-shear-governing="true"/);
+  assert.ok(ch4.includes('120.0'), 'V_Ed i kN');
+  assert.ok(ch4.includes('0.837'), 'η_V med tre desimaler, som η_M');
 });
 
 test('den radielle λ er merket som sekundær lastvei, ikke som η', () => {
@@ -771,4 +894,35 @@ test('§1.5: buildReportHtml() inneholder ingen norsk tekst, for alle tre analys
     const wordMatch = withoutSvg.match(NORWEGIAN_WORDS);
     assert.equal(wordMatch, null, `norsk ord i rapporten (${result.analysis}): «${wordMatch?.[0]}»`);
   }
+});
+
+/**
+ * Regresjon: «λ (load path — secondary)» må bety det SAMME på papiret som på
+ * skjermen. Rapporten skrev `rad.lambda` (faktoren ut til omhyllingen, 1,242)
+ * under merkelappen, mens `ui.js` og figuren skrev `rad.eta` (0,805) under
+ * nøyaktig samme merkelapp. En utnyttelse skal være ≤ 1 når den holder, så λ
+ * er `eta`; faktoren har nå sin egen rad.
+ */
+test('rapporten: λ er den radielle UTNYTTELSEN, faktoren står på egen rad', async () => {
+  const { radialUtilisation } = await import('../js/charts.js');
+  // Standardfixturen har N_Ed = M_Ed = 0 (ingen last), og da finnes det ingen
+  // stråle i det hele tatt. Lasten settes derfor eksplisitt.
+  const loaded = clone(NMDOM);
+  Object.assign(loaded.nm_domain, { N_Ed: -900e3, M_Ed: -250e6 });
+  const dom = loaded.nm_domain;
+  const rad = radialUtilisation(dom, dom.N_Ed / 1e3, dom.M_Ed / 1e6);
+  assert.ok(rad.eta > 0 && rad.eta < 1, `forutsetningen: lasten ligger innenfor (eta=${rad.eta})`);
+  assert.ok(Number.isFinite(rad.lambda) && rad.lambda > 1, 'forutsetningen: faktoren er endelig');
+
+  const ch5 = chapterBody(buildReportHtml(BEAM_STATE, loaded), 5);
+  const rowOf = (label) => {
+    const i = ch5.indexOf(label);
+    assert.ok(i >= 0, `fant ikke raden «${label}»`);
+    const m = /<t[dh][^>]*>([^<]*)</.exec(ch5.slice(i + label.length));
+    assert.ok(m, `fant ingen verdi etter «${label}»`);
+    return Number(m[1]);
+  };
+  assert.equal(rowOf('λ (load path'), Number(rad.eta.toFixed(3)));
+  assert.equal(rowOf('Load factor to the envelope'), Number(rad.lambda.toFixed(3)));
+  assert.ok(!ch5.includes('η_radial'), 'η er den vertikale utnyttelsen og skal ikke gjenbrukes her');
 });

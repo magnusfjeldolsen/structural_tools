@@ -57,10 +57,11 @@
 
 import { BAR_DIAMETERS, CONCRETE_GRADES, CONCRETE_LAWS, STEEL_GRADES, STEEL_LAWS, derivedMaterials }
   from './materials.js';
-import { bindNumericInput } from './numeric-input.js';
+import { bindNumericInput, evaluate } from './numeric-input.js';
 import { layerArea, layerBarCount, layerDepth, recomputeAutoDc, stackedDc, suggestedDc, totalArea }
   from './rebar.js';
-import { derived, sectionHeight, sectionWidth, thetaFor, validate } from './section.js';
+import { activeComboTheta, allowedAnalyses, axialForcesPresent, derived, sectionHeight, sectionWidth, thetaFor, validate }
+  from './section.js';
 import { drawSection } from './section-draw.js';
 import { momentCurvatureSvg, nmDomainSvg, radialUtilisation } from './charts.js';
 import { attachChartTips } from './chart-tips.js';
@@ -68,9 +69,9 @@ import { isCancellable, phaseLabel, TOTAL_DOWNLOAD_BYTES } from './solver-client
 import { fromDocument, toDocument } from './serialize.js';
 import {
   DASH, analysisBlock, analysisLabel, checkRows, compressionEdgeLabel, describeWarnings,
-  designMoment, directionLabel, failureModeLabel, failureModeNote, fmtArea, fmtCurvature,
-  fmtLength, fmtMomentKNm, fmtNumber, fmtPercent, fmtRatio, fmtStrainPermille, fmtStress,
-  headlineUtilisation, lawLabel, messageForCode, momentCapacity, sectionTypeLabel, toNum,
+  designMoment, directionFromTheta, directionLabel, failureModeLabel, failureModeNote, fmtArea,
+  fmtCurvature, fmtLength, fmtMomentKNm, fmtNumber, fmtPercent, fmtRatio, fmtStrainPermille,
+  fmtStress, headlineUtilisation, lawLabel, messageForCode, momentCapacity, sectionTypeLabel, toNum,
   utilisationStatus, HEADLINE_UTILISATION_LABEL, RADIAL_UTILISATION_LABEL,
 } from './results.js';
 
@@ -381,14 +382,25 @@ export function createUI(deps) {
     }
   }
 
+  /**
+   * `items[i].disabled` (endringsrunde 4 §2) gjør chippen `disabled` med dempet
+   * stil og ingen klikkhandler — MEN `title` beholdes, for den er der
+   * begrunnelsen står («et resistance quoted at a single axial force is one
+   * point on a curve»). En deaktivert chip UTEN grunn i `title` er like
+   * uforklarlig som et felt som bare avviser tastetrykket.
+   */
   function renderChips(sel, items, current, onPick) {
     const el = $(sel);
     if (!el) return;
     el.innerHTML = items
-      .map((i) => `<button type="button" class="chip" data-v="${esc(i.value)}" ` +
-                  `data-on="${String(i.value === current)}" title="${esc(i.title || '')}">${esc(i.label)}</button>`)
+      .map((i) => `<button type="button" class="chip${i.disabled ? ' opacity-40 cursor-not-allowed' : ''}" ` +
+                  `data-v="${esc(i.value)}" data-on="${String(i.value === current)}" ` +
+                  `${i.disabled ? 'disabled' : ''} title="${esc(i.title || '')}">${esc(i.label)}</button>`)
       .join('');
-    for (const btn of Array.from(el.children)) btn.onclick = () => onPick(btn.dataset.v);
+    for (const btn of Array.from(el.children)) {
+      if (btn.disabled) continue;
+      btn.onclick = () => onPick(btn.dataset.v);
+    }
   }
 
   /* ---------------------------------------------------------------- *
@@ -399,7 +411,10 @@ export function createUI(deps) {
     const host = $('#layers');
     if (!host) return;
     const s = store.getState();
-    const theta = thetaFor(s.direction);
+    // `state.direction` finnes ikke lenger (endringsrunde 4 §1.2) — retningen ER
+    // fortegnet på den AKTIVE kombinasjonens `M_Ed`. `thetaFor(s.direction)` ville
+    // fra nå av bare fått `undefined` inn og alltid svart θ = 0, uten feilmelding.
+    const theta = activeComboTheta(s);
     const isSlab = s.sectionType === 'slab';
     const perMeter = isSlab ? '/m' : '';
 
@@ -652,11 +667,12 @@ export function createUI(deps) {
    * ---------------------------------------------------------------- */
 
   /**
-   * Tabellen over `state.combos`. Hver rad er navn, N_Ed, M_Ed og retning,
-   * pluss en knapp som velger `activeCombo` (den moment–krumning regner på,
-   * §4.3) og en fjernknapp som er deaktivert på den siste raden — `store`
-   * nekter uansett å fjerne den, men en deaktivert knapp er en klarere
-   * beskjed enn et klikk som ikke gjør noe.
+   * Tabellen over `state.combos`. Hver rad er navn, N_Ed, signert M_Ed og V_Ed
+   * (endringsrunde 4 §1/§3 — INGEN egen retningskontroll lenger, fortegnet på
+   * M_Ed ER retningen), pluss en knapp som velger `activeCombo` (den
+   * moment–krumning regner på, §4.3) og en fjernknapp som er deaktivert på den
+   * siste raden — `store` nekter uansett å fjerne den, men en deaktivert knapp
+   * er en klarere beskjed enn et klikk som ikke gjør noe.
    */
   /**
    * Settes mens en feltredigering i kombinasjonstabellen behandles.
@@ -672,6 +688,31 @@ export function createUI(deps) {
    */
   let comboEditInFlight = false;
 
+  /**
+   * Tolkningen av ETT `M_Ed`-tall — opplysningsplikten fra plan §1.7.
+   *
+   * `structuralcodes` sin konvensjon er MOTSATT norsk praksis: sagging er
+   * NEGATIV. En setning som bare gjentar tallet hjelper ikke — den må si hvilken
+   * kant som er i trykk, for det er DET en norsk ingeniør ellers ville gjettet feil på.
+   * Bruker `thetaFor`/`directionFromTheta`/`compressionEdgeLabel`, SAMME regel
+   * motoren og `activeComboTheta` bruker, ikke en egen kopi av `<= 0`-testen.
+   *
+   * @param {number} mEd
+   * @returns {string} tom streng når `mEd` ikke er et tall (feltet er under redigering)
+   */
+  function momentInterpretation(mEd) {
+    const v = Number(mEd);
+    if (!Number.isFinite(v)) return '';
+    const theta = thetaFor(v);
+    const dir = directionFromTheta(theta) || (v <= 0 ? 'sagging' : 'hogging');
+    return `${fmtNumber(v, 1)} kNm → ${dir}, compression at the ${compressionEdgeLabel(theta)}`;
+  }
+
+  /** Interpretasjonslinja for kombinasjon `id`, eller `null` om den ikke er tegnet. */
+  function interpEl(host, id) {
+    return Array.from(host.querySelectorAll('[data-m-interp]')).find((n) => n.dataset.mInterp === id) || null;
+  }
+
   function renderCombos() {
     const host = $('#combos');
     if (!host) return;
@@ -679,23 +720,24 @@ export function createUI(deps) {
     const s = store.getState();
     host.innerHTML = s.combos.map((combo) => {
       const active = combo.id === s.activeCombo;
-      return `<div class="flex flex-wrap items-center gap-2 px-3 py-2 text-[13px] ${active ? 'bg-sky-950/30' : ''}">
-        <button type="button" class="chip !py-0.5 !px-2 !text-[11px] shrink-0" data-active-combo="${esc(combo.id)}"
-                data-on="${String(active)}" title="${active ? 'Active — used for moment–curvature' : 'Set active for moment–curvature'}">
-          ${active ? '● ' + esc(combo.id) : esc(combo.id)}
-        </button>
-        <input type="text" class="!w-28" data-cf="name" data-c="${esc(combo.id)}" value="${esc(combo.name)}" placeholder="name" aria-label="Combination name">
-        <label class="flex items-center gap-1 text-[11px] text-slate-500">N<sub>Ed</sub>
-          <input type="text" class="!w-24" data-cf="N_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.N_Ed, 2)}" aria-label="N_Ed [kN]"></label>
-        <label class="flex items-center gap-1 text-[11px] text-slate-500">M<sub>Ed</sub>
-          <input type="text" class="!w-24" data-cf="M_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.M_Ed, 2)}" aria-label="M_Ed [kNm]"></label>
-        <div class="seg" data-cdir="${esc(combo.id)}">
-          <button type="button" data-v="sagging" data-on="${String(combo.direction !== 'hogging')}">Sagging</button>
-          <button type="button" data-v="hogging" data-on="${String(combo.direction === 'hogging')}">Hogging</button>
+      return `<div class="px-3 py-2 text-[13px] ${active ? 'bg-sky-950/30' : ''}">
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" class="chip !py-0.5 !px-2 !text-[11px] shrink-0" data-active-combo="${esc(combo.id)}"
+                  data-on="${String(active)}" title="${active ? 'Active — used for moment–curvature' : 'Set active for moment–curvature'}">
+            ${active ? '● ' + esc(combo.id) : esc(combo.id)}
+          </button>
+          <input type="text" class="!w-28" data-cf="name" data-c="${esc(combo.id)}" value="${esc(combo.name)}" placeholder="name" aria-label="Combination name">
+          <label class="flex items-center gap-1 text-[11px] text-slate-500">N<sub>Ed</sub>
+            <input type="text" class="!w-24" data-cf="N_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.N_Ed, 2)}" aria-label="N_Ed [kN], compression negative"></label>
+          <label class="flex items-center gap-1 text-[11px] text-slate-500" title="Sign convention follows fib structuralcodes: sagging (compression at the top face) is negative.">M<sub>Ed</sub> [kNm] — sagging negative
+            <input type="text" class="!w-24" data-cf="M_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.M_Ed, 2)}" aria-label="M_Ed [kNm], sagging negative"></label>
+          <label class="flex items-center gap-1 text-[11px] text-slate-500">V<sub>Ed</sub>
+            <input type="text" class="!w-24" data-cf="V_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.V_Ed, 2)}" aria-label="V_Ed [kN], magnitude — the sign does not matter"></label>
+          <button type="button" class="ml-auto px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                  data-remove-combo="${esc(combo.id)}" ${s.combos.length <= 1 ? 'disabled' : ''}
+                  title="${s.combos.length <= 1 ? 'The last combination cannot be removed' : 'Remove combination'}">✕</button>
         </div>
-        <button type="button" class="ml-auto px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
-                data-remove-combo="${esc(combo.id)}" ${s.combos.length <= 1 ? 'disabled' : ''}
-                title="${s.combos.length <= 1 ? 'The last combination cannot be removed' : 'Remove combination'}">✕</button>
+        <div class="mt-1 text-[11px] text-slate-500 num" data-m-interp="${esc(combo.id)}">${esc(momentInterpretation(combo.M_Ed))}</div>
       </div>`;
     }).join('');
     bindComboRows(host);
@@ -719,15 +761,6 @@ export function createUI(deps) {
         invalidate();
         render();
       };
-    });
-    host.querySelectorAll('[data-cdir]').forEach((el) => {
-      for (const btn of Array.from(el.children)) {
-        btn.onclick = () => {
-          store.updateCombo(el.dataset.cdir, { direction: btn.dataset.v });
-          invalidate();
-          render();
-        };
-      }
     });
     host.querySelectorAll('input[data-cf="name"]').forEach((el) => {
       el.addEventListener('input', () => {
@@ -753,17 +786,44 @@ export function createUI(deps) {
       });
     });
     host.querySelectorAll('input[data-cf="M_Ed"]').forEach((el) => {
+      // Levende tolkningslinje (plan §1.7): oppdateres ved HVERT tastetrykk, ikke
+      // bare ved commit (`bindNumericInput` skriver først til tilstanden ved
+      // blur/Enter) — poenget er at brukeren ser hvilken kant som kommer i trykk
+      // FØR hen forlater feltet, ikke etterpå.
+      el.addEventListener('input', () => {
+        const target = interpEl(host, el.dataset.c);
+        if (!target) return;
+        const v = evaluate(el.value);
+        target.textContent = v === null ? '' : momentInterpretation(v);
+      });
       bindNumericInput(el, (value) => {
         if (value === null) { render(); return; }
-        // M_Ed er en STØRRELSE i kombinasjonens egen retning (§4.1) — samme
-        // regel som det gamle enkeltfeltet hadde.
-        store.updateCombo(el.dataset.c, { M_Ed: Math.abs(value) });
-        el.value = fmtNumber(Math.abs(value), 2);
+        // M_Ed er SIGNERT (endringsrunde 4 §1.2/§1.4): sagging er NEGATIV,
+        // structuralcodes sin egen konvensjon. INGEN `Math.abs` og INGEN
+        // `{min: 0}` her lenger — den kombinasjonen ville stille avvist ethvert
+        // feltmoment (negativt tall), og hele den signerte momentfunksjonen
+        // ville vært dødfødt uten en eneste feilmelding.
+        store.updateCombo(el.dataset.c, { M_Ed: value });
+        el.value = fmtNumber(value, 2);
         comboEditInFlight = true;
         invalidate();
         render();
         comboEditInFlight = false;
-      }, { min: 0 });
+      });
+    });
+    host.querySelectorAll('input[data-cf="V_Ed"]').forEach((el) => {
+      bindNumericInput(el, (value) => {
+        if (value === null) { render(); return; }
+        // V_Ed er en STØRRELSE (§4.1c): `payload.js` tar `Math.abs` uansett
+        // fortegn, så feltet legger IKKE `min: 0` på — det ville gitt nøyaktig
+        // den samme stille avvisningen som M_Ed-bugen dette runden retter.
+        store.updateCombo(el.dataset.c, { V_Ed: value });
+        el.value = fmtNumber(value, 2);
+        comboEditInFlight = true;
+        invalidate();
+        render();
+        comboEditInFlight = false;
+      });
     });
   }
 
@@ -974,7 +1034,7 @@ export function createUI(deps) {
       if (summary) summary.textContent = '';
       body.innerHTML = `<div class="rounded-lg border border-dashed border-slate-700 px-5 py-10 text-center">
         <p class="text-slate-400 text-sm">No calculation run yet.</p>
-        <p class="text-slate-600 text-xs mt-1">Press <kbd>Ctrl</kbd> <kbd>⏎</kbd> — or "Calculate" in the bottom bar.</p></div>`;
+        <p class="text-slate-600 text-xs mt-1">Press <kbd>Ctrl</kbd> <kbd>Space</kbd> — or "Calculate" in the bottom bar.</p></div>`;
       return;
     }
 
@@ -1016,7 +1076,7 @@ export function createUI(deps) {
           <div class="rounded-xl border p-4 ${esc(status.classes)}">
             <div class="flex flex-wrap items-end gap-x-8 gap-y-3">
               <div>
-                <div class="text-[11px] uppercase tracking-wide opacity-80">Utilisation η</div>
+                <div class="text-[11px] uppercase tracking-wide opacity-80">Utilisation <span class="normal-case">η</span></div>
                 <div class="text-4xl font-bold num">${fmtRatio(eta, 2)}</div>
                 <div class="text-[11px] opacity-70 num">${esc(HEADLINE_UTILISATION_LABEL)}${gov ? ` · governing ${esc(gov)}` : ''}</div>
               </div>
@@ -1120,7 +1180,10 @@ export function createUI(deps) {
       const x = toNum(bending.x);
       drawHost.innerHTML = drawSection(s, {
         width: 460, unit: 'px', theme: 'dark', showDims: true, showLabels: true,
-        overlay: x === null ? null : { x, theta: toNum(result.meta?.theta) ?? thetaFor(s.direction) },
+        // `s.direction` finnes ikke lenger (§7) — reserven er den AKTIVE
+        // kombinasjonens egen θ, samme kilde som resten av skjemaet bruker
+        // før et resultat foreligger.
+        overlay: x === null ? null : { x, theta: toNum(result.meta?.theta) ?? activeComboTheta(s) },
       });
     }
   }
@@ -1167,8 +1230,18 @@ export function createUI(deps) {
       const comboId = result.meta?.mc_active_combo;
       const combo = comboId ? s.combos.find((c) => c.id === comboId) : null;
       const comboLabel = combo ? `${combo.name || combo.id} (${combo.id})` : comboId || DASH;
+      const nEdKN = toNum(mc.N_Ed) / 1e3;
+      // Moment–krumning er UNNTATT fra auto-N–M-regelen (§2): M(κ) ved fast N er
+      // én entydig kurve, ikke ett punkt plukket fra en flate. Men kortet
+      // rapporterer likevel M_Rd/utnyttelse ved DENNE ene aksialkraften, så det
+      // skal merkes når den er ≠ 0 — ellers leser man M_Rd som om den gjaldt
+      // hele tverrsnittets kapasitet, ikke ett snitt av N–M-flaten.
+      const axialNote = nEdKN !== 0
+        ? `<p class="text-[11px] text-amber-300 mt-1 num">M<sub>Rd</sub> at N<sub>Ed</sub> = ${fmtNumber(nEdKN, 1)} kN — see the interaction domain for the full picture.</p>`
+        : '';
       return `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
-        <div class="text-xs text-slate-400 mb-1">Moment–curvature for ${esc(comboLabel)} — the active combination only — at N<sub>Ed</sub> = ${fmtNumber(toNum(mc.N_Ed) / 1e3, 1)} kN</div>
+        <div class="text-xs text-slate-400 mb-1">Moment–curvature for ${esc(comboLabel)} — the active combination only — at N<sub>Ed</sub> = ${fmtNumber(nEdKN, 1)} kN</div>
+        ${axialNote}
         <div class="svg-fit">${momentCurvatureSvg(mc, { width: 620, unit: 'px', theme: 'dark' })}</div>
         <p class="text-[11px] text-slate-500 mt-1 num">
           ${fmtNumber((mc.kappa || []).length, 0)} points${mc.truncated ? ' — the curve is TRUNCATED' : ''}.
@@ -1220,8 +1293,11 @@ export function createUI(deps) {
 
     const geo = $('#bar-geo');
     if (geo) {
+      // `s.direction` finnes ikke lenger (§7) — retningen som vises her er den
+      // AKTIVE kombinasjonens egen, avledet fra dens `M_Ed`-fortegn.
+      const dir = directionFromTheta(activeComboTheta(s)) || 'sagging';
       geo.innerHTML = `${esc(sectionTypeLabel(s.sectionType))} ${fmtNumber(sectionWidth(s), 0)}×${fmtNumber(s.geometry.h, 0)} · ` +
-        `C${fmtNumber(s.concrete.fck, 0)} · ${s.direction === 'sagging' ? 'sagging' : 'hogging'}`;
+        `C${fmtNumber(s.concrete.fck, 0)} · ${esc(dir)}`;
     }
 
     const arm = $('#bar-arm');
@@ -1237,7 +1313,7 @@ export function createUI(deps) {
       if (!result) {
         // Uten et gyldig resultat står stripa TOM, ikke med gamle tall. Alt
         // som kunne gjort tallene ugyldige har alt kastet dem (`invalidate()`).
-        strip.innerHTML = `<div class="leading-tight"><div class="text-[9px] uppercase text-slate-500">η</div>` +
+        strip.innerHTML = `<div class="leading-tight"><div class="text-[9px] text-slate-500">η</div>` +
           `<div class="text-xl font-bold num text-slate-700">${DASH}</div></div>`;
       } else {
         const eta = headlineUtilisation(result);
@@ -1250,7 +1326,7 @@ export function createUI(deps) {
         // — samme kilde som rapporten bruker (plan §7: tersklene står ETT sted).
         strip.innerHTML =
           `<div class="leading-tight px-2 py-0.5 rounded border ${esc(status.classes)}" title="${esc(status.label)}">
-             <div class="text-[9px] uppercase opacity-70">η</div>
+             <div class="text-[9px] opacity-70">η</div>
              <div class="text-xl font-bold num">${fmtRatio(eta, 2)}</div></div>` +
           cell('M_Rd', `${fmtMomentKNm(momentCapacity(result))} kNm${perMeter}`) +
           cell('x', `${fmtLength(bending.x)} mm`) +
@@ -1314,11 +1390,10 @@ export function createUI(deps) {
       editing = null;
       render();
     });
-    renderSegment('#dir-seg', s.direction, (v) => {
-      store.setState({ direction: v });
-      invalidate();
-      render();
-    });
+    // `#dir-seg` (det GLOBALE retningsvalget) er fjernet (§7, plan-tabellen
+    // `js/ui.js:1317-1318`) — sammen med kombinasjonsradens eget segment
+    // (§7, `693-694`) var det den ANDRE av de to kontrollene som måtte bort.
+    // Retningen finnes nå BARE som fortegnet på hver kombinasjons `M_Ed`.
 
     renderChips('#fck-chips', CONCRETE_GRADES.map((g) => ({ value: String(g.fck), label: g.label })),
       String(s.concrete.fck), (v) => { store.patch('concrete', { fck: Number(v) }); invalidate(); render(); });
@@ -1328,8 +1403,19 @@ export function createUI(deps) {
         store.patch('steel', { fyk, k, epsuk });
         invalidate(); render();
       });
-    renderChips('#ana-chips', ANALYSES.map(([value]) => ({ value, label: analysisLabel(value) })),
-      s.analysis, (v) => { store.setState({ analysis: v }); invalidate(); render(); });
+    // Auto-N–M-regelen (§2): med aksialkraft er «Bending resistance» ETT punkt
+    // plukket fra en flate, ikke et selvstendig svar. `allowedAnalyses` er den
+    // ENE kilden til hvilke analyser som er lovlige — samme funksjon tast `1`
+    // under sjekker, og som `serialize.js` normaliserer en lastet fil mot.
+    const allowedAna = allowedAnalyses(s);
+    renderChips('#ana-chips', ANALYSES.map(([value, desc]) => ({
+      value,
+      label: analysisLabel(value),
+      disabled: !allowedAna.includes(value),
+      title: allowedAna.includes(value)
+        ? desc
+        : 'A resistance quoted at a single axial force is one point on a curve. ' + desc,
+    })), s.analysis, (v) => { store.setState({ analysis: v }); invalidate(); render(); });
     const anaDesc = $('#ana-desc');
     if (anaDesc) anaDesc.textContent = (ANALYSES.find((a) => a[0] === s.analysis) || ['', ''])[1];
     const anaActive = $('#ana-active-combo');
@@ -1418,8 +1504,11 @@ export function createUI(deps) {
     if (loadSum) {
       const active = s.combos.find((c) => c.id === s.activeCombo);
       const n = s.combos.length;
+      // `s.direction` finnes ikke lenger (§7) — vises her er den AKTIVE
+      // kombinasjonens EGEN retning, avledet fra dens `M_Ed`-fortegn.
+      const dir = directionFromTheta(activeComboTheta(s));
       loadSum.innerHTML = `${n} combination${n === 1 ? '' : 's'} · active ` +
-        `${esc(active ? (active.name || active.id) : s.activeCombo)} · ${esc(directionLabel(s.direction))}`;
+        `${esc(active ? (active.name || active.id) : s.activeCombo)} · ${esc(directionLabel(dir))}`;
     }
 
     renderValidation();
@@ -1441,6 +1530,11 @@ export function createUI(deps) {
   function setupKeyboard() {
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); onCalculate(); return; }
+      // Ctrl+mellomrom (bestillingens punkt 5, plan §6): Ctrl+Enter er ALIAS,
+      // ikke erstattet — begge må ligge HER, FØR `inField()`-sjekken under,
+      // ellers virker de ikke fra et tekstfelt, som er nettopp der «Beregn»
+      // trengs mest (man har akkurat skrevet inn et tall).
+      if ((e.ctrlKey || e.metaKey) && e.key === ' ') { e.preventDefault(); onCalculate(); return; }
       if (e.altKey && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); duplicateLast(); return; }
       if (e.key === 'Escape') { const h = $('#help'); if (h) h.classList.add('hidden'); }
       if (inField() || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1451,9 +1545,18 @@ export function createUI(deps) {
         if (f) { f.scrollIntoView({ block: 'center' }); f.focus(); }
       } else if (k === 'b') { store.setSectionType('beam'); invalidate(); render(); }
       else if (k === 'p') { store.setSectionType('slab'); invalidate(); render(); }
-      else if (k === 'f') { store.setState({ direction: 'sagging' }); invalidate(); render(); }
-      else if (k === 's') { store.setState({ direction: 'hogging' }); invalidate(); render(); }
-      else if ('123'.includes(k)) { store.setState({ analysis: ANALYSES[Number(k) - 1][0] }); invalidate(); render(); }
+      // `f`/`s` (retning) er fjernet (§6, §7) — retningen finnes ikke lenger
+      // som et eget felt å snarveie til, bare som fortegnet på M_Ed.
+      else if ('123'.includes(k)) {
+        const value = ANALYSES[Number(k) - 1][0];
+        // Samme dør som chippen (§2): tast `1` skal IKKE kunne sette
+        // `analysis: 'bending'` når en kombinasjon har aksialkraft. Uten denne
+        // sjekken var snarveien den ANDRE veien inn regelen ellers glemte å
+        // stenge.
+        if (allowedAnalyses(store.getState()).includes(value)) {
+          store.setState({ analysis: value }); invalidate(); render();
+        }
+      }
       else if (k === '?' || (e.shiftKey && k === '/')) { const h = $('#help'); if (h) h.classList.toggle('hidden'); }
     });
   }

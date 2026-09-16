@@ -23,14 +23,20 @@ Tre analyser, begge momentretninger, to tverrsnittstyper:
 - **Bjelke** `b × h`, armeringslag som `antall × Ø`.
 - **Plate** alltid 1000 mm bred (alt per meter), armeringslag som `Ø c/c s`. Tegningen viser jern i
   faktisk senteravstand; motoren får en ekvivalent utsmurt stripe (verifisert innenfor 0,17 %).
-- **Feltmoment** (θ = 0, trykk oppe) og **støttemoment** (θ = π, trykk nede).
+- **Feltmoment** (θ = 0, trykk oppe, `M_Ed ≤ 0`) og **støttemoment** (θ = π, trykk nede,
+  `M_Ed > 0`) — `M_Ed` er SIGNERT etter `structuralcodes` sin egen konvensjon: sagging er
+  NEGATIV, IKKE norsk praksis. Retningen er derfor ikke et eget felt lenger, bare fortegnet.
+- Skjær, vertikalt (α = 90°), etter `structuralcodes` sine `VRdc`/`VRds`/`VRdmax`.
 - Flere armeringslag, hvert med egen kant og egen `d_c`.
 - Utskriftsklar A4-rapport med tverrsnittsfigur, plott, kontrolltabell og forutsetningskapittel.
 
-**Uttrykkelig utenfor omfang:** skjær, riss/SLS, nedbøyning, torsjon, forankring, biaksiell bøying,
-forspenning, brann, eksponeringsklasser. Se `global-devspecs/concrete_section_calculator-plan.md`
+**Uttrykkelig utenfor omfang:** riss/SLS, nedbøyning, torsjon, gjennomlokking, forankring,
+biaksiell bøying/skjær, forspenning, brann, eksponeringsklasser. Skjær er INNE i omfanget
+(endringsrunde 4 §3), men bare vertikalt skjær med α = 90° — se `js/section.js` sin
+`validate()` og `python/engine.py` for hva som IKKE støttes (`Asw_max`, skjærfuger,
+`VRdc_prin_stress`, skjær i steg/flens). Se `global-devspecs/concrete_section_calculator-plan.md`
 §1.1 og §1.2 — §1.2 forklarer også hva som er **kuttet med begrunnelse** (`fiber`-integratoren,
-`law: 'sargin'`, `smear_mode: 'bars'`, lagring av tilstand) og som ikke skal legges inn igjen.
+`law: 'sargin'`, `smear_mode: 'bars'`) og som ikke skal legges inn igjen.
 
 ---
 
@@ -285,27 +291,41 @@ lastkombinasjon, pluss `activeCombo`:
 
 ```js
 combos: [
-  { id: 'C1', name: 'ULS 1', N_Ed: -500, M_Ed: 250, direction: 'sagging' },
-  { id: 'C2', name: 'ULS 2', N_Ed: 0,    M_Ed: 150, direction: 'hogging' },
+  { id: 'C1', name: 'ULS 1', N_Ed: -500, M_Ed: -250, V_Ed: 120 },
+  { id: 'C2', name: 'ULS 2', N_Ed: 0,    M_Ed: 150,  V_Ed: 80 },
 ],
 activeCombo: 'C1',
 ```
 
-kN og kNm, trykk negativ, `M_Ed` som størrelse i radens egen retning.
+kN og kNm, trykk negativ. `M_Ed` er SIGNERT etter `structuralcodes` sin egen konvensjon
+(endringsrunde 4 §1): sagging er NEGATIV, støttemoment er POSITIV — IKKE norsk praksis.
+`V_Ed` er en STØRRELSE; fortegnet betyr ingenting for skjærkapasiteten (§4.1c).
 
 En konsument som satte `loads.N_Ed` må sette `combos` i stedet. Det er et brudd, og det
 står her fordi et brutt felt som INGEN har dokumentert er verre enn bruddet selv — da
 setter man verdien, ingenting feiler, og beregningen kjører på en last som aldri ble
 lest.
 
-Merk også at **retningen ligger per kombinasjon**, ikke på tverrsnittet. Et støttesnitt
-har ofte både felt- og støttemoment. Tilstandens egen `direction` styrer bare tegningen
-fram til det finnes et resultat; etter en kjøring viser den den dimensjonerende
-kombinasjonens retning.
+Merk også at **retningen ligger i `M_Ed` sitt eget fortegn**, per kombinasjon — den finnes
+IKKE lenger som et eget felt (verken på kombinasjonen eller på tilstanden; det gamle
+`direction`/`state.direction` er borte, endringsrunde 4 §1.2/§7). Et støttesnitt har ofte
+både felt- og støttemoment på ulike rader. Tegningen og armeringstabellen bruker
+`activeComboTheta(state)` (avledet fra den AKTIVE kombinasjonens `M_Ed`) fram til det
+finnes et resultat; etter en kjøring viser de den dimensjonerende kombinasjonens tilstand.
 
 `bending` og `nm_domain` regner **alle** kombinasjonene og rapporterer den dimensjonerende
 i `<analyse>.governing`. `moment_curvature` regner bare `activeCombo`, fordi en
 M–κ-kurve per natur gjelder én aksialkraft.
+
+Auto-N–M-regelen (§2) håndheves i `store.js` selv, ikke som tre separate UI-triks: så snart
+`allowedAnalyses(state)` ikke lenger tillater `analysis: 'bending'`, tvinger tilstanden
+`analysis` til `nm_domain`. Det gjelder derfor UANSETT hvordan tilstanden ble satt —
+analysechippen (deaktivert, med begrunnelsen i `title`), tastatursnarveien `1` (ingen
+effekt), en lastet fil (`serialize.js` normaliserer i tillegg med notatet
+`analysis_forced_to_nm_domain`), og `ModuleAPI.setInputs()`. Det finnes altså IKKE en fjerde
+vei UTENOM regelen: en regel som bare gjelder når man klikker, er ikke en regel — den ligger
+i tilstanden, og en konsument av arbeidsflyt-API-et er underlagt den akkurat som en person
+som fyller ut skjemaet.
 
 ## 8. Distribusjon
 

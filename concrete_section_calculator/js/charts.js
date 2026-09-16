@@ -3,65 +3,63 @@
  *
  * Seks ting som er verdt å lese før noe endres her:
  *
- *  1. **FORTEGNSREGELEN (planen §5.2) er forutsetningen for at denne fila i det
- *     hele tatt kan tegne noe, og den er IKKE lik for de to plottene:**
+ *  1. **FORTEGNSREGELEN er RÅ over hele fila, med ÉN bevisst unntatt funksjon
+ *     (planens endringsrunde 4, §1 og §5):**
  *
- *       - `mc.kappa` og `mc.moment` er STØRRELSER. Moment–krumning har bare én
- *         gren, så det finnes ikke noe fortegn å ta vare på. Der tar vi `abs`.
- *       - `dom.n` er FORTEGNSATT, trykk negativ.
- *       - `dom.m` er FORTEGNSATT i den ANALYSERTE konvensjonen: `m_y ·
- *         moment_sign`, slik at kapasitet i den analyserte retningen er positiv
- *         og motsatt retning negativ. **Ta aldri `Math.abs()` på den** — se
- *         punkt 5 for hva som skjer hvis man gjør det.
+ *       - `dom.n` og `dom.m` er RÅ — motorens eget fortegn, samme som EC2 6.1
+ *         og `structuralcodes` bruker: sagging (trykk i overkant) er NEGATIV,
+ *         hogging er POSITIV. Se `combinations[i].M_Ed` for samme regel.
+ *       - `momentCurvatureSvg` er UNNTAKET: `mc.kappa`/`mc.moment` vises som
+ *         STØRRELSER, fordi M–κ bare har én gren og fortegnet der bare er
+ *         konvensjon, ikke informasjon (§5.1). Det er den ENESTE `abs`-bruken
+ *         i denne fila — se kommentaren i selve funksjonen for hvorfor.
  *
- *     Motorens RÅ `m_y` ville derimot lagt hele omhyllingen i −M mens
- *     lastpunktet lå i +M: tomt diagram, `eta = 0`, ingen feilmelding. Det er
- *     derfor `m` normaliseres til den analyserte retningen før den krysser
- *     JSON-grensa. Lastpunktet plottes i `+M_Ed`, fordi `M_Ed` er en størrelse
- *     i nettopp den retningen (§4.1).
+ *     Med rå `m` er hele `nm_domain`-randen én ekte lukket sløyfe rundt
+ *     origo: feltkapasiteten i −M, støttekapasiteten i +M. Fortegnet på
+ *     `M_Ed` er dermed ikke pynt — det er nøyaktig det som avgjør hvilken gren
+ *     lasten prøves mot. **Ta aldri `Math.abs()` på `dom.m`, `dom.M_Ed`,
+ *     `cb.M_Ed` eller argumentet `M_Ed` inn i `radialUtilisation`** — se
+ *     punkt 5 for hva som skjer hvis man gjør det likevel.
  *
- *  2. **Enhetene konverteres HER.** Motoren snakker N og Nmm (§5.1); aksene
- *     skal stå i kN og kNm (§6). `radialUtilisation()` tar derimot `N_Ed`/`M_Ed`
- *     i kN/kNm, fordi den er en ren funksjon andre skal kunne kalle uten å
- *     kjenne payload-enhetene. Blandes disse to, er feilen en faktor 1000 og
- *     ser ut som en modellfeil.
+ *  2. **Enhetene konverteres HER.** Motoren snakker N og Nmm (§5.1 i den
+ *     opprinnelige planen); aksene skal stå i kN og kNm. `radialUtilisation()`
+ *     tar derimot `N_Ed`/`M_Ed` i kN/kNm, fordi den er en ren funksjon andre
+ *     skal kunne kalle uten å kjenne payload-enhetene. Blandes disse to, er
+ *     feilen en faktor 1000 og ser ut som en modellfeil.
  *
  *  3. **`radialUtilisation` velger MINSTE positive λ, aldri «første treff i
  *     arrayet».** Punktrekkefølgen følger EC2-feltene 1→6 og har ingen
  *     sammenheng med strålegeometri. Omhyllingen er dessuten ikke-konveks rundt
- *     balansepunktet (§3.6: |m| vokser mens n faller), så én stråle kan krysse
- *     flere ganger. «Første treff» ville gitt et tilfeldig av dem.
+ *     balansepunktet, så én stråle kan krysse flere ganger. «Første treff»
+ *     ville gitt et tilfeldig av dem.
  *
  *  4. **Radiell λ er et SEKUNDÆRT tall.** Hovedutnyttelsen er den vertikale,
- *     `M_Ed / M_Rd(N_Ed)`, og den regnes i motoren (§5.2). Diagrammet merker
- *     derfor strålen som «lastvei» — samme snitt og last skal ikke kunne vise
- *     to ulike η i to faner.
+ *     `M_Ed / M_Rd(N_Ed)`, og den regnes i motoren. Diagrammet merker derfor
+ *     strålen som «lastvei» — samme snitt og last skal ikke kunne vise to
+ *     ulike η i to faner.
  *
- *  5. **HVORFOR `dom.m` må bære fortegn — den dyrekjøpte lærdommen.**
- *     `m` er det KOMPLETTE domenet (`complete_domain: true`): 69 punkter som
- *     går hele veien rundt, gjennom BEGGE momentretninger. Første utgave av
- *     kontrakten sendte `abs(m_y)`. Det bretter støttegrenen opp i det samme
- *     halvplanet som feltgrenen, og for et enkeltarmert snitt er støttegrenen
- *     bitteliten: referansebjelken tåler 215 kNm som feltmoment og bare
- *     ~1,4 kNm som støttemoment. Den brettede støttegrenen havner dermed
- *     NÆRMEST origo, og «minste positive λ» plukket systematisk den:
- *     `radialUtilisation(dom, -500, 150)` ga η ≈ 3,7 — mot en gren lasten
- *     aldri går i — der det riktige svaret er η ≈ 0,43 mot feltgrenen.
+ *  5. **HVORFOR `dom.m` MÅ være rå — den dyrekjøpte lærdommen, gjenoppstått i
+ *     endringsrunde 4.** `m` er det KOMPLETTE domenet: ~69 punkter som går
+ *     hele veien rundt, gjennom BEGGE momentretninger. Blir `m` noensinne
+ *     brettet sammen med `abs()` igjen — her eller i motoren — havner
+ *     støttegrenen i det samme halvplanet som feltgrenen. For et enkeltarmert
+ *     snitt er støttegrenen bitteliten, og «minste positive λ» plukker
+ *     systematisk den brettede støttegrenen i stedet for feltgrenen lasten
+ *     faktisk går mot: `radialUtilisation(DOM_BEAM, -500, -150)` skal gi
+ *     η ≈ 0,41 mot feltgrenen; med `abs()` et sted i kjeden blir svaret
+ *     i stedet η ≈ 3,7 mot en gren lasten aldri nærmer seg. Samme feil kan
+ *     smyge seg inn via `report.js` sitt kall til `radialUtilisation` — se
+ *     kommentaren der.
  *
- *     Feilen lå i kontrakten, ikke i stråleregelen. Med fortegnsatt `m` er
- *     randen én ekte lukket sløyfe rundt origo: feltkapasiteten i +M,
- *     støttekapasiteten i −M. Lastpunktet ligger i +M, strålen går dit, og
- *     «minste positive λ» er igjen både riktig og nødvendig — omhyllingen er
- *     fortsatt ikke-konveks rundt balansepunktet.
+ *     Det er også derfor testene her påstår at nettopp (−500 kN, −150 kNm)
+ *     treffer feltgrenen (negativ M). Brettes `m` sammen igjen en gang i
+ *     framtida, feiler den testen høylytt i stedet for å gi et plausibelt
+ *     galt tall.
  *
- *     Det er også derfor testene her påstår at nettopp (−500 kN, 150 kNm)
- *     treffer feltgrenen. Brettes `m` sammen igjen en gang i framtida, feiler
- *     den testen høylytt i stedet for å gi et plausibelt galt tall.
- *
- *  6. **Bare presentasjonsattributter** (§2.3 krav 4), og samme
- *     «rapport-millimeter»-viewBox som `section-draw.js`: alle strekbredder og
- *     skriftstørrelser ganges med `u = width / 174`, slik at figuren ser lik ut
- *     på 174 mm papir og på 600 px skjerm.
+ *  6. **Bare presentasjonsattributter** (§2.3 krav 4 i den opprinnelige
+ *     planen), og samme «rapport-millimeter»-viewBox som `section-draw.js`:
+ *     alle strekbredder og skriftstørrelser ganges med `u = width / 174`,
+ *     slik at figuren ser lik ut på 174 mm papir og på 600 px skjerm.
  */
 
 /* ------------------------------------------------------------------ *
@@ -260,8 +258,18 @@ function loadMarker(px, py, color, u, { filled = false, role = 'load-point' } = 
 /**
  * `momentCurvatureSvg(mc, opts) -> string`
  *
- * `mc` er `result.moment_curvature` (§5.2): `kappa` i 1/mm og `moment` i Nmm,
- * begge som STØRRELSER.
+ * `mc` er `result.moment_curvature`. Motoren sender `kappa`/`moment` RÅ, i
+ * motorens eget fortegn (sagging negativ, hogging positiv — punkt 1 i
+ * hodekommentaren). **Denne funksjonen tar likevel `Math.abs()` på begge, med
+ * vilje, og det er den ENESTE plassen i hele fila det skjer.**
+ *
+ * Hvorfor: M–κ har bare én gren — motsatt av `nm_domain`, som er en lukket
+ * sløyfe med to grener og trenger fortegnet for å skille dem. Her finnes det
+ * ingen andre gren å forveksle med, så fortegnet bærer ingen informasjon,
+ * bare konvensjon. Å bygge en tredje kvadrant for å vise det rå fortegnet
+ * ville bare flyttet halve kurven ut i et tomt hjørne uten å legge til noe en
+ * leser trenger. Aksetitlene sier derfor uttrykkelig `|κ|`/`|M|`, og en linje
+ * under figuren minner om at fortegnet likevel finnes i dataene.
  *
  * Krumningsaksen står i 10⁻⁶/mm. Rå 1/mm gir merkelapper som `0,0000407`, og
  * «1/km» — som er samme tall — er ikke en enhet noen leser av et betongsnitt.
@@ -275,17 +283,20 @@ export function momentCurvatureSvg(mc, opts = {}) {
   const c = THEMES[o.theme];
   const f = frame(o);
 
+  // Den bevisste unntaks-`abs()`-en (se hodekommentaren over): M–κ har bare
+  // én gren, og fortegnet på et rått datasett ville bare sendt kurven ut i
+  // −κ/−M, utenfor akser som starter i 0, uten en eneste feilmelding.
   const kappa = (mc?.kappa || []).map((v) => Math.abs(Number(v))).filter(Number.isFinite);
   const moment = (mc?.moment || []).map((v) => Math.abs(Number(v))).filter(Number.isFinite);
   const n = Math.min(kappa.length, moment.length);
 
   const kx = kappa.slice(0, n).map((v) => v * 1e6);        // 1/mm -> 10^-6/mm
   const my = moment.slice(0, n).map((v) => v / 1e6);       // Nmm  -> kNm
-  const mEd = Math.abs(Number(mc?.M_Ed) || 0) / 1e6;
+  const mEd = Math.abs(Number(mc?.M_Ed) || 0) / 1e6;        // samme unntak
 
   const xHi = Math.max(...kx, 1e-9) * 1.05;
   const yHi = Math.max(...my, mEd, 1e-9) * 1.1;
-  const ax = axes(o, f, 0, xHi, 0, yHi, 'κ [10⁻⁶/mm]', 'M [kNm]');
+  const ax = axes(o, f, 0, xHi, 0, yHi, '|κ| [10⁻⁶/mm]', '|M| [kNm]');
 
   let body = ax.svg;
   // Treffflatene samles her og legges SIST i figuren. Ligger de tidligere,
@@ -331,6 +342,13 @@ export function momentCurvatureSvg(mc, opts = {}) {
             `truncated: no convergence</text>`;
   }
 
+  // Den lovede opplysningsplikten (§5.1): aksene viser størrelser, men dataene
+  // bak er fortegnsatt. Tegnes alltid, uavhengig av datasettet, fordi den sier
+  // noe om KONVENSJONEN, ikke om denne ene kurven.
+  body += `<text data-role="caption" x="${r(f.x0)}" y="${r(o.paperH - 2 * o.u)}" ` +
+          `font-family="${FONT}" font-size="${r(1.9 * o.u)}" fill="${c.axis}">` +
+          `Magnitudes shown; sagging moment is negative.</text>`;
+
   return wrap(o, body + hits, 'Moment–curvature');
 }
 
@@ -348,11 +366,12 @@ const EPS = 1e-12;
  * er den ene funksjonen her som skal kunne kalles av kode som ikke bryr seg om
  * payload-enhetene, og da er kN/kNm det eneste rimelige grensesnittet.
  *
- * λ er faktoren lastvektoren (N_Ed, |M_Ed|) må ganges med for å nå randen;
- * `eta = 1/λ`. `dom.m` er FORTEGNSATT (punkt 1 og 5 i hodekommentaren), så
- * randen er en ekte lukket sløyfe rundt origo: feltgrenen i +M, støttegrenen i
- * −M. Lastpunktet plottes i +M, fordi `M_Ed` er en størrelse i den analyserte
- * retningen. **Ikke ta `abs` på `dom.m` her.**
+ * λ er faktoren lastvektoren (N_Ed, M_Ed) må ganges med for å nå randen;
+ * `eta = 1/λ`. Både `dom.m` og `M_Ed` er FORTEGNSATT (punkt 1 og 5 i
+ * hodekommentaren), så randen er en ekte lukket sløyfe rundt origo: feltgrenen
+ * i −M, støttegrenen i +M. **Fortegnet på `M_Ed` er ikke en detalj — det er
+ * nøyaktig det som velger hvilken gren lasten prøves mot. Ikke ta `abs()`
+ * verken på `dom.m` eller på `M_Ed`-argumentet her.**
  *
  * **Lukkekjeden langs M = 0 er en SIKRING mot gapet ved trykkenden, ikke
  * fasiten.** `n_min`/`n_max` er rene aksialkapasiteter og er IKKE punkter i
@@ -388,9 +407,12 @@ export function radialUtilisation(dom, N_Ed, M_Ed) {
   const none = { eta: 0, lambda: Infinity, hitN: null, hitM: null };
 
   const nEd = Number(N_Ed) || 0;
-  const mEd = Math.abs(Number(M_Ed) || 0);
+  const mEd = Number(M_Ed) || 0;   // FORTEGNSATT — se hodekommentaren, ikke abs()
   // Lastpunktet i origo: ingen lastvei å følge, og ingen stråle å tegne.
-  if (Math.abs(nEd) < EPS && mEd < EPS) return none;
+  // MÅ sjekke |mEd|, ikke mEd: siden mEd nå kan være negativ (sagging), ville
+  // `mEd < EPS` uten abs() gitt sant for ENHVER negativ last, uansett hvor
+  // stor — en ny, stille feil av nøyaktig samme sort denne runden fjerner.
+  if (Math.abs(nEd) < EPS && Math.abs(mEd) < EPS) return none;
 
   const nArr = Array.isArray(dom?.n) ? dom.n : [];
   const mArr = Array.isArray(dom?.m) ? dom.m : [];
@@ -402,7 +424,9 @@ export function radialUtilisation(dom, N_Ed, M_Ed) {
   const pts = [];
   for (let i = 0; i < count; i++) {
     const n = Number(nArr[i]) / 1000;
-    const m = Number(mArr[i]) / 1e6;        // FORTEGNSATT — ingen abs her
+    // FORTEGNSATT, rå — ingen abs her. Polariteten er snudd i forhold til den
+    // forrige runden: feltgrenen ligger nå i −M, støttegrenen i +M (§1.1).
+    const m = Number(mArr[i]) / 1e6;
     if (Number.isFinite(n) && Number.isFinite(m)) pts.push([n, m]);
   }
   if (pts.length < 2) return none;
@@ -417,6 +441,13 @@ export function radialUtilisation(dom, N_Ed, M_Ed) {
   // Lukkekjeden. Ytterpunktene velges med LAVEST m blant dem som deler samme
   // ytterste n, slik at beinet ned til aksen blir kortest mulig og ikke skjærer
   // tvers gjennom domenet.
+  //
+  // FLAGGET, IKKE RETTET (planens §5.2-merknad): denne tiebreaken er
+  // vilkårlig i fortegn — «lavest m» er ikke geometrisk motivert, bare en
+  // konsekvent regel. Speiles `m` om (−m i stedet for m) en gang i framtida,
+  // ville riktig tiebreak blitt «høyest m», og dagens fixturer ville IKKE
+  // fanget det — de har ingen ytterpunkter som deler samme ytterste n. Så
+  // lenge det er sant, er speilinvariansen her tilfeldig, ikke strukturell.
   if (nMin !== null && nMax !== null) {
     const extreme = (cmp) => pts.reduce((best, p) =>
       cmp(p[0], best[0]) || (p[0] === best[0] && p[1] < best[1]) ? p : best, pts[0]);
@@ -453,7 +484,7 @@ export function radialUtilisation(dom, N_Ed, M_Ed) {
   // Ren aksial last: strekket langs M = 0 er kollineært med strålen og faller
   // ut av determinanten over. Aksialgrensa legges inn som KANDIDAT, ikke som
   // svar — omhyllingen krysser gjerne M = 0 nærmere origo enn n_min gjør.
-  if (mEd < EPS) {
+  if (Math.abs(mEd) < EPS) {     // samme rettelse som guarden i toppen av funksjonen
     const bound = nEd < 0 ? nMin : nMax;
     if (bound !== null && Math.abs(bound) > EPS) consider(bound / nEd, bound, 0);
   }
@@ -469,11 +500,12 @@ export function radialUtilisation(dom, N_Ed, M_Ed) {
 /**
  * `nmDomainSvg(dom, opts) -> string`
  *
- * `dom` er `result.nm_domain` (§5.2): `n` i N og `m` i Nmm, BEGGE fortegnsatt.
- * Aksene står i kNm (vannrett) og kN (loddrett), og momentaksen spenner over
- * begge fortegn: +M er den analyserte retningen (felt hvis `direction` er
- * `sagging`), −M er den motsatte. Det er hele poenget med at omhyllingen er én
- * sløyfe rundt origo i stedet for to grener brettet oppå hverandre.
+ * `dom` er `result.nm_domain`: `n` i N og `m` i Nmm, BEGGE rå og fortegnsatt
+ * i motorens egen konvensjon (sagging negativ, hogging positiv — punkt 1 i
+ * hodekommentaren). Aksene står i kNm (vannrett) og kN (loddrett), og
+ * momentaksen spenner over begge fortegn: −M er feltgrenen, +M er
+ * støttegrenen. Det er hele poenget med at omhyllingen er én sløyfe rundt
+ * origo i stedet for to grener brettet oppå hverandre.
  *
  * **N vender oppover med sitt eget fortegn**, altså trykk NEDOVER, og aksen sier
  * det uttrykkelig. Mange lærebøker snur aksen så trykk peker opp; gjør man det
@@ -481,7 +513,7 @@ export function radialUtilisation(dom, N_Ed, M_Ed) {
  *
  * Figuren tegner selv omhyllingen, lastpunktet OG strålen fra origo ut til
  * treffpunktet, med λ og η påskrevet. Strålen er merket «load path» fordi den
- * radielle utnyttelsen er sekundær — hovedtallet er den vertikale (§5.2).
+ * radielle utnyttelsen er sekundær — hovedtallet er den vertikale.
  *
  * **Endringsrunde 2, §7 — flere lastpunkter.** Finnes `dom.combinations` og er
  * ikke-tom, tegnes ETT punkt per kombinasjon med `within_limits: true`:
@@ -490,22 +522,20 @@ export function radialUtilisation(dom, N_Ed, M_Ed) {
  * `dom.N_Ed`/`dom.M_Ed` på toppnivå speiler governing (motorens §4.3), så
  * `rad` under trenger ingen egen logikk for det.
  *
- * **Hver kombinasjon har sin EGEN retning (`cb.theta`), omhyllingen har bare
- * ÉN (`dom.domain_theta`).** En støttemomentkombinasjon (`theta` motsatt av
- * `dom.domain_theta`) hører hjemme på omhyllingens −M-gren, ikke på +M sammen
- * med feltmomentet — ellers ser figuren riktig ut helt til noen legger inn en
- * hogging-rad, og da havner den synlig i feil gren. Fortegnet per punkt er
- * derfor `+1` når `cb.theta` matcher `dom.domain_theta`, ellers `−1`. Mangler
- * et av feltene, faller punktet tilbake til `abs()` — samme som reserveveien,
- * og det er riktig for eldre resultater som ikke kjenner til `domain_theta`.
+ * **Endringsrunde 4, §5.2 — `dom.domain_theta` og `cb.theta` er IKKE lenger
+ * en del av denne funksjonen.** Den forrige runden holdt omhyllingen i den
+ * ANALYSERTE retningen (`+M` alltid), og måtte derfor speile hver
+ * kombinasjon som pekte motsatt vei (`cb.theta ≠ dom.domain_theta`) for å
+ * havne i riktig halvplan. Nå som `dom.m` OG `cb.M_Ed` begge er rå i samme
+ * konvensjon, er de allerede konsistente med hverandre — hver kombinasjon
+ * plottes rett og slett på sin egen `Number(cb.M_Ed)`, uten sammenligning,
+ * uten fallback til `abs()`. Et felt som `domain_theta` kan fortsatt finnes
+ * i responsen (motoren sender den som en INFORMASJONSVERDI, ikke som noe
+ * denne funksjonen trenger — se `engine.py`), men leses ikke her lenger.
  *
  * Mangler `dom.combinations` (eller er den tom), er dette en ren no-op: koden
  * faller tilbake til det ENE lastpunktet i `dom.N_Ed`/`dom.M_Ed`, nøyaktig som
- * før kombinasjoner fantes. Det ENE lastpunktet har alltid `options.theta`,
- * altså samme retning som omhyllingen selv — derfor er `abs()` riktig DER, og
- * skal IKKE få samme fortegnsbehandling som listen over kombinasjoner. Det er
- * det som holder eldre resultater og enhver kaller som ikke er oppdatert
- * ennå, i gang.
+ * før kombinasjoner fantes — nå RÅTT, av samme grunn som resten av fila.
  */
 export function nmDomainSvg(dom, opts = {}) {
   const o = resolveOpts(opts);
@@ -513,7 +543,7 @@ export function nmDomainSvg(dom, opts = {}) {
   const f = frame(o);
 
   const nArr = (dom?.n || []).map((v) => Number(v) / 1000);
-  const mArr = (dom?.m || []).map((v) => Number(v) / 1e6);      // FORTEGNSATT
+  const mArr = (dom?.m || []).map((v) => Number(v) / 1e6);      // FORTEGNSATT, rå
   const count = Math.min(nArr.length, mArr.length);
   const pts = [];
   for (let i = 0; i < count; i++) {
@@ -521,27 +551,22 @@ export function nmDomainSvg(dom, opts = {}) {
   }
 
   const nEd = (Number(dom?.N_Ed) || 0) / 1000;
-  const mEd = Math.abs(Number(dom?.M_Ed) || 0) / 1e6;
+  const mEd = Number(dom?.M_Ed) / 1e6 || 0;   // RÅTT — ingen abs (§5.2)
   const rad = radialUtilisation(dom, nEd, mEd);
 
   // §7: samme /1000 og /1e6 som over. `within_limits` filtreres her, ikke i
   // motoren — motoren sender dem alle, figuren velger hvem som får et punkt.
-  const domainTheta = Number(dom?.domain_theta);
   const comboPoints = (Array.isArray(dom?.combinations) ? dom.combinations : [])
     .filter((cb) => cb && cb.within_limits === true)
-    .map((cb) => {
-      const theta = Number(cb?.theta);
-      // Samme retning som omhyllingen -> +M, motsatt -> −M. Mangler ett av
-      // feltene, er `sign = 1` nøyaktig `abs()` — reserven for eldre data.
-      const sign = Number.isFinite(domainTheta) && Number.isFinite(theta)
-        && Math.abs(theta - domainTheta) > 1e-9 ? -1 : 1;
-      return {
-        n: (Number(cb.N_Ed) || 0) / 1000,
-        m: sign * Math.abs(Number(cb.M_Ed) || 0) / 1e6,
-        governing: cb.id === dom?.governing,
-        label: cb.name || cb.id,
-      };
-    });
+    .map((cb) => ({
+      n: (Number(cb.N_Ed) || 0) / 1000,
+      // RÅTT (§5.2): `cb.M_Ed` er i samme fortegnskonvensjon som `dom.m`,
+      // så punktet plottes direkte — ingen sammenligning mot en
+      // omhyllingsretning, ingen `abs()`-reserve. Se hodekommentaren.
+      m: (Number(cb.M_Ed) || 0) / 1e6,
+      governing: cb.id === dom?.governing,
+      label: cb.name || cb.id,
+    }));
 
   const nVals = pts.map((p) => p[0]).concat([nEd, 0]);
   const mVals = pts.map((p) => p[1]).concat([mEd, 0]);
@@ -593,8 +618,16 @@ export function nmDomainSvg(dom, opts = {}) {
             `r="${r(1.2 * o.u)}" fill="${c.ray}"/></g>`;
     body += `<text data-role="ray-label" x="${r(f.x0 + 1.8 * o.u)}" y="${r(f.y0 - 2.2 * o.u)}" ` +
             `font-family="${FONT}" font-size="${r(2.2 * o.u)}" fill="${c.ray}">` +
-            `load path (secondary): λ = ${esc(fmt(rad.lambda, 2))}, ` +
-            `η = ${esc(fmt(rad.eta, 2))}</text>`;
+            // NAVNENE ER BRUKERVENDTE, IKKE FELTNAVNENE. Internt i denne fila er
+            // `rad.lambda` faktoren som skalerer lasten ut til omhyllingen (>1 =
+            // reserve) og `rad.eta` den radielle utnyttelsen 1/λ. Utad heter den
+            // radielle utnyttelsen λ (`RADIAL_UTILISATION_LABEL`), mens η ALLTID
+            // er den vertikale M_Ed/M_Rd(N_Ed) i resultatboksen. Skrev figuren
+            // «λ = 1,24, η = 0,81» sto det to ulike betydninger av begge symbolene
+            // innenfor samme skjermbilde — bildeteksten under figuren sa samtidig
+            // «λ = 0,81» og resultatboksen «η = 0,78».
+            `load path (secondary): λ = ${esc(fmt(rad.eta, 2))} ` +
+            `(boundary at ×${esc(fmt(rad.lambda, 2))})</text>`;
   }
 
   if (comboPoints.length) {
@@ -617,8 +650,12 @@ export function nmDomainSvg(dom, opts = {}) {
           { filled: false, role: 'load-point' });
       }
     }
-  } else if (Math.abs(nEd) > EPS || mEd > EPS) {
+  } else if (Math.abs(nEd) > EPS || Math.abs(mEd) > EPS) {
     // Reserve (§7): ingen `dom.combinations` — oppfør deg nøyaktig som før.
+    // `Math.abs(mEd)`, ikke `mEd`: siden `mEd` nå er rått og kan være
+    // negativt (sagging), ville `mEd > EPS` uten abs() aldri vist et rent
+    // sagging-lastpunkt (`N_Ed = 0, M_Ed < 0`) — samme feilklasse som guardene
+    // i `radialUtilisation`.
     body += loadMarker(ax.px(mEd), ax.py(nEd), c.load, o.u, { filled: false, role: 'load-point' });
     body += `<text x="${r(ax.px(mEd) + 3.4 * o.u)}" y="${r(ax.py(nEd) + 0.8 * o.u)}" ` +
             `font-family="${FONT}" font-size="${r(2.2 * o.u)}" fill="${c.load}">` +

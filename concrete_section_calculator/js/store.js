@@ -26,6 +26,7 @@
 
 import { SCHEMA_VERSION } from './meta.js';
 import { createCombo, createLayer, recomputeAutoDc, stackedDc } from './rebar.js';
+import { allowedAnalyses, SLAB_WIDTH } from './section.js';
 
 /**
  * Standardtilstand. Tallene er norsk praksis: α_cc = 0,85 (NA), γ_c = 1,5,
@@ -112,12 +113,49 @@ function cloneState(s) {
 }
 
 /**
+ * Tvinger `analysis` innenfor `allowedAnalyses(state)` (endringsrunde 4 §2,
+ * hullet D3 fant). Planen navnga tre «dører» inn til `analysis: 'bending'`
+ * med aksialkraft — chippen, tasten `1`, en lagret fil — men velger brukeren
+ * «Bending resistance» FØR aksialkraften kommer inn, blir chippen nedtonet
+ * ETTERPÅ mens `state.analysis` står urørt på `'bending'`, og `calculate()`
+ * kjører den likevel. UI-dører er feil sted å lukke det: REGELEN GJELDER
+ * TILSTANDEN, ikke inngangen til den. Kalles derfor etter ALT som kan gjøre
+ * `analysis` ulovlig — i praksis alt som rører `combos`
+ * (`addCombo`/`updateCombo`/`removeCombo`) og `setInputs` (`replaceState`),
+ * som planen feilaktig kalte en bevisst tillatt omgåelse.
+ *
+ * KUN ÉN VEI: retter bare når `analysis` faktisk ER ulovlig. Går `N_Ed`
+ * tilbake til 0 igjen, skal `analysis` IKKE hoppe tilbake til `'bending'` av
+ * seg selv — å flytte brukeren to ganger er verre enn å flytte hen én gang.
+ * `moment_curvature` er aldri ulovlig (`allowedAnalyses` fjerner bare
+ * `'bending'`), så den berøres aldri av denne funksjonen.
+ */
+function enforceAnalysis(s) {
+  return allowedAnalyses(s).includes(s.analysis) ? s : { ...s, analysis: 'nm_domain' };
+}
+
+/**
+ * Plata er ALLTID 1000 mm bred. `setSectionType` setter den, men `setInputs`
+ * (`replaceState`) og et innlastet dokument er egne dører inn i staten, og en
+ * plate med `geometry.b = 300` liggende igjen fra en bjelke ga tidligere en
+ * stat der `sectionWidth()` sa 1000 til motoren mens `geometry.b` sa 300.
+ * Normaliseringen her gjør at et lagret dokument runder tilbake til NØYAKTIG
+ * samme stat. Samme énveis-prinsipp som `enforceAnalysis`: retter bare når
+ * verdien faktisk er feil.
+ */
+function enforceSlabWidth(s) {
+  if (s.sectionType !== 'slab') return s;
+  if (Number(s.geometry?.b) === SLAB_WIDTH) return s;
+  return { ...s, geometry: { ...s.geometry, b: SLAB_WIDTH } };
+}
+
+/**
  * Lager en ny store.
  *
  * @param {object} [initial] slås sammen med `defaultState()`
  */
 export function createStore(initial) {
-  let state = cloneState({ ...defaultState(), ...(initial || {}) });
+  let state = enforceSlabWidth(enforceAnalysis(cloneState({ ...defaultState(), ...(initial || {}) })));
   const listeners = new Set();
   // Løpenummer for lag-id-er. Teller ALDRI ned når et lag slettes: «L2» skal
   // ikke kunne bety to ulike lag i samme økt, ellers peker en gammel
@@ -209,7 +247,7 @@ export function createStore(initial) {
       // `dc_auto` MÅ med i feltlista: uten den ville hvert bjelke/plate-bytte
       // stille nullstilt låsen på ethvert lag (plan §3.4).
       if (isSlab) {
-        next.geometry = { ...next.geometry, b: 1000 };
+        next.geometry = { ...next.geometry, b: SLAB_WIDTH };
         next.layers = next.layers.map((l) =>
           l.mode === 'spacing'
             ? l
@@ -301,16 +339,18 @@ export function createStore(initial) {
     /** Ny rad i lastkombinasjonstabellen. Retningen arves fra `createCombo`. */
     addCombo(patch = {}) {
       const combo = createCombo(state, { id: nextComboId(), ...patch });
-      state = cloneState({ ...state, combos: [...state.combos, combo] });
+      state = enforceAnalysis(cloneState({ ...state, combos: [...state.combos, combo] }));
       notify();
       return combo;
     },
 
     updateCombo(id, values) {
-      state = cloneState({
-        ...state,
-        combos: state.combos.map((c) => (c.id === id ? { ...c, ...values } : c)),
-      });
+      state = enforceAnalysis(
+        cloneState({
+          ...state,
+          combos: state.combos.map((c) => (c.id === id ? { ...c, ...values } : c)),
+        })
+      );
       notify();
       return state;
     },
@@ -324,7 +364,7 @@ export function createStore(initial) {
       if (state.combos.length <= 1) return state;
       const combos = state.combos.filter((c) => c.id !== id);
       const activeCombo = state.activeCombo === id ? combos[0].id : state.activeCombo;
-      state = cloneState({ ...state, combos, activeCombo });
+      state = enforceAnalysis(cloneState({ ...state, combos, activeCombo }));
       notify();
       return state;
     },
@@ -335,9 +375,15 @@ export function createStore(initial) {
       return state;
     },
 
-    /** `setInputs()` i arbeidsflyt-API-et. Nullstiller resultatet: det gjelder gamle tall. */
+    /**
+     * `setInputs()` i arbeidsflyt-API-et. Nullstiller resultatet: det gjelder
+     * gamle tall. Planen (§2) kalte dette en BEVISST tillatt omgåelse av
+     * auto-N–M-regelen — det var feil (D3 fant hullet som viste hvorfor): en
+     * `M_Rd` ved én aksialkraft er like misvisende uansett hvordan tilstanden
+     * kom dit, så `enforceAnalysis` gjelder her akkurat som for combo-endringer.
+     */
     replaceState(next) {
-      state = cloneState({ ...defaultState(), ...next, result: null });
+      state = enforceSlabWidth(enforceAnalysis(cloneState({ ...defaultState(), ...next, result: null })));
       layerSeq = Math.max(layerSeq, state.layers.length);
       comboSeq = Math.max(comboSeq, state.combos.length);
       notify();

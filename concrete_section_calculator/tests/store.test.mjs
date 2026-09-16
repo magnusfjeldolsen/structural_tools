@@ -132,6 +132,60 @@ test('cloneState kloner shear.stirrups som en NY array — mutasjon utenfra skal
   assert.deepEqual(after, before);
 });
 
+/* ---------------- endringsrunde 4 §2 — enforceAnalysis (hullet D3 fant) ---------------- */
+// Planen navnga tre «dører» inn til `analysis: 'bending'` med aksialkraft —
+// chippen, tasten `1`, en lagret fil — men velger brukeren «Bending
+// resistance» FØR aksialkraften kommer inn, sto `state.analysis` urørt.
+// Regelen gjelder tilstanden, ikke inngangen til den: `store.js` tvinger nå
+// `analysis` innenfor `allowedAnalyses(state)` etter alt som rører `combos`,
+// og etter `setInputs` (`replaceState`), som planen feilaktig kalte unntatt.
+
+test('enforceAnalysis: updateCombo med N_Ed ≠ 0 tvinger analysis bort fra bending', () => {
+  const store = createStore(); // analysis: 'bending' som standard, N_Ed: 0
+  assert.equal(store.getState().analysis, 'bending');
+  store.updateCombo('C1', { N_Ed: -500 });
+  assert.equal(store.getState().analysis, 'nm_domain');
+});
+
+test('enforceAnalysis: addCombo med N_Ed ≠ 0 tvinger analysis bort fra bending', () => {
+  const store = createStore();
+  assert.equal(store.getState().analysis, 'bending');
+  store.addCombo({ N_Ed: -200 });
+  assert.equal(store.getState().analysis, 'nm_domain');
+});
+
+test('enforceAnalysis er ENVEIS: N_Ed tilbake til 0 skal IKKE flytte analysis tilbake til bending', () => {
+  const store = createStore();
+  store.updateCombo('C1', { N_Ed: -500 });
+  assert.equal(store.getState().analysis, 'nm_domain');
+  // Å flytte brukeren to ganger er verre enn å flytte hen én gang (§2).
+  store.updateCombo('C1', { N_Ed: 0 });
+  assert.equal(store.getState().analysis, 'nm_domain');
+});
+
+test('enforceAnalysis rører aldri moment_curvature — allowedAnalyses fjerner bare bending', () => {
+  const store = createStore({ analysis: 'moment_curvature' });
+  assert.equal(store.getState().analysis, 'moment_curvature');
+  store.updateCombo('C1', { N_Ed: -500 });
+  assert.equal(store.getState().analysis, 'moment_curvature');
+  store.addCombo({ N_Ed: -300 });
+  assert.equal(store.getState().analysis, 'moment_curvature');
+});
+
+test('enforceAnalysis gjelder også setInputs (replaceState) — planen kalte dette feilaktig et bevisst unntak', () => {
+  const store = createStore();
+  store.replaceState({ analysis: 'bending', combos: [{ id: 'C1', name: 'ULS 1', N_Ed: -500, M_Ed: 0, V_Ed: 0 }] });
+  assert.equal(store.getState().analysis, 'nm_domain');
+});
+
+test('enforceAnalysis gjelder allerede ved construction — createStore med ulovlig starttilstand', () => {
+  const store = createStore({
+    analysis: 'bending',
+    combos: [{ id: 'C1', name: 'ULS 1', N_Ed: -500, M_Ed: 0, V_Ed: 0 }],
+  });
+  assert.equal(store.getState().analysis, 'nm_domain');
+});
+
 test('removeCombo av den AKTIVE flytter activeCombo; den siste kan ikke fjernes', () => {
   const store = createStore();
   const c2 = store.addCombo({ name: 'ULS 2', N_Ed: -500, M_Ed: 250 });
@@ -147,4 +201,32 @@ test('removeCombo av den AKTIVE flytter activeCombo; den siste kan ikke fjernes'
   store.removeCombo('C1');
   assert.equal(store.getState().combos.length, 1);
   assert.equal(store.getState(), before);
+});
+
+/**
+ * Plata er alltid 1000 mm bred, uansett hvilken dør staten kom inn gjennom.
+ * `setSectionType` setter bredden, men `setInputs`/`replaceState` er en egen
+ * dør — nøyaktig samme mønster som `enforceAnalysis` (§2.3). Uten denne kunne
+ * `sectionWidth()` si 1000 til motoren mens `geometry.b` sa 300 til alt som
+ * leste staten rått.
+ */
+test('replaceState: plate med bjelkebredde normaliseres til 1000 mm', () => {
+  const store = createStore();
+  const next = store.replaceState({
+    sectionType: 'slab',
+    geometry: { b: 300, h: 200 },
+  });
+  assert.equal(next.geometry.b, 1000);
+});
+
+test('replaceState: bjelkens bredde røres ikke', () => {
+  const store = createStore();
+  const next = store.replaceState({ sectionType: 'beam', geometry: { b: 450, h: 700 } });
+  assert.equal(next.geometry.b, 450);
+});
+
+test('createStore: en plate gitt som initial-stat får riktig bredde', () => {
+  const store = createStore({ sectionType: 'slab', geometry: { b: 250, h: 180 } });
+  assert.equal(store.getState().geometry.b, 1000);
+  assert.equal(store.getState().geometry.h, 180, 'høyden skal ikke røres');
 });
