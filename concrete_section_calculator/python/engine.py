@@ -17,21 +17,28 @@ kaster på. `_num()` og `_arr()` under er den ene porten alt tall passerer gjenn
 `json.dumps(..., allow_nan=False)` til slutt er sikringen som gjør at en glipp blir en feil
 her i stedet for en tom graf i UI-et.
 
-FORTEGNSREGELEN
+FORTEGNSREGELEN — v4: vi overtar `structuralcodes` sitt eget fortegn
 `structuralcodes` bruker `n > 0` = strekk og `theta = 0` = trykksone øverst. En vanlig
-bjelke med underkantarmering får derfor NEGATIVT `m_y` for feltmoment. Det fortegnet er
-riktig i pakken og feil i et UI. Derfor krysser `bending.M_Rd` og hele M–κ-kurven
-JSON-grensa som STØRRELSER, aksialkraften forblir fortegnsatt, og motorens rå fortegn
-ligger i `meta.moment_sign`. Uten dette ville plottkoden sendt en stråle inn i
-+M-halvplanet mot en omhylling som ligger helt i −M.
+bjelke med underkantarmering får derfor NEGATIVT `m_y` for feltmoment. Fram til runde 4
+ble det fortegnet snudd om til en størrelse i JSON-grensa, med det rå fortegnet gjemt i
+`meta.moment_sign`. Det er det IKKE lenger (plan v4 §1): `bending.M_Rd`, hele
+M–κ-kurven (`moment_curvature.moment`/`.kappa`), `nm_domain.m` og
+`combinations[i].M_Ed`/`M_Rd` krysser JSON-grensa RÅ, i pakkens eget fortegn.
+`meta.moment_sign` og `meta.domain_theta` er fjernet — ingen produksjonskode leste dem
+lenger, og et fortegn som bare ligger i `meta` uten at noen leser det er en felle, ikke
+en funksjon. UI-en har i stedet fått opplysningsplikt (planens §1.7): «sagging negative»
+og en levende tolkningslinje under momentfeltet.
 
-M–N-diagrammet er unntaket: der er `m` FORTEGNSATT, dreid slik at kapasiteten i den
-signerte retningen er positiv. Begrunnelsen står i `_nm_domain_arrays` — kort sagt har
-diagrammet to grener, og å brette dem sammen med `abs` gjør at strålemetoden plukker feil
-gren. MEN: fortegnet her er IKKE `meta.moment_sign` (som er GOVERNING kombinasjonens rå
-fortegn, og kan gjelde en annen retning). Omhyllingen signeres med tverrsnittets EGEN,
-faste retning `options.theta` — ellers ville diagrammet speilvendt seg hver gang governing
-byttet fra felt- til støttemoment. Den faktiske retningen står i `meta.domain_theta`.
+`utilisation` er det ene, bevisste unntaket: den er ALLTID en STØRRELSE,
+`|M_Ed|/|M_Rd|`, fordi utnyttelse ikke har noe fortegn å vise fram — to snitt med samme
+utnyttelse skal se like «fulle» ut uansett om det er felt- eller støttemoment.
+
+Ett unntak til, og det er bevisst: `mc_chi` (inndata til moment–krumning) og
+`moment_curvature.chi_plan` (rutenettet) er FORTSATT STØRRELSER. Pakka vil ha
+krumningen i sitt eget roterte system, der den alltid er negativ uansett `theta` —
+`theta` er allerede bakt inn i rotasjonen. `chi_input = [-abs(v)]` i `_moment_curvature`
+under SKAL stå (plan §1.4); fjernes det, brekker JS-drevet moment–krumning for
+støttemoment.
 
 HVORFOR EN FORBEREDT SEKSJON LIGGER SOM MODULGLOBAL
 Moment–krumning drives ett krumningspunkt om gangen fra JS (planens §3.7), for å få
@@ -58,6 +65,7 @@ import warnings
 
 import numpy as np
 from shapely import Point, Polygon
+from structuralcodes.codes import ec2_2004
 from structuralcodes.core.errors import StructuralCodesWarning
 from structuralcodes.geometry import CompoundGeometry, PointGeometry, SurfaceGeometry
 from structuralcodes.materials.concrete import ConcreteEC2_2004
@@ -115,15 +123,6 @@ def _arr(a):
 def _abs_arr(a):
     """Størrelser, ikke fortegn — se FORTEGNSREGELEN i hodekommentaren."""
     return [None if x is None else abs(x) for x in _arr(a)]
-
-
-def _signed_arr(a, sign):
-    """Momenter dreid om til «positiv i den analyserte retningen».
-
-    Brukes bare av M–N-diagrammet, og forskjellen fra `_abs_arr` er hele poenget: se
-    `_nm_domain`.
-    """
-    return [None if x is None else x * sign for x in _arr(a)]
 
 
 def _int_arr(a):
@@ -501,6 +500,238 @@ def _geometry_warnings(payload):
 
 
 # ------------------------------------------------------------------ #
+# Skjær — EC2 6.2 (v4-planens §3–4)
+# ------------------------------------------------------------------ #
+
+def _ned_for_shear(n_ed_tension_positive: float) -> float:
+    """Seksjons-API-et har strekk positiv; EC2-skjærfunksjonene har trykk positiv.
+
+    Én funksjon som ikke gjør noe annet, med egen test. Snus dette fortegnet ved en
+    feiltakelse, blir et snitt i strekk (der skjærkapasiteten SKAL være lav) i stedet
+    regnet som om det sto i trykk — målt på referansebjelken en elleve gangers
+    overestimering av `V_Rd,c`, på usikker side (plan §4.1a).
+    """
+    return -n_ed_tension_positive
+
+
+def _shear_geometry(rebar, h, theta_c):
+    """`A_sl` og `d` for ÉN gitt retning, rent GEOMETRISK — ingen tøyningsplan.
+
+    EC2 6.2.2 sin `A_sl` er den ANKREDE bøyestrekkarmeringen («anchored at least
+    (lbd + d) beyond the considered cross-section»), et forankringsbegrep knyttet til
+    bøyestrekksiden. Det er IKKE «alle lag med ε > 0 ved brudd» — den tøyningsplan-baserte
+    ruten (`_effective_depth`) er ukonservativ i feil retning ved aksialstrekk, fordi den
+    da teller overkantarmeringen inn i skjærkapasiteten for et feltmoment (plan §4.1b).
+    Regelen her er derfor bevisst en annen enn `_effective_depth`, og det er ikke en feil.
+
+    Returnerer `(A_sl, d)`. `d = None` når ingen armering ligger på strekksiden.
+    """
+    hogging = _is_hogging(theta_c)
+    tension = [l for l in rebar if (_layer_z(l) > 0 if hogging else _layer_z(l) < 0)]
+    if not tension:
+        return 0.0, None
+    d, a_sl = _weighted_depth(tension, h, theta_c)
+    return a_sl, d
+
+
+def _shear_asl_d(rebar, h, m_ed, theta_c, warnings_out, combo_id, combo_name):
+    """`A_sl`/`d` for én kombinasjon, med `M_Ed = 0`-regelen fra plan §4.1b.
+
+    `M_Ed = 0` gir ingen strekkside fra momentet — da tas siden med MINST `A_sl`, den
+    strengeste av de to, og det legges en `shear_asl_ambiguous`-advarsel slik at valget
+    er synlig og ikke stille. Dette er trivielt beregnbart nettopp fordi regelen er
+    geometrisk (§4.1b) — en tøyningsplan-basert regel ville ikke engang hatt et svar her
+    uten en løst bruddtilstand.
+    """
+    if m_ed == 0.0:
+        a_sag, d_sag = _shear_geometry(rebar, h, 0.0)
+        a_hog, d_hog = _shear_geometry(rebar, h, math.pi)
+        if d_sag is None and d_hog is None:
+            return 0.0, None
+        if d_sag is None or (d_hog is not None and a_hog < a_sag):
+            a_sl, d = a_hog, d_hog
+        else:
+            a_sl, d = a_sag, d_sag
+        w = _warning(
+            'shear_asl_ambiguous',
+            'M_Ed = 0 gives no tension side from the moment. The side with the least '
+            'flexural tension reinforcement is used for A_sl and d — the more '
+            'conservative of the two.',
+            f'A_sl(sagging)={a_sag}, A_sl(hogging)={a_hog}',
+            severity='info',
+        )
+        w['combo'] = combo_id
+        w['combo_name'] = combo_name
+        warnings_out.append(w)
+        return a_sl, d
+    return _shear_geometry(rebar, h, theta_c)
+
+
+def _shear_result(combo, rebar, h, shear_ctx, warnings_out):
+    """Skjærkapasitet for ÉN kombinasjon (plan §4.2), eller `None` uten skjærdata.
+
+    Regnes FØR aksialsjekken i `_solve_combo` og er uavhengig av bøyeløsningen —
+    `A_sl`/`d` er geometriske (§4.1b), så skjær kan svares ut for ENHVER kombinasjon,
+    også de utenfor `[n_min, n_max]` og de moment–krumning aldri løser. `V_Rd,c` legges
+    ALDRI til `V_Rd,s` (EC2 6.2.3(2)) — `governing_mode` velger, det summeres ikke.
+    """
+    if shear_ctx is None:
+        return None
+
+    m_ed = combo['M_Ed']
+    n_ed = combo['N_Ed']
+    theta_c = combo['theta']
+    v_ed = abs(float(combo.get('V_Ed', 0.0) or 0.0))
+
+    a_sl, d = _shear_asl_d(rebar, h, m_ed, theta_c, warnings_out, combo['id'], combo['name'])
+    bw = float(shear_ctx['bw'])
+
+    if d is None or d <= 0 or bw <= 0:
+        return {
+            'evaluated': False, 'V_Ed': _num(v_ed),
+            'V_Rd': None, 'V_Rd_c': None, 'V_Rd_s': None, 'V_Rd_max': None,
+            'governing_mode': None, 'utilisation': None,
+            'Asl': _num(a_sl), 'd': _num(d), 'bw': _num(bw), 'z': None,
+            'asw_s': None, 'asw_s_min': None, 'asw_s_required': None,
+            'sl_max': None, 'st_max': None,
+        }
+
+    cfg = shear_ctx['cfg']
+    strut_deg = float(cfg.get('strut_angle_deg', 45.0))
+    z_factor = float(cfg.get('z_factor', 0.9))
+    z = z_factor * d
+    stirrups = cfg.get('stirrups') or []
+
+    fck = shear_ctx['fck']
+    fcd = shear_ctx['fcd']
+    ac = shear_ctx['ac']
+    gamma_s = shear_ctx['gamma_s']
+    ned_shear = _ned_for_shear(n_ed)
+
+    # Regnes selv (plan §3.3) — ikke en `structuralcodes`-funksjon, og ikke i stand til å
+    # feile (ren aritmetikk). Regnes derfor FØR `structuralcodes`-kallene under, slik at
+    # disse tallene alltid er med i svaret selv om selve kapasitetsberegningen skulle
+    # avvises (se `except` under). Flere bøylerader summeres til én total, slik `VRds`
+    # kan mates med `s = 1` og `Asw = asw_s` — samme knep som gjør at flere rader med
+    # ulikt senteravstand kan kombineres til én kapasitet.
+    asw_s = 0.0
+    fywk = None
+    for st in stirrups:
+        spacing = float(st['spacing'])
+        if spacing <= 0:
+            continue
+        dia = float(st['dia'])
+        legs = float(st.get('legs', 2))
+        asw_s += legs * math.pi * dia ** 2 / 4.0 / spacing
+        if fywk is None and st.get('fywk') is not None:
+            fywk = float(st['fywk'])
+
+    rho_w_min = (0.08 * math.sqrt(fck) / fywk) if fywk else None
+    asw_s_min = (rho_w_min * bw) if rho_w_min is not None else None
+    sl_max = 0.75 * d
+    st_max = min(0.75 * d, 600.0)
+
+    # `structuralcodes` sine skjærfunksjoner KAN kaste — `VRdmax`/`Asw_max` sin
+    # `alpha_cw` avviser `sigma_cp = NEd/Ac > fcd` (EC2 6.2.3(3), trykkspenningen kan
+    # ikke overstige betongens trykkfasthet). Det treffer nettopp en kombinasjon langt
+    # utenfor `[n_min, n_max]` — akkurat den typen rad skjær SKAL kunne svare ut (§4.1b)
+    # uten selv å ha et gyldig aksialtrykk for trykkstaven. Motoren skal ALDRI kaste
+    # (hodekommentarens «kaster aldri»), så dette er `evaluated: False` med en advarsel,
+    # ikke en unntak som velter hele kjøringen.
+    try:
+        v_rd_c = float(ec2_2004.VRdc(
+            fck=fck, d=d, Asl=a_sl, bw=bw, NEd=ned_shear, Ac=ac, fcd=fcd,
+        ))
+        if stirrups and fywk:
+            fywd = fywk / gamma_s
+            v_rd_s = float(ec2_2004.VRds(
+                Asw=asw_s, s=1.0, z=z, theta=strut_deg, fyk=fywk, alpha=90.0,
+                gamma_s=gamma_s,
+            ))
+            v_rd_max = float(ec2_2004.VRdmax(
+                bw=bw, z=z, fck=fck, theta=strut_deg, NEd=ned_shear, Ac=ac, fcd=fcd,
+                alpha=90.0,
+            ))
+            asw_s_required = float(ec2_2004.Asw_s_required(
+                Ved=v_ed, z=z, theta=strut_deg, fywd=fywd, alpha=90.0,
+            ))
+            v_rd = min(v_rd_s, v_rd_max)
+            governing_mode = 'stirrups' if v_rd_s <= v_rd_max else 'strut_crushing'
+        else:
+            # Tom bøyleliste — EC2 6.2.1(4): kapasiteten ER `V_Rd,c`, ikke et
+            # spesialtilfelle av bøylevegen. Standard for plate.
+            v_rd_s = None
+            v_rd_max = None
+            asw_s_required = None
+            v_rd = v_rd_c
+            governing_mode = 'no_stirrups'
+    except ValueError as exc:
+        w = _warning(
+            'shear_not_evaluated',
+            'The shear capacity could not be computed for this load combination — the '
+            'axial force is too far outside the range the cross-section can carry for '
+            'the compression strut check to apply.',
+            str(exc),
+            severity='warning',
+        )
+        w['combo'] = combo['id']
+        w['combo_name'] = combo['name']
+        warnings_out.append(w)
+        return {
+            'evaluated': False, 'V_Ed': _num(v_ed),
+            'V_Rd': None, 'V_Rd_c': None, 'V_Rd_s': None, 'V_Rd_max': None,
+            'governing_mode': None, 'utilisation': None,
+            'Asl': _num(a_sl), 'd': _num(d), 'bw': _num(bw), 'z': _num(z),
+            'asw_s': _num(asw_s), 'asw_s_min': _num(asw_s_min), 'asw_s_required': None,
+            'sl_max': _num(sl_max), 'st_max': _num(st_max),
+        }
+
+    if v_rd:
+        utilisation = v_ed / v_rd
+    else:
+        utilisation = 0.0 if not v_ed else None
+
+    return {
+        'evaluated': True,
+        'V_Ed': _num(v_ed),
+        'V_Rd': _num(v_rd),
+        'V_Rd_c': _num(v_rd_c),
+        'V_Rd_s': _num(v_rd_s),
+        'V_Rd_max': _num(v_rd_max),
+        'governing_mode': governing_mode,
+        'utilisation': _num(utilisation),
+        'Asl': _num(a_sl),
+        'd': _num(d),
+        'bw': _num(bw),
+        'z': _num(z),
+        'asw_s': _num(asw_s),
+        'asw_s_min': _num(asw_s_min),
+        'asw_s_required': _num(asw_s_required),
+        'sl_max': _num(sl_max),
+        'st_max': _num(st_max),
+    }
+
+
+def _select_shear_governing(combo_results):
+    """Samme regel som `_select_governing` (§4.3), men for skjær og UAVHENGIG av
+    `within_limits` — skjær kan jo regnes utenfor `[n_min, n_max]` (§4.1b). En rad med
+    stor `V_Ed` og lite `M_Ed` skal kunne styre skjær uten å være i nærheten av å styre
+    bøying, derav et EGET merke (plan §4.3).
+    """
+    candidates = [i for i, c in enumerate(combo_results)
+                  if c.get('shear') and c['shear'].get('evaluated')]
+    if not candidates:
+        return None
+    best = candidates[0]
+    for i in candidates[1:]:
+        u_i = combo_results[i]['shear']['utilisation'] or 0.0
+        u_best = combo_results[best]['shear']['utilisation'] or 0.0
+        if u_i > u_best:
+            best = i
+    return combo_results[best]['id']
+
+
+# ------------------------------------------------------------------ #
 # Lastkombinasjoner — §4
 # ------------------------------------------------------------------ #
 
@@ -512,6 +743,10 @@ def _normalise_loads(payload, opts):
     kombinasjon `C1` med `options.theta` som retning. Den nye formen har egen `theta` per
     kombinasjon; `options.theta` er bare standarden for en kombinasjon som ikke oppgir sin
     egen (§4.2).
+
+    `V_Ed` er nytt i v4 (plan §1.2/§4.1c), en STØRRELSE — `VRds`/`VRdmax` er symmetriske i
+    V, og fortegnet betyr ingenting. Mangler feltet (alle eksisterende fixturer), blir det
+    `0.0`, og skjærblokka viser bare kapasitet uten utnyttelse.
 
     Returnerer `(combos, active_id)`.
     """
@@ -528,6 +763,7 @@ def _normalise_loads(payload, opts):
                 'N_Ed': float(c['N_Ed']),
                 'M_Ed': float(c['M_Ed']),
                 'theta': float(theta) if theta is not None else default_theta,
+                'V_Ed': float(c.get('V_Ed', 0.0) or 0.0),
             })
         active_id = loads.get('active') or (combos[0]['id'] if combos else None)
         return combos, active_id
@@ -538,28 +774,36 @@ def _normalise_loads(payload, opts):
         'N_Ed': float(loads['N_Ed']),
         'M_Ed': float(loads['M_Ed']),
         'theta': default_theta,
+        'V_Ed': float(loads.get('V_Ed', 0.0) or 0.0),
     }
     return [combo], 'C1'
 
 
 def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_max,
-                  warnings_out):
+                  shear_ctx, warnings_out):
     """Løser bruddtilstanden for ÉN lastkombinasjon.
 
     Returnerer `(public, extra)`. `public` er NØYAKTIG formen `combinations[i]` skal ha i
     resultatet (§4.3) og går rett ut som JSON. `extra` er interne mellomregninger
-    (`moment_sign`, `d_eff`, `as_tension`, `d_eff_all`, `z_na`) som bare GOVERNING-
-    kombinasjonen trenger videre (til `section_props`/`checks`/`meta`, §4.3) — å regne dem
-    for alle kombinasjonene ville vært bortkastet arbeid for rader ingen speiler.
+    (`d_eff`, `as_tension`, `d_eff_all`, `z_na`) som bare GOVERNING-kombinasjonen trenger
+    videre (til `section_props`/`checks`/`meta`, §4.3) — å regne dem for alle
+    kombinasjonene ville vært bortkastet arbeid for rader ingen speiler.
 
-    Utenfor `[n_min, n_max]` (§4.4): `within_limits: False`, alle utfallsfelt `None`, og en
-    `axial_out_of_range`-advarsel MERKET med hvilken kombinasjon det gjelder — ellers
+    Utenfor `[n_min, n_max]` (§4.4): `within_limits: False`, alle bøye-utfallsfelt `None`,
+    og en `axial_out_of_range`-advarsel MERKET med hvilken kombinasjon det gjelder — ellers
     forsvinner navnet bak `results.js` sin kodetabell når meldinga vises (§4.4). Advarselen
     stopper IKKE resten av kombinasjonene.
+
+    Skjær (§4.1b) regnes FØR denne aksialsjekken og er ikke omfattet av den — `A_sl`/`d`
+    er geometriske, ikke hentet fra bøyeløsningen, så skjær har et svar for ENHVER
+    kombinasjon uansett hva aksialsjekken under sier.
     """
     n_ed = combo['N_Ed']
     m_ed = combo['M_Ed']
     theta_c = combo['theta']
+    v_ed = float(combo.get('V_Ed', 0.0) or 0.0)
+
+    shear = _shear_result(combo, rebar, h, shear_ctx, warnings_out)
 
     if n_ed < n_min or n_ed > n_max:
         warning = _warning(
@@ -576,24 +820,21 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
         public = {
             'id': combo['id'], 'name': combo['name'],
             'N_Ed': _num(n_ed), 'M_Ed': _num(m_ed), 'theta': _num(theta_c),
+            'V_Ed': _num(v_ed), 'shear': shear,
             'M_Rd': None, 'utilisation': None,
             'x': None, 'x_over_d': None, 'eps_a': None, 'chi_y': None,
             'eps_c_top': None, 'eps_s_max': None, 'failure_mode': None, 'layers': None,
             'within_limits': False,
         }
-        extra = {
-            'moment_sign': None, 'd_eff': None, 'as_tension': None, 'd_eff_all': None,
-            'z_na': None,
-        }
+        extra = {'d_eff': None, 'as_tension': None, 'd_eff_all': None, 'z_na': None}
         return public, extra
 
     with _Capture() as cap:
         bend = sc.calculate_bending_strength(theta=theta_c, n=n_ed)
     _drain(cap.records, warnings_out)
 
+    # RÅ, i pakkens eget fortegn — se hodekommentarens FORTEGNSREGEL (plan v4 §1.4).
     m_rd_signed = float(bend.m_y)
-    m_rd = abs(m_rd_signed)
-    moment_sign = -1 if m_rd_signed < 0 else 1
     eps_a = float(bend.eps_a)
     chi_y = float(bend.chi_y)
     z_na, x = _neutral_axis(eps_a, chi_y, h, theta_c)
@@ -604,12 +845,15 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
 
     # d_eff kan først avgjøres NÅ: EC2 9.2.1.1 sin `d` gjelder strekkarmeringen, og hvilke
     # lag som står i strekk ser man i tøyningsplanet ved brudd, ikke i geometrien alene.
+    # (Dette er IKKE skjærets `A_sl`/`d` — se `_shear_geometry` for hvorfor de to skal
+    # være ulike funksjoner.)
     d_eff, as_tension, d_eff_all = _effective_depth(rebar, h, theta_c, eps_a, chi_y)
 
     public = {
         'id': combo['id'], 'name': combo['name'],
         'N_Ed': _num(n_ed), 'M_Ed': _num(m_ed), 'theta': _num(theta_c),
-        'M_Rd': _num(m_rd), 'utilisation': _num(_utilisation(m_ed, m_rd)),
+        'V_Ed': _num(v_ed), 'shear': shear,
+        'M_Rd': _num(m_rd_signed), 'utilisation': _num(_utilisation(m_ed, m_rd_signed)),
         'x': _num(x), 'x_over_d': _num(x / d_eff) if (x is not None and d_eff) else None,
         'eps_a': _num(eps_a), 'chi_y': _num(chi_y),
         'eps_c_top': _num(eps_edge), 'eps_s_max': _num(eps_s_max),
@@ -617,8 +861,7 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
         'within_limits': True,
     }
     extra = {
-        'moment_sign': moment_sign, 'd_eff': d_eff, 'as_tension': as_tension,
-        'd_eff_all': d_eff_all, 'z_na': z_na,
+        'd_eff': d_eff, 'as_tension': as_tension, 'd_eff_all': d_eff_all, 'z_na': z_na,
     }
     return public, extra
 
@@ -759,6 +1002,16 @@ def _run_inner(payload, progress, t0):
     n_min = float(sc.n_min)
     n_max = float(sc.n_max)
 
+    # `shear_ctx` er `None` uten `section.shear` i payloaden — alle eksisterende fixturer
+    # (før v4) mangler feltet, og skal fortsatt kjøre uendret uten en skjærblokk (§10 D1).
+    shear_cfg = payload['section'].get('shear')
+    shear_ctx = None
+    if shear_cfg:
+        shear_ctx = {
+            'bw': b, 'fck': float(conc.fck), 'fcd': float(conc.fcd()),
+            'ac': b * h, 'gamma_s': float(steel.gamma_s), 'cfg': shear_cfg,
+        }
+
     law_c = payload['section']['concrete']['law']
     eps_c_name, eps_cu_name = _STRAIN_LIMITS.get(law_c, ('eps_c2', 'eps_cu2'))
     eps_c = float(getattr(conc, eps_c_name))
@@ -773,7 +1026,7 @@ def _run_inner(payload, progress, t0):
         active_combo = next((c for c in combos if c['id'] == active_id), combos[0])
         public, extra = _solve_combo(
             active_combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_max,
-            warnings_out,
+            shear_ctx, warnings_out,
         )
         combo_results = [public]
         combo_extras = [extra]
@@ -790,13 +1043,17 @@ def _run_inner(payload, progress, t0):
                 progress('solve', i, n_combos)
             public, extra = _solve_combo(
                 combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_max,
-                warnings_out,
+                shear_ctx, warnings_out,
             )
             combo_results.append(public)
             combo_extras.append(extra)
         if progress is not None:
             progress('solve', n_combos, n_combos)
         governing_index = _select_governing(combo_results)
+
+    # Skjær har sitt EGET, uavhengige governing-valg (§4.3) — en rad med stor `V_Ed` og
+    # lite `M_Ed` kan styre skjær uten å være i nærheten av å styre bøying.
+    shear_governing_id = _select_shear_governing(combo_results)
 
     # §4.3 regel 4: ingen kandidater ⇒ `governing: null`, og toppnivåfeltene speiler i
     # stedet den FØRSTE kombinasjonen, slik at figurer og tabeller har noe å vise.
@@ -855,16 +1112,50 @@ def _run_inner(payload, progress, t0):
             f'eps_s_max={eps_s_max} < eps_yd={eps_yd}',
         ))
 
+    # Skjærkontrollene (§4.3) er UAVHENGIGE av `within_limits`/`governing_index` — de leser
+    # `combo_results[i]['shear']` direkte, som finnes for enhver kombinasjon (§4.1b).
+    # `asw_s`/`asw_s_min` avhenger bare av `bw`/`fywk`/bøylene, ikke av lasten, og er derfor
+    # samme tall for alle evaluerte kombinasjoner — det holder å lese det første.
+    evaluated_shear = [c['shear'] for c in combo_results
+                        if c.get('shear') and c['shear'].get('evaluated')]
+    stirrups_cfg = (shear_ctx['cfg'].get('stirrups') or []) if shear_ctx else []
+    shear_ok = (
+        all(s['V_Rd'] is None or s['V_Ed'] <= s['V_Rd'] for s in evaluated_shear)
+        if evaluated_shear else True
+    )
+    if stirrups_cfg and evaluated_shear:
+        asw_s_min_ref = evaluated_shear[0]['asw_s_min']
+        asw_min_ok = bool(asw_s_min_ref is None or evaluated_shear[0]['asw_s'] >= asw_s_min_ref)
+        min_sl_max = min(
+            (s['sl_max'] for s in evaluated_shear if s['sl_max'] is not None), default=None,
+        )
+        stirrup_spacing_ok = bool(
+            min_sl_max is None
+            or all(float(st['spacing']) <= min_sl_max for st in stirrups_cfg)
+        )
+    else:
+        # EC2 6.2.1(4)/9.3.2: unntatt uten skjærarmering (plan §4.4) — plata er nettopp
+        # dette tilfellet, og skal ikke feile bare fordi den ikke har bøyler.
+        asw_min_ok = True
+        stirrup_spacing_ok = True
+
     checks = {
         'as_min_ok': as_min_ok,
         'as_max_ok': as_max_ok,
         'ductility_ok': ductility_ok,
         'axial_ok': axial_ok,
         'geometry_ok': bool(geometry_ok),
-        'all_ok': bool(as_min_ok and as_max_ok and ductility_ok and geometry_ok),
+        'shear_ok': bool(shear_ok),
+        'asw_min_ok': bool(asw_min_ok),
+        'stirrup_spacing_ok': bool(stirrup_spacing_ok),
+        # ALLE kontrollene, ikke bare de fire bøyningen alltid hadde. En «Overall
+        # assessment: OK» som overser en aksialkraft utenfor [n_min, n_max] eller en
+        # strøket skjærkontroll er aktivt misvisende i et verktøy som dimensjonerer
+        # betong — rapporten viser nettopp denne raden som samlet vurdering.
+        'all_ok': bool(as_min_ok and as_max_ok and ductility_ok and geometry_ok
+                       and axial_ok and shear_ok and asw_min_ok and stirrup_spacing_ok),
     }
 
-    moment_sign = ref_extra['moment_sign']
     theta_ref = ref['theta']
 
     common = {
@@ -877,7 +1168,6 @@ def _run_inner(payload, progress, t0):
             'runtime': _runtime_name(),
             'integrator': 'marin',
             'scipy': _scipy_flavour(),
-            'moment_sign': moment_sign,
             'theta': _num(theta_ref),
             'direction': 'hogging' if _is_hogging(theta_ref) else 'sagging',
             'subtract_bar_area': bool(opts.get('subtract_bar_area', False)),
@@ -960,6 +1250,7 @@ def _run_inner(payload, progress, t0):
             'utilisation': ref['utilisation'],
             'combinations': combo_results,
             'governing': governing_id,
+            'shear_governing': shear_governing_id,
         }
     elif analysis == 'moment_curvature':
         if ref['within_limits']:
@@ -979,25 +1270,21 @@ def _run_inner(payload, progress, t0):
         # §4.3 krever `governing` i HVER analyseblokk, også når det bare er én kombinasjon
         # å velge blant — ellers står M–κ igjen som eneste blokk uten den nøkkelen.
         mc['governing'] = governing_id
+        mc['shear_governing'] = shear_governing_id
         common['moment_curvature'] = mc
         common['meta']['mc_active_combo'] = ref['id']
     else:
-        # Omhyllingens EGET fortegn kommer fra TVERRSNITTETS retning (`options.theta`),
-        # IKKE fra governing. Governing kan hoppe fra felt- til støttemoment bare fordi
-        # brukeren endrer ett tall i kombinasjonstabellen, og et fortegn hengt på governing
-        # ville da speilvendt hele M–N-diagrammet i samme øyeblikk — aksen skal stå stille
-        # mens man redigerer kombinasjoner (§4.1). `domain_theta` er derfor uavhengig av
-        # hvilken rad som vinner, og prøves ved N ≈ 0 (klemt inn i [n_min, n_max] i det
-        # usannsynlige tilfellet at 0 ikke er et gyldig lastpunkt) fordi fortegnet er en
-        # egenskap ved geometrien og roteringen, ikke ved aksialkraften.
+        # Omhyllingen regnes med TVERRSNITTETS EGEN retning (`options.theta`), IKKE med
+        # governing sin — governing kan hoppe fra felt- til støttemoment bare fordi
+        # brukeren endrer ett tall i kombinasjonstabellen, og omhyllingen skal stå stille
+        # mens man redigerer (§4.1). Med RÅ `m` (§1.4/§1.5) trengs det ikke lenger noe eget
+        # sonde-kall for å finne et fortegn å dreie med — `dom.m_y` er allerede riktig i
+        # pakkens egen konvensjon, og punktmengden er dessuten identisk for θ = 0 og θ = π
+        # (bare traverseringsrekkefølgen snur, verifisert i planens §1.5) — så selve valget
+        # av `domain_theta` er nå bare en bekvemmelighet, ikke en nødvendighet.
         domain_theta = float(opts.get('theta', 0.0))
-        domain_probe_n = min(max(0.0, n_min), n_max)
-        with _Capture() as cap:
-            domain_bend = sc.calculate_bending_strength(theta=domain_theta, n=domain_probe_n)
-        _drain(cap.records, warnings_out)
-        domain_sign = -1 if float(domain_bend.m_y) < 0 else 1
 
-        arrays = _nm_domain_arrays(sc, domain_theta, domain_sign, opts, warnings_out)
+        arrays = _nm_domain_arrays(sc, domain_theta, opts, warnings_out)
         common['nm_domain'] = dict(
             arrays,
             eps_a=ref['eps_a'], chi_y=ref['chi_y'],
@@ -1009,19 +1296,13 @@ def _run_inner(payload, progress, t0):
             utilisation=ref['utilisation'],
             N_min=_num(n_min), N_max=_num(n_max),
             combinations=combo_results, governing=governing_id,
-            # Duplisert med vilje: `meta` beskriver KJØRINGEN, men `charts.js` får bare
-            # `result.nm_domain` alene — `meta` er en søsken, ikke nestet inni. Uten
-            # `domain_theta` HER kan ikke plottkoden vite hvilken retning omhyllingen ble
-            # signert med, og da havner en støttemomentkombinasjon feilaktig på samme side
-            # (+M) som en feltmomentkombinasjon i stedet for på sin egen, negative gren.
+            shear_governing=shear_governing_id,
+            # `domain_theta` sier hvilken theta omhyllingen ble regnet med. `meta` er en
+            # søsken av `nm_domain`, ikke en forelder — `charts.js` får bare
+            # `result.nm_domain` alene, så blokka må være selvforsynt (§1.5 fjernet den
+            # tilsvarende `meta.domain_theta`, som ingen produksjonskode leste).
             domain_theta=_num(domain_theta),
         )
-        # `meta.moment_sign` er GOVERNING sitt rå fortegn (§4.3) og signerer verken `m` her
-        # eller noe annet i denne blokka lenger. `meta.domain_theta` er samme tall som
-        # `nm_domain.domain_theta` over — retningen omhyllingen FAKTISK ble signert med,
-        # slik at plottkode og rapport kan merke aksen presist i stedet for å anta at den
-        # er lik `meta.theta`/governing sin retning.
-        common['meta']['domain_theta'] = _num(domain_theta)
 
     common['meta']['wall_time_ms'] = _num(round((time.perf_counter() - t0) * 1000, 1))
     return common
@@ -1079,12 +1360,13 @@ def _moment_curvature(sc, theta, n_ed, m_ed, m_rd, bend_chi_y, opts,
         chi_input = None
         expected = pre + post
     else:
-        # `mc_chi` er en STØRRELSE, som alt annet i den analyserte retningen. Pakka vil ha
-        # krumningen i sitt eget roterte system, der den alltid er negativ uansett `theta`
-        # — `theta` er allerede innbakt i rotasjonen. Krevde vi fortegnsatt inndata, måtte
-        # hver konsument gange med `meta.moment_sign` for å få riktig kurve, og glemte man
-        # det, fikk man et moment på 0,4 kNm i stedet for 114 kNm uten at noe feilet.
-        # Fortegnsatt inndata godtas, men absoluttverdien er sannheten.
+        # `mc_chi` er FORTSATT en STØRRELSE (plan v4 §1.4), selv om resten av M–κ-kurven nå
+        # er rå. Pakka vil ha krumningen i sitt eget roterte system, der den alltid er
+        # negativ uansett `theta` — `theta` er allerede innbakt i rotasjonen. Fjernes denne
+        # `abs`-en, brekker JS-drevet moment–krumning for støttemoment: krevde vi
+        # fortegnsatt inndata, måtte hver konsument vite nøyaktig hvilket fortegn pakka
+        # venter, og en glipp der ga et moment på 0,4 kNm i stedet for 114 kNm uten at noe
+        # feilet. Fortegnsatt inndata godtas fortsatt, men absoluttverdien er sannheten.
         raw = mc_chi if isinstance(mc_chi, (list, tuple)) else [mc_chi]
         chi_input = [-abs(float(v)) for v in raw]
         expected = len(chi_input)
@@ -1117,8 +1399,10 @@ def _moment_curvature(sc, theta, n_ed, m_ed, m_rd, bend_chi_y, opts,
 
     yield_index = pre - 1 if (mc_chi is None and got >= pre) else None
 
-    kappa = _abs_arr(res.chi_y)
-    moment = _abs_arr(res.m_y)
+    # RÅ, i pakkens eget fortegn (plan v4 §1.4) — `chi_plan` under er det ENE unntaket som
+    # fortsatt er en størrelse, se `_chi_plan`.
+    kappa = _arr(res.chi_y)
+    moment = _arr(res.m_y)
 
     # Hvilke av punktene vi nettopp regnet ER bruddkrumningen?
     ultimate = chi_plan[-1] if chi_plan else None
@@ -1153,7 +1437,7 @@ def _moment_curvature(sc, theta, n_ed, m_ed, m_rd, bend_chi_y, opts,
                 f'{m_rd}, rel = {(package_m - m_rd) / m_rd:.6e}',
                 severity='info',
             ))
-        kappa[i] = _num(abs(bend_chi_y)) if bend_chi_y else kappa[i]
+        kappa[i] = _num(bend_chi_y) if bend_chi_y else kappa[i]
         moment[i] = _num(m_rd)
 
     if progress is not None:
@@ -1211,7 +1495,7 @@ def _chi_plan(sc, theta, n_ed, pre, post, warnings_out):
             rotate_data(theta)
 
 
-def _nm_domain_arrays(sc, theta, moment_sign, opts, warnings_out):
+def _nm_domain_arrays(sc, theta, opts, warnings_out):
     """Full kapasitetsomhylling — bare selve arrayene. `complete_domain` er alltid True.
 
     Uten begge halvplan finnes det ingen omhylling å treffe for et støttemoment, og 69
@@ -1220,25 +1504,20 @@ def _nm_domain_arrays(sc, theta, moment_sign, opts, warnings_out):
     Regnes ÉN gang per kjøring, med TVERRSNITTETS EGEN retning `options.theta` (§4.1) — ikke
     med governing sin, og ikke én gang per kombinasjon. Omhyllingen er en egenskap ved
     tverrsnittet og aksen den bøyes om, og skal derfor stå stille selv om governing hopper
-    fra felt- til støttemoment fordi brukeren redigerer en rad i kombinasjonstabellen; et
-    fortegn hengt på governing ville speilvendt hele diagrammet i det øyeblikket. Se kallet
-    i `_run_inner`, som også setter `meta.domain_theta` til den `theta`-en som faktisk ble
-    brukt her. `complete_domain=True` gir uansett begge grener i samme kall; å regne
-    omhyllingen på nytt for hver kombinasjon ville vært 55 ms bortkastet per ekstra rad uten
-    at et eneste tall endret seg. Lastpunktene selv (`combinations[i].N_Ed/M_Ed`) tegnes
-    oppå denne ene omhyllingen i `charts.js` (§7).
+    fra felt- til støttemoment fordi brukeren redigerer en rad i kombinasjonstabellen. Se
+    kallet i `_run_inner`. `complete_domain=True` gir uansett begge grener i samme kall; å
+    regne omhyllingen på nytt for hver kombinasjon ville vært 55 ms bortkastet per ekstra
+    rad uten at et eneste tall endret seg. Lastpunktene selv (`combinations[i].N_Ed/M_Ed`)
+    tegnes oppå denne ene omhyllingen i `charts.js` (§7).
 
-    HVORFOR `m` HER ER FORTEGNSATT OG IKKE EN STØRRELSE, SLIK M–κ ER
-    `complete_domain=True` gir BEGGE grener: kapasiteten i den analyserte retningen og
-    kapasiteten motsatt vei. Bretter man dem inn i samme halvplan med `abs`, havner
-    støttegrenen — som for et enkeltarmert snitt er bitteliten — nærmest origo, og
-    `radialUtilisation` sitt «minste positive λ» plukker den systematisk for en
-    feltmomentlast. Utnyttelsen ville da blitt grovt overdrevet uten at noe feilet.
-    Derfor dreies momentene med `moment_sign`-PARAMETEREN over — IKKE med `meta.moment_sign`,
-    som er governing sitt rå fortegn og kan gjelde en annen retning enn omhyllingen ble
-    signert med (se `_run_inner`). Kapasitet i den signerte retningen blir positiv, motsatt
-    retning negativ, og de to grenene ligger i hvert sitt halvplan der de hører hjemme. M–κ
-    har bare én gren, så der er folding ufarlig.
+    HVORFOR `m` HER ER RÅ, OG IKKE LENGER DREID MED ET EGET FORTEGN
+    `complete_domain=True` gir BEGGE grener: kapasiteten i θ-retningen og kapasiteten
+    motsatt vei. Fram til v4 ble den ene grenen dreid med et eget fortegn
+    (`meta.moment_sign`, GOVERNING sitt fortegn) for at strålemetoden i `radialUtilisation`
+    ikke skulle plukke feil, bitteliten gren. Nå som motoren overtar `structuralcodes` sitt
+    eget fortegn overalt (plan v4 §1), er `dom.m_y` allerede riktig signert i pakkens egen
+    konvensjon UTEN å måtte dreies — de to grenene ligger fortsatt i hvert sitt halvplan,
+    bare uten et ekstra fortegnssteg her. M–κ har bare én gren og forblir upåvirket.
     """
     complete = bool(opts.get('complete_domain', True))
     with _Capture() as cap:
@@ -1246,8 +1525,8 @@ def _nm_domain_arrays(sc, theta, moment_sign, opts, warnings_out):
     _drain(cap.records, warnings_out)
 
     return {
-        'n': _arr(dom.n),                                  # FORTEGNSATT: trykk negativ
-        'm': _signed_arr(dom.m_y, moment_sign),            # FORTEGNSATT: analysert retn. positiv
+        'n': _arr(dom.n),      # FORTEGNSATT: trykk negativ (seksjons-API-ets N_Ed-konvensjon)
+        'm': _arr(dom.m_y),    # RÅ: pakkens eget fortegn, se hodekommentaren
         'field_num': _int_arr(dom.field_num),
     }
 

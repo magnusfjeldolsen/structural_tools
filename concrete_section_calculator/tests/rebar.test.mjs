@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import {
+  aswPerSpacing,
   barArea,
   barPositions,
   createCombo,
@@ -30,10 +31,12 @@ import {
   reinforcementRatio,
   recomputeAutoDc,
   stackedDc,
+  stirrupArea,
   suggestedDc,
   tensionArea,
   tensionLayers,
   totalArea,
+  totalAswPerSpacing,
 } from '../js/rebar.js';
 
 /** Standardtilstanden for §2.3/§3.3 i endringsrunde 2 — brukes gjennomgående. */
@@ -299,15 +302,14 @@ test('createLayer setter dc_auto: true — et nytt lag skal flytte seg med diame
   assert.equal(createLayer({ sectionType: 'beam' }, { dc_auto: false }).dc_auto, false);
 });
 
-test('createCombo: retningen arves fra tilstandens direction', () => {
-  const c = createCombo({ direction: 'hogging' }, {});
-  assert.equal(c.direction, 'hogging');
+test('createCombo: ingen direction lenger — N_Ed/M_Ed/V_Ed er 0 som standard (endringsrunde 4 §1.2)', () => {
+  const c = createCombo({}, {});
   assert.equal(c.N_Ed, 0);
   assert.equal(c.M_Ed, 0);
-  // Uten en tilstand med direction: fall tilbake på feltmoment, ikke NaN/undefined.
-  assert.equal(createCombo({}, {}).direction, 'sagging');
-  // Patch vinner over arven, akkurat som for createLayer.
-  assert.equal(createCombo({ direction: 'hogging' }, { direction: 'sagging' }).direction, 'sagging');
+  assert.equal(c.V_Ed, 0);
+  assert.ok(!('direction' in c), 'direction skal ikke finnes — retningen ER fortegnet på M_Ed');
+  // Patch vinner over standardverdiene, akkurat som for createLayer.
+  assert.equal(createCombo({}, { M_Ed: -250 }).M_Ed, -250);
   assert.equal(createCombo({}, { id: 'C3', name: 'ULS 3' }).id, 'C3');
 });
 
@@ -456,4 +458,37 @@ test('recomputeAutoDc — §2.3: k1 = 1,5 gir L2 = 103, L1 uendret', () => {
   const layers = recomputeAutoDc(state);
   assert.equal(layers.find((l) => l.id === 'L1').dc, 53); // suggestedDc uendret av k1
   assert.equal(layers.find((l) => l.id === 'L2').dc, 103);
+});
+
+/* ---------------- §3.2/§3.4 — skjærarmering (endringsrunde 4) ---------------- */
+
+// Målt i plan v4 §4.2: Ø8, 2 ben, c/c 150.
+const stirrup = (patch = {}) => ({
+  id: 'S1',
+  dia: 8,
+  spacing: 150,
+  legs: 2,
+  fywk: 500,
+  alpha: 90,
+  ...patch,
+});
+
+test('stirrupArea: legs · π·Ø²/4 — §4.2 sitt målte A_sw = 100,5310 mm²', () => {
+  const a = stirrupArea(stirrup());
+  assert.ok(Math.abs(a - 2 * barArea(8)) < 1e-9);
+  assert.ok(Math.abs(a - 100.53096491487338) < 1e-9, `A_sw = ${a}`);
+});
+
+test('aswPerSpacing: A_sw/s — §4.2 sitt målte 0,670206 mm²/mm', () => {
+  const asws = aswPerSpacing(stirrup());
+  assert.ok(Math.abs(asws - 0.670206) < 1e-5, `A_sw/s = ${asws}`);
+});
+
+test('totalAswPerSpacing summerer flere bøylesett, ikke bare tar det siste', () => {
+  const one = aswPerSpacing(stirrup());
+  const list = [stirrup(), stirrup({ id: 'S2', dia: 6, spacing: 300, legs: 2 })];
+  const total = totalAswPerSpacing(list);
+  assert.ok(Math.abs(total - (one + aswPerSpacing(list[1]))) < 1e-12);
+  assert.ok(total > one, 'summen skal være større enn ett enkelt sett');
+  assert.equal(totalAswPerSpacing([]), 0);
 });

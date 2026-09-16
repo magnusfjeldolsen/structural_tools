@@ -45,10 +45,13 @@ const BEAM_STATE = {
   cover_side: 40,
   layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50, dc_auto: false }],
   // Endringsrunde 2 §4.1: `loads` er erstattet av `combos` + `activeCombo`.
-  combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, direction: 'sagging' }],
+  // Endringsrunde 4 §1.2: ingen `direction` lenger — `M_Ed` er signert, og
+  // `V_Ed` er nytt (§3.4).
+  combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
   activeCombo: 'C1',
-  direction: 'sagging',
   analysis: 'bending',
+  // Standard skjærtilstand (§3.4): ingen bøyler.
+  shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] },
   options: { subtract_bar_area: false, mc_pre_yield: 10, mc_post_yield: 10 },
   doc: { project: '', title: '', author: '', date: '', note: '' },
   result: null,
@@ -67,7 +70,10 @@ const SLAB_STATE = {
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 /** Formen §4.2 krever — delt av begge testene pga. felles struktur. */
-const oneCombo = { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, theta: 0 };
+const oneCombo = { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0, theta: 0 };
+
+/** `section.shear` med tom bøyleliste — formen §3.4/v3 §4.1 krever. */
+const noStirrups = { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] };
 
 test('bjelkepayloaden har formen fra endringsrunde 2 §4.2', () => {
   const built = buildPayload(BEAM_STATE);
@@ -101,6 +107,7 @@ test('bjelkepayloaden har formen fra endringsrunde 2 §4.2', () => {
           ],
         },
       ],
+      shear: noStirrups,
     },
     loads: { combinations: [oneCombo], active: 'C1' },
     options: {
@@ -146,6 +153,7 @@ test('platepayloaden har formen fra endringsrunde 2 §4.2', () => {
           strip: { width: 83.40511469707415, height: 12, z: -69 },
         },
       ],
+      shear: noStirrups,
     },
     loads: { combinations: [oneCombo], active: 'C1' },
     options: {
@@ -204,52 +212,87 @@ test('plata sender b = 1000 selv om geometry.b sier noe annet', () => {
   );
 });
 
-test('enheter konverteres ÉN gang: kN → N og kNm → Nmm, per kombinasjon', () => {
+test('enheter konverteres ÉN gang: kN → N, kNm → Nmm og kN → N, per kombinasjon', () => {
   const state = clone(BEAM_STATE);
-  state.combos = [{ id: 'C1', name: 'ULS 1', N_Ed: -200, M_Ed: 250, direction: 'sagging' }];
+  state.combos = [{ id: 'C1', name: 'ULS 1', N_Ed: -200, M_Ed: 250, V_Ed: 120 }];
   const built = buildPayload(state);
   assert.equal(built.loads.combinations[0].N_Ed, -200000);
   assert.equal(built.loads.combinations[0].M_Ed, 250000000);
+  assert.equal(built.loads.combinations[0].V_Ed, 120000);
 });
 
-test('M_Ed er en STØRRELSE per kombinasjon — fortegn på inndata skal ikke lekke gjennom', () => {
+test('M_Ed er SIGNERT per kombinasjon (endringsrunde 4 §1.2/§1.4) — fortegnet på inndata skal IKKE forsvinne', () => {
   const state = clone(BEAM_STATE);
-  state.combos = [{ id: 'C1', name: '', N_Ed: 0, M_Ed: -250, direction: 'sagging' }];
+  state.combos = [{ id: 'C1', name: '', N_Ed: 0, M_Ed: -250 }];
+  // Ingen `abs` lenger: −250 kNm ⇒ −250 000 000 Nmm, uendret fortegn.
+  assert.equal(buildPayload(state).loads.combinations[0].M_Ed, -250000000);
+  state.combos = [{ id: 'C1', name: '', N_Ed: 0, M_Ed: 250 }];
   assert.equal(buildPayload(state).loads.combinations[0].M_Ed, 250000000);
-  // N_Ed beholder derimot fortegnet: n < 0 er TRYKK.
-  state.combos = [{ id: 'C1', name: '', N_Ed: -500, M_Ed: 0, direction: 'sagging' }];
+  // N_Ed beholder som før fortegnet: n < 0 er TRYKK.
+  state.combos = [{ id: 'C1', name: '', N_Ed: -500, M_Ed: 0 }];
   assert.equal(buildPayload(state).loads.combinations[0].N_Ed, -500000);
 });
 
-test('theta følger RETNINGEN PER KOMBINASJON, ikke bare tilstandens direction', () => {
+test('V_Ed er en STØRRELSE — fortegnet på skjærkraften betyr ingenting (§4.1c)', () => {
+  const state = clone(BEAM_STATE);
+  state.combos = [{ id: 'C1', name: '', N_Ed: 0, M_Ed: 0, V_Ed: -120 }];
+  assert.equal(buildPayload(state).loads.combinations[0].V_Ed, 120000);
+  state.combos = [{ id: 'C1', name: '', N_Ed: 0, M_Ed: 0, V_Ed: 120 }];
+  assert.equal(buildPayload(state).loads.combinations[0].V_Ed, 120000);
+});
+
+test('theta overlever (§1.3): følger RADENS EGEN M_Ed-fortegn, options.theta følger DEN AKTIVE kombinasjonen', () => {
   assert.equal(buildPayload(BEAM_STATE).loads.combinations[0].theta, 0);
   const state = clone(BEAM_STATE);
-  state.combos = [{ id: 'C1', name: '', N_Ed: 0, M_Ed: 0, direction: 'hogging' }];
+  state.combos = [{ id: 'C1', name: '', N_Ed: 0, M_Ed: 250 }];
   assert.equal(buildPayload(state).loads.combinations[0].theta, Math.PI);
-  // `options.theta` styres fortsatt av tilstandens EGEN direction — den er
-  // tverrsnittstegningens, ikke en bestemt kombinasjons (§4.1).
+  // `options.theta` følger den AKTIVE kombinasjonens M_Ed — ikke et fjernet
+  // `state.direction`, og ikke nødvendigvis samme som en annen rads theta.
   assert.equal(buildPayload(BEAM_STATE).options.theta, 0);
   const hog = clone(BEAM_STATE);
-  hog.direction = 'hogging';
+  hog.combos = [{ id: 'C1', name: '', N_Ed: 0, M_Ed: 250 }];
+  hog.activeCombo = 'C1';
   assert.equal(buildPayload(hog).options.theta, Math.PI);
 });
 
 test('flere kombinasjoner blir flere rader, i samme rekkefølge', () => {
   const state = clone(BEAM_STATE);
   state.combos = [
-    { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 150, direction: 'sagging' },
-    { id: 'C2', name: 'ULS 2', N_Ed: -500, M_Ed: 250, direction: 'hogging' },
+    { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: -150, V_Ed: 0 },
+    { id: 'C2', name: 'ULS 2', N_Ed: -500, M_Ed: 250, V_Ed: 0 },
   ];
   state.activeCombo = 'C2';
   const built = buildPayload(state);
   assert.equal(built.loads.combinations.length, 2);
   assert.equal(built.loads.combinations[0].id, 'C1');
-  assert.equal(built.loads.combinations[0].M_Ed, 150000000);
+  assert.equal(built.loads.combinations[0].M_Ed, -150000000);
   assert.equal(built.loads.combinations[0].theta, 0);
   assert.equal(built.loads.combinations[1].id, 'C2');
   assert.equal(built.loads.combinations[1].N_Ed, -500000);
   assert.equal(built.loads.combinations[1].theta, Math.PI);
   assert.equal(built.loads.active, 'C2');
+  // options.theta følger AKTIV (C2, M_Ed=250 ⇒ π), ikke C1.
+  assert.equal(built.options.theta, Math.PI);
+});
+
+test('section.shear: strut_angle_deg, z_factor og bøylerader oversettes uendret (§3.4)', () => {
+  const state = clone(BEAM_STATE);
+  state.shear = {
+    strut_angle_deg: 30,
+    z_factor: 0.85,
+    stirrups: [{ id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 }],
+  };
+  const built = buildPayload(state);
+  assert.deepEqual(built.section.shear, {
+    strut_angle_deg: 30,
+    z_factor: 0.85,
+    stirrups: [{ id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 }],
+  });
+});
+
+test('section.shear er ALLTID med, også med tom stirrups-liste — motoren regner skjær for alle kombinasjoner', () => {
+  const built = buildPayload(BEAM_STATE);
+  assert.deepEqual(built.section.shear, { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] });
 });
 
 test('ftk regnes som k·fyk og sendes alltid med', () => {

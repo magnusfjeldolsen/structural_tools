@@ -257,6 +257,28 @@ Minste bredde i strekksonen. Rektangel og plate: `sectionWidth(state)`, altså *
 plate** (per meter). Parametriske T-tverrsnitt trenger et eget `b_w`-felt — det står som
 merknad i veikartet, ikke som oppgave her.
 
+### 4.1e Payload-formen — skrevet inn i ettertid
+
+Denne sto i `-v3-shear.md` og falt ut da v4 erstattet den. D2 førte den videre og
+kryssjekket mot D1; de stemte felt for felt. Den står her nå så den ikke er underforstått:
+
+```json
+"section": {
+  "shear": {
+    "strut_angle_deg": 45.0,
+    "z_factor": 0.9,
+    "stirrups": [ { "id": "S1", "dia": 8.0, "spacing": 150.0,
+                    "legs": 2, "fywk": 500.0, "alpha": 90.0 } ]
+  }
+},
+"loads": { "combinations": [ { "…": "…", "V_Ed": 120000.0 } ] }
+```
+
+**`section.shear` sendes ALLTID**, også med tom `stirrups`-liste. v3 hadde en
+escape-luke der en manglende `section.shear` slo av skjær helt; den er borte, fordi §4.6
+krever at skjær regnes for hver kombinasjon i alle tre analysene. Tom liste betyr «ingen
+skjærarmering», ikke «ikke regn skjær».
+
 ### 4.2 Resultat per kombinasjon
 ```json
 "shear": {

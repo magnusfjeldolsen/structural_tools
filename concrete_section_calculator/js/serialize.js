@@ -30,6 +30,7 @@
 import { MODULE_VERSION } from './meta.js';
 import { defaultState } from './store.js';
 import { createCombo, createLayer } from './rebar.js';
+import { axialForcesPresent } from './section.js';
 
 export const DOCUMENT_FORMAT = 'concrete-section-calculator';
 export const DOCUMENT_SCHEMA = 1;
@@ -39,8 +40,14 @@ export const DOCUMENT_SCHEMA = 1;
  * En fil som mangler `spacing.k2` skal få standardverdien 5, ikke `undefined`
  * — det er forskjellen på en NA-parameter som ikke ble lagret, og en som
  * eksplisitt er satt til noe ugyldig.
+ *
+ * `shear` MÅ være med (endringsrunde 4 §8, `serialize.js:43`): uten den ville
+ * en fil med et DELVIS `shear`-objekt (t.d. bare `z_factor`, uten
+ * `strut_angle_deg`/`stirrups`) gitt `undefined`-felter i stedet for
+ * standardverdier, siden den ville tatt den ALTERNATIVE grenen under
+ * (erstatt hel, ikke felt for felt).
  */
-const NESTED_GROUPS = ['geometry', 'concrete', 'steel', 'spacing', 'doc'];
+const NESTED_GROUPS = ['geometry', 'concrete', 'steel', 'spacing', 'shear', 'doc'];
 
 /**
  * Tilstanden → en fil. `result` er ALDRI med: det er motorens svar på tall
@@ -109,6 +116,18 @@ export function fromDocument(doc) {
   merged.combos = (Array.isArray(merged.combos) ? merged.combos : []).map((combo) =>
     createCombo(merged, { ...combo })
   );
+
+  // Endringsrunde 4 §2: en lagret fil kan være håndredigert, eller lagret av
+  // en versjon som lot `analysis: 'bending'` stå sammen med en aksialkraft.
+  // Uten denne normaliseringen ville en fil kunnet OMGÅ auto-N–M-regelen i
+  // stillhet — chippen og tast `1` stenger de to andre veiene inn, men en fil
+  // går utenom begge. `setInputs()` i arbeidsflyt-API-et har derimot LOV til
+  // å omgå regelen (dokumentert avvik i README, ikke en glipp), så denne
+  // normaliseringen gjelder BARE her, i fil-lasting.
+  if (merged.analysis === 'bending' && axialForcesPresent(merged)) {
+    merged.analysis = 'nm_domain';
+    notes.push({ code: 'analysis_forced_to_nm_domain', severity: 'info' });
+  }
 
   // Motorens svar gjelder ALDRI en lastet fil — se `toDocument`.
   merged.result = null;
