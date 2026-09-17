@@ -601,8 +601,13 @@ export const SHORTCUTS = [
     // den kombinasjonen som faktisk bærer funksjonen — og hjelpeteksten sier det
     // rett ut, i stedet for å la brukeren tro at verktøyet er i stykker.
     action: 'runAll',
-    combos: ['Alt+Space', 'Ctrl+Shift+Space'],
-    help: 'Run every analysis — use Ctrl+Shift+Space if another app has taken Alt+Space',
+    // REKKEFØLGEN ER RANGERINGEN: den første er den som vises på tastemerket og i
+    // hjelpen. `Ctrl+Shift+Mellomrom` står derfor først — den er den eneste som
+    // ALLTID når fram. `Alt+Mellomrom` beholdes fordi den er bestilt og virker på
+    // en maskin uten en launcher som har tatt den, men å love den ville vært å
+    // love noe vi ikke rår over.
+    combos: ['Ctrl+Shift+Space', 'Alt+Space'],
+    help: 'Run every analysis. Alt+Space also works unless Windows or a launcher has taken it',
   },
   {
     action: 'duplicate',
