@@ -42,6 +42,16 @@ import { allowedAnalyses, SLAB_WIDTH } from './section.js';
  */
 export const RUN_ALL = 'all';
 
+/*
+ * Standardoverdekningen og standard bøylediameter STÅR ETT STED. `dc` for
+ * standardlaget sto tidligere som `35 + 8 + 10` — en tredje kopi av de samme
+ * tallene, og da bøylediameteren ble endret til 12 mm ble jernene stående
+ * igjen på en overdekning ingen bøyle lenger har. Regnestykket er
+ * `suggestedDc` sitt: cover + stirrup_dia + dia/2.
+ */
+const DEFAULT_COVER = 35;
+const DEFAULT_STIRRUP_DIA = 12;
+
 /**
  * Standardtilstand. Tallene er norsk praksis: α_cc = 0,85 (NA), γ_c = 1,5,
  * γ_s = 1,15, B500NC med k = 1,08 og ε_uk = 7,5 %.
@@ -70,14 +80,15 @@ export function defaultState() {
       gamma_s: 1.15,
       law: 'elasticperfectlyplastic',
     },
-    cover: 35,
-    stirrup_dia: 8,
-    cover_side: 35,
+    cover: DEFAULT_COVER,
+    stirrup_dia: DEFAULT_STIRRUP_DIA,
+    cover_side: DEFAULT_COVER,
     // EC2 8.2(2). k1/k2 er NA-parametere (anbefalt 1 og 5); d_g er ikke det,
     // men inngår i samme formel. 16 mm er vanlig, 8/22/32 forekommer.
     spacing: { k1: 1.0, k2: 5.0, d_g: 16 },
     layers: [
-      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 35 + 8 + 10, dc_auto: true },
+      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom',
+        dc: DEFAULT_COVER + DEFAULT_STIRRUP_DIA + 20 / 2, dc_auto: true },
     ],
     // kN, kNm og kN. TRYKK er NEGATIV N. `M_Ed` er SIGNERT etter
     // `structuralcodes` sin egen konvensjon: sagging er NEGATIV, IKKE norsk

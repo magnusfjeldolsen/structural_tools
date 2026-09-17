@@ -20,16 +20,16 @@ import { createStore, RUN_ALL } from '../js/store.js';
  * standardverdier er nøyaktig STD fra §2.3/§3.3).
  */
 const START_LAYERS = () => [
-  { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 53, dc_auto: true },
-  { id: 'L2', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 94, dc_auto: true },
+  { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 57, dc_auto: true },
+  { id: 'L2', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 98, dc_auto: true },
 ];
 
 const startStore = () => createStore({ layers: START_LAYERS() });
 
-test('addLayer stables nytt lag etter EC2 8.2 — andre Ø20-laget i bunn blir dc = 94 (§2.3)', () => {
+test('addLayer stables nytt lag etter EC2 8.2 — andre Ø20-laget i bunn blir dc = 98 (§2.3)', () => {
   const store = createStore(); // standard: ett lag, L1 Ø20 bunn, dc = 53
   const layer = store.addLayer({ dia: 20, edge: 'bottom' });
-  assert.equal(layer.dc, 94);
+  assert.equal(layer.dc, 98);
   assert.equal(layer.dc_auto, true);
 });
 
@@ -53,8 +53,8 @@ test('updateLayer({dia}) flytter et dc_auto-lag — §3.3: L1 → Ø32', () => {
   const store = startStore();
   store.updateLayer('L1', { dia: 32 });
   const layers = store.getState().layers;
-  assert.equal(layers.find((l) => l.id === 'L1').dc, 59);
-  assert.equal(layers.find((l) => l.id === 'L2').dc, 117);
+  assert.equal(layers.find((l) => l.id === 'L1').dc, 63);
+  assert.equal(layers.find((l) => l.id === 'L2').dc, 121);
 });
 
 test('updateLayer({dia}) lar et LÅST lag stå — §3.3: L2 låst dc:120, L1 → Ø20', () => {
@@ -62,7 +62,7 @@ test('updateLayer({dia}) lar et LÅST lag stå — §3.3: L2 låst dc:120, L1 �
   store.updateLayer('L2', { dc: 120 }); // låser L2
   store.updateLayer('L1', { dia: 20 }); // samme verdi, men en endring i patchen skal likevel trigge recompute
   const layers = store.getState().layers;
-  assert.equal(layers.find((l) => l.id === 'L1').dc, 53);
+  assert.equal(layers.find((l) => l.id === 'L1').dc, 57);
   const l2 = layers.find((l) => l.id === 'L2');
   assert.equal(l2.dc_auto, false);
   assert.equal(l2.dc, 120);
@@ -72,8 +72,8 @@ test('setState({cover}) flytter alle dc_auto-lag — §3.3: cover 35 → 45', ()
   const store = startStore();
   store.setState({ cover: 45 });
   const layers = store.getState().layers;
-  assert.equal(layers.find((l) => l.id === 'L1').dc, 63);
-  assert.equal(layers.find((l) => l.id === 'L2').dc, 104);
+  assert.equal(layers.find((l) => l.id === 'L1').dc, 67);
+  assert.equal(layers.find((l) => l.id === 'L2').dc, 108);
 });
 
 test('updateLayer({dc}) låser laget; updateLayer({dc_auto:true}) låser opp og regner om UMIDDELBART', () => {
@@ -86,15 +86,15 @@ test('updateLayer({dc}) låser laget; updateLayer({dc_auto:true}) låser opp og 
   store.updateLayer('L2', { dc_auto: true });
   l2 = store.getState().layers.find((l) => l.id === 'L2');
   assert.equal(l2.dc_auto, true);
-  // Tilbake til stablet posisjon bak L1 (53) — ikke stående på 999. Dette er
+  // Tilbake til stablet posisjon bak L1 (57) — ikke stående på 999. Dette er
   // §3.1 sin «begge veier skal virke», med `dc_auto` som eneste input.
-  assert.equal(l2.dc, 94);
+  assert.equal(l2.dc, 98);
 });
 
 test('setSectionType fram og tilbake bevarer dc_auto, både låst og ulåst lag', () => {
   const store = createStore({
     layers: [
-      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 53, dc_auto: true },
+      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 57, dc_auto: true },
       { id: 'L2', mode: 'bars', dia: 12, count: 2, edge: 'top', dc: 120, dc_auto: false },
     ],
   });
@@ -105,12 +105,12 @@ test('setSectionType fram og tilbake bevarer dc_auto, både låst og ulåst lag'
   assert.equal(layers.find((l) => l.id === 'L2').dc_auto, false);
 });
 
-test("patch('spacing', {d_g:32}) flytter lagene — §2.3: L2 blir 110, L1 uendret", () => {
+test("patch('spacing', {d_g:32}) flytter lagene — §2.3: L2 blir 114, L1 uendret", () => {
   const store = startStore();
   store.patch('spacing', { d_g: 32 });
   const layers = store.getState().layers;
-  assert.equal(layers.find((l) => l.id === 'L1').dc, 53); // suggestedDc uendret av d_g
-  assert.equal(layers.find((l) => l.id === 'L2').dc, 110);
+  assert.equal(layers.find((l) => l.id === 'L1').dc, 57); // suggestedDc uendret av d_g
+  assert.equal(layers.find((l) => l.id === 'L2').dc, 114);
 });
 
 test('cloneState via setState: combos forblir en ARRAY, aldri {0:…,1:…}', () => {
@@ -244,12 +244,12 @@ const dcOfL1 = (store) => store.getState().layers.find((l) => l.id === 'L1').dc;
 
 test('addStirrup arver dia fra stirrup_dia — å legge inn bøyler flytter ALDRI jernene av seg selv', () => {
   const store = createStore();
-  assert.equal(dcOfL1(store), 53); // 35 + 8 + 10
+  assert.equal(dcOfL1(store), 57); // 35 + 12 + 10
   const row = store.addStirrup();
-  assert.equal(row.dia, 8, 'den nye raden skal være den bøyla det alt er regnet plass til');
+  assert.equal(row.dia, 12, 'den nye raden skal være den bøyla det alt er regnet plass til');
   assert.equal(row.alpha, 90, 'section.js avviser alt annet enn α = 90° i v1');
   assert.equal(row.id, 'S1');
-  assert.equal(dcOfL1(store), 53, 'dc skal stå stille når diameteren er den samme');
+  assert.equal(dcOfL1(store), 57, 'dc skal stå stille når diameteren er den samme');
 });
 
 test('updateStirrup({dia}) flytter dc_auto-lagene — bøylediameteren er ETT tall (§B)', () => {

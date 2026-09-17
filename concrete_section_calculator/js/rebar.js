@@ -491,7 +491,7 @@ export function createStirrup(state = {}, patch = {}) {
   const fyk = num((state.steel || {}).fyk);
   return {
     id: patch.id || 'S1',
-    dia: inherited > 0 ? inherited : 8,
+    dia: inherited > 0 ? inherited : 12,
     spacing: 150,
     legs: 2,
     fywk: fyk > 0 ? fyk : 500,

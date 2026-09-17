@@ -517,8 +517,11 @@ test('createStirrup arver fywk fra hovedarmeringens fyk, med 500 som reserve', (
   assert.equal(createStirrup({ steel: { fyk: 500 } }, { fywk: 350 }).fywk, 350, 'patchen vinner');
 });
 
-test('createStirrup faller tilbake på Ø8 når stirrup_dia er tom eller null', () => {
-  assert.equal(createStirrup({ stirrup_dia: 0 }).dia, 8);
-  assert.equal(createStirrup({ stirrup_dia: '' }).dia, 8);
-  assert.equal(createStirrup({}).dia, 8);
+test('createStirrup faller tilbake på Ø12 når stirrup_dia er tom eller null', () => {
+  // Samme tall som `store.js` sin `stirrup_dia`-standard. De to MÅ følge
+  // hverandre: en ny bøylerad skal være den bøyla det allerede er regnet
+  // overdekning for, ellers flytter jernene seg i det man legger den inn.
+  assert.equal(createStirrup({ stirrup_dia: 0 }).dia, 12);
+  assert.equal(createStirrup({ stirrup_dia: '' }).dia, 12);
+  assert.equal(createStirrup({}).dia, 12);
 });
