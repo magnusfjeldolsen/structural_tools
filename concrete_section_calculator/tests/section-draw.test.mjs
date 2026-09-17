@@ -507,15 +507,27 @@ test('drawSection: buen finnes der benet er snappet, og ikke der det ikke er noe
   assert.equal(paths.length, 2);
   for (const d of paths) {
     assert.match(d, / A /, `benet skal bøye seg rundt jernet: ${d}`);
-    // Halvsirkel om jernets senter: buen starter og slutter i samme x, og
-    // radien er (20 + 8)/2 = 14 mm ganget med målestokken.
     const m = / A ([\d.]+) ([\d.]+) 0 0 [01] ([-\d.]+) /.exec(d);
     assert.ok(m, `buen skal ha lik rx og ry: ${d}`);
     const vb = sectionViewBox(BEAM, { width: 174 });
-    assert.ok(Math.abs(Number(m[1]) - 14 * vb.scale) < 1e-3, `radius = ${m[1]}`);
+    const rp = 14 * vb.scale;   // (20 + 8)/2 mm i papirenheter
+    assert.ok(Math.abs(Number(m[1]) - rp) < 1e-3, `radius = ${m[1]}`);
     assert.equal(m[1], m[2], 'rx og ry skal være like — det er en sirkelbue');
-    assert.equal(Number(m[3]), Number(/^M ([-\d.]+) /.exec(d)[1]),
-      'buen skal ende i samme x som benet — ellers er den ikke en halvsirkel');
+
+    // INGEN KNEKK. Benet står en radius TIL SIDEN for jernet, altså tangent til
+    // det, og møter derfor bøyen tangent. Lå benet i jernets senterlinje, ville
+    // halvsirkelens tangent vært VANNRETT der den møter et loddrett ben — en
+    // 90°-knekk rett over jernet, som er nøyaktig det figuren ikke skal ha.
+    // Beviset er at buen ender 2·r unna der benet startet.
+    const xStart = Number(/^M ([-\d.]+) /.exec(d)[1]);
+    assert.ok(Math.abs(Math.abs(Number(m[3]) - xStart) - 2 * rp) < 1e-2,
+      `buen skal ende 2·r fra benet (${2 * rp}), ikke i samme x: ${d}`);
+
+    // Og benet skal være RETT hele veien ned til bøyen: nøyaktig ett `L`-ledd
+    // før `A`, med samme x som starten.
+    const rett = /^M ([-\d.]+) [-\d.]+ L ([-\d.]+) [-\d.]+ A /.exec(d);
+    assert.ok(rett, `benet skal være rett fram til bøyen: ${d}`);
+    assert.equal(rett[1], rett[2], 'det rette benet skal ikke forskyve seg underveis');
   }
   // De to bena speiler hverandre: motsatt sweep-flag om y = 0.
   assert.notEqual(/ A [\d.]+ [\d.]+ 0 0 ([01]) /.exec(paths[0])[1],

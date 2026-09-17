@@ -525,14 +525,35 @@ export function drawSection(state, opts = {}) {
     // STØRRE x. `px` er monotont voksende i y, så `side = +1` (bort fra
     // senteret på høyre side) er sweep 1 og `side = -1` er sweep 0.
     stirrup.legY.forEach((ly, i) => {
-      const x = r(px(ly));
-      let d = `M ${x} ${r(py(stirrup.z1))}`;
-      for (const bend of stirrup.legBends[i] || []) {
-        const rp = r(bend.radius * s);
-        d += ` L ${x} ${r(py(bend.z + bend.radius))}` +
-             ` A ${rp} ${rp} 0 0 ${bend.side > 0 ? 1 : 0} ${x} ${r(py(bend.z - bend.radius))}`;
+      const bend = (stirrup.legBends[i] || [])[0];
+      if (!bend) {
+        // Ingenting å bøye rundt: rett ben fra kant til kant.
+        const x = r(px(ly));
+        g += `<path d="M ${x} ${r(py(stirrup.z1))} L ${x} ${r(py(stirrup.z0))}"/>`;
+        return;
       }
-      d += ` L ${x} ${r(py(stirrup.z0))}`;
+      /*
+       * RETT BEN, FORSKJØVET, MED EN LITEN BØY RUNDT JERNET.
+       *
+       * Den forrige figuren la benet i jernets senterlinje og slo en halvsirkel
+       * om jernet. Tangenten til den halvsirkelen er VANNRETT der den møter et
+       * loddrett ben, så figuren fikk en 90°-knekk rett over jernet — en
+       * retningsendring ingen bøyle har.
+       *
+       * Nå står benet en radius TIL SIDEN for jernet, altså tangent til det, og
+       * bøyen er en halvsirkel rundt jernet som benet møter TANGENT. Ingen
+       * knekk noe sted. At benet dermed ikke ligger i jernets senterlinje er
+       * den lille eksentrisiteten mot skjærkraften — bevisst akseptert.
+       *
+       * Benet slutter i bøyen; det fortsetter ikke ned til bøylas underkant.
+       * `sweep-flag` 1 er med klokka i SVG (y peker ned).
+       */
+      const rp = bend.radius * s;
+      const xIn = r(px(ly) + (bend.side > 0 ? rp : -rp));
+      const xOut = r(px(ly) - (bend.side > 0 ? rp : -rp));
+      const zBar = r(py(bend.z));
+      const d = `M ${xIn} ${r(py(stirrup.z1))} L ${xIn} ${zBar}` +
+                ` A ${r(rp)} ${r(rp)} 0 0 ${bend.side > 0 ? 1 : 0} ${xOut} ${zBar}`;
       g += `<path d="${d}"/>`;
     });
     g += `</g>`;
