@@ -220,9 +220,58 @@ test('asMin/derived/layerSummary følger den AKTIVE kombinasjonens M_Ed-fortegn,
 
 /* ---------------- validate: regel for regel ---------------- */
 
-test('validate: et gyldig tverrsnitt gir ingen meldinger', () => {
-  assert.deepEqual(validate(beamState()), []);
+/** Referansebjelken med en last på, slik at `no_load` ikke slår inn. */
+const loaded = (patch = {}) =>
+  beamState({ combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: -250, V_Ed: 0 }], ...patch });
+
+test('validate: et gyldig, lastet tverrsnitt gir ingen meldinger', () => {
+  assert.deepEqual(validate(loaded()), []);
+  assert.equal(isValid(loaded()), true);
+  // `beamState()` har standardtilstandens nullaster, og da er `no_load` den
+  // ENESTE meldingen — resten av snittet er fortsatt feilfritt.
+  assert.deepEqual(codes(beamState()), ['no_load']);
   assert.equal(isValid(beamState()), true);
+});
+
+/* ---------------- Runde 6 §2.1 — no_load ---------------- */
+
+test('validate no_load: alle kombinasjoner null gir ADVARSEL, ikke feil', () => {
+  const m = find(beamState(), 'no_load');
+  assert.ok(m, 'mangler no_load');
+  assert.equal(m.severity, 'warning');
+  assert.equal(m.field, 'combos');
+  // Advarsel, ikke feil: `main.js` stopper kjøringen på `severity: 'error'`,
+  // og et snitt uten last SKAL fortsatt kunne regnes (M_Rd er interessant i
+  // seg selv). Meldingen forklarer hvorfor svaret ser tomt ut.
+  assert.equal(isValid(beamState()), true);
+});
+
+test('validate no_load: ÉN last hvor som helst er nok til å slå den av', () => {
+  const combo = (patch) => [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0, ...patch }];
+  assert.ok(!find(beamState({ combos: combo({ M_Ed: -250 }) }), 'no_load'));
+  assert.ok(!find(beamState({ combos: combo({ M_Ed: 250 }) }), 'no_load'), 'støttemoment teller også');
+  assert.ok(!find(beamState({ combos: combo({ N_Ed: -500 }) }), 'no_load'));
+  assert.ok(!find(beamState({ combos: combo({ V_Ed: 120 }) }), 'no_load'));
+  // Flere rader: én lastet rad holder, selv om den ikke er den aktive.
+  const mixed = beamState({
+    combos: [
+      { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0 },
+      { id: 'C2', name: 'ULS 2', N_Ed: 0, M_Ed: -250, V_Ed: 0 },
+    ],
+  });
+  assert.ok(!find(mixed, 'no_load'));
+  // …men to tomme rader er fortsatt ingen last.
+  assert.ok(find(beamState({ combos: [...combo({}), { id: 'C2', N_Ed: 0, M_Ed: 0, V_Ed: 0 }] }), 'no_load'));
+});
+
+test('validate no_load: tomt/uleselig felt teller som FRAVÆR av last', () => {
+  // Samme konvensjon som `axialForcesPresent` (§2): et tomt felt er ikke en
+  // last. Uten dette ville advarselen forsvunnet mens brukeren slettet et
+  // siffer, og kommet tilbake — blinking er verre enn ingen melding.
+  assert.ok(find(beamState({ combos: [{ id: 'C1', N_Ed: '', M_Ed: null, V_Ed: undefined }] }), 'no_load'));
+  assert.ok(find(beamState({ combos: [{ id: 'C1', N_Ed: 0, M_Ed: 'x', V_Ed: 0 }] }), 'no_load'));
+  // Ingen kombinasjoner i det hele tatt er også ingen last.
+  assert.ok(find(beamState({ combos: [] }), 'no_load'));
 });
 
 test('validate regel 1: jern utenfor tverrsnittet', () => {

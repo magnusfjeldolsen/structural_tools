@@ -64,8 +64,8 @@
  * går derfor gjennom `invalidate()`, uten unntak.
  */
 
-import { BAR_DIAMETERS, CONCRETE_GRADES, CONCRETE_LAWS, STEEL_GRADES, STEEL_LAWS, derivedMaterials }
-  from './materials.js';
+import { BAR_DIAMETERS, CONCRETE_GRADES, CONCRETE_LAWS, STEEL_GRADES, STEEL_LAWS, derivedMaterials,
+  matchConcreteGrade, matchSteelGrade } from './materials.js';
 import { bindNumericInput, evaluate } from './numeric-input.js';
 import { aswPerSpacing, layerArea, layerBarCount, layerDepth, recomputeAutoDc, stackedDc,
   suggestedDc, totalArea, totalAswPerSpacing } from './rebar.js';
@@ -75,11 +75,12 @@ import { drawSection } from './section-draw.js';
 import { momentCurvatureSvg, nmDomainSvg, radialUtilisation } from './charts.js';
 import { attachChartTips } from './chart-tips.js';
 import { isCancellable, phaseLabel, TOTAL_DOWNLOAD_BYTES } from './solver-client.js';
-import { RUN_ALL } from './store.js';
+import { RUN_ALL, defaultState } from './store.js';
 import { fromDocument, toDocument } from './serialize.js';
 import {
   DASH, analysisBlock, analysisLabel, checkRows, comboLabel, compressionEdgeLabel, describeWarnings,
-  designMoment, directionFromTheta, directionLabel, failureModeLabel, failureModeNote, fmtArea,
+  designMoment, directionFromTheta, directionLabel, failureModeLabel, failureModeNote, failureState,
+  fmtArea,
   fmtCurvature, fmtForceKN, fmtLength, fmtMomentKNm, fmtNumber, fmtPercent, fmtRatio,
   fmtStrainPermille, fmtStress, governingCombo, headlineUtilisation, lawLabel, messageForCode,
   momentCapacity, sectionTypeLabel, shearGoverningCombo, shearGoverningModeLabel,
@@ -126,12 +127,22 @@ const ANALYSES = [
  */
 const RUN_ALL_LABEL = 'Run all';
 
-/** «Beregn»-knappen sier hva den kjører (endringsrunde 2 §6). */
+/**
+ * «Beregn»-knappen sier hva den kjører (endringsrunde 2 §6).
+ *
+ * TO LENGDER, ÉN OPPFØRING. Den lange teksten var skrevet for den brede
+ * knappen i den gamle seksjon 6; i bunnlinja — som nå er den ENESTE knappen —
+ * dyttet «Calculate N–M interaction domain» inspeksjonsstripa ut av linja.
+ * `short` står i knappen og `long` i `title`, så det lange svaret fortsatt er
+ * ett sekunds peking unna. De to ligger i SAMME oppføring med vilje: to
+ * parallelle objekter er to lister som kan komme i utakt når en femte analyse
+ * dukker opp.
+ */
 const CALC_VERB = {
-  bending: 'Calculate bending resistance',
-  moment_curvature: 'Calculate moment–curvature',
-  nm_domain: 'Calculate N–M interaction domain',
-  [RUN_ALL]: 'Run all analyses',
+  bending: { short: 'Calculate M_Rd', long: 'Calculate bending resistance' },
+  moment_curvature: { short: 'Calculate M–κ', long: 'Calculate moment–curvature' },
+  nm_domain: { short: 'Calculate N–M', long: 'Calculate N–M interaction domain' },
+  [RUN_ALL]: { short: 'Run all', long: 'Run all analyses' },
 };
 
 /* ================================================================== *
@@ -300,6 +311,86 @@ export function shearPanel(result) {
     `V<sub>Rd,c</sub> is reported either way: it is the number that says whether stirrups were needed at all.</p>`;
 }
 
+/* ================================================================== *
+ * Bunnlinjas inspeksjonsstripe
+ * ================================================================== */
+
+/**
+ * De FEM cellene i inspeksjonsstripa — som rene data, uten DOM.
+ *
+ * HVORFOR EN EGEN, REN FUNKSJON
+ * Stripa er det eneste stedet tallene står mens man fyller ut skjemaet, og
+ * den kan derfor ikke verifiseres bare i nettleseren. Formen (alltid fem
+ * celler, samme rekkefølge, aldri flere eller færre) er nettopp det som gjorde
+ * at stripa hoppet, og det er en påstand en test kan holde fast.
+ *
+ * ALLTID FEM, OGSÅ UTEN RESULTAT. Formatererne i `results.js` gir «–» for
+ * `null` av seg selv, så tom-tilstanden trenger ingen egen gren — den er den
+ * samme koden med `null` inn. Det er dét som gjør at stripa ikke bytter antall
+ * celler ved første beregning.
+ *
+ * `x` i mm og `V_Rd` er borte: `x/d` bærer samme informasjon i den formen en
+ * ingeniør vurderer den (0,45 / 0,35), og `V_Rd` er implisert av η_V og står
+ * fullt ut i skjærpanelet.
+ *
+ * BRUDDTILSTANDEN LESES GJENNOM `failureState`, IKKE `result.bending`.
+ * Stripa slo før opp `result.bending || analysisBlock(result)` — motsatt
+ * prioritet av `results.js:failureState`, som rapporten og resultatseksjonen
+ * bruker. Med «Run all» finnes BEGGE blokkene, og `primary` kan være
+ * `nm_domain`: bunnlinja viste da bruddformen fra bøyekallet mens papiret
+ * viste den fra omhyllingen, for samme kjøring. To kilder til samme tall.
+ *
+ * @param {object|null} result  §5.2-resultatet, eller `null`/`{ok:false}`
+ * @param {{perMeter?: string}} [opts]  `'/m'` for plate, ellers `''`
+ * @returns {Array<{key:string,label:string,value:string,status:object|null,
+ *                  title:string,hide:string}>}
+ */
+export function bottomBarCells(result, { perMeter = '' } = {}) {
+  const ok = result && result.ok === true ? result : null;
+  const fs = (ok && failureState(ok)) || {};
+  // `shearGoverningCombo` er `null` når ingen kombinasjon fikk skjær evaluert.
+  // Cella står likevel, med «–»: en celle som kommer og går er den samme
+  // hoppingen som tom-tilstanden, bare sjeldnere og derfor vanskeligere å se.
+  const etaV = ok ? shearHeadlineUtilisation(ok) : null;
+  const eta = ok ? headlineUtilisation(ok) : null;
+  const etaStatus = utilisationStatus(eta);
+  const etaVStatus = utilisationStatus(etaV);
+  const mode = failureModeLabel(fs.failure_mode);
+  return [
+    { key: 'eta', label: 'η', value: fmtRatio(eta, 2), status: etaStatus, hide: '',
+      title: `${HEADLINE_UTILISATION_LABEL} — ${etaStatus.label}` },
+    { key: 'eta_V', label: 'η_V', value: fmtRatio(etaV, 2), status: etaVStatus, hide: '',
+      title: `${SHEAR_UTILISATION_LABEL} — ${etaVStatus.label}` },
+    { key: 'M_Rd', label: 'M_Rd', value: `${fmtMomentKNm(momentCapacity(ok))} kNm${perMeter}`,
+      status: null, hide: '',
+      title: 'Design bending resistance of the governing load combination' },
+    // x/d ryker under 1024 px, bruddformen under 1280 px. η og η_V ryker aldri.
+    { key: 'x_over_d', label: 'x/d', value: fmtRatio(fs.x_over_d), status: null, hide: 'lg',
+      title: 'Neutral axis depth over effective depth, x/d' },
+    { key: 'failure_mode', label: 'Mode', value: mode, status: null, hide: 'xl',
+      title: `Failure mode — ${mode}` },
+  ];
+}
+
+/**
+ * Cellene som HTML. Høydene ligger i `.bar-cell*` i `index.html` og ikke her,
+ * fordi en høyde i en malstreng er en høyde ingen finner igjen når stripa
+ * hopper neste gang.
+ */
+export function bottomBarStripHtml(result, opts) {
+  return bottomBarCells(result, opts).map((c) => {
+    // Statuscellene henter farge OG ramme fra `utilisationStatus().classes`.
+    // De plain cellene har ingen ramme i det hele tatt — `.bar-cell` har
+    // `box-sizing: border-box` og fast høyde, så de to typene blir like høye
+    // uansett.
+    const skin = c.status ? `border px-2 rounded ${esc(c.status.classes)}` : 'text-slate-200';
+    const hide = c.hide ? ` bar-cell-${c.hide}` : '';
+    return `<div class="bar-cell ${skin}${hide}" data-cell="${esc(c.key)}" title="${esc(c.title)}">` +
+      `<div class="bar-cell-l">${esc(c.label)}</div>` +
+      `<div class="bar-cell-v num">${esc(c.value)}</div></div>`;
+  }).join('');
+}
+
 function panel(title, items) {
   return `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
     <div class="text-xs text-slate-400 mb-1.5">${esc(title)}</div>${rows(items)}</div>`;
@@ -309,6 +400,428 @@ function rows(items) {
   return items.map(([k, v, u]) => `<div class="flex justify-between gap-3 py-[3px] border-b border-slate-800">
     <span class="text-slate-400">${k}</span>
     <span class="num text-slate-100">${v}${u ? ` <span class="text-slate-500">${u}</span>` : ''}</span></div>`).join('');
+}
+
+/* ================================================================== *
+ * Progressiv avdekking (runde 6 §2.1 og §2.6)
+ * ================================================================== */
+
+/**
+ * De sammenfoldbare boksene, og HVILKE deler av tilstanden hver av dem eier.
+ *
+ * HVORFOR EN TABELL OG IKKE TRE if-er
+ * De to reglene som gjør skjuling trygg (§2.6) spør begge om det samme:
+ * «hvilken boks inneholder denne tilstanden?». Regel 1 spør med en feltsti fra
+ * `validate()` (`'concrete.alpha_cc'`, `'shear.stirrups.0.spacing'`), regel 2
+ * spør med en verdi som avviker fra standarden. Svarte de to fra hver sin
+ * håndskrevne liste, ville en ny `<details>` kunne bli lagt til den ene og
+ * glemt i den andre — og resultatet er en skjult boks som inneholder et felt
+ * `validate()` klager på. Altså en kalkulator som lyver i stillhet, som er
+ * nøyaktig det §2.6 finnes for å hindre.
+ *
+ * `paths` er hva boksen INNEHOLDER. `derived` er den delmengden av innholdet
+ * som ALLEREDE står utenfor boksen, og som derfor ikke er et skjult avvik:
+ * `k` og `ε_uk` bestemmes av kvalitetsnedtrekket rett over boksen og er
+ * readonly så lenge det treffer. Å folde ut faktorene hver gang noen velger
+ * B500NA ville vært en åpning uten en eneste ny opplysning i.
+ *
+ * `concrete.fck` og `steel.fyk` står ikke i tabellen i det hele tatt: de har
+ * ingen felt inne i noen boks, bare nedtrekkene utenfor.
+ */
+export const DISCLOSURE_BOXES = [
+  {
+    id: 'adv-material',
+    paths: ['concrete.gamma_c', 'concrete.alpha_cc', 'concrete.law',
+      'steel.gamma_s', 'steel.gamma_eps', 'steel.Es', 'steel.k', 'steel.epsuk', 'steel.law'],
+    derived: ['steel.k', 'steel.epsuk'],
+  },
+  // Hele `shear`: bøylerader, trykkstavvinkel og z-faktor ligger i samme boks.
+  { id: 'adv-shear', paths: ['shear'] },
+  { id: 'adv-spacing', paths: ['cover_side', 'spacing'] },
+];
+
+/** Verdien på en punktsti i et objekt, eller `undefined`. */
+function valueAtPath(obj, path) {
+  return path.split('.').reduce((o, key) => (o === null || o === undefined ? undefined : o[key]), obj);
+}
+
+/**
+ * Dekker `prefix` stien `path`? SEGMENTVIS, ikke `startsWith`: uten det ville
+ * prefikset `'steel.k'` dekket `'steel.k1'` den dagen et slikt felt finnes,
+ * og feil boks hadde blitt åpnet uten at noe feilet.
+ */
+function pathCoveredBy(path, prefix) {
+  return path === prefix || String(path).startsWith(prefix + '.');
+}
+
+/** Boksen som eier feltstien, eller `null` om ingen gjør det. */
+export function boxForField(path) {
+  if (!path) return null;
+  const box = DISCLOSURE_BOXES.find((b) => b.paths.some((p) => pathCoveredBy(path, p)));
+  return box ? box.id : null;
+}
+
+/**
+ * REGEL 1 (§2.6): en boks som inneholder et felt `validate()` klager på, MÅ
+ * åpnes. Uten den blir en skjult `γ_c = 0` en kalkulator som lyver — feilen
+ * står i valideringsboksen, men feltet den peker på er usynlig.
+ *
+ * @param {Array<{field?: string}>} issues  `validate()`-utdata
+ * @returns {string[]} id-ene til boksene som må åpnes
+ */
+export function boxesForIssues(issues = []) {
+  const ids = new Set();
+  for (const issue of issues) {
+    const id = boxForField(issue && issue.field);
+    if (id) ids.add(id);
+  }
+  return Array.from(ids);
+}
+
+/** Dyp likhet for TALL, STRENGER, LISTER og FLATE OBJEKTER — som er alt
+ *  tilstanden kan inneholde (`store.js`: flat og serialiserbar). Skrevet ut i
+ *  stedet for `JSON.stringify`-sammenlikning fordi den siste er avhengig av
+ *  NØKKELREKKEFØLGEN: en lastet fil kan gi `{z_factor, strut_angle_deg}` der
+ *  standarden gir `{strut_angle_deg, z_factor}`, og boksen ville da åpnet seg
+ *  for et avvik som ikke finnes. */
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (typeof a === 'number' && typeof b === 'number') return Number(a) === Number(b);
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((v, i) => sameValue(v, b[i]));
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const ka = Object.keys(a);
+    const kb = Object.keys(b);
+    if (ka.length !== kb.length) return false;
+    return ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && sameValue(a[k], b[k]));
+  }
+  return false;
+}
+
+/**
+ * REGEL 3 (§2.6): en boks åpnes ved oppstart og etter lasting hvis en verdi
+ * inne i den AVVIKER fra standarden.
+ *
+ * Uten denne skjuler en innlastet fil med θ = 30° nettopp det som gjør den
+ * fila spesiell — brukeren ser en helt vanlig bjelke, og den ene verdien som
+ * forklarer hvorfor kapasiteten er som den er, står bak et klikk ingen vet at
+ * de skal ta.
+ *
+ * Regelen kjøres BARE ved oppstart og lasting, ikke ved hver opptegning: gjorde
+ * den det, ville en boks med et avvik vært umulig å lukke igjen, og brukerens
+ * eget klikk ville blitt overstyrt av automatikken.
+ *
+ * @param {object} state
+ * @param {object} [baseline]  standardtilstanden, injiserbar for testing
+ * @returns {string[]}
+ */
+/**
+ * Bokser som må stå åpne SÅ LENGE innholdet finnes — ikke bare ved oppstart.
+ *
+ * HVORFOR SKJÆRBOKSEN ER ET UNNTAK
+ * Plan §2.1 setter bøyle-Ø og c/c blant feltene som ALLTID er synlige, mens
+ * oppdraget gjør skjærboksen til en `<details>`. De to henger bare sammen
+ * fordi en tom bøyleliste ikke har noen Ø og ingen c/c å vise: da er boksen
+ * tom, og sammendraget sier alt (V_Rd = V_Rd,c). I det øyeblikket det finnes en
+ * rad, er det to felt som etter planen ikke skal kunne gjemme seg.
+ *
+ * `boxesForNonDefaults` alene holdt ikke: den kjøres bare ved oppstart og
+ * lasting, og `ModuleAPI.setInputs()` kan legge inn en bøylerad midt i økten.
+ * Målt i nettleseren sto boksen da lukket med en rad inni — Ø og c/c usynlige,
+ * stikk i strid med §2.1. Denne kjøres ved hver opptegning, og fordi
+ * `openBoxes` bare kan ÅPNE, kan den ikke rive fokus ut av noe.
+ *
+ * @param {object} state
+ * @returns {string[]}
+ */
+export function boxesAlwaysOpen(state = {}) {
+  const stirrups = (state.shear && state.shear.stirrups) || [];
+  return stirrups.length ? ['adv-shear'] : [];
+}
+
+export function boxesForNonDefaults(state = {}, baseline = defaultState()) {
+  return DISCLOSURE_BOXES
+    .filter((box) => box.paths
+      .filter((p) => !(box.derived || []).includes(p))
+      .some((p) => !sameValue(valueAtPath(state, p), valueAtPath(baseline, p))))
+    .map((box) => box.id);
+}
+
+/* ================================================================== *
+ * Tastaturmodellen (runde 6 §2.3)
+ * ================================================================== */
+
+/**
+ * ÉN TABELL, TRE LESERE.
+ *
+ * Tasten står nøyaktig ett sted. Handleren slår opp i den (`shortcutFor`),
+ * hurtigtastmerkene som dukker opp når `Alt` holdes leser den (`data-key`), og
+ * hjelpelista bygges av den (`shortcutHelpRows`). Det er hele gevinsten:
+ * FØR denne runden sto `B`/`P` i tre eksemplarer — i `setupKeyboard`, i
+ * hjelpetabellen i `index.html`, og ingen steder på kontrollen selv — og
+ * hjelpen kunne derfor love en tast som ikke fantes, eller tie om en som
+ * fantes. Nå kan en snarvei verken bli udokumentert eller feildokumentert:
+ * det finnes ikke to steder å skrive den.
+ *
+ * VENSTRE HÅND ALENE. Brukerens krav er at høyre hånd blir på musa. Alle
+ * bokstavtastene her ligger på venstre halvdel av tastaturet. Det er grunnen
+ * til at `P` for plate er borte: `T` (toggle) veksler i stedet, og den ligger
+ * der venstre pekefinger allerede er.
+ *
+ * VAKTEN ER AVLEDET, IKKE FLAGGET. En kombinasjon virker fra et tekstfelt hviss
+ * den har en modifikator (`Ctrl`/`Alt`). Det er ikke en konvensjon vi har valgt
+ * å følge, det er den eneste regelen som ikke kan komme i utakt med seg selv:
+ * en bar bokstav MÅ blokkeres i et felt, ellers kan man ikke skrive «beam» i et
+ * navnefelt. `Escape` er det ene unntaket (`always`) — den skriver ingen
+ * bokstav, og «lukk overlegget» er meningsløs hvis den slutter å virke i det
+ * øyeblikket fokus står i et felt inne i overlegget.
+ *
+ * `mark` er kontrollen merket henges på, `action` er hva handleren gjør, og
+ * radene UTEN `action` er rene dokumentasjonsrader: tastene virker (de er
+ * skrevet i `setupShorthand`), men de eies ikke av `setupKeyboard`. De står
+ * her fordi hjelpen skal være fullstendig, ikke bare korrekt.
+ */
+export const SHORTCUTS = [
+  // ---- Med modifikator: virker OGSÅ fra et tekstfelt ----
+  {
+    action: 'calc',
+    combos: ['Ctrl+Space', 'Ctrl+Enter'],
+    kbd: '#kbd-calc',
+    help: 'Calculate — works from inside a text field too',
+  },
+  {
+    // BESTILT AV BRUKEREN, OG MÅLT. `Alt+Mellomrom` er systemets vindusmeny på
+    // Windows, og på maskinen dette ble målt på kommer den ikke engang så
+    // langt: PowerToys Run har den som global hurtigtast, og sida får BARE
+    // `Alt`-nedslaget — mellomrommet dukker aldri opp, og forgrunnsvinduet blir
+    // PowerToys. Et globalt tastegrep skjer FØR nettleseren, så `preventDefault()`
+    // kan ikke hjelpe. Derfor er `Ctrl+Shift+Mellomrom` ikke en høflighet, men
+    // den kombinasjonen som faktisk bærer funksjonen — og hjelpeteksten sier det
+    // rett ut, i stedet for å la brukeren tro at verktøyet er i stykker.
+    action: 'runAll',
+    combos: ['Alt+Space', 'Ctrl+Shift+Space'],
+    help: 'Run every analysis — use Ctrl+Shift+Space if another app has taken Alt+Space',
+  },
+  {
+    action: 'duplicate',
+    combos: ['D', 'Alt+D'],
+    mark: '#dup-last',
+    kbd: '#kbd-dup',
+    help: 'Duplicate the last reinforcement layer',
+  },
+  {
+    action: 'advancedAll',
+    combos: ['Alt+E'],
+    help: 'Open or close every Advanced box at once',
+  },
+  {
+    action: 'closeOverlay',
+    combos: ['Escape'],
+    always: true,
+    help: 'Close this list, or the report',
+  },
+
+  // ---- Uten modifikator: blokkert av `inField()` ----
+  { action: 'focusShorthand', combos: ['A'], mark: '#sh-input', help: 'Focus the shorthand line' },
+  {
+    action: 'focusSection',
+    combos: ['F'],
+    help: 'Focus the first field in the section you are looking at',
+  },
+  {
+    action: 'toggleType',
+    combos: ['T'],
+    mark: '#type-seg',
+    help: 'Step to the next cross-section type — beam ⇄ slab',
+  },
+  {
+    action: 'toggleAdvanced',
+    combos: ['E'],
+    help: 'Open or close Advanced in the section you are looking at',
+  },
+  { action: 'toggleReport', combos: ['R'], mark: '#btn-report', help: 'Open or close the report' },
+  { action: 'help', combos: ['?'], mark: '#btn-help', help: 'This list' },
+
+  // Sifrene LESES AV `ANALYSES`, ikke skrevet av. En femte analyse skal ikke
+  // kunne havne i chipraden uten å få tasten sin — og heller ikke uten å få
+  // linja si i hjelpen. `Digit`-tokenet er `e.code`, ikke `e.key`: da svarer
+  // det numeriske tastaturet likt, og et layout der `1` sitter et annet sted
+  // oppfører seg fortsatt som tastaturets øverste rad.
+  ...ANALYSES.map(([value], i) => ({
+    action: 'analysis',
+    index: i,
+    combos: [`Digit${i + 1}`],
+    mark: `#ana-chips [data-v="${value}"]`,
+    help: value === RUN_ALL ? RUN_ALL_LABEL : analysisLabel(value),
+  })),
+
+  // ---- Dokumentasjonsrader: eid av `setupShorthand`, ikke av handleren ----
+  { combos: ['Enter'], kbd: '#kbd-add', help: 'Add the layer in the shorthand line' },
+  { combos: ['ArrowUp'], help: 'Recall the previous shorthand line' },
+];
+
+/**
+ * Deler `'Ctrl+Shift+Space'` i modifikatorer og tastetoken.
+ *
+ * @param {string} combo
+ * @returns {{ctrl: boolean, alt: boolean, shift: boolean, key: string}}
+ */
+export function parseCombo(combo) {
+  const parts = String(combo).split('+');
+  const key = parts.pop();
+  return {
+    ctrl: parts.includes('Ctrl'),
+    alt: parts.includes('Alt'),
+    shift: parts.includes('Shift'),
+    key,
+  };
+}
+
+/** Har kombinasjonen en modifikator — altså: virker den fra et tekstfelt? */
+function hasModifier(combo) {
+  const c = parseCombo(combo);
+  return c.ctrl || c.alt;
+}
+
+/**
+ * Treffer tastetokenet hendelsen?
+ *
+ * TO REPRESENTASJONER MED VILJE. `e.code` er den FYSISKE tasten og brukes der
+ * fysikken er poenget: sifrene (slik at det numeriske tastaturet svarer likt)
+ * og mellomrom (som `Alt` kan forkludre `e.key` for). `e.key` er TEGNET og
+ * brukes til bokstavene, slik at et norsk layout fortsatt gir `?` på den
+ * tasten som er merket `?`.
+ */
+function keyMatches(token, e) {
+  if (/^Digit[0-9]$/.test(token)) return e.code === token || e.code === `Numpad${token.slice(5)}`;
+  if (token === 'Space') return e.code === 'Space' || e.key === ' ';
+  if (token.length === 1) return String(e.key).toLowerCase() === token.toLowerCase();
+  return e.key === token;
+}
+
+/**
+ * Modifikatorene, STRENGT — og det er en rettelse, ikke pedanteri.
+ *
+ * Den gamle koden spurte `e.altKey && e.key === 'd'`. På et norsk tastatur
+ * setter `AltGr` BÅDE `ctrlKey` og `altKey`, så `AltGr`-kombinasjoner midt i
+ * en innskriving fyrte «dupliser siste lag». Her må `Ctrl` være AV for at
+ * `Alt+D` skal telle, og da kan `AltGr` ikke lenger treffe.
+ *
+ * `Shift` sammenliknes IKKE for ettegnstokener: der bærer `e.key` allerede
+ * skiftet (`?` ER Shift+`+` på norsk layout), og en streng sammenlikning ville
+ * krevd at vi visste hvilket layout brukeren har.
+ */
+function modsMatch(c, e) {
+  const ctrl = Boolean(e.ctrlKey || e.metaKey);
+  if (ctrl !== c.ctrl) return false;
+  if (Boolean(e.altKey) !== c.alt) return false;
+  if (c.key.length === 1) return true;
+  return Boolean(e.shiftKey) === c.shift;
+}
+
+/**
+ * Hvilken handling hendelsen utløser, eller `null`.
+ *
+ * REN: tar en hendelseslignende verdi og en kontekst, rører ingen DOM. Det er
+ * det som gjør tastaturmodellen testbar uten nettleser — og dermed det som
+ * gjør at «virker `Alt+D` fra et tekstfelt?» er et spørsmål med et svar i
+ * `node --test`, ikke en påstand i en rapport.
+ *
+ * @param {{key?: string, code?: string, ctrlKey?: boolean, altKey?: boolean,
+ *          shiftKey?: boolean, metaKey?: boolean}} e
+ * @param {{inField?: boolean}} [ctx]
+ * @returns {{action: string, combo: string, index?: number}|null}
+ */
+export function shortcutFor(e, ctx = {}) {
+  const inField = Boolean(ctx.inField);
+  for (const s of SHORTCUTS) {
+    if (!s.action) continue; // dokumentasjonsrad — eid av en annen oppkobling
+    for (const combo of s.combos) {
+      const c = parseCombo(combo);
+      if (!modsMatch(c, e) || !keyMatches(c.key, e)) continue;
+      // VAKTEN. `continue` og ikke `return null`: en bar `D` som blokkeres i et
+      // felt skal ikke kunne stenge for `Alt+D` lenger nede i tabellen.
+      if (inField && !(c.ctrl || c.alt || s.always)) continue;
+      return s.index === undefined ? { action: s.action, combo } : { action: s.action, combo, index: s.index };
+    }
+  }
+  return null;
+}
+
+/** Visningsnavnet på ett tastetoken. */
+const KEY_NAMES = { Space: 'Space', Enter: '⏎', ArrowUp: '↑', Escape: 'Esc' };
+
+/** Modifikatorer som skrives som TEGN i de trange hintene på knappene.
+ *  `⌃Space` er teksten som allerede sto i bunnlinja; bunnlinja er målt opp til
+ *  siste piksel (§2.4), og `Ctrl+Space` er fire tegn bredere. `Alt` har ingen
+ *  oppføring med vilje — `⌥` er Mac-notasjon, og dette verktøyet brukes på
+ *  Windows. */
+const KEY_SYMBOLS = { Ctrl: '⌃', Shift: '⇧' };
+
+/**
+ * Tastenavnene i en kombinasjon, i rekkefølge: `'Ctrl+Digit1' → ['Ctrl', '1']`.
+ * Brukes både av hjelpelista og av merkene, så de to kan ikke vise ulik tast.
+ */
+export function comboKeys(combo) {
+  const parts = String(combo).split('+');
+  const key = parts.pop();
+  const name = /^Digit[0-9]$/.test(key)
+    ? key.slice(5)
+    : KEY_NAMES[key] || (key.length === 1 ? key.toUpperCase() : key);
+  return parts.concat(name);
+}
+
+/**
+ * Merket som skal stå oppå kontrollen: den FØRSTE modifikatorfrie
+ * kombinasjonen. Et merke er en invitasjon til å trykke én tast; står det
+ * `Ctrl+Space` på en knapp, er det ikke lenger et merke, det er en fotnote.
+ *
+ * @returns {string|null} `null` når snarveien ikke har en bar tast
+ */
+export function markKey(entry) {
+  const bare = (entry.combos || []).find((c) => !hasModifier(c));
+  if (!bare) return null;
+  const keys = comboKeys(bare);
+  return keys.length === 1 ? keys[0] : null;
+}
+
+/**
+ * Kombinasjonen som skal stå trykt på knappen: den FØRSTE med modifikator,
+ * ellers den første i det hele tatt.
+ *
+ * Motsatt regel av `markKey`, og med vilje. Et merke dukker opp mens `Alt`
+ * holdes og handler om øyeblikket — der er den bare tasten den raskeste. Et
+ * hint står permanent på knappen og leses når som helst, også med markøren i
+ * et felt, og da må det være den kombinasjonen som virker DERFRA. `D` på
+ * dupliseringsknappen ville løyet i nøyaktig det tilfellet knappen er nærmest.
+ */
+export function hintCombo(entry) {
+  return (entry.combos || []).find(hasModifier) || (entry.combos || [])[0];
+}
+
+/**
+ * Kort skrivemåte for hintene som står PÅ knappene («⌃Space», «Alt+D»).
+ * Tegnmodifikatorer limes inntil tasten, ordmodifikatorer får `+`.
+ */
+export function comboShort(combo) {
+  let out = '';
+  for (const k of comboKeys(combo)) {
+    const sym = KEY_SYMBOLS[k];
+    if (sym) { out += sym; continue; }
+    out += out && !Object.values(KEY_SYMBOLS).includes(out.slice(-1)) ? `+${k}` : k;
+  }
+  return out;
+}
+
+/**
+ * Hjelpelista, som RADER og ikke som markup — så den kan sjekkes uten DOM.
+ *
+ * @returns {Array<{keys: string[][], help: string}>}
+ */
+export function shortcutHelpRows() {
+  return SHORTCUTS.map((s) => ({ keys: s.combos.map(comboKeys), help: s.help }));
 }
 
 /**
@@ -329,12 +842,34 @@ export function createUI(deps) {
   const onReport = deps.onReport || (() => {});
   const onRetryWarmup = deps.onRetryWarmup || (() => {});
 
+  /** Seksjonen brukeren ser på nå — svaret `F` og `E` trenger.
+   *
+   *  SKRIVES AV `setupNav`. Den IntersectionObserver-en visste dette fra før,
+   *  men skrev bare til navlenkene; en ny observasjonslogikk her ville vært to
+   *  kilder til «hvor er vi», og de to ville drevet fra hverandre i det
+   *  øyeblikket noen justerte `rootMargin`. Startverdien er den øverste
+   *  seksjonen, som ER den som er i visning før observatøren har sagt noe —
+   *  og det eneste rimelige svaret i en nettleser uten IntersectionObserver,
+   *  der `setupNav` returnerer med én gang. */
+  let visibleSection = 's-mat';
   /** Hvilket lag som står åpent i radeditoren. `null` = ingen. */
   let editing = null;
   /** Kjører en beregning nå? */
   let busy = false;
   /** Siste linjer i korthåndsfeltet, for ↑. */
   const shHistory = [];
+  /**
+   * Har brukeren BEDT om å skrive sine egne staltall?
+   *
+   * `matchSteelGrade` er den ENE kilden til hvilken kvalitet tilstanden har, og
+   * `k`/`ε_uk` er readonly så lenge den treffer. Men da måtte det finnes en vei
+   * ut: uten dette flagget ville feltene vært låst til en kvalitet som
+   * treffer, og «Custom…» ville vært en tilstand ingen kunne komme seg TIL —
+   * en blindvei planen ikke hadde sett. Flagget bærer INGEN tallverdi; det sier
+   * bare at nedtrekket skal stå på «Custom…» og feltene være åpne. Det nulles
+   * i det øyeblikket brukeren velger en ekte kvalitet igjen.
+   */
+  let steelGradeCustom = false;
 
   /**
    * Er `d_c` LÅST (avledet) for laget med denne id-en?
@@ -423,6 +958,11 @@ export function createUI(deps) {
     bindField('#i-k', (s) => s.steel.k, (v) => store.patch('steel', { k: v }), { min: 1 });
     bindField('#i-epsuk', (s) => s.steel.epsuk, (v) => store.patch('steel', { epsuk: v }), { min: 0.0001 });
     bindField('#i-gamma-eps', (s) => s.steel.gamma_eps, (v) => store.patch('steel', { gamma_eps: v }), { min: 0.0001 });
+    // `E_s` har ligget i tilstanden siden første versjon og går inn i
+    // `ε_yd = f_yd/E_s`, som rapporten trykker — men hadde ingen kontroll noe
+    // sted (runde 6 §2.2). Nedre grense 1 MPa, ikke 0: `steelProps` DELER på
+    // den, og en null ga `ε_yd = Infinity` i rapporten uten en eneste advarsel.
+    bindField('#i-es', (s) => s.steel.Es, (v) => store.patch('steel', { Es: v }), { min: 1 });
 
     // Skjær, «Advanced» (§B). INGEN `min`/`max` på trykkstavvinkelen med
     // vilje: `evaluateBounded` AVVISER en verdi utenfor området og legger
@@ -461,6 +1001,52 @@ export function createUI(deps) {
       lawS.innerHTML = STEEL_LAWS.map((l) => `<option value="${l.value}">${esc(l.label)}</option>`).join('');
       lawS.addEventListener('change', () => { store.patch('steel', { law: lawS.value }); invalidate(); render(); });
     }
+
+    /* ── kvalitetsnedtrekkene (runde 6 §2.2) ──────────────────────────────
+       ⚠ FELLE: `<option>`-ene fylles HER, ÉN gang, og ALDRI inne i `render()`.
+       Et `select.innerHTML = …` river ut og bygger opp igjen hvert eneste
+       `<option>`-element. Gjøres det midt i en opptegning — og `render()`
+       kjøres fra hvert eneste felt i skjemaet — mister nedtrekket fokus, og en
+       liste som står åpen lukker seg under fingeren på brukeren. Det er samme
+       felle `comboEditInFlight` og `stirrupEditInFlight` finnes for, bare med
+       `<option>` i stedet for radene. `render()` skal BARE sette `.value`. */
+    const fckSel = $('#i-fck');
+    if (fckSel) {
+      // «Custom…» er DEAKTIVERT, ikke valgbar: det finnes ikke noe felt for en
+      // egen `f_ck`, så et valg her ville ikke hatt noe å gjøre. Den står bare
+      // så en lastet fil med f.eks. f_ck = 33 får en ÆRLIG merkelapp i stedet
+      // for et tomt nedtrekk. `mat-summary` trykker selve tallet ved siden av.
+      fckSel.innerHTML = CONCRETE_GRADES
+        .map((g) => `<option value="${g.fck}">${esc(g.label)}</option>`).join('')
+        + `<option value="custom" disabled>Custom…</option>`;
+      fckSel.addEventListener('change', () => {
+        const fck = Number(fckSel.value);
+        if (!Number.isFinite(fck)) return;
+        store.patch('concrete', { fck });
+        invalidate();
+        render();
+      });
+    }
+    const steelSel = $('#i-steel-grade');
+    if (steelSel) {
+      // «Custom…» er her derimot VALGBAR, og det er selve låsopplåseren: den
+      // rører ingen verdi, den sier bare at `k` og `ε_uk` skal kunne skrives.
+      steelSel.innerHTML = STEEL_GRADES
+        .map((g) => `<option value="${esc(g.label)}">${esc(g.label)}</option>`).join('')
+        + `<option value="custom">Custom…</option>`;
+      steelSel.addEventListener('change', () => {
+        const grade = STEEL_GRADES.find((g) => g.label === steelSel.value);
+        steelGradeCustom = !grade;
+        if (grade) {
+          // ÉN skriver. Kvaliteten setter alle tre tallene i samme `patch`,
+          // og etterpå er det `matchSteelGrade` som LESER dem tilbake — ingen
+          // parallell «valgt kvalitet» å holde i takt med tilstanden.
+          store.patch('steel', { fyk: grade.fyk, k: grade.k, epsuk: grade.epsuk });
+          invalidate();
+        }
+        render();
+      });
+    }
   }
 
   /** Feltverdiene skrives bare når feltet IKKE har fokus — ellers hopper markøren. */
@@ -487,6 +1073,35 @@ export function createUI(deps) {
     put('#i-k', s.steel.k);
     put('#i-epsuk', s.steel.epsuk, 5);
     put('#i-gamma-eps', s.steel.gamma_eps);
+    put('#i-es', s.steel.Es, 0);
+
+    /* ── kvalitetsnedtrekkene: AVLEDET fra tilstanden, aldri omvendt ──────
+       Verdien settes, `<option>`-ene røres ikke — se fella i `setupFields`. */
+    const fckSel = $('#i-fck');
+    if (fckSel && fckSel !== document.activeElement) {
+      const grade = matchConcreteGrade(s.concrete.fck);
+      fckSel.value = grade ? String(grade.fck) : 'custom';
+    }
+    const steelGrade = matchSteelGrade(s.steel);
+    const steelSel = $('#i-steel-grade');
+    if (steelSel && steelSel !== document.activeElement) {
+      steelSel.value = steelGradeCustom || !steelGrade ? 'custom' : steelGrade.label;
+    }
+    // `k` og `ε_uk` ER kvalitetens tall så lenge en kvalitet treffer. Låst
+    // fremfor bare gråtonet: et felt som tar imot et tastetrykk og deretter
+    // motsies av nedtrekket over er nøyaktig de TO SKRIVERNE §2.2 fjerner.
+    // `readOnly`, ikke `disabled`: et `disabled`-felt faller ut av tab-ringen,
+    // og brukeren mister muligheten til å TABBE FORBI og lese verdien.
+    const locked = Boolean(steelGrade) && !steelGradeCustom;
+    for (const sel of ['#i-k', '#i-epsuk']) {
+      const el = $(sel);
+      if (!el) continue;
+      el.readOnly = locked;
+      el.classList.toggle('opacity-60', locked);
+      el.title = locked
+        ? `Set by the reinforcement grade (${steelGrade.label}). Choose "Custom…" in the grade list to edit it.`
+        : 'Custom value — the grade list shows "Custom…" until it matches a standard grade again.';
+    }
 
     const isSlab = s.sectionType === 'slab';
     const b = $('#i-b');
@@ -972,11 +1587,13 @@ export function createUI(deps) {
             ${active ? '● ' + esc(combo.id) : esc(combo.id)}
           </button>
           <input type="text" class="!w-28" data-cf="name" data-c="${esc(combo.id)}" value="${esc(combo.name)}" placeholder="name" aria-label="Combination name">
-          <label class="flex items-center gap-1 text-[11px] text-slate-500">N<sub>Ed</sub>
+          <label class="flex items-center gap-1 text-[11px] text-slate-500"
+                 title="Axial force [kN] — compression is negative.">N<sub>Ed</sub>
             <input type="text" class="!w-24" data-cf="N_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.N_Ed, 2)}" aria-label="N_Ed [kN], compression negative"></label>
           <label class="flex items-center gap-1 text-[11px] text-slate-500" title="Sign convention follows fib structuralcodes: sagging (compression at the top face) is negative.">M<sub>Ed</sub> [kNm] — sagging negative
             <input type="text" class="!w-24" data-cf="M_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.M_Ed, 2)}" aria-label="M_Ed [kNm], sagging negative"></label>
-          <label class="flex items-center gap-1 text-[11px] text-slate-500">V<sub>Ed</sub>
+          <label class="flex items-center gap-1 text-[11px] text-slate-500"
+                 title="Shear force [kN] — a magnitude; its sign does not affect the shear capacity.">V<sub>Ed</sub>
             <input type="text" class="!w-24" data-cf="V_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.V_Ed, 2)}" aria-label="V_Ed [kN], magnitude — the sign does not matter"></label>
           <button type="button" class="ml-auto px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
                   data-remove-combo="${esc(combo.id)}" ${s.combos.length <= 1 ? 'disabled' : ''}
@@ -1142,6 +1759,13 @@ export function createUI(deps) {
     const { state, notes } = fromDocument(parsed);
     if (state) store.replaceState(state);
     renderDocNotes(notes);
+    // §2.6: en innlastet fil med θ = 30° skal ikke skjule nettopp det som gjør
+    // den fila spesiell. Kalles FØR `render()`, så den første opptegningen
+    // allerede har boksene i riktig stilling — ellers ville de blinket opp
+    // etterpå. Den låste `k`/`ε_uk`-tilstanden nullstilles samtidig: en fil
+    // bærer tall, ikke en beslutning om å redigere dem.
+    steelGradeCustom = false;
+    if (state) revealNonDefaults();
     render();
   }
 
@@ -1163,10 +1787,22 @@ export function createUI(deps) {
    * Motorstatus (plan §3.9)
    * ---------------------------------------------------------------- */
 
+  /**
+   * Motorstatusen står nå TRE steder, og hvert av dem svarer på sitt spørsmål:
+   * `#engine-pill` i toppen (hvilken tilstand), `#bar-engine` i bunnlinja (hvor
+   * langt, med punkttelleren), og `#engine-banner` øverst i resultatseksjonen —
+   * KUN ved havari.
+   *
+   * FRAMDRIFTSLINJA ER BORTE med seksjon 6. Den fortalte i prosent det pilla og
+   * bunnlinja sier i ord, og en fjerde visning av samme tall er en fjerde ting
+   * som kan bli hengende etter. FEIL-TILSTANDEN er derimot flyttet, ikke
+   * slettet: «Retry» var den ENESTE veien tilbake fra en havarert oppvarming,
+   * og den bodde bare i `#engine-card`.
+   */
   function renderEngine() {
     const st = client.getStatus();
     const pill = $('#engine-pill');
-    const card = $('#engine-card');
+    const banner = $('#engine-banner');
     const barEng = $('#bar-engine');
 
     const dot = {
@@ -1180,54 +1816,39 @@ export function createUI(deps) {
       : st.state === 'solving' ? `${phaseLabel(st.phase)} …`
       : `${phaseLabel(st.phase)} · ≈ ${mb(st.bytes)} / ${mb(TOTAL_DOWNLOAD_BYTES)} MB`;
 
+    // Punkttelleren fulgte framdriftslinja i `#engine-card`. Den er DEN ENESTE
+    // meldingen om at en 20-punkts M–κ faktisk beveger seg, så den flyttes hit
+    // i stedet for å forsvinne med seksjonen.
+    const counter = st.done !== null && st.total
+      ? ` · point ${fmtNumber(st.done, 0)} of ${fmtNumber(st.total, 0)}`
+      : '';
+
     if (pill) {
       pill.innerHTML = `<span class="w-2 h-2 rounded-full ${dot}"></span><span class="text-slate-300 num">${esc(short)}</span>`;
     }
     if (barEng) {
       barEng.innerHTML = st.state === 'ready'
         ? `<span class="text-emerald-400">● ready</span> · ${esc(st.ready?.runtime || '')}`
-        : `<span class="num">${esc(short)}</span>`;
+        : `<span class="num">${esc(short + counter)}</span>`;
     }
-    if (!card) return;
+    if (!banner) return;
 
-    if (st.state === 'failed') {
-      // §3.9 krav 3: en feilet oppvarming skal ALDRI låse sida. Skjemaet og
-      // tegningen virker; bare tallene mangler, og knappen er klikkbar.
-      card.innerHTML = `<div class="flex items-start gap-3">
-        <span class="text-rose-400 text-lg leading-none mt-0.5">⚠</span>
-        <div class="flex-1 min-w-0">
-          <p class="text-sm text-rose-300">${esc(messageForCode(st.error?.code, ''))}</p>
-          ${st.error?.detail ? `<details class="mt-1"><summary class="text-[11px] text-slate-500">Technical detail</summary>
-             <pre class="text-[10px] text-slate-500 whitespace-pre-wrap mt-1">${esc(st.error.detail)}</pre></details>` : ''}
-          <p class="text-[11px] text-slate-500 mt-1">The form still works, and the section drawing is plain JS. Only the numbers are missing.</p>
-        </div>
-        <button type="button" id="engine-retry" class="shrink-0 px-3 py-1.5 text-xs rounded bg-rose-800 hover:bg-rose-700 border border-rose-600">Retry</button>
-      </div>`;
-      const retry = $('#engine-retry');
-      if (retry) retry.onclick = () => onRetryWarmup();
-      return;
-    }
+    if (st.state !== 'failed') { banner.innerHTML = ''; return; }
 
-    const pct = st.state === 'ready' ? 100 : Math.max(0, Math.min(100, Math.round(st.pct)));
-    const bar = st.state === 'ready' ? 'bg-emerald-500' : st.state === 'solving' ? 'bg-sky-500' : 'bg-amber-500';
-    const counter = st.done !== null && st.total
-      ? ` · point ${fmtNumber(st.done, 0)} of ${fmtNumber(st.total, 0)}`
-      : '';
-    card.innerHTML = `
-      <div class="flex items-baseline gap-2 text-[12px]">
-        <span class="text-slate-300">${esc(st.state === 'ready' ? `Engine ready · structuralcodes ${st.ready?.structuralcodes_version || ''}` : short + counter)}</span>
-        <span class="ml-auto num text-slate-500">${pct} %</span>
+    // §3.9 krav 3: en feilet oppvarming skal ALDRI låse sida. Skjemaet og
+    // tegningen virker; bare tallene mangler, og knappen er klikkbar.
+    banner.innerHTML = `<div class="flex items-start gap-3 rounded-lg border border-rose-600/50 bg-rose-950/30 p-3 mb-3">
+      <span class="text-rose-400 text-lg leading-none mt-0.5">⚠</span>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm text-rose-300">${esc(messageForCode(st.error?.code, ''))}</p>
+        ${st.error?.detail ? `<details class="mt-1"><summary class="text-[11px] text-slate-500">Technical detail</summary>
+           <pre class="text-[10px] text-slate-500 whitespace-pre-wrap mt-1">${esc(st.error.detail)}</pre></details>` : ''}
+        <p class="text-[11px] text-slate-500 mt-1">The form still works, and the section drawing is plain JS. Only the numbers are missing.</p>
       </div>
-      <div class="h-1.5 mt-2 rounded-full bg-slate-700 overflow-hidden">
-        <div class="h-full ${bar} transition-[width] duration-150" style="width:${pct}%"></div>
-      </div>
-      <p class="text-[11px] text-slate-500 mt-2 leading-snug">${
-        st.state === 'ready'
-          ? 'The engine finished loading while you filled in the form. The next calculation starts immediately.'
-          : st.state === 'idle'
-          ? 'The engine has not been downloaded yet — the browser is set to save data. It loads when you press "Calculate".'
-          : 'The engine is loading in the background while you fill in the form. You can press "Calculate" now — it runs as soon as the engine is ready.'
-      }</p>`;
+      <button type="button" id="engine-retry" class="shrink-0 px-3 py-1.5 text-xs rounded bg-rose-800 hover:bg-rose-700 border border-rose-600">Retry</button>
+    </div>`;
+    const retry = $('#engine-retry');
+    if (retry) retry.onclick = () => onRetryWarmup();
   }
 
   /* ---------------------------------------------------------------- *
@@ -1249,6 +1870,22 @@ export function createUI(deps) {
         isError ? 'border-rose-600/50 bg-rose-950/30 text-rose-200' : 'border-amber-600/50 bg-amber-950/30 text-amber-200'
       }"><span>${isError ? '✕' : '⚠'}</span><span>${esc(messageForCode(i.code, i.message))}</span></div>`;
     }).join('');
+  }
+
+  /**
+   * Ruller til valideringsboksen — det ENE stedet meldingene står etter at
+   * seksjon 6 ble slettet. Både merket i bunnlinja og `main.js`, som stopper
+   * kjøringen på en `error`, går hit.
+   *
+   * IKKE til feltet `issues[0].field` peker på, enda det ville vært bedre:
+   * `validate()` gir feltstier (`'concrete.alpha_cc'`, `'layers.3.dc'`), men
+   * det finnes ingen kobling fra en slik sti til en DOM-node. En tabell her
+   * ville vært EN ANDRE kilde til paret `setupFields()` allerede eier — den
+   * koblingen hører hjemme i `bindField`, ikke her.
+   */
+  function scrollToValidation() {
+    const host = $('#validation');
+    if (host) host.scrollIntoView({ block: 'center' });
   }
 
   /* ---------------------------------------------------------------- *
@@ -1518,8 +2155,11 @@ export function createUI(deps) {
    * Inspeksjonsstripa (hentet fra mockup B).
    *
    * Uten den måtte man rulle ned til resultatseksjonen for å se hva en endring
-   * gjorde — arbeidsarkets eneste alvorlige svakhet. η, M_Rd, x, x/d og
+   * gjorde — arbeidsarkets eneste alvorlige svakhet. η, η_V, M_Rd, x/d og
    * bruddform står derfor fast i bunnlinja ved siden av ΣA_s og d.
+   *
+   * SELVE CELLENE BYGGES AV `bottomBarStripHtml`, som er ren og testbar.
+   * Denne funksjonen eier bare DOM-en rundt.
    *
    * ΣA_s og d hentes fra `result.section_props` etter en kjøring, og fra
    * `derived()` før den — men da MERKET som estimat, slik at ingen kan tro at
@@ -1556,44 +2196,29 @@ export function createUI(deps) {
     }
 
     const strip = $('#bar-inspect');
-    if (strip) {
-      if (!result) {
-        // Uten et gyldig resultat står stripa TOM, ikke med gamle tall. Alt
-        // som kunne gjort tallene ugyldige har alt kastet dem (`invalidate()`).
-        strip.innerHTML = `<div class="leading-tight"><div class="text-[9px] text-slate-500">η</div>` +
-          `<div class="text-xl font-bold num text-slate-700">${DASH}</div></div>`;
-      } else {
-        const eta = headlineUtilisation(result);
-        const status = utilisationStatus(eta);
-        const bending = result.bending || analysisBlock(result) || {};
-        const cell = (label, value) =>
-          `<div class="leading-tight"><div class="text-[9px] uppercase text-slate-500">${label}</div>` +
-          `<div class="num text-slate-200">${value}</div></div>`;
-        // Fargen og merkelappen kommer fra `results.js` sin `utilisationStatus`
-        // — samme kilde som rapporten bruker (plan §7: tersklene står ETT sted).
-        // η_V får sitt EGET merke ved siden av η, med sin egen farge. De to
-        // slås aldri sammen: bøying og skjær kan ha helt ulik utnyttelse, og
-        // ofte i helt ulike lastkombinasjoner. Merket står bare når noen
-        // kombinasjon faktisk fikk skjær evaluert.
-        const etaV = shearHeadlineUtilisation(result);
-        const shearStatus = utilisationStatus(etaV);
-        const shearCell = shearGoverningCombo(result)
-          ? `<div class="leading-tight px-2 py-0.5 rounded border ${esc(shearStatus.classes)}" title="${esc(SHEAR_UTILISATION_LABEL)} — ${esc(shearStatus.label)}">
-               <div class="text-[9px] opacity-70">η_V</div>
-               <div class="text-xl font-bold num">${fmtRatio(etaV, 2)}</div></div>`
-          : '';
-        strip.innerHTML =
-          `<div class="leading-tight px-2 py-0.5 rounded border ${esc(status.classes)}" title="${esc(status.label)}">
-             <div class="text-[9px] opacity-70">η</div>
-             <div class="text-xl font-bold num">${fmtRatio(eta, 2)}</div></div>` +
-          shearCell +
-          cell('M_Rd', `${fmtMomentKNm(momentCapacity(result))} kNm${perMeter}`) +
-          (shearGoverningCombo(result)
-            ? cell('V_Rd', `${fmtForceKN(shearGoverningCombo(result).shear?.V_Rd)} kN${perMeter}`)
-            : '') +
-          cell('x', `${fmtLength(bending.x)} mm`) +
-          cell('x/d', fmtRatio(bending.x_over_d)) +
-          cell('Failure mode', esc(failureModeLabel(bending.failure_mode)));
+    // Samme fem celler med og uten resultat. Uten et gyldig resultat står de
+    // med «–», ALDRI med gamle tall — alt som kunne gjort tallene ugyldige har
+    // allerede kastet dem (`invalidate()`).
+    if (strip) strip.innerHTML = bottomBarStripHtml(result, { perMeter });
+
+    // Valideringsmerket. Det TELLER bare; teksten står i `#validation`, som
+    // klikket ruller til. To steder som skriver ut den samme meldingen ville
+    // vært to steder å glemme å oppdatere.
+    const issuesBtn = $('#bar-issues');
+    if (issuesBtn) {
+      const issues = validate(s);
+      const errors = issues.filter((i) => i.severity === 'error').length;
+      const warnings = issues.length - errors;
+      issuesBtn.hidden = issues.length === 0;
+      if (issues.length) {
+        const bad = errors > 0;
+        issuesBtn.className = 'shrink-0 px-2 py-1 rounded border text-[11px] leading-none num ' +
+          (bad ? 'border-rose-600/50 bg-rose-950/40 text-rose-200 hover:bg-rose-900/50'
+               : 'border-amber-600/50 bg-amber-950/40 text-amber-200 hover:bg-amber-900/50');
+        issuesBtn.textContent = `${bad ? '✕' : '⚠'} ${errors || warnings}`;
+        issuesBtn.title = bad
+          ? `${errors} error${errors === 1 ? '' : 's'} block the calculation — click to see them`
+          : `${warnings} warning${warnings === 1 ? '' : 's'} — click to see them`;
       }
     }
   }
@@ -1602,27 +2227,38 @@ export function createUI(deps) {
    * Knapper
    * ---------------------------------------------------------------- */
 
+  /**
+   * ÉN «Beregn» og ÉN «Avbryt», ikke to av hver. Løkkene over selektorlister
+   * er borte sammen med seksjon 6: så lenge det fantes to knapper med samme
+   * oppgave, var det også to steder en tilstand kunne bli hengende igjen.
+   */
   function renderButtons() {
     const s = store.getState();
     const cancellable = busy && isCancellable(s.analysis);
-    for (const sel of ['#btn-run', '#btn-run-bar']) {
-      const el = $(sel);
-      if (!el) continue;
-      el.disabled = busy;
-      el.classList.toggle('opacity-60', busy);
-      el.classList.toggle('cursor-wait', busy);
+
+    const run = $('#btn-run-bar');
+    if (run) {
+      run.disabled = busy;
+      run.classList.toggle('opacity-60', busy);
+      run.classList.toggle('cursor-wait', busy);
+      // «Beregn» sier hva den kjører (endringsrunde 2 §6) — kort i knappen,
+      // helt ut i `title`, fra samme oppføring.
+      const verb = CALC_VERB[s.analysis];
+      const label = $('#btn-run-bar-label');
+      if (label) label.textContent = verb ? verb.short : 'Calculate';
+      run.title = verb ? verb.long : 'Calculate';
     }
-    for (const sel of ['#btn-cancel', '#btn-cancel-bar']) {
-      const el = $(sel);
-      if (!el) continue;
+
+    const cancel = $('#btn-cancel-bar');
+    if (cancel) {
       // «Avbryt» er DEAKTIVERT for bøyekapasitet og M–N-diagram (plan §3.7):
       // de tar 30–140 ms, og eneste måten å angre dem på er å rive ned en
       // 10 MB runtime. En knapp som koster mer enn jobben den avbryter er
       // verre enn ingen knapp.
-      el.style.display = busy ? '' : 'none';
-      el.disabled = !cancellable;
-      el.classList.toggle('opacity-40', !cancellable);
-      el.title = !cancellable
+      cancel.style.display = busy ? '' : 'none';
+      cancel.disabled = !cancellable;
+      cancel.classList.toggle('opacity-40', !cancellable);
+      cancel.title = !cancellable
         ? 'This analysis takes under a tenth of a second and cannot be cancelled.'
         // «Kjør alle» ER avbrytbar fordi den inneholder moment–krumning
         // (`CANCELLABLE_ANALYSES` i `solver-client.js`), men den stopper
@@ -1631,12 +2267,6 @@ export function createUI(deps) {
         ? 'Cancel the run. The phases that already finished are kept.'
         : 'Cancel the moment–curvature run. Points already calculated are kept.';
     }
-    // «Beregn» sier hva den kjører (endringsrunde 2 §6).
-    const runLabel = CALC_VERB[s.analysis] || 'Calculate';
-    const lbl1 = $('#btn-run-label');
-    if (lbl1) lbl1.textContent = runLabel;
-    const lbl2 = $('#btn-run-bar-label');
-    if (lbl2) lbl2.textContent = runLabel;
   }
 
   /* ---------------------------------------------------------------- *
@@ -1662,14 +2292,10 @@ export function createUI(deps) {
     // (§7, `693-694`) var det den ANDRE av de to kontrollene som måtte bort.
     // Retningen finnes nå BARE som fortegnet på hver kombinasjons `M_Ed`.
 
-    renderChips('#fck-chips', CONCRETE_GRADES.map((g) => ({ value: String(g.fck), label: g.label })),
-      String(s.concrete.fck), (v) => { store.patch('concrete', { fck: Number(v) }); invalidate(); render(); });
-    renderChips('#fyk-chips', STEEL_GRADES.map((g) => ({ value: String(g.fyk) + '|' + g.k + '|' + g.epsuk, label: g.label })),
-      `${s.steel.fyk}|${s.steel.k}|${s.steel.epsuk}`, (v) => {
-        const [fyk, k, epsuk] = v.split('|').map(Number);
-        store.patch('steel', { fyk, k, epsuk });
-        invalidate(); render();
-      });
+    // `#fck-chips` og `#fyk-chips` er borte (runde 6 §2.2). Brikkeraden for
+    // stål skrev `fyk`, `k` OG `epsuk` samtidig som `k` og `ε_uk` hadde egne
+    // felt rett under — to skrivere til samme verdi. Nedtrekkene er ren
+    // AVLEDNING av tilstanden og settes i `syncFields()`.
     // Auto-N–M-regelen (§2): med aksialkraft er «Bending resistance» ETT punkt
     // plukket fra en flate, ikke et selvstendig svar. `allowedAnalyses` er den
     // ENE kilden til hvilke analyser som er lovlige — samme funksjon tast `1`
@@ -1703,15 +2329,38 @@ export function createUI(deps) {
     const mats = derivedMaterials(s);
     const matSum = $('#mat-summary');
     if (matSum) {
-      const grade = CONCRETE_GRADES.find((g) => g.fck === Number(s.concrete.fck));
-      matSum.innerHTML = `${esc(grade ? grade.label : `f<sub>ck</sub> ${fmtNumber(s.concrete.fck, 0)}`)} · ` +
-        `B${fmtNumber(s.steel.fyk, 0)} · ${esc(lawLabel(s.concrete.law))}`;
+      // SAMME oppslag som nedtrekkene bruker. Linja sto før med sin egen
+      // `CONCRETE_GRADES.find(...)` og skrev stålkvaliteten som `B${fyk}` —
+      // altså «B500» for BÅDE B500NA og B500NC, som er to ulike kvaliteter med
+      // ε_uk 2,5 % mot 7,5 %. Sammendraget kunne dermed ikke skille dem, mens
+      // nedtrekket kunne: to kilder til samme opplysning, og den kortere av
+      // dem var den som løy.
+      const cGrade = matchConcreteGrade(s.concrete.fck);
+      const sGrade = matchSteelGrade(s.steel);
+      matSum.innerHTML = `${esc(cGrade ? cGrade.label : `f_ck ${fmtNumber(s.concrete.fck, 0)} MPa`)} · ` +
+        `${esc(sGrade ? sGrade.label : `f_yk ${fmtNumber(s.steel.fyk, 0)} MPa (custom)`)} · ` +
+        `${esc(lawLabel(s.concrete.law))}`;
     }
     const facSum = $('#fac-summary');
     if (facSum) {
-      facSum.innerHTML = `Factors and stress–strain law — γ<sub>c</sub> ${fmtNumber(s.concrete.gamma_c, 2)} · ` +
+      // §2.6: EN SAMMENFOLDET BOKS MÅ TRYKKE VERDIENE SINE I SUMMARY. Alle sju
+      // tallene som bor bak dette klikket står her, så en avvikende γ_c eller
+      // en E_s som ikke er 200 GPa kan ses UTEN å åpne boksen. Det er
+      // forskjellen på å skjule og å skjule bort.
+      facSum.innerHTML = `Factors and material model — γ<sub>c</sub> ${fmtNumber(s.concrete.gamma_c, 2)} · ` +
         `α<sub>cc</sub> ${fmtNumber(s.concrete.alpha_cc, 2)} · γ<sub>s</sub> ${fmtNumber(s.steel.gamma_s, 2)} · ` +
-        `k ${fmtNumber(s.steel.k, 2)} · ε<sub>uk</sub> ${fmtPercent(s.steel.epsuk, 1)} %`;
+        `γ<sub>ε</sub> ${fmtNumber(s.steel.gamma_eps, 2)} · k ${fmtNumber(s.steel.k, 2)} · ` +
+        `ε<sub>uk</sub> ${fmtPercent(s.steel.epsuk, 1)} % · E<sub>s</sub> ${fmtNumber(s.steel.Es, 0)} MPa`;
+    }
+    const spacingSum = $('#spacing-summary');
+    if (spacingSum) {
+      // Samme regel. `cover_side` er ikke med for plata — den har ingen
+      // sidekant å måle fra, og feltet er skjult (`syncFields`). Et tall i
+      // sammendraget for et felt som ikke finnes ville vært et tall ingen kan
+      // rette.
+      const side = s.sectionType === 'slab' ? '' : `c<sub>side</sub> ${fmtNumber(s.cover_side, 0)} mm · `;
+      spacingSum.innerHTML = `${side}k<sub>1</sub> ${fmtNumber(s.spacing.k1, 2)} · ` +
+        `k<sub>2</sub> ${fmtNumber(s.spacing.k2, 2)} · d<sub>g</sub> ${fmtNumber(s.spacing.d_g, 0)} mm`;
     }
     const matDer = $('#mat-derived');
     if (matDer) {
@@ -1746,10 +2395,15 @@ export function createUI(deps) {
       // `totalAswPerSpacing` fra `rebar.js` — SAMME funksjon `section.js` sin
       // minstekrav-kontroll og motoren summerer med. Regnes den om her, kan
       // skjemaet og feilmeldingen komme til å si to ulike ting.
+      // §2.6: boksen er nå sammenfoldbar, og da må sammendraget bære ALLE
+      // verdiene bak klikket — også θ og z_factor, som avgjør V_Rd,s og
+      // V_Rd,max. Uten dem kunne en fil med θ = 30° sett ut som en fil med 45°.
+      const strut = `θ ${fmtNumber(s.shear.strut_angle_deg, 1)}° · ` +
+        `z ${fmtNumber(s.shear.z_factor, 2)}·d`;
       shearSum.innerHTML = list.length
         ? `${list.length} row${list.length === 1 ? '' : 's'} · ΣA<sub>sw</sub>/s ` +
-          `${fmtNumber(totalAswPerSpacing(list), 3)} mm²/mm · θ ${fmtNumber(s.shear.strut_angle_deg, 1)}°`
-        : 'No stirrups · V<sub>Rd</sub> = V<sub>Rd,c</sub>';
+          `${fmtNumber(totalAswPerSpacing(list), 3)} mm²/mm · ${strut}`
+        : `No stirrups · V<sub>Rd</sub> = V<sub>Rd,c</sub> · ${strut}`;
     }
     const shearHint = $('#shear-hint');
     if (shearHint) {
@@ -1802,11 +2456,98 @@ export function createUI(deps) {
         `${esc(active ? (active.name || active.id) : s.activeCombo)} · ${esc(directionLabel(dir))}`;
     }
 
+    // REGEL 1 (§2.6), og den kjøres FØR `renderValidation()` med vilje: står
+    // meldingen «α_cc må være større enn 0» i boksen mens feltet den peker på
+    // er sammenfoldet, er kalkulatoren en kalkulator som lyver. `openBoxes`
+    // kan bare ÅPNE — se der for hvorfor det aldri er lov å lukke.
+    openBoxes(boxesForIssues(validate(s)));
+    // …og §2.1: felt som skal være ALLTID synlige kan ikke ligge i en lukket
+    // boks bare fordi de ble lagt inn utenom UI-et.
+    openBoxes(boxesAlwaysOpen(s));
     renderValidation();
     renderResult();
     renderBottomBar();
     renderButtons();
     renderEngine();
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Progressiv avdekking — DOM-siden (§2.6)
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Hvilke bokser som står åpne lagres i `sessionStorage`, IKKE i `store.js`.
+   *
+   * `store.js:20` slår fast at lagring er kuttet med vilje, og tilstanden der
+   * er MODELLEN — det som havner i payloaden til motoren og i den lagrede
+   * fila. Om en boks er foldet ut er en visningspreferanse: den skal ikke bli
+   * med i en delt fil, den skal ikke kaste resultatet, og den skal ikke måtte
+   * versjoneres i `SCHEMA_VERSION`. `sessionStorage` og ikke `localStorage`
+   * fordi preferansen hører til ØKTEN — neste gang er det gjerne et annet snitt.
+   */
+  const DISCLOSURE_KEY = 'csc:disclosure';
+
+  function readDisclosure() {
+    // Privat modus og blokkerte informasjonskapsler KASTER på `sessionStorage`.
+    // Et skjema som ikke lar seg fylle ut fordi en visningspreferanse ikke kunne
+    // leses ville vært en absurd feil, så all lagring er «best effort».
+    try {
+      return JSON.parse(sessionStorage.getItem(DISCLOSURE_KEY)) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeDisclosure(map) {
+    try {
+      sessionStorage.setItem(DISCLOSURE_KEY, JSON.stringify(map));
+    } catch {
+      /* ingen lagring tilgjengelig — boksene oppfører seg som en fersk økt */
+    }
+  }
+
+  /**
+   * AUTOMATIKKEN FÅR BARE ÅPNE, ALDRI LUKKE (§2.6 regel 2).
+   *
+   * Å lukke en `<details>` som inneholder fokus flytter fokus til `<body>` midt
+   * i en Tab — og `render()` kjøres fra hvert eneste felt, altså nettopp mens
+   * brukeren tabber. Det er den ENESTE måten avdekkingen kan ødelegge
+   * tastaturnavigasjonen på, og derfor finnes det ingen `closeBoxes`.
+   *
+   * `el.open` settes bare når den er `false`: en tilordning av `true` til en
+   * allerede åpen `<details>` fyrer riktignok ingen `toggle`, men en sjekk her
+   * er billigere enn å stole på det.
+   */
+  function openBoxes(ids) {
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el && !el.open) el.open = true;
+    }
+  }
+
+  /** REGEL 3 (§2.6): avvik fra standarden skal ikke kunne gjemme seg. Kjøres
+   *  ved oppstart og etter hver lasting — ikke ved hver opptegning, ellers
+   *  ville en boks med et avvik vært umulig å lukke igjen. */
+  function revealNonDefaults() {
+    openBoxes(boxesForNonDefaults(store.getState()));
+  }
+
+  function setupDisclosure() {
+    for (const box of DISCLOSURE_BOXES) {
+      const el = document.getElementById(box.id);
+      if (!el) continue;
+      const saved = readDisclosure()[box.id];
+      if (typeof saved === 'boolean') el.open = saved;
+      // `toggle` og ikke `click` på summary: `<details>` kan også åpnes av
+      // tastatur, av «finn på siden» i nettleseren, og av `openBoxes` over.
+      // `toggle` er det ene stedet alle de veiene møtes.
+      el.addEventListener('toggle', () => {
+        const map = readDisclosure();
+        map[box.id] = el.open;
+        writeDisclosure(map);
+      });
+    }
+    revealNonDefaults();
   }
 
   /* ---------------------------------------------------------------- *
@@ -1818,41 +2559,225 @@ export function createUI(deps) {
     return Boolean(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
   };
 
-  function setupKeyboard() {
-    document.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); onCalculate(); return; }
-      // Ctrl+mellomrom (bestillingens punkt 5, plan §6): Ctrl+Enter er ALIAS,
-      // ikke erstattet — begge må ligge HER, FØR `inField()`-sjekken under,
-      // ellers virker de ikke fra et tekstfelt, som er nettopp der «Beregn»
-      // trengs mest (man har akkurat skrevet inn et tall).
-      if ((e.ctrlKey || e.metaKey) && e.key === ' ') { e.preventDefault(); onCalculate(); return; }
-      if (e.altKey && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); duplicateLast(); return; }
-      if (e.key === 'Escape') { const h = $('#help'); if (h) h.classList.add('hidden'); }
-      if (inField() || e.ctrlKey || e.metaKey || e.altKey) return;
-      const k = e.key.toLowerCase();
-      if (k === 'a') {
-        e.preventDefault();
-        const f = $('#sh-input');
-        if (f) { f.scrollIntoView({ block: 'center' }); f.focus(); }
-      } else if (k === 'b') { store.setSectionType('beam'); invalidate(); render(); }
-      else if (k === 'p') { store.setSectionType('slab'); invalidate(); render(); }
-      // `f`/`s` (retning) er fjernet (§6, §7) — retningen finnes ikke lenger
-      // som et eget felt å snarveie til, bare som fortegnet på M_Ed.
-      // `4` er «kjør alle» — samme rekkefølge som chippene, som er `ANALYSES`
-      // sin egen. Tallene leses av lista, ikke skrevet av: en femte analyse
-      // skal ikke kunne havne i chipraden uten å få tasten sin.
-      else if (Number(k) >= 1 && Number(k) <= ANALYSES.length) {
-        const value = ANALYSES[Number(k) - 1][0];
-        // Samme dør som chippen (§2): tast `1` skal IKKE kunne sette
-        // `analysis: 'bending'` når en kombinasjon har aksialkraft. Uten denne
-        // sjekken var snarveien den ANDRE veien inn regelen ellers glemte å
-        // stenge.
-        if (allowedAnalyses(store.getState()).concat(RUN_ALL).includes(value)) {
-          store.setState({ analysis: value }); invalidate(); render();
-        }
+  /**
+   * `<details>`-boksene i én seksjon — eller alle, uten argument.
+   *
+   * LESER `DISCLOSURE_BOXES`, ikke DOM-en: den lista er allerede den ene
+   * kilden til hvilke bokser som er «Advanced» (regel 1 og 3 leser den), og en
+   * `document.querySelectorAll('details')` ville i tillegg fanget
+   * forutsetningsboksen nederst i resultatseksjonen — som ikke er et
+   * inndatafelt og ikke har noe i `E` å gjøre.
+   */
+  function advancedBoxes(sectionId) {
+    const sec = sectionId ? document.getElementById(sectionId) : null;
+    return DISCLOSURE_BOXES
+      .map((b) => document.getElementById(b.id))
+      .filter((el) => el && (!sec || sec.contains(el)));
+  }
+
+  /**
+   * ALLE ELLER INGEN. Geometriseksjonen har to bokser; vekslet `E` dem hver
+   * for seg, ville andre trykk lukket den ene og åpnet den andre, og tredje
+   * trykk gitt utgangsstillingen igjen — en bryter uten av-stilling.
+   *
+   * Lukking flytter fokus til `<summary>` FØRST når fokus står inne i boksen.
+   * Regel 2 (§2.6) forbyr AUTOMATIKKEN å lukke, nettopp fordi en lukket
+   * `<details>` kaster fokus til `<body>`. Her er det brukeren selv som
+   * lukker, men prisen er den samme, og den er betalt med to linjer.
+   */
+  function toggleBoxes(list) {
+    if (!list.length) return;
+    const open = list.some((el) => !el.open);
+    for (const el of list) {
+      if (!open && el.contains(document.activeElement)) {
+        const sum = el.querySelector('summary');
+        if (sum) sum.focus();
       }
-      else if (k === '?' || (e.shiftKey && k === '/')) { const h = $('#help'); if (h) h.classList.toggle('hidden'); }
+      el.open = open;
+    }
+  }
+
+  /** Står rapporten åpen? */
+  const reportOpen = () => { const r = $('#report-overlay'); return Boolean(r && !r.hidden); };
+
+  /** SAMME DØR SOM MUSEKLIKKET. `main.js` eier lukkingen av rapporten; et
+   *  `overlay.hidden = true` her ville vært en andre kilde til den samme
+   *  tilstandsovergangen, og den ville sluttet å følge med den dagen lukkingen
+   *  fikk noe mer å gjøre. */
+  const closeReport = () => $('#report-close')?.click();
+
+  /** Overlegget som ligger øverst nå, eller `null`. `Escape` lukker ETT om
+   *  gangen: rapporten kan stå åpen bak hjelpelista. */
+  function topOverlay() {
+    const help = $('#help');
+    if (help && !help.classList.contains('hidden')) return () => help.classList.add('hidden');
+    return reportOpen() ? closeReport : null;
+  }
+
+  /** Handlingene, slått opp på navn. Tabellen `SHORTCUTS` sier HVILKEN tast;
+   *  denne sier HVA den gjør. Ingen tast er skrevet her. */
+  const ACTIONS = {
+    calc: () => onCalculate(),
+    runAll: () => {
+      // «Kjør alle» er en analyse som alle andre (`RUN_ALL` i `ANALYSES`), og
+      // den er ALLTID lovlig. Samme tre linjer som chippen gjør — velg, kast
+      // det gamle svaret, tegn — og så kjør.
+      if (store.getState().analysis !== RUN_ALL) {
+        store.setState({ analysis: RUN_ALL });
+        invalidate();
+        render();
+      }
+      onCalculate();
+    },
+    duplicate: () => duplicateLast(),
+    advancedAll: () => toggleBoxes(advancedBoxes()),
+    toggleAdvanced: () => toggleBoxes(advancedBoxes(visibleSection)),
+    closeOverlay: () => { const close = topOverlay(); if (close) close(); },
+    focusShorthand: () => {
+      const f = $('#sh-input');
+      if (f) { f.scrollIntoView({ block: 'center' }); f.focus(); }
+    },
+    focusSection: () => {
+      // Overgangen fra mus til tastatur: man har rullet dit med musa, og vil
+      // skrive. Bare ekte inndatafelt teller — en knapp er ikke noe å skrive i,
+      // og `F` i resultatseksjonen skal derfor ikke flytte fokus i det hele
+      // tatt framfor å lande på «Print».
+      const sec = document.getElementById(visibleSection);
+      const f = sec && sec.querySelector('input:not([readonly]):not([disabled]), select:not([disabled]), textarea:not([readonly])');
+      if (f) f.focus();
+    },
+    toggleType: () => {
+      // EN SYKLING OVER EN LISTE, ikke en if/else (§2.3). Lista er segmentets
+      // egne knapper — den SAMME lista musa klikker i. Kommer T-tverrsnittet
+      // veikartet lover, får det tasten sin av å finnes i markupen, og ingen
+      // her må huske å utvide en `if`.
+      //
+      // Og `.click()` framfor `store.setSectionType(...)`: knappens egen
+      // handler nullstiller også radeditoren (`editing = null`). Den gamle
+      // `B`/`P`-koden gjorde det IKKE, så en åpen radeditor ble stående igjen
+      // over et tverrsnittsbytte som hadde skrevet om alle lagene under den.
+      const btns = $$('#type-seg button[data-v]');
+      if (!btns.length) return;
+      const cur = btns.findIndex((b) => b.dataset.v === store.getState().sectionType);
+      btns[(cur + 1) % btns.length].click();
+    },
+    toggleReport: () => { if (reportOpen()) closeReport(); else onReport(); },
+    help: () => $('#help')?.classList.toggle('hidden'),
+    analysis: (hit) => {
+      const entry = ANALYSES[hit.index];
+      if (!entry) return;
+      // Samme dør som chippen (§2): tast `1` skal IKKE kunne sette
+      // `analysis: 'bending'` når en kombinasjon har aksialkraft. Uten denne
+      // sjekken var snarveien den ANDRE veien inn regelen ellers glemte å
+      // stenge.
+      if (allowedAnalyses(store.getState()).concat(RUN_ALL).includes(entry[0])) {
+        store.setState({ analysis: entry[0] }); invalidate(); render();
+      }
+    },
+  };
+
+  /* -- Hurtigtastmerker: hold Alt, se tastene ------------------------ */
+
+  /** Hvor lenge `Alt` må holdes. Kort nok til å føles umiddelbart, langt nok
+   *  til at `Alt+D` og `Alt+Tab` ikke blinker merker på skjermen. */
+  const KEYTIP_HOLD_MS = 300;
+  let keyTipTimer = null;
+  let keyTipsOn = false;
+
+  /**
+   * Merkene leser `SHORTCUTS`. Det er hele poenget med dem: står tasten i
+   * tabellen, står den på kontrollen, og en snarvei kan ikke bli udokumentert.
+   *
+   * MERKET HENGES PÅ FORELDEREN til et `<input>`/`<select>`: `::after` finnes
+   * ikke på erstattede elementer, så et merke på selve feltet ville vært
+   * usynlig — den tause varianten av å ikke ha merket i det hele tatt.
+   *
+   * En DEAKTIVERT kontroll får ikke merke. Et merke er et løfte om at tasten
+   * virker, og på en grå chip ville løftet vært falskt.
+   */
+  function showKeyTips() {
+    for (const s of SHORTCUTS) {
+      if (!s.mark) continue;
+      const key = markKey(s);
+      if (!key) continue;
+      const el = $(s.mark);
+      if (!el || el.disabled) continue;
+      const host = /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) ? el.parentElement : el;
+      if (host) host.setAttribute('data-key', key);
+    }
+    keyTipsOn = true;
+  }
+
+  /** Ryddes på `keyup` OG på `window.blur` — uten den siste henger merkene
+   *  igjen etter `Alt+Tab`, fordi `keyup` for Alt da aldri kommer til sida. */
+  function hideKeyTips() {
+    if (keyTipTimer !== null) { clearTimeout(keyTipTimer); keyTipTimer = null; }
+    if (!keyTipsOn) return;
+    for (const el of $$('[data-key]')) el.removeAttribute('data-key');
+    keyTipsOn = false;
+  }
+
+  /* -- Hjelpelista og hintene på knappene ---------------------------- */
+
+  /**
+   * Hjelpeoverlegget BYGGES av `SHORTCUTS`, det skrives ikke i `index.html`.
+   * Den håndskrevne tabellen der lovet `B`/`P` lenge etter at tastene var
+   * omdiskutert, og tidde om `Alt+E` — en hjelpetekst er den eneste
+   * dokumentasjonen ingen test leser, med mindre den er avledet.
+   */
+  function renderHelp() {
+    const body = $('#help-rows');
+    if (!body) return;
+    body.innerHTML = shortcutHelpRows().map((r) => {
+      const keys = r.keys
+        .map((k) => k.map((n) => `<kbd>${esc(n)}</kbd>`).join(' '))
+        .join(' <span class="text-slate-600">/</span> ');
+      return `<tr><td class="whitespace-nowrap align-top">${keys}</td>` +
+             `<td class="text-slate-300">${esc(r.help)}</td></tr>`;
+    }).join('');
+  }
+
+  /** De faste hintene på knappene («⌃Space» i bunnlinja) fylles fra samme
+   *  tabell. Sto de i markupen, ville de vært en tredje kilde til tasten. */
+  function renderShortcutHints() {
+    for (const s of SHORTCUTS) {
+      if (!s.kbd) continue;
+      const el = $(s.kbd);
+      if (el) el.textContent = comboShort(hintCombo(s));
+    }
+  }
+
+  function setupKeyboard() {
+    renderHelp();
+    renderShortcutHints();
+
+    document.addEventListener('keydown', (e) => {
+      // `Alt` alene: hold den, og merkene kommer. `e.repeat` filtrerer bort
+      // autogjentakelsen — uten den ville timeren blitt satt på nytt for hvert
+      // gjentatte keydown og merkene aldri kommet.
+      if (e.key === 'Alt' && !e.ctrlKey) {
+        if (!e.repeat && !keyTipsOn && keyTipTimer === null) {
+          keyTipTimer = setTimeout(() => { keyTipTimer = null; showKeyTips(); }, KEYTIP_HOLD_MS);
+        }
+        return;
+      }
+
+      const hit = shortcutFor(e, { inField: inField() });
+      if (!hit) return;
+      // `preventDefault()` på ALT som treffer: det er dette som holder
+      // `Alt+Mellomrom` unna Windows' vindusmeny, og `Mellomrom` unna å rulle
+      // sida. Ligger den bare på noen av grenene, er forskjellen usynlig helt
+      // til den ene tasten som manglet den gjør noe annet enn den lover.
+      e.preventDefault();
+      hideKeyTips();
+      const run = ACTIONS[hit.action];
+      if (run) run(hit);
     });
+
+    document.addEventListener('keyup', (e) => {
+      if (e.key === 'Alt' || !e.altKey) hideKeyTips();
+    });
+    window.addEventListener('blur', hideKeyTips);
   }
 
   /* ---------------------------------------------------------------- *
@@ -1860,14 +2785,13 @@ export function createUI(deps) {
    * ---------------------------------------------------------------- */
 
   function setupButtons() {
-    for (const sel of ['#btn-run', '#btn-run-bar']) {
-      const el = $(sel);
-      if (el) el.onclick = () => onCalculate();
-    }
-    for (const sel of ['#btn-cancel', '#btn-cancel-bar']) {
-      const el = $(sel);
-      if (el) el.onclick = () => onCancel();
-    }
+    const run = $('#btn-run-bar');
+    if (run) run.onclick = () => onCalculate();
+    const cancel = $('#btn-cancel-bar');
+    if (cancel) cancel.onclick = () => onCancel();
+    // Merket er en snarvei TIL forklaringen, ikke forklaringen selv.
+    const issues = $('#bar-issues');
+    if (issues) issues.onclick = () => scrollToValidation();
     const report = $('#btn-report');
     if (report) report.onclick = () => onReport();
     const help = $('#btn-help');
@@ -1880,17 +2804,58 @@ export function createUI(deps) {
 
   function setupNav() {
     if (!('IntersectionObserver' in window)) return;
-    const ids = ['s-mat', 's-geo', 's-arm', 's-last', 's-ana', 's-calc', 's-res'];
+    // `s-calc` er borte (seksjon 6 slettet). Lista må følge navigasjonen i
+    // `index.html`: en id som ikke finnes gir ingen feil, bare en lenke som
+    // aldri lyser opp — den tause varianten.
+    const ids = ['s-mat', 's-geo', 's-arm', 's-last', 's-ana', 's-res'];
+
+    /**
+     * ÉN OBSERVATØR OVER ALLE SEKSJONENE, og svaret er den ØVERSTE som er i
+     * båndet.
+     *
+     * Før var det seks observatører, én per seksjon, og hver av dem skrev
+     * navlenkene når NETTOPP DEN krysset inn. Vinneren var altså «den som
+     * fyrte sist», og båndet (110 px til 45 % av høyden ≈ 300 px) rommer to
+     * seksjoner om gangen. MÅLT i nettleseren, 1440×900, rulling gjennom alle
+     * seks og tilbake: 5 av 11 stillinger lyste på feil lenke, og ved oppstart
+     * — med brukeren øverst på sida — lyste «2 Geometry».
+     *
+     * Verre: en seksjon som ALLEREDE krysser og fortsetter å gjøre det, får
+     * ingen ny hendelse. Rullet man til en slik seksjon, ble svaret stående
+     * på den forrige uten at noe skjedde.
+     *
+     * Det var til å leve med så lenge svaret bare farget en lenke. Fra nå av
+     * er det svaret `F` og `E` handler på — «fokuser første felt i seksjonen
+     * du ser på» som lander i en annen seksjon er ikke en unøyaktighet, det er
+     * en snarvei som gjør noe annet enn den sier. Derfor ett sett, én
+     * avgjørelse, og en regel som ikke avhenger av rekkefølgen hendelsene kom
+     * i: dokumentrekkefølgen.
+     */
+    const inView = new Set();
+    const obs = new IntersectionObserver((entries) => {
+      for (const en of entries) {
+        if (en.isIntersecting) inView.add(en.target.id);
+        else inView.delete(en.target.id);
+      }
+      // Ingen seksjon i båndet (man ruller mellom to): BEHOLD forrige svar.
+      // Et tomt svar ville gjort både navlenkene og `F` blinde i mellomrommet.
+      //
+      // ÉN KJENT BEGRENSNING, MÅLT: nederst på sida (scrollY = maks) kan de to
+      // siste seksjonene ikke nå opp i båndet i det hele tatt, og svaret blir
+      // stående på «4 Loads» enda man ser på resultatet. Å rette det krever en
+      // rulle-lytter i tillegg til observatøren — altså en ANDRE kilde til det
+      // samme spørsmålet, som er nøyaktig feilformen denne funksjonen nettopp
+      // ble kvitt. Den dagen seksjonene får mer innhold under seg, forsvinner
+      // tilfellet av seg selv.
+      const id = ids.find((i) => inView.has(i));
+      if (!id) return;
+      visibleSection = id;
+      $$('.navlink').forEach((a) => { a.dataset.on = String(a.getAttribute('href') === `#${id}`); });
+    }, { rootMargin: '-110px 0px -55% 0px', threshold: 0 });
+
     for (const id of ids) {
       const node = document.getElementById(id);
-      if (!node) continue;
-      const obs = new IntersectionObserver((entries) => {
-        for (const en of entries) {
-          if (!en.isIntersecting) continue;
-          $$('.navlink').forEach((a) => { a.dataset.on = String(a.getAttribute('href') === `#${id}`); });
-        }
-      }, { rootMargin: '-110px 0px -55% 0px', threshold: 0 });
-      obs.observe(node);
+      if (node) obs.observe(node);
     }
   }
 
@@ -1905,6 +2870,10 @@ export function createUI(deps) {
       setupButtons();
       setupKeyboard();
       setupNav();
+      // FØR `render()`: `setupDisclosure` leser den lagrede stillingen og
+      // åpner det som avviker fra standarden. Kjørte den etterpå, ville
+      // boksene stått feil gjennom den første opptegningen.
+      setupDisclosure();
       // Pekerboblene henges på resultatseksjonen én gang. Figurene byttes ut
       // ved hver beregning, men lytteren sitter over dem og overlever det.
       attachChartTips(document.getElementById('s-res'));
@@ -1912,6 +2881,10 @@ export function createUI(deps) {
     },
     render,
     renderEngine,
+    /** Ruller til valideringsboksen. `main.js` bruker den når `validate()`
+     *  stoppet kjøringen — boksen flyttet med seksjon 6, og et hardkodet
+     *  `#s-calc` i `main.js` ville bare rullet til ingenting. */
+    scrollToValidation,
     /** Beregningen er i gang / ferdig — styrer «Beregn» og «Avbryt». */
     setBusy(value) {
       busy = Boolean(value);

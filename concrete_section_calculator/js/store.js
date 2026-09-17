@@ -398,6 +398,14 @@ export function createStore(initial) {
         );
       }
       state = next;
+      // `suggestedDc` er ikke lenger uavhengig av tverrsnittstypen: plata har ingen
+      // bøyle, så `dc = cover + dia/2` der bjelken har `cover + stirrup_dia + dia/2`.
+      // Uten denne omregningen blir `dc` stående fra den forrige typen — 12 mm feil
+      // med Ø12. Målt: bjelke → plate ga d = 543 der 555 er riktig, og plate → bjelke
+      // ga d 12 mm FOR STOR, altså M_Rd og A_s,min overvurdert. Det er den retningen
+      // som er på usikker side, og den ville stått til brukeren tilfeldigvis rørte
+      // `cover`, en diameter eller la til et lag — `h` og senteravstand utløser den ikke.
+      applyAutoDc();
       notify();
       return state;
     },

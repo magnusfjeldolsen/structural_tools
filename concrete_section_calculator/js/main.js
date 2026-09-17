@@ -99,7 +99,12 @@ export function startApp() {
       // Valideringen er allerede tegnet ved «Beregn»; å kjøre videre ville gitt
       // et tøvete tall i stedet for en melding brukeren kan gjøre noe med.
       ui.render();
-      document.getElementById('s-calc')?.scrollIntoView({ block: 'center' });
+      // Seksjon 6 er slettet, og `#validation` bor nå øverst i resultatseksjonen.
+      // Målet spørres derfor om fra `ui.js`, som eier DOM-en. En id skrevet her
+      // ville pekt på en seksjon som ikke finnes lenger, og `?.` ville gjort den
+      // manglende rullingen HELT taus — ingen feil, bare en bruker som ikke får
+      // se meldingen som stoppet kjøringen.
+      ui.scrollToValidation();
       return null;
     }
 

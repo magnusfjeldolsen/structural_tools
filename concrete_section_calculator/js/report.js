@@ -438,8 +438,22 @@ function rebarChapter(state, result, props) {
     ],
     ['d = d_eff, tension reinforcement alone [mm]', fmtLength(dEff, 1)],
     ['d_eff,all, area-weighted over all layers [mm]', dAll === null ? DASH : fmtLength(dAll, 1)],
-    ['ρ = ΣA_s/(b_t·d) [–]', fmtRatio(props.rho, 4)],
+    // ETIKETTRETTELSE (runde 6). Sto tidligere «ρ = ΣA_s/(b_t·d)», men tallet
+    // motoren sender er `as_tension / (b · d_eff)` (`engine.py:1264`, med sin
+    // egen fem linjers begrunnelse for at teller og nevner må gjelde SAMME
+    // armering). For et dobbeltarmert snitt gjorde den gamle etiketten tallet
+    // uetterprøvbart: leseren som regnet ΣA_s/(b·d) etter fikk et annet svar
+    // enn det som sto, og hadde ingen måte å se hvem av dem som var feil.
+    ['ρ_l = A_s,tension/(b_t·d_eff) [–]', fmtRatio(props.rho, 4)],
     [`A_s,min [mm²]${perMeter}`, fmtArea(props.As_min)],
+    // M_cr står RETT VED A_s,min fordi A_s,min er EC2 9.2.1.1 sitt forenklede
+    // surrogat for nettopp |M_Rd| ≥ M_cr (plan §1.5). Leseren skal kunne se
+    // begge tallene samtidig: de er nesten ekvivalente der `d` er ekte, og
+    // divergerer bare der `d` har degenerert — hvilket er nøyaktig tilfellet
+    // der A_s,min består vakuøst. Per meter for plate, fordi W = b·h²/6 med
+    // b = 1000 mm; notatet under om «reinforcement quantities» dekker ikke et
+    // moment, så merkingen må stå i etiketten.
+    [`M_cr = W·(f_ctm − N_Ed/A_c) [kNm]${perMeter}`, fmtMomentKNm(props.M_cr)],
     [`A_s,max [mm²]${perMeter}`, fmtArea(props.As_max)],
   ]);
 
@@ -450,6 +464,24 @@ function rebarChapter(state, result, props) {
     `calculated with. Which layers are in tension is decided by the strain plane at ` +
     `failure, not by the geometry — <b>d_eff,all</b> stands next to it precisely so the ` +
     `choice is visible.</p>` +
+    // Runde 6 §1.3: fallbacken i `_effective_depth` er fjernet, så et snitt
+    // uten armering i strekk gir `d_eff = null` i stedet for et oppdiktet
+    // tall. Uten denne setningen ser en rad med «–» ut som en feil i
+    // programmet framfor det den er: en opplysning om tverrsnittstilstanden.
+    // `${DASH}` og ikke en hardkodet tankestrek: teksten MÅ vise det samme
+    // tegnet tabellcellene faktisk får, ellers peker forklaringen på et
+    // symbol som ikke finnes i tabellen over den.
+    // Betinget av `d_eff === null` og ikke fast: `ρ_l` og `A_s,min` er BEGGE
+    // avledet av `d_eff`, så de tre radene blir strek i samme øyeblikk og av
+    // samme grunn. En note som sto der uansett ville forklart noe leseren ikke
+    // ser, og lært ham å hoppe over notene.
+    (dEff === null
+      ? `<p class="note"><b>d_eff</b>, <b>ρ_l</b> and <b>A_s,min</b> read ` +
+        `${DASH} because no reinforcement lies in the tension zone at failure. EC2 ` +
+        `9.2.1.1 has no effective depth to build those figures from, and a number ` +
+        `printed anyway would be invented. The brittle-failure check |M_Rd| ≥ M_cr ` +
+        `in chapter 5 is the one that still applies to such a section.</p>`
+      : '') +
     (state?.sectionType === 'slab'
       ? `<p class="note">All reinforcement quantities for the slab are <b>per metre width</b>.</p>`
       : '');

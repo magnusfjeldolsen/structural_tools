@@ -37,17 +37,25 @@
  * Protokollkonstanter
  * ================================================================== */
 
-/** Fasene i `progress.phase` (plan §3.3), med norsk tekst til statuspilla. */
+/**
+ * Fasene i `progress.phase` (plan §3.3), som tekst til statuspilla.
+ *
+ * BRUKERVENDT, ALTSAA ENGELSK. Disse sto på norsk og gikk rett ut i statuspilla
+ * øverst og i bunnlinja — «Laster Python-kjernen» i et grensesnitt som ellers er
+ * engelsk. Språktestene fantes, men dekket `charts.js`, `report.js` og
+ * `results.js`, ikke denne fila; derfor sto det i fem runder uten å falle.
+ * Testen er nå utvidet til å lese herfra også.
+ */
 export const PHASE_LABELS = Object.freeze({
-  runtime: 'Laster Python-kjernen',
-  packages: 'Laster numpy, shapely og structuralcodes',
-  engine: 'Starter beregningsmotoren',
-  section: 'Bygger tverrsnittet',
-  solve: 'Regner',
+  runtime: 'Loading the Python runtime',
+  packages: 'Loading numpy, shapely and structuralcodes',
+  engine: 'Starting the calculation engine',
+  section: 'Building the cross-section',
+  solve: 'Solving',
 });
 
 export function phaseLabel(phase) {
-  return PHASE_LABELS[phase] || 'Arbeider';
+  return PHASE_LABELS[phase] || 'Working';
 }
 
 /**

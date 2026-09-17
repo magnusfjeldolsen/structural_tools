@@ -11,7 +11,12 @@
  * telles ikke som 'longtask'. En nullmaaling uten en positiv kontroll er derfor
  * verdiloes. Denne fila blokkerer 300 ms fra sidens EGEN setTimeout foer hver
  * maaling, og AVBRYTER hvis observeren ikke fanget den. Av samme grunn startes
- * beregningen med et ekte klikk paa #btn-run, ikke fra page.evaluate.
+ * beregningen med et ekte klikk paa #btn-run-bar, ikke fra page.evaluate.
+ *
+ * ETTER RUNDE 6 PUNKT 2.5 finnes «Beregn», «Avbryt» og motorstatusen BARE i
+ * bunnlinja: seksjon 6 med #btn-run, #btn-cancel og #engine-card er slettet.
+ * Denne fila er ytelsesharnisket og kjoeres ikke av `npm run test:concrete-section`,
+ * saa den ville roeket STILLE hvis selektorene ikke fulgte med.
  *
  * DEN MAALER OGSAA det som faktisk ble endret i denne runden: at «Avbryt»
  * fortsatt virker midt i en kjoering, og at «Run all» (planens punkt D) gir den
@@ -86,7 +91,7 @@ page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 await page.addInitScript({ content: INIT });
 log('aapner index.html …');
 await page.goto(`${BASE}/index.html`, { waitUntil: 'domcontentloaded' });
-await page.waitForSelector('#btn-run', { timeout: 10000 });
+await page.waitForSelector('#btn-run-bar', { timeout: 10000 });
 log('venter paa at motoren varmer opp (~10 MB) …');
 await page.evaluate('window.ModuleAPI.ready()', null);
 
@@ -113,7 +118,7 @@ async function measure(analysis) {
   const chosen = await page.evaluate('window.ModuleAPI.getInputs().analysis');
   await page.evaluate('window.__reset()');
   const t = Date.now();
-  await page.click('#btn-run');
+  await page.click('#btn-run-bar');
   await page.waitForFunction('window.lastCalculationResults !== null', null, { timeout: 180000 });
   const wall = Date.now() - t;
   const m = await page.evaluate(`(() => {
@@ -152,17 +157,19 @@ async function measure(analysis) {
     window.ModuleAPI.setInputs(inp);
     window.lastCalculationResults = null;
   })()`);
-  await page.click('#btn-run');
+  await page.click('#btn-run-bar');
   // Vent til kurven ER i gang, ellers avbryter vi noe som ikke har startet.
+  // Punkttelleren fulgte med fra #engine-card til #bar-engine da seksjon 6 gikk
+  // — den er fortsatt den ENESTE meldingen om at kurven beveger seg.
   await page.waitForFunction(
-    "document.querySelector('#engine-card')?.textContent?.includes('point')",
+    "document.querySelector('#bar-engine')?.textContent?.includes('point')",
     null, { timeout: 60000 },
   );
   const cancelEnabled = await page.evaluate(
-    "!document.querySelector('#btn-cancel').disabled",
+    "!document.querySelector('#btn-cancel-bar').disabled",
   );
   check('«Avbryt» er aktiv under M–kappa', cancelEnabled === true);
-  await page.click('#btn-cancel');
+  await page.click('#btn-cancel-bar');
   await page.waitForFunction('window.lastCalculationResults !== null', null, { timeout: 60000 });
   const r = await page.evaluate(`(() => {
     const r = window.lastCalculationResults || {};
