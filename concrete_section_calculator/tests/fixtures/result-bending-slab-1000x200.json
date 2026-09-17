@@ -11,7 +11,7 @@
     "theta": 0.0,
     "direction": "sagging",
     "subtract_bar_area": false,
-    "wall_time_ms": 14.8
+    "wall_time_ms": 15.5
   },
   "materials": {
     "fck": 30.0,
@@ -48,6 +48,7 @@
     "As_tension": 1000.8613763648898,
     "As_min": 254.5416213574282,
     "As_max": 8000.0,
+    "M_cr": 19309787.692112595,
     "n_min": -4435863.797944463,
     "n_max": 469969.6897713397
   },
@@ -55,8 +56,10 @@
     "as_min_ok": true,
     "as_max_ok": true,
     "ductility_ok": true,
+    "brittle_ok": true,
     "axial_ok": true,
     "geometry_ok": true,
+    "bending_ok": true,
     "shear_ok": true,
     "asw_min_ok": true,
     "stirrup_spacing_ok": true,

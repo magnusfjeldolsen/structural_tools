@@ -435,14 +435,60 @@ test('fixturens bruddform er oversatt', () => {
   assert.equal(failureModeLabel(BENDING.bending.failure_mode), FAILURE_MODES.concrete_crushing.label);
 });
 
+/**
+ * ETIKETTKRAVET VAR TOMT (rettet i runde 6). Assertion-en her sto tidligere som
+ *
+ *     assert.equal(r.label, CHECK_LABELS[r.key]);
+ *
+ * og den er vakuøs: `checkRows()` SETTER `label` til nettopp `CHECK_LABELS[key]`,
+ * så de to sidene er samme uttrykk. Mangler etiketten, er begge `undefined`, og
+ * `assert.equal(undefined, undefined)` passerer. Testen som skulle vokte
+ * etikettene kunne altså ikke oppdage en glemt etikett i det hele tatt — og en
+ * glemt etikett trykkes ordrett som «undefined» i kontrolltabellen i rapporten.
+ *
+ * Kravet må formuleres uavhengig av kilden: hver nøkkel i `CHECK_ORDER` skal ha
+ * en IKKE-TOM streng som ikke bare er nøkkelen om igjen.
+ *
+ * `text`-kravet er samtidig gjort betinget av at fixturen FAKTISK har nøkkelen.
+ * Fixturene regenereres av koordinatoren etter at motoren har fått `bending_ok`
+ * og `brittle_ok`; inntil da mangler de to i `checks`, og en ubetinget
+ * `'OK'`-påstand ville vært en påstand om fixturens alder, ikke om koden.
+ */
 test('kontrolltabellen har fast rekkefølge og engelske navn', () => {
   const rows = checkRows(BENDING.checks);
   assert.deepEqual(rows.map((r) => r.key), [...CHECK_ORDER]);
   for (const r of rows) {
-    assert.equal(r.label, CHECK_LABELS[r.key]);
-    assert.equal(r.text, 'OK');
+    assert.equal(typeof r.label, 'string', `«${r.key}» mangler etikett helt`);
+    assert.ok(r.label.trim().length > 0, `«${r.key}» har tom etikett`);
+    assert.notEqual(r.label, r.key, `«${r.key}» har nøkkelen som etikett`);
+    // Referansefixturen er et snitt der ALT består. Enhver kontroll den
+    // faktisk bærer, skal derfor lese «OK» — en «–» her ville betydd at
+    // lesesiden mistet en verdi motoren sendte.
+    if (Object.prototype.hasOwnProperty.call(BENDING.checks, r.key)) {
+      assert.equal(r.text, 'OK', `«${r.key}» står i fixturen, men leses ikke som bestått`);
+    }
   }
   assert.equal(rows[rows.length - 1].key, 'all_ok', 'den samlede vurderingen står sist');
+});
+
+/**
+ * Samme krav, men stilt mot `CHECK_LABELS` direkte og med begge retninger:
+ * ingen nøkkel i `CHECK_ORDER` uten etikett, OG ingen etikett uten nøkkel i
+ * `CHECK_ORDER`. Den andre retningen fanger den motsatte feilen — en etikett
+ * skrevet for en kontroll som aldri ble lagt inn i rekkefølgen, og som derfor
+ * er usynlig i rapporten samtidig som den ser ferdig ut i kildekoden.
+ */
+test('CHECK_ORDER og CHECK_LABELS dekker nøyaktig hverandre', () => {
+  for (const key of CHECK_ORDER) {
+    const label = CHECK_LABELS[key];
+    assert.equal(typeof label, 'string', `«${key}» står i CHECK_ORDER uten etikett`);
+    assert.ok(label.trim().length > 3, `etiketten for «${key}» er for kort til å bety noe`);
+    assert.ok(!label.includes('_ok'), `etiketten for «${key}» er bare nøkkelen`);
+  }
+  for (const key of Object.keys(CHECK_LABELS)) {
+    assert.ok(CHECK_ORDER.includes(key), `«${key}» har etikett, men emitteres aldri`);
+  }
+  assert.equal(new Set(CHECK_ORDER).size, CHECK_ORDER.length, 'en kontroll står to ganger');
 });
 
 test('§1.4 sine ordrette CHECK_LABELS', () => {
@@ -479,6 +525,213 @@ test('en kontroll motoren ikke rapporterte er ubesvart, ikke bestått', () => {
   assert.equal(byKey.as_min_ok.text, 'Not OK');
   assert.equal(byKey.all_ok.text, DASH);
   assert.equal(checkText(undefined), DASH);
+});
+
+/* ------------------------------------------------------------------ *
+ * Runde 6 steg 1 — bøyekontroll, sprøbrudd og treverdige svar
+ * ------------------------------------------------------------------ */
+
+/**
+ * DEFEKT 1 (plan §1.2): det fantes ingen rad for `M_Ed ≤ M_Rd`. En bjelke
+ * lastet 2,33 ganger over bøyekapasiteten rapporterte «Overall assessment: OK»
+ * uten en eneste advarsel, fordi `utilisation` ble regnet og ingen leste den.
+ *
+ * Testen ville FEILET før endringen: `CHECK_ORDER` hadde ikke `bending_ok`,
+ * så `checkRows()` emitterte aldri raden, uansett hva motoren sendte.
+ *
+ * Plasseringen er en del av påstanden. `bending_ok` skal stå RETT FØR
+ * `shear_ok` — de to er de eneste lastvirkning-mot-kapasitet-kontrollene, og
+ * en bøyekontroll plassert oppe blant armeringsreglene leses som en
+ * armeringsregel.
+ */
+test('§1.2: bending_ok finnes, står rett før shear_ok, og emitteres', () => {
+  assert.ok(CHECK_ORDER.includes('bending_ok'), 'ingen rad for M_Ed <= M_Rd');
+  assert.equal(
+    CHECK_ORDER[CHECK_ORDER.indexOf('shear_ok') - 1],
+    'bending_ok',
+    'bøyekontrollen skal stå rett før skjærkontrollen'
+  );
+  assert.equal(CHECK_ORDER[CHECK_ORDER.length - 1], 'all_ok', 'all_ok står fortsatt sist');
+  const byKey = Object.fromEntries(
+    checkRows({ bending_ok: false }).map((r) => [r.key, r])
+  );
+  assert.equal(byKey.bending_ok.text, 'Not OK');
+  assert.equal(byKey.bending_ok.ok, false);
+});
+
+/**
+ * DEFEKT 3 (plan §1.5): `as_min_ok` består vakuøst der `d` har degenerert.
+ * `brittle_ok` er det fysiske kriteriet A_s,min bare er et surrogat for, og
+ * plasseres derfor RETT ETTER `as_min_ok`: står de ved siden av hverandre,
+ * ser leseren når surrogatet og kriteriet er uenige.
+ *
+ * Ville FEILET før: nøkkelen fantes ikke i `CHECK_ORDER`.
+ */
+test('§1.5: brittle_ok finnes, står rett etter as_min_ok, og emitteres', () => {
+  assert.ok(CHECK_ORDER.includes('brittle_ok'), 'ingen rad for M_Rd >= M_cr');
+  assert.equal(
+    CHECK_ORDER[CHECK_ORDER.indexOf('as_min_ok') + 1],
+    'brittle_ok',
+    'sprøbruddkontrollen skal stå rett etter A_s,min — samme EC2-klausul'
+  );
+  const byKey = Object.fromEntries(
+    checkRows({ as_min_ok: null, brittle_ok: false }).map((r) => [r.key, r])
+  );
+  assert.equal(byKey.as_min_ok.text, DASH, 'A_s,min uten gyldig d er ubesvart, ikke bestått');
+  assert.equal(byKey.brittle_ok.text, 'Not OK');
+});
+
+/**
+ * Etikettene ordrett. De er kontrakten mot rapporten og mot UI-et, og de er
+ * det eneste stedet formelen bak kontrollen står skrevet for leseren.
+ */
+test('runde 6 sine ordrette CHECK_LABELS', () => {
+  assert.equal(
+    CHECK_LABELS.bending_ok,
+    'Bending capacity M_Ed ≤ M_Rd(N_Ed), all combinations'
+  );
+  assert.equal(CHECK_LABELS.brittle_ok, 'Brittle failure — M_Rd ≥ M_cr (EC2 9.2.1.1(1))');
+  // Formelen skal stå i etiketten, ikke bare navnet på kontrollen: en rad som
+  // sier «Brittle failure: Not OK» uten kriteriet er ikke etterprøvbar.
+  assert.match(CHECK_LABELS.bending_ok, /M_Rd/);
+  assert.match(CHECK_LABELS.brittle_ok, /M_cr/);
+});
+
+/**
+ * Plan §1.1: en kontroll har TRE svar, og `null` betyr «motoren kan ikke hevde
+ * noen av delene». Lesesiden skal aldri gjøre `null` om til et av de to andre.
+ * Særlig ikke til bestått — det er nettopp feilen `engine.py:1140`
+ * (`as_min is None ⇒ True`) gjorde.
+ */
+test('§1.1: checkText er treverdig og gjør aldri ubesvart om til bestått', () => {
+  assert.equal(checkText(true), 'OK');
+  assert.equal(checkText(false), 'Not OK');
+  assert.equal(checkText(null), DASH);
+  assert.equal(checkText(undefined), DASH);
+  // Ingen av de tre svarene kolliderer — ellers kunne rapporten ikke skilles ad.
+  assert.equal(new Set([checkText(true), checkText(false), checkText(null)]).size, 3);
+  // `ok` føres gjennom rått, slik at UI-et kan farge grønn/rød/grå på verdien
+  // og ikke på teksten. `checkRows` må ikke normalisere `null` til `false`.
+  const byKey = Object.fromEntries(
+    checkRows({ ductility_ok: null, as_min_ok: null, all_ok: null }).map((r) => [r.key, r])
+  );
+  assert.equal(byKey.ductility_ok.ok, null);
+  assert.equal(byKey.all_ok.ok, null);
+  assert.equal(byKey.all_ok.text, DASH);
+});
+
+/**
+ * HELE `CHECK_ORDER` med `null` i hver eneste kontroll. Det er tilstanden
+ * «motoren regnet aldri bruddplanet», og lesesiden skal tåle den uten å kaste
+ * og uten å finne på et svar.
+ */
+test('§1.1: alle kontroller null gir en fullstendig tabell med bare strek', () => {
+  const allNull = Object.fromEntries(CHECK_ORDER.map((k) => [k, null]));
+  const rows = checkRows(allNull);
+  assert.equal(rows.length, CHECK_ORDER.length);
+  for (const r of rows) {
+    assert.equal(r.ok, null, `«${r.key}» mistet sin ubesvarte tilstand`);
+    assert.equal(r.text, DASH, `«${r.key}» ble tolket som et svar`);
+  }
+  // Og den motsatte ytterligheten: en tom `checks`-blokk skal gi samme svar.
+  for (const r of checkRows({})) assert.equal(r.text, DASH);
+  for (const r of checkRows(undefined)) assert.equal(r.text, DASH);
+});
+
+/**
+ * Plan §1.7: kodene for de nye tilstandene MÅ ha tekst i `CODE_MESSAGES`.
+ * Grunnen er mekanisk, ikke kosmetisk — `describeWarning()` kaster motorens
+ * egen `message` for enhver kode tabellen kjenner, og viser bare `detail` ved
+ * siden av tabellteksten. Ligger forklaringen bare i motoren, forsvinner den.
+ * Og mangler koden i tabellen, faller den til plassholderen «Unspecified
+ * message from the calculation engine», som leses som en programfeil.
+ *
+ * Ville FEILET før: ingen av de seks kodene fantes.
+ */
+test('§1.7: de seks nye kodene har hver sin engelske forklaring', () => {
+  const nye = [
+    'bending_capacity_exceeded',
+    'm_rd_below_m_cr',
+    'ductility_not_applicable',
+    'as_min_not_applicable',
+    'checks_not_evaluated',
+    'assessment_incomplete',
+  ];
+  for (const code of nye) {
+    assert.ok(ENGINE_CODES.includes(code), `«${code}» mangler i ENGINE_CODES`);
+    assert.ok(!messageForCode(code).includes('Unspecified message'), `«${code}» mangler tekst`);
+    // Kjernen: tabellteksten skal overleve at motoren sender sin egen
+    // `message`, fordi `describeWarning` forkaster den for kjente koder.
+    const w = describeWarning({
+      code,
+      severity: 'warning',
+      message: 'RAW ENGINE TEXT',
+      detail: 'x=1',
+    });
+    assert.equal(w.message, CODE_MESSAGES[code], `«${code}» viste noe annet enn tabellteksten`);
+    assert.ok(!w.message.includes('RAW ENGINE TEXT'));
+    assert.match(w.detail, /x=1/, 'detaljen skal fortsatt være tilgjengelig');
+  }
+});
+
+/**
+ * TO NAVN PÅ SAMME KODE (målt 17.09, motoren i denne grenen).
+ * `engine.py:1379` sender sprøbruddet som `brittle_failure_risk`, mens
+ * kontrakten for runde 6 sier `m_rd_below_m_cr`. Lesesiden kjenner begge, med
+ * SAMME strengkonstant — en `error`-advarsel om sprøbrudd som faller ned på
+ * «Unspecified message from the calculation engine» ville lest som en
+ * programfeil og ikke som den alvorligste beskjeden modulen kan gi.
+ *
+ * Denne testen finnes for å gjøre det umulig at de to skrivemåtene får hver
+ * sin tekst. Den skal SLETTES sammen med den ene nøkkelen når motoren og
+ * kontrakten er enige om ett navn — testen er et stillas, ikke et krav.
+ */
+test('sprøbruddkoden har samme tekst under begge skrivemåtene', () => {
+  assert.equal(CODE_MESSAGES.brittle_failure_risk, CODE_MESSAGES.m_rd_below_m_cr);
+  assert.ok(!messageForCode('brittle_failure_risk').includes('Unspecified message'));
+  assert.ok(!messageForCode('m_rd_below_m_cr').includes('Unspecified message'));
+});
+
+/**
+ * Plan §1.7, andre setning: ingen advarsel får sitere et tall som aldri ble
+ * regnet. `engine.py` trykte ordrett «eps_s_max=None < eps_yd=0.00217» — en
+ * påstand om et bruddplan som ikke finnes. Påstanden er testbar, og testes her
+ * på lesesiden fordi det er `describeWarning` som faktisk slipper teksten ut.
+ */
+test('§1.7: «None» slipper aldri gjennom til en vist melding eller detalj', () => {
+  for (const [code, msg] of Object.entries(CODE_MESSAGES)) {
+    assert.ok(!/\bNone\b/.test(msg), `«${code}» siterer Python-None i meldingen`);
+  }
+  // Den historiske teksten, ordrett. Kommer den inn som `detail`, er det
+  // motorens feil — men lesesiden skal ikke kunne skjule at den kom.
+  const w = describeWarning({
+    code: 'ductility_not_applicable',
+    detail: 'eps_s_max=None < eps_yd=0.00217',
+  });
+  assert.equal(w.message, CODE_MESSAGES.ductility_not_applicable);
+  assert.ok(!/\bNone\b/.test(w.message), 'hovedmeldingen skal aldri bære None');
+});
+
+/**
+ * Plan §1.5: uten denne oppføringen skriver `failureModeLabel` ordrett
+ * «Unknown failure mode ("unreinforced_tension_zone")» i rapportens kapittel 5
+ * — og `failureModeNote` blir tom, så forklaringen forsvinner helt.
+ *
+ * Ville FEILET før: `FAILURE_MODES` hadde bare de fire.
+ */
+test('§1.5: unreinforced_tension_zone er en kjent bruddform', () => {
+  assert.ok(FAILURE_MODES.unreinforced_tension_zone, 'bruddformen mangler');
+  const label = failureModeLabel('unreinforced_tension_zone');
+  assert.ok(!label.includes('Unknown failure mode'), 'bruddformen vises som ukjent');
+  assert.match(label, /[Uu]nreinforced/);
+  const note = failureModeNote('unreinforced_tension_zone');
+  assert.ok(note.length > 40, 'bruddformen mangler forklaring');
+  assert.match(note, /M_cr/, 'forklaringen må nevne kriteriet den kommer av');
+  // Den skal ikke kunne forveksles med `over_reinforced`, som er den motsatte
+  // beskjeden: «for mye armering» mot «for lite på strekksiden».
+  assert.notEqual(label, FAILURE_MODES.over_reinforced.label);
+  const labels = Object.values(FAILURE_MODES).map((m) => m.label);
+  assert.equal(new Set(labels).size, labels.length, 'to bruddformer med samme navn');
 });
 
 /* ================================================================== *
@@ -930,4 +1183,26 @@ test('§1.5: ingen av tabellene i §1.3 inneholder norsk tekst', () => {
       assert.ok(!NORWEGIAN_WORDS.test(s), `${tableName}: norsk ord i «${s}»`);
     }
   }
+});
+
+/**
+ * REGRESJON: brukervendt tekst skal vaere ENGELSK, ogsaa utenfor `results.js`.
+ *
+ * `PHASE_LABELS` i `solver-client.js` sto paa norsk og gikk rett ut i statuspilla
+ * oeverst paa sida og i bunnlinja — «Laster Python-kjernen» midt i et engelsk
+ * grensesnitt. Spraaktestene fantes allerede, men leste bare `charts.js`,
+ * `report.js` og `results.js`. Derfor sto det i fem runder uten aa falle.
+ */
+test('brukervendte faseetiketter i solver-client er engelske', async () => {
+  const client = await import('../js/solver-client.js');
+  // «Ø» er bardiameter-symbolet og er korrekt i engelsk utdata, saa det er ikke med.
+  const nordisk = /[æåÆÅ]/;
+  const norskeOrd = /(er|ikke|som|ved|med|og|kan|skal|blir|ble|laster|regner|starter|bygger|arbeider|kjernen|tverrsnittet)/i;
+  for (const [fase, tekst] of Object.entries(client.PHASE_LABELS)) {
+    assert.ok(!nordisk.test(tekst), `${fase}: nordisk tegn i «${tekst}»`);
+    assert.ok(!norskeOrd.test(tekst), `${fase}: norsk ord i «${tekst}»`);
+    assert.ok(tekst.length > 3, `${fase}: tom eller for kort etikett`);
+  }
+  const ukjent = client.phaseLabel('finnes-ikke');
+  assert.ok(!norskeOrd.test(ukjent), `reservenavnet er norsk: «${ukjent}»`);
 });

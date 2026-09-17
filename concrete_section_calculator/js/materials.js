@@ -73,6 +73,76 @@ function num(v) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+/* ================================================================== *
+ * Å KJENNE IGJEN EN KVALITET (runde 6 §2.2)
+ * ================================================================== */
+
+/**
+ * RELATIV toleranse, ikke absolutt: `fyk` er 500 og `epsuk` er 0,075 — fire
+ * tierpotenser fra hverandre. En absolutt toleranse måtte enten vært for
+ * slapp for tøyningen eller for stram for fastheten.
+ *
+ * 1e-9 ligger sju tierpotenser over flyttallsstøyen (~1e-16 relativt) og seks
+ * under den minste ekte forskjellen i tabellene (k = 1,05 mot 1,08, altså
+ * ~3 %). Ingen ekte kvalitetsforskjell kan gjemme seg under den, og ingen
+ * JSON-tur kan sprenge den.
+ */
+export const GRADE_MATCH_TOL = 1e-9;
+
+/** Er `a` den samme verdien som referansen `b`, sett bort fra flyttallsstøy? */
+function nearly(a, b) {
+  const x = num(a);
+  if (!Number.isFinite(x)) return false;
+  // `Math.max(1, |b|)` gjør at et referansetall nær null ikke gir en toleranse
+  // nær null. Ingen av dagens tall er det, men regelen skal tåle at en
+  // kvalitet med en verdi nær 0 en dag legges inn i tabellen.
+  return Math.abs(x - b) <= GRADE_MATCH_TOL * Math.max(1, Math.abs(b));
+}
+
+/**
+ * Hvilken armeringskvalitet tilstanden TILSVARER — eller `null` for «Custom».
+ *
+ * HVORFOR DENNE FINNES
+ * Brikkeraden skrev `fyk`, `k` og `epsuk` samtidig som `k` og `ε_uk` hadde
+ * sine EGNE felt rett under. To skrivere til samme verdi: valgte man B500NA
+ * ble `ε_uk` stille flyttet fra 7,5 % til 2,5 % uten at noe sa det, og skrev
+ * man et eget `k` i feltet sto brikken igjen og påsto en kvalitet tilstanden
+ * ikke lenger hadde.
+ *
+ * Her snus forholdet: TILSTANDEN er kilden, kvaliteten er en AVLEDNING av
+ * den. Nedtrekket viser det denne funksjonen finner. Da finnes det ingenting
+ * å holde synkronisert, og ingen tilstand der de to påstår hver sin ting.
+ *
+ * SAMMENLIKNINGEN ER IKKE `===`. Verdiene tar en tur gjennom JSON ved lagring
+ * og lasting, og gjennom uttrykksfeltene (`0.075` skrevet som `7.5/100`), og
+ * kommer da fort tilbake som 0.07500000000000001. Med `===` ville en lagret
+ * fil av B500NC blitt lest tilbake som «Custom» — nøyaktig den formen for feil
+ * ingen oppdager før noen lurer på hvorfor nedtrekket «glemte» seg.
+ *
+ * @param {{fyk:number, k:number, epsuk:number}} steel
+ * @returns {{label:string, fyk:number, k:number, epsuk:number}|null}
+ */
+export function matchSteelGrade(steel = {}) {
+  return STEEL_GRADES.find(
+    (g) => nearly(steel.fyk, g.fyk) && nearly(steel.k, g.k) && nearly(steel.epsuk, g.epsuk)
+  ) || null;
+}
+
+/**
+ * Hvilken fasthetsklasse `fck` tilsvarer, eller `null`.
+ *
+ * Samme rolle som `matchSteelGrade`, og den står her av samme grunn: både
+ * nedtrekket og sammendragslinja over materialseksjonen trenger navnet på
+ * klassen, og to `CONCRETE_GRADES.find(...)` i to filer er to steder regelen
+ * kan bli endret bare det ene stedet.
+ *
+ * @param {number} fck
+ * @returns {{label:string, fck:number}|null}
+ */
+export function matchConcreteGrade(fck) {
+  return CONCRETE_GRADES.find((g) => nearly(fck, g.fck)) || null;
+}
+
 /** EC2 tabell 3.1: `f_cm = f_ck + 8` [MPa]. */
 export function fcm(fck) {
   return num(fck) + 8;

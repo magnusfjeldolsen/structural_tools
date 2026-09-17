@@ -242,12 +242,20 @@ def test_meta_and_checks_shape():
     # `shear_ok`/`asw_min_ok`/`stirrup_spacing_ok` er nye i v4 (plan §4.3) og skal finnes
     # SELV UTEN skjærdata i payloaden — denne fixturen har ingen `section.shear`, og
     # feltene skal da bli `True` (vakuøst, ingenting å feile på).
+    # `bending_ok`/`brittle_ok` er nye i runde 6 (§1.2/§1.5).
     assert set(checks) == {
-        'as_min_ok', 'as_max_ok', 'ductility_ok', 'axial_ok', 'geometry_ok',
-        'shear_ok', 'asw_min_ok', 'stirrup_spacing_ok', 'all_ok',
+        'as_min_ok', 'as_max_ok', 'ductility_ok', 'brittle_ok', 'axial_ok', 'geometry_ok',
+        'bending_ok', 'shear_ok', 'asw_min_ok', 'stirrup_spacing_ok', 'all_ok',
     }
-    assert all(isinstance(v, bool) for v in checks.values())
+    # TREVERDIG fra runde 6 (§1.1): `None` er et gyldig kontrollsvar og betyr «motoren kan
+    # ikke hevde noen av delene». Den gamle `isinstance(v, bool)`-påstanden VAR innkodingen
+    # av den toverdige antakelsen som lot ubesvarte kontroller telle som bestått.
+    assert all(v is True or v is False or v is None for v in checks.values())
     assert checks['all_ok'] is True
+    # Fixturen har M_Ed = 0 (⇒ η = 0) og M_Rd = 215,0 kNm ≫ M_cr = 52,1 kNm, så de to nye
+    # kontrollene skal begge være `True` — ingen fixturverdi endres av runde 6 (§1.8).
+    assert checks['bending_ok'] is True
+    assert checks['brittle_ok'] is True
     assert checks['shear_ok'] is True
     assert checks['asw_min_ok'] is True
     assert checks['stirrup_spacing_ok'] is True
@@ -1352,3 +1360,480 @@ def test_engine_never_imports_js_or_pyodide():
     assert forbidden.search(source) is None, forbidden.search(source).group(0)
     assert 'js' not in sys.modules
     assert 'pyodide' not in sys.modules
+
+
+# ------------------------------------------------------------------ #
+# Runde 6 §1 — treverdige kontroller, bøyekontroll og sprøbrudd
+#
+# Alle tallene under er MÅLT på referansebjelken (300×600, 3Ø20 UK, C30/37, B500NC) med
+# motoren, ikke regnet for hånd i en plan. De står som eksplisitte konstanter fordi det er
+# nettopp disse tallene akseptkriteriet er formulert med — se fila sitt hode for hvorfor
+# resten sammenliknes mot fixturene i stedet.
+# ------------------------------------------------------------------ #
+
+M_CR_BEAM = 52136426.768704005          # W·f_ctm, N_Ed = 0
+M_CR_BEAM_N500 = 102136426.76870401     # W·(f_ctm − N_Ed/A_c), N_Ed = −500 kN
+M_RD_BEAM_HOGGING = 6387625.18409428    # underkantarmering regnet som støttemoment
+M_RD_BEAM_HOGGING_N500 = 132184632.98769428
+
+
+def _beam(theta=0.0, m_ed=0.0, n_ed=0.0):
+    """Referansebjelken med én kombinasjon, retning og last satt direkte."""
+    payload = load('payload-beam-300x600.json')
+    payload['options']['theta'] = theta
+    payload['loads'] = {'N_Ed': n_ed, 'M_Ed': m_ed}
+    return payload
+
+
+def test_bending_check_catches_a_beam_loaded_past_its_capacity():
+    """Rundens hovedfeil: η = 2,33 ga «Overall assessment: OK» uten en eneste advarsel.
+
+    `_utilisation` regnet tallet, og INGEN kontroll leste det. Denne testen ville ikke bare
+    feilet før — den ville kastet `KeyError: 'bending_ok'`, for kontrollen fantes ikke.
+    """
+    result = engine.run(_beam(m_ed=-500000000.0))
+
+    assert close(result['bending']['M_Rd'], -M_RD_BEAM)
+    assert close(result['bending']['utilisation'], 2.3255082858460785)
+
+    assert result['checks']['bending_ok'] is False
+    assert result['checks']['all_ok'] is False
+    # De øvrige kontrollene er uberørte — feilen er bøyekapasiteten alene, og en kontroll
+    # som farger av på naboene ville vært like ubrukelig som ingen kontroll.
+    for key in ('as_min_ok', 'as_max_ok', 'ductility_ok', 'brittle_ok', 'axial_ok',
+                'geometry_ok'):
+        assert result['checks'][key] is True, key
+
+    hits = [w for w in result['warnings'] if w['code'] == 'bending_capacity_exceeded']
+    assert len(hits) == 1
+    assert hits[0]['severity'] == 'error'
+    assert '2.325' in hits[0]['message'] or '2.3255' in hits[0]['detail']
+
+
+def test_bending_threshold_is_exactly_one_without_slack():
+    """η ≤ 1,0 EKSAKT. En toleranse her ville motsagt UI-et, ikke myknet det.
+
+    `results.js` har `UTILISATION_THRESHOLDS.over = 1.0` og bruker strengt `x > 1.0` til den
+    røde «Capacity exceeded»-pilla. Med en slakk på 1e-6 ville η = 1,0000005 gitt rød pille
+    ved siden av en grønn kontrollrad — to svar på samme spørsmål i samme skjermbilde.
+
+    `M_Ed` settes til nøyaktig `M_Rd`, og deretter til det NÆRMESTE flyttallet lenger unna
+    null. Målt: η = 1,0 og η = 1,0000000000000002 — altså det minste avviket som overhodet
+    kan uttrykkes i flyttall. Finnes det en slakk, fanges den her.
+
+    `M_Rd` HENTES fra en kjøring og bakes ikke inn som konstant: modulens `M_RD_BEAM` er
+    avrundet til to desimaler, og med den blir η = 1,000000000019 — da ville testen målt
+    avrundingen i stedet for terskelen.
+    """
+    m_rd = engine.run(load('payload-beam-300x600.json'))['bending']['M_Rd']
+    assert close(m_rd, -M_RD_BEAM)
+
+    exactly = engine.run(_beam(m_ed=m_rd))
+    assert exactly['bending']['utilisation'] == 1.0
+    assert exactly['checks']['bending_ok'] is True
+
+    one_ulp_over = engine.run(_beam(m_ed=math.nextafter(m_rd, -math.inf)))
+    assert one_ulp_over['bending']['utilisation'] > 1.0
+    assert one_ulp_over['checks']['bending_ok'] is False
+
+
+def test_bending_check_ignores_combinations_that_were_never_solved():
+    """Definisjonsmengden er `within_limits` OG `flexure_solved` (§1.2).
+
+    I M–κ løses bøyningen bare for den aktive raden. De uløste radene har `M_Rd: None` og
+    `utilisation: None`, og må falle UT av mengden i stedet for å telles som bestått — en
+    rad uten bruddtilstand er ingen bestått bøyekontroll. Er den aktive raden i tillegg
+    utenfor `[n_min, n_max]`, er mengden tom og kontrollen UBESVART, ikke `True`.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['analysis'] = 'moment_curvature'
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'valid', 'N_Ed': 0.0, 'M_Ed': -150000000.0,
+             'theta': 0.0, 'V_Ed': 0.0},
+            {'id': 'C2', 'name': 'out-of-range', 'N_Ed': -5000000.0, 'M_Ed': -1000000.0,
+             'theta': 0.0, 'V_Ed': 0.0},
+        ],
+        'active': 'C2',
+    }
+    result = engine.run(payload)
+    rows = result['moment_curvature']['combinations']
+
+    # C1 er innenfor, men BLE IKKE LØST; C2 er løst-forsøkt, men utenfor.
+    by_id = {c['id']: c for c in rows}
+    assert by_id['C1']['within_limits'] is True and by_id['C1']['flexure_solved'] is False
+    assert by_id['C2']['within_limits'] is False
+
+    assert result['checks']['bending_ok'] is None
+    assert result['checks']['axial_ok'] is False
+    # `False` slår `None`: aksialkraften utenfor området er en ekte feil og skal vises som
+    # feil, ikke som «kan ikke vurderes».
+    assert result['checks']['all_ok'] is False
+
+
+def test_null_never_counts_as_a_pass():
+    """Støttemoment med bare underkantarmering og N = −500 kN: INGEN lag i strekk.
+
+    Før runde 6 svarte motoren på alle spørsmålene likevel. `_effective_depth` falt tilbake
+    på den geometriske strekksiden og deretter på alle lag, og fikk `d = 50 mm` og
+    ρ = 6,28 % for et snitt uten armering på strekksiden. `as_min is None ⇒ True` gjorde
+    A_s,min-kontrollen bestått, og `eps_s_max is not None and …` gjorde duktiliteten til et
+    påstått brudd — to motsatte konvensjoner for det samme ukjente, side om side.
+
+    Nå er begge UBESVART, og `all_ok` blir `None`, ikke `True` og ikke `False`.
+    """
+    result = engine.run(_beam(theta=math.pi, m_ed=5000000.0, n_ed=-500000.0))
+
+    assert close(result['bending']['M_Rd'], M_RD_BEAM_HOGGING_N500)
+    assert result['bending']['eps_s_max'] < 0        # ingenting står i strekk
+    assert result['bending']['failure_mode'] == 'compression_no_tension'
+
+    props = result['section_props']
+    assert props['d_eff'] is None
+    assert props['As_min'] is None
+    assert props['rho'] is None
+    assert result['bending']['x_over_d'] is None
+    assert props['As_tension'] == 0.0
+    assert close(props['As_total'], 942.4777960769379)   # armeringen er der, bare i trykk
+
+    checks = result['checks']
+    assert checks['ductility_ok'] is None
+    assert checks['as_min_ok'] is None
+    assert checks['all_ok'] is None
+    # Det som FAKTISK kunne avgjøres, ble avgjort.
+    assert checks['axial_ok'] is True
+    assert checks['bending_ok'] is True
+    assert checks['brittle_ok'] is True
+
+
+def test_a_false_check_beats_a_null_check():
+    """N = −20000 kN: ingen bruddtilstand i det hele tatt, men aksialkraften ER for stor.
+
+    Alle fire bøyekontrollene blir `None` — det finnes ikke noe å hevde noe om — mens
+    `axial_ok` er et ekte `False`. `all_ok` skal da være `False`, ikke `None`: et brudd får
+    ikke gjemme seg bak en ubesvart kontroll.
+    """
+    result = engine.run(_beam(theta=math.pi, m_ed=5000000.0, n_ed=-20000000.0))
+
+    assert result['ok'] is False
+    assert result['bending']['combinations'][0]['within_limits'] is False
+    assert result['bending']['M_Rd'] is None
+
+    checks = result['checks']
+    for key in ('bending_ok', 'brittle_ok', 'ductility_ok', 'as_min_ok'):
+        assert checks[key] is None, key
+    assert checks['axial_ok'] is False
+    assert checks['all_ok'] is False
+
+
+def test_assessment_incomplete_names_the_checks_that_are_null():
+    """En «–» i «Overall assessment» skal aldri stå uforklart (§1.1).
+
+    Grunnen til `null` ligger i `warnings`, aldri i kontrollverdien — så advarselen må
+    navngi NØYAKTIG de kontrollene som ble ubesvart, og ingen andre.
+    """
+    result = engine.run(_beam(theta=math.pi, m_ed=5000000.0, n_ed=-500000.0))
+    hits = [w for w in result['warnings'] if w['code'] == 'assessment_incomplete']
+    assert len(hits) == 1
+
+    null_keys = {k for k, v in result['checks'].items() if v is None} - {'all_ok'}
+    assert null_keys == {'ductility_ok', 'as_min_ok'}
+    # GRUNNENE MAA LIGGE I `detail`, ikke i `message`: `describeWarning` i
+    # `js/results.js` kaster motorens `message` for enhver kode den kjenner og viser
+    # bare `detail`. Laa de i `message`, fikk brukeren aldri vite hvorfor «–» sto der.
+    for key in null_keys:
+        assert key in hits[0]['detail'], key
+        assert null_keys != set(), key
+    # Og hver noekkel skal ha en FORKLARING etter kolon, ikke bare staa oppramset.
+    for key in null_keys:
+        i = hits[0]['detail'].index(key + ':')
+        assert len(hits[0]['detail'][i + len(key) + 1:].strip()) > 20, key
+    assert str(len(null_keys)) in hits[0]['message']
+
+    # Og motsatt: er ingenting ubesvart, skal advarselen ikke finnes.
+    clean = engine.run(load('payload-beam-300x600.json'))
+    assert not [w for w in clean['warnings'] if w['code'] == 'assessment_incomplete']
+
+
+def test_brittle_check_catches_the_unreinforced_tension_zone():
+    """`|M_Rd| ≥ M_cr` — den fysiske kontrollen A_s,min bare er et surrogat for.
+
+    Referansebjelken regnet som STØTTEmoment har all armeringen i trykksonen. A_s,min blir
+    22,6 mm² (fordi `d` degenererer til 50 mm) mot 942 mm² armering og består med 42×
+    margin, mens kapasiteten på 6,4 kNm ligger langt under riss-momentet på 52,1 kNm.
+    Snittet går i stykker i det øyeblikket det risser. EC2 9.2.1.1(1) sier selv at et slikt
+    snitt «should be considered as unreinforced».
+    """
+    result = engine.run(_beam(theta=math.pi, m_ed=5000000.0))
+
+    assert close(result['bending']['M_Rd'], M_RD_BEAM_HOGGING)
+    assert close(result['section_props']['M_cr'], M_CR_BEAM)
+
+    assert result['checks']['brittle_ok'] is False
+    assert result['checks']['all_ok'] is False
+    # A_s,min består fortsatt — og det er hele poenget med at kontrollen måtte legges til.
+    assert result['checks']['as_min_ok'] is True
+
+    hits = [w for w in result['warnings'] if w['code'] == 'brittle_failure_risk']
+    assert len(hits) == 1
+    assert hits[0]['severity'] == 'error'
+
+
+def test_unreinforced_tension_zone_is_the_failure_mode_reported():
+    """Bruddformen skal si det handlingsbare, ikke det formelt forsvarlige.
+
+    `over_reinforced` var ikke galt som tøyningstilstand — betongen knuses før jernet
+    flyter — men det sier «du har for mye armering» til en som har for lite på den siden
+    det gjelder. Den nye verdien står FORAN `steel_rupture` i `_classify`.
+    """
+    result = engine.run(_beam(theta=math.pi, m_ed=5000000.0))
+    assert result['bending']['failure_mode'] == 'unreinforced_tension_zone'
+
+    # Men bare når kapasiteten faktisk ligger under riss-momentet: den samme bjelken som
+    # FELTmoment har M_Rd = 215,0 kNm ≫ M_cr og skal beholde sin egen bruddform.
+    sagging = engine.run(load('payload-beam-300x600.json'))
+    assert sagging['bending']['failure_mode'] == 'concrete_crushing'
+    assert sagging['checks']['brittle_ok'] is True
+
+
+def test_m_cr_uses_fctm_and_rises_with_axial_compression():
+    """`M_cr = W·(f_ctm − N_Ed/A_c)` med `W = b·h²/6`, og `f_ctm` — IKKE `f_ctm,fl`.
+
+    Valget er besluttet, ikke tilfeldig: samme `f_ct,eff` som EC2 9.2.1.1 selv bruker, og
+    kalibreringsargumentet hviler på den. For 300×600 er de to identiske uansett (EC2 3.1.8
+    gir faktor 1,0 ved h = 600), så testen forankrer valget der det ER synlig: `M_cr` ved
+    N = 0 skal være nøyaktig `W·f_ctm`.
+    """
+    zero = engine.run(load('payload-beam-300x600.json'))
+    fctm = zero['materials']['fctm']
+    w_section = 300.0 * 600.0 ** 2 / 6.0
+    assert close(zero['section_props']['M_cr'], w_section * fctm)
+    assert close(zero['section_props']['M_cr'], M_CR_BEAM)
+
+    # Aksialtrykk (negativt N_Ed) LØFTER riss-momentet — fortegnet i `− N_Ed/A_c`.
+    pressed = engine.run(_beam(theta=math.pi, m_ed=5000000.0, n_ed=-500000.0))
+    assert close(pressed['section_props']['M_cr'], M_CR_BEAM_N500)
+    assert pressed['section_props']['M_cr'] > zero['section_props']['M_cr']
+
+    # Plata: samme formel per meter bredde. W = 1000·200²/6.
+    slab = engine.run(load('payload-slab-1000x200.json'))
+    assert close(slab['section_props']['M_cr'], 19309787.692112595)
+    assert slab['checks']['brittle_ok'] is True      # 69,9 kNm/m mot 19,3 kNm/m
+
+
+def test_as_min_is_checked_against_the_tension_reinforcement():
+    """A_s,min skal måles mot `As_tension`, ikke mot `As_total` (§1.4).
+
+    `rho` har brukt `As_tension` i flere runder allerede, med begrunnelsen at teller og
+    nevner må gjelde den samme armeringen. Nøyaktig samme argument gjelder kontrollen; den
+    ble bare ikke med. Tilfellet her er konstruert slik at de to svarer ULIKT: 1Ø8 i
+    underkant og 4Ø25 i overkant, med N = −500 kN som skyver nøytralaksen ned så
+    overkanten står i trykk. Målt: `As_tension` = 50,3 mm² mot `A_s,min` = 248,5 mm²,
+    mens `As_total` = 2013,8 mm² ville bestått med 8× margin.
+    """
+    payload = _beam(n_ed=-500000.0)
+    payload['section']['rebar'] = [
+        {'id': 'L1', 'kind': 'bars', 'area': 50.26548245743669,
+         'bars': [{'y': 0.0, 'z': -250.0, 'dia': 8.0}]},
+        {'id': 'L2', 'kind': 'bars', 'area': 1963.4954084936207,
+         'bars': [{'y': -80.0, 'z': 250.0, 'dia': 25.0},
+                  {'y': -27.0, 'z': 250.0, 'dia': 25.0},
+                  {'y': 27.0, 'z': 250.0, 'dia': 25.0},
+                  {'y': 80.0, 'z': 250.0, 'dia': 25.0}]},
+    ]
+    result = engine.run(payload)
+    props = result['section_props']
+
+    assert close(props['d_eff'], 550.0)
+    assert close(props['As_tension'], 50.26548245743669)
+    assert close(props['As_min'], 248.51696759748907)
+    # Den gamle regelen hadde bestått her — og det er nettopp derfor testen finnes.
+    assert props['As_total'] > props['As_min']
+
+    assert result['checks']['as_min_ok'] is False
+    assert result['checks']['all_ok'] is False
+    hits = [w for w in result['warnings'] if w['code'] == 'as_min_not_met']
+    assert len(hits) == 1
+    assert 'As_tension' in hits[0]['detail']
+
+
+def test_a_layer_exactly_on_the_neutral_axis_is_not_in_tension():
+    """Strekksettet er ETT begrep med ÉN definisjon: ε > 0 (§1.3).
+
+    Regelen sto tidligere to steder i to representasjoner, og de var allerede uenige ved
+    ε nøyaktig 0: `all(l['compression'])` var USANT (ε er ikke < 0), så `_classify` kalte
+    snittet `over_reinforced`, mens `_effective_depth` fant en tom strekkside og falt
+    tilbake på reservegrenene sine. Samme snitt, to motsatte svar på «står noe i strekk?».
+    """
+    rebar = [{'id': 'L1', 'kind': 'bars', 'area': 100.0,
+              'bars': [{'y': 0.0, 'z': 0.0, 'dia': 10.0}]}]
+    layers = [{'id': 'L1', 'z': 0.0, 'eps': 0.0, 'sigma': 0.0,
+               'utilisation': 0.0, 'compression': False}]
+
+    assert engine._tension_layers(rebar, layers) == []
+    assert engine._classify(
+        [], 0.0, -0.0035, 0.00217, 0.0675, 0.0035, m_rd=-1.0e6, m_cr=5.0e7,
+    ) == 'compression_no_tension'
+
+    # Og ett jern med ε > 0 er i strekksettet, uansett hvor lite.
+    layers[0]['eps'] = 1e-12
+    assert engine._tension_layers(rebar, layers) == rebar
+
+
+def test_no_warning_quotes_a_value_that_was_never_computed():
+    """§1.7, som en testbar påstand: `'None'` skal ikke forekomme i noen advarsel.
+
+    Motoren trykte til nå ordrett «eps_s_max=None < eps_yd=0.00217» ut i rapporten —
+    `describeWarning` tar alltid med `detail`. Det er en påstand om et bruddplan som aldri
+    ble regnet, i det ene dokumentet en prosjekterende signerer på. Regelen bak er at en
+    advarsel legges BARE når den tilhørende kontrollen er `False`, aldri på `None`.
+
+    Scenariene under er nettopp de som PRODUSERER nullverdier og feil samtidig — kjørte vi
+    bare de grønne tilfellene, ville påstanden vært tom.
+    """
+    paired = {
+        'ductility_limit': 'ductility_ok',
+        'as_min_not_met': 'as_min_ok',
+        'as_max_exceeded': 'as_max_ok',
+        'bending_capacity_exceeded': 'bending_ok',
+        'brittle_failure_risk': 'brittle_ok',
+    }
+    scenarios = {
+        'reference': load('payload-beam-300x600.json'),
+        'slab': load('payload-slab-1000x200.json'),
+        'over-utilised': _beam(m_ed=-500000000.0),
+        'hogging, no tension side': _beam(theta=math.pi, m_ed=5000000.0),
+        'hogging, all in compression': _beam(theta=math.pi, m_ed=5000000.0,
+                                             n_ed=-500000.0),
+        'axial far out of range': _beam(theta=math.pi, m_ed=5000000.0,
+                                        n_ed=-20000000.0),
+        'no flexural solution at all': _beam(n_ed=-4010438.409731036),
+    }
+    seen = set()
+    for name, payload in scenarios.items():
+        engine.reset_cache()
+        result = engine.run(payload)
+        for w in result['warnings']:
+            seen.add(w['code'])
+            assert 'None' not in w['message'], f'{name}: {w["code"]} message'
+            assert 'None' not in w['detail'], f'{name}: {w["code"]} detail'
+            # Og ingen advarsel uten en kontroll som faktisk er `False` bak seg.
+            key = paired.get(w['code'])
+            if key is not None:
+                assert result['checks'][key] is False, f'{name}: {w["code"]}'
+
+    # Påstanden er bare verdt noe hvis scenariene faktisk utløste advarslene som pleide å
+    # sitere ikke-regnede tall. `ductility_limit` er den som trykte «eps_s_max=None».
+    assert 'ductility_limit' in seen
+    assert 'axial_out_of_range' in seen
+    assert 'assessment_incomplete' in seen
+
+
+def test_bending_warning_names_the_worst_combination():
+    """Kontrollen skanner ALLE radene, og advarselen peker på den verste av dem.
+
+    Uten `combo`/`combo_name` kaster `results.js` sin kodetabell motorens egen `message`
+    (`describeWarning`), og hvilken rad det gjelder forsvinner — nøyaktig grunnen til at
+    `axial_out_of_range` ble merket slik i endringsrunde 2. Én advarsel, ikke én per rad:
+    grunnen er den samme for alle, og ti like meldinger ville skjult de andre advarslene.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'ULS 1', 'N_Ed': 0.0, 'M_Ed': -100000000.0,
+             'theta': 0.0, 'V_Ed': 0.0},
+            {'id': 'C2', 'name': 'ULS 2', 'N_Ed': 0.0, 'M_Ed': -300000000.0,
+             'theta': 0.0, 'V_Ed': 0.0},
+            {'id': 'C3', 'name': 'ULS 3', 'N_Ed': 0.0, 'M_Ed': -500000000.0,
+             'theta': 0.0, 'V_Ed': 0.0},
+        ],
+        'active': 'C1',
+    }
+    result = engine.run(payload)
+
+    rows = {c['id']: c for c in result['bending']['combinations']}
+    assert rows['C1']['utilisation'] < 1.0        # C1 alene ville bestått
+    assert rows['C2']['utilisation'] > 1.0
+    assert rows['C3']['utilisation'] > 1.0
+
+    assert result['checks']['bending_ok'] is False
+    hits = [w for w in result['warnings'] if w['code'] == 'bending_capacity_exceeded']
+    assert len(hits) == 1                          # ÉN, ikke to
+    assert hits[0]['combo'] == 'C3'                # den verste, ikke den første
+    assert hits[0]['combo_name'] == 'ULS 3'
+    assert '2 of 3 combinations' in hits[0]['detail']
+
+
+def test_brittle_check_does_not_undercut_as_min_where_d_is_real():
+    """Kalibreringen, som er grunnen til at `brittle_ok` ikke blir en ny falsk alarm.
+
+    A_s,min etter EC2 9.2.1.1 ER kalibrert mot nettopp `|M_Rd| ≥ M_cr`. Er `d` ekte, skal
+    derfor et snitt armert nøyaktig til A_s,min ligge OVER riss-momentet — ellers ville den
+    nye kontrollen feilet på snitt som er riktig dimensjonert etter standarden, og den ville
+    vært ubrukelig. Måler forholdstallet direkte: 63,09 kNm mot 52,14 kNm = 1,21.
+
+    Planen anslo 56,5 kNm og 1,08 for hånd. Tallet under er kjørt gjennom motoren, og
+    konklusjonen blir sterkere, ikke svakere: marginen er større enn anslått.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['section']['rebar'] = [{
+        'id': 'L1', 'kind': 'bars', 'area': 248.51696759748907,
+        'bars': [{'y': 0.0, 'z': -250.0, 'dia': 17.8}],
+    }]
+    result = engine.run(payload)
+    props = result['section_props']
+
+    # Armert NØYAKTIG til minimum, i full effektiv dybde.
+    assert close(props['d_eff'], 550.0)
+    assert close(props['As_tension'], props['As_min'])
+    assert result['checks']['as_min_ok'] is True
+
+    assert close(abs(result['bending']['M_Rd']), 63088877.50995147)
+    assert close(props['M_cr'], M_CR_BEAM)
+    assert abs(result['bending']['M_Rd']) / props['M_cr'] > 1.2
+    # Og dermed: sprøbruddkontrollen er IKKE den bindende der `d` er ekte.
+    assert result['checks']['brittle_ok'] is True
+
+
+def test_brittle_check_does_not_reject_a_slab_armed_exactly_to_as_min():
+    """REGRESJON: `brittle_ok` underkjente plater som oppfyller EC2 9.2.1.1 eksakt.
+
+    A_s,min utledes med KARAKTERISTISK flytespenning (`0.26·f_ctm/f_yk·b_t·d`), mens
+    `M_Rd` er en dimensjonerende kapasitet og bærer `gamma_s = 1,15`. Sammenliknes de to
+    rått, blir kontrollen systematisk 1,15 ganger strengere enn kalibreringen den skal
+    speile.
+
+    Forholdet `M_Rd/M_cr` skalerer som `(d/h)²`, fordi `M_Rd ~ A_s,min·f_yd·z ~ d²` og
+    `M_cr ~ h²`. Bjelker ligger på d/h ≈ 0,87–0,92 og gikk klar; plater ligger på
+    0,73–0,80 og gjorde det ikke. Målt uten gamma_s: h = 200 ga 0,903 — altså en
+    `error`-advarsel og `all_ok = false` på et snitt som tilfredsstiller EC2.
+    """
+    import math as _math
+    for h, dia in ((200, 12), (250, 12), (300, 12), (600, 20)):
+        payload = load('payload-slab-1000x200.json')
+        payload['section']['h'] = float(h)
+        payload['section']['concrete']['alpha_cc'] = 0.85
+        payload['analysis'] = 'bending'
+        d = h - (35 + dia / 2)
+        fctm = 2.8965
+        as_min = max(0.26 * fctm / 500.0 * 1000.0 * d, 0.0013 * 1000.0 * d)
+        payload['section']['rebar'] = [{
+            'id': 'L1', 'kind': 'strip', 'area': as_min,
+            'strip': {'width': as_min / dia, 'height': float(dia), 'z': -h / 2 + 35 + dia / 2},
+        }]
+        payload['loads'] = {'N_Ed': 0.0, 'M_Ed': -1000.0}
+        result = engine.run(payload)
+        assert result['ok'] is True, (h, result.get('error'))
+        checks = result['checks']
+        assert checks['as_min_ok'] is True, h
+        assert checks['brittle_ok'] is True, (
+            f'h={h}: et snitt armert noeyaktig til A_s,min skal ikke kalles sproett. '
+            f"M_Rd={abs(result['bending']['M_Rd']) / 1e6:.2f} kNm, "
+            f"M_cr={result['section_props']['M_cr'] / 1e6:.2f} kNm"
+        )
+
+    # Og kontrollen skal fortsatt slaa til der den SKAL: bare underkantarmering og et
+    # stoettemoment. gamma_s redder ikke et snitt uten armering paa strekksiden.
+    hogging = engine.run(_beam(theta=_math.pi, m_ed=5000000.0))
+    assert hogging['checks']['brittle_ok'] is False
+    assert hogging['bending']['failure_mode'] == 'unreinforced_tension_zone'

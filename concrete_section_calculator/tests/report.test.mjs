@@ -360,10 +360,177 @@ test('armeringskapitlet viser d_eff som d, og d_eff_all ved siden av', () => {
   assert.match(ch3, /tension reinforcement/);
 });
 
+/**
+ * Verdien i én `kvTable`-rad, slått opp på etiketten.
+ *
+ * HVORFOR IKKE `html.includes(DASH)`: `kvTable`-etikettene inneholder selv
+ * tankestrek — `[–]` er enheten på ρ — så en test som bare leter etter tegnet
+ * i kapitlet passerer uansett hva raden den mener å teste faktisk viser. Den
+ * gamle `d_eff_all`-testen under gjorde nettopp det og kunne ikke feile.
+ */
+function kvValue(html, label) {
+  const literal = escapeHtml(label).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = html.match(new RegExp(`<th>${literal}</th><td[^>]*>([^<]*)</td>`));
+  assert.ok(m, `fant ingen rad med etiketten «${label}»`);
+  return m[1];
+}
+
 test('mangler motoren d_eff_all, blir det tankestrek — ikke et oppdiktet tall', () => {
-  const ch3 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 3);
-  assert.ok(ch3.includes('d_eff,all'));
-  assert.ok(ch3.includes(DASH));
+  // Fixturen HAR `d_eff_all` (550). Den må fjernes for at testen skal handle
+  // om det den heter — ellers påstår den bare at tegnet «–» finnes et sted i
+  // kapitlet, hvilket det alltid gjør (enheten på ρ er «[–]»).
+  const res = clone(BENDING);
+  delete res.section_props.d_eff_all;
+  const ch3 = chapterBody(buildReportHtml(BEAM_STATE, res), 3);
+  assert.equal(kvValue(ch3, 'd_eff,all, area-weighted over all layers [mm]'), DASH);
+  // Og med tallet til stede skal det faktisk trykkes.
+  const medTall = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 3);
+  assert.equal(kvValue(medTall, 'd_eff,all, area-weighted over all layers [mm]'), '550.0');
+});
+
+/* ------------------------------------------------------------------ *
+ * Runde 6 — ρ-etiketten, M_cr og strek der ingenting står i strekk
+ * ------------------------------------------------------------------ */
+
+/**
+ * ETIKETTEN LØY OM TALLET (drive-by-feil, uavhengig av runde 6 ellers).
+ * Raden sto som «ρ = ΣA_s/(b_t·d)», mens motoren sender
+ * `as_tension / (b · d_eff)` (`engine.py:1264`). For et enkeltarmert snitt er
+ * de to like, så feilen var usynlig i fixturen — men for et dobbeltarmert
+ * snitt spriker de, og leseren som regnet etter fikk et annet tall enn det som
+ * sto, uten noen måte å se hvem som tok feil.
+ *
+ * Testen skiller de to ved å gi fixturen trykkarmering: ΣA_s = 1942,5 mm²
+ * mens As_tension = 942,5 mm². Da er ΣA_s/(b·d) = 0,0118 og
+ * As_tension/(b·d_eff) = 0,0057 — og tallet som trykkes skal lystre etiketten.
+ *
+ * Ville FEILET før: etiketten inneholdt «ΣA_s/(b_t·d)».
+ */
+test('ρ-raden navngir den formelen tallet faktisk kommer av', () => {
+  const res = clone(BENDING);
+  res.section_props.As_total = 1942.4777960769379; // 942,5 i strekk + 1000 i trykk
+  const ch3 = chapterBody(buildReportHtml(BEAM_STATE, res), 3);
+
+  assert.ok(!ch3.includes('ΣA_s/(b_t·d)'), 'den gamle etiketten beskriver et annet tall');
+  const label = 'ρ_l = A_s,tension/(b_t·d_eff) [–]';
+  const printed = kvValue(ch3, label);
+
+  const p = res.section_props;
+  const etterEtiketten = (p.As_tension / (p.b_t * p.d_eff)).toFixed(4);
+  const etterGammelEtikett = (p.As_total / (p.b_t * p.d_eff)).toFixed(4);
+  assert.notEqual(etterEtiketten, etterGammelEtikett, 'fixturen skiller ikke de to formlene');
+  assert.equal(printed, etterEtiketten, 'tallet lystrer ikke etiketten sin');
+  assert.notEqual(printed, etterGammelEtikett);
+});
+
+/**
+ * M_cr ER DET FYSISKE KRITERIET A_s,min BARE ER ET SURROGAT FOR (plan §1.5).
+ * Står det ikke i rapporten, kan leseren ikke etterprøve `brittle_ok` — og
+ * `brittle_ok` er den kontrollen som fanger snittet der A_s,min består
+ * vakuøst. Raden skal stå RETT VED A_s,min, ikke i et annet kapittel.
+ *
+ * Ville FEILET før: ingen rad het M_cr.
+ */
+test('M_cr står i armeringskapitlet, rett ved A_s,min', () => {
+  const res = clone(BENDING);
+  res.section_props.M_cr = 52_100_000; // N·mm — plan §1.5 sin målte 52,1 kNm
+  const ch3 = chapterBody(buildReportHtml(BEAM_STATE, res), 3);
+
+  const label = 'M_cr = W·(f_ctm − N_Ed/A_c) [kNm]';
+  assert.equal(kvValue(ch3, label), '52.1', 'M_cr skal trykkes i kNm, ikke i N·mm');
+
+  // Rekkefølgen er en del av påstanden: A_s,min og M_cr skal kunne leses i
+  // samme blikk, fordi hele poenget er å se når de to er uenige.
+  const iAsMin = ch3.indexOf('A_s,min [mm');
+  const iMcr = ch3.indexOf('M_cr = W');
+  const iAsMax = ch3.indexOf('A_s,max [mm');
+  assert.ok(iAsMin > -1 && iMcr > iAsMin && iAsMax > iMcr, 'M_cr står ikke mellom min og max');
+});
+
+/**
+ * Motoren sender `M_cr` som `null` når referanseraden ligger utenfor
+ * `[n_min, n_max]` — riss-momentet regnes før aksialsjekken, og et tall for en
+ * lasttilstand motoren selv har forkastet skal ikke stå i rapporten.
+ *
+ * Rapporten skal da si «–», ikke «undefined», ikke «NaN», og aller minst et
+ * nulltall, som ville lest som «snittet risser ved 0 kNm» — den mest
+ * optimistiske påstanden som finnes.
+ *
+ * Fraværet KONSTRUERES her. Testen leste før et fixtur som tilfeldigvis manglet
+ * feltet, og sluttet dermed å teste noe den dagen motoren begynte å sende det.
+ */
+test('uten M_cr fra motoren blir raden tankestrek, ikke null', () => {
+  const uten = JSON.parse(JSON.stringify(BENDING));
+  delete uten.section_props.M_cr;
+  const ch3 = chapterBody(buildReportHtml(BEAM_STATE, uten), 3);
+  const v = kvValue(ch3, 'M_cr = W·(f_ctm − N_Ed/A_c) [kNm]');
+  assert.equal(v, DASH);
+  assert.notEqual(v, '0.0');
+
+  // Og eksplisitt `null`, som er det motoren faktisk sender.
+  const nullet = JSON.parse(JSON.stringify(BENDING));
+  nullet.section_props.M_cr = null;
+  const ch3b = chapterBody(buildReportHtml(BEAM_STATE, nullet), 3);
+  assert.equal(kvValue(ch3b, 'M_cr = W·(f_ctm − N_Ed/A_c) [kNm]'), DASH);
+
+  // Men NÅR tallet finnes, skal det stå der — ellers ville testen over bestått
+  // på en rapport som aldri trykker M_cr i det hele tatt.
+  const ch3c = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 3);
+  assert.equal(kvValue(ch3c, 'M_cr = W·(f_ctm − N_Ed/A_c) [kNm]'), '52.1');
+});
+
+/**
+ * Plata regnes per meter, og W = b·h²/6 med b = 1000 mm. Notatet lenger nede
+ * merker bare «reinforcement quantities», så et moment må merkes i etiketten
+ * sin — ellers leses 19,3 kNm/m som 19,3 kNm for hele plata.
+ */
+test('M_cr for plate merkes per meter i etiketten', () => {
+  const res = clone(SLAB_BENDING);
+  res.section_props.M_cr = 19_300_000;
+  const ch3 = chapterBody(buildReportHtml(SLAB_STATE, res), 3);
+  assert.equal(kvValue(ch3, 'M_cr = W·(f_ctm − N_Ed/A_c) [kNm] per metre'), '19.3');
+  // Bjelken skal IKKE ha merkingen.
+  const beam3 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 3);
+  assert.ok(beam3.includes('M_cr = W·(f_ctm − N_Ed/A_c) [kNm]<'), 'bjelken regnes ikke per meter');
+});
+
+/**
+ * Plan §1.3: fallbacken i `_effective_depth` fjernes, så et snitt uten
+ * armering i strekk gir `d_eff = null` i stedet for dagens oppdiktede
+ * `d = 50 mm` og `ρ = 6,28 %`. Tre rader blir da «–» samtidig, og uten en
+ * setning om hvorfor ser det ut som en programfeil framfor en opplysning om
+ * tverrsnittet.
+ *
+ * Ville FEILET før: notatet fantes ikke, og tre tomme rader sto uforklart.
+ */
+test('rent trykkpåkjent snitt: d_eff, ρ og A_s,min blir strek, og notatet forklarer det', () => {
+  const res = clone(BENDING);
+  res.section_props.d_eff = null;
+  res.section_props.rho = null;
+  res.section_props.As_min = null;
+  res.section_props.As_tension = 0;
+  const ch3 = chapterBody(buildReportHtml(BEAM_STATE, res), 3);
+
+  assert.equal(kvValue(ch3, 'd = d_eff, tension reinforcement alone [mm]'), DASH);
+  assert.equal(kvValue(ch3, 'ρ_l = A_s,tension/(b_t·d_eff) [–]'), DASH);
+  assert.equal(kvValue(ch3, 'A_s,min [mm²]'), DASH);
+  // Tallet 0 er en ekte opplysning og skal IKKE bli strek: «ingen armering i
+  // strekk» er noe annet enn «vet ikke».
+  assert.equal(kvValue(ch3, 'A_s in tension [mm²]'), '0');
+
+  assert.match(ch3, /no reinforcement lies in the tension zone at failure/i);
+  assert.match(ch3, /M_cr/, 'notatet skal peke leseren på kontrollen som fortsatt gjelder');
+  assert.ok(!ch3.includes('undefined'));
+  assert.ok(!ch3.includes('NaN'));
+
+  // Og det motsatte: et normalt snitt har ingen strek å forklare, og skal
+  // derfor ikke bære noten. En note som står uansett lærer leseren å hoppe
+  // over noter — og da forsvinner også den som betyr noe.
+  const normal = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 3);
+  assert.ok(
+    !/no reinforcement lies in the tension zone/i.test(normal),
+    'noten står på et snitt som har armering i strekk'
+  );
 });
 
 test('lagtabellen viser betegnelsen slik den legges inn', () => {
@@ -554,6 +721,74 @@ test('de tre nye skjærkontrollene står i kontrolltabellen', () => {
   assert.match(ch5, /Shear capacity V_Ed/);
   assert.match(ch5, /Minimum shear reinforcement/);
   assert.match(ch5, /Stirrup spacing/);
+});
+
+/* ------------------------------------------------------------------ *
+ * Runde 6 — bøye- og sprøbruddkontrollen på papiret
+ * ------------------------------------------------------------------ */
+
+/**
+ * Plan §1.2/§1.5: begge de nye kontrollene skal FAKTISK stå i tabellen leseren
+ * ser, ikke bare i `CHECK_ORDER`. Testen leser HTML-en, ikke tabellen — det er
+ * forskjellen på at kontrollen finnes og at den er synlig.
+ *
+ * Ville FEILET før: `CHECK_ORDER` hadde verken `bending_ok` eller
+ * `brittle_ok`, så `checkRows()` emitterte dem ikke og radene fantes ikke.
+ */
+test('bøye- og sprøbruddkontrollen står i kontrolltabellen, med status', () => {
+  const res = clone(BENDING);
+  res.checks = { ...res.checks, bending_ok: false, brittle_ok: false };
+  const ch5 = chapterBody(buildReportHtml(BEAM_STATE, res), 5);
+  assert.match(ch5, /Bending capacity M_Ed/);
+  assert.match(ch5, /Brittle failure/);
+  // Statusen skal følge med, ikke bare etiketten.
+  assert.match(
+    ch5,
+    /Bending capacity M_Ed[^<]*<\/td><td[^>]*>Not OK<\/td>/,
+    'bøyekontrollen står uten status'
+  );
+  assert.match(ch5, /Brittle failure[^<]*<\/td><td[^>]*>Not OK<\/td>/);
+});
+
+/**
+ * Plan §1.1: `null` skal trykkes som «–» i hver eneste rad, aldri som «OK» og
+ * aldri som tom celle. Den tomme cellen er den farligste: `esc(undefined)` gir
+ * tom streng, så en glemt etikett eller en tapt verdi ville blitt en rad som
+ * bare ser ferdig ut.
+ */
+test('null i hver eneste kontroll gir en fullstendig tabell med bare strek', () => {
+  const res = clone(BENDING);
+  res.checks = Object.fromEntries(Object.keys(res.checks).map((k) => [k, null]));
+  res.checks.bending_ok = null;
+  res.checks.brittle_ok = null;
+  const ch5 = chapterBody(buildReportHtml(BEAM_STATE, res), 5);
+
+  assert.ok(!ch5.includes('undefined'));
+  assert.ok(!ch5.includes('NaN'));
+  assert.ok(!/<td[^>]*><\/td>/.test(ch5), 'en tom statuscelle ser ut som en ferdig rad');
+  // Ingen kontroll får lese som bestått når ingen ble besvart.
+  assert.ok(!/<\/td><td[^>]*>OK<\/td>/.test(ch5), 'ubesvart ble til bestått');
+  assert.match(ch5, new RegExp(`Overall assessment</td><td[^>]*>${DASH}</td>`));
+});
+
+/**
+ * Plan §1.5: `failureModeLabel` skriver «Unknown failure mode ("...")» for en
+ * verdi den ikke kjenner, og `failureModeNote` blir tom — altså står den nye
+ * bruddformen på papiret som en programfeil uten forklaring.
+ *
+ * Ville FEILET før: `FAILURE_MODES` manglet `unreinforced_tension_zone`.
+ */
+test('unreinforced_tension_zone trykkes med navn og forklaring, ikke som ukjent', () => {
+  const res = clone(BENDING);
+  res.bending.failure_mode = 'unreinforced_tension_zone';
+  const ch5 = chapterBody(buildReportHtml(BEAM_STATE, res), 5);
+  assert.ok(!ch5.includes('Unknown failure mode'), 'bruddformen står som ukjent');
+  assert.match(ch5, /Unreinforced tension zone/);
+  // Forklaringen er hele grunnen til at feltet leses: den skal si hva leseren
+  // skal GJØRE, og «mer armering på strekksiden» er noe annet enn «mindre
+  // armering», som `over_reinforced` ville sagt.
+  assert.match(ch5, /cracking moment M_cr/i);
+  assert.match(ch5, /reinforcement on the face that carries tension/i);
 });
 
 /* ================================================================== *

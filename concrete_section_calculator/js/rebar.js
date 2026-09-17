@@ -295,9 +295,54 @@ export function reinforcementRatio(layers = [], geometry = {}, theta) {
 }
 
 /**
- * UI-hjelperen for `dc`: `overdekning + bøyle + Ø/2`. Ligger her og ikke i
- * `ui.js` fordi den definerer hva `dc` BETYR (avstand til jernets SENTER), og
- * den definisjonen hører sammen med `layerCentroidZ`.
+ * Bøylediameteren som faktisk ligger MELLOM overdekningen og hovedarmeringen
+ * [mm]. 0 når tverrsnittet ikke har bøyler.
+ *
+ * HVORFOR DETTE IKKE ER `state.stirrup_dia` DIREKTE
+ * `dc` er avstanden til jernets SENTER, og bøyla teller bare fordi den fysisk
+ * ligger utenpå hovedarmeringen. Plata har ingen bøyle — men `stirrup_dia`
+ * står likevel med sin standardverdi (12 mm), og feltet er SKJULT for plata i
+ * `ui.js`, så tallet spiste høyde uten at brukeren kunne se det. Målt på
+ * 1000×200 med overdekning 35 og Ø12: `dc = 53` (35+12+6) ga `d = 147 mm` der
+ * riktig er `dc = 41` (35+6) og `d = 159 mm`. 12 mm er 7,5 % av den indre
+ * momentarmen, og feilen går BEGGE veier: en for liten `d` er konservativ for
+ * `M_Rd`, men `A_s,min ∝ d`, så minstearmeringen ble for liten.
+ *
+ * KRITERIET ER «HAR TVERRSNITTET EN BØYLE», IKKE «ER DET EN BJELKE»
+ * Bjelken teller bøyla uansett om `shear.stirrups` er tom. Den har alltid
+ * bøyler (EC2 9.2.2 krever minimumsskjærarmering i bjelker), og feltet
+ * «Stirrup Ø» i geometriseksjonen finnes nettopp for å beskrive dem FØR
+ * skjærpanelet er fylt ut. Ville vi krevd en bøylerad, ville `dc` hoppet 12 mm
+ * i det øyeblikket brukeren la inn raden, og `barPositions()` sin HORISONTALE
+ * innrykking (`yMax`, som trekker fra `stirrup_dia` ubetinget) ville vært uenig
+ * med den vertikale — to kilder til samme bøyle.
+ * Plata teller den bare når den faktisk HAR en rad. Det er nøyaktig samme
+ * betingelse som `ui.js` bruker for å vise feltet («et felt som styrer noe skal
+ * ikke være usynlig») og som `section-draw.js:stirrupGeometry` bruker for å
+ * tegne bøyla i det hele tatt: tegnes bøyla, holder tangeringen `bar.z − r = z0`
+ * fortsatt eksakt. Etter at skjær er tatt ut av plata (plan steg 3) kan den
+ * andre grenen aldri slå til, og regelen blir ordrett «bøyle ⇔ bjelke».
+ *
+ * @param {{sectionType?:string, stirrup_dia?:number, shear?:{stirrups?:Array}}} state
+ * @returns {number} Ø_bøyle [mm], 0 uten bøyle
+ */
+export function stirrupCoverDia(state = {}) {
+  const rows = ((state.shear || {}).stirrups || []).length;
+  // Eksplisitt `=== 'slab'`, ikke `!== 'beam'`: et tilstandsobjekt uten
+  // `sectionType` (eldre fil, eller et delvis opts-objekt) har alltid blitt
+  // regnet som bjelke her, og skal fortsette med det.
+  if (state.sectionType === 'slab' && rows === 0) return 0;
+  // `num` og ikke `|| 0`: et uleselig `stirrup_dia` skal fortsatt forplante seg
+  // som NaN til `dc`, slik at valideringen fanger det i stedet for at et tall
+  // som ikke finnes stille blir 0.
+  return num(state.stirrup_dia);
+}
+
+/**
+ * UI-hjelperen for `dc`: `overdekning + bøyle + Ø/2`, der bøyla bare teller når
+ * tverrsnittet har en (se `stirrupCoverDia`). Ligger her og ikke i `ui.js`
+ * fordi den definerer hva `dc` BETYR (avstand til jernets SENTER), og den
+ * definisjonen hører sammen med `layerCentroidZ`.
  *
  * Brukes som STARTVERDI for et lag uten nabo på samme kant. Har laget en
  * nabo, er det `stackedDc` under som gjelder — se den for hvorfor.
@@ -306,7 +351,7 @@ export function reinforcementRatio(layers = [], geometry = {}, theta) {
  * @param {number} dia
  */
 export function suggestedDc(state = {}, dia) {
-  return num(state.cover) + num(state.stirrup_dia) + num(dia) / 2;
+  return num(state.cover) + stirrupCoverDia(state) + num(dia) / 2;
 }
 
 /**
