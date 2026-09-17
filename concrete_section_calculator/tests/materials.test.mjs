@@ -13,7 +13,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import {
+  CONCRETE_GRADES,
   CONCRETE_LAWS,
+  STEEL_GRADES,
   STEEL_LAWS,
   concreteProps,
   concreteStrainLimits,
@@ -22,6 +24,8 @@ import {
   fcm,
   fctm,
   ftkOf,
+  matchConcreteGrade,
+  matchSteelGrade,
   steelProps,
 } from '../js/materials.js';
 
@@ -124,4 +128,85 @@ test('tomme felt gir NaN, ikke 0', () => {
   // 0 ville sett ut som et svar. NaN forplanter seg synlig.
   assert.ok(Number.isNaN(concreteProps({ fck: '', gamma_c: 1.5, alpha_cc: 1 }).fcd));
   assert.ok(Number.isNaN(steelProps({ fyk: 500, gamma_s: '' }).fyd));
+});
+
+/* ================================================================== *
+ * Å KJENNE IGJEN EN KVALITET (runde 6 §2.2)
+ *
+ * HVORFOR DISSE FINNES
+ * Brikkeraden for stål skrev `fyk`, `k` OG `epsuk` i samme klikk, mens `k` og
+ * `ε_uk` hadde sine egne felt rett under — to skrivere til samme verdi. Nå er
+ * tilstanden kilden og kvaliteten avledningen, og HELE den avledningen ligger
+ * i `matchSteelGrade`. Feiler den, viser nedtrekket feil kvalitet ved siden av
+ * riktige tall, og det er en løgn ingen annen kontroll fanger.
+ * ================================================================== */
+
+test('matchSteelGrade finner kvaliteten bak tallene', () => {
+  assert.equal(matchSteelGrade({ fyk: 500, k: 1.08, epsuk: 0.075 }).label, 'B500NC (k = 1.08)');
+  assert.equal(matchSteelGrade({ fyk: 500, k: 1.05, epsuk: 0.025 }).label, 'B500NA (k = 1.05)');
+});
+
+test('B500NC og B500NB skilles KUN av ε_uk — og det skal holde', () => {
+  // De to har samme `fyk` OG samme `k`. Ser oppslaget bort fra `epsuk`, blir
+  // 5 % duktilitet vist som 7,5 % — 50 % feil på det tallet `ε_ud` og hele
+  // duktilitetskontrollen hviler på, uten at noe annet endrer seg.
+  assert.equal(matchSteelGrade({ fyk: 500, k: 1.08, epsuk: 0.05 }).label, 'B500NB (k = 1.08)');
+  assert.notEqual(
+    matchSteelGrade({ fyk: 500, k: 1.08, epsuk: 0.05 }).label,
+    matchSteelGrade({ fyk: 500, k: 1.08, epsuk: 0.075 }).label
+  );
+});
+
+test('flyttallsstøy fra en JSON-tur er IKKE «Custom»', () => {
+  // 0.075 skrevet som 7.5/100 i uttrykksfeltet, eller lest tilbake fra en
+  // lagret fil, kommer fort som 0.07500000000000001. Med `===` ville en lagret
+  // B500NC blitt lest tilbake som «Custom…» — riktige tall, feil merkelapp, og
+  // ingen feilmelding.
+  const noisy = 0.075 + Number.EPSILON * 0.075;
+  assert.notEqual(noisy, 0.075, 'testen forutsetter at verdien FAKTISK avviker');
+  assert.equal(matchSteelGrade({ fyk: 500, k: 1.08, epsuk: noisy }).label, 'B500NC (k = 1.08)');
+  assert.equal(matchSteelGrade({ fyk: 500 + 1e-12, k: 1.08, epsuk: 0.075 }).label, 'B500NC (k = 1.08)');
+});
+
+test('toleransen er ikke så slapp at to ekte kvaliteter smelter sammen', () => {
+  // k = 1,05 mot 1,08 er ~3 %. Blir toleransen noen gang løsnet til «nesten
+  // like», forsvinner skillet mellom duktilitetsklasse A og C i stillhet.
+  assert.equal(matchSteelGrade({ fyk: 500, k: 1.0799, epsuk: 0.075 }), null);
+  assert.equal(matchSteelGrade({ fyk: 500, k: 1.08, epsuk: 0.0751 }), null);
+  assert.equal(matchSteelGrade({ fyk: 499.9, k: 1.08, epsuk: 0.075 }), null);
+});
+
+test('egne tall gir null — det er «Custom», ikke nærmeste kvalitet', () => {
+  // `null` er hele poenget: nedtrekket skal si «Custom…» og låse opp feltene,
+  // ikke gjette på den kvaliteten som ligger nærmest og påstå den.
+  assert.equal(matchSteelGrade({ fyk: 500, k: 1.15, epsuk: 0.075 }), null);
+  assert.equal(matchSteelGrade({ fyk: 400, k: 1.08, epsuk: 0.075 }), null);
+});
+
+test('manglende og ugyldige tall gir null, ikke et tilfeldig treff', () => {
+  // Et felt under redigering er tomt. `Number('')` er 0, og en tabelloppføring
+  // med 0 i ville da «truffet» — derfor går alt gjennom `num()` først.
+  assert.equal(matchSteelGrade({}), null);
+  assert.equal(matchSteelGrade({ fyk: 500, k: 1.08, epsuk: '' }), null);
+  assert.equal(matchSteelGrade({ fyk: 500, k: 1.08, epsuk: 'abc' }), null);
+  assert.equal(matchSteelGrade({ fyk: 500, k: 1.08, epsuk: null }), null);
+});
+
+test('hver kvalitet i tabellen kjenner seg selv igjen', () => {
+  // Fanger en oppføring som legges inn med en verdi oppslaget ikke leser —
+  // en kvalitet man kan VELGE, men som nedtrekket straks etter viser som
+  // «Custom…».
+  for (const g of STEEL_GRADES) {
+    assert.equal(matchSteelGrade(g), g, `${g.label} fant ikke seg selv`);
+  }
+  for (const g of CONCRETE_GRADES) {
+    assert.equal(matchConcreteGrade(g.fck), g, `${g.label} fant ikke seg selv`);
+  }
+});
+
+test('matchConcreteGrade: klassen eller null, aldri nærmeste', () => {
+  assert.equal(matchConcreteGrade(35).label, 'C35/45');
+  assert.equal(matchConcreteGrade(33), null);
+  assert.equal(matchConcreteGrade(''), null);
+  assert.equal(matchConcreteGrade(undefined), null);
 });

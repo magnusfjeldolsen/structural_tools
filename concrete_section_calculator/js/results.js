@@ -244,6 +244,36 @@ export const ENGINE_CODES = Object.freeze([
   // se `engine.py:_shear_result`.
   'shear_asl_ambiguous',
   'shear_not_evaluated',
+  /* --- Runde 6 steg 1: treverdige kontroller (plan §1.1–§1.7) ---
+   *
+   * HVORFOR TEKSTENE MÅ LIGGE HER OG IKKE I MOTOREN: `describeWarning()`
+   * under KASTER motorens egen `message` for enhver kode som står i
+   * `CODE_MESSAGES`, og viser bare `detail` ved siden av tabellteksten. Det
+   * betyr at den generiske forklaringen — den som sier hva forholdet ER —
+   * bare kan komme herfra. Motorens `detail` er tallene i det konkrete
+   * tilfellet, ikke forklaringen.
+   *
+   * Alvorlighetsgraden settes av motoren i `w.severity`; den er skrevet opp
+   * her fordi den er en del av kontrakten og ellers bare finnes ett sted:
+   *   error   `bending_capacity_exceeded`, `m_rd_below_m_cr`
+   *   info    `ductility_not_applicable`, `as_min_not_applicable`
+   *   warning `checks_not_evaluated`, `assessment_incomplete`
+   *
+   * De to `*_not_applicable` er `info` og ikke `warning` med vilje (plan
+   * §1.7): «klausulen gjelder ikke denne tilstanden» er ikke et avvik, og en
+   * gul trekant på den ville lært brukeren å overse gule trekanter. */
+  'bending_capacity_exceeded',
+  'm_rd_below_m_cr',
+  // MÅLT, IKKE ANTATT: motoren i denne grenen sender sprøbruddet under navnet
+  // `brittle_failure_risk` (`engine.py:1379`), ikke `m_rd_below_m_cr` som
+  // kontrakten sier. Begge står her så lista er en sann beskrivelse av hva
+  // lesesiden kan møte — ikke av hva den skulle ha møtt. Én av dem skal bort
+  // når motoren og kontrakten er enige.
+  'brittle_failure_risk',
+  'ductility_not_applicable',
+  'as_min_not_applicable',
+  'checks_not_evaluated',
+  'assessment_incomplete',
 ]);
 
 /** Kodene `section.js` sin `validate()` kan produsere. Samme tabell, ett oppslag. */
@@ -251,6 +281,7 @@ export const VALIDATION_CODES = Object.freeze([
   'invalid_height',
   'invalid_width',
   'no_reinforcement',
+  'no_load',
   'invalid_alpha_cc',
   'invalid_gamma_c',
   'invalid_gamma_s',
@@ -266,6 +297,7 @@ export const VALIDATION_CODES = Object.freeze([
   'invalid_strut_angle',
   'stirrup_alpha_unsupported',
   'stirrup_mixed_fywk',
+  'stirrup_multiple_rows_unsupported',
 ]);
 
 /** Kodene som beskriver svikt i worker/runtime eller i et lastet dokument, ikke i tverrsnittet. */
@@ -283,6 +315,11 @@ export const RUNTIME_CODES = Object.freeze([
   // Serialisering, endringsrunde 4 §2 — en lagret fil med `analysis: 'bending'`
   // og `N_Ed ≠ 0` normaliseres til `nm_domain` ved lasting.
   'analysis_forced_to_nm_domain',
+  // «Kjør alle», endringsrunde 5 §D. Den hører hjemme HER og ikke blant
+  // valideringskodene: den beskriver en KJØRING som falt ut, ikke noe galt
+  // med tverrsnittet. `solver-client.js` eksporterer den som
+  // `RUN_ALL_PARTIAL_CODE`.
+  'run_all_partial',
 ]);
 
 /**
@@ -290,6 +327,16 @@ export const RUNTIME_CODES = Object.freeze([
  * observert, og hva det betyr for resultatet. Ikke hvilken Python-funksjon som
  * kastet — det står i `detail`.
  */
+/**
+ * Sprøbruddteksten som EGEN konstant, fordi den må kunne stå under to nøkler
+ * uten å bli to tekster. Se kommentaren ved `brittle_failure_risk` under.
+ */
+const M_RD_BELOW_M_CR_MESSAGE =
+  'The bending resistance is smaller than the cracking moment, |M_Rd| < M_cr = ' +
+  'W·(f_ctm − N_Ed/A_c). The section fails the instant the concrete cracks, without ' +
+  'warning and without deflection to announce it. EC2 9.2.1.1(1) treats a section in ' +
+  'this state as unreinforced, whatever reinforcement it holds elsewhere.';
+
 export const CODE_MESSAGES = Object.freeze({
   /* --- motoren (plan §5.3) --- */
   no_convergence:
@@ -333,9 +380,51 @@ export const CODE_MESSAGES = Object.freeze({
     'force is too far outside the range the cross-section can carry for the ' +
     'compression strut check to apply. V_Rd is not available for this row.',
 
+  /* --- runde 6 steg 1: treverdige kontroller (plan §1.1–§1.7) --- */
+  bending_capacity_exceeded:
+    'The design moment exceeds the bending resistance for at least one load ' +
+    'combination: M_Ed > M_Rd(N_Ed). The section does not carry the applied moment. ' +
+    'Everything else in this report describes a section that would already have failed.',
+  m_rd_below_m_cr: M_RD_BELOW_M_CR_MESSAGE,
+  /**
+   * PROVISORISK ALIAS. Motoren i denne grenen sender koden som
+   * `brittle_failure_risk` (`engine.py:1379`), mens kontrakten for denne runden
+   * sier `m_rd_below_m_cr`. Uten oppføringen her faller en `error`-advarsel om
+   * sprøbrudd — den alvorligste beskjeden modulen kan gi — ned på
+   * plassholderen «Unspecified message from the calculation engine», som
+   * leseren tar for en programfeil og ikke for en tverrsnittsfeil.
+   *
+   * Det er SAMME strengkonstant, ikke en kopi: to skrivemåter av én kode er
+   * ubehagelig, men to ULIKE tekster for samme forhold ville vært den feilen
+   * hele denne fila finnes for å hindre. En test låser at de er identiske.
+   * Fjernes når motoren og lesesiden er enige om ett navn.
+   */
+  brittle_failure_risk: M_RD_BELOW_M_CR_MESSAGE,
+  ductility_not_applicable:
+    'The ductility requirement was not assessed. No reinforcement lies in the tension ' +
+    'zone at the failure strain plane, so there is no tension steel strain to hold ' +
+    'against ε_yd. The requirement asks a question this state does not pose — it was ' +
+    'neither met nor missed. Check the brittle-failure row instead.',
+  as_min_not_applicable:
+    'Minimum reinforcement A_s,min was not assessed. EC2 9.2.1.1 builds it from the ' +
+    'effective depth d of the tension reinforcement, which does not exist when no ' +
+    'layer lies in tension. The brittle-failure row |M_Rd| ≥ M_cr states the same ' +
+    'physical requirement without needing d, so nothing is left unchecked.',
+  checks_not_evaluated:
+    'One or more checks could not be evaluated, because the state they ask about was ' +
+    'never computed. Those rows read "–": unanswered, neither passed nor failed.',
+  assessment_incomplete:
+    'The overall assessment is inconclusive. At least one check could not be ' +
+    'answered, so this section has not been vouched for. The technical detail names ' +
+    'the rows that are open. Read "–" as a question still open, never as a pass.',
+
   /* --- validering (`section.js`) --- */
   invalid_height: 'Height h must be greater than 0.',
   invalid_width: 'Width b must be greater than 0.',
+  no_load:
+    'No load effect has been entered: every load combination has N_Ed = M_Ed = V_Ed = 0. '
+    + 'The calculation still runs, but the utilisation is 0 and the result says nothing '
+    + 'about the section. Enter the design moment in section 4.',
   no_reinforcement: 'The cross-section must have at least one reinforcement layer.',
   invalid_alpha_cc:
     'α_cc must be greater than 0. The package silently interprets 0 as 1.0, so the ' +
@@ -368,6 +457,9 @@ export const CODE_MESSAGES = Object.freeze({
     'The strut angle must be between 21.8° and 45° (EC2 6.2.3(2)).',
   stirrup_alpha_unsupported:
     'Only vertical stirrups (α = 90°) are supported by this module.',
+  stirrup_multiple_rows_unsupported:
+    'Only one stirrup row is supported in this version. The engine would add the rows '
+    + 'together as parallel stirrup sets, while the drawing and the cover only show the first.',
   stirrup_mixed_fywk:
     'All stirrup rows must share the same f_ywk: the shear capacity is computed from ' +
     'a single yield strength for the whole section.',
@@ -391,6 +483,11 @@ export const CODE_MESSAGES = Object.freeze({
   document_not_recognised: 'This is not a concrete section calculator file.',
   document_field_ignored: 'An unknown field in the file was ignored.',
   document_field_defaulted: 'A missing field in the file was filled with its default.',
+  run_all_partial:
+    'One of the analyses in "Run all" did not complete. The results shown are from the ' +
+    'analyses that did — the technical detail says which one is missing and why. ' +
+    'Anything that analysis alone would have shown is absent from the result and from ' +
+    'the report.',
   analysis_forced_to_nm_domain:
     'The file requested bending resistance with a non-zero axial force. A resistance ' +
     'quoted at a single axial force is one point on a curve, so the analysis was ' +
@@ -479,8 +576,9 @@ export function describeError(error = {}) {
  * ================================================================== */
 
 /**
- * De fire `failure_mode`-verdiene (plan §5.2). `note` sier hva bruddformen
- * betyr for duktiliteten — som er hele grunnen til at man leser feltet.
+ * `failure_mode`-verdiene (plan §5.2, utvidet i runde 6 §1.5). `note` sier hva
+ * bruddformen betyr for duktiliteten — som er hele grunnen til at man leser
+ * feltet.
  */
 export const FAILURE_MODES = Object.freeze({
   concrete_crushing: Object.freeze({
@@ -507,6 +605,29 @@ export const FAILURE_MODES = Object.freeze({
       'The entire cross-section is in compression at failure. The bending resistance ' +
       'is governed by the axial force, not by the reinforcement in tension.',
   }),
+  /**
+   * Runde 6 steg 1 (plan §1.5). Utløses av |M_Rd| < M_cr og står FORAN
+   * `steel_rupture` i motorens `_classify`.
+   *
+   * HVORFOR EN EGEN BRUDDFORM OG IKKE `over_reinforced`: tøyningstilstanden i
+   * det målte hogging-tilfellet ER at betongen knuses før jernet flyter, så
+   * `over_reinforced` er ikke galt som tilstandsbeskrivelse. Men den er galt
+   * som FORKLARING — den sier «du har for mye armering» til en som har for
+   * lite på den siden som står i strekk, og den handlingen brukeren utleder
+   * (fjerne jern) gjør snittet verre. Navnet må peke på tiltaket.
+   *
+   * Uten denne oppføringen skriver `failureModeLabel` «Unknown failure mode
+   * ("unreinforced_tension_zone")» rett ut i rapporten.
+   */
+  unreinforced_tension_zone: Object.freeze({
+    label: 'Unreinforced tension zone — fails at cracking',
+    note:
+      'The bending resistance is below the cracking moment M_cr, so the section fails ' +
+      'in the same instant the concrete cracks: there is no reserve between first crack ' +
+      'and collapse, and no deflection to warn anyone. EC2 9.2.1.1(1) treats a section ' +
+      'in this state as unreinforced. The remedy is reinforcement on the face that ' +
+      'carries tension, not less reinforcement elsewhere.',
+  }),
 });
 
 export function failureModeLabel(mode) {
@@ -526,8 +647,18 @@ export const CHECK_ORDER = Object.freeze([
   'geometry_ok',
   'axial_ok',
   'as_min_ok',
+  // Runde 6 §1.5 — RETT ETTER `as_min_ok`, fordi de to svarer på samme
+  // klausul: A_s,min er EC2 9.2.1.1 sitt forenklede surrogat for nettopp
+  // |M_Rd| ≥ M_cr. Står de ved siden av hverandre, ser leseren umiddelbart
+  // når surrogatet og det fysiske kriteriet er uenige — og det er akkurat der
+  // `d` har degenerert, altså der A_s,min ikke lenger gjelder.
+  'brittle_ok',
   'as_max_ok',
   'ductility_ok',
+  // Runde 6 §1.2 — RETT FØR `shear_ok`: de to er lastvirkning-mot-kapasitet-
+  // kontrollene og er symmetriske (η = M_Ed/M_Rd mot η_V = V_Ed/V_Rd). Sto
+  // bøyekontrollen lenger opp, ville den blitt lest som en armeringsregel.
+  'bending_ok',
   // Skjær, endringsrunde 4 §4.3 — FØR `all_ok`, som fortsatt skal stå sist:
   // uten disse tre her emitterer `checkRows()` dem aldri, og de tre nye
   // kontrollene ville vært stille fraværende fra rapporten (plan §10 punkt 2).
@@ -541,8 +672,12 @@ export const CHECK_LABELS = Object.freeze({
   geometry_ok: 'Geometry and reinforcement placement',
   axial_ok: 'N_Ed within [N_min, N_max]',
   as_min_ok: 'Minimum reinforcement A_s,min (EC2 9.2.1.1)',
+  brittle_ok: 'Brittle failure — M_Rd ≥ M_cr (EC2 9.2.1.1(1))',
   as_max_ok: 'Maximum reinforcement A_s,max = 0.04·A_c',
   ductility_ok: 'Ductility — tension reinforcement yields at failure',
+  // Ordlyden speiler `shear_ok` med vilje: samme setningsform for samme slags
+  // kontroll, så en leser ser at de to hører sammen uten å bli fortalt det.
+  bending_ok: 'Bending capacity M_Ed ≤ M_Rd(N_Ed), all combinations',
   shear_ok: 'Shear capacity V_Ed ≤ V_Rd, all combinations (EC2 6.2)',
   asw_min_ok: 'Minimum shear reinforcement A_sw/s ≥ A_sw/s,min (EC2 9.2.2(5))',
   stirrup_spacing_ok: 'Stirrup spacing s ≤ s_l,max (EC2 9.2.2(6))',
@@ -589,10 +724,34 @@ export function directionFromTheta(theta) {
   return Math.abs(t) > Math.PI / 2 ? 'hogging' : 'sagging';
 }
 
+/**
+ * «Kjør alle» (endringsrunde 5 §D). Verdien er den SAMME strengen som
+ * `store.js` eksporterer som `RUN_ALL`, men den er skrevet av her i stedet for
+ * importert: `results.js` er ren og avhenger bare av `materials.js` (jf.
+ * hodekommentaren), mens `store.js` drar med seg `rebar.js` og `section.js` —
+ * hele tilstandslaget inn i en formateringsfil. Duplikatet er i stedet låst av
+ * en test som importerer BEGGE og påstår at de er like, slik at de ikke kan
+ * drive fra hverandre uten at testen faller.
+ */
+export const RUN_ALL_ANALYSIS = 'all';
+
+/**
+ * Rekkefølgen `analysisBlock()` leter i når et «kjør alle»-resultat MANGLER
+ * `primary` (eller peker på en analyse som falt ut). Bøying står først med
+ * vilje: `solver-client.js` sin `runAllPlan` tar bare bøying med når INGEN
+ * kombinasjon har aksialkraft, så finnes blokka i det hele tatt, ER den
+ * kapasitetsanalysen. `moment_curvature` står sist fordi den ikke bærer noe
+ * bruddplan — den er en kurve, ikke en kapasitetsberegning.
+ */
+export const RUN_ALL_BLOCK_ORDER = Object.freeze(['bending', 'nm_domain', 'moment_curvature']);
+
 export const ANALYSIS_LABELS = Object.freeze({
   bending: 'Bending resistance',
   moment_curvature: 'Moment–curvature',
   nm_domain: 'N–M interaction domain',
+  // Samme ordlyd som chippen i `ui.js` har i dag, slik at den lokale
+  // `RUN_ALL_LABEL` der kan slettes uten at teksten på skjermen endrer seg.
+  [RUN_ALL_ANALYSIS]: 'Run all',
 });
 
 export function analysisLabel(analysis) {
@@ -648,9 +807,36 @@ export function tensionEdgeLabel(theta) {
  * Oppslag i resultatet
  * ================================================================== */
 
-/** Analysens egen blokk (`bending` | `moment_curvature` | `nm_domain`). */
+/**
+ * Analysens egen blokk (`bending` | `moment_curvature` | `nm_domain`).
+ *
+ * «KJØR ALLE» HAR INGEN EGEN BLOKK (endringsrunde 5 §D). `analysis: 'all'` er
+ * en KLIENTSIDE-analyse: `solver-client.js` kjører de lovlige analysene etter
+ * hverandre og legger hver motorblokk under sitt eget navn, med `primary` som
+ * peker på KAPASITETSanalysen (`nm_domain` når en kombinasjon har aksialkraft,
+ * ellers `bending`). `result.all` finnes altså ikke, og uten denne grenen
+ * ville funksjonen returnert `null` — og hele resultatpanelet og rapporten
+ * ville vist tankestrek for en kjøring som faktisk har alle tallene.
+ *
+ * REGELEN STÅR BARE HER (plan §D). `headlineUtilisation`, `momentCapacity`,
+ * `failureState`, `allCombinations`, `governingCombo` og
+ * `shearGoverningCombo` går alle gjennom denne ene funksjonen og arver den.
+ * Skrives regelen av ett sted til, er det det stedet som blir stående igjen
+ * når «kjør alle» en dag får en fjerde blokk.
+ *
+ * EN BLOKK KAN MANGLE: feiler én analyse, leverer klienten de andre og setter
+ * en `run_all_partial`-advarsel. Da kan `result[result.primary]` være
+ * `undefined`, og vi faller tilbake på `RUN_ALL_BLOCK_ORDER` i stedet for å
+ * kaste eller å svare `null` mens det fortsatt finnes tall å vise.
+ */
 export function analysisBlock(result) {
   if (!result || !result.analysis) return null;
+  if (result.analysis === RUN_ALL_ANALYSIS) {
+    for (const key of [result.primary, ...RUN_ALL_BLOCK_ORDER]) {
+      if (key && result[key]) return result[key];
+    }
+    return null;
+  }
   return result[result.analysis] || null;
 }
 
@@ -693,7 +879,13 @@ export function failureState(result) {
  * fordi resten av blokka beskriver 69 andre punkter.
  */
 export function failureStateIsAtNEd(result) {
-  return result?.analysis === 'nm_domain' && failureState(result) !== null;
+  // MARKEREN ER BLOKKA, IKKE ANALYSENAVNET (endringsrunde 5 §D). Med
+  // `analysis: 'all'` er navnet 'all' selv om tallene kommer fra
+  // `nm_domain`-blokka, og en test mot analysenavnet ville droppet nettopp
+  // den merknaden som sier at tallene gjelder ett punkt og ikke hele
+  // omhyllingen — riktige tall uten forbeholdet de trenger.
+  const fs = failureState(result);
+  return fs !== null && fs === result?.nm_domain;
 }
 
 /**

@@ -25,7 +25,7 @@
 
 import { MODULE_ID, MODULE_NAME, MODULE_VERSION, SCHEMA_VERSION, STRUCTURALCODES_VERSION }
   from './meta.js';
-import { createStore } from './store.js';
+import { createStore, RUN_ALL } from './store.js';
 import { buildPayload } from './payload.js';
 import { validate } from './section.js';
 import { createSolverClient, shouldDeferWarmup } from './solver-client.js';
@@ -99,7 +99,12 @@ export function startApp() {
       // Valideringen er allerede tegnet ved «Beregn»; å kjøre videre ville gitt
       // et tøvete tall i stedet for en melding brukeren kan gjøre noe med.
       ui.render();
-      document.getElementById('s-calc')?.scrollIntoView({ block: 'center' });
+      // Seksjon 6 er slettet, og `#validation` bor nå øverst i resultatseksjonen.
+      // Målet spørres derfor om fra `ui.js`, som eier DOM-en. En id skrevet her
+      // ville pekt på en seksjon som ikke finnes lenger, og `?.` ville gjort den
+      // manglende rullingen HELT taus — ingen feil, bare en bruker som ikke får
+      // se meldingen som stoppet kjøringen.
+      ui.scrollToValidation();
       return null;
     }
 
@@ -123,6 +128,16 @@ export function startApp() {
 
     running = (async () => {
       try {
+        if (state.analysis === RUN_ALL) {
+          // «Run all» er KLIENTSIDE (plan §D): motoren kjenner bare sine tre
+          // analysenavn, og `analysis: 'all'` ville kommet tilbake som
+          // `unknown_analysis`. `runAll` overstyrer derfor `analysis` per
+          // delkall og fletter blokkene selv — ingen motorendring.
+          return await client.runAll(payload, {
+            onStart,
+            isCancelled: () => cancelRequested,
+          });
+        }
         if (state.analysis === 'moment_curvature') {
           return await client.runMomentCurvature(payload, {
             onStart,

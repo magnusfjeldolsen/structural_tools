@@ -42,8 +42,8 @@
  *     tverrsnittstegning kan bare vise ÉN fysisk bøyle om gangen — radene er
  *     alternative soner, ikke bøyler som eksisterer samtidig i samme snitt.
  *     `stirrupGeometry()` er skilt ut av samme grunn som `sectionViewBox()`:
- *     radiusklemmen (`min(2·dia, halve korteste innersiden)`) skal kunne
- *     testes som rene tall, ikke gjettes fra en tegnet figur.
+ *     radiusklemmen, bensnappingen og bøyeradiene skal kunne testes som rene
+ *     tall, ikke gjettes fra en tegnet figur.
  *
  * Aksesystemet er planens (§3.6): `y` er horisontalt, `z` er vertikalt og peker
  * OPP, og tverrsnittet er sentrert om origo — samme nullpunkt som motoren
@@ -202,14 +202,72 @@ export function sectionViewBox(state, opts = {}) {
  * ------------------------------------------------------------------ */
 
 /**
- * `stirrupGeometry(state) -> {y0, y1, z0, z1, radius, dia, legs, legY, label} | null`
+ * Alle jernkoordinatene i tverrsnittet, i ÉN liste.
+ *
+ * Kaller `barPositions()` med nøyaktig samme argumenter som `drawSection()`
+ * gjør lenger nede — bøylegeometrien må se de SAMME jernene som blir tegnet,
+ * ellers bøyer bøylen seg rundt et jern figuren viser et annet sted. Punkt 1 i
+ * hodekommentaren gjelder også her: koordinatene regnes aldri lokalt.
+ */
+function allBars(state) {
+  const layers = Array.isArray(state?.layers) ? state.layers : [];
+  const opts = {
+    sectionType: state?.sectionType,
+    cover: state?.cover,
+    cover_side: state?.cover_side,
+    stirrup_dia: state?.stirrup_dia,
+  };
+  const out = [];
+  for (const layer of layers) {
+    for (const p of barPositions(layer, state?.geometry || {}, opts) || []) {
+      const y = Number(p.y);
+      const z = Number(p.z);
+      const d = Number(p.dia);
+      if (Number.isFinite(y) && Number.isFinite(z) && Number.isFinite(d)) out.push({ y, z, dia: d });
+    }
+  }
+  return out;
+}
+
+/**
+ * Diameteren på det største jernet som ligger i et HJØRNE av bøylen, eller 0.
+ *
+ * «I hjørnet» er avgjort av en boks på `dia_jern + dia_bøyle` fra begge de to
+ * innersidene som møtes der. Tangering — jernet som faktisk ligger i bøyen —
+ * er `(dia_jern + dia_bøyle)/2` fra hver side, så vinduet er nøyaktig det
+ * dobbelte av tangeringsavstanden. Et jern som ligger lenger inne enn det er
+ * ikke i bøyen i det hele tatt (det sitter i et indre lag, eller «svever» fordi
+ * brukeren har skrevet en stor `dc`), og da er det EC2-minsteradien som gjelder.
+ *
+ * Det STØRSTE hjørnejernet vinner fordi `<rect rx>` bare har ÉN radius for alle
+ * fire hjørnene. Har hjørnene ulike diametre, er den største bøyen den eneste
+ * som ikke ville sett for trang ut.
+ */
+function cornerBarDia(bars, y0, y1, z0, z1, stirrupDia) {
+  let best = 0;
+  for (const bar of bars) {
+    const window = bar.dia + stirrupDia;
+    const dy = Math.min(Math.abs(bar.y - y0), Math.abs(y1 - bar.y));
+    const dz = Math.min(Math.abs(bar.z - z0), Math.abs(z1 - bar.z));
+    if (dy <= window && dz <= window && bar.dia > best) best = bar.dia;
+  }
+  return best;
+}
+
+/**
+ * `stirrupGeometry(state) -> {y0, y1, z0, z1, radius, dia, legs, legY, legBends, label} | null`
  *
  * Planen (§5.3): avrundet rektangel innenfor overdekningen. `y0`/`y1`/`z0`/`z1`
  * er INNERSIDEN av bøylen i tverrsnittets millimeter — `inset = cover_side +
  * dia/2` horisontalt (langs `b`), `cover + dia/2` vertikalt (langs `h`).
  *
- * **`radius = min(2·dia, halve korteste innersiden)`.** Uten klemmen ville en
- * tynn plate (liten `h`, altså liten `innerH`) fått en hjørneradius som er
+ * **`radius`**: ligger det et jern i hjørnet, er det jernet bøylen bøyes RUNDT,
+ * og bøylens senterlinje tangerer det i `(dia_hjørnejern + dia_bøyle)/2`. Uten
+ * hjørnejern finnes det ingenting å bøye rundt, og da gjelder dorradien
+ * `2·dia` (EC2 tabell 8.1N: dordiameter ≥ 4Ø for Ø ≤ 16 mm).
+ *
+ * **Klemmen mot `halve korteste innersiden` beholdes uansett.** Uten den ville
+ * en tynn plate (liten `h`, altså liten `innerH`) fått en hjørneradius som er
  * større enn halve platetykkelsen — et rektangel som «sprekker», med negative
  * eller selvoverlappende sider. Klemmen er ikke kosmetikk; uten den blir
  * `<rect rx=...>` udefinert for enkelte tynne plater.
@@ -220,9 +278,24 @@ export function sectionViewBox(state, opts = {}) {
  * soner langs spennet, ikke bøyler som eksisterer samtidig i samme snitt.
  * Derfor brukes bare `stirrups[0]`, den som også er «S1»-eksempelet i planen.
  *
- * `legs > 2` gir `legY`: y-koordinatene til de INDRE bena, jevnt fordelt
- * mellom de to ytterbena med samme `leg_pitch`-formel som skjærmotoren
- * (planen §3.3): `(innerW) / (legs - 1)`.
+ * `legs > 2` gir `legY`: y-koordinatene til de INDRE bena, og `legBends`: én
+ * liste per ben med de jernene benet skal bøye seg rundt. Tre trinn:
+ *
+ *  1. **Jevn fordeling først**, med samme `leg_pitch`-formel som
+ *     `s_t,max`-kontrollen i `section.js` (planen §3.3): `innerW / (legs - 1)`.
+ *     DE TO FORMLENE MÅ FORBLI IDENTISKE — kontrollen advarer om benavstanden,
+ *     og figuren skal vise den avstanden kontrollen snakker om.
+ *  2. **Snapp til nærmeste jern** innenfor `pitch/2`. Et ben som står
+ *     millimeter fra et lengdejern er ikke bare stygt, det er umulig å binde;
+ *     i virkeligheten flyttes benet til jernet. Vinduet er STRENGT (`<`, ikke
+ *     `<=`): et jern nøyaktig `pitch/2` unna ligger midt mellom to jevnt
+ *     fordelte ben, og å la det trekke ett av dem til seg ville brutt
+ *     symmetrien i figuren uten at noen kollisjon var løst.
+ *  3. **Jernet ligger i bøyen.** For hvert jern benet treffer, bøyes
+ *     senterlinjen rundt jernet med radius `(dia_jern + dia_bøyle)/2` — samme
+ *     tangeringsregel som i hjørnene. Bena som IKKE er snappet har tom
+ *     `legBends` og tegnes rett: da er det ingenting å bøye rundt, og en bue
+ *     ville vært løgn.
  *
  * Returnerer `null` når lista er tom — «tegnes bare når lista er ikke-tom»
  * (§5.3) blir dermed en enkel `if (stirrup)` hos kalleren.
@@ -249,18 +322,106 @@ export function stirrupGeometry(state) {
   const innerW = Math.max(0, y1 - y0);
   const innerH = Math.max(0, z1 - z0);
 
-  // Klemmen (§5.3): uten `Math.min` mot halve korteste innerside ville en
-  // tynn plate fått en hjørneradius figuren ikke kan tegne.
-  const radius = Math.max(0, Math.min(2 * dia, Math.min(innerW, innerH) / 2));
+  const bars = allBars(state);
+
+  // Hjørnejernet styrer bøyen; finnes det ikke, gjelder dorradien 2·dia.
+  // Klemmen (§5.3) gjelder uansett: uten `Math.min` mot halve korteste
+  // innerside ville en tynn plate fått en hjørneradius figuren ikke kan tegne.
+  const cornerDia = cornerBarDia(bars, y0, y1, z0, z1, dia);
+  const cornerR = cornerDia > 0 ? (cornerDia + dia) / 2 : 2 * dia;
+  const radius = Math.max(0, Math.min(cornerR, Math.min(innerW, innerH) / 2));
 
   const legY = [];
+  const legBends = [];
   if (legs > 2 && innerW > 0) {
     const pitch = innerW / (legs - 1);
-    for (let i = 1; i < legs - 1; i++) legY.push(y0 + i * pitch);
+    for (let i = 1; i < legs - 1; i++) {
+      const even = y0 + i * pitch;
+
+      // Nærmeste jern innenfor det strenge vinduet, og ALDRI et jern et
+      // tidligere ben allerede har tatt: to ben i samme y er ett ben i
+      // figuren, og da hadde brukeren sett færre avskjæringssnitt enn han la inn.
+      // KANDIDATENE ER STREKKARMERINGEN, ikke et hvilket som helst jern. Et
+      // flerbens bøylesett bindes til det ytterste laget; et jern i et indre
+      // lag ligger ikke i noen bøy. Uten dette kunne benet snappe til et
+      // overkantjern 0,67 mm unna et underkantjern og bomme på begge — det
+      // NÆR-BOMMET er nettopp det som ser klumsete ut.
+      const hookZ = bars.reduce((lo, b) => (lo === null || b.z < lo ? b.z : lo), null);
+      const hookable = bars.filter((b) => hookZ !== null && Math.abs(b.z - hookZ) < 1e-9);
+
+      // VINDUET ER KOLLISJONSSONEN, ikke et halvt spenn. Snapper man alltid til
+      // nærmeste jern, flyttes benet selv når den jevne posisjonen står fritt:
+      // med 3 ben og 4 jern havnet det midtre benet 32 mm ut av midten uten at
+      // noe var i veien. Brukeren ba om at benet skal søke til jernet NÅR det
+      // ellers ville kollidert — ikke bestandig. `1.5 ·` gir litt margin, så et
+      // ben som nesten treffer (det som ser klumsete ut) også blir dratt helt
+      // inn i bøyen i stedet for å bli stående og gnisse mot jernet.
+      const touch = hookable.reduce((m, b) => Math.max(m, (b.dia + dia) / 2), 0);
+      let snap = null;
+      let best = Math.min(pitch / 2, 1.5 * touch);
+      for (const bar of hookable) {
+        const d = Math.abs(bar.y - even);
+        if (d < best && !legY.some((y) => Math.abs(y - bar.y) < 1e-9)) {
+          best = d;
+          snap = bar.y;
+        }
+      }
+      const y = snap === null ? even : snap;
+      legY.push(y);
+
+      const bends = [];
+      if (snap !== null) {
+        /*
+         * Benet BØYER BARE DER DET SNUR — nederst og øverst. Et jern i et indre
+         * lag ligger ikke i noen bøy; benet passerer det.
+         *
+         * To feil ble rettet her, begge funnet ved å måle på det tverrsnittet
+         * appen faktisk lager:
+         *
+         *  1. Betingelsen var `bar.z - rad <= z0`, altså «hopp over hvis jernet
+         *     stikker under bøylas senterlinje». For et lag med AVLEDET `dc`
+         *     (`suggestedDc = cover + stirrup_dia + dia/2`) er
+         *       bar.z - rad = -h/2 + cover + stirrup_dia + dia/2 - (dia + stirrup_dia)/2
+         *                   = -h/2 + cover + stirrup_dia/2 = z0
+         *     EKSAKT, for enhver overdekning og enhver diameter. `<=` slo derfor
+         *     ut buen i nøyaktig standardtilfellet — hvert eneste `dc_auto`-lag.
+         *     Målt: dc = 53 ga ingen bue, dc = 53,0001 ga bue. Tangering ER at
+         *     jernet ligger i bøyen; det er ikke overlapp.
+         *  2. Løkka gikk ovenfra og ned med en `cursor`, og med to underkantlag
+         *     bøyde den derfor rundt det INDRE jernet — det som svever fritt —
+         *     og tegnet en rett strek gjennom det YTRE, som er det som faktisk
+         *     er bundet i bøylen.
+         *
+         * Tålegrensen er 1e-6 mm og finnes bare for flyttallsstøy; den slipper
+         * ikke gjennom et jern som reelt ligger utenfor bøylen.
+         */
+        const TOL = 1e-6;
+        const onLeg = bars.filter((bar) => Math.abs(bar.y - y) < 1e-9);
+        const side = y < 0 ? -1 : 1;
+        const lowest = onLeg.reduce((a, b) => (a === null || b.z < a.z ? b : a), null);
+        const highest = onLeg.reduce((a, b) => (a === null || b.z > a.z ? b : a), null);
+
+        const bottomR = lowest ? (lowest.dia + dia) / 2 : 0;
+        if (lowest && bottomR > 0 && lowest.z < 0
+            && lowest.z - bottomR >= z0 - TOL && lowest.z + bottomR < z1) {
+          bends.push({ z: lowest.z, radius: bottomR, side });
+        }
+        // `highest.z > 0` skiller et OVERKANTJERN fra et indre underkantlag.
+        // Uten det ville to underkantlag gitt en «toppbøy» rundt det indre
+        // jernet, som henger fritt midt i tverrsnittet.
+        const topR = highest ? (highest.dia + dia) / 2 : 0;
+        if (highest && highest !== lowest && topR > 0 && highest.z > 0
+            && highest.z + topR <= z1 + TOL && highest.z - topR > z0) {
+          // Øverst først i lista: pathen tegnes ovenfra og ned.
+          bends.unshift({ z: highest.z, radius: topR, side });
+        }
+      }
+      legBends.push(bends);
+    }
   }
 
   return {
-    y0, y1, z0, z1, radius, dia, legs, spacing, legY,
+    y0, y1, z0, z1, radius, dia, legs, spacing, legY, legBends,
     label: `Ø${fmt(dia, 0)} c/c ${fmt(spacing, 0)} (${legs} legs)`,
   };
 }
@@ -342,26 +503,79 @@ export function drawSection(state, opts = {}) {
    */
   const stirrup = stirrupGeometry(state);
   if (stirrup && stirrup.y1 > stirrup.y0 && stirrup.z1 > stirrup.z0) {
-    const swStirrup = 0.18 * o.u;   // tynnere enn omrisset (swThick) OG grunnstreken (sw)
+    // EKTE diameter, akkurat som jernene tegnes (se armeringsløkka under).
+    // Før tegnet bøylen seg med en fast brøkdel av tegneenheten, helt frikoblet
+    // fra `dia`: en Ø8-bøyle i referansebjelken ble 0,18 mm bred der den skulle
+    // vært 8 · 0,1483 ≈ 1,19 mm — 6,6 ganger for tynn, og figuren løy om
+    // hvor mye plass bøylen faktisk tar. Gulvet er det gamle tallet, så en
+    // bøyle i et svært tverrsnitt ikke forsvinner i ingenting.
+    const swStirrup = Math.max(stirrup.dia * s, 0.18 * o.u);
     const rx = stirrup.radius * s;
     let g = `<g data-role="stirrup" stroke="${c.stirrup}" stroke-width="${r(swStirrup)}" fill="none">`;
     g += `<rect x="${r(px(stirrup.y0))}" y="${r(py(stirrup.z1))}" ` +
          `width="${r((stirrup.y1 - stirrup.y0) * s)}" height="${r((stirrup.z1 - stirrup.z0) * s)}" ` +
          `rx="${r(rx)}" ry="${r(rx)}"/>`;
-    // Ekstra ben (legs > 2): loddrette streker jevnt fordelt mellom ytterbena.
-    for (const ly of stirrup.legY) {
-      g += `<line x1="${r(px(ly))}" y1="${r(py(stirrup.z1))}" ` +
-           `x2="${r(px(ly))}" y2="${r(py(stirrup.z0))}"/>`;
-    }
+    // Ekstra ben (legs > 2). `path`, ikke `line`: der benet er snappet til et
+    // lengdejern skal jernet ligge i BØYEN, og en bue kan ikke uttrykkes med
+    // `<line>`. Buen er en halvsirkel om jernets senter — start- og
+    // sluttpunktet har samme x, så radien alene bestemmer utslaget, og
+    // senterlinjen tangerer jernet hele veien rundt.
+    //
+    // `sweep-flag` 1 er med klokka i SVG (y peker ned), altså utslag mot
+    // STØRRE x. `px` er monotont voksende i y, så `side = +1` (bort fra
+    // senteret på høyre side) er sweep 1 og `side = -1` er sweep 0.
+    stirrup.legY.forEach((ly, i) => {
+      const bend = (stirrup.legBends[i] || [])[0];
+      if (!bend) {
+        // Ingenting å bøye rundt: rett ben fra kant til kant.
+        const x = r(px(ly));
+        g += `<path d="M ${x} ${r(py(stirrup.z1))} L ${x} ${r(py(stirrup.z0))}"/>`;
+        return;
+      }
+      /*
+       * RETT BEN, FORSKJØVET, MED EN LITEN BØY RUNDT JERNET.
+       *
+       * Den forrige figuren la benet i jernets senterlinje og slo en halvsirkel
+       * om jernet. Tangenten til den halvsirkelen er VANNRETT der den møter et
+       * loddrett ben, så figuren fikk en 90°-knekk rett over jernet — en
+       * retningsendring ingen bøyle har.
+       *
+       * Nå står benet en radius TIL SIDEN for jernet, altså tangent til det, og
+       * bøyen er en halvsirkel rundt jernet som benet møter TANGENT. Ingen
+       * knekk noe sted. At benet dermed ikke ligger i jernets senterlinje er
+       * den lille eksentrisiteten mot skjærkraften — bevisst akseptert.
+       *
+       * Benet slutter i bøyen; det fortsetter ikke ned til bøylas underkant.
+       * `sweep-flag` 1 er med klokka i SVG (y peker ned).
+       */
+      const rp = bend.radius * s;
+      const xIn = r(px(ly) + (bend.side > 0 ? rp : -rp));
+      const xOut = r(px(ly) - (bend.side > 0 ? rp : -rp));
+      const zBar = r(py(bend.z));
+      const d = `M ${xIn} ${r(py(stirrup.z1))} L ${xIn} ${zBar}` +
+                ` A ${r(rp)} ${r(rp)} 0 0 ${bend.side > 0 ? 1 : 0} ${xOut} ${zBar}`;
+      g += `<path d="${d}"/>`;
+    });
     g += `</g>`;
     // Én liten etikett, ingen kotering (§5.3 — bevisst nedtonet). Plassert
     // MIDT i bøylen, både vannrett og loddrett: der er tverrsnittet nesten
     // alltid tomt. Den lå før rett over det nedre indre hjørnet — altså
     // nøyaktig oppå underkantarmeringen, som tegnes ETTER bøylen og dermed
     // malte over teksten, og for et smalt tverrsnitt stakk den ut av kanten.
-    g += `<text x="${r((px(stirrup.y0) + px(stirrup.y1)) / 2)}" ` +
-         `y="${r((py(stirrup.z0) + py(stirrup.z1)) / 2)}" text-anchor="middle" ` +
-         `font-family="${FONT}" font-size="${r(fsDim * 0.9)}" fill="${c.stirrup}">` +
+    // MED MASKE BAK. De indre bena går gjennom hele høyden, så uansett hvor
+    // teksten står loddrett vil de krysse den så snart `legs > 2`. En liten
+    // flate i betongfargen bak teksten er standard tegnepraksis og virker
+    // uavhengig av hvor mange ben det er. Bredden er et ANSLAG fra
+    // tegnlengden — SVG kan ikke måle tekst uten et DOM, og denne fila er
+    // DOM-fri med vilje (§2.3 punkt 2).
+    const labelFs = fsDim * 0.9;
+    const labelW = stirrup.label.length * labelFs * 0.55;
+    const labelX = (px(stirrup.y0) + px(stirrup.y1)) / 2;
+    const labelY = (py(stirrup.z0) + py(stirrup.z1)) / 2;
+    g += `<rect x="${r(labelX - labelW / 2)}" y="${r(labelY - labelFs * 0.95)}" ` +
+         `width="${r(labelW)}" height="${r(labelFs * 1.35)}" fill="${c.concreteFill}" stroke="none"/>`;
+    g += `<text x="${r(labelX)}" y="${r(labelY)}" text-anchor="middle" ` +
+         `font-family="${FONT}" font-size="${r(labelFs)}" fill="${c.stirrup}">` +
          `${esc(stirrup.label)}</text>`;
     parts.push(g);
   }
@@ -384,7 +598,13 @@ export function drawSection(state, opts = {}) {
       // Minsteradius: et Ø10-jern i en 1000 mm plate blir under en halv
       // rapport-millimeter og forsvinner i streken uten dette gulvet.
       const rad = Math.max((Number(p.dia) || 0) / 2 * s, 0.5 * o.u);
-      bars += `<circle cx="${r(px(Number(p.y) || 0))}" cy="${r(py(Number(p.z) || 0))}" r="${r(rad)}"/>`;
+      // `|| 0` ville tegnet et jern med ukjent z MIDT i tverrsnittet, stille.
+      // Et jern vi ikke vet hvor er, skal ikke tegnes — en manglende sirkel er
+      // synlig, en sirkel på feil sted er det ikke.
+      const pz = Number(p.z);
+      const py_ = Number(p.y);
+      if (!Number.isFinite(pz) || !Number.isFinite(py_)) continue;
+      bars += `<circle cx="${r(px(py_))}" cy="${r(py(pz))}" r="${r(rad)}"/>`;
     }
   }
   parts.push(bars + `</g>`);

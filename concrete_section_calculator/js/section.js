@@ -219,9 +219,24 @@ function issue(code, severity, message, field) {
 }
 
 /**
- * Validerer tilstanden. Rekkefølgen er geometri → materialfaktorer → lag →
- * lag-mot-lag, slik at den første meldingen brukeren ser er den mest
- * grunnleggende.
+ * Sant når kombinasjonen ikke påfører tverrsnittet noe som helst.
+ *
+ * NaN/tom teller som FRAVÆR av last — samme konvensjon som
+ * `axialForcesPresent` over. Et halvskrevet felt er ikke en last, og den
+ * motsatte lesningen ville fått advarselen til å blinke bort i det brukeren
+ * sletter det siste sifferet.
+ */
+function comboIsUnloaded(c = {}) {
+  return ['N_Ed', 'M_Ed', 'V_Ed'].every((key) => {
+    const v = num(c[key]);
+    return !Number.isFinite(v) || v === 0;
+  });
+}
+
+/**
+ * Validerer tilstanden. Rekkefølgen er geometri → lastvirkning →
+ * materialfaktorer → lag → lag-mot-lag → skjær, slik at den første meldingen
+ * brukeren ser er den mest grunnleggende.
  *
  * @param {object} state
  * @returns {Array<{code:string, severity:'error'|'warning', message:string, field:string}>}
@@ -244,6 +259,31 @@ export function validate(state = {}) {
   if (layers.length === 0) {
     out.push(
       issue('no_reinforcement', 'error', 'Tverrsnittet må ha minst ett armeringslag.', 'layers')
+    );
+  }
+
+  // --- 4b. Lastvirkning (runde 6 §2.1) ---
+  // Standardtilstanden er `{N_Ed: 0, M_Ed: 0, V_Ed: 0}` (`store.js`), og med
+  // `M_Ed = 0` blir η = 0 og hele svaret tomt. Det er den ENESTE seksjonen
+  // uten en brukbar standardverdi, så en førstegangsbruker får et resultat som
+  // ser vellykket ut og ikke inneholder noe. Advarselen står her, sammen med
+  // geometri og armering, fordi lastvirkning er en av de tre tingene et snitt
+  // ikke kan være uten — materialfaktorene under er parametere.
+  //
+  // ADVARSEL, IKKE FEIL, med vilje: `main.js` stopper kjøringen på
+  // `severity: 'error'`, og `M_Rd` alene er et fullt gyldig spørsmål å stille.
+  // En tom kombinasjonsliste faller i samme gren — ingen rader er like lite
+  // last som bare nullrader.
+  if ((state.combos || []).every(comboIsUnloaded)) {
+    out.push(
+      issue(
+        'no_load',
+        'warning',
+        'Ingen lastvirkning er lagt inn: alle lastkombinasjoner har '
+          + 'N_Ed = M_Ed = V_Ed = 0. Beregningen kjører, men utnyttelsen blir 0 og '
+          + 'resultatet står tomt.',
+        'combos'
+      )
     );
   }
 
@@ -379,6 +419,23 @@ export function validate(state = {}) {
     const slMax = 0.75 * d;
     const stMax = Math.min(0.75 * d, 600);
     const bw = sectionWidth(state);
+
+    // Motoren summerer radene som PARALLELLE bøylesett (`engine.py:617-625`),
+    // men figuren tegner bare rad 0 og `stirrup_dia`/`dc` følger bare rad 0.
+    // To rader ga målt 2,7 ganger kapasiteten uten at figuren endret seg. UI-et
+    // tilbyr derfor bare én rad — men en fil eller et `setInputs`-kall går
+    // utenom UI-et, og da skal det si fra i stedet for å regne i stillhet.
+    if (stirrups.length > 1) {
+      out.push(
+        issue(
+          'stirrup_multiple_rows_unsupported',
+          'error',
+          'Bare én bøylerad støttes i denne versjonen. Motoren ville summert radene '
+            + 'som parallelle bøylesett, mens tegningen og overdekningen bare viser den første.',
+          'shear.stirrups'
+        )
+      );
+    }
 
     // Alle rader må ha samme f_ywk i v1 — `VRds` tar én felles `fyk`.
     const distinctFywk = new Set(stirrups.map((st) => num(st.fywk)));

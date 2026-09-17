@@ -31,7 +31,9 @@ import {
   reinforcementRatio,
   recomputeAutoDc,
   stackedDc,
+  createStirrup,
   stirrupArea,
+  stirrupCoverDia,
   suggestedDc,
   tensionArea,
   tensionLayers,
@@ -286,6 +288,74 @@ test('suggestedDc = overdekning + bøyle + Ø/2', () => {
   assert.equal(suggestedDc({ cover: 25, stirrup_dia: 0 }, 12), 31);
 });
 
+/* ---------------- Runde 6 §1.6 — bøylediameteren i `dc` ---------------- */
+
+test('stirrupCoverDia: plata uten bøylerad har ingen bøyle å legge til', () => {
+  // Standardtilstanden: `stirrup_dia` står på 12 for ALLE tverrsnitt, og
+  // feltet er skjult for plata. Uten denne regelen spiste et usynlig tall
+  // 12 mm av høyden.
+  assert.equal(stirrupCoverDia({ sectionType: 'slab', stirrup_dia: 12, shear: { stirrups: [] } }), 0);
+  assert.equal(stirrupCoverDia({ sectionType: 'slab', stirrup_dia: 12 }), 0);
+  // Bjelken har alltid bøyler (EC2 9.2.2), også før skjærpanelet er fylt ut —
+  // ellers ville `dc` hoppet 12 mm i det øyeblikket brukeren la inn en rad.
+  assert.equal(stirrupCoverDia({ sectionType: 'beam', stirrup_dia: 12, shear: { stirrups: [] } }), 12);
+  // Uten `sectionType` (eldre fil, delvis opts-objekt): bjelke, som før.
+  assert.equal(stirrupCoverDia({ stirrup_dia: 12 }), 12);
+  // Legger brukeren likevel en bøylerad i plata, ER bøyla der — og
+  // `section-draw.js:stirrupGeometry` tegner den. Da må `dc` regne med den,
+  // ellers havner jernet midt oppå bøylas senterlinje i figuren.
+  assert.equal(
+    stirrupCoverDia({
+      sectionType: 'slab',
+      stirrup_dia: 12,
+      shear: { stirrups: [{ id: 'S1', dia: 12, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] },
+    }),
+    12
+  );
+});
+
+test('suggestedDc: plata får IKKE bøylediameteren lagt til (runde 6 §1.6)', () => {
+  // Brukerens målte tilfelle: 1000×200, overdekning 35, Ø12.
+  //   før:    35 + 12 + 6 = 53  ⇒ d = 147 mm
+  //   riktig: 35 +  0 + 6 = 41  ⇒ d = 159 mm  (12 mm, 7,5 % av momentarmen)
+  const slab = { sectionType: 'slab', cover: 35, stirrup_dia: 12, shear: { stirrups: [] } };
+  assert.equal(suggestedDc(slab, 12), 41);
+  // Samme tilstand som bjelke: bøyla teller, tallet er uendret fra før.
+  assert.equal(suggestedDc({ ...slab, sectionType: 'beam' }, 12), 53);
+});
+
+test('stackedDc og recomputeAutoDc arver platas dc — ett sted regner det', () => {
+  const slab = {
+    sectionType: 'slab',
+    cover: 35,
+    stirrup_dia: 12,
+    spacing: STD,
+    shear: { stirrups: [] },
+    layers: [],
+  };
+  // Uten nabo: samme tall som `suggestedDc`.
+  assert.equal(stackedDc(slab, 'bottom', 12), 41);
+  // Med nabo: stablingen bygger på det RETTEDE tallet, ikke på 53.
+  //   41 + (12+12)/2 + max(1·12, 16+5, 20) = 41 + 12 + 21 = 74
+  const withL1 = { ...slab, layers: [{ id: 'L1', mode: 'spacing', dia: 12, spacing: 150, edge: 'bottom', dc: 41, dc_auto: true }] };
+  assert.equal(stackedDc(withL1, 'bottom', 12), 74);
+  const recomputed = recomputeAutoDc({
+    ...slab,
+    layers: [
+      { id: 'L1', mode: 'spacing', dia: 12, spacing: 150, edge: 'bottom', dc: 999, dc_auto: true },
+      { id: 'L2', mode: 'spacing', dia: 12, spacing: 150, edge: 'bottom', dc: 999, dc_auto: true },
+    ],
+  });
+  assert.deepEqual(recomputed.map((l) => l.dc), [41, 74]);
+});
+
+test('createLayer: et nytt platelag starter på dc uten bøyle', () => {
+  const slab = createLayer({ sectionType: 'slab', cover: 35, stirrup_dia: 12, shear: { stirrups: [] } });
+  assert.equal(slab.dc, 41);
+  const beam = createLayer({ sectionType: 'beam', cover: 35, stirrup_dia: 12, shear: { stirrups: [] } });
+  assert.equal(beam.dc, 57); // 35 + 12 + 20/2 — bjelken er urørt
+});
+
 test('createLayer velger regnemåte etter tverrsnittstype', () => {
   const beam = createLayer({ sectionType: 'beam', cover: 35, stirrup_dia: 8 });
   assert.equal(beam.mode, 'bars');
@@ -491,4 +561,36 @@ test('totalAswPerSpacing summerer flere bøylesett, ikke bare tar det siste', ()
   assert.ok(Math.abs(total - (one + aswPerSpacing(list[1]))) < 1e-12);
   assert.ok(total > one, 'summen skal være større enn ett enkelt sett');
   assert.equal(totalAswPerSpacing([]), 0);
+});
+
+/* ---------------- endringsrunde 5 §B — createStirrup ---------------- */
+
+test('createStirrup arver dia fra state.stirrup_dia — det er SAMME fysiske bøyle', () => {
+  const row = createStirrup({ stirrup_dia: 10, steel: { fyk: 500 } });
+  assert.equal(row.dia, 10);
+  assert.equal(row.id, 'S1');
+  assert.equal(row.spacing, 150);
+  assert.equal(row.legs, 2);
+});
+
+test('createStirrup gir ALLTID alpha = 90 — section.js avviser alt annet i v1', () => {
+  // Uten feltet ville valideringen svart «kun α = 90° støttes. Har α =
+  // undefined°» på hver eneste kjøring med bøyler.
+  assert.equal(createStirrup({}).alpha, 90);
+  assert.equal(createStirrup({}, { spacing: 200 }).alpha, 90);
+});
+
+test('createStirrup arver fywk fra hovedarmeringens fyk, med 500 som reserve', () => {
+  assert.equal(createStirrup({ steel: { fyk: 400 } }).fywk, 400);
+  assert.equal(createStirrup({}).fywk, 500);
+  assert.equal(createStirrup({ steel: { fyk: 500 } }, { fywk: 350 }).fywk, 350, 'patchen vinner');
+});
+
+test('createStirrup faller tilbake på Ø12 når stirrup_dia er tom eller null', () => {
+  // Samme tall som `store.js` sin `stirrup_dia`-standard. De to MÅ følge
+  // hverandre: en ny bøylerad skal være den bøyla det allerede er regnet
+  // overdekning for, ellers flytter jernene seg i det man legger den inn.
+  assert.equal(createStirrup({ stirrup_dia: 0 }).dia, 12);
+  assert.equal(createStirrup({ stirrup_dia: '' }).dia, 12);
+  assert.equal(createStirrup({}).dia, 12);
 });

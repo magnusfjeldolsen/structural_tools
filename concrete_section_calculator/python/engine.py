@@ -324,7 +324,26 @@ def _weighted_depth(layers, h, theta):
     return weighted / total, total
 
 
-def _effective_depth(rebar, h, theta, eps_a=None, chi_y=None):
+def _tension_layers(rebar, layers):
+    """STREKKSETTET: lagene med ε > 0 ved brudd. Ett begrep, én definisjon, ett sted.
+
+    Regelen `ε > 0` sto tidligere skrevet TO ganger i to representasjoner: `_effective_depth`
+    regnet `eps_a + chi_y·z > 0` på nytt over rå `rebar`-dicter, mens `_classify` leste
+    `compression`-flagget i lagtilstandene. To skrivere av samme begrep kan drive fra
+    hverandre, og de gjorde det allerede ved ε nøyaktig 0: `all(l['compression'])` var
+    USANT (ε er ikke < 0), mens strekksiden var TOM — samme snitt, to motsatte svar på
+    «står noe i strekk?». Settet regnes derfor nå én gang, av tøyningene `_layer_state`
+    allerede har, og tres gjennom til `d_eff`, `As_tension`, bruddformen, duktiliteten og
+    A_s,min.
+
+    `layers` kommer fra `_layer_state(rebar, …)` og har per konstruksjon samme rekkefølge
+    som `rebar` — derfor `zip` og ikke et oppslag på `id`.
+    """
+    return [layer for layer, state in zip(rebar, layers)
+            if state['eps'] is not None and state['eps'] > 0]
+
+
+def _effective_depth(rebar, tension, h, theta):
     """`d` etter EC2 9.2.1.1: trykkanten til tyngdepunktet i STREKKARMERINGEN.
 
     HVORFOR IKKE BARE ALLE LAG ARÉALVEKTET
@@ -334,30 +353,62 @@ def _effective_depth(rebar, h, theta, eps_a=None, chi_y=None):
     man minst har lyst til å bomme. Referansefixturene har ett lag og ville aldri avslørt
     det; derfor står det en egen tolagstest i `test_engine.py`.
 
-    HVORDAN STREKKSIDEN AVGJØRES
-    Fra tøyningsplanet ved brudd, `ε(z) = eps_a + chi_y·z > 0`, når det finnes. Det er den
-    eneste definisjonen som er riktig også når aksialtrykket flytter nøytralaksen forbi et
-    lag. Finnes det ikke noe tøyningsplan ennå — eller er hele snittet i trykk — faller vi
-    tilbake på den geometriske strekksiden for den analyserte retningen, og til slutt på
-    alle lag, slik at funksjonen alltid gir et tall å rapportere.
+    HVORFOR DET IKKE FINNES NOEN RESERVEGREN LENGER
+    Fram til nå falt funksjonen tilbake på den geometriske strekksiden, og til slutt på ALLE
+    lag, «slik at funksjonen alltid gir et tall å rapportere». Garantien VAR feilen. Den
+    eneste kalleren har alltid et tøyningsplan, så reservegrenene kunne per konstruksjon
+    bare slå til når planet sier «ingen lag i strekk» — altså bare når de motsier grunnlaget
+    de skulle støtte seg på. Målt på referansebjelken som støttemoment med N = −500 kN ga
+    reserven `d = 50 mm` og ρ = 6,28 % for et snitt som ikke har ett eneste jern på
+    strekksiden, og rapporten trykte begge uten forbehold. Nå blir `d_eff`, `As_min`, `rho`
+    og `x_over_d` `None`, `As_tension` blir 0, og A_s,min-kontrollen blir UBESVART i stedet
+    for bestått med 42× margin på et oppdiktet grunnlag.
 
     Returnerer `(d_eff, As_tension, d_eff_all)`.
     """
     d_all, _as_all = _weighted_depth(rebar, h, theta)
-
-    tension = []
-    if chi_y is not None and eps_a is not None:
-        tension = [l for l in rebar if eps_a + chi_y * _layer_z(l) > 0]
-    if not tension:
-        # Geometrisk strekkside: under senter ved feltmoment, over senter ved støtte.
-        hogging = _is_hogging(theta)
-        tension = [l for l in rebar
-                   if (_layer_z(l) > 0 if hogging else _layer_z(l) < 0)]
-    if not tension:
-        tension = list(rebar)
-
+    # `_weighted_depth([])` gir (None, 0.0) — nettopp «ingen dybde, ingen armering».
     d_eff, as_tension = _weighted_depth(tension, h, theta)
     return d_eff, as_tension, d_all
+
+
+def _cracking_moment(b, h, fctm, n_ed):
+    """`M_cr = W·(f_ctm − N_Ed/A_c)`, `W = b·h²/6` — riss-momentet for det urissede,
+    rektangulære bruttotverrsnittet. Motoren bygger et rektangel og ingenting annet, så
+    `W` er eksakt og ikke et anslag.
+
+    HVORFOR `f_ctm` OG IKKE `f_ctm,fl` — BESLUTTET, IKKE GLEMT
+    EC2 3.1.8 gir en høyere bøyestrekkfasthet `f_ctm,fl` for tynne snitt (faktoren er 1,0
+    først ved h ≥ 600 mm). Vi bruker likevel `f_ctm`: det er samme `f_ct,eff` som EC2
+    9.2.1.1 selv bruker, og hele kalibreringsargumentet for denne kontrollen hviler på den.
+    For 300×600 er de to fasthetene identiske uansett (EC2 3.1.8 gir faktor 1,0 ved
+    h = 600). Valget betyr noe bare for tynne snitt, der `f_ctm` er den MILDESTE av de to —
+    en «retting» til `f_ctm,fl` ville altså gjort kontrollen strengere enn A_s,min den skal
+    speile, og krevd at kalibreringen regnes om. IKKE endre dette i god tro.
+
+    NIVAAET: `M_cr` er en middelverdi-stoerrelse (f_ctm, ingen materialfaktor).
+    `checks.brittle_ok` sammenlikner den derfor mot `|M_Rd| · γ_s`, altså kapasiteten
+    loeftet til KARAKTERISTISK nivaa — samme nivaa som A_s,min utledes paa. Uten det ble
+    kontrollen 1,15 ganger strengere enn kalibreringen den speiler, og underkjente plater
+    som oppfyller EC2 eksakt (h = 200 ga forholdstall 0,903). Se `brittle_ok` i `_run_inner`.
+
+    KALIBRERINGEN, MÅLT: referansebjelken armert nøyaktig til A_s,min = 248,5 mm² ved
+    d = 550 gir M_Rd = 63,09 kNm mot M_cr = 52,14 kNm — forholdstall 1,21 (62,70 kNm og
+    1,20 med α_cc = 0,85). A_s,min ER kalibrert mot dette kriteriet, og forholdstallet over
+    1 er nettopp hvorfor `brittle_ok` ikke blir en ny falsk alarm: der `d` er ekte, er
+    A_s,min den bindende av de to, og `brittle_ok` slår bare til der `d` IKKE er ekte.
+    (Planen anslo 56,5 kNm og 1,08 for hånd; tallene her er kjørt gjennom motoren.)
+
+    FORTEGNET: `N_Ed` har strekk positivt, så et aksialTRYKK (negativt) LØFTER riss-momentet
+    — det er hva `− N_Ed/A_c` gjør. Målt på referansebjelken: 52,14 kNm ved N = 0 mot
+    102,14 kNm ved N = −500 kN.
+
+    Blir tallet negativt, risser snittet av aksialstrekket alene, uten noe moment. Da er
+    «må bære mer enn det som får det til å risse» oppfylt av et hvilket som helst
+    `|M_Rd| ≥ 0`, og kontrollen består. Den er IKKE ubesvart: tilstanden er regnet, svaret
+    er bare trivielt.
+    """
+    return (b * h * h / 6.0) * (fctm - n_ed / (b * h))
 
 
 # Hvor langt utenfor tverrsnittet en nøytralakse fortsatt er et tall verdt å vise.
@@ -408,10 +459,24 @@ def _layer_state(rebar, eps_a, chi_y, steel):
     return out
 
 
-def _classify(eps_s_max, eps_c_top, layers, eps_yd, eps_ud, eps_cu):
-    """Bruddform, i rekkefølgen §5.2 gir. Rekkefølgen ER klassifiseringen."""
-    if eps_s_max < eps_yd and all(l['compression'] for l in layers):
+def _classify(tension, eps_s_max, eps_c_top, eps_yd, eps_ud, eps_cu, m_rd, m_cr):
+    """Bruddform, i rekkefølgen §5.2 gir. Rekkefølgen ER klassifiseringen.
+
+    `tension` er strekksettet fra `_tension_layers` — ikke `compression`-flaggene, se der
+    for hvorfor de to ikke var samme utsagn. Vilkåret `eps_s_max < eps_yd` som sto på den
+    første grenen er droppet fordi det er implisert: er strekksettet tomt, er ingen ε > 0,
+    og da er `eps_s_max ≤ 0 < eps_yd` uansett.
+    """
+    if not tension:
         return 'compression_no_tension'
+    if m_rd is not None and m_cr is not None and abs(m_rd) < m_cr:
+        # FORAN `steel_rupture` og `over_reinforced`, med vilje. Når kapasiteten ligger
+        # under riss-momentet, går snittet i stykker i det ØYEBLIKKET det risser — hele
+        # armeringens tøyningshistorie etterpå er uten betydning, for den inntreffer aldri.
+        # `over_reinforced` er ikke nødvendigvis galt som TØYNINGSTILSTAND her (betongen
+        # knuses før jernet flyter), men det er galt som FORKLARING: det sier «du har for
+        # mye armering» til en som har for lite på den siden det gjelder.
+        return 'unreinforced_tension_zone'
     if eps_s_max >= eps_ud * (1 - 1e-3):
         return 'steel_rupture'
     if eps_c_top <= -eps_cu * (1 - 1e-3) and eps_s_max >= eps_yd:
@@ -460,8 +525,12 @@ def _compression_zone_warning(payload, bundle, eps_a, chi_y, z_na):
         f'concrete it displaces is counted twice. The resistance is estimated to be about '
         f'{abs(moment) / 1e6:.1f} kNm on the unsafe side. Enable "subtract bar area" to '
         'remove the double counting.',
-        f'sum A_s*sigma_c = {force:.1f} N, sum A_s*sigma_c*z = {moment:.1f} Nmm, '
-        f'z_na = {z_na}',
+        # `z_na` tas bare med NÅR den finnes. Ved rent trykk er krumningen numerisk null og
+        # `_neutral_axis` gir med rette `None` — og «z_na = None» i en advarsel er nøyaktig
+        # den typen sitat av et tall som aldri ble regnet som §1.7 forbyr. Anslaget over
+        # står uansett: det kommer fra tøyningsplanet, ikke fra nøytralaksen.
+        f'sum A_s*sigma_c = {force:.1f} N, sum A_s*sigma_c*z = {moment:.1f} Nmm'
+        + (f', z_na = {z_na:.3f}' if z_na is not None else ''),
     )
 
 
@@ -779,15 +848,39 @@ def _normalise_loads(payload, opts):
     return [combo], 'C1'
 
 
-def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_max,
-                  shear_ctx, warnings_out):
+def _unsolved_combo(combo, n_ed, m_ed, theta_c, v_ed, shear, within_limits):
+    """En `combinations[i]`-rad UTEN bøyeløsning — skjæret står, bøyefeltene er `None`.
+
+    Formen er den samme som `_solve_combo` ellers returnerer, slik at leserne (`results.js`,
+    `report.js`) ikke trenger å vite hvorfor feltene er tomme. To grunner gir denne raden:
+    kombinasjonen ligger utenfor `[n_min, n_max]` (§4.4, `within_limits: False`), eller
+    M–κ tok med raden BARE for skjærets skyld (§10 C2, `within_limits: True`).
+    """
+    return {
+        'id': combo['id'], 'name': combo['name'],
+        'N_Ed': _num(n_ed), 'M_Ed': _num(m_ed), 'theta': _num(theta_c),
+        'V_Ed': _num(v_ed), 'shear': shear,
+        'M_Rd': None, 'utilisation': None,
+        'x': None, 'x_over_d': None, 'eps_a': None, 'chi_y': None,
+        'eps_c_top': None, 'eps_s_max': None, 'failure_mode': None, 'layers': None,
+        'within_limits': bool(within_limits),
+        # EKSPLISITT, ikke utledet. En leser kunne i prinsippet sluttet seg til det
+        # samme av at `M_Rd is None` mens `within_limits` er True, men da ville
+        # rapporten stått med en tom statuscelle den dagen noen la til enda en grunn
+        # til at bøyningen ikke ble løst.
+        'flexure_solved': False,
+    }
+
+
+def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
+                  n_min, n_max, shear_ctx, warnings_out, solve_flexure=True):
     """Løser bruddtilstanden for ÉN lastkombinasjon.
 
     Returnerer `(public, extra)`. `public` er NØYAKTIG formen `combinations[i]` skal ha i
     resultatet (§4.3) og går rett ut som JSON. `extra` er interne mellomregninger
-    (`d_eff`, `as_tension`, `d_eff_all`, `z_na`) som bare GOVERNING-kombinasjonen trenger
-    videre (til `section_props`/`checks`/`meta`, §4.3) — å regne dem for alle
-    kombinasjonene ville vært bortkastet arbeid for rader ingen speiler.
+    (`d_eff`, `as_tension`, `d_eff_all`, `z_na`, `m_cr`, `has_tension`) som bare
+    GOVERNING-kombinasjonen trenger videre (til `section_props`/`checks`/`meta`, §4.3) — å
+    regne dem for alle kombinasjonene ville vært bortkastet arbeid for rader ingen speiler.
 
     Utenfor `[n_min, n_max]` (§4.4): `within_limits: False`, alle bøye-utfallsfelt `None`,
     og en `axial_out_of_range`-advarsel MERKET med hvilken kombinasjon det gjelder — ellers
@@ -797,6 +890,10 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
     Skjær (§4.1b) regnes FØR denne aksialsjekken og er ikke omfattet av den — `A_sl`/`d`
     er geometriske, ikke hentet fra bøyeløsningen, så skjær har et svar for ENHVER
     kombinasjon uansett hva aksialsjekken under sier.
+
+    `solve_flexure=False` gir skjær og aksialsjekk, men hopper over selve bruddtilstanden
+    (§10 C2). Det er M–κ sine ikke-aktive rader: de er med i lista utelukkende for at
+    `shear_governing` og skjærkontrollene skal bli de samme som i de to andre analysene.
     """
     n_ed = combo['N_Ed']
     m_ed = combo['M_Ed']
@@ -804,6 +901,14 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
     v_ed = float(combo.get('V_Ed', 0.0) or 0.0)
 
     shear = _shear_result(combo, rebar, h, shear_ctx, warnings_out)
+    # `M_cr` avhenger BARE av geometrien, `f_ctm` og `N_Ed` — aldri av bruddtilstanden.
+    # Derfor har den et svar også for radene under, som ikke løser bøyningen, og skal
+    # regnes her oppe én gang i stedet for to ganger lenger nede.
+    m_cr = _cracking_moment(b, h, fctm, n_ed)
+    # `has_tension: None` betyr «ikke regnet», ikke «ingen strekk» — de to gir ULIKE
+    # kontrollsvar lenger nede, og må derfor være skillbare her.
+    no_extra = {'d_eff': None, 'as_tension': None, 'd_eff_all': None, 'z_na': None,
+                'm_cr': m_cr, 'has_tension': None}
 
     if n_ed < n_min or n_ed > n_max:
         warning = _warning(
@@ -817,17 +922,17 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
         warning['combo'] = combo['id']
         warning['combo_name'] = combo['name']
         warnings_out.append(warning)
-        public = {
-            'id': combo['id'], 'name': combo['name'],
-            'N_Ed': _num(n_ed), 'M_Ed': _num(m_ed), 'theta': _num(theta_c),
-            'V_Ed': _num(v_ed), 'shear': shear,
-            'M_Rd': None, 'utilisation': None,
-            'x': None, 'x_over_d': None, 'eps_a': None, 'chi_y': None,
-            'eps_c_top': None, 'eps_s_max': None, 'failure_mode': None, 'layers': None,
-            'within_limits': False,
-        }
-        extra = {'d_eff': None, 'as_tension': None, 'd_eff_all': None, 'z_na': None}
+        public = _unsolved_combo(combo, n_ed, m_ed, theta_c, v_ed, shear, False)
+        extra = dict(no_extra)
         return public, extra
+
+    if not solve_flexure:
+        # Raden er med BARE for skjæret (§10 C2). Bøyeløsningen under koster en full
+        # bruddtilstand — og M–κ betaler den på nytt for HVERT κ-punkt, fordi
+        # `solver-client.js` kjører én motorrunde per punkt. Med 20+ punkter ville
+        # «skjær for alle kombinasjoner» blitt 20+ ganger dyrere enn den er verdt, mens
+        # selve skjæret koster mikrosekunder og er allerede regnet over.
+        return _unsolved_combo(combo, n_ed, m_ed, theta_c, v_ed, shear, True), dict(no_extra)
 
     with _Capture() as cap:
         bend = sc.calculate_bending_strength(theta=theta_c, n=n_ed)
@@ -841,13 +946,18 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
     layers = _layer_state(rebar, eps_a, chi_y, steel)
     eps_s_max = max((l['eps'] for l in layers if l['eps'] is not None), default=None)
     eps_edge = eps_a + chi_y * (-h / 2.0 if _is_hogging(theta_c) else h / 2.0)
-    failure_mode = _classify(eps_s_max, eps_edge, layers, eps_yd, eps_ud, eps_cu)
 
-    # d_eff kan først avgjøres NÅ: EC2 9.2.1.1 sin `d` gjelder strekkarmeringen, og hvilke
-    # lag som står i strekk ser man i tøyningsplanet ved brudd, ikke i geometrien alene.
+    # Strekksettet kan først avgjøres NÅ, og regnes ÉN gang: EC2 9.2.1.1 sin `d` gjelder
+    # strekkarmeringen, og hvilke lag som står i strekk ser man i tøyningsplanet ved brudd,
+    # ikke i geometrien alene. Herfra tres det samme settet gjennom til bruddformen, `d_eff`,
+    # `As_tension` og videre til duktilitet og A_s,min i `_run_inner`.
     # (Dette er IKKE skjærets `A_sl`/`d` — se `_shear_geometry` for hvorfor de to skal
     # være ulike funksjoner.)
-    d_eff, as_tension, d_eff_all = _effective_depth(rebar, h, theta_c, eps_a, chi_y)
+    tension = _tension_layers(rebar, layers)
+    failure_mode = _classify(
+        tension, eps_s_max, eps_edge, eps_yd, eps_ud, eps_cu, m_rd_signed, m_cr,
+    )
+    d_eff, as_tension, d_eff_all = _effective_depth(rebar, tension, h, theta_c)
 
     public = {
         'id': combo['id'], 'name': combo['name'],
@@ -859,9 +969,11 @@ def _solve_combo(combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_ma
         'eps_c_top': _num(eps_edge), 'eps_s_max': _num(eps_s_max),
         'failure_mode': failure_mode, 'layers': layers,
         'within_limits': True,
+        'flexure_solved': True,
     }
     extra = {
         'd_eff': d_eff, 'as_tension': as_tension, 'd_eff_all': d_eff_all, 'z_na': z_na,
+        'm_cr': m_cr, 'has_tension': bool(tension),
     }
     return public, extra
 
@@ -919,6 +1031,27 @@ def _utilisation(m_ed, m_rd):
     if not m_rd:
         return None
     return abs(m_ed) / abs(m_rd)
+
+
+def _three_valued_and(checks):
+    """`all_ok` som treverdig OG: `False` slår `None`, `None` slår `True`.
+
+    ALDRI «null teller som bestått». Rekkefølgen er hele poenget — et brudd skal ikke kunne
+    gjemme seg bak en ubesvart kontroll, og en ubesvart kontroll skal ikke kunne gjemme seg
+    bak alt det andre som gikk bra. En «–» i «Overall assessment» er den sanne påstanden
+    «motoren kan ikke gå god for dette snittet», og den er alltid bedre enn en grønn hake
+    motoren ikke har dekning for.
+
+    Leser `checks` som den står, uten en liste over hvilke nøkler som teller — en ny
+    kontroll blir dermed med i totalen uten at noen må huske å oppdatere to steder.
+    `all_ok` selv legges inn ETTER dette kallet og kan derfor ikke telle seg selv.
+    """
+    values = list(checks.values())
+    if any(v is False for v in values):
+        return False
+    if any(v is None for v in values):
+        return None
+    return True
 
 
 def run(payload: dict, progress=None) -> dict:
@@ -1019,46 +1152,70 @@ def _run_inner(payload, progress, t0):
     eps_yd = float(steel.epsyd)
     eps_ud = float(steel.epsud())
 
-    if analysis == 'moment_curvature':
-        # M–κ regner bare på DEN AKTIVE kombinasjonen (§4.3) — å løse alle de andre ville
-        # vært bortkastet arbeid ingen leser noensinne får se, og `chi_plan` er uansett
-        # bare meningsfullt for én kombinasjon om gangen (§3.7).
-        active_combo = next((c for c in combos if c['id'] == active_id), combos[0])
+    # Kombinasjonsløkka går over ALLE radene i alle tre analysene (§10 C2). Skjær er rent
+    # geometrisk — `_shear_result` leser bare `bw`, `A_sl`/`d`, kombinasjonens fortegn på
+    # `M_Ed`, `N_Ed`, `V_Ed` og materialene, ALDRI et tøyningsplan — så det har et svar for
+    # enhver rad uten at bruddtilstanden er løst. Løste M–κ som før bare den aktive raden,
+    # kunne `shear_governing` per definisjon aldri peke på noen annen enn den aktive, og
+    # skjærtallene ble dermed avhengige av HVILKEN analyse brukeren tilfeldigvis kjørte.
+    # Det er nettopp det skjær ikke skal være.
+    #
+    # BØYNINGEN løses derimot fortsatt bare for den aktive raden i M–κ (`solve_flexure`):
+    # `solver-client.js` kjører én motorrunde per κ-punkt, så alt løkka gjør her betales
+    # 20+ ganger per kurve. Skjær tåler det (mikrosekunder), en bruddtilstand gjør det ikke.
+    #
+    # Framdrift: løkka er den ENESTE skriveren av 'solve'-fasen — men bare for bøying og
+    # M–N. M–κ har sin egen, indre skriver i `_moment_curvature` (§4.5), og to skrivere til
+    # samme fase ville vært en felle, ikke en funksjon; derfor tier løkka for M–κ.
+    is_mc = analysis == 'moment_curvature'
+    emit_solve_progress = progress is not None and not is_mc
+    # Den aktive radens indeks må stå FØR løkka: det er den ene raden M–κ løser bøyning for.
+    # Reserven `0` er samme regel som `_normalise_loads` bruker når `active` ikke finnes.
+    active_index = next((i for i, c in enumerate(combos) if c['id'] == active_id), 0)
+    combo_results = []
+    combo_extras = []
+    n_combos = len(combos)
+    for i, combo in enumerate(combos):
+        if emit_solve_progress:
+            progress('solve', i, n_combos)
         public, extra = _solve_combo(
-            active_combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_max,
+            combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu, n_min, n_max,
             shear_ctx, warnings_out,
+            solve_flexure=(not is_mc or i == active_index),
         )
-        combo_results = [public]
-        combo_extras = [extra]
-        governing_index = 0 if public['within_limits'] else None
+        combo_results.append(public)
+        combo_extras.append(extra)
+    if emit_solve_progress:
+        progress('solve', n_combos, n_combos)
+
+    if is_mc:
+        # KURVEN regnes for DEN AKTIVE kombinasjonen alene (§4.3): `chi_plan` er bare
+        # meningsfullt for én kombinasjon om gangen (§3.7), og alt M–κ-blokka ellers speiler
+        # (θ, N_Ed, M_Rd, `section_props`) hører til nettopp den raden. Derfor er den aktive
+        # raden også `ref` her, og ikke den med størst utnyttelse — ellers ville
+        # overskriftens retning og kurven beskrevet to forskjellige kombinasjoner.
+        # `fallback_index` MÅ av samme grunn være den aktive raden og ikke rad 0: de andre
+        # radene har ingen bøyeløsning (`solve_flexure=False`), så `_moment_curvature` og
+        # `_compression_zone_warning` ville fått `M_Rd = None` i hendene.
+        fallback_index = active_index
+        governing_index = (
+            active_index if combo_results[active_index]['within_limits'] else None
+        )
     else:
-        # Bøying og M–N-diagrammet løser HVER kombinasjon (§10 B2 punkt 2). Løkka er den
-        # ENESTE skriveren av 'solve'-framdrift her (§4.5) — M–κ har sin egen, indre, og to
-        # skrivere til samme fase ville vært en felle, ikke en funksjon.
-        combo_results = []
-        combo_extras = []
-        n_combos = len(combos)
-        for i, combo in enumerate(combos):
-            if progress is not None:
-                progress('solve', i, n_combos)
-            public, extra = _solve_combo(
-                combo, sc, rebar, steel, h, eps_yd, eps_ud, eps_cu, n_min, n_max,
-                shear_ctx, warnings_out,
-            )
-            combo_results.append(public)
-            combo_extras.append(extra)
-        if progress is not None:
-            progress('solve', n_combos, n_combos)
+        fallback_index = 0
         governing_index = _select_governing(combo_results)
 
     # Skjær har sitt EGET, uavhengige governing-valg (§4.3) — en rad med stor `V_Ed` og
-    # lite `M_Ed` kan styre skjær uten å være i nærheten av å styre bøying.
+    # lite `M_Ed` kan styre skjær uten å være i nærheten av å styre bøying. Etter at løkka
+    # ble felles er dette valget det samme i alle tre analysene, som det skal være.
     shear_governing_id = _select_shear_governing(combo_results)
 
     # §4.3 regel 4: ingen kandidater ⇒ `governing: null`, og toppnivåfeltene speiler i
-    # stedet den FØRSTE kombinasjonen, slik at figurer og tabeller har noe å vise.
+    # stedet reserveraden, slik at figurer og tabeller har noe å vise. Reserven er den
+    # FØRSTE kombinasjonen for bøying og M–N, men den AKTIVE for M–κ — der er det den
+    # aktive raden blokka handler om, også når den ligger utenfor [n_min, n_max].
     has_candidate = governing_index is not None
-    ref_index = governing_index if has_candidate else 0
+    ref_index = governing_index if has_candidate else fallback_index
     ref = combo_results[ref_index]
     ref_extra = combo_extras[ref_index]
     governing_id = ref['id'] if has_candidate else None
@@ -1066,6 +1223,8 @@ def _run_inner(payload, progress, t0):
     d_eff = ref_extra['d_eff']
     as_tension = ref_extra['as_tension']
     d_eff_all = ref_extra['d_eff_all']
+    m_cr = ref_extra['m_cr']
+    has_tension = ref_extra['has_tension']
 
     # A_s,min etter EC2 9.2.1.1 regnes HER og ikke via `ec2_2004.As_min` — den funksjonen
     # har signaturen As_min(A_ct, sigma_s, fct_eff, k, kc) og er rissviddeminimumet etter
@@ -1081,21 +1240,151 @@ def _run_inner(payload, progress, t0):
         if cz is not None:
             warnings_out.append(cz)
 
+    # ---------------------------------------------------------------- #
+    # Kontrollene — TREVERDIGE (plan runde 6 §1.1)
+    # ---------------------------------------------------------------- #
+    # `True` = kravet gjelder og er oppfylt. `False` = kravet gjelder og er ikke oppfylt.
+    # `None` = motoren kan ikke hevde noen av delene, enten fordi klausulen ikke gjelder
+    # denne tilstanden eller fordi tilstanden aldri ble regnet. Grunnen til `None` ligger
+    # ALLTID i `warnings` (`assessment_incomplete`), aldri i kontrollverdien.
+    #
+    # Det gamle `bool(as_min is None or …)` og `bool(eps_s_max is not None and …)` sto ved
+    # siden av hverandre med to MOTSATTE konvensjoner for det samme ukjente: den ene lot
+    # ukjent bli bestått, den andre lot ukjent bli et påstått brudd. Begge var feil. Målt
+    # på referansebjelken som støttemoment med N = −500 kN ga de til sammen «A_s,min OK med
+    # 42× margin» og «over-reinforced» for et snitt uten ett eneste jern på strekksiden.
+    #
+    # `null_reasons` samles opp mens kontrollene avgjøres, slik at grunnen skrives ned DER
+    # den er kjent og ikke rekonstrueres etterpå av den som formulerer advarselen.
     eps_s_max = ref['eps_s_max']
-    ductility_ok = bool(eps_s_max is not None and eps_s_max >= eps_yd)
-    as_min_ok = bool(as_min is None or as_total >= as_min)
+    null_reasons = {}
+
+    # DUKTILITET spør om STREKKarmeringen flyter ved brudd. Finnes det ingen strekkarmering,
+    # finnes ikke spørsmålet — og `eps_s_max` er da ikke en strekktøyning i det hele tatt,
+    # bare den minst negative trykktøyningen. Er strekksettet derimot ikke tomt, ER
+    # `eps_s_max` lik maks over strekksettet (maksimum over alle lag oppnås nødvendigvis i
+    # et lag med ε > 0), så feltet beholder sin betydning uendret og leses her direkte.
+    if has_tension is None:
+        ductility_ok = None
+        null_reasons['ductility_ok'] = (
+            'no failure state was computed for the governing load combination'
+        )
+    elif not has_tension:
+        ductility_ok = None
+        null_reasons['ductility_ok'] = (
+            'no reinforcement layer is in tension at failure, so there is no tensile '
+            'strain to compare with ε_yd'
+        )
+    else:
+        ductility_ok = bool(eps_s_max >= eps_yd)
+
+    # A_s,min sammenliknes mot `As_tension`, ikke mot `As_total`: kravet gjelder armeringen
+    # på strekksiden, og `rho` rett nedenfor har brukt samme teller i flere runder allerede
+    # med den samme begrunnelsen — teller og nevner må gjelde den samme armeringen.
+    # `as_min` er `None` nøyaktig når `d_eff` er det, altså når strekksettet er tomt eller
+    # bruddtilstanden aldri ble regnet. Da er surrogatet A_s,min ∝ d ikke definert.
+    if as_min is None:
+        as_min_ok = None
+        null_reasons['as_min_ok'] = (
+            'the effective depth d is undefined — no reinforcement is in tension at '
+            'failure, so A_s,min = 0.26·f_ctm/f_yk·b_t·d cannot be formed'
+        )
+    else:
+        as_min_ok = bool(as_tension >= as_min)
+
     as_max_ok = bool(as_total <= as_max)
     # `axial_ok` er sant BARE hvis samtlige løste kombinasjoner ligger innenfor (§4.4).
     axial_ok = all(c['within_limits'] for c in combo_results)
-    if not as_min_ok:
+
+    # BØYEKONTROLLEN, som manglet helt: `_utilisation` regnet tallet og ingen leste det.
+    # Målt på referansebjelken med M_Ed = −500 kNm mot M_Rd = −215,0 kNm ga motoren
+    # η = 2,33 og «Overall assessment: OK» uten en eneste advarsel.
+    #
+    # DEFINISJONSMENGDEN er radene som er BÅDE innenfor `[n_min, n_max]` og faktisk løst.
+    # Ikke bare governing: i M–κ løses bare den aktive raden, og de uløste må falle UT av
+    # mengden i stedet for å telles som bestått. Er mengden tom, er kontrollen ubesvart.
+    #
+    # TERSKELEN er nøyaktig `η ≤ 1,0`, uten toleranse. Det er ikke en smaksak:
+    # `results.js` har `UTILISATION_THRESHOLDS.over = 1.0` og bruker strengt `x > 1.0` til
+    # den røde pilla. En slakk på 1e-6 her ville gitt η = 1,0000005 med rød pille «Capacity
+    # exceeded» ved siden av en grønn kontrollrad «OK» — nøyaktig den selvmotsigelsen
+    # tabellen finnes for å hindre.
+    bending_rows = [c for c in combo_results
+                    if c['within_limits'] and c['flexure_solved']]
+    over_utilised = [c for c in bending_rows
+                      if c['utilisation'] is not None and c['utilisation'] > 1.0]
+    if over_utilised:
+        bending_ok = False
+    elif not bending_rows:
+        bending_ok = None
+        null_reasons['bending_ok'] = (
+            'no load combination has both an axial force within [N_min, N_max] and a '
+            'computed failure state'
+        )
+    elif any(c['utilisation'] is None for c in bending_rows):
+        bending_ok = None
+        null_reasons['bending_ok'] = (
+            'the bending resistance is zero for at least one combination, so the '
+            'utilisation M_Ed/M_Rd is not a number'
+        )
+    else:
+        bending_ok = True
+
+    # SPRØBRUDD: `|M_Rd| ≥ M_cr`. Dette er det fysiske kriteriet EC2 9.2.1.1 er et forenklet
+    # surrogat FOR, og 9.2.1.1(1) sier selv at et snitt under A_s,min «should be considered
+    # as unreinforced». Kontrollen trengs ved siden av A_s,min fordi surrogatet degenererer
+    # nettopp der `d` gjør det: i støttemomentet med bare underkantarmering er A_s,min
+    # 22,6 mm² mot 942 mm² armering — bestått med 42× margin — mens M_Rd = 6,4 kNm ligger
+    # under M_cr = 52,1 kNm. Snittet går i stykker i det øyeblikket det risser.
+    #
+    # Den leser GOVERNING sin `M_Rd` og `M_cr`, samme rad som `d_eff`, `As_min` og `rho`,
+    # og samme `M_cr` som `section_props` viser — ett tall, én kilde, én rad. Kontrollen
+    # dekker dermed ikke en ikke-styrende kombinasjon med en annen `N_Ed`.
+    if ref['M_Rd'] is None:
+        brittle_ok = None
+        null_reasons['brittle_ok'] = (
+            'no bending resistance was computed for the governing load combination'
+        )
+    else:
+        # MATERIALNIVAAET MAA VAERE DET SAMME PAA BEGGE SIDER.
+        #
+        # EC2 9.2.1.1 utleder A_s,min med KARAKTERISTISK flytespenning:
+        #   A_s,min = 0,26 * f_ctm / f_yk * b_t * d
+        # mens `M_Rd` er en DIMENSJONERENDE kapasitet og baerer gamma_s = 1,15.
+        # Sammenliknes de to raatt, blir kontrollen systematisk 1,15 ganger strengere
+        # enn den A_s,min-kalibreringen den skal speile — og da underkjenner den snitt
+        # som oppfyller EC2 eksakt.
+        #
+        # MAALT, plate 1000 x h armert NOEYAKTIG til A_s,min (altsaa as_min_ok = True):
+        #   h = 200  d/h = 0,795   M_Rd/M_cr = 0,903   <-- ville feilet
+        #   h = 300  d/h = 0,863               1,065
+        #   h = 600  d/h = 0,925               1,223
+        # Forholdet skalerer som (d/h)^2, fordi M_Rd ~ A_s,min*f_yd*z ~ d^2 mens
+        # M_cr ~ h^2. Bjelker ligger paa d/h ~ 0,87-0,92 og gikk klar; plater ligger paa
+        # 0,73-0,80 og gjorde det ikke. Feilen ville altsaa rammet nettopp plater, og
+        # bare dem — den vanskeligste sorten aa oppdage.
+        #
+        # 0,903 * 1,15 = 1,038. Faktoren som manglet ER gamma_s, ikke en justering.
+        # Vi loefter derfor kapasiteten til karakteristisk nivaa i sammenlikningen.
+        # Brukerens tilfelle bestaar fortsatt ikke: 6,4 / 52,1 = 0,123, og 0,141 med
+        # gamma_s — et snitt uten strekkarmering blir ikke reddet av et materialnivaa.
+        gamma_s = float(steel.gamma_s) or 1.15
+        brittle_ok = bool(abs(ref['M_Rd']) * gamma_s >= m_cr)
+
+    # ADVARSLER: en advarsel legges BARE når den tilhørende kontrollen er `False`, aldri på
+    # `None`. `if not ok` ville slått til på begge — og gjorde det: `ductility_limit` trykte
+    # ordrett «eps_s_max=None < eps_yd=0.00217» ut i rapporten, en påstand om et bruddplan
+    # som aldri ble regnet. Ingen advarsel skal sitere et tall som ikke finnes; testen
+    # `test_no_warning_quotes_a_value_that_was_never_computed` håndhever det.
+    if as_min_ok is False:
         warnings_out.append(_warning(
             'as_min_not_met',
-            f'The reinforcement area {as_total:.0f} mm² is less than the minimum '
-            f'reinforcement {as_min:.0f} mm² per EC2 9.2.1.1.',
-            f'As={as_total} < As_min={as_min}',
+            f'The tension reinforcement area {as_tension:.0f} mm² is less than the '
+            f'minimum reinforcement {as_min:.0f} mm² per EC2 9.2.1.1.',
+            f'As_tension={as_tension} < As_min={as_min}',
             severity='error',
         ))
-    if not as_max_ok:
+    if as_max_ok is False:
         warnings_out.append(_warning(
             'as_max_exceeded',
             f'The reinforcement area {as_total:.0f} mm² exceeds the maximum reinforcement '
@@ -1103,13 +1392,45 @@ def _run_inner(payload, progress, t0):
             f'As={as_total} > As_max={as_max}',
             severity='error',
         ))
-    if not ductility_ok:
+    if ductility_ok is False:
         warnings_out.append(_warning(
             'ductility_limit',
             'The reinforcement does not yield at failure — the cross-section is '
             'over-reinforced and will fail without warning. Increase the cross-section or '
             'reduce the reinforcement.',
             f'eps_s_max={eps_s_max} < eps_yd={eps_yd}',
+        ))
+    if bending_ok is False:
+        # ÉN advarsel som navngir den verste raden, ikke én per rad. `axial_out_of_range`
+        # legger én per kombinasjon fordi hver av dem har sin egen grunn til å ligge
+        # utenfor; her er grunnen den samme for alle, og en liste med ti like meldinger
+        # ville skjult de andre advarslene i stedet for å opplyse. Antallet står i `detail`.
+        worst = max(over_utilised, key=lambda c: c['utilisation'])
+        warning = _warning(
+            'bending_capacity_exceeded',
+            f'The design moment exceeds the bending resistance: M_Ed = '
+            f'{worst["M_Ed"] / 1e6:.1f} kNm against M_Rd = {worst["M_Rd"] / 1e6:.1f} kNm, '
+            f'utilisation {worst["utilisation"]:.3f}. Increase the cross-section or the '
+            'reinforcement, or reduce the load.',
+            f'M_Ed={worst["M_Ed"]}, M_Rd={worst["M_Rd"]}, '
+            f'utilisation={worst["utilisation"]} > 1.0 '
+            f'({len(over_utilised)} of {len(bending_rows)} combinations)',
+            severity='error',
+        )
+        # Samme merking som `axial_out_of_range` (§4.4): uten `combo` kaster `results.js`
+        # sin kodetabell motorens egen `message`, og hvilken rad det gjelder forsvinner.
+        warning['combo'] = worst['id']
+        warning['combo_name'] = worst['name']
+        warnings_out.append(warning)
+    if brittle_ok is False:
+        warnings_out.append(_warning(
+            'brittle_failure_risk',
+            f'The bending resistance {abs(ref["M_Rd"]) / 1e6:.1f} kNm is below the '
+            f'cracking moment {m_cr / 1e6:.1f} kNm. The cross-section fails the moment it '
+            'cracks, without warning — EC2 9.2.1.1(1) treats such a section as '
+            'unreinforced. Add reinforcement on the tension side.',
+            f'|M_Rd|={abs(ref["M_Rd"])} < M_cr={m_cr}',
+            severity='error',
         ))
 
     # Skjærkontrollene (§4.3) er UAVHENGIGE av `within_limits`/`governing_index` — de leser
@@ -1143,18 +1464,42 @@ def _run_inner(payload, progress, t0):
         'as_min_ok': as_min_ok,
         'as_max_ok': as_max_ok,
         'ductility_ok': ductility_ok,
+        'brittle_ok': brittle_ok,
         'axial_ok': axial_ok,
         'geometry_ok': bool(geometry_ok),
+        'bending_ok': bending_ok,
         'shear_ok': bool(shear_ok),
         'asw_min_ok': bool(asw_min_ok),
         'stirrup_spacing_ok': bool(stirrup_spacing_ok),
-        # ALLE kontrollene, ikke bare de fire bøyningen alltid hadde. En «Overall
-        # assessment: OK» som overser en aksialkraft utenfor [n_min, n_max] eller en
-        # strøket skjærkontroll er aktivt misvisende i et verktøy som dimensjonerer
-        # betong — rapporten viser nettopp denne raden som samlet vurdering.
-        'all_ok': bool(as_min_ok and as_max_ok and ductility_ok and geometry_ok
-                       and axial_ok and shear_ok and asw_min_ok and stirrup_spacing_ok),
     }
+    # ALLE kontrollene, ikke bare de fire bøyningen alltid hadde. En «Overall assessment:
+    # OK» som overser en aksialkraft utenfor [n_min, n_max] eller en strøket skjærkontroll
+    # er aktivt misvisende i et verktøy som dimensjonerer betong — rapporten viser nettopp
+    # denne raden som samlet vurdering. `_three_valued_and` leser `checks` slik den står,
+    # så en kontroll som legges til over blir med i totalen uten at noen må huske det.
+    checks['all_ok'] = _three_valued_and(checks)
+
+    # «–» i «Overall assessment» betyr presist «motoren kan ikke gå god for dette snittet».
+    # Den påstanden må kunne forklares, ellers står streken like uforklart som en grønn
+    # hake ville gjort. Advarselen er derfor ikke pynt: den er den eneste bæreren av
+    # grunnen til at kontrollen er ubesvart (§1.1).
+    if null_reasons:
+        ordered = [k for k in checks if k in null_reasons]
+        warnings_out.append(_warning(
+            'assessment_incomplete',
+            'The overall assessment is incomplete: '
+            + str(len(ordered))
+            + (' check could not be evaluated.' if len(ordered) == 1
+               else ' checks could not be evaluated.'),
+            # GRUNNENE HOERER HJEMME I `detail`, IKKE I `message`.
+            # `describeWarning` i `js/results.js` KASTER motorens `message` for enhver
+            # kode den kjenner, og viser bare `detail`. Laa grunnene i `message`, fikk
+            # brukeren noekkelnavnene «as_min_ok, ductility_ok» og aldri hvorfor — mens
+            # planens §1.1 krever at grunnen til «–» ALLTID naar fram. Maalt: grunnene
+            # overlevde ikke til skjermen foer dette ble flyttet.
+            ' '.join(f'{key}: {null_reasons[key]}.' for key in ordered),
+            severity='warning',
+        ))
 
     theta_ref = ref['theta']
 
@@ -1214,6 +1559,17 @@ def _run_inner(payload, progress, t0):
             'As_tension': _num(as_tension),
             'As_min': _num(as_min),
             'As_max': _num(as_max),
+            # Riss-momentet for GOVERNING sin `N_Ed` — samme rad og samme tall som
+            # `checks.brittle_ok` leser. Står her og ikke per kombinasjon nettopp for at
+            # det ikke skal finnes to M_cr å velge mellom for den som tegner eller trykker.
+            #
+            # `None` når referanseraden ligger UTENFOR [n_min, n_max]. `M_cr` regnes før
+            # aksialsjekken (den avhenger ikke av bruddtilstanden), så uten denne vakten
+            # trykte rapporten et riss-moment for en lasttilstand motoren selv hadde
+            # forkastet: målt 2052 kNm ved N = −20 000 kN, som svarer til 111 MPa
+            # aksialspenning i en C30 — 3,7 ganger f_ck. Samme doktrine som `d_eff`, `ρ`
+            # og `A_s,min` allerede følger her: et tall uten grunnlag skal ikke stå.
+            'M_cr': _num(m_cr) if ref.get('within_limits') else None,
             'n_min': _num(n_min),
             'n_max': _num(n_max),
         },

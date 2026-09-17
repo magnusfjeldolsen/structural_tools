@@ -25,8 +25,32 @@
  */
 
 import { SCHEMA_VERSION } from './meta.js';
-import { createCombo, createLayer, recomputeAutoDc, stackedDc } from './rebar.js';
+import { createCombo, createLayer, createStirrup, recomputeAutoDc, stackedDc } from './rebar.js';
 import { allowedAnalyses, SLAB_WIDTH } from './section.js';
+
+/**
+ * «Kjør alle» (endringsrunde 5 §D). Er ALLTID lovlig: den kjører nettopp de
+ * analysene `allowedAnalyses` slipper gjennom, så auto-N–M-regelen (§2) kan
+ * ikke brytes av å velge den.
+ *
+ * ⚠ REGELEN BOR EGENTLIG I `section.js:allowedAnalyses`, som er den ENE kilden
+ * til hvilke analyser som er lovlige. Den fila eies av en annen arbeidsstrøm
+ * denne runden, så unntaket står her og i `ui.js` inntil `'all'` kan legges
+ * inn der. Til da vil `serialize.js` ikke kjenne verdien heller — den
+ * normaliserer riktignok bare `'bending'`, så en lagret fil runder likevel
+ * tilbake uendret.
+ */
+export const RUN_ALL = 'all';
+
+/*
+ * Standardoverdekningen og standard bøylediameter STÅR ETT STED. `dc` for
+ * standardlaget sto tidligere som `35 + 8 + 10` — en tredje kopi av de samme
+ * tallene, og da bøylediameteren ble endret til 12 mm ble jernene stående
+ * igjen på en overdekning ingen bøyle lenger har. Regnestykket er
+ * `suggestedDc` sitt: cover + stirrup_dia + dia/2.
+ */
+const DEFAULT_COVER = 35;
+const DEFAULT_STIRRUP_DIA = 12;
 
 /**
  * Standardtilstand. Tallene er norsk praksis: α_cc = 0,85 (NA), γ_c = 1,5,
@@ -56,14 +80,15 @@ export function defaultState() {
       gamma_s: 1.15,
       law: 'elasticperfectlyplastic',
     },
-    cover: 35,
-    stirrup_dia: 8,
-    cover_side: 35,
+    cover: DEFAULT_COVER,
+    stirrup_dia: DEFAULT_STIRRUP_DIA,
+    cover_side: DEFAULT_COVER,
     // EC2 8.2(2). k1/k2 er NA-parametere (anbefalt 1 og 5); d_g er ikke det,
     // men inngår i samme formel. 16 mm er vanlig, 8/22/32 forekommer.
     spacing: { k1: 1.0, k2: 5.0, d_g: 16 },
     layers: [
-      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 35 + 8 + 10, dc_auto: true },
+      { id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom',
+        dc: DEFAULT_COVER + DEFAULT_STIRRUP_DIA + 20 / 2, dc_auto: true },
     ],
     // kN, kNm og kN. TRYKK er NEGATIV N. `M_Ed` er SIGNERT etter
     // `structuralcodes` sin egen konvensjon: sagging er NEGATIV, IKKE norsk
@@ -78,6 +103,11 @@ export function defaultState() {
     // bjelke, helt til brukeren legger inn bøyler. `strut_angle_deg`, IKKE
     // `theta`: det navnet betyr bøyeretning i radianer overalt ellers i denne
     // kodebasen, og en strøket 45 ville lest som feltmoment uten feilmelding.
+    //
+    // `stirrups[0].dia` og `stirrup_dia` over er SAMME fysiske bøyle og holdes
+    // like av `syncStirrupDia` — se den. Lista forblir en LISTE selv om UI-et
+    // i v1 bare tilbyr én rad: veikartet lover flere soner, og radformen skal
+    // ikke låses til nøyaktig én.
     shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] },
     // Det finnes BEVISST ingen `options.integrator`: marin er hardkodet i
     // `payload.js`, og `fiber` er kuttet med begrunnelse i plan §1.2.
@@ -131,7 +161,35 @@ function cloneState(s) {
  * `'bending'`), så den berøres aldri av denne funksjonen.
  */
 function enforceAnalysis(s) {
+  if (s.analysis === RUN_ALL) return s;
   return allowedAnalyses(s).includes(s.analysis) ? s : { ...s, analysis: 'nm_domain' };
+}
+
+/**
+ * ÉN fysisk bøyle, ETT tall.
+ *
+ * `state.stirrup_dia` (feltet «Stirrup Ø» i geometriseksjonen) styrer jernenes
+ * plassering og `dc` via `suggestedDc`; `shear.stirrups[0].dia` styrer
+ * skjærkapasiteten og bøyletegningen. De var to uavhengige tall, uten noen
+ * validering som bandt dem: Ø10 i skjærraden ga jern som fortsatt ble regnet
+ * med Ø8, og en bøyle tegnet tvers gjennom armeringen.
+ *
+ * RETNINGEN ER GITT: finnes det en bøylerad, er DEN fasit, og `stirrup_dia`
+ * følger etter. Motsatt vei ville en lastet fil med Ø10-bøyler blitt stille
+ * regnet om til Ø8 fordi geometrifeltet lå igjen på standarden. Uten bøyler
+ * (plate, eller en bjelke før brukeren har lagt inn skjærarmering) står feltet
+ * som før — da finnes det ingen bøyle å være uenig med.
+ *
+ * Samme énveis-prinsipp som `enforceAnalysis`/`enforceSlabWidth`: retter bare
+ * når verdiene FAKTISK spriker, slik at et `setState` som skriver begge deler
+ * blir en no-op her og ikke en ny runde med omregning.
+ */
+function syncStirrupDia(s) {
+  const row = (s.shear?.stirrups || [])[0];
+  if (!row) return s;
+  const dia = Number(row.dia);
+  if (!Number.isFinite(dia) || dia === Number(s.stirrup_dia)) return s;
+  return { ...s, stirrup_dia: dia };
 }
 
 /**
@@ -155,7 +213,9 @@ function enforceSlabWidth(s) {
  * @param {object} [initial] slås sammen med `defaultState()`
  */
 export function createStore(initial) {
-  let state = enforceSlabWidth(enforceAnalysis(cloneState({ ...defaultState(), ...(initial || {}) })));
+  let state = syncStirrupDia(
+    enforceSlabWidth(enforceAnalysis(cloneState({ ...defaultState(), ...(initial || {}) })))
+  );
   const listeners = new Set();
   // Løpenummer for lag-id-er. Teller ALDRI ned når et lag slettes: «L2» skal
   // ikke kunne bety to ulike lag i samme økt, ellers peker en gammel
@@ -163,6 +223,9 @@ export function createStore(initial) {
   let layerSeq = state.layers.length;
   // Samme prinsipp for kombinasjons-id-er, se `nextLayerId`.
   let comboSeq = state.combos.length;
+  // …og for bøylerader. `shear.stirrups` er en LISTE fra dag én (veikartet
+  // lover flere soner), så id-ene må være unike i hele økten på samme måte.
+  let stirrupSeq = (state.shear?.stirrups || []).length;
 
   function notify() {
     for (const fn of listeners) fn(state);
@@ -176,6 +239,11 @@ export function createStore(initial) {
   function nextComboId() {
     comboSeq += 1;
     return `C${comboSeq}`;
+  }
+
+  function nextStirrupId() {
+    stirrupSeq += 1;
+    return `S${stirrupSeq}`;
   }
 
   /** Kjører `recomputeAutoDc` og skriver resultatet inn i `state.layers`. */
@@ -210,9 +278,73 @@ export function createStore(initial) {
      */
     setState(patch) {
       state = cloneState({ ...state, ...patch });
+      if ('stirrup_dia' in patch) {
+        // GJENNOMSKRIVING, ikke en ny verdi ved siden av: geometrifeltet og
+        // bøyleradens Ø er samme fysiske bøyle (`syncStirrupDia`). Uten dette
+        // ville `syncStirrupDia` under bare kastet brukerens tastetrykk
+        // tilbake til radens gamle verdi, og feltet ville sett ut som om det
+        // ikke virket.
+        state.shear = {
+          ...state.shear,
+          stirrups: (state.shear.stirrups || []).map((st) => ({ ...st, dia: state.stirrup_dia })),
+        };
+      }
+      state = syncStirrupDia(state);
       if ('cover' in patch || 'stirrup_dia' in patch) {
         applyAutoDc();
       }
+      notify();
+      return state;
+    },
+
+    /**
+     * Ny bøylerad. Arver `dia` fra `state.stirrup_dia` (`createStirrup`), så
+     * det å legge inn skjærarmering ALDRI flytter jernene av seg selv — den
+     * bøyla var det allerede regnet med plass til.
+     */
+    addStirrup(patch = {}) {
+      const row = createStirrup(state, { id: nextStirrupId(), ...patch });
+      state = syncStirrupDia(
+        cloneState({ ...state, shear: { ...state.shear, stirrups: [...(state.shear.stirrups || []), row] } })
+      );
+      applyAutoDc();
+      notify();
+      return state.shear.stirrups.find((st) => st.id === row.id);
+    },
+
+    /**
+     * Én feltendring i en bøylerad. `dia` på den FØRSTE raden er den samme
+     * bøyla som `state.stirrup_dia`, så den flytter ethvert `dc_auto`-lag —
+     * det er hele poenget med bindingen (§B).
+     */
+    updateStirrup(id, values) {
+      state = syncStirrupDia(
+        cloneState({
+          ...state,
+          shear: {
+            ...state.shear,
+            stirrups: (state.shear.stirrups || []).map((st) => (st.id === id ? { ...st, ...values } : st)),
+          },
+        })
+      );
+      if ('dia' in values) applyAutoDc();
+      notify();
+      return state;
+    },
+
+    /**
+     * Fjerner en bøylerad. Fjernes den SISTE, står `stirrup_dia` igjen med
+     * verdien den hadde — det er fortsatt bøyla jernene er plassert etter, og
+     * et snitt uten skjærarmering har like fullt en overdekning å regne fra.
+     */
+    removeStirrup(id) {
+      state = syncStirrupDia(
+        cloneState({
+          ...state,
+          shear: { ...state.shear, stirrups: (state.shear.stirrups || []).filter((st) => st.id !== id) },
+        })
+      );
+      applyAutoDc();
       notify();
       return state;
     },
@@ -228,7 +360,12 @@ export function createStore(initial) {
      */
     patch(group, values) {
       state = cloneState({ ...state, [group]: { ...state[group], ...values } });
-      if (group === 'spacing') {
+      const beforeDia = state.stirrup_dia;
+      // `patch('shear', {stirrups})` er en lovlig, om enn uvanlig, vei inn —
+      // og den kan flytte bøylediameteren like reelt som `updateStirrup`.
+      // Bindingen skal ikke kunne omgås av hvilken metode kalleren valgte.
+      state = syncStirrupDia(state);
+      if (group === 'spacing' || state.stirrup_dia !== beforeDia) {
         applyAutoDc();
       }
       notify();
@@ -261,6 +398,14 @@ export function createStore(initial) {
         );
       }
       state = next;
+      // `suggestedDc` er ikke lenger uavhengig av tverrsnittstypen: plata har ingen
+      // bøyle, så `dc = cover + dia/2` der bjelken har `cover + stirrup_dia + dia/2`.
+      // Uten denne omregningen blir `dc` stående fra den forrige typen — 12 mm feil
+      // med Ø12. Målt: bjelke → plate ga d = 543 der 555 er riktig, og plate → bjelke
+      // ga d 12 mm FOR STOR, altså M_Rd og A_s,min overvurdert. Det er den retningen
+      // som er på usikker side, og den ville stått til brukeren tilfeldigvis rørte
+      // `cover`, en diameter eller la til et lag — `h` og senteravstand utløser den ikke.
+      applyAutoDc();
       notify();
       return state;
     },
@@ -384,8 +529,37 @@ export function createStore(initial) {
      */
     replaceState(next) {
       state = enforceSlabWidth(enforceAnalysis(cloneState({ ...defaultState(), ...next, result: null })));
+      // Bøyleradene normaliseres gjennom SAMME fabrikk som `addStirrup` bruker
+      // — `serialize.js` gjør dette for `layers` og `combos`, men ikke for
+      // `stirrups`, så en fil uten `alpha` ville ellers fått
+      // «kun α = 90° støttes. Har α = undefined°» på hver eneste kjøring.
+      state.shear = {
+        ...state.shear,
+        stirrups: (state.shear.stirrups || []).map((st) => createStirrup(state, { ...st })),
+      };
+      const beforeDia = state.stirrup_dia;
+      state = syncStirrupDia(state);
+      // Bare når filen faktisk var uenig med seg selv: da er jernene plassert
+      // etter en annen bøyle enn den som ligger i skjærraden, og de må flytte
+      // seg. Ellers røres ikke `dc` — en lastet fil skal runde tilbake til
+      // NØYAKTIG samme tilstand.
+      if (state.stirrup_dia !== beforeDia) applyAutoDc();
+      // Et lag med `dc_auto: true` MEN uten `dc` har ingen plassering i det hele
+      // tatt. `layerCentroidZ` gir da `null`, tegningen forkaster jernet fra
+      // snappingen OG plasserer det i `py(z || 0)` — altså midt i tverrsnittet,
+      // stille. Målt: seks jern havnet i midthøyden i stedet for i under- og
+      // overkant. En lagret fil har alltid `dc`, så dette rører ikke rundturen;
+      // det er `setInputs()` fra et arbeidsflyt-kall som kan komme uten.
+      // `l.dc == null` FØRST: `Number(null)` er 0, og 0 er et endelig tall, så
+      // `Number.isFinite(Number(l.dc))` alene sier «har en verdi» om et lag som
+      // ikke har noen.
+      if (state.layers.some((l) => l.dc_auto
+        && (l.dc == null || !Number.isFinite(Number(l.dc))))) {
+        applyAutoDc();
+      }
       layerSeq = Math.max(layerSeq, state.layers.length);
       comboSeq = Math.max(comboSeq, state.combos.length);
+      stirrupSeq = Math.max(stirrupSeq, state.shear.stirrups.length);
       notify();
       return state;
     },

@@ -68,6 +68,29 @@
     kbd { font-family: ui-monospace, monospace; font-size: .6875rem; background: #1e293b;
           border: 1px solid #475569; border-bottom-width: 2px; border-radius: .3rem;
           padding: .05rem .35rem; color: #e2e8f0; }
+    /* HURTIGTASTMERKER (runde 6 §2.3). Hold `Alt`, og `ui.js` setter
+       `data-key` på kontrollene som har en snarvei — som KeyTips i Office.
+       Attributtet ER innholdet: `content: attr(data-key)` gjør at merket ikke
+       KAN vise en annen tast enn den handleren lytter etter, fordi begge leser
+       samme oppføring i `SHORTCUTS`.
+
+       Skrevet her og ikke som Tailwind-klasser av samme grunn som
+       bunnlinjas høyder: Play-CDN-en injiserer sitt `<style>` ETTER dette
+       dokumentet, og en `.relative`-klasse ville da vært utenfor vår kontroll.
+       `position: relative` uten forskyvning flytter ingenting — det gjør bare
+       elementet til holdepunkt for merket, og bare mens merket står der. */
+    [data-key] { position: relative; }
+    [data-key]::after {
+      content: attr(data-key);
+      position: absolute; top: -.4rem; left: -.4rem; z-index: 25;
+      font-family: ui-monospace, monospace; font-size: .625rem; font-weight: 700; line-height: 1;
+      padding: .15rem .3rem; border-radius: .25rem;
+      background: #fbbf24; color: #0f172a; border: 1px solid #b45309;
+      box-shadow: 0 1px 3px rgba(0,0,0,.5);
+      /* Merket ligger OPPÅ kontrollen — uten dette ville det spist klikket på
+         hjørnet av knappen det peker på. */
+      pointer-events: none;
+    }
     .sec-h { font-size: .75rem; letter-spacing: .09em; text-transform: uppercase; color: #94a3b8; }
     .navlink[data-on="true"] { color: #f8fafc; border-bottom-color: #0ea5e9; }
     details > summary { cursor: pointer; list-style: none; }
@@ -79,6 +102,40 @@
        rot-SVG-en, fordi den samme funksjonen tegner papirfiguren. På skjerm
        skal figuren i stedet fylle boksen sin; viewBox-en gjør det trygt. */
     .svg-fit > svg { width: 100%; height: auto; display: block; }
+
+    /* ── bunnlinjas inspeksjonsceller ────────────────────────────────────
+       Cellene hadde HØYDE bestemt av innholdet. «Concrete crushing» og
+       «−205.6 kNm» brøt til to linjer, `items-center` flyttet da hele stripa,
+       og målingen ved 1440 px viste 26–53 px høye celler og 13 px vertikal
+       spretting mellom to opptegninger. Derfor FASTE høyder: etikett 12 px +
+       verdi 18 px, sentrert i en celle på nøyaktig 32 px. Da kan innholdet
+       ikke lenger flytte noe, uansett hvor langt det er.
+
+       `flex: 0 0 auto` + `nowrap` er den tredje årsaken: uten dem krympet
+       flexboksen tallene først, og venstre tekstblokk ble presset til 58 px.
+       Nå krymper tekstblokka — den har `truncate` og tåler det — og tallene står.
+
+       INGEN farge og INGEN ramme her, med vilje: statusfargene kommer fra
+       `utilisationStatus().classes` i `results.js`, som er den ENE kilden
+       rapporten også leser. En farge til i denne fila ville vært den andre.
+       Av samme grunn arver etiketten og verdien `color` fra cella. */
+    .bar-cell { box-sizing: border-box; height: 32px; min-width: 3.25rem;
+                display: flex; flex-direction: column; justify-content: center;
+                flex: 0 0 auto; white-space: nowrap; overflow: hidden; }
+    /* INGEN `text-transform: uppercase` her, selv om etikettrader ellers har
+       det i dette arket: symbolene ER etikettene. «η» ville blitt «Η» og
+       «x/d» blitt «X/D» — to tegn som betyr noe annet i EC2. */
+    .bar-cell-l { height: 12px; line-height: 12px; font-size: 9px;
+                  letter-spacing: .04em; color: inherit; opacity: .6; }
+    .bar-cell-v { height: 18px; line-height: 18px; font-size: 14px;
+                  font-weight: 700; color: inherit; }
+    /* Når plassen tar slutt ryker bruddformen først og x/d deretter — ALDRI η.
+       Skrevet som egne regler og ikke som Tailwind-klassene `hidden xl:flex`,
+       fordi Play-CDN-en injiserer sitt <style> ETTER dette dokumentet: `.hidden`
+       ville da slått `.bar-cell { display: flex }` i alle bredder. Her er
+       rekkefølgen min egen, og dermed forutsigbar. */
+    @media (max-width: 1279.98px) { .bar-cell-xl { display: none; } }
+    @media (max-width: 1023.98px) { .bar-cell-lg { display: none; } }
   </style>
 </head>
 
@@ -102,8 +159,7 @@
     <a href="#s-arm"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">3 Reinforcement</a>
     <a href="#s-last" class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">4 Loads</a>
     <a href="#s-ana"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">5 Analysis</a>
-    <a href="#s-calc" class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">6 Calculate</a>
-    <a href="#s-res"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">7 Result</a>
+    <a href="#s-res"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">6 Result</a>
   </nav>
 </header>
 
@@ -116,27 +172,51 @@
       <span id="mat-summary" class="text-xs text-slate-500 num"></span>
     </div>
     <div class="px-5 pb-4 space-y-3">
-      <div class="flex flex-wrap items-start gap-2">
-        <span class="text-xs text-slate-400 w-16 pt-1.5">Concrete</span>
-        <div id="fck-chips" class="flex flex-wrap gap-1.5"></div>
+      <!-- ÉN nedtrekksliste hver, ikke 14 + 3 brikker (runde 6 §2.2). Det er
+           14 tab-stopp kortere fram til første geometrifelt, og et nedtrekk
+           har native typeahead: «C», «3», «5» treffer C35/45 uten en eneste
+           piltast. Begge står i venstrehåndsblokka, som er hele poenget.
+           `<option>`-ene fylles ÉN gang i `setupFields()` — se fella der. -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+        <label><span class="field-label">Concrete grade</span><select id="i-fck"></select></label>
+        <label><span class="field-label">Reinforcement grade</span><select id="i-steel-grade"></select></label>
       </div>
-      <div class="flex flex-wrap items-start gap-2">
-        <span class="text-xs text-slate-400 w-16 pt-1.5">Steel</span>
-        <div id="fyk-chips" class="flex flex-wrap gap-1.5"></div>
-      </div>
-      <details class="rounded-lg border border-slate-700 bg-slate-900/40">
+      <details id="adv-material" class="rounded-lg border border-slate-700 bg-slate-900/40">
         <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
           <span class="text-slate-500">▸</span><span id="fac-summary" class="num"></span>
         </summary>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 px-3 pb-3 pt-1">
-          <label><span class="field-label">γ<sub>c</sub></span><input id="i-gamma-c" type="text" inputmode="decimal"></label>
-          <label><span class="field-label">α<sub>cc</sub></span><input id="i-alpha-cc" type="text" inputmode="decimal"></label>
-          <label><span class="field-label">γ<sub>s</sub></span><input id="i-gamma-s" type="text" inputmode="decimal"></label>
-          <label><span class="field-label">k = f<sub>tk</sub>/f<sub>yk</sub></span><input id="i-k" type="text" inputmode="decimal"></label>
-          <label><span class="field-label">ε<sub>uk</sub></span><input id="i-epsuk" type="text" inputmode="decimal"></label>
-          <label><span class="field-label">γ<sub>ε</sub></span><input id="i-gamma-eps" type="text" inputmode="decimal"></label>
-          <label><span class="field-label">Concrete stress–strain law</span><select id="i-law-c"></select></label>
-          <label><span class="field-label">Steel stress–strain law</span><select id="i-law-s"></select></label>
+        <!-- TO RADGRUPPER, ÉN BOKS (plan §2.1). Partialfaktorene endres én gang
+             per prosjekt, arbeidsdiagrammene og duktilitetstallene én gang i
+             året — men en `<details>` inne i en `<details>` ville kostet to
+             klikk for γ_c, og det er verre enn én rad ekstra. -->
+        <div class="px-3 pb-3 pt-1 space-y-3">
+          <div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Partial factors</div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <label><span class="field-label">γ<sub>c</sub></span><input id="i-gamma-c" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">α<sub>cc</sub></span><input id="i-alpha-cc" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">γ<sub>s</sub></span><input id="i-gamma-s" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">γ<sub>ε</sub></span><input id="i-gamma-eps" type="text" inputmode="decimal"></label>
+            </div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Material model</div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <!-- `k` og `ε_uk` er READONLY så lenge nedtrekket over treffer en
+                   kvalitet: de er DEN kvalitetens tall, og et redigerbart felt
+                   som umiddelbart motsier nedtrekket er nettopp de to skriverne
+                   §2.2 fjerner. Velg «Custom…» i nedtrekket for å låse opp. -->
+              <label><span class="field-label">k = f<sub>tk</sub>/f<sub>yk</sub></span><input id="i-k" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">ε<sub>uk</sub></span><input id="i-epsuk" type="text" inputmode="decimal"></label>
+              <!-- E_s har stått i tilstanden hele tiden og brukes til ε_yd, som
+                   rapporten trykker — men hadde INGEN kontroll noe sted (§2.2).
+                   Et tall rapporten viser og ingen kan endre er et tall ingen
+                   kan rette. -->
+              <label><span class="field-label">E<sub>s</sub> [MPa]</span><input id="i-es" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">Concrete stress–strain law</span><select id="i-law-c"></select></label>
+              <label class="md:col-span-2"><span class="field-label">Steel stress–strain law</span><select id="i-law-s"></select></label>
+            </div>
+          </div>
         </div>
         <p class="px-3 pb-3 text-[11px] text-slate-500 leading-snug">
           α<sub>cc</sub>, γ<sub>c</sub> and γ<sub>s</sub> cannot be 0: the calculation engine silently
@@ -159,20 +239,74 @@
           <button type="button" data-v="beam">Beam</button>
           <button type="button" data-v="slab">Slab (per metre)</button>
         </div>
+        <!-- De tre linjene om uttrykksfelt sto som brødtekst nederst i
+             seksjonen, langt fra feltene de gjaldt. De er nå `title` på
+             feltene selv (runde 6 §2.6): en opplysning om ET felt hører til
+             DET feltet, ikke i en fotnote man har rullet forbi. -->
         <div class="grid grid-cols-2 gap-3">
-          <label><span class="field-label">b — width [mm]</span><input id="i-b" type="text" inputmode="decimal"></label>
-          <label><span class="field-label">h — height [mm]</span><input id="i-h" type="text" inputmode="decimal"></label>
+          <label><span class="field-label">b — width [mm]</span><input id="i-b" type="text" inputmode="decimal" title="Accepts expressions: 35+8, 600/2, 20*5^2/8"></label>
+          <label><span class="field-label">h — height [mm]</span><input id="i-h" type="text" inputmode="decimal" title="Accepts expressions: 35+8, 600/2, 20*5^2/8"></label>
         </div>
-        <div class="grid grid-cols-3 gap-3">
-          <label><span class="field-label">Cover c [mm]</span><input id="i-cover" type="text" inputmode="decimal"></label>
-          <label id="w-stirrup"><span class="field-label">Stirrup Ø [mm]</span><input id="i-stirrup" type="text" inputmode="decimal"></label>
-          <label id="w-cover-side"><span class="field-label">Side cover c [mm]</span><input id="i-cover-side" type="text" inputmode="decimal"></label>
+        <div class="grid grid-cols-2 gap-3">
+          <label><span class="field-label">Cover c [mm]</span><input id="i-cover" type="text" inputmode="decimal" title="Nominal cover to the outermost steel. Accepts expressions: 35+8, 600/2"></label>
+          <label id="w-stirrup"><span class="field-label">Stirrup Ø [mm]</span><input id="i-stirrup" type="text" inputmode="decimal" title="The same physical stirrup as the Ø in the stirrup row below — one value. Changing it moves every derived d_c."></label>
         </div>
-        <details class="rounded-lg border border-slate-700 bg-slate-900/40">
-          <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
-            <span class="text-slate-500">▸</span><span>Clear spacing (EC2 8.2) — k<sub>1</sub>, k<sub>2</sub> are NA parameters</span>
+        <!-- Skjærarmering. Ligger i geometriseksjonen, rett under «Stirrup Ø»:
+             det er SAMME fysiske bøyle, og de to feltene skal kunne ses i
+             samme blikk. `stirrups` er en LISTE — veikartet lover flere soner,
+             så raden er én av flere, ikke ETT skjema.
+
+             BOKSEN ER EN `<details>` (runde 6 §2.6). Plan §2.1 setter bøyle-Ø
+             og c/c blant feltene som alltid er synlige, og det er ingen
+             motsetning: en TOM bøyleliste er standardtilstanden, og da finnes
+             det ingen Ø og ingen c/c å vise — bare V_Rd = V_Rd,c, som står i
+             sammendraget. I det øyeblikket en bøylerad finnes, avviker
+             `shear.stirrups` fra standarden, og `boxesForNonDefaults` åpner
+             boksen ved neste oppstart og lasting. Feltene som finnes er
+             dermed alltid synlige. -->
+        <details id="adv-shear" class="rounded-lg border border-slate-700 bg-slate-900/40">
+          <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-baseline gap-2">
+            <span class="text-slate-500">▸</span>
+            <span class="text-slate-300">Shear reinforcement — stirrups (EC2 6.2)</span>
+            <span id="shear-summary" class="text-[11px] text-slate-500 num ml-auto"></span>
           </summary>
-          <div class="grid grid-cols-3 gap-3 px-3 pb-3 pt-1">
+          <div id="stirrups" class="divide-y divide-slate-700/70 border-y border-slate-700/70"></div>
+          <div class="flex flex-wrap items-center gap-2 px-3 py-2.5 text-xs">
+            <button type="button" id="add-stirrup"
+                    class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">+ Add stirrups</button>
+            <span id="shear-hint" class="text-[11px] text-slate-500 num"></span>
+          </div>
+          <!-- RADGRUPPE, IKKE EN NESTET `<details>` (plan §2.1). To klikk for
+               θ er verre enn én rad ekstra, og en `<details>` inne i en
+               `<details>` gjør dessuten auto-åpningen tvetydig: hvilken av de
+               to skal åpnes når `validate()` klager på θ? -->
+          <div class="border-t border-slate-700/70 px-3 pb-3 pt-2">
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Strut angle and lever arm</div>
+            <div class="grid grid-cols-2 gap-3 max-w-md">
+              <label><span class="field-label">θ — strut angle [°]</span><input id="i-strut-angle" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">z<sub>factor</sub> — z = z<sub>factor</sub>·d</span><input id="i-z-factor" type="text" inputmode="decimal"></label>
+            </div>
+            <p class="pt-2 text-[11px] text-slate-500 leading-snug">
+              The variable strut inclination method, EC2 6.2.3(2): cot θ between 1.0 and 2.5,
+              that is θ between 45° and 21.8°. A flatter strut (θ → 21.8°) raises V<sub>Rd,s</sub>
+              and lowers V<sub>Rd,max</sub>. The lever arm is taken as z = z<sub>factor</sub>·d with
+              z<sub>factor</sub> = 0.9 as the usual approximation. Both apply to every stirrup row.
+            </p>
+          </div>
+        </details>
+        <!-- Sidedekningen er SLÅTT SAMMEN med fri avstand (runde 6 §2.6): begge
+             er per prosjekt, og begge inngår i den SAMME plasskontrollen —
+             `validate()` sin `layer_too_wide` regner
+             `2·(cover_side + stirrup_dia) + n·Ø + (n−1)·clear`. To bokser for
+             de to halvdelene av ett regnestykke er én boks for mye. -->
+        <details id="adv-spacing" class="rounded-lg border border-slate-700 bg-slate-900/40">
+          <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-baseline gap-2">
+            <span class="text-slate-500">▸</span>
+            <span class="text-slate-300">Side cover and clear spacing (EC2 8.2)</span>
+            <span id="spacing-summary" class="text-[11px] text-slate-500 num ml-auto"></span>
+          </summary>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 px-3 pb-3 pt-1">
+            <label id="w-cover-side"><span class="field-label">Side cover c [mm]</span><input id="i-cover-side" type="text" inputmode="decimal"></label>
             <label><span class="field-label">k<sub>1</sub></span><input id="i-k1" type="text" inputmode="decimal"></label>
             <label><span class="field-label">k<sub>2</sub></span><input id="i-k2" type="text" inputmode="decimal"></label>
             <label><span class="field-label">d<sub>g</sub> — max. aggregate size [mm]</span><input id="i-dg" type="text" inputmode="decimal"></label>
@@ -181,17 +315,13 @@
             Minimum clear distance between parallel bars or horizontal layers, EC2 8.2(2): the
             greatest of k<sub>1</sub>·Ø, (d<sub>g</sub> + k<sub>2</sub>) and 20 mm. Recommended
             k<sub>1</sub> = 1, k<sub>2</sub> = 5. Applies both to bar spacing within a layer and
-            between stacked layers.
+            between stacked layers. The side cover is what the same check measures the bars in
+            from each edge.
           </p>
         </details>
-        <p class="text-[11px] text-slate-500 leading-snug">
-          All number fields accept expressions: <span class="num text-slate-400">35+8</span>,
-          <span class="num text-slate-400">600/2</span>, <span class="num text-slate-400">20*5^2/8</span>.
-          The drawing is plain JavaScript and updates as you type — it never waits for the
-          calculation engine.
-        </p>
       </div>
-      <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+      <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3"
+           title="Plain JavaScript — it redraws as you type and never waits for the calculation engine.">
         <div id="draw-geo" class="svg-fit"></div>
       </div>
     </div>
@@ -210,11 +340,17 @@
       <div class="rounded-lg border border-sky-700/50 bg-sky-950/20 p-3">
         <div class="flex items-center gap-2">
           <span class="text-sky-400 text-sm shrink-0">＋</span>
-          <input id="sh-input" type="text" autocomplete="off" spellcheck="false"
-                 class="!bg-slate-900 !border-sky-700 !text-[15px] !py-2 font-mono"
-                 aria-label="Add reinforcement layer with shorthand">
+          <!-- OMSLAGET ER FOR HURTIGTASTMERKET. `::after` finnes ikke på et
+               `<input>` (erstattet element), så merket for `A` må henge på et
+               element rundt feltet. `flex-1 min-w-0` gir feltet nøyaktig samme
+               bredde som da det var flex-barnet selv. -->
+          <span class="relative block flex-1 min-w-0">
+            <input id="sh-input" type="text" autocomplete="off" spellcheck="false"
+                   class="!bg-slate-900 !border-sky-700 !text-[15px] !py-2 font-mono"
+                   aria-label="Add reinforcement layer with shorthand">
+          </span>
           <button type="button" id="sh-add"
-                  class="shrink-0 px-3 py-2 text-xs rounded bg-sky-700 hover:bg-sky-600 border border-sky-600">Add <kbd>⏎</kbd></button>
+                  class="shrink-0 px-3 py-2 text-xs rounded bg-sky-700 hover:bg-sky-600 border border-sky-600">Add <kbd id="kbd-add"></kbd></button>
         </div>
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-500">
           <span id="sh-hint" class="num"></span>
@@ -226,7 +362,7 @@
 
       <div class="flex flex-wrap items-center gap-2 text-xs">
         <button type="button" id="add-layer" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">+ New layer (fill in fields)</button>
-        <button type="button" id="dup-last" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">⧉ Duplicate last <kbd>Alt+D</kbd></button>
+        <button type="button" id="dup-last" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">⧉ Duplicate last <kbd id="kbd-dup"></kbd></button>
         <span id="arm-warn" class="text-amber-300"></span>
         <span id="arm-total" class="ml-auto num text-slate-300"></span>
       </div>
@@ -246,13 +382,16 @@
         <button type="button" id="add-combo" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">+ Add combination</button>
       </div>
 
+      <!-- SEKS LINJER BLE ÉN (runde 6 §2.6). Fortegnskonvensjonen sto her som
+           brødtekst, men hver rad forklarer den allerede LIVE og for sitt eget
+           tall: `momentInterpretation` skriver «−174,6 kNm → sagging,
+           compression at the top face» under feltet mens man skriver. Det er
+           en langt bedre lærer enn et avsnitt man leser én gang og glemmer, og
+           de tre feltene bærer resten i `title`. Igjen står den ene setningen
+           ingen rad kan si, fordi den handler om ALLE radene. -->
       <p class="text-[11px] text-slate-500 max-w-xl leading-snug">
-        N<sub>Ed</sub> keeps its sign — compression is negative. M<sub>Ed</sub> is signed too:
-        <b>sign convention follows fib structuralcodes — sagging (compression at the top face)
-        is negative</b>, which is the opposite of common Norwegian practice. V<sub>Ed</sub> is a
-        magnitude; its sign does not affect the shear capacity. The capacity check runs every
-        combination; the one with the highest utilisation within [N<sub>min</sub>, N<sub>max</sub>]
-        governs the headline numbers and the drawing.
+        Every combination is checked; the one with the highest utilisation within
+        [N<sub>min</sub>, N<sub>max</sub>] governs the headline numbers and the drawing.
       </p>
     </div>
   </section>
@@ -267,31 +406,26 @@
     </div>
   </section>
 
-  <!-- ═══════════════ 6 BEREGN ═══════════════ -->
-  <section id="s-calc" class="rounded-xl border border-slate-700 bg-slate-800/60">
-    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2"><span class="sec-h">6 · Calculate</span></div>
-    <div class="px-5 pb-5 space-y-3">
-      <div id="validation" class="space-y-2"></div>
-      <div class="flex flex-wrap items-center gap-4">
-        <button type="button" id="btn-run"
-                class="px-6 py-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold border border-sky-400/50 shadow-lg shadow-sky-900/40 flex items-center gap-3">
-          <span id="btn-run-label">Calculate</span> <kbd class="!bg-sky-900 !border-sky-500">Ctrl</kbd><kbd class="!bg-sky-900 !border-sky-500">Space</kbd>
-        </button>
-        <button type="button" id="btn-cancel" style="display:none"
-                class="px-4 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm">Cancel</button>
-        <div class="flex-1 min-w-[280px]">
-          <div id="engine-card" class="rounded-lg border border-slate-700 bg-slate-900/50 p-3"></div>
-        </div>
-      </div>
-    </div>
-  </section>
+  <!-- ═══════════════ 6 RESULTAT ═══════════════
+       Den gamle seksjon 6 «Calculate» er borte: «Beregn»-knappen og
+       motorstatusen fantes i TO eksemplarer, ett her og ett i bunnlinja, og
+       bunnlinjas er den som alltid er i rekkevidde. Tre ting fra den er
+       FLYTTET hit, ikke slettet:
 
-  <!-- ═══════════════ 7 RESULTAT ═══════════════ -->
+       * `#engine-banner` — motorens FEIL-tilstand med «Retry». Den bodde bare
+         i `#engine-card`, og en slettet seksjon ville tatt med seg den eneste
+         veien tilbake fra en havarert oppvarming. Framdriftslinja er derimot
+         borte for godt; `#engine-pill` og `#bar-engine` sier det samme.
+       * `#validation` — valideringsmeldingene, som skal stå der svaret ville
+         ha stått. `#bar-issues` i bunnlinja teller dem og ruller hit.
+       * Nummereringen: 7 ble 6. Et hopp fra 5 til 7 er en gåte uten svar. -->
   <section id="s-res" class="rounded-xl border border-slate-700 bg-slate-800/60">
     <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
-      <span class="sec-h">7 · Result</span>
+      <span class="sec-h">6 · Result</span>
       <span id="res-summary" class="text-xs text-slate-500 num"></span>
     </div>
+    <div id="engine-banner" class="px-5 empty:hidden"></div>
+    <div id="validation" class="px-5 pb-1 space-y-2 empty:hidden"></div>
     <div id="res-body" class="px-5 pb-4"></div>
     <details class="mx-5 mb-5 rounded-lg border border-slate-700 bg-slate-900/40">
       <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200">Report details — project, author, date, note ▸</summary>
@@ -317,44 +451,53 @@
 <div class="fixed bottom-0 inset-x-0 z-30 border-t border-slate-700 bg-slate-900/95 backdrop-blur">
   <div class="max-w-5xl mx-auto px-5 h-16 flex items-center gap-4">
     <div id="bar-thumb" class="w-12 h-12 shrink-0 rounded border border-slate-700 bg-slate-800 p-1 overflow-hidden svg-fit"></div>
-    <div class="text-[12px] num leading-tight min-w-0">
+    <div class="text-[12px] num leading-tight min-w-0 shrink">
       <div id="bar-geo" class="text-slate-300 truncate"></div>
       <div id="bar-arm" class="text-slate-500 truncate"></div>
     </div>
-    <!-- Inspeksjonsstripa (hentet fra mockup B): η, M_Rd, x, x/d og bruddform,
-         slik at man ser hva en endring gjorde uten å rulle ned til resultatet. -->
-    <div id="bar-inspect" class="hidden md:flex items-center gap-5 ml-4 text-[12px]"></div>
+    <!-- Valideringsmerket. Det ER hele arven etter den slettede seksjon 6 sin
+         plassering av `#validation`: teller feil og advarsler, og ruller til
+         boksen som forklarer dem. Skjult (`hidden`) når det ikke er noe å si. -->
+    <button type="button" id="bar-issues" hidden
+            class="shrink-0 px-2 py-1 rounded border text-[11px] leading-none num"></button>
+    <!-- Inspeksjonsstripa (hentet fra mockup B): η, η_V, M_Rd, x/d og bruddform.
+         FEM celler, alltid de samme fem — også før første beregning, der de står
+         med «–». Gikk stripa fra én celle til sju ved første svar, hoppet den
+         nøyaktig i det øyeblikket det irriterer mest. `x` i mm er borte: `x/d`
+         bærer samme informasjon i den formen en ingeniør vurderer den, og `V_Rd`
+         er implisert av η_V og står i skjærpanelet. -->
+    <div id="bar-inspect" class="hidden md:flex items-center gap-2 ml-2 text-[12px]"></div>
     <div class="ml-auto flex items-center gap-3 shrink-0">
-      <div id="bar-engine" class="text-[11px] text-slate-400 num text-right max-w-[220px] leading-tight hidden lg:block"></div>
+      <div id="bar-engine" class="text-[11px] text-slate-400 num text-right max-w-[160px] leading-tight hidden lg:block"></div>
       <button type="button" id="btn-cancel-bar" style="display:none"
               class="px-3 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm">Cancel</button>
       <button type="button" id="btn-run-bar"
-              class="px-5 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 font-semibold text-sm border border-sky-400/50">
-        <span id="btn-run-bar-label">Calculate</span> <kbd class="!bg-sky-900 !border-sky-500 ml-1">⌃Space</kbd>
+              class="px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 font-semibold text-sm border border-sky-400/50 whitespace-nowrap">
+        <!-- Teksten fylles av `ui.js` fra `SHORTCUTS` (runde 6 §2.3). Skrevet
+             her, ville den vært en andre kilde til hvilken tast som kjører. -->
+        <span id="btn-run-bar-label">Calculate</span> <kbd id="kbd-calc" class="!bg-sky-900 !border-sky-500 ml-1"></kbd>
       </button>
     </div>
   </div>
 </div>
 
-<!-- ═══════════════ hjelpeoverlegg ═══════════════ -->
+<!-- ═══════════════ hjelpeoverlegg ═══════════════
+     RADENE ER TOMME MED VILJE. Lista fylles av `ui.js` fra `SHORTCUTS`, som er
+     den samme tabellen handleren slår opp i og merkene («hold Alt») leser. Den
+     håndskrevne tabellen som sto her lovet `B` og `P` — to taster som krevde
+     høyre hånd, i et verktøy hvis krav er at høyre hånd blir på musa — og tidde
+     om `Alt+E` og `Escape`. En hjelpetekst er den eneste dokumentasjonen ingen
+     test leser, med mindre den er avledet. Nå er den avledet. -->
 <div id="help" class="hidden fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-6">
-  <div class="max-w-md w-full rounded-xl border border-slate-600 bg-slate-800 p-5 space-y-3">
+  <div class="max-w-lg w-full rounded-xl border border-slate-600 bg-slate-800 p-5 space-y-3">
     <div class="flex items-center"><h2 class="font-semibold">Keyboard</h2>
       <button type="button" id="help-close" class="ml-auto text-slate-400 hover:text-white">✕</button></div>
     <table class="w-full text-[13px]">
-      <tbody class="[&amp;_td]:py-1 [&amp;_td:first-child]:w-28">
-        <tr><td><kbd>Ctrl</kbd> <kbd>Space</kbd></td><td class="text-slate-300">Calculate — from anywhere, without leaving the mouse</td></tr>
-        <tr><td><kbd>Ctrl</kbd> <kbd>⏎</kbd></td><td class="text-slate-300">Calculate — alias for Ctrl+Space</td></tr>
-        <tr><td><kbd>A</kbd></td><td class="text-slate-300">Jump to the reinforcement line</td></tr>
-        <tr><td><kbd>⏎</kbd></td><td class="text-slate-300">Add the layer in the reinforcement line</td></tr>
-        <tr><td><kbd>↑</kbd></td><td class="text-slate-300">Recall the previous line</td></tr>
-        <tr><td><kbd>Alt</kbd> <kbd>D</kbd></td><td class="text-slate-300">Duplicate last layer</td></tr>
-        <tr><td><kbd>B</kbd> / <kbd>P</kbd></td><td class="text-slate-300">Beam / slab</td></tr>
-        <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></td><td class="text-slate-300">Bending / M–κ / M–N — bending is skipped when it is unavailable</td></tr>
-        <tr><td><kbd>?</kbd></td><td class="text-slate-300">This list</td></tr>
-      </tbody>
+      <tbody id="help-rows" class="[&amp;_td]:py-1 [&amp;_td:first-child]:pr-4"></tbody>
     </table>
-    <p class="text-[11px] text-slate-500">The letter shortcuts only work when you are not in a text field.</p>
+    <p class="text-[11px] text-slate-500">Everything is on the left half of the keyboard — your right hand stays on the mouse.
+      A shortcut without <kbd>Ctrl</kbd> or <kbd>Alt</kbd> is ignored while you are typing in a field.
+      Hold <kbd>Alt</kbd> for a moment to see the keys on the controls themselves.</p>
   </div>
 </div>
 
