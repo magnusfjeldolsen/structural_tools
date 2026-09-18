@@ -75,11 +75,49 @@ const MARGIN = Object.freeze({
   top: 6,
   bottom: { on: 15, off: 4 },   // b-målet ligger under tverrsnittet
   left: { on: 16, off: 4 },     // h-målet ligger til venstre
+  // `right.on` er TAKET for merkelappsonen, ikke lenger den faste kostnaden:
+  // `labelZone()` måler hva merkelappene faktisk trenger og klemmer mot dette.
+  // Taket beholdes slik at sonen aldri blir STØRRE enn den var før, uansett hvor
+  // galt et anslag skulle slå ut på et lag ingen har sett ennå.
   right: { on: 34, off: 4 },    // armeringsmerkelappene ligger til høyre
 });
 
-/** Standard maksimal papirhøyde. En høy bjelke skal ikke sprenge en A4-side. */
+/**
+ * Standard maksimal papirhøyde i RAPPORT-mm. En høy bjelke skal ikke sprenge en
+ * A4-side. Den gjelder bare når kalleren ikke sier noe selv; se `resolveOpts`
+ * for hvorfor en eksplisitt `height` måles i kallerens egen enhet i stedet.
+ */
 const DEFAULT_MAX_HEIGHT = 110;
+
+/**
+ * Luft mellom tverrsnittets høyrekant og merkelappteksten, i rapport-mm.
+ * ÉN kilde: `labelZone()` reserverer plass med den, og tegneløkka setter
+ * teksten med den. Sto tallet to steder, kunne sonen bli reservert 6 mm fra
+ * kanten og teksten satt 9 mm ut, og merkelappen ville stukket ut av figuren
+ * uten at noen test så det — først synlig på et utskrevet ark.
+ */
+const LABEL_GAP = 6;
+
+/**
+ * Skriftstørrelsene i rapport-mm. Konstanter fordi merkelappsonen må regne på
+ * NØYAKTIG den skriften teksten settes med; to tall som skal være like er den
+ * feilformen denne modulen har blitt bitt av i hver eneste runde.
+ */
+const FS_LABEL = 2.6;   // lagets bransjenotasjon, «3Ø20»
+const FS_DIM = 2.2;     // måltall og «dc = 50 mm»
+
+/**
+ * Anslått middelbredde per tegn, som andel av skriftstørrelsen.
+ *
+ * SVG kan ikke måle tekst uten et DOM, og denne fila er DOM-fri med vilje
+ * (§2.3 punkt 2). Anslaget er derfor bevisst RAUST: de faktiske middelbreddene
+ * i Helvetica for tegnene som forekommer i disse merkelappene ligger på
+ * 0,49–0,53 em («Ø12 c/c 113» er 0,490, «dc = 50 mm» er 0,525), så 0,62 gir
+ * ca. 20 % margin. Retningen på feilen er det som betyr noe: reserverer vi for
+ * mye, taper figuren noen piksler; reserverer vi for lite, skrives
+ * merkelappen ut over kanten av arket.
+ */
+const GLYPH_W = 0.62;
 
 /* ------------------------------------------------------------------ *
  * Farger — presentasjonsattributter, ett sted
@@ -135,16 +173,104 @@ function r(v) {
 
 function resolveOpts(opts = {}) {
   const width = Number.isFinite(opts.width) && opts.width > 0 ? opts.width : REPORT_WIDTH;
+  const u = width / REPORT_WIDTH;
   return {
     width,
     unit: opts.unit === 'px' ? 'px' : 'mm',
-    maxHeight: Number.isFinite(opts.height) && opts.height > 0 ? opts.height : DEFAULT_MAX_HEIGHT,
+    /*
+     * `maxHeight` er i KALLERENS enhet, den samme som `width` — ikke i
+     * rapport-mm.
+     *
+     * Dette var en enhetslekkasje, og den var av den lumske sorten: høyden ble
+     * ganget med `u = width / 174` sammen med marginene, så en skjermkaller som
+     * ba om `{width: 300, unit: 'px', height: 247}` fikk en figur på
+     * 300 × 425,9 px. Tallet 247 betydde i praksis 247 · 1,724 = 425,9 px.
+     * Kalleren ba om å få plass i 247 piksler og fikk noe 72 % for høyt, uten
+     * en feilmelding noe sted — figuren bare rant ut av boksen sin.
+     *
+     * Ingen kaller sender `height` i dag (`ui.js` og `report.js` lar den stå),
+     * så rettelsen endrer ingenting som finnes; den gjør bare at en `height`
+     * som SENDES betyr det den sier. `width` og `height` er nå i samme tallrom,
+     * som en hvilken som helst annen boks.
+     *
+     * STANDARDEN er fortsatt 110 rapport-mm og skaleres med `u`, slik at en
+     * halvbreddefigur (87 mm) får halv høyde og ser ut som en nedskalert utgave
+     * av den fulle. Det er den A4-regelen kommentaren over `DEFAULT_MAX_HEIGHT`
+     * beskriver, og den står urørt.
+     */
+    maxHeight: Number.isFinite(opts.height) && opts.height > 0
+      ? opts.height
+      : DEFAULT_MAX_HEIGHT * u,
     showDims: opts.showDims !== false,
     showLabels: opts.showLabels !== false,
     theme: opts.theme === 'dark' ? 'dark' : 'print',
     overlay: opts.overlay || null,
-    u: width / REPORT_WIDTH,
+    u,
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * Merkelappene: én kilde til teksten, og til plassen den trenger
+ * ------------------------------------------------------------------ */
+
+/**
+ * De tekstlinjene ÉN merkelapp består av, med skriftstørrelsen sin i rapport-mm.
+ *
+ * Skilt ut fordi TO steder trenger nøyaktig de samme strengene: `labelZone()`
+ * som reserverer bredde til dem, og tegneløkka som setter dem. Bygde de to
+ * strengene hver for seg, ville en endring i formatet — «dc = 50 mm» til
+ * «d_c = 50 mm», si — flyttet teksten uten å flytte plassen, og merkelappen
+ * ville stukket ut over figurkanten. Det er nøyaktig samme prinsipp som punkt 1
+ * i hodekommentaren: to uavhengige regnestykker over det samme tallet er den
+ * sviktformen ingen test fanger.
+ */
+function layerLabelLines(layer) {
+  return [
+    { text: layerLabel(layer), size: FS_LABEL },
+    { text: `dc = ${fmt(Number(layer?.dc) || 0, 0)} mm`, size: FS_DIM },
+  ];
+}
+
+/**
+ * Bredden merkelappsonen faktisk trenger, i rapport-mm.
+ *
+ * FØR var dette et fast tall: 34 rapport-mm, uansett hva merkelappene sa —
+ * 19,5 % av figurbredden, permanent, også for et tverrsnitt UTEN armering der
+ * det ikke tegnes en eneste merkelapp. På skjermen, der den samme figuren
+ * allerede taper 28,7 % av bredden til marginer, er det den største enkeltposten
+ * som ikke er tverrsnitt.
+ *
+ * Nå måles behovet: lengste tekstlinje pluss luften ut fra betongkanten.
+ *
+ * TO KLEMMER, begge med en begrunnelse som gjelder PAPIRET og ikke skjermen:
+ *
+ *  - **Aldri over `MARGIN.right.on` (34).** Rapporten er den harde kunden her;
+ *    der trenger merkelappene plassen sin. Taket gjør at sonen aldri kan bli
+ *    større enn den var før denne endringen, så en A4-side kan i verste fall
+ *    bli som i dag — aldri verre.
+ *  - **Aldri under `MARGIN.right.off` (4).**
+ *
+ * At A4-figuren ikke kan sprenge siden på høyden følger av `sectionViewBox`
+ * uansett hva denne funksjonen returnerer: `scale = min(availW/b, availH/h)`,
+ * og `availH` avhenger bare av `maxHeight` og de loddrette marginene. Derfor er
+ * `paperH = mTop + mBottom + h·scale <= mTop + mBottom + availH = maxHeight`
+ * ALLTID. En smalere merkelappsone gir en bredere figur, aldri en høyere side.
+ *
+ * Lag UTEN jern tegner ingen merkelapp, men får plass reservert her. Det er med
+ * vilje: `sectionViewBox` kaller ikke `barPositions()` og skal ikke begynne med
+ * det for en marg. Å reservere litt for mye koster noen piksler; å reservere for
+ * lite setter tekst utenfor arket.
+ */
+function labelZone(state) {
+  const layers = Array.isArray(state?.layers) ? state.layers : [];
+  let widest = 0;
+  for (const layer of layers) {
+    for (const line of layerLabelLines(layer)) {
+      widest = Math.max(widest, line.text.length * line.size * GLYPH_W);
+    }
+  }
+  if (widest <= 0) return MARGIN.right.off;
+  return Math.max(MARGIN.right.off, Math.min(MARGIN.right.on, LABEL_GAP + widest));
 }
 
 /* ------------------------------------------------------------------ *
@@ -163,6 +289,16 @@ function resolveOpts(opts = {}) {
  * begrenses av høyden, en 1000×200-plate av bredden. Blir det plass til overs i
  * bredden, fordeles den likt på begge sider — tverrsnittet står da midt i
  * tegneflaten i stedet for å klistre seg til venstremargen.
+ *
+ * `opts.height` er taket på papirhøyden, I SAMME ENHET SOM `opts.width`. Sender
+ * en skjermkaller `{width: 300, unit: 'px', height: 247}`, blir figuren nøyaktig
+ * 300 × 247 px når høyden binder — ikke 300 × 425,9, som den ble da høyden
+ * feilaktig ble tolket i rapport-mm. Uten `height` gjelder A4-regelen
+ * `DEFAULT_MAX_HEIGHT`, skalert med figurbredden.
+ *
+ * Høydebegrensningen binder derfor bare så lenge kalleren faktisk har en høyde å
+ * begrense mot. En skjermkaller som ikke sender noen, arver papirets tak og får
+ * en figur som er liten uten grunn — det er den fella `ui.js` sto i.
  */
 export function sectionViewBox(state, opts = {}) {
   const o = resolveOpts(opts);
@@ -170,12 +306,15 @@ export function sectionViewBox(state, opts = {}) {
   const h = Math.max(1e-9, Number(state?.geometry?.h) || 0);
 
   const mLeft = (o.showDims ? MARGIN.left.on : MARGIN.left.off) * o.u;
-  const mRight = (o.showLabels ? MARGIN.right.on : MARGIN.right.off) * o.u;
+  const mRight = (o.showLabels ? labelZone(state) : MARGIN.right.off) * o.u;
   const mBottom = (o.showDims ? MARGIN.bottom.on : MARGIN.bottom.off) * o.u;
   const mTop = MARGIN.top * o.u;
 
   const availW = Math.max(1e-6, o.width - mLeft - mRight);
-  const availH = Math.max(1e-6, o.maxHeight * o.u - mTop - mBottom);
+  // `maxHeight` er allerede i kallerens enhet (se `resolveOpts`), mens
+  // marginene er rapport-mm og må ganges med `u`. Sto det `o.maxHeight * o.u`
+  // her, ville en eksplisitt høyde blitt tolket i et annet tallrom enn bredden.
+  const availH = Math.max(1e-6, o.maxHeight - mTop - mBottom);
 
   const scale = Math.min(availW / b, availH / h);
 
@@ -457,8 +596,8 @@ export function drawSection(state, opts = {}) {
 
   const sw = 0.25 * o.u;          // grunnstrek, 0,25 mm på papir
   const swThick = 0.45 * o.u;     // tverrsnittets omriss
-  const fsLabel = 2.6 * o.u;
-  const fsDim = 2.2 * o.u;
+  const fsLabel = FS_LABEL * o.u;
+  const fsDim = FS_DIM * o.u;
 
   const parts = [];
   parts.push(`<rect x="0" y="0" width="${r(paperW)}" height="${r(paperH)}" fill="${c.bg}"/>`);
@@ -569,7 +708,10 @@ export function drawSection(state, opts = {}) {
     // tegnlengden — SVG kan ikke måle tekst uten et DOM, og denne fila er
     // DOM-fri med vilje (§2.3 punkt 2).
     const labelFs = fsDim * 0.9;
-    const labelW = stirrup.label.length * labelFs * 0.55;
+    // SAMME tegnbreddeanslag som merkelappsonen bruker (`GLYPH_W`). Sto tallet
+    // to steder, kunne det ene bli justert og det andre ikke, og da ville enten
+    // masken bli for smal (bena skinner gjennom teksten) eller sonen for trang.
+    const labelW = stirrup.label.length * labelFs * GLYPH_W;
     const labelX = (px(stirrup.y0) + px(stirrup.y1)) / 2;
     const labelY = (py(stirrup.z0) + py(stirrup.z1)) / 2;
     g += `<rect x="${r(labelX - labelW / 2)}" y="${r(labelY - labelFs * 0.95)}" ` +
@@ -649,17 +791,20 @@ export function drawSection(state, opts = {}) {
   if (o.showLabels) {
     let g = `<g data-role="labels">`;
     const xEnd = px(b / 2);
-    const xText = xEnd + 6 * o.u;
+    // SAMME `LABEL_GAP` som `labelZone()` reserverte plass etter. Teksten skal
+    // starte der marginregnestykket sa at den skulle starte.
+    const xText = xEnd + LABEL_GAP * o.u;
     for (const { layer, bars: pos } of drawn) {
       if (!pos.length) continue;
       const z = pos.reduce((a, p) => a + (Number(p.z) || 0), 0) / pos.length;
       const yRight = Math.max(...pos.map((p) => Number(p.y) || 0));
+      const lines = layerLabelLines(layer);
       g += `<line x1="${r(px(yRight))}" y1="${r(py(z))}" x2="${r(xText - 1 * o.u)}" y2="${r(py(z))}" ` +
            `stroke="${c.dim}" stroke-width="${r(sw)}" stroke-dasharray="${r(1.2 * o.u)} ${r(1.2 * o.u)}"/>`;
       g += `<text x="${r(xText)}" y="${r(py(z) + fsLabel * 0.35)}" font-family="${FONT}" ` +
-           `font-size="${r(fsLabel)}" fill="${c.text}">${esc(layerLabel(layer))}</text>`;
+           `font-size="${r(lines[0].size * o.u)}" fill="${c.text}">${esc(lines[0].text)}</text>`;
       g += `<text x="${r(xText)}" y="${r(py(z) + fsLabel * 0.35 + fsDim * 1.25)}" font-family="${FONT}" ` +
-           `font-size="${r(fsDim)}" fill="${c.dim}">${esc(`dc = ${fmt(Number(layer?.dc) || 0, 0)} mm`)}</text>`;
+           `font-size="${r(lines[1].size * o.u)}" fill="${c.dim}">${esc(lines[1].text)}</text>`;
     }
     parts.push(g + `</g>`);
   }

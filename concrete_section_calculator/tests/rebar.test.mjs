@@ -594,3 +594,21 @@ test('createStirrup faller tilbake på Ø12 når stirrup_dia er tom eller null',
   assert.equal(createStirrup({ stirrup_dia: '' }).dia, 12);
   assert.equal(createStirrup({}).dia, 12);
 });
+
+/* ---------------- runde 8 §1 — platas standardarmering ---------------- */
+
+test('createLayer: platas standard er Ø12 c/c 200 — bøylenes c/c 150 er et ANNET tall', () => {
+  // Tallet 150 sto i TRE uavhengige kopier før denne runden: her, i
+  // `createStirrup` og i `store.js:setSectionType`. To av dem beskrev platas
+  // armering, den tredje bøylene — og ingen test sa fra hvis man endret én og
+  // glemte de andre. Denne testen er vakten mot at de blir slått sammen igjen.
+  const slab = createLayer({ sectionType: 'slab', cover: 35, stirrup_dia: 12, shear: { stirrups: [] } });
+  assert.equal(slab.mode, 'spacing');
+  assert.equal(slab.dia, 12);
+  assert.equal(slab.spacing, 200, 'Ø12 c/c 200 — en svært vanlig dekkearmering');
+
+  assert.equal(createStirrup({ stirrup_dia: 12 }).spacing, 150, 'bøylenes c/c er UENDRET');
+
+  // Og en eksplisitt senteravstand slår fortsatt gjennom.
+  assert.equal(createLayer({ sectionType: 'slab' }, { spacing: 125 }).spacing, 125);
+});

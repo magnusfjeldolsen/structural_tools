@@ -74,6 +74,7 @@ import { activeComboTheta, allowedAnalyses, axialForcesPresent, derived, section
 import { drawSection } from './section-draw.js';
 import { momentCurvatureSvg, nmDomainSvg, radialUtilisation } from './charts.js';
 import { attachChartTips } from './chart-tips.js';
+import { attachHints } from './hints.js';
 import { isCancellable, phaseLabel, TOTAL_DOWNLOAD_BYTES } from './solver-client.js';
 import { RUN_ALL, defaultState } from './store.js';
 import { fromDocument, toDocument } from './serialize.js';
@@ -106,6 +107,102 @@ function esc(s) {
 function mb(bytes) {
   return fmtNumber((Number(bytes) || 0) / 1e6, 1);
 }
+
+/**
+ * Tegneflata til geometrifiguren i seksjon 2, i `drawSection`s egne enheter.
+ *
+ * Tallene er IKKE skjermpiksler. `.svg-fit > svg { width: 100% }` strekker
+ * figuren til kolonnebredden uansett, så det eneste disse to gjør er å sette
+ * SIDEFORHOLDET på viewBox-en — og dermed hvor mye av flata tverrsnittet får.
+ *
+ * HØYDEN MÅ SENDES. Uten den arver skjermen `DEFAULT_MAX_HEIGHT = 110`
+ * rapport-mm fra `section-draw.js`, som er en A4-regel: den finnes for at en høy
+ * bjelke ikke skal sprenge en utskrevet side. Målt band den bjelken til
+ * `scale = min(0,795 ; 0,256)` — betongen ble 75 × 150 px og fylte 25,6 % av
+ * figurbredden. Skjermen har ingen sidebrytning å ta hensyn til, og skal derfor
+ * ikke betale for den.
+ *
+ * HVORFOR NØYAKTIG 300 × 300: en KVADRATISK tegneflate er den nøytrale
+ * løsningen når den samme boksen må bære både et stående og et liggende snitt.
+ * Bjelken 300×600 er 1:2 og plata 1000×200 er 5:1; ingen boks kan fylles av
+ * begge, så valget står mellom å favorisere den ene eller ingen. Kvadratet
+ * favoriserer ingen: det stående snittet fyller høyden, det liggende fyller
+ * bredden. Regelen «figuren blir aldri høyere enn den er bred» er dessuten en
+ * grense man kan lese, ikke et tall som er skrudd til på ett tverrsnitt.
+ *
+ * Marginene spiser av flata, så bjelken lander på 44 % av bredden og plata på
+ * 77 % — plata er breddebundet og rører ikke høyden i det hele tatt.
+ */
+const GEO_DRAW_WIDTH = 300;
+const GEO_DRAW_HEIGHT = 300;
+
+/**
+ * REGISTERET BAK SPØRSMÅLSTEGNENE (runde 8 §4).
+ *
+ * Nøkkelen står i markupen som `data-hint="…"`, verdien er teksten boblen
+ * viser. `js/hints.js` kjenner ingen av dem — den slår bare opp.
+ *
+ * HVORFOR TEKSTEN BLE FLYTTET HIT OG IKKE SLETTET
+ * Hver av disse sto som permanent brødtekst i et kapittel, og hver av dem er
+ * ofte den eneste forklaringen av hvorfor et tall er som det er. Det som
+ * forsvant er PLASSEN de tok, ikke opplysningen. Spørsmålstegnet er samtidig
+ * et skritt videre enn de 17 `title`-attributtene runde 6 flyttet tekst til:
+ * et `title` har ingen synlig affordans, så den som ikke alt vet at det finnes
+ * noe å peke på, får aldri vite det.
+ *
+ * ÉN NØKKEL, ÉN TEKST, FLERE MERKER. Skal den samme forklaringen stå to
+ * steder, peker BEGGE merkene på den samme nøkkelen. En tekst som er skrevet
+ * av to ganger begynner å avvike fra seg selv ved første rettelse — og det er
+ * nøyaktig den feilformen som hadde satt «samme fysiske bøyle»-setningen i to
+ * litt ulike utgaver før denne runden.
+ *
+ * Teksten er brukervendt og derfor ENGELSK, som resten av grensesnittet.
+ */
+export const HINTS = {
+  // Sto som `<p>` nederst i seksjon 4. Den handler om ALLE radene og kunne
+  // derfor ikke bli en `title` på én av dem — men den leses én gang og huskes,
+  // og trengte ikke stå framme etterpå.
+  loads:
+    'Every combination is checked; the one with the highest utilisation within '
+    + '[N<sub>min</sub>, N<sub>max</sub>] governs the headline numbers and the drawing.',
+
+  // Sto i `#ana-active-combo`, sammen med NAVNET på den aktive kombinasjonen.
+  // Navnet er levende og blir stående; regelen bak det er statisk og flyttet
+  // hit. Delingen er poenget: et tall som endrer seg skal være synlig, en
+  // regel som aldri endrer seg trenger ikke være det.
+  analysis:
+    'Moment–curvature is a single curve and therefore runs for the active combination alone. '
+    + 'Bending resistance and the N–M domain run every combination and report the governing one.',
+
+  // TRE UTGAVER BLE ÉN. Den samme opplysningen sto som en linje under den
+  // første bøyleraden, som `title` på bøyleradens Ø, og som `title` på
+  // geometrifeltet — tre litt ulike setninger om ett faktum, altså nøyaktig
+  // den feilformen som har bitt modulen hver runde. Teksten er skrevet om så
+  // den leses riktig fra BEGGE ender: `stirrup-dia` har to merker, ett hvert
+  // sted, og de peker på denne ene strengen.
+  'stirrup-dia':
+    'The stirrup Ø under Geometry and the Ø in the stirrup row under Shear reinforcement are the '
+    + 'same physical stirrup — one value, shown in two places. Changing it moves every layer '
+    + 'whose d<sub>c</sub> is derived.',
+
+  // De tre siste sto som `<p>` nederst i hver sin avdekkingsboks, altså bak et
+  // klikk allerede — men de gjorde boksen lengre hver eneste gang den var åpen.
+  'material-factors':
+    'α<sub>cc</sub>, γ<sub>c</sub> and γ<sub>s</sub> cannot be 0: the calculation engine silently '
+    + 'treats 0 as 1.0 / 1.5 / 1.15, and the result would then not match what the report prints.',
+
+  'strut-angle':
+    'The variable strut inclination method, EC2 6.2.3(2): cot θ between 1.0 and 2.5, that is θ '
+    + 'between 45° and 21.8°. A flatter strut (θ → 21.8°) raises V<sub>Rd,s</sub> and lowers '
+    + 'V<sub>Rd,max</sub>. The lever arm is taken as z = z<sub>factor</sub>·d with '
+    + 'z<sub>factor</sub> = 0.9 as the usual approximation. Both apply to every stirrup row.',
+
+  'bar-spacing':
+    'Minimum clear distance between parallel bars or horizontal layers, EC2 8.2(2): the greatest '
+    + 'of k<sub>1</sub>·Ø, (d<sub>g</sub> + k<sub>2</sub>) and 20 mm. Recommended k<sub>1</sub> = 1, '
+    + 'k<sub>2</sub> = 5. Applies both to bar spacing within a layer and between stacked layers. '
+    + 'The side cover is what the same check measures the bars in from each edge.',
+};
 
 /** Beskrivelsene av de tre analysene. Kostnaden står i teksten med vilje —
  *  de MÅLTE tidene fra hovedplan §3.7, ikke anslag (endringsrunde 2 §6). */
@@ -389,6 +486,60 @@ export function bottomBarStripHtml(result, opts) {
       `<div class="bar-cell-l">${esc(c.label)}</div>` +
       `<div class="bar-cell-v num">${esc(c.value)}</div></div>`;
   }).join('');
+}
+
+/**
+ * Markupen for ÉN armeringsrad (runde 8 §2).
+ *
+ * HVORFOR HELE RADEN ER EN KNAPP
+ * Målt: raden er 940 × 47,5 px, blyanten som åpnet den var 29 × 27,5 px —
+ * 1,8 % av flaten — og `.lact { opacity: 0 }` gjorde den usynlig til musa var
+ * over raden. Målet er nå hele raden.
+ *
+ * HVORFOR `<button>` OG IKKE `<div role="button">`
+ * `tabindex` er forbudt i hele modulen (`tests/form-structure.test.mjs`), og
+ * en `<div>` uten `tabindex` er ikke tastaturnåbar. Skranken velger altså
+ * formen for oss, og den velger riktig: en ekte knapp får Tab og Enter gratis.
+ *
+ * HVORFOR BOT/TOP, DUPLISER OG SLETT LIGGER SOM SØSKEN
+ * Nestede knapper er ugyldig HTML. De tre ligger derfor i `.lact` ved siden av
+ * radknappen, ikke inne i den, og beholder sine egne tab-stopp. Blyanten er
+ * samtidig nedgradert fra knapp til `<span>`: den er nå bare et merke som sier
+ * at raden kan åpnes. Uten den nedgraderingen hadde «åpne» kostet TO tab-stopp
+ * — radknappen og blyanten — og raden fått fem i stedet for dagens fire.
+ *
+ * HVORFOR DEN LIGGER PÅ MODULNIVÅ OG ER REN
+ * Nøyaktig som `bottomBarStripHtml`: tastaturmodellen for raden ER markupen,
+ * og den kan bare testes uten DOM hvis strengen kan bygges uten DOM.
+ *
+ * Feltene i `view` er FERDIG formatert HTML fra `renderLayers` (`label`, `dc`
+ * og `facts` inneholder `<b>` og `<sub>`), ikke rå tall. Tallene skal ha
+ * nøyaktig én kilde, og den er opptegningen som allerede har `theta`,
+ * `sectionHeight` og `isLocked` for hånden. `id` er det ene som eskapes her,
+ * fordi det er det ene som havner i et attributt.
+ */
+export function layerRowHtml(view) {
+  const { id, edge, label, dc, facts, open = false, editor = '' } = view;
+  const eid = esc(id);
+  return `<div class="lrow bg-slate-800/40">
+    <div class="flex items-stretch">
+      <button type="button" class="lmain flex-1 min-w-0 flex items-center gap-3 px-3 py-2.5 text-[13px]"
+              data-open="${eid}" aria-expanded="${open ? 'true' : 'false'}" title="Edit all fields">
+        <span class="w-6 shrink-0 text-slate-500 text-[11px]">${eid}</span>
+        <span class="min-w-[116px] num">${label}</span>
+        <span class="text-slate-400 num">${dc}</span>
+        <span class="text-slate-500 num hidden md:inline ml-3">${facts}</span>
+        <span class="lcaret ml-auto pl-2 text-slate-500">${open ? '▾' : '✎'}</span>
+      </button>
+      <span class="lact flex items-center gap-1 pr-2">
+        <button type="button" class="chip !py-0.5 !px-2 !text-[11px]" data-edge="${eid}"
+                title="Switch to ${edge === 'bottom' ? 'top' : 'bottom'}">${edge === 'bottom' ? 'BOT' : 'TOP'}</button>
+        <button type="button" class="px-2 py-1 rounded hover:bg-slate-700 text-slate-400" data-dup="${eid}" title="Duplicate">⧉</button>
+        <button type="button" class="px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300" data-del="${eid}" title="Delete">✕</button>
+      </span>
+    </div>
+    ${editor}
+  </div>`;
 }
 
 function panel(title, items) {
@@ -861,6 +1012,16 @@ export function createUI(deps) {
   let editing = null;
   /** Kjører en beregning nå? */
   let busy = false;
+  /**
+   * Håndtaket til spørsmålstegnene, satt i `mount()`.
+   *
+   * Startverdien er et LUKKET håndtak og ikke `null`, fordi `topOverlay()`
+   * spør det først av alle: i en test — eller i det vesle vinduet før
+   * `mount()` har kjørt — ville `null` gitt en TypeError inne i
+   * `Escape`-lytteren, altså en tast som slutter å virke i stedet for en
+   * feilmelding noen ser.
+   */
+  let hints = { isOpen: () => false, close: () => {} };
   /** Siste linjer i korthåndsfeltet, for ↑. */
   const shHistory = [];
   /**
@@ -1196,23 +1357,19 @@ export function createUI(deps) {
         ? `<b class="text-amber-300">Ø${fmtNumber(layer.dia, 1)}</b> c/c <b class="text-amber-300">${fmtNumber(layer.spacing, 0)}</b>`
         : `<b class="text-amber-300">${fmtNumber(layer.count, 0)}</b> × <b class="text-amber-300">Ø${fmtNumber(layer.dia, 1)}</b>`;
       const open = editing === layer.id;
-      return `<div class="lrow bg-slate-800/40">
-        <div class="flex items-center gap-3 px-3 py-2.5 text-[13px]">
-          <span class="w-6 text-slate-500 text-[11px]">${esc(layer.id)}</span>
-          <span class="min-w-[116px] num">${label}</span>
-          <button type="button" class="chip !py-0.5 !px-2 !text-[11px]" data-edge="${esc(layer.id)}"
-                  title="Switch to ${layer.edge === 'bottom' ? 'top' : 'bottom'}">${layer.edge === 'bottom' ? 'BOT' : 'TOP'}</button>
-          <span class="text-slate-400 num">d<sub>c</sub> ${fmtNumber(layer.dc, 1)}${isLocked(layer.id) ? ' <span title="Derived automatically (EC2 8.2 stacking)">🔒</span>' : ''}</span>
-          <span class="text-slate-500 num hidden md:inline ml-3">A<sub>s</sub> ${fmtArea(area)} mm²${perMeter} · d ${fmtLength(d, 0)} mm · ${n} bars</span>
-          <span class="lact ml-auto flex gap-1">
-            <button type="button" class="px-2 py-1 rounded hover:bg-slate-700 text-slate-300" data-open="${esc(layer.id)}"
-                    title="Edit all fields">${open ? '▾' : '✎'}</button>
-            <button type="button" class="px-2 py-1 rounded hover:bg-slate-700 text-slate-400" data-dup="${esc(layer.id)}" title="Duplicate">⧉</button>
-            <button type="button" class="px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300" data-del="${esc(layer.id)}" title="Delete">✕</button>
-          </span>
-        </div>
-        ${open ? rowEditor(layer, s) : ''}
-      </div>`;
+      // Selve radformen ligger i `layerRowHtml` på modulnivå. Her bygges bare
+      // tallene, og de bygges ÉN gang hver: `area`, `d` og `n` over er de
+      // eneste kildene til A_s, d og antall jern i denne raden.
+      return layerRowHtml({
+        id: layer.id,
+        edge: layer.edge,
+        label,
+        dc: `d<sub>c</sub> ${fmtNumber(layer.dc, 1)}` +
+          (isLocked(layer.id) ? ' <span title="Derived automatically (EC2 8.2 stacking)">🔒</span>' : ''),
+        facts: `A<sub>s</sub> ${fmtArea(area)} mm²${perMeter} · d ${fmtLength(d, 0)} mm · ${n} bars`,
+        open,
+        editor: open ? rowEditor(layer, s) : '',
+      });
     }).join('');
 
     bindLayerRows(host);
@@ -1277,11 +1434,46 @@ export function createUI(deps) {
   }
 
   function bindLayerRows(host) {
+    /*
+     * FOKUS MAA GJENOPPRETTES ETTER `render()`.
+     *
+     * `render()` bygger `#layers` med `innerHTML`, saa knappen som ble klikket
+     * er et ANNET element etterpaa — det gamle er kastet, og fokus faller til
+     * `<body>`. Med mus merkes det ikke. Med tastatur er det alvorlig: du
+     * tabber til raden, trykker Enter, og har ingen posisjon lenger. Neste Tab
+     * starter fra toppen av dokumentet.
+     *
+     * Dette er samme felle som `comboEditInFlight` og `stirrupEditInFlight`
+     * finnes for, men den kan ikke loeses paa samme maate her: der hindrer
+     * flagget omtegningen, mens her ER omtegningen hele poenget — editoren skal
+     * jo dukke opp. Derfor gjenopprettes fokus i stedet, paa det nye elementet
+     * med samme `data-open`.
+     */
+    // Slaar opp paa `dataset` i stedet for en attributt-selektor: en lag-id gaar
+    // rett inn i selektoren ellers, og «L1» er trygg i dag uten at noe HOLDER den
+    // trygg i morgen.
+    const refocusRow = (id) => {
+      for (const el of host.querySelectorAll('[data-open]')) {
+        if (el.dataset.open === id) { el.focus(); return; }
+      }
+    };
     host.querySelectorAll('[data-open]').forEach((el) => {
-      el.onclick = () => { editing = editing === el.dataset.open ? null : el.dataset.open; render(); };
+      el.onclick = () => {
+        const id = el.dataset.open;
+        editing = editing === id ? null : id;
+        render();
+        refocusRow(id);
+      };
     });
     host.querySelectorAll('[data-close]').forEach((el) => {
-      el.onclick = () => { editing = null; render(); };
+      el.onclick = () => {
+        // `editing` ER raden som lukkes — `data-close` baerer ingen id.
+        const id = editing;
+        editing = null;
+        render();
+        // Tilbake til radknappen editoren hoerte til, ikke til `<body>`.
+        if (id) refocusRow(id);
+      };
     });
     host.querySelectorAll('[data-edge]').forEach((el) => {
       el.onclick = () => {
@@ -1383,12 +1575,17 @@ export function createUI(deps) {
       return;
     }
 
-    host.innerHTML = list.map((st, i) => `<div class="px-3 py-2 text-[13px]">
+    // `st` alene: løpenummeret `i` trengtes bare til linja som forklarte at
+    // denne Ø-en og geometriens er den samme. Den står nå i `HINTS`, og merket
+    // under peker på den — så forklaringen er der på ALLE rader i stedet for
+    // bare den første, uten å koste en eneste linje i noen av dem.
+    host.innerHTML = list.map((st) => `<div class="px-3 py-2 text-[13px]">
       <div class="flex flex-wrap items-center gap-2">
         <span class="w-6 text-slate-500 text-[11px]">${esc(st.id)}</span>
-        <label class="flex items-center gap-1 text-[11px] text-slate-500"
-               title="The same physical stirrup as &quot;Stirrup Ø&quot; above — changing it moves every automatic d_c.">Ø
-          <input type="text" class="!w-16" data-sf="dia" data-s="${esc(st.id)}" value="${fmtNumber(st.dia, 1)}" aria-label="Stirrup diameter [mm]"></label>
+        <label class="flex items-center gap-1 text-[11px] text-slate-500">Ø
+          <input type="text" class="!w-16" data-sf="dia" data-s="${esc(st.id)}" value="${fmtNumber(st.dia, 1)}" aria-label="Stirrup diameter [mm]">
+          <button type="button" class="hint" data-hint="stirrup-dia" aria-expanded="false"
+                  aria-label="About the stirrup diameter">?</button></label>
         <label class="flex items-center gap-1 text-[11px] text-slate-500">c/c
           <input type="text" class="!w-20" data-sf="spacing" data-s="${esc(st.id)}" value="${fmtNumber(st.spacing, 1)}" aria-label="Stirrup spacing s [mm]"></label>
         <label class="flex items-center gap-1 text-[11px] text-slate-500"
@@ -1400,7 +1597,6 @@ export function createUI(deps) {
         <button type="button" class="ml-auto px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300"
                 data-remove-stirrup="${esc(st.id)}" title="Remove stirrup row">✕</button>
       </div>
-      ${i === 0 ? `<div class="mt-1 text-[11px] text-slate-500">Ø is the same number as "Stirrup Ø" in the cover row above — one physical stirrup, one value. Changing it moves every layer whose d<sub>c</sub> is derived.</div>` : ''}
     </div>`).join('');
 
     bindStirrupRows(host);
@@ -2327,8 +2523,14 @@ export function createUI(deps) {
       // M–κ skal ALDRI kunne leses som «for alle kombinasjoner» (endringsrunde
       // 2 §6) — derfor navngis den aktive kombinasjonen her, ikke bare i
       // kombinasjonstabellen.
-      anaActive.textContent = `Active combination: ${label} — used for moment–curvature. ` +
-        'Bending resistance and the N–M domain run every combination and report the governing one.';
+      //
+      // LINJA ER DELT I TO (runde 8 §4), og skillet er ikke lengde, men
+      // levetid: NAVNET endrer seg når brukeren bytter kombinasjon og må
+      // derfor stå framme, mens REGELEN bak det — hvorfor M–κ bare kjører én
+      // — er den samme for alltid og ligger nå bak `HINTS.analysis`. Samme
+      // grunn til at `data-m-interp` ikke ble flyttet noe sted: et tall som
+      // svarer på det du nettopp skrev, er en bedre lærer enn et avsnitt.
+      anaActive.textContent = `Active combination: ${label} — used for moment–curvature.`;
     }
 
     const mats = derivedMaterials(s);
@@ -2386,7 +2588,10 @@ export function createUI(deps) {
     // sjekk mot motorstatus.
     const drawGeo = $('#draw-geo');
     if (drawGeo) {
-      drawGeo.innerHTML = drawSection(s, { width: 300, unit: 'px', theme: 'dark', showDims: true, showLabels: true });
+      drawGeo.innerHTML = drawSection(s, {
+        width: GEO_DRAW_WIDTH, height: GEO_DRAW_HEIGHT,
+        unit: 'px', theme: 'dark', showDims: true, showLabels: true,
+      });
     }
 
     renderLayers();
@@ -2614,6 +2819,12 @@ export function createUI(deps) {
   /** Overlegget som ligger øverst nå, eller `null`. `Escape` lukker ETT om
    *  gangen: rapporten kan stå åpen bak hjelpelista. */
   function topOverlay() {
+    // HINTET LIGGER ØVERST, og det er gratis: `Escape` har allerede en lytter,
+    // og et låst hint er det siste brukeren åpnet. Sto sjekken lenger ned,
+    // ville Escape lukket rapporten UNDER en hint som ble stående igjen og
+    // pekte på et merke som ikke lenger var på skjermen. En fjerde
+    // tastelytter ville dessuten vært en andre kilde til «hva lukker hva».
+    if (hints.isOpen()) return hints.close;
     const help = $('#help');
     if (help && !help.classList.contains('hidden')) return () => help.classList.add('hidden');
     return reportOpen() ? closeReport : null;
@@ -2882,6 +3093,11 @@ export function createUI(deps) {
       // Pekerboblene henges på resultatseksjonen én gang. Figurene byttes ut
       // ved hver beregning, men lytteren sitter over dem og overlever det.
       attachChartTips(document.getElementById('s-res'));
+      // PÅ `document.body`, ikke på hver seksjon. Merkene står i statisk
+      // markup i dag, men et merke inne i en radliste ville dødd ved neste
+      // `innerHTML` hvis lytteren satt lenger inn — og «klikk utenfor lukker»
+      // krever uansett at klikk hvor som helst på sida når fram hit.
+      hints = attachHints(document.body, HINTS);
       render();
     },
     render,

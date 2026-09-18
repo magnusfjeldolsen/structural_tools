@@ -34,6 +34,28 @@
 /** Minste fri avstand mellom jern i et lag, EC2 8.2. */
 export const MIN_CLEAR_SPACING = 20;
 
+/*
+ * TO SENTERAVSTANDER SOM TILFELDIGVIS HADDE SAMME TALL.
+ * Et nytt PLATELAG og en ny BØYLERAD sto begge med en naken `spacing: 150`, og
+ * `store.js:setSectionType` bar en TREDJE kopi av platas tall. Tre steder sa
+ * det samme uten å vite om hverandre, så da platas standard skulle bli 200
+ * fantes det ingen måte å endre den ene uten å måtte lete opp alle kopiene av
+ * den andre — og ingen test ville sagt fra om man glemte én. Nå er de to ulike
+ * fysiske tingene to navngitte tall, og `store.js` har ingen kopi i det hele
+ * tatt: `setSectionType` bygger et ferskt platesnitt gjennom `createLayer` i
+ * stedet for å regne om lagene med sitt eget tall.
+ *
+ * Ø12 c/c 200 er valgt fordi det er en svært vanlig dekkearmering, og det er
+ * tallene regresjonsfixturene `payload-slab-1000x200*.json` er målt med.
+ * Bøylenes c/c 150 er UENDRET — den hører til en annen fysisk ting.
+ */
+/** Standard senteravstand for et nytt lag i en plate [mm]. */
+const DEFAULT_SLAB_BAR_SPACING = 200;
+/** Standard senteravstand for en ny bøylerad [mm]. */
+const DEFAULT_STIRRUP_SPACING = 150;
+/** Standard stangdiameter i en plate [mm] — bjelkens er Ø20. */
+const DEFAULT_SLAB_BAR_DIA = 12;
+
 /** Sikker tallkonvertering: tomt felt blir `NaN`, ikke 0. */
 function num(v) {
   if (v === null || v === undefined || v === '') return NaN;
@@ -458,9 +480,9 @@ export function recomputeAutoDc(state = {}) {
  */
 export function createLayer(state = {}, patch = {}) {
   const isSlab = state.sectionType === 'slab';
-  const dia = patch.dia !== undefined ? num(patch.dia) : isSlab ? 12 : 20;
+  const dia = patch.dia !== undefined ? num(patch.dia) : isSlab ? DEFAULT_SLAB_BAR_DIA : 20;
   const base = isSlab
-    ? { mode: 'spacing', dia, spacing: 150 }
+    ? { mode: 'spacing', dia, spacing: DEFAULT_SLAB_BAR_SPACING }
     : { mode: 'bars', dia, count: 3 };
   return {
     id: patch.id || 'L1',
@@ -537,7 +559,7 @@ export function createStirrup(state = {}, patch = {}) {
   return {
     id: patch.id || 'S1',
     dia: inherited > 0 ? inherited : 12,
-    spacing: 150,
+    spacing: DEFAULT_STIRRUP_SPACING,
     legs: 2,
     fywk: fyk > 0 ? fyk : 500,
     alpha: 90,

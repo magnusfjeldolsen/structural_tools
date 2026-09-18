@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DOCUMENT_FORMAT, DOCUMENT_SCHEMA, fromDocument, toDocument } from '../js/serialize.js';
-import { defaultState } from '../js/store.js';
+import { createStore, defaultState } from '../js/store.js';
 import { MODULE_VERSION } from '../js/meta.js';
 
 test('toDocument: konvolutt med format, doc_schema, app_version, saved_at og state', () => {
@@ -172,4 +172,47 @@ test('fil med analysis:"moment_curvature" og N_Ed ≠ 0: IKKE normalisert — re
   const { state, notes } = fromDocument(doc);
   assert.equal(state.analysis, 'moment_curvature');
   assert.ok(!notes.some((n) => n.code === 'analysis_forced_to_nm_domain'));
+});
+
+/* ---------------- runde 8 §1 — det parkerte snittet i `stash` ---------------- */
+
+test('gammel fil uten stash: standarden {beam:null, slab:null} og ett document_field_defaulted', () => {
+  // Riktig oppførsel, ikke en mangel: den AKTIVE geometrien er den som betyr
+  // noe, og en fil lagret før runde 8 har bare den ene.
+  const doc = toDocument(defaultState());
+  delete doc.state.stash;
+  const { state, notes } = fromDocument(doc);
+  assert.deepEqual(state.stash, { beam: null, slab: null });
+  const defaulted = notes.filter((n) => n.code === 'document_field_defaulted' && n.field === 'stash');
+  assert.equal(defaulted.length, 1);
+});
+
+test('stash erstattes I SIN HELHET — den er med vilje IKKE i NESTED_GROUPS', () => {
+  // Grunnen `stash` ikke flettes felt for felt som `geometry` og `shear`: en
+  // halv `stash` er ikke et snitt med manglende felt, det er et snitt som ikke
+  // finnes. Ble den flettet, ville en fil med bare `slab` fått en `beam: null`
+  // den aldri hadde — og en delvis `slab` ville blitt fylt med bjelkens
+  // standardverdier, altså en plate satt sammen av to ulike snitt.
+  const doc = toDocument(defaultState());
+  doc.state.stash = { slab: { geometry: { b: 1000, h: 260 } } };
+  const { state } = fromDocument(doc);
+  assert.deepEqual(state.stash, { slab: { geometry: { b: 1000, h: 260 } } });
+  assert.ok(!('beam' in state.stash), 'en fletting ville lagt igjen en beam: null fila ikke hadde');
+});
+
+test('rundtur gjennom fil: bjelken overlever lagring mens PLATA er den aktive', () => {
+  // Dette er hele poenget sett fra brukeren: lagre mens du tegner på plata, åpne
+  // fila i morgen, bytt til bjelke — og bjelken står som du forlot den.
+  const store = createStore({ geometry: { b: 300, h: 600 } });
+  store.setSectionType('slab');
+  store.patch('geometry', { h: 260 });
+
+  const { state, notes } = fromDocument(toDocument(store.snapshot()));
+  assert.deepEqual(notes, []);
+  assert.equal(state.geometry.h, 260, 'plata er fortsatt den aktive');
+
+  const reopened = createStore(state);
+  reopened.setSectionType('beam');
+  assert.equal(reopened.getState().geometry.b, 300);
+  assert.equal(reopened.getState().geometry.h, 600);
 });
