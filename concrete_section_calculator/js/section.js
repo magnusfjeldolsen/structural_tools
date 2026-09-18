@@ -36,6 +36,7 @@ import {
   layersOnEdge,
   minClearBetween,
   minClearDistance,
+  stirrupCoverDia,
   tensionArea,
   totalArea,
   totalAswPerSpacing,
@@ -328,7 +329,7 @@ export function validate(state = {}) {
       // brukerstyrte NA-parametere (§2 i endringsrunde 2).
       const clear = minClearDistance(dia, state.spacing);
       const needed =
-        2 * (num(state.cover_side) + num(state.stirrup_dia)) + n * dia + (n - 1) * clear;
+        2 * (num(state.cover_side) + stirrupCoverDia(state)) + n * dia + (n - 1) * clear;
       if (b < needed) {
         out.push(
           issue(

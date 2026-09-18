@@ -363,19 +363,26 @@ test('hver nøkkel i HINTS har minst ETT merke — ingen tekst uten dør', () =>
   }
 });
 
-test('«samme fysiske bøyle» står ÉTT sted, og har merke begge steder den gjelder', () => {
+test('bøylediameteren har ÉTT felt og dermed ÉTT merke', () => {
   // TRE UTGAVER FØR: linja under den første bøyleraden, `title` på bøyleradens
   // Ø, og `title` på geometrifeltet — tre litt ulike setninger om ett faktum.
-  // Det er nøyaktig den feilformen doktrinen peker på, og den kunne bare
-  // rettes ved at teksten fikk ett hjem og to merker.
-  assert.equal(ALL_MARKS.filter((k) => k === 'stirrup-dia').length, 2,
-    'bøylediameteren skal ha ett merke i geometrifeltet og ett i bøyleraden');
+  // De ble til ETT hint med TO merker, ett ved hvert av de to feltene.
+  //
+  // NÅ ER DET ETT FELT. Geometrifeltet «Stirrup Ø» er slettet: to felt for ett
+  // fysisk jern er selve feilformen, og en synkronisering mellom dem er ikke
+  // en løsning, den er et vedlikeholdskrav. Bøyleraden er eneste kilde, og
+  // merket står der verdien står. To merker nå ville betydd at feltet er
+  // tilbake et sted.
+  assert.equal(ALL_MARKS.filter((k) => k === 'stirrup-dia').length, 1,
+    'bøylediameteren skal ha nøyaktig ett merke — i bøyleraden');
+  assert.ok(!/id="i-stirrup"/.test(HTML),
+    'geometrifeltet for bøylediameteren er tilbake — da er det to kilder igjen');
   assert.ok(!/one physical stirrup/.test(UI_UTEN_REGISTER),
     'linja under den første bøyleraden står igjen');
   assert.ok(!/The same physical stirrup as/.test(UI_UTEN_REGISTER),
     'bøyleradens Ø har fortsatt sin egen utgave av setningen i et title');
   assert.ok(!/The same physical stirrup as/.test(HTML),
-    'geometrifeltet har fortsatt sin egen utgave av setningen i et title');
+    'en egen utgave av setningen står igjen i et title i markupen');
 });
 
 test('hver flyttet tekst er BORTE fra der den sto — flyttet, ikke kopiert', () => {

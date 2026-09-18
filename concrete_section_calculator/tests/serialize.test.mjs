@@ -112,11 +112,24 @@ test('state.result settes ALLTID til null, selv om fila skulle inneholde noe ann
 
 /* ---------------- endringsrunde 4 §8 — shear i NESTED_GROUPS ---------------- */
 
-test('fil uten shear: standardverdien {strut_angle_deg:45, z_factor:0.9, stirrups:[]} og ett document_field_defaulted', () => {
+/**
+ * STANDARDBØYLA ER IKKE LENGER EN TOM LISTE.
+ *
+ * `fromDocument` fyller hull fra `defaultState()`, og standardtilstanden er en
+ * BJELKE med én bøylerad (EC2 9.2.2 krever minimumsskjærarmering, og bøylas
+ * diameter har ingen annen hjemplass etter at geometrifeltet ble fjernet). En
+ * fil uten `shear` får derfor den raden, ikke en tom liste. Tallene her er
+ * skrevet ut med vilje i stedet for å leses fra `defaultState()` — en test som
+ * sammenlikner standarden med seg selv sier ingenting.
+ */
+const DEFAULT_STIRRUP_ROW = { id: 'S1', dia: 12, spacing: 150, legs: 2, fywk: 500, alpha: 90 };
+
+test('fil uten shear: standardverdien med bjelkens bøylerad, og ett document_field_defaulted', () => {
   const doc = toDocument(defaultState());
   delete doc.state.shear;
   const { state, notes } = fromDocument(doc);
-  assert.deepEqual(state.shear, { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] });
+  assert.deepEqual(state.shear,
+    { strut_angle_deg: 45, z_factor: 0.9, stirrups: [DEFAULT_STIRRUP_ROW] });
   const defaulted = notes.filter((n) => n.code === 'document_field_defaulted' && n.field === 'shear');
   assert.equal(defaulted.length, 1);
 });
@@ -126,10 +139,22 @@ test('fil med DELVIS shear-objekt: manglende felt fylles fra standarden, IKKE un
   // Bare z_factor lagret — strut_angle_deg og stirrups mangler.
   doc.state.shear = { z_factor: 0.8 };
   const { state, notes } = fromDocument(doc);
-  assert.deepEqual(state.shear, { strut_angle_deg: 45, z_factor: 0.8, stirrups: [] });
+  assert.deepEqual(state.shear,
+    { strut_angle_deg: 45, z_factor: 0.8, stirrups: [DEFAULT_STIRRUP_ROW] });
   assert.ok(state.shear.strut_angle_deg !== undefined, 'strut_angle_deg skal IKKE bli undefined');
   // Toppnivånøkkelen `shear` FANTES i fila — ingen defaulted-melding for den.
   assert.ok(!notes.some((n) => n.code === 'document_field_defaulted' && n.field === 'shear'));
+});
+
+test('fil med TOM stirrups-liste beholder den tomme lista — det er en lovlig tilstand', () => {
+  // «Ingen bøyler» (V_Rd,c-veien) skiller seg fra «fila sa ingenting om
+  // bøyler». Fylte standarden inn en rad her, ville en plate eller en bjelke
+  // brukeren bevisst har tømt fått bøyler tilbake ved hver lasting — og
+  // `dc` ville hoppet 12 mm med dem.
+  const doc = toDocument(defaultState());
+  doc.state.shear = { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] };
+  const { state } = fromDocument(doc);
+  assert.deepEqual(state.shear.stirrups, []);
 });
 
 test('fil med FULLT shear-objekt inkludert bøylerader: bevares uendret', () => {

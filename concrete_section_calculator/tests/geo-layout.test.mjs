@@ -39,12 +39,17 @@ const UI = src('../js/ui.js')
  *  rettelse. Feltene er dem `barPositions` og merkelappsonen faktisk leser. */
 const BEAM = {
   sectionType: 'beam', geometry: { b: 300, h: 600 },
-  cover: 35, cover_side: 35, stirrup_dia: 12,
+  cover: 35, cover_side: 35,
+  // Bøyla bor i RADEN, ikke i et geometrifelt. dc = 35 + 12 + 20/2 = 57.
+  shear: { strut_angle_deg: 45, z_factor: 0.9,
+    stirrups: [{ id: 'S1', dia: 12, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] },
   layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 57 }],
 };
 const SLAB = {
   sectionType: 'slab', geometry: { b: 1000, h: 200 },
-  cover: 35, cover_side: 35, stirrup_dia: 0,
+  cover: 35, cover_side: 35,
+  // Ingen bøylerad: dc = 35 + 0 + 12/2 = 41.
+  shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] },
   layers: [{ id: 'L1', mode: 'spacing', dia: 12, spacing: 200, edge: 'bottom', dc: 41 }],
 };
 
@@ -155,26 +160,37 @@ test('figurkortet strekkes ikke til skjemaets høyde', () => {
   assert.match(rad[0], /\bitems-start\b/, 'griddet strekker fortsatt begge kolonnene like høye');
 });
 
-test('b, h, cover og stirrup står i ÉN rad med fire kolonner', () => {
-  // Fire felt fordelt på to rader à to kolonner ga 293 px per felt for et
-  // tresifret tall. Formen er `adv-spacing` sin, som allerede tåler at ett av
-  // feltene skjules. Påstanden er at de fire ligger i SAMME grid-beholder:
-  // ligger de i hver sin, er bredden tilbake uansett hva klassen sier.
+test('b, h og cover står i ÉN rad med tre kolonner', () => {
+  // Raden var firedelt så lenge «Stirrup Ø» sto her. Feltet er fjernet —
+  // bøylediameteren har ÉN kilde, og den er bøyleraden under Skjærarmering —
+  // så tre felt skal dele raden. Påstanden er at de tre ligger i SAMME
+  // grid-beholder: ligger de i hver sin, er den brede formen tilbake uansett
+  // hva klassen sier.
   const rader = Array.from(GEO.matchAll(/<div class="([^"]*grid[^"]*)">([\s\S]*?)<\/div>\s*(?=<)/g));
   const feltrad = rader.find((r) => r[2].includes('id="i-b"'));
   assert.ok(feltrad, 'fant ikke raden som inneholder #i-b');
-  for (const id of ['i-b', 'i-h', 'i-cover', 'i-stirrup']) {
+  for (const id of ['i-b', 'i-h', 'i-cover']) {
     assert.ok(feltrad[2].includes(`id="${id}"`), `#${id} ligger ikke i samme feltrad som #i-b`);
   }
-  assert.match(feltrad[1], /\bmd:grid-cols-4\b/, `feltraden er ikke firedelt: ${feltrad[1]}`);
+  assert.match(feltrad[1], /\bgrid-cols-3\b/, `feltraden er ikke tredelt: ${feltrad[1]}`);
 });
 
-test('stirrup-feltet står SIST, så de andre ikke flytter seg når plata skjuler det', () => {
-  // `ui.js` setter `display:none` på #w-stirrup for plate uten bøylerad. Står
-  // feltet midt i raden, faller de etterfølgende ett hakk til venstre hver
-  // gang man bytter tverrsnittstype — et felt som bytter plass mens du ser på
-  // det er verre enn en tom celle.
-  const rekkefolge = ['i-b', 'i-h', 'i-cover', 'i-stirrup'].map((id) => GEO.indexOf(`id="${id}"`));
+test('geometrifeltet for bøylediameteren finnes ikke lenger — bøyla har ÉN kilde', () => {
+  // To felt for ett fysisk jern, holdt i takt av en `syncStirrupDia`: det er
+  // feilformen som har gitt gale tall i denne modulen runde etter runde. Både
+  // inputen og wrapperen `ui.js` skjulte for plata skal være borte, ellers kan
+  // et felt uten binding stå igjen og se ut som om det styrer noe.
+  assert.ok(!/id="i-stirrup"/.test(HTML), '#i-stirrup står fortsatt i markupen');
+  assert.ok(!/id="w-stirrup"/.test(HTML), '#w-stirrup står fortsatt i markupen');
+  assert.ok(!/id="i-stirrup"/.test(UI), 'ui.js binder fortsatt et geometrifelt for bøyla');
+  assert.ok(!/w-stirrup/.test(UI), 'ui.js skjuler fortsatt en wrapper som ikke finnes');
+});
+
+test('geometrifeltene står i rekkefølgen b, h, cover', () => {
+  // Rekkefølgen er den brukeren leser tverrsnittet i, og den er lik for
+  // bjelke og plate: ingen av de tre skjules, så ingen av dem bytter plass
+  // når man bytter tverrsnittstype.
+  const rekkefolge = ['i-b', 'i-h', 'i-cover'].map((id) => GEO.indexOf(`id="${id}"`));
   assert.ok(rekkefolge.every((p) => p > 0), 'et av geometrifeltene mangler');
   for (let i = 1; i < rekkefolge.length; i++) {
     assert.ok(rekkefolge[i] > rekkefolge[i - 1], 'geometrifeltene står i feil rekkefølge');

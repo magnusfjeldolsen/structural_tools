@@ -16,7 +16,7 @@ import { createStore, RUN_ALL } from '../js/store.js';
 
 /**
  * START fra §3.3-tabellen: L1 og L2, begge Ø20 i bunn, begge `dc_auto`,
- * med standard `cover`/`stirrup_dia`/`spacing` (`createStore()` sine
+ * med standard `cover`/bøylerad/`spacing` (`createStore()` sine
  * standardverdier er nøyaktig STD fra §2.3/§3.3).
  */
 const START_LAYERS = () => [
@@ -231,81 +231,120 @@ test('createStore: en plate gitt som initial-stat får riktig bredde', () => {
   assert.equal(store.getState().geometry.h, 180, 'høyden skal ikke røres');
 });
 
-/* ---------------- endringsrunde 5 §B — ÉN fysisk bøyle, ETT tall ---------------- */
-// `state.stirrup_dia` (feltet «Stirrup Ø») og `shear.stirrups[0].dia` var TO
-// uavhengige tall: det første styrte jernenes plassering og `dc`
-// (`rebar.js:suggestedDc`), det andre skjærkapasiteten og bøyletegningen.
-// Ingen validering bandt dem, så Ø10 i skjærraden ga jern som fortsatt ble
-// regnet med Ø8. Testene under er skrevet mot bindingen, ikke mot koden:
-// hver av dem feiler på den gamle `store.js`.
+/* ---------------- ÉN fysisk bøyle, ÉN kilde ---------------- */
+/*
+ * FØR: `state.stirrup_dia` (feltet «Stirrup Ø» i geometripanelet) og
+ * `shear.stirrups[0].dia` var TO tall for ETT jern — det første styrte
+ * jernenes plassering og `dc`, det andre skjærkapasiteten og bøyletegningen —
+ * og en `syncStirrupDia` holdt dem i takt etter hver endring.
+ *
+ * NÅ: geometrifeltet er slettet, `syncStirrupDia` er slettet, og
+ * `rebar.js:stirrupCoverDia` leser BARE `shear.stirrups`. Testene under er
+ * derfor ikke lenger om at to tall holdes like — de er om at det bare finnes
+ * ÉTT: `state.stirrup_dia` skal være `undefined`, og `dc` skal følge RADEN.
+ *
+ * At bjelken har en bøylerad fra start er det som gjør fjerningen ufarlig:
+ * EC2 9.2.2 krever minimumsskjærarmering i bjelker, så en bjelke uten bøyler
+ * er en tilstand som ikke finnes i virkeligheten, og `dc` hopper ikke 12 mm
+ * idet brukeren åpner skjærpanelet.
+ */
 
 /** dc for standardlaget (Ø20 i bunn) = cover + bøyle + Ø/2. */
 const dcOfL1 = (store) => store.getState().layers.find((l) => l.id === 'L1').dc;
 
-test('addStirrup arver dia fra stirrup_dia — å legge inn bøyler flytter ALDRI jernene av seg selv', () => {
+test('standardbjelken HAR en bøylerad, og dc er regnet med den', () => {
+  const s = createStore().getState();
+  assert.equal(s.sectionType, 'beam');
+  assert.equal(s.shear.stirrups.length, 1, 'EC2 9.2.2: en bjelke uten bøyler finnes ikke');
+  assert.equal(s.shear.stirrups[0].id, 'S1');
+  assert.equal(s.shear.stirrups[0].dia, 12);
+  assert.equal(s.shear.stirrups[0].alpha, 90, 'section.js avviser alt annet enn α = 90° i v1');
+  assert.equal(s.layers[0].dc, 57, 'dc = 35 + 12 + 20/2 — bøyla i raden, ikke et geometrifelt');
+});
+
+test('geometrifeltet finnes ikke: state.stirrup_dia er undefined, og dc følger RADEN', () => {
+  const store = createStore();
+  assert.equal(store.getState().stirrup_dia, undefined, 'ÉN kilde — feltet er borte');
+  store.updateStirrup('S1', { dia: 16 });
+  assert.equal(store.getState().stirrup_dia, undefined, 'og det kommer ikke tilbake');
+  assert.equal(dcOfL1(store), 61, 'dc = 35 + 16 + 10 — raden alene bestemmer');
+});
+
+test('addStirrup: en ny rad med SAMME diameter flytter ikke jernene', () => {
   const store = createStore();
   assert.equal(dcOfL1(store), 57); // 35 + 12 + 10
   const row = store.addStirrup();
-  assert.equal(row.dia, 12, 'den nye raden skal være den bøyla det alt er regnet plass til');
-  assert.equal(row.alpha, 90, 'section.js avviser alt annet enn α = 90° i v1');
-  assert.equal(row.id, 'S1');
-  assert.equal(dcOfL1(store), 57, 'dc skal stå stille når diameteren er den samme');
+  assert.equal(row.dia, 12, 'fabrikkens DEFAULT_STIRRUP_DIA — den bøyla det alt er regnet plass til');
+  assert.equal(row.alpha, 90);
+  assert.equal(row.id, 'S2', 'S1 er standardbjelkens egen rad');
+  assert.equal(dcOfL1(store), 57, 'dc skal stå stille når den groveste bøyla er den samme');
 });
 
-test('updateStirrup({dia}) flytter dc_auto-lagene — bøylediameteren er ETT tall (§B)', () => {
+test('addStirrup: en GROVERE rad flytter jernene — overdekningen følger den groveste bøyla', () => {
+  // Brukerens eksplisitte krav: overdekningen tilpasses den groveste bøyla som
+  // berører jernet. Det er også den konservative lesningen med flere rader.
   const store = createStore();
-  store.addStirrup();
+  const row = store.addStirrup({ dia: 16 });
+  assert.equal(row.id, 'S2');
+  assert.deepEqual(store.getState().shear.stirrups.map((st) => st.dia), [12, 16]);
+  assert.equal(dcOfL1(store), 61, 'dc = 35 + 16 + 10 — den STØRSTE av 12 og 16');
+});
+
+test('updateStirrup({dia}) flytter dc_auto-lagene — raden er eneste kilde', () => {
+  const store = createStore();
+  store.updateStirrup('S1', { dia: 10 });
+  assert.equal(dcOfL1(store), 55, 'dc = 35 + 10 + 10 — jernene flytter seg med bøyla');
   store.updateStirrup('S1', { dia: 12 });
-  assert.equal(store.getState().stirrup_dia, 12, 'geometrifeltet skal følge bøyleraden');
-  assert.equal(dcOfL1(store), 57, 'dc = 35 + 12 + 10 — jernene flytter seg med bøyla');
-});
-
-test('setState({stirrup_dia}) skriver GJENNOM til bøyleraden — ikke to tall som spriker', () => {
-  const store = createStore();
-  store.addStirrup();
-  store.setState({ stirrup_dia: 10 });
-  const s = store.getState();
-  assert.equal(s.shear.stirrups[0].dia, 10);
-  assert.equal(s.stirrup_dia, 10);
-  assert.equal(dcOfL1(store), 55, 'dc = 35 + 10 + 10');
+  assert.equal(dcOfL1(store), 57, 'og tilbake igjen');
 });
 
 test('et LÅST lag (dc_auto: false) står stille når bøylediameteren endres', () => {
   const store = createStore();
-  store.addStirrup();
   store.updateLayer('L1', { dc: 60 }); // brukerens egen verdi låser laget
   store.updateStirrup('S1', { dia: 16 });
-  assert.equal(store.getState().stirrup_dia, 16);
   assert.equal(dcOfL1(store), 60, 'en overstyrt dc eies av brukeren, ikke av bøyla');
 });
 
-test('removeStirrup: uten bøyler oppfører stirrup_dia seg som før — verdien blir stående', () => {
+test('removeStirrup: fjernes den SISTE raden, faller dc til cover + Ø/2', () => {
+  // Det er den ærlige tilbakemeldingen. Før ble en usynlig diameter stående
+  // igjen i geometrifeltet og spiste 12 mm av høyden uten at noen kunne se det.
   const store = createStore();
-  store.addStirrup();
-  store.updateStirrup('S1', { dia: 12 });
+  assert.equal(dcOfL1(store), 57); // 35 + 12 + 10
   store.removeStirrup('S1');
   const s = store.getState();
   assert.equal(s.shear.stirrups.length, 0);
-  assert.equal(s.stirrup_dia, 12, 'bøyla er borte, men overdekningen jernene ligger etter er ikke det');
-  assert.equal(dcOfL1(store), 57);
+  assert.equal(s.stirrup_dia, undefined, 'det finnes ikke noe tall å la bli stående');
+  assert.equal(dcOfL1(store), 45, 'dc = 35 + 0 + 20/2');
 });
 
-test('bøylerad-id-er teller aldri ned — S1 skal ikke kunne bety to ulike rader i samme økt', () => {
+test('removeStirrup: med flere rader gjelder den groveste som er IGJEN', () => {
   const store = createStore();
-  store.addStirrup();
-  store.removeStirrup('S1');
+  store.addStirrup({ dia: 16 });
+  assert.equal(dcOfL1(store), 61); // 35 + 16 + 10
+  store.removeStirrup('S2');
+  assert.equal(dcOfL1(store), 57, 'Ø16 er borte, Ø12 gjelder igjen: 35 + 12 + 10');
+});
+
+test('bøylerad-id-er teller aldri ned — S2 skal ikke kunne bety to ulike rader i samme økt', () => {
+  const store = createStore(); // standardbjelken eier allerede S1
   assert.equal(store.addStirrup().id, 'S2');
+  store.removeStirrup('S2');
+  assert.equal(store.addStirrup().id, 'S3');
 });
 
-test('replaceState: en fil der de to tallene spriker løses i BØYLERADENS favør, og lagene flytter seg', () => {
+test('replaceState: bøyleraden i fila bestemmer dc, og et etterlatt stirrup_dia teller ikke', () => {
   const store = createStore();
-  // Håndredigert/eldre fil: Ø10-bøyler, men geometrifeltet ligger igjen på 8.
+  // Håndredigert/eldre fil: Ø10-bøyler, og et geometrifelt som ligger igjen på
+  // 8 fra den gang feltet fantes. Feltet er ikke lenger en kilde til noe.
+  // Laget mangler `dc`, så `replaceState` må regne det ut — og den REGNER det
+  // av raden. Leste den et etterlatt `stirrup_dia: 8`, ville jernet havnet
+  // 2 mm feil uten at noe klaget.
   const next = store.replaceState({
     stirrup_dia: 8,
     shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S1', dia: 10, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] },
+    layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc_auto: true }],
   });
-  assert.equal(next.stirrup_dia, 10, 'bøyla brukeren faktisk har lagt inn er fasit');
-  assert.equal(next.layers.find((l) => l.id === 'L1').dc, 55, 'dc = 35 + 10 + 10');
+  assert.equal(next.layers.find((l) => l.id === 'L1').dc, 55, 'dc = 35 + 10 + 20/2 — raden er fasit');
 });
 
 test('replaceState normaliserer bøylerader gjennom createStirrup — en fil uten alpha får α = 90', () => {
@@ -316,13 +355,20 @@ test('replaceState normaliserer bøylerader gjennom createStirrup — en fil ute
   assert.equal(next.shear.stirrups[0].alpha, 90);
   assert.equal(next.shear.stirrups[0].legs, 4, 'radens egne verdier skal overleve normaliseringen');
   assert.equal(next.shear.stirrups[0].spacing, 200);
+  assert.equal(next.shear.stirrups[0].dia, 8, 'og diameteren — fabrikken skal ikke overstyre den');
 });
 
-test('createStore: initialtilstand med en bøylerad binder stirrup_dia med det samme', () => {
+test('createStore: bøyleraden i initialtilstanden er eneste kilde til dc', () => {
   const store = createStore({
-    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S1', dia: 12, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] },
+    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] },
+    layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 999, dc_auto: true }],
   });
-  assert.equal(store.getState().stirrup_dia, 12);
+  assert.equal(store.getState().stirrup_dia, undefined, 'geometrifeltet finnes ikke');
+  // `createStore` regner ikke om ved oppstart — en lastet fil eier sine tall.
+  // Den første endringen som UTLØSER omregning skal lese raden, ikke et felt
+  // som er borte: står det 0 der, havner jernet 8 mm feil.
+  store.setState({ cover: 35 });
+  assert.equal(dcOfL1(store), 53, 'dc = 35 + 8 + 20/2');
 });
 
 /* ---------------- endringsrunde 5 §D — «Kjør alle» ---------------- */
@@ -354,10 +400,13 @@ test('replaceState: et dc_auto-lag uten dc får plasseringen sin regnet ut', () 
   const s = store.replaceState({
     sectionType: 'beam',
     geometry: { b: 300, h: 600 },
-    cover: 35, cover_side: 35, stirrup_dia: 8,
+    cover: 35, cover_side: 35,
+    // Bøyla står i RADEN, ikke i geometrien: det er `shear.stirrups` som
+    // bærer diameteren `suggestedDc` legger til.
+    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] },
     layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 4, edge: 'bottom', dc: null, dc_auto: true }],
   });
-  // suggestedDc = cover + stirrup_dia + dia/2 = 35 + 8 + 10
+  // suggestedDc = cover + Ø_bøyle + dia/2 = 35 + 8 + 10
   assert.equal(s.layers[0].dc, 53);
   assert.ok(Number.isFinite(s.layers[0].dc), 'dc skal være et tall, ikke null');
 });
@@ -367,7 +416,8 @@ test('replaceState: en lagret fil med dc runder tilbake UENDRET', () => {
   const s = store.replaceState({
     sectionType: 'beam',
     geometry: { b: 300, h: 600 },
-    cover: 35, cover_side: 35, stirrup_dia: 8,
+    cover: 35, cover_side: 35,
+    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] },
     layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 120, dc_auto: true }],
   });
   assert.equal(s.layers[0].dc, 120, 'utfyllingen skal BARE gjelde lag som mangler dc');
@@ -419,9 +469,11 @@ test('bjelke → plate (endre alt) → bjelke: snittet er BIT-IDENTISK med utgan
   store.setSectionType('slab');
   // Endre ALT på plata — ingenting av dette har noe med bjelken å gjøre.
   store.patch('geometry', { h: 260 });
-  store.setState({ cover: 20, stirrup_dia: 8 });
+  store.setState({ cover: 20 });
   store.updateLayer(store.getState().layers[0].id, { dia: 16, spacing: 125 });
   store.addLayer({ edge: 'top' });
+  // Plata har ingen bøylerad; her legges det på én, som heller ikke skal
+  // følge med tilbake til bjelken.
   store.addStirrup();
 
   store.setSectionType('beam');
@@ -468,8 +520,7 @@ test('plata starter på Ø12 c/c 200 — og bjelkens lag kommer tilbake med coun
 });
 
 test('bøylene følger ikke med på plata — platas dc blir ikke 12 mm for stor', () => {
-  const store = createStore();
-  store.addStirrup();
+  const store = createStore(); // standardbjelken har allerede S1 (Ø12)
   store.setSectionType('slab');
   const slab = store.getState();
   assert.deepEqual(slab.shear.stirrups, [], 'en plate har ingen bøyler');
@@ -551,9 +602,9 @@ test('INVARIANTENE kjøres etter gjenoppretting — stashet er tilstand, ikke en
       slab: {
         geometry: { b: 300, h: 220 }, // en bjelkebredde som ligger igjen i et platestash
         layers: [{ id: 'L9', mode: 'spacing', dia: 12, spacing: 200, edge: 'bottom', dc: 41, dc_auto: true }],
-        // `alpha` mangler, som i en håndredigert fil; `dia` er uenig med `stirrup_dia`.
+        // `alpha` mangler, som i en håndredigert fil.
         shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S9', dia: 10, spacing: 200, legs: 2, fywk: 500 }] },
-        cover: 35, cover_side: 35, stirrup_dia: 12,
+        cover: 35, cover_side: 35,
       },
     },
   });
@@ -561,7 +612,11 @@ test('INVARIANTENE kjøres etter gjenoppretting — stashet er tilstand, ikke en
   const s = store.getState();
   assert.equal(s.geometry.b, 1000, 'enforceSlabWidth');
   assert.equal(s.shear.stirrups[0].alpha, 90, 'normalisering gjennom createStirrup');
-  assert.equal(s.stirrup_dia, 10, 'syncStirrupDia — bøyleraden er fasit');
+  assert.equal(s.shear.stirrups[0].dia, 10, 'radens egen diameter overlever normaliseringen');
+  assert.equal(s.stirrup_dia, undefined, 'ÉN kilde — geometrifeltet finnes ikke');
+  // …og `dc` regnes av den: 35 + 10 + 12/2 = 51. Et platestash MED en bøylerad
+  // er uvanlig, men bøyla er da faktisk der, og skal telle.
+  assert.equal(s.layers[0].dc, 51);
   // Og løpenummeret hopper forbi L9, som ligger i det gjenopprettede snittet.
   assert.equal(store.addLayer({ edge: 'top' }).id, 'L10');
 });

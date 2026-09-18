@@ -23,7 +23,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildPayload } from '../js/payload.js';
-import { barPositions, equivalentStrip } from '../js/rebar.js';
+import { barPositions, stirrupCoverDia, equivalentStrip } from '../js/rebar.js';
 import { createStore } from '../js/store.js';
 
 /** Referansebjelken, plan §3.6. Merk α_cc = 1,0 og overdekning 40 uten bøyle. */
@@ -42,7 +42,6 @@ const BEAM_STATE = {
     law: 'elasticplastic',
   },
   cover: 40,
-  stirrup_dia: 0,
   cover_side: 40,
   layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50, dc_auto: false }],
   // Endringsrunde 2 §4.1: `loads` er erstattet av `combos` + `activeCombo`.
@@ -180,13 +179,25 @@ test('bars kommer FRA barPositions — ingen parallell koordinatregning', () => 
     { id: 'L2', mode: 'bars', dia: 12, count: 1, edge: 'top', dc: 41 },
   ];
   state.cover_side = 35;
-  state.stirrup_dia = 8;
+  // Bøyla bor i RADEN nå. `state.stirrup_dia` finnes ikke, så en test som
+  // setter den ville beskrevet en tilstand appen ikke kan komme i.
+  state.shear = { strut_angle_deg: 45, z_factor: 0.9,
+    stirrups: [{ id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] };
 
   const built = buildPayload(state);
   const geometry = { b: 300, h: 600 };
+  // Testen speiler `payload.js` sitt kall NØYAKTIG, inkludert at
+  // `opts.stirrup_dia` fylles fra `stirrupCoverDia(state)`. Sendte den `state`
+  // rått — slik payloaden gjorde før — ville den bestått mot en payload som
+  // la jernene 8 mm for langt ut, fordi BEGGE leste et felt som ikke finnes.
+  // En test som gjentar kallerens feil er verdiløs.
+  const opts = { ...state, stirrup_dia: stirrupCoverDia(state) };
   built.section.rebar.forEach((entry, i) => {
-    assert.deepEqual(entry.bars, barPositions(state.layers[i], geometry, state));
+    assert.deepEqual(entry.bars, barPositions(state.layers[i], geometry, opts));
   });
+  // Og den uavhengige kontrollen: ytterste Ø25-jern skal stå i
+  // 150 − 35 (cover_side) − 8 (bøyle) − 12,5 (Ø/2) = 94,5 mm.
+  assert.equal(Math.max(...built.section.rebar[0].bars.map((b) => b.y)), 94.5);
   // Sanity: koordinatene er faktisk ulike per lag.
   assert.notDeepEqual(built.section.rebar[0].bars, built.section.rebar[1].bars);
 });
@@ -354,37 +365,46 @@ test('payloaden er ren JSON — ingen NaN, Infinity eller undefined', () => {
   assert.doesNotThrow(() => JSON.parse(text));
 });
 
-/* ---------------- endringsrunde 5 §B — bindingen når helt ut i kontrakten ---------------- */
+/* ---------------- ÉN bøyle, helt ut i kontrakten ---------------- */
 
 /**
- * Den fysiske bøyla er ETT tall, og det må gjelde HELE veien: fra feltet
- * brukeren skriver i, via jernkoordinatene, til `section.shear` motoren
- * regner V_Rd,s av. Testen går gjennom `store.js`, ikke gjennom en håndskrevet
- * stat, nettopp fordi det er DER bindingen bor — en payload bygget av to tall
- * som spriker er akkurat feilen som ikke gir noe utslag før noen måler bjelka.
+ * Den fysiske bøyla er ETT jern, og det må gjelde HELE veien: fra raden
+ * brukeren skriver i, via jernkoordinatene, til `section.shear` motoren regner
+ * V_Rd,s av. Testen går gjennom `store.js`, ikke en håndskrevet tilstand,
+ * nettopp fordi det er DER tilstanden bygges — en payload bygget av to tall
+ * som spriker er akkurat feilen som ikke gir utslag før noen måler bjelka.
+ *
+ * ⚠ DENNE TESTEN ER RØD, OG DEN HAR RETT.
+ * `payload.js:94` kaller `barPositions(layer, geometry, state)` — den sender
+ * `state` RÅTT som `opts`, og `barPositions` leser `opts.stirrup_dia`. Det
+ * feltet finnes ikke lenger, så payloaden regner jernene med bøyle = 0 og
+ * legger dem Ø_bøyle mm for langt ut mot sidekanten. `section-draw.js` (linje
+ * 360 og 737) ble rettet i samme runde og sender `stirrup_dia:
+ * stirrupCoverDia(state)`. Tegningen og payloaden er dermed uenige om hvor
+ * jernene står — nøyaktig den sviktformen `rebar.js` sin hodekommentar kaller
+ * den verste som finnes, og som denne fila er skrevet for å fange.
+ *
+ * Rettelsen hører hjemme i produksjonskoden, ikke her:
+ *   bars: barPositions(layer, geometry, { ...state, stirrup_dia: stirrupCoverDia(state) })
  */
 test('bøylediameteren er ÉN verdi i payloaden: jernkoordinatene og section.shear ser samme bøyle', () => {
   const store = createStore({
     geometry: { b: 300, h: 600 },
     cover: 35,
     cover_side: 35,
-    stirrup_dia: 8,
     layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 53, dc_auto: true }],
   });
-  store.addStirrup();
+  // Standardbjelken har S1. Brukeren setter den til Ø12.
   store.updateStirrup('S1', { dia: 12 });
 
   const s = store.getState();
   const built = buildPayload(s);
   assert.equal(built.section.shear.stirrups[0].dia, 12);
-  // Jernene ligger nå 12 mm inn fra sidedekket, ikke 8 — `barPositions` leser
-  // `state.stirrup_dia`, som bindingen har flyttet.
-  assert.deepEqual(
-    built.section.rebar[0].bars,
-    barPositions(s.layers[0], { b: 300, h: 600 }, s)
-  );
-  assert.equal(built.section.rebar[0].bars[2].y, 300 / 2 - 35 - 12 - 10);
+  // Jernene skal ligge 12 mm inn fra sidedekket: 150 − 35 − 12 − 10 = 93.
+  assert.equal(built.section.rebar[0].bars[2].y, 300 / 2 - 35 - 12 - 10,
+    'payloaden rykker ikke jernene inn for bøyla — payload.js leser et felt som er borte');
   // …og jernet har flyttet seg NEDOVER like mye: dc = 35 + 12 + 10 = 57 måles
-  // fra underkanten, altså z = −300 + 57.
+  // fra underkanten, altså z = −300 + 57. Denne veien ER riktig, fordi `dc`
+  // regnes av `rebar.js:suggestedDc`, som leser bøyleraden.
   assert.equal(built.section.rebar[0].bars[0].z, -600 / 2 + 57);
 });

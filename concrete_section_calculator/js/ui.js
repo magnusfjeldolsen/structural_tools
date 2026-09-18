@@ -49,7 +49,7 @@
  *
  * SKJÆR ER FØRSTEKLASSES (endringsrunde 5 §B/§C)
  * Bøylene legges inn i geometriseksjonen, rett under «Stirrup Ø» — det er
- * SAMME fysiske bøyle, og bindingen (`store.js:syncStirrupDia`) er bare
+ * SAMME fysiske bøyle, og raden er eneste kilde (`rebar.js:stirrupCoverDia`) —
  * troverdig hvis de to feltene kan ses i samme blikk. Skjærresultatet vises
  * med et EGET η_V-merke ved siden av η, aldri slått sammen med det: bøying og
  * skjær kan styres av helt ulike lastkombinasjoner, og et snitt skal aldri
@@ -181,9 +181,10 @@ export const HINTS = {
   // den leses riktig fra BEGGE ender: `stirrup-dia` har to merker, ett hvert
   // sted, og de peker på denne ene strengen.
   'stirrup-dia':
-    'The stirrup Ø under Geometry and the Ø in the stirrup row under Shear reinforcement are the '
-    + 'same physical stirrup — one value, shown in two places. Changing it moves every layer '
-    + 'whose d<sub>c</sub> is derived.',
+    'The stirrup diameter lives only here. It sets the shear capacity AND the cover the '
+    + 'longitudinal bars sit inside, so changing it moves every layer whose d<sub>c</sub> is '
+    + 'derived. With several rows the largest diameter governs the cover — the conservative '
+    + 'reading, since the bar nearest the surface is the one that decides.',
 
   // De tre siste sto som `<p>` nederst i hver sin avdekkingsboks, altså bak et
   // klikk allerede — men de gjorde boksen lengre hver eneste gang den var åpen.
@@ -1111,11 +1112,10 @@ export function createUI(deps) {
       if (store.getState().sectionType !== 'slab') store.patch('geometry', { b: v });
     }, { min: 1 });
     bindField('#i-h', (s) => s.geometry.h, (v) => store.patch('geometry', { h: v }), { min: 1 });
-    // `store.setState` regner selv `dc_auto`-lagene på nytt når `cover`/
-    // `stirrup_dia` endres (endringsrunde 2 §3.4) — det trengs ingen egen
-    // resync her lenger. `store.resyncCover()` er slettet av samme grunn.
+    // `store.setState` regner selv `dc_auto`-lagene på nytt når `cover`
+    // endres (endringsrunde 2 §3.4). Bøylediameteren står ikke her lenger —
+    // den bor i bøyleraden, og `updateStirrup` regner om.
     bindField('#i-cover', (s) => s.cover, (v) => store.setState({ cover: v }), { min: 0 });
-    bindField('#i-stirrup', (s) => s.stirrup_dia, (v) => store.setState({ stirrup_dia: v }), { min: 0 });
     bindField('#i-cover-side', (s) => s.cover_side, (v) => store.setState({ cover_side: v }), { min: 0 });
 
     bindField('#i-gamma-c', (s) => s.concrete.gamma_c, (v) => store.patch('concrete', { gamma_c: v }), { min: 0.0001 });
@@ -1226,7 +1226,6 @@ export function createUI(deps) {
     put('#i-b', sectionWidth(s), 1);
     put('#i-h', s.geometry.h, 1);
     put('#i-cover', s.cover, 1);
-    put('#i-stirrup', s.stirrup_dia, 1);
     put('#i-cover-side', s.cover_side, 1);
     put('#i-strut-angle', s.shear.strut_angle_deg, 1);
     put('#i-z-factor', s.shear.z_factor, 3);
@@ -1277,13 +1276,7 @@ export function createUI(deps) {
       b.disabled = isSlab;
       b.classList.toggle('opacity-60', isSlab);
     }
-    const stir = $('#w-stirrup');
     const side = $('#w-cover-side');
-    // «Stirrup Ø» skjules for plata fordi den normalt ikke har bøyler — men
-    // legger brukeren inn en bøylerad likevel, ER tallet i bruk (det er SAMME
-    // verdi som radens Ø, §B), og et felt som styrer noe skal ikke være
-    // usynlig. Merknaden i bøyleraden peker nettopp hit.
-    if (stir) stir.style.display = isSlab && !(s.shear?.stirrups || []).length ? 'none' : '';
     if (side) side.style.display = isSlab ? 'none' : '';
 
     const lawC = $('#i-law-c');
@@ -1635,7 +1628,7 @@ export function createUI(deps) {
     add.onclick = () => {
       // BARE NAAR LISTA ER TOM. `python/engine.py:617-625` summerer alle rader
       // som PARALLELLE boeylesett, mens `section-draw.js` bare tegner rad 0 og
-      // `store.js:syncStirrupDia` bare binder rad 0 til `stirrup_dia`. To rader
+      // `stirrupCoverDia` tar den groveste blant radene. To rader
       // ga derfor maalt 2,7x kapasiteten uten at figuren endret seg med en
       // eneste piksel. Lista forblir en LISTE i modellen — veikartet lover
       // flere soner — men UI-et tilbyr én rad til den stoetten er reell.
