@@ -348,6 +348,27 @@ export function governingLabel(result) {
 }
 
 /**
+ * `V_Rd` og `V_Ed` under skjærmerket i hovedresultatet.
+ *
+ * `η_V` alene sier hvor langt man er fra grensa, men ikke hva grensa ER — og
+ * det er kapasiteten en ingeniør skriver ned. Tallet sto bare i skjærpanelet
+ * lenger nede og i rapporten; nå står det der utnyttelsen står.
+ *
+ * `governing_mode` avgjør hvilket tall som ER `V_Rd`: `V_Rd,c` alene uten
+ * bøyler, ellers `min(V_Rd,s ; V_Rd,max)`. `V_Rd,c` LEGGES ALDRI TIL `V_Rd,s`
+ * (EC2 6.2.3(2)) — de tre tallene står ved siden av hverandre i panelet under,
+ * og her vises bare det ene som gjelder.
+ */
+function vRdLine(combo) {
+  const sh = combo && combo.shear;
+  if (!sh || !sh.evaluated) return '';
+  const vRd = toNum(sh.V_Rd);
+  if (vRd === null) return '';
+  return `<div class="text-[11px] opacity-70 num">V<sub>Rd</sub> ${fmtForceKN(vRd)} kN`
+    + ` · V<sub>Ed</sub> ${fmtForceKN(toNum(sh.V_Ed))} kN</div>`;
+}
+
+/**
  * Skjærmerket: ETT eget tall, ved siden av η — ALDRI slått sammen med det.
  * De svarer på to ulike spørsmål, og en rad med stor `V_Ed` og lite `M_Ed`
  * kan styre skjær uten å være i nærheten av å styre bøying. Samme utforming
@@ -365,6 +386,7 @@ export function shearBadge(result) {
     <div class="text-[11px] uppercase tracking-wide opacity-80">Shear <span class="normal-case">η<sub>V</sub></span></div>
     <div class="text-2xl font-bold num">${fmtRatio(eta, 2)}</div>
     <div class="text-[11px] opacity-70 num">${esc(SHEAR_UTILISATION_LABEL)} · ${esc(comboLabel(combo))}</div>
+    ${vRdLine(combo)}
   </div>`;
 }
 
