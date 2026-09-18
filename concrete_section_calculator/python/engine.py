@@ -787,8 +787,12 @@ def _select_shear_governing(combo_results):
     stor `V_Ed` og lite `M_Ed` skal kunne styre skjær uten å være i nærheten av å styre
     bøying, derav et EGET merke (plan §4.3).
     """
+    # `and c.get('checked')` er EKSPLISITT (planens felle 15/§E5, felle 1 i STEG 2):
+    # en ukontrollert rad har `shear: None` (§E4), som allerede filtreres bort av
+    # `c.get('shear')` alene — men implisitt falsy-filtrering er ikke bevis, det
+    # er tilfeldighet. Dobbelt sikring, ikke en omgåelse.
     candidates = [i for i, c in enumerate(combo_results)
-                  if c.get('shear') and c['shear'].get('evaluated')]
+                  if c.get('shear') and c['shear'].get('evaluated') and c.get('checked')]
     if not candidates:
         return None
     best = candidates[0]
@@ -826,9 +830,19 @@ def _normalise_loads(payload, opts):
         combos = []
         for c in loads['combinations']:
             theta = c.get('theta')
+            # STEG 2: ÉN KILDE til både `type` og `checked`. Ukjent/manglende
+            # type (alle payloader fra før denne runden, eller en ugyldig
+            # streng) faller til `'uls'` — den KONSERVATIVE retningen: raden
+            # blir kontrollert, ikke stille sluppet forbi. `checked` regnes
+            # HER og BARE her; ingen annen kodelinje skal utlede den av `type`
+            # på nytt (planens felle 6/§E1).
+            combo_type = c.get('type')
+            combo_type = combo_type if combo_type in ('uls', 'characteristic', 'quasi_permanent') else 'uls'
             combos.append({
                 'id': c['id'],
                 'name': c.get('name', ''),
+                'type': combo_type,
+                'checked': combo_type == 'uls',
                 'N_Ed': float(c['N_Ed']),
                 'M_Ed': float(c['M_Ed']),
                 'theta': float(theta) if theta is not None else default_theta,
@@ -837,9 +851,14 @@ def _normalise_loads(payload, opts):
         active_id = loads.get('active') or (combos[0]['id'] if combos else None)
         return combos, active_id
 
+    # Den GAMLE `loads`-formen (uten `combinations`): alle eksisterende
+    # fixturer skal gi NØYAKTIG samme tall som før — raden er alltid `uls`,
+    # alltid kontrollert.
     combo = {
         'id': 'C1',
         'name': '',
+        'type': 'uls',
+        'checked': True,
         'N_Ed': float(loads['N_Ed']),
         'M_Ed': float(loads['M_Ed']),
         'theta': default_theta,
@@ -858,12 +877,19 @@ def _unsolved_combo(combo, n_ed, m_ed, theta_c, v_ed, shear, within_limits):
     """
     return {
         'id': combo['id'], 'name': combo['name'],
+        'type': combo['type'], 'checked': combo['checked'],
         'N_Ed': _num(n_ed), 'M_Ed': _num(m_ed), 'theta': _num(theta_c),
         'V_Ed': _num(v_ed), 'shear': shear,
         'M_Rd': None, 'utilisation': None,
         'x': None, 'x_over_d': None, 'eps_a': None, 'chi_y': None,
         'eps_c_top': None, 'eps_s_max': None, 'failure_mode': None, 'layers': None,
-        'within_limits': bool(within_limits),
+        # STEG 2: `None`, IKKE `bool(within_limits)`. En ukontrollert (SLS) rad
+        # har ikke fått aksialsjekken kjørt — `False` der ville vært en PÅSTAND
+        # OM ET TALL SOM ALDRI BLE REGNET, og `report.js` trykker da «Outside
+        # [N_min, N_max]» på en rad ingen aksialsjekk har rørt (planens felle 5).
+        # Kalles med `False`/`True` fortsatt for en ULS-rad (utenfor grensene,
+        # hhv. tatt med bare for skjærets skyld) — bare der ER sjekken kjørt.
+        'within_limits': None if within_limits is None else bool(within_limits),
         # EKSPLISITT, ikke utledet. En leser kunne i prinsippet sluttet seg til det
         # samme av at `M_Rd is None` mens `within_limits` er True, men da ville
         # rapporten stått med en tom statuscelle den dagen noen la til enda en grunn
@@ -961,6 +987,7 @@ def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
 
     public = {
         'id': combo['id'], 'name': combo['name'],
+        'type': combo['type'], 'checked': combo['checked'],
         'N_Ed': _num(n_ed), 'M_Ed': _num(m_ed), 'theta': _num(theta_c),
         'V_Ed': _num(v_ed), 'shear': shear,
         'M_Rd': _num(m_rd_signed), 'utilisation': _num(_utilisation(m_ed, m_rd_signed)),
@@ -989,7 +1016,11 @@ def _select_governing(combo_results):
        kombinasjon med samme utnyttelse aldri fortrenger en tidligere.
     4. Ingen kandidater ⇒ `None`.
     """
-    candidates = [i for i, c in enumerate(combo_results) if c['within_limits']]
+    # `and c['checked']` er EKSPLISITT (planens felle 15/§E5) — `within_limits: None`
+    # (en ukontrollert SLS-rad) er allerede falsy og ville filtrert seg selv bort her,
+    # men implisitt falsy-filtrering er nettopp den slags kobling denne kodebasen
+    # skriver kommentarer mot, ikke koden selv.
+    candidates = [i for i, c in enumerate(combo_results) if c['within_limits'] and c['checked']]
     if not candidates:
         return None
     best = candidates[0]
@@ -1052,6 +1083,12 @@ def _three_valued_and(checks):
     if any(v is None for v in values):
         return None
     return True
+
+
+
+def _active_row_detail(row):
+    """`detail` for `mc_active_not_uls`: hvilken rad som er aktiv, og hvilken type den har."""
+    return 'active={0} type={1}'.format(row.get('id'), row.get('type'))
 
 
 def run(payload: dict, progress=None) -> dict:
@@ -1178,6 +1215,19 @@ def _run_inner(payload, progress, t0):
     for i, combo in enumerate(combos):
         if emit_solve_progress:
             progress('solve', i, n_combos)
+        if not combo['checked']:
+            # STEG 2 (§E4): en `characteristic`/`quasi_permanent`-rad skal ALDRI
+            # bruddgrense-kontrolleres — SLS er ikke implementert i denne runden.
+            # `shear=None` er kjernen: uten den kunne raden blitt `shear_governing`
+            # (report.js, fet skrift) og alene satt `shear_ok: false` for en
+            # tilstand ingen bruddgrensekontroll faktisk har rørt (planens felle 1).
+            combo_results.append(_unsolved_combo(
+                combo, combo['N_Ed'], combo['M_Ed'], combo['theta'],
+                float(combo.get('V_Ed', 0.0) or 0.0), None, None,
+            ))
+            combo_extras.append({'d_eff': None, 'as_tension': None, 'd_eff_all': None,
+                                  'z_na': None, 'm_cr': None, 'has_tension': None})
+            continue
         public, extra = _solve_combo(
             combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu, n_min, n_max,
             shear_ctx, warnings_out,
@@ -1197,12 +1247,23 @@ def _run_inner(payload, progress, t0):
         # `fallback_index` MÅ av samme grunn være den aktive raden og ikke rad 0: de andre
         # radene har ingen bøyeløsning (`solve_flexure=False`), så `_moment_curvature` og
         # `_compression_zone_warning` ville fått `M_Rd = None` i hendene.
+        #
+        # STEG 2: dette lener seg på at `active_index` peker på en KONTROLLERT (uls) rad.
+        # Det garanteres av `enforceActiveCombo` i store.js (js-siden) — finnes en
+        # uls-rad, kan `activeCombo` aldri stå på en SLS-rad. Motoren her stoler på den
+        # garantien i stedet for å gjenoppfinne den: er den brutt (et API-kall utenom
+        # store.js), er det en feil i kalleren, ikke noe engine.py skal late som ikke skjedde.
         fallback_index = active_index
         governing_index = (
             active_index if combo_results[active_index]['within_limits'] else None
         )
     else:
-        fallback_index = 0
+        # STEG 2 (§E5, sikkerhetskritisk): FØRSTE KONTROLLERTE rad, ikke rad 0. Er rad 0
+        # en SLS-rad, blir `d_eff = None` der ⇒ `as_min = None` ⇒ `as_min_ok = None` —
+        # riktignok `None` og ikke en stille `True` (den feilen er lukket av runde 6), men
+        # `ref` ville likevel pekt på feil rad og gjort `brittle_ok`/`ductility_ok`
+        # ubesvart uten grunn, selv når en fullt gyldig uls-rad finnes lenger ned i lista.
+        fallback_index = next((i for i, c in enumerate(combo_results) if c['checked']), 0)
         governing_index = _select_governing(combo_results)
 
     # Skjær har sitt EGET, uavhengige governing-valg (§4.3) — en rad med stor `V_Ed` og
@@ -1293,8 +1354,12 @@ def _run_inner(payload, progress, t0):
         as_min_ok = bool(as_tension >= as_min)
 
     as_max_ok = bool(as_total <= as_max)
-    # `axial_ok` er sant BARE hvis samtlige løste kombinasjoner ligger innenfor (§4.4).
-    axial_ok = all(c['within_limits'] for c in combo_results)
+    # `axial_ok` er sant BARE hvis samtlige KONTROLLERTE kombinasjoner ligger innenfor
+    # (§4.4). Filteret `c['checked']` er IKKE valgfritt (planens felle 6/§E5): uten det
+    # slipper `within_limits: None` (en SLS-rad) gjennom `all()` som `False` — Python
+    # regner `all([None])` som usant — og motoren ville påstått at aksialkraften er
+    # utenfor området på grunn av en rad ingen aksialsjekk faktisk har rørt.
+    axial_ok = all(c['within_limits'] for c in combo_results if c['checked'])
 
     # BØYEKONTROLLEN, som manglet helt: `_utilisation` regnet tallet og ingen leste det.
     # Målt på referansebjelken med M_Ed = −500 kNm mot M_Rd = −215,0 kNm ga motoren
@@ -1309,8 +1374,12 @@ def _run_inner(payload, progress, t0):
     # den røde pilla. En slakk på 1e-6 her ville gitt η = 1,0000005 med rød pille «Capacity
     # exceeded» ved siden av en grønn kontrollrad «OK» — nøyaktig den selvmotsigelsen
     # tabellen finnes for å hindre.
+    # `and c['checked']` (§E5, planens felle 6-typen): en SLS-rad har `flexure_solved:
+    # False` allerede (§E4 hopper over bruddløsningen), så filteret ville i praksis
+    # virket uten det — men implisitt kobling er den sviktformen denne kodebasen
+    # skriver kommentarer mot, ikke koden selv.
     bending_rows = [c for c in combo_results
-                    if c['within_limits'] and c['flexure_solved']]
+                    if c['within_limits'] and c['flexure_solved'] and c['checked']]
     over_utilised = [c for c in bending_rows
                       if c['utilisation'] is not None and c['utilisation'] > 1.0]
     if over_utilised:
@@ -1437,8 +1506,11 @@ def _run_inner(payload, progress, t0):
     # `combo_results[i]['shear']` direkte, som finnes for enhver kombinasjon (§4.1b).
     # `asw_s`/`asw_s_min` avhenger bare av `bw`/`fywk`/bøylene, ikke av lasten, og er derfor
     # samme tall for alle evaluerte kombinasjoner — det holder å lese det første.
+    # `c['checked'] and` er EKSPLISITT (§E5): en ukontrollert rad har `shear: None`
+    # (§E4), som allerede ville filtrert seg bort — men filteret her skal si det med
+    # ord, ikke stole på at en annen kodelinje tilfeldigvis satte feltet til noe falsy.
     evaluated_shear = [c['shear'] for c in combo_results
-                        if c.get('shear') and c['shear'].get('evaluated')]
+                        if c['checked'] and c.get('shear') and c['shear'].get('evaluated')]
     stirrups_cfg = (shear_ctx['cfg'].get('stirrups') or []) if shear_ctx else []
     shear_ok = (
         all(s['V_Rd'] is None or s['V_Ed'] <= s['V_Rd'] for s in evaluated_shear)
@@ -1580,15 +1652,54 @@ def _run_inner(payload, progress, t0):
     if not has_candidate:
         # Full konvolutt, ikke bare `{ok, schema, error}` (§4.4): figurer, tabeller og
         # rapport skal fortsatt ha noe å tegne selv når ingen kombinasjon var innenfor.
-        common['error'] = {
-            'code': 'axial_out_of_range',
-            'message': (
-                'No load combination has an axial force within the range this '
-                f'cross-section can carry: [{n_min / 1e3:.1f} kN, {n_max / 1e3:.1f} kN] '
-                '(compression negative).'
-            ),
-            'detail': f'n_min={n_min}, n_max={n_max}',
-        }
+        #
+        # STEG 2 (§E6): TO ULIKE SITUASJONER, TO ULIKE MELDINGER. Ingen `uls`-rad i det
+        # hele tatt er IKKE det samme som «alle uls-radene ligger utenfor aksialgrensene»
+        # — den hardkodede `axial_out_of_range`-teksten skal bare brukes i det andre
+        # tilfellet. Nevner IKKE aksialkraftområdet i det første, siden ingen aksialsjekk
+        # faktisk ble kjørt mot noen rad.
+        # TRE SITUASJONER, IKKE TO. Den tredje: moment-krumning der den AKTIVE raden
+        # ikke er en uls-rad, mens det FINNES uls-rader lenger ned. Da er
+        # `governing_index` None fordi den aktive radens `within_limits` er None — ikke
+        # fordi noen aksialkraft ligger utenfor. Motoren trykte da
+        # «No load combination has an axial force within the range ...» med et konkret
+        # kN-intervall, samtidig som `checks.axial_ok` sto `true` i SAMME svar. To kilder
+        # til samme faktum, som motsier hverandre, og den ene lyver med et tall.
+        #
+        # Kommentaren over `fallback_index` sa at motoren «stoler paa» at
+        # `enforceActiveCombo` i store.js holder den aktive raden paa en uls-rad. Den
+        # garantien holder gjennom UI-et, men en payload kan bygges utenom storen — og da
+        # skal motoren si hva som faktisk er galt, ikke finne paa et aksialkraftproblem.
+        if is_mc and any(c['checked'] for c in combo_results)                 and not combo_results[active_index]['checked']:
+            common['error'] = {
+                'code': 'mc_active_not_uls',
+                'message': (
+                    'Moment-curvature is computed for the active load combination, and '
+                    'that row is not of type ULS. Serviceability checks are not '
+                    'implemented in this version, so there is no failure state to '
+                    'trace. Make a ULS combination the active one.'
+                ),
+                'detail': _active_row_detail(combo_results[active_index]),
+            }
+        elif not any(c['checked'] for c in combo_results):
+            common['error'] = {
+                'code': 'no_uls_combination',
+                'message': (
+                    'No load combination is of type ULS. Serviceability checks are '
+                    'not implemented in this version, so there is nothing to check.'
+                ),
+                'detail': 'combinations contain no row with type == "uls"',
+            }
+        else:
+            common['error'] = {
+                'code': 'axial_out_of_range',
+                'message': (
+                    'No load combination has an axial force within the range this '
+                    f'cross-section can carry: [{n_min / 1e3:.1f} kN, {n_max / 1e3:.1f} kN] '
+                    '(compression negative).'
+                ),
+                'detail': f'n_min={n_min}, n_max={n_max}',
+            }
 
     # Bruddtilstanden ved GOVERNING sin N_Ed, med de nøkkelnavnene UI og rapport leser
     # GENERISK. Den hører hjemme i mer enn én analyseblokk: `calculate_bending_strength`

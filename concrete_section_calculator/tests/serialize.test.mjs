@@ -40,8 +40,11 @@ test('rundtur med to lag og to kombinasjoner, signert M_Ed og V_Ed, uten aksialk
       { id: 'L2', mode: 'bars', dia: 12, count: 2, edge: 'top', dc: 41, dc_auto: false },
     ],
     combos: [
-      { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: -150, V_Ed: 0 },
-      { id: 'C2', name: 'ULS 2', N_Ed: 0, M_Ed: 250, V_Ed: 120 },
+      // STEG 2: `type` er med — fromDocument→createCombo fyller det ALLTID
+      // inn (planens felle-liste), og en deepEqual mot HELE state må derfor
+      // ha det her også for at rundturen skal stemme.
+      { id: 'C1', name: 'ULS 1', type: 'uls', N_Ed: 0, M_Ed: -150, V_Ed: 0 },
+      { id: 'C2', name: 'ULS 2', type: 'uls', N_Ed: 0, M_Ed: 250, V_Ed: 120 },
     ],
     activeCombo: 'C2',
     result: null,
@@ -101,6 +104,44 @@ test('layers[i]/combos[i] renses IKKE feltvis — normaliseres gjennom createLay
   assert.equal(state.layers[0].mode, 'spacing');
   assert.equal(state.layers[0].spacing, 150);
   assert.ok(!('count' in state.layers[0]));
+});
+
+/*
+ * ===========================================================================
+ * STEG 2 — R5/R6: `combo_type_unknown`-noten (§D1)
+ * ===========================================================================
+ * BARE når fila FAKTISK hadde et `type`-felt createCombo måtte rette. En fil
+ * helt uten feltet (alle filer fra før denne runden) skal IKKE gi noten —
+ * det er nøyaktig det `document_field_defaulted` allerede dekker.
+ */
+
+test('R5 — fil med combo.type:"tull" gir en combo_type_unknown-note (severity warning), og raden blir uls', () => {
+  const doc = toDocument(defaultState());
+  doc.state.combos = [{ id: 'C1', name: 'ULS 1', type: 'tull', N_Ed: 0, M_Ed: 0, V_Ed: 0 }];
+  const { state, notes } = fromDocument(doc);
+  assert.equal(state.combos[0].type, 'uls');
+  const warn = notes.filter((n) => n.code === 'combo_type_unknown');
+  assert.equal(warn.length, 1);
+  assert.equal(warn[0].severity, 'warning');
+  assert.equal(warn[0].field, 'C1');
+});
+
+test('R6 — fil HELT UTEN type-felt på combo gir INGEN combo_type_unknown-note, og raden blir uls', () => {
+  const doc = toDocument(defaultState());
+  doc.state.combos = [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0 }];
+  assert.ok(!('type' in doc.state.combos[0]), 'forutsetningen for testen: feltet er fysisk fraværende');
+  const { state, notes } = fromDocument(doc);
+  assert.equal(state.combos[0].type, 'uls');
+  assert.ok(!notes.some((n) => n.code === 'combo_type_unknown'),
+    'et felt som ALDRI var der er ikke det samme som et felt som var der og var ugyldig — dekket av document_field_defaulted');
+});
+
+test('R5b — en gyldig type gir INGEN combo_type_unknown-note', () => {
+  const doc = toDocument(defaultState());
+  doc.state.combos = [{ id: 'C1', name: 'ULS 1', type: 'quasi_permanent', N_Ed: 0, M_Ed: 0, V_Ed: 0 }];
+  const { state, notes } = fromDocument(doc);
+  assert.equal(state.combos[0].type, 'quasi_permanent');
+  assert.ok(!notes.some((n) => n.code === 'combo_type_unknown'));
 });
 
 test('state.result settes ALLTID til null, selv om fila skulle inneholde noe annet', () => {

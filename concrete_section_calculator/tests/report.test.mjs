@@ -614,6 +614,63 @@ test('kombinasjonstabellen viser N_Ed/M_Ed i kN/kNm, ikke rå N/Nmm', () => {
   assert.ok(ch4.includes('250.0'), 'C2 sin M_Ed i kNm');
 });
 
+/*
+ * ===========================================================================
+ * STEG 2 — R16/R17/R18: «Not checked», DASH-cellene og bakoverkompatibilitet
+ * ===========================================================================
+ */
+
+/** En ULS-rad og en `characteristic`-rad (SLS, ukontrollert) — samme mønster som `threeCombos`. */
+function withUncheckedCombo(base) {
+  const r = clone(base);
+  const blk = r[r.analysis];
+  blk.combinations = [
+    {
+      id: 'C1', name: 'ULS 1', type: 'uls', checked: true,
+      N_Ed: 0, M_Ed: 150e6, theta: 0,
+      M_Rd: 215006759.18601915, utilisation: 0.6976524857538235, within_limits: true,
+      V_Ed: 0, shear: null,
+    },
+    {
+      id: 'C2', name: 'SLS 1', type: 'characteristic', checked: false,
+      N_Ed: -100000, M_Ed: 80e6, theta: 0,
+      M_Rd: null, utilisation: null, within_limits: null,
+      V_Ed: 40000, shear: null,
+    },
+  ];
+  blk.governing = 'C1';
+  Object.assign(blk, {
+    N_Ed: 0, M_Ed: 150e6,
+    M_Rd: 215006759.18601915, utilisation: 0.6976524857538235,
+  });
+  return r;
+}
+
+test('R16 — en ikke-ULS-rad STÅR i kombinasjonstabellen med «Not checked», ikke utelatt', () => {
+  const ch4 = chapterBody(buildReportHtml(BEAM_STATE, withUncheckedCombo(BENDING)), 4);
+  assert.match(ch4, /ULS 1/, 'den kontrollerte raden er der som før');
+  assert.match(ch4, /SLS 1/, 'den UKONTROLLERTE raden er også der — den skal ALDRI forsvinne (G6)');
+  assert.match(ch4, /Not checked/);
+});
+
+test('R17 — samme rad viser DASH i η-, V_Ed- og η_V-kolonnene, og SLS-fotnoten står under tabellen', () => {
+  const ch4 = chapterBody(buildReportHtml(BEAM_STATE, withUncheckedCombo(BENDING)), 4);
+  assert.match(ch4, /Serviceability checks are not implemented in this version\./, 'G5-fotnoten');
+  // Radraden for C2 (SLS 1) skal ha DASH i η/V_Ed/η_V — tre DASH-er i den ene raden.
+  const row = ch4.slice(ch4.indexOf('SLS 1'), ch4.indexOf('SLS 1') + 400);
+  const dashesInRow = (row.match(new RegExp(DASH, 'g')) || []).length;
+  assert.ok(dashesInRow >= 3, `forventet minst 3 DASH i SLS-raden (η, V_Ed, η_V), fikk ${dashesInRow}`);
+});
+
+test('R18 — en resultatfixtur UTEN checked-feltet (de seks committede) gir NØYAKTIG samme statustekster som før', () => {
+  // BENDING er en committet fixtur uten `checked`/`type` på sine kombinasjoner
+  // (de fantes ikke før STEG 2). `c.checked === false`, ALDRI `!c.checked` —
+  // ellers ville `undefined` blitt lest som «ikke kontrollert» og hver
+  // eneste gamle fixtur fått «Not checked» på en rad som faktisk ER en uls-rad.
+  const ch4 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 4);
+  assert.ok(!ch4.includes('Not checked'), 'undefined skal IKKE tolkes som ukontrollert (planens felle 13)');
+});
+
 test('resultatkapitlet sier UTTRYKKELIG hvilken kombinasjon tallene gjelder', () => {
   const ch5 = chapterBody(buildReportHtml(BEAM_STATE, threeCombos(BENDING)), 5);
   assert.match(ch5, /Governing load combination/);

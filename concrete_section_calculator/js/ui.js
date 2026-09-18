@@ -1578,15 +1578,22 @@ export function createUI(deps) {
     // nøkkel/verdi-linjene i resultatpanelet, og en skygge her ville vært en
     // felle for den neste som skulle bruke den.
     const list = s.shear?.stirrups || [];
+    const isSlab = s.sectionType === 'slab';
 
     if (!list.length) {
       // Tom liste er IKKE et hull i skjemaet: den er signalet til motoren om å
-      // ta V_Rd,c-veien (EC2 6.2.1(4)), og riktig svar for en plate og for en
-      // bjelke som ennå ikke har fått bøyler.
-      host.innerHTML =
-        `<div class="px-3 py-3 text-[12px] text-slate-500">No stirrups. The shear capacity is then ` +
-        `V<sub>Rd</sub> = V<sub>Rd,c</sub> — the concrete alone (EC2 6.2.1(4)), which is what a slab ` +
-        `normally relies on. Press "+ Add stirrups" to add shear reinforcement.</div>`;
+      // ta V_Rd,c-veien (EC2 6.2.1(4)). For en plate er den tilstanden
+      // PERMANENT (§A1 i store.js) — teksten skal derfor ikke tilby en knapp
+      // som ikke finnes, og heller ikke ligge under en bjelke som ennå ikke
+      // har fått bøyler.
+      host.innerHTML = isSlab
+        ? `<div class="px-3 py-3 text-[12px] text-slate-500">Shear reinforcement is not designed for ` +
+          `slabs in this version. EC2 6.2.3 and 9.2.2 are beam rules, and 9.3.2 does not allow shear ` +
+          `reinforcement in slabs thinner than 200 mm. The shear capacity reported is V<sub>Rd,c</sub> ` +
+          `to EC2 6.2.2 — the concrete alone, per metre of slab width.</div>`
+        : `<div class="px-3 py-3 text-[12px] text-slate-500">No stirrups. The shear capacity is then ` +
+          `V<sub>Rd</sub> = V<sub>Rd,c</sub> — the concrete alone (EC2 6.2.1(4)), which is what a slab ` +
+          `normally relies on. Press "+ Add stirrups" to add shear reinforcement.</div>`;
       return;
     }
 
@@ -1827,12 +1834,20 @@ export function createUI(deps) {
     const s = store.getState();
     host.innerHTML = s.combos.map((combo) => {
       const active = combo.id === s.activeCombo;
-      return `<div class="px-3 py-2 text-[13px] ${active ? 'bg-sky-950/30' : ''}">
+      // STEG 2, H2: en ikke-ULS-rad er ikke kontrollert (SLS er ikke
+      // implementert), og tones ned for å si det visuelt, ikke bare i teksten.
+      const isUls = combo.type === 'uls';
+      return `<div class="px-3 py-2 text-[13px] ${active ? 'bg-sky-950/30' : ''} ${isUls ? '' : 'opacity-60'}">
         <div class="flex flex-wrap items-center gap-2">
           <button type="button" class="chip !py-0.5 !px-2 !text-[11px] shrink-0" data-active-combo="${esc(combo.id)}"
                   data-on="${String(active)}" title="${active ? 'Active — used for moment–curvature' : 'Set active for moment–curvature'}">
             ${active ? '● ' + esc(combo.id) : esc(combo.id)}
           </button>
+          <select class="!w-32 !text-[11px]" data-cf="type" data-c="${esc(combo.id)}" aria-label="Combination type" title="Only ULS rows are checked in this version — serviceability (SLS) is not implemented.">
+            <option value="uls" ${combo.type === 'uls' ? 'selected' : ''}>ULS</option>
+            <option value="characteristic" ${combo.type === 'characteristic' ? 'selected' : ''}>Characteristic</option>
+            <option value="quasi_permanent" ${combo.type === 'quasi_permanent' ? 'selected' : ''}>Quasi-permanent</option>
+          </select>
           <input type="text" class="!w-28" data-cf="name" data-c="${esc(combo.id)}" value="${esc(combo.name)}" placeholder="name" aria-label="Combination name">
           <label class="flex items-center gap-1 text-[11px] text-slate-500"
                  title="Axial force [kN] — compression is negative.">N<sub>Ed</sub>
@@ -1847,12 +1862,26 @@ export function createUI(deps) {
                   title="${s.combos.length <= 1 ? 'The last combination cannot be removed' : 'Remove combination'}">✕</button>
         </div>
         <div class="mt-1 text-[11px] text-slate-500 num" data-m-interp="${esc(combo.id)}">${esc(momentInterpretation(combo.M_Ed))}</div>
+        ${isUls ? '' : `<div class="mt-0.5 text-[11px] text-amber-500/80" data-combo-sls-note="${esc(combo.id)}">Not checked — SLS is not implemented yet</div>`}
       </div>`;
     }).join('');
     bindComboRows(host);
   }
 
   function bindComboRows(host) {
+    // STEG 2, H3: `<select>`-en for kombinasjonstype. UTEN `comboEditInFlight`
+    // — det flagget finnes for å hindre at `innerHTML`-omtegningen spiser
+    // TAB-en fra et TEKSTFELT (planens felle 11); en `<select>` mister ikke
+    // fokus på samme måte, og med flagget på ville raden ikke blitt tegnet om
+    // — altså ingen nedtoning, og `enforceActiveCombo` sin flytting av aktiv
+    // rad ville ikke vist seg.
+    host.querySelectorAll('select[data-cf="type"]').forEach((el) => {
+      el.onchange = () => {
+        store.updateCombo(el.dataset.c, { type: el.value });
+        invalidate();
+        render();
+      };
+    });
     host.querySelectorAll('[data-active-combo]').forEach((el) => {
       el.onclick = () => {
         store.setActiveCombo(el.dataset.activeCombo);
@@ -2654,24 +2683,31 @@ export function createUI(deps) {
       // §2.6: boksen er nå sammenfoldbar, og da må sammendraget bære ALLE
       // verdiene bak klikket — også θ og z_factor, som avgjør V_Rd,s og
       // V_Rd,max. Uten dem kunne en fil med θ = 30° sett ut som en fil med 45°.
+      // θ og z_factor styrer bare V_Rd,s/V_Rd,max, som ikke regnes for en
+      // plate (§A1 i store.js) — sammendraget skal derfor ikke vise dem for
+      // en plate, det ville påstått at trykkstavvinkelen betydde noe den ikke gjør.
       const strut = `θ ${fmtNumber(s.shear.strut_angle_deg, 1)}° · ` +
         `z ${fmtNumber(s.shear.z_factor, 2)}·d`;
       shearSum.innerHTML = list.length
         ? `${list.length} row${list.length === 1 ? '' : 's'} · ΣA<sub>sw</sub>/s ` +
           `${fmtNumber(totalAswPerSpacing(list), 3)} mm²/mm · ${strut}`
-        : `No stirrups · V<sub>Rd</sub> = V<sub>Rd,c</sub> · ${strut}`;
+        : s.sectionType === 'slab'
+          ? `V<sub>Rd</sub> = V<sub>Rd,c</sub> · no shear reinforcement (slab)`
+          : `No stirrups · V<sub>Rd</sub> = V<sub>Rd,c</sub> · ${strut}`;
     }
     // Knappen er en no-op når raden allerede finnes (se `setupShear`), og
     // hintlinja forklarer noe brukeren ennå ikke har å se på — begge hører
     // til FØR raden finnes, ikke etter. `render()` kjører på hver endring
     // (også fjerning av raden), så synligheten må settes her, ikke bare ved
-    // oppstart.
+    // oppstart. En plate skal ALDRI se knappen eller hintet: den får aldri
+    // bøyler (§A1 i store.js), og knappen ville uansett vært en no-op.
     const hasStirrups = (s.shear?.stirrups || []).length > 0;
+    const isSlabSection = s.sectionType === 'slab';
     const addStirrupBtn = $('#add-stirrup');
-    if (addStirrupBtn) addStirrupBtn.classList.toggle('hidden', hasStirrups);
+    if (addStirrupBtn) addStirrupBtn.classList.toggle('hidden', hasStirrups || isSlabSection);
     const shearHint = $('#shear-hint');
     if (shearHint) {
-      shearHint.classList.toggle('hidden', hasStirrups);
+      shearHint.classList.toggle('hidden', hasStirrups || isSlabSection);
       shearHint.innerHTML = hasStirrups
         ? ''
         : 'The legs are drawn in the section, bent around the bars they meet.';

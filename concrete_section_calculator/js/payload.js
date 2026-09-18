@@ -191,6 +191,10 @@ export function buildPayload(state = {}, overrides = {}) {
       combinations: combos.map((c) => ({
         id: c.id,
         name: c.name || '',
+        // STEG 2: rått felt, sendt uendret. Normaliseringen (en av
+        // `COMBO_TYPES`, ellers `'uls'`) har ALLEREDE skjedd i `createCombo`
+        // (rebar.js) — payload-laget skal ikke gjette en gang til.
+        type: c.type,
         // Fortegn beholdes: n > 0 er STREKK, n < 0 er TRYKK (plan §3.6).
         N_Ed: num(c.N_Ed) * KN_TO_N,
         // `M_Ed` er SIGNERT, `structuralcodes` sin egen konvensjon —
