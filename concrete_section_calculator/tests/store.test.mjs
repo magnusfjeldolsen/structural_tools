@@ -372,3 +372,228 @@ test('replaceState: en lagret fil med dc runder tilbake UENDRET', () => {
   });
   assert.equal(s.layers[0].dc, 120, 'utfyllingen skal BARE gjelde lag som mangler dc');
 });
+
+/* ============================================================================ *
+ * runde 8 §1 — bjelke og plate er TO UAVHENGIGE SNITT
+ *
+ * Tallene i kommentarene under er MÅLT på koden før denne runden. Hver eneste
+ * test her feiler på den gamle `setSectionType`, som konverterte lagene
+ * destruktivt og lot geometrien være delt mellom de to typene.
+ * ============================================================================ */
+
+/**
+ * Alt som beskriver selve snittet og oppgaven — `stash` og `result` holdt utenfor.
+ *
+ * `stash` MÅ utelates fra sammenligningen, og det er ikke en oppmykning av
+ * «bit-identisk»: etter en rundtur HAR stashet endret seg, for det er nå plata
+ * du nettopp redigerte som ligger parkert der. Krevde vi stashet uendret, ville
+ * vi bedt om at funksjonen ikke virker. `result` er motorens, og gjelder uansett
+ * gamle tall.
+ */
+const sectionOf = ({ result, stash, ...rest }) => rest;
+
+/** Bjelke 300×600 med TO lag (det ene låst) og en bøylerad. */
+const beamStore = () => createStore({
+  geometry: { b: 300, h: 600 },
+  layers: [
+    { id: 'L1', mode: 'bars', dia: 20, count: 5, edge: 'bottom', dc: 57, dc_auto: true },
+    { id: 'L2', mode: 'bars', dia: 12, count: 2, edge: 'top', dc: 120, dc_auto: false },
+  ],
+  shear: {
+    strut_angle_deg: 45,
+    z_factor: 0.9,
+    stirrups: [{ id: 'S1', dia: 12, spacing: 150, legs: 2, fywk: 500, alpha: 90 }],
+  },
+});
+
+/**
+ * DEN ENE TESTEN SOM BEVISER AT STASHET VIRKER.
+ *
+ * Målt før: bjelke 300×600 → plate → bjelke ga 1000×600 med 3 jern i stedet for
+ * 5, og bøylene hadde vært innom plata og forskjøvet dens `dc` med 12 mm.
+ */
+test('bjelke → plate (endre alt) → bjelke: snittet er BIT-IDENTISK med utgangspunktet', () => {
+  const store = beamStore();
+  const before = sectionOf(store.getState());
+
+  store.setSectionType('slab');
+  // Endre ALT på plata — ingenting av dette har noe med bjelken å gjøre.
+  store.patch('geometry', { h: 260 });
+  store.setState({ cover: 20, stirrup_dia: 8 });
+  store.updateLayer(store.getState().layers[0].id, { dia: 16, spacing: 125 });
+  store.addLayer({ edge: 'top' });
+  store.addStirrup();
+
+  store.setSectionType('beam');
+  assert.deepEqual(sectionOf(store.getState()), before);
+});
+
+test('bredden kommer tilbake — målt før: 300 → plate → bjelke ga 1000', () => {
+  const store = createStore({ geometry: { b: 300, h: 600 } });
+  store.setSectionType('slab');
+  assert.equal(store.getState().geometry.b, 1000, 'plata er alltid 1000 mm');
+  store.setSectionType('beam');
+  assert.equal(store.getState().geometry.b, 300, 'bjelkens egen bredde, ikke platas');
+});
+
+test('høyden lekker ikke — verken fra bjelken til plata eller motsatt', () => {
+  const store = createStore({ geometry: { b: 300, h: 600 } });
+  store.setSectionType('slab');
+  assert.equal(store.getState().geometry.h, 200, 'platas standardhøyde, ikke bjelkens 600');
+  store.patch('geometry', { h: 260 });
+  store.setSectionType('beam');
+  assert.equal(store.getState().geometry.h, 600, 'bjelken beholder sin egen høyde');
+  store.patch('geometry', { h: 700 });
+  store.setSectionType('slab');
+  assert.equal(store.getState().geometry.h, 260, 'plata står der brukeren forlot den');
+});
+
+test('plata starter på Ø12 c/c 200 — og bjelkens lag kommer tilbake med count i behold', () => {
+  const store = createStore({
+    layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 5, edge: 'bottom', dc: 57, dc_auto: true }],
+  });
+  store.setSectionType('slab');
+  const [slab] = store.getState().layers;
+  assert.equal(slab.mode, 'spacing');
+  assert.equal(slab.dia, 12);
+  assert.equal(slab.spacing, 200);
+  assert.ok(!('count' in slab), 'et platelag har ingen count');
+
+  store.setSectionType('beam');
+  const [beam] = store.getState().layers;
+  // Målt før: 5 jern ble til 3, fordi konverteringen skrev `count: 3` på vei ut.
+  assert.equal(beam.count, 5);
+  assert.equal(beam.dia, 20);
+  assert.ok(!('spacing' in beam), 'et bjelkelag har ingen senteravstand');
+});
+
+test('bøylene følger ikke med på plata — platas dc blir ikke 12 mm for stor', () => {
+  const store = createStore();
+  store.addStirrup();
+  store.setSectionType('slab');
+  const slab = store.getState();
+  assert.deepEqual(slab.shear.stirrups, [], 'en plate har ingen bøyler');
+  // 35 + 0 + 12/2. Målt før: bøyla fulgte med og ga 53, altså 12 mm for dypt.
+  assert.equal(slab.layers[0].dc, 41);
+
+  store.setSectionType('beam');
+  const beam = store.getState();
+  assert.equal(beam.shear.stirrups.length, 1, 'bjelkens bøylerad står der den ble forlatt');
+  assert.equal(beam.layers[0].dc, 57); // 35 + 12 + 20/2
+});
+
+test('NØYAKTIG ETT snitt er levende: stashet for den AKTIVE typen er null', () => {
+  const store = createStore({ geometry: { b: 300, h: 600 } });
+  assert.deepEqual(store.getState().stash, { beam: null, slab: null });
+
+  store.setSectionType('slab');
+  let s = store.getState();
+  // To kopier av samme snitt ville vært to kilder til samme tall — den
+  // feilformen modulen har blitt bitt av i hver eneste runde.
+  assert.equal(s.stash.slab, null, 'det aktive snittet bor i toppnivåfeltene');
+  assert.equal(s.stash.beam.geometry.b, 300);
+  assert.equal(s.stash.beam.geometry.h, 600);
+
+  store.setSectionType('beam');
+  s = store.getState();
+  assert.equal(s.stash.beam, null);
+  assert.equal(s.stash.slab.geometry.h, 200);
+});
+
+test('det parkerte snittet deler ikke lag-arrayen med det aktive', () => {
+  const store = createStore();
+  store.setSectionType('slab');
+  const parked = JSON.stringify(store.getState().stash.beam);
+  // Begge disse kjører `applyAutoDc` på det AKTIVE snittet. Delte de to
+  // arrayen, ville bjelkens jern flyttet seg her — usynlig, helt til brukeren
+  // byttet tilbake.
+  store.setState({ cover: 60 });
+  store.addLayer({ edge: 'top' });
+  assert.equal(JSON.stringify(store.getState().stash.beam), parked);
+});
+
+test('spacing (k1/k2/d_g) er FELLES — en endring på plata flytter også bjelkens jern', () => {
+  // EC2-parameterne beskriver betongen på byggeplassen, ikke snittformen, og
+  // skal derfor IKKE stashes. 114 er §2.3 sitt tall for d_g = 32 — samme som
+  // testen lenger oppe, bare med turen innom plata i mellom.
+  const store = startStore();
+  store.setSectionType('slab');
+  store.patch('spacing', { d_g: 32 });
+  store.setSectionType('beam');
+  const layers = store.getState().layers;
+  assert.equal(layers.find((l) => l.id === 'L1').dc, 57);
+  assert.equal(layers.find((l) => l.id === 'L2').dc, 114);
+});
+
+test('lag-id-er er unike i HELE økten — et ferskt platelag arver ikke bjelkens L1', () => {
+  const store = createStore(); // bjelken har L1
+  store.setSectionType('slab');
+  assert.equal(store.getState().layers[0].id, 'L2', 'plata får en fersk id, ikke bjelkens');
+  assert.equal(store.addLayer({ edge: 'top' }).id, 'L3');
+  store.setSectionType('beam');
+  // L2 og L3 ligger nå PARKERT. Telte vi bare de aktive lagene, ville neste id
+  // blitt L2 — og «L2» ville betydd to ulike lag i samme økt.
+  assert.equal(store.addLayer({ edge: 'top' }).id, 'L4');
+});
+
+test('setSectionType til samme type er en no-op — snittet stasher ikke seg selv', () => {
+  const store = createStore();
+  const before = store.getState();
+  assert.equal(store.setSectionType('beam'), before);
+  assert.deepEqual(store.getState().stash, { beam: null, slab: null });
+});
+
+test('INVARIANTENE kjøres etter gjenoppretting — stashet er tilstand, ikke en omgåelse', () => {
+  const store = createStore({
+    sectionType: 'beam',
+    stash: {
+      beam: null,
+      slab: {
+        geometry: { b: 300, h: 220 }, // en bjelkebredde som ligger igjen i et platestash
+        layers: [{ id: 'L9', mode: 'spacing', dia: 12, spacing: 200, edge: 'bottom', dc: 41, dc_auto: true }],
+        // `alpha` mangler, som i en håndredigert fil; `dia` er uenig med `stirrup_dia`.
+        shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S9', dia: 10, spacing: 200, legs: 2, fywk: 500 }] },
+        cover: 35, cover_side: 35, stirrup_dia: 12,
+      },
+    },
+  });
+  store.setSectionType('slab');
+  const s = store.getState();
+  assert.equal(s.geometry.b, 1000, 'enforceSlabWidth');
+  assert.equal(s.shear.stirrups[0].alpha, 90, 'normalisering gjennom createStirrup');
+  assert.equal(s.stirrup_dia, 10, 'syncStirrupDia — bøyleraden er fasit');
+  // Og løpenummeret hopper forbi L9, som ligger i det gjenopprettede snittet.
+  assert.equal(store.addLayer({ edge: 'top' }).id, 'L10');
+});
+
+test('et HALVT stash fylles fra et ferskt snitt — ikke fra typen du forlot', () => {
+  // `fromDocument` erstatter `stash` i sin helhet uten å normalisere innmaten,
+  // så en håndredigert fil kan ha et platestash med bare geometri. Beholdt vi
+  // da bjelkens `bars`-lag, ville «5Ø20» blitt regnet som armering PER METER —
+  // A_s feil med en faktor, uten et eneste varsel.
+  const store = createStore({
+    sectionType: 'beam',
+    layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 5, edge: 'bottom', dc: 57, dc_auto: true }],
+    stash: { beam: null, slab: { geometry: { b: 1000, h: 240 } } },
+  });
+  store.setSectionType('slab');
+  const s = store.getState();
+  assert.equal(s.geometry.h, 240, 'det fila FAKTISK hadde, brukes');
+  assert.equal(s.layers.length, 1);
+  assert.equal(s.layers[0].mode, 'spacing', 'et platelag, ikke bjelkens bars-lag');
+  assert.equal(s.layers[0].spacing, 200);
+  assert.equal(s.cover, 35, 'manglende felt kommer fra standarden');
+  assert.deepEqual(s.shear.stirrups, []);
+});
+
+test('et stash med TOM lag-liste får ikke et lag dyttet på seg', () => {
+  // Null lag er en lovlig tilstand (brukeren kan slette den siste raden), og
+  // skiller seg fra «fila sa ingenting om lag». `Array.isArray` og ikke
+  // `.length` er hele forskjellen.
+  const store = createStore({
+    sectionType: 'beam',
+    stash: { beam: null, slab: { geometry: { b: 1000, h: 200 }, layers: [] } },
+  });
+  store.setSectionType('slab');
+  assert.deepEqual(store.getState().layers, []);
+});

@@ -52,6 +52,19 @@ export const RUN_ALL = 'all';
 const DEFAULT_COVER = 35;
 const DEFAULT_STIRRUP_DIA = 12;
 
+/*
+ * Platas standardhøyde. Bjelkens står i `defaultState().geometry.h`, men plata
+ * hadde ingen hjemplass i det hele tatt — den ARVET bjelkens 600 ved typebytte,
+ * og en 1000×600 «plate» er et dekke ingen har bygget. 200 mm er en svært
+ * vanlig dekketykkelse, og det er tykkelsen regresjonsfixturene
+ * `payload-slab-1000x200*.json` allerede er målt med, så standarden og
+ * regresjonsgrunnlaget kommer i takt.
+ *
+ * Bredden har ingen konstant her med vilje: den er `SLAB_WIDTH` i `section.js`,
+ * som er den ene kilden `sectionWidth` og `enforceSlabWidth` begge leser.
+ */
+const DEFAULT_SLAB_HEIGHT = 200;
+
 /**
  * Standardtilstand. Tallene er norsk praksis: α_cc = 0,85 (NA), γ_c = 1,5,
  * γ_s = 1,15, B500NC med k = 1,08 og ε_uk = 7,5 %.
@@ -113,8 +126,147 @@ export function defaultState() {
     // `payload.js`, og `fiber` er kuttet med begrunnelse i plan §1.2.
     options: { subtract_bar_area: false, mc_pre_yield: 10, mc_post_yield: 10 },
     doc: { project: '', title: '', author: '', date: '', note: '' },
+    /*
+     * BJELKEN OG PLATA ER TO UAVHENGIGE SNITT (runde 8 §1).
+     *
+     * `state.geometry`/`layers`/`shear`/`cover`/`cover_side`/`stirrup_dia`
+     * beskriver ALLTID det AKTIVE snittet, med nøyaktig samme betydning som
+     * før. Det er derfor `payload.js`, `report.js`, `section-draw.js` og de 14
+     * rå leserne av `geometry.b`/`geometry.h` ikke måtte røres: de ser fortsatt
+     * én geometri. `sectionWidth` er fortsatt den ene porten.
+     *
+     * Her ligger det INAKTIVE snittet, urørt til brukeren kommer tilbake til
+     * det. Før dette var geometrien delt: `setSectionType` satte `b = 1000` på
+     * vei inn til plata og rørte den ikke på vei ut, så bjelkens 300 kom aldri
+     * tilbake, og høyden lakk begge veier. Lagene ble konvertert destruktivt
+     * (målt: 5 jern ble til 3), og bøylene fulgte med over på plata der de
+     * ikke hører hjemme og forskjøv platas `dc` med 12 mm.
+     *
+     * NØYAKTIG ÉN AV DE TRE ER LEVENDE: den typen som er aktiv, står i
+     * toppnivåfeltene og har `null` her. To kopier av samme snitt ville vært
+     * to kilder til samme tall — den feilformen denne modulen har blitt bitt
+     * av i hver eneste runde.
+     *
+     * Stashet når ALDRI motoren: `payload.js` bygger fra det aktive snittet.
+     */
+    stash: { beam: null, slab: null },
     result: null,
   };
+}
+
+/**
+ * Feltene som utgjør ETT tverrsnitt, kopiert ut av (eller inn i) tilstanden.
+ * Alt som IKKE står her — materialer, lastkombinasjoner, EC2-parameterne i
+ * `spacing`, `analysis`, `options`, `doc` — beskriver oppgaven og ikke snittet,
+ * og skal derfor være felles for bjelke og plate. `spacing` er det som er
+ * lettest å ta feil på: k1/k2/d_g er NA-parametere for betongen på byggeplassen,
+ * ikke en egenskap ved snittformen.
+ *
+ * Kopiene er DYPE på samme nivåer som `cloneState`, slik at et stashet snitt
+ * ikke kan deles med den aktive tilstanden. Deles `layers`-arrayen, ville
+ * `applyAutoDc` på det aktive snittet flyttet jernene i det parkerte også.
+ *
+ * FELT SOM IKKE FINNES, FINNES IKKE ETTERPÅ HELLER. Funksjonen fyller ikke inn
+ * standardverdier, og den finner ikke på `cover: undefined` for et stash som
+ * mangler `cover`. Gjorde den det, ville `setSectionType` ikke lenger kunne se
+ * forskjell på «fila sa ingenting» og «fila sa dette», og et halvt stash fra en
+ * håndredigert fil ville blitt gjenopprettet med hull i stedet for standarder.
+ * Tilstanden fra `defaultState`/`cloneState` har alltid alle seks, så et snitt
+ * VI parkerer blir like fullt komplett.
+ *
+ * Ukjente felt tas IKKE med: et stash kommer fra en fil, og `fromDocument`
+ * renser ikke innmaten i `stash`. Uten silen her ville et fremmed felt blitt
+ * spredt rett inn i toppnivåtilstanden ved neste typebytte.
+ *
+ * Lista over feltene står ETT sted: her. En `SECTION_KEYS`-array ved siden av
+ * ville vært en andre kilde til den samme lista, og den som ble glemt ville
+ * lekket stille.
+ */
+function captureSection(s) {
+  if (!s || typeof s !== 'object') return null;
+  const out = {};
+  if (s.geometry) out.geometry = { ...s.geometry };
+  if (Array.isArray(s.layers)) out.layers = s.layers.map((l) => ({ ...l }));
+  if (s.shear) out.shear = { ...s.shear, stirrups: (s.shear.stirrups || []).map((st) => ({ ...st })) };
+  for (const key of ['cover', 'cover_side', 'stirrup_dia']) {
+    if (key in s) out[key] = s[key];
+  }
+  return out;
+}
+
+/** `stash` med begge halvdelene kopiert — se `captureSection`. */
+function cloneStash(stash) {
+  const src = stash || {};
+  return { beam: captureSection(src.beam), slab: captureSection(src.slab) };
+}
+
+/**
+ * Et FERSKT snitt av `type`, for første gang brukeren går dit (eller etter at
+ * en fil uten stash er lastet). Bjelken ER standardtilstanden; plata er den
+ * samme med `SLAB_WIDTH × DEFAULT_SLAB_HEIGHT` og uten bøyler.
+ *
+ * Laget lages gjennom `createLayer`, ikke skrevet ut for hånd: den fabrikken
+ * vet allerede at plata regnes som `Ø c/c s` og bjelken som `antall × Ø`, og
+ * den eier platas Ø12 c/c 200. Skrev vi lagene her, ville modulen hatt to
+ * steder å lese platas standardarmering fra — og det var nøyaktig den
+ * duplikatet `setSectionType` bar på før denne runden.
+ *
+ * @param {'beam'|'slab'} type
+ * @param {object} spacing EC2-parameterne, som er felles og derfor arves
+ * @param {string} layerId id fra `nextLayerId()`, se kallstedet
+ */
+function freshSection(type, spacing, layerId) {
+  const d = defaultState();
+  // `shell` er nok tilstand til at `createLayer`/`suggestedDc` kan regne `dc`:
+  // de leser `sectionType`, `cover`, `stirrup_dia` og `shear.stirrups`.
+  const shell = {
+    sectionType: type,
+    geometry: type === 'slab' ? { b: SLAB_WIDTH, h: DEFAULT_SLAB_HEIGHT } : { ...d.geometry },
+    // Et ferskt snitt har ingen skjærarmering — heller ikke bjelken. Bøyler er
+    // noe brukeren legger inn, og `stirrup_dia` er likevel den overdekningen
+    // jernene plasseres etter (se `stirrupCoverDia`).
+    shear: { ...d.shear, stirrups: [] },
+    cover: d.cover,
+    cover_side: d.cover_side,
+    stirrup_dia: d.stirrup_dia,
+    spacing,
+  };
+  return { ...captureSection(shell), layers: [createLayer(shell, { id: layerId })] };
+}
+
+/**
+ * Høyeste løpenummer blant id-ene `L1`, `C1`, `S1` … i en liste.
+ *
+ * Løpenumrene ble tidligere utledet av ANTALL rader. Det holdt så lenge alle
+ * lag i økten lå i én liste, men med `stash` finnes det lag i tre lister
+ * samtidig (det aktive snittet og de to parkerte), og et antall sier da
+ * ingenting om hvilke id-er som er i bruk: en bjelke med L1–L5 parkert og én
+ * plate aktiv ville gitt `L2` til neste lag, og «L2» ville betydd to ulike lag
+ * i samme økt — nøyaktig det `nextLayerId` er skrevet for å hindre.
+ *
+ * @param {Array<object>} list
+ * @param {string} prefix `'L'`, `'C'` eller `'S'`
+ */
+function maxSeq(list = [], prefix) {
+  let max = 0;
+  for (const row of list || []) {
+    const m = new RegExp(`^${prefix}(\\d+)$`).exec(String((row || {}).id ?? ''));
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return max;
+}
+
+/** Alle lag i økten: det aktive snittet og begge de parkerte. */
+function allLayers(s = {}) {
+  const stash = s.stash || {};
+  return [...(s.layers || []), ...((stash.beam || {}).layers || []), ...((stash.slab || {}).layers || [])];
+}
+
+/** Alle bøylerader i økten — samme begrunnelse som `allLayers`. */
+function allStirrups(s = {}) {
+  const stash = s.stash || {};
+  const rows = (sec) => ((sec || {}).shear || {}).stirrups || [];
+  return [...rows(s), ...rows(stash.beam), ...rows(stash.slab)];
 }
 
 /**
@@ -139,6 +291,11 @@ function cloneState(s) {
     doc: { ...s.doc },
     layers: (s.layers || []).map((l) => ({ ...l })),
     combos: (s.combos || []).map((c) => ({ ...c })),
+    // Det parkerte snittet klones av samme grunn som `layers` over: uten dette
+    // ville `{ ...s }` delt lag-arrayen med stashet, og `applyAutoDc` på det
+    // aktive snittet ville flyttet jernene i det parkerte med seg — usynlig,
+    // helt til brukeren byttet tilbake.
+    stash: cloneStash(s.stash),
   };
 }
 
@@ -219,13 +376,16 @@ export function createStore(initial) {
   const listeners = new Set();
   // Løpenummer for lag-id-er. Teller ALDRI ned når et lag slettes: «L2» skal
   // ikke kunne bety to ulike lag i samme økt, ellers peker en gammel
-  // feilmelding på feil rad.
-  let layerSeq = state.layers.length;
-  // Samme prinsipp for kombinasjons-id-er, se `nextLayerId`.
-  let comboSeq = state.combos.length;
+  // feilmelding på feil rad. Utledes av ID-ENE og ikke av antallet (`maxSeq`),
+  // fordi lagene nå ligger i tre lister samtidig — det aktive snittet og de to
+  // parkerte.
+  let layerSeq = maxSeq(allLayers(state), 'L');
+  // Samme prinsipp for kombinasjons-id-er, se `nextLayerId`. Kombinasjonene er
+  // felles for begge snittene og finnes derfor bare i én liste.
+  let comboSeq = maxSeq(state.combos, 'C');
   // …og for bøylerader. `shear.stirrups` er en LISTE fra dag én (veikartet
   // lover flere soner), så id-ene må være unike i hele økten på samme måte.
-  let stirrupSeq = (state.shear?.stirrups || []).length;
+  let stirrupSeq = maxSeq(allStirrups(state), 'S');
 
   function notify() {
     for (const fn of listeners) fn(state);
@@ -373,39 +533,103 @@ export function createStore(initial) {
     },
 
     /**
-     * Bytter tverrsnittstype. Plata låser `b` til 1000 og regner per meter, så
-     * eksisterende `bars`-lag konverteres til `spacing` — et «3Ø20» per meter
-     * ville vært en annen armering enn brukeren tegnet.
+     * Bytter tverrsnittstype: PARKERER snittet du forlater og PLUKKER OPP det
+     * du går til, helt (geometri, lag, bøyler, overdekninger). Se `stash` i
+     * `defaultState` for hvorfor.
+     *
+     * Lagene konverteres IKKE lenger mellom `bars` og `spacing`. Konverteringen
+     * var destruktiv i begge retninger — «3Ø20» ble «Ø20 c/c 150» og tilbake
+     * igjen ble det «3Ø20» uansett hva brukeren hadde skrevet (målt: 5 jern ble
+     * til 3) — og den var uansett feil premiss: en plate er ikke bjelken din
+     * regnet om, det er et annet snitt. Går du til en type du aldri har vært
+     * på, får du et FERSKT snitt (`freshSection`), ikke en oversettelse.
      */
     setSectionType(type) {
-      const isSlab = type === 'slab';
-      const next = cloneState(state);
-      next.sectionType = isSlab ? 'slab' : 'beam';
-      // `dc_auto` MÅ med i feltlista: uten den ville hvert bjelke/plate-bytte
-      // stille nullstilt låsen på ethvert lag (plan §3.4).
-      if (isSlab) {
-        next.geometry = { ...next.geometry, b: SLAB_WIDTH };
-        next.layers = next.layers.map((l) =>
-          l.mode === 'spacing'
-            ? l
-            : { id: l.id, mode: 'spacing', dia: l.dia, spacing: 150, edge: l.edge, dc: l.dc, dc_auto: l.dc_auto }
-        );
-      } else {
-        next.layers = next.layers.map((l) =>
-          l.mode === 'bars'
-            ? l
-            : { id: l.id, mode: 'bars', dia: l.dia, count: 3, edge: l.edge, dc: l.dc, dc_auto: l.dc_auto }
-        );
+      const to = type === 'slab' ? 'slab' : 'beam';
+      const from = state.sectionType === 'slab' ? 'slab' : 'beam';
+      // Samme type som nå: ingenting å parkere og ingenting å hente. Den
+      // gamle koden kjørte `applyAutoDc` + `notify` også her, men det var en
+      // bivirkning av at den alltid konverterte lagene — ikke noe noen kaller
+      // seg avhengig av: `renderSegment('#type-seg', …)` i `ui.js` returnerer
+      // selv når verdien er uendret, og kaller aldri hit.
+      if (to === from) {
+        // MEN NORMALISER FOERST. `from` klemmes til 'beam' for alt som ikke er
+        // 'slab', saa en fil med "sectionType": "Slab" (stor S — `fromDocument`
+        // validerer ikke strengen) ville blitt staaende paa "Slab" for alltid:
+        // brukeren trykker «Beam», `to === from === 'beam'`, og verdien settes
+        // aldri. Alt leser `=== 'slab'`, saa snittet OPPFOERER seg som en bjelke
+        // — men typevelgeren viser ingen valgt knapp, og verdien setter seg fast.
+        // Den gamle koden normaliserte den som en bivirkning av at den alltid
+        // skrev `sectionType`.
+        if (state.sectionType !== to) {
+          state = cloneState({ ...state, sectionType: to });
+          notify();
+        }
+        return state;
       }
-      state = next;
-      // `suggestedDc` er ikke lenger uavhengig av tverrsnittstypen: plata har ingen
+
+      const parked = captureSection(state);
+      const stashed = (state.stash || {})[to];
+      // Et stash kan være HALVT — det kommer fra en fil, og `fromDocument`
+      // erstatter `stash` i sin helhet uten å normalisere innmaten. Feltene det
+      // mangler skal komme fra et FERSKT snitt av riktig type, ikke bli stående
+      // igjen fra typen du forlot: et platestash uten `layers` ville ellers
+      // beholdt bjelkens `bars`-lag, og «3Ø20» ville blitt regnet som armering
+      // PER METER — en A_s som er feil med en faktor, helt uten feilmelding.
+      //
+      // `nextLayerId()` kalles bare når det faktisk lages et lag, fordi
+      // løpenummeret aldri teller ned.
+      const blank = freshSection(to, state.spacing, Array.isArray((stashed || {}).layers) ? '' : nextLayerId());
+      const restored = { ...blank, ...stashed };
+      state = cloneState({
+        ...state,
+        ...restored,
+        sectionType: to,
+        // Snittet vi plukker opp SKAL nulles her: det lever nå i toppnivå-
+        // feltene. Lot vi kopien ligge, ville modulen hatt to kilder til samme
+        // geometri, og den som ikke ble oppdatert ville dukket opp ved neste
+        // bytte som en stille tilbakerulling av brukerens arbeid.
+        stash: { ...(state.stash || {}), [from]: parked, [to]: null },
+      });
+      // LAGENE NORMALISERES FØR BØYLENE, og av nøyaktig samme grunn.
+      //
+      // `{ ...blank, ...stashed }` slipper lagene RÅTT inn i toppnivåtilstanden.
+      // Alle andre dører inn i `layers` går gjennom `createLayer`: `serialize.js`
+      // gjør det for en lastet fil, og `addLayer` for et nytt lag. Denne gjorde
+      // det ikke, og et stash kan komme fra en lagret fil som er håndredigert
+      // eller skrevet av en eldre versjon.
+      //
+      // MÅLT: et platestash-lag uten `mode` — Ø12 c/c 200, altså 565 mm²/m —
+      // nådde motoren som ETT jern med `area: null`, uten en eneste advarsel.
+      // `validate()` sa ingenting, fordi den leser felt den forventer finnes.
+      state.layers = (state.layers || []).map((l) => createLayer(state, { ...l }));
+      // Bøyleradene normaliseres gjennom samme fabrikk som `addStirrup` og
+      // `replaceState` bruker: et stash kan ha kommet inn med en lagret fil, og
+      // en rad uten `alpha` ville gitt «kun α = 90° støttes. Har α = undefined°»
+      // på hver eneste kjøring.
+      state.shear = {
+        ...state.shear,
+        stirrups: (state.shear.stirrups || []).map((st) => createStirrup(state, { ...st })),
+      };
+      // INVARIANTENE KJØRES ETTER GJENOPPRETTING. Stashet er tilstand, ikke en
+      // omgåelse av reglene: en plate er 1000 mm bred uansett hvilken dør den
+      // kom inn gjennom (`enforceSlabWidth`), og bøylediameteren er ETT tall
+      // (`syncStirrupDia`).
+      state = syncStirrupDia(enforceSlabWidth(state));
+      // `suggestedDc` er ikke uavhengig av tverrsnittstypen: plata har ingen
       // bøyle, så `dc = cover + dia/2` der bjelken har `cover + stirrup_dia + dia/2`.
       // Uten denne omregningen blir `dc` stående fra den forrige typen — 12 mm feil
       // med Ø12. Målt: bjelke → plate ga d = 543 der 555 er riktig, og plate → bjelke
       // ga d 12 mm FOR STOR, altså M_Rd og A_s,min overvurdert. Det er den retningen
       // som er på usikker side, og den ville stått til brukeren tilfeldigvis rørte
       // `cover`, en diameter eller la til et lag — `h` og senteravstand utløser den ikke.
+      //
+      // Den er FORTSATT nødvendig med stash: et gjenopprettet snitt har riktig
+      // `dc` allerede, men `spacing` (k1/k2/d_g) er FELLES, og er den endret mens
+      // du var på den andre typen, skal jernene flytte seg med den.
       applyAutoDc();
+      layerSeq = Math.max(layerSeq, maxSeq(allLayers(state), 'L'));
+      stirrupSeq = Math.max(stirrupSeq, maxSeq(allStirrups(state), 'S'));
       notify();
       return state;
     },
@@ -557,9 +781,12 @@ export function createStore(initial) {
         && (l.dc == null || !Number.isFinite(Number(l.dc))))) {
         applyAutoDc();
       }
-      layerSeq = Math.max(layerSeq, state.layers.length);
-      comboSeq = Math.max(comboSeq, state.combos.length);
-      stirrupSeq = Math.max(stirrupSeq, state.shear.stirrups.length);
+      // Løpenumrene leses av ID-ENE, og lagene/bøylene TELLES OGSÅ I STASHET:
+      // en fil med bjelken L1–L5 parkert og én plate aktiv ville ellers gitt
+      // `L2` til neste lag, og «L2» ville betydd to ulike lag i samme økt.
+      layerSeq = Math.max(layerSeq, maxSeq(allLayers(state), 'L'));
+      comboSeq = Math.max(comboSeq, maxSeq(state.combos, 'C'));
+      stirrupSeq = Math.max(stirrupSeq, maxSeq(allStirrups(state), 'S'));
       notify();
       return state;
     },
