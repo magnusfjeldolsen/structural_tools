@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DOCUMENT_FORMAT, DOCUMENT_SCHEMA, fromDocument, toDocument } from '../js/serialize.js';
-import { defaultState } from '../js/store.js';
+import { createStore, defaultState } from '../js/store.js';
 import { MODULE_VERSION } from '../js/meta.js';
 
 test('toDocument: konvolutt med format, doc_schema, app_version, saved_at og state', () => {
@@ -112,11 +112,24 @@ test('state.result settes ALLTID til null, selv om fila skulle inneholde noe ann
 
 /* ---------------- endringsrunde 4 §8 — shear i NESTED_GROUPS ---------------- */
 
-test('fil uten shear: standardverdien {strut_angle_deg:45, z_factor:0.9, stirrups:[]} og ett document_field_defaulted', () => {
+/**
+ * STANDARDBØYLA ER IKKE LENGER EN TOM LISTE.
+ *
+ * `fromDocument` fyller hull fra `defaultState()`, og standardtilstanden er en
+ * BJELKE med én bøylerad (EC2 9.2.2 krever minimumsskjærarmering, og bøylas
+ * diameter har ingen annen hjemplass etter at geometrifeltet ble fjernet). En
+ * fil uten `shear` får derfor den raden, ikke en tom liste. Tallene her er
+ * skrevet ut med vilje i stedet for å leses fra `defaultState()` — en test som
+ * sammenlikner standarden med seg selv sier ingenting.
+ */
+const DEFAULT_STIRRUP_ROW = { id: 'S1', dia: 12, spacing: 150, legs: 2, fywk: 500, alpha: 90 };
+
+test('fil uten shear: standardverdien med bjelkens bøylerad, og ett document_field_defaulted', () => {
   const doc = toDocument(defaultState());
   delete doc.state.shear;
   const { state, notes } = fromDocument(doc);
-  assert.deepEqual(state.shear, { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] });
+  assert.deepEqual(state.shear,
+    { strut_angle_deg: 45, z_factor: 0.9, stirrups: [DEFAULT_STIRRUP_ROW] });
   const defaulted = notes.filter((n) => n.code === 'document_field_defaulted' && n.field === 'shear');
   assert.equal(defaulted.length, 1);
 });
@@ -126,10 +139,22 @@ test('fil med DELVIS shear-objekt: manglende felt fylles fra standarden, IKKE un
   // Bare z_factor lagret — strut_angle_deg og stirrups mangler.
   doc.state.shear = { z_factor: 0.8 };
   const { state, notes } = fromDocument(doc);
-  assert.deepEqual(state.shear, { strut_angle_deg: 45, z_factor: 0.8, stirrups: [] });
+  assert.deepEqual(state.shear,
+    { strut_angle_deg: 45, z_factor: 0.8, stirrups: [DEFAULT_STIRRUP_ROW] });
   assert.ok(state.shear.strut_angle_deg !== undefined, 'strut_angle_deg skal IKKE bli undefined');
   // Toppnivånøkkelen `shear` FANTES i fila — ingen defaulted-melding for den.
   assert.ok(!notes.some((n) => n.code === 'document_field_defaulted' && n.field === 'shear'));
+});
+
+test('fil med TOM stirrups-liste beholder den tomme lista — det er en lovlig tilstand', () => {
+  // «Ingen bøyler» (V_Rd,c-veien) skiller seg fra «fila sa ingenting om
+  // bøyler». Fylte standarden inn en rad her, ville en plate eller en bjelke
+  // brukeren bevisst har tømt fått bøyler tilbake ved hver lasting — og
+  // `dc` ville hoppet 12 mm med dem.
+  const doc = toDocument(defaultState());
+  doc.state.shear = { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] };
+  const { state } = fromDocument(doc);
+  assert.deepEqual(state.shear.stirrups, []);
 });
 
 test('fil med FULLT shear-objekt inkludert bøylerader: bevares uendret', () => {
@@ -172,4 +197,47 @@ test('fil med analysis:"moment_curvature" og N_Ed ≠ 0: IKKE normalisert — re
   const { state, notes } = fromDocument(doc);
   assert.equal(state.analysis, 'moment_curvature');
   assert.ok(!notes.some((n) => n.code === 'analysis_forced_to_nm_domain'));
+});
+
+/* ---------------- runde 8 §1 — det parkerte snittet i `stash` ---------------- */
+
+test('gammel fil uten stash: standarden {beam:null, slab:null} og ett document_field_defaulted', () => {
+  // Riktig oppførsel, ikke en mangel: den AKTIVE geometrien er den som betyr
+  // noe, og en fil lagret før runde 8 har bare den ene.
+  const doc = toDocument(defaultState());
+  delete doc.state.stash;
+  const { state, notes } = fromDocument(doc);
+  assert.deepEqual(state.stash, { beam: null, slab: null });
+  const defaulted = notes.filter((n) => n.code === 'document_field_defaulted' && n.field === 'stash');
+  assert.equal(defaulted.length, 1);
+});
+
+test('stash erstattes I SIN HELHET — den er med vilje IKKE i NESTED_GROUPS', () => {
+  // Grunnen `stash` ikke flettes felt for felt som `geometry` og `shear`: en
+  // halv `stash` er ikke et snitt med manglende felt, det er et snitt som ikke
+  // finnes. Ble den flettet, ville en fil med bare `slab` fått en `beam: null`
+  // den aldri hadde — og en delvis `slab` ville blitt fylt med bjelkens
+  // standardverdier, altså en plate satt sammen av to ulike snitt.
+  const doc = toDocument(defaultState());
+  doc.state.stash = { slab: { geometry: { b: 1000, h: 260 } } };
+  const { state } = fromDocument(doc);
+  assert.deepEqual(state.stash, { slab: { geometry: { b: 1000, h: 260 } } });
+  assert.ok(!('beam' in state.stash), 'en fletting ville lagt igjen en beam: null fila ikke hadde');
+});
+
+test('rundtur gjennom fil: bjelken overlever lagring mens PLATA er den aktive', () => {
+  // Dette er hele poenget sett fra brukeren: lagre mens du tegner på plata, åpne
+  // fila i morgen, bytt til bjelke — og bjelken står som du forlot den.
+  const store = createStore({ geometry: { b: 300, h: 600 } });
+  store.setSectionType('slab');
+  store.patch('geometry', { h: 260 });
+
+  const { state, notes } = fromDocument(toDocument(store.snapshot()));
+  assert.deepEqual(notes, []);
+  assert.equal(state.geometry.h, 260, 'plata er fortsatt den aktive');
+
+  const reopened = createStore(state);
+  reopened.setSectionType('beam');
+  assert.equal(reopened.getState().geometry.b, 300);
+  assert.equal(reopened.getState().geometry.h, 600);
 });

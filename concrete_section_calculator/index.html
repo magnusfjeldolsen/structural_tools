@@ -95,9 +95,53 @@
     .navlink[data-on="true"] { color: #f8fafc; border-bottom-color: #0ea5e9; }
     details > summary { cursor: pointer; list-style: none; }
     details > summary::-webkit-details-marker { display: none; }
-    .lrow:hover .lact { opacity: 1; }
-    .lact { opacity: 0; transition: opacity .12s; }
-    @media (max-width: 900px) { .lact { opacity: 1; } }
+    /* ARMERINGSRADEN (runde 8 §2). `.lmain` er hele raden som ÉN `<button>`:
+       id, etikett, d_c og arealteksten. Målt var den gamle blyanten 29 × 27,5 px
+       av en rad på 940 × 47,5 — 1,8 % av flaten — og `.lact { opacity: 0 }`
+       gjorde den dessuten usynlig til musa var over raden. Begge delene er
+       borte: `.lact` står nå alltid synlig, og treffområdet er hele raden.
+
+       Hover og fokusring er det ENESTE som forteller at raden er en knapp —
+       den har verken ramme eller egen bakgrunn. De står derfor samlet her,
+       hos resten av radens utseende, og ikke spredt som varianter i
+       malstrengen der neste leser må sette dem sammen selv. `-2px` trekker
+       ringen INN, så den ikke legger seg oppå skillelinja `divide-y` tegner
+       mellom radene. */
+    .lrow .lmain { transition: background .12s; }
+    .lrow .lmain:hover { background: rgba(51, 65, 85, .45); }
+    .lrow .lmain:focus-visible { outline: 2px solid #38bdf8; outline-offset: -2px; }
+    /* SPØRSMÅLSTEGNET (runde 8 §4). Merket som bærer kapitlenes forklaringstekst.
+       Teksten selv står i `HINTS` i `js/ui.js`; boblen tegnes av `js/hints.js`.
+
+       Det er et EKTE `<button>`, av samme grunn som armeringsraden ble det:
+       modulen forbyr `tabindex`, og noe uten et er ikke tastaturnåbart. «Tab
+       til tegnet, Enter åpner» følger dermed med formen, uten en linje kode.
+
+       Ringen rundt tegnet er hele affordansen. Et `title` — som de 17 runde 6
+       flyttet tekst til — viser IKKE at det finnes noe å peke på, og det er
+       nettopp den mangelen dette merket retter. Størrelsen er valgt etter det
+       samme: `1.05rem` er stort nok til å treffe med musa og lite nok til å stå
+       inne i en `<summary>` uten å skyve linjehøyden.
+
+       `[aria-expanded="true"]` lyser likt som `:hover`, så et LÅST hint ser låst
+       ut selv etter at musa har forlatt merket — ellers ville en boble stått
+       åpen uten at noe på sida pekte på hvor den kom fra. */
+    .hint {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 1.05rem; height: 1.05rem; flex: none;
+      border: 1px solid #475569; border-radius: 9999px;
+      color: #94a3b8; font-size: 10px; line-height: 1;
+      vertical-align: middle; cursor: help;
+      transition: color .12s, border-color .12s;
+      /* Merket arver fra det det står INNE i, og to av vertene former tekst:
+         `.sec-h` er `uppercase` med `letter-spacing: .09em`, og sperringen
+         legger seg som luft ETTER det ene tegnet — altså et «?» som står
+         venstrestilt i sin egen ring. Nullstilles her, én gang, i stedet for
+         som unntak hos hver vert. */
+      letter-spacing: normal; text-transform: none; font-weight: 400;
+    }
+    .hint:hover, .hint[aria-expanded="true"] { color: #38bdf8; border-color: #0ea5e9; }
+    .hint:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
     /* `section-draw.js` og `charts.js` setter en FAST bredde i px eller mm på
        rot-SVG-en, fordi den samme funksjonen tegner papirfiguren. På skjerm
        skal figuren i stedet fylle boksen sin; viewBox-en gjør det trygt. */
@@ -191,7 +235,11 @@
              klikk for γ_c, og det er verre enn én rad ekstra. -->
         <div class="px-3 pb-3 pt-1 space-y-3">
           <div>
-            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Partial factors</div>
+            <!-- Merket står ved UNDERoverskriften og ikke i boksens `<summary>`,
+                 fordi teksten handler om γ_c, α_cc og γ_s — ikke om hele boksen.
+                 Samme regel som runde 6 fulgte da brødteksten ble til `title`:
+                 en opplysning om noen felt hører til DE feltene. -->
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Partial factors <button type="button" class="hint" data-hint="material-factors" aria-expanded="false" aria-label="About the partial factors">?</button></div>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
               <label><span class="field-label">γ<sub>c</sub></span><input id="i-gamma-c" type="text" inputmode="decimal"></label>
               <label><span class="field-label">α<sub>cc</sub></span><input id="i-alpha-cc" type="text" inputmode="decimal"></label>
@@ -218,10 +266,6 @@
             </div>
           </div>
         </div>
-        <p class="px-3 pb-3 text-[11px] text-slate-500 leading-snug">
-          α<sub>cc</sub>, γ<sub>c</sub> and γ<sub>s</sub> cannot be 0: the calculation engine silently
-          treats 0 as 1.0 / 1.5 / 1.15, and the result would then not match what the report prints.
-        </p>
       </details>
       <div id="mat-derived" class="grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-1 text-[12px] num pt-1"></div>
     </div>
@@ -233,7 +277,19 @@
       <span class="sec-h">2 · Geometry</span>
       <span id="geo-summary" class="text-xs text-slate-500 num"></span>
     </div>
-    <div class="px-5 pb-5 grid md:grid-cols-[1fr_320px] gap-6">
+    <!-- GRIDDET ER SNUDD (runde 8 §3). Før hadde skjemaet `1fr` og figuren en
+         fast `320px`; målt ved 1440 px ga det 598 px skjema mot 320 px figur, og
+         hvert av feltene b, h, cover og stirrup ble 293 px bredt for et tresifret
+         tall. Nå er det SKJEMAET som er fast — 26rem er akkurat nok til fire
+         tallfelt ved siden av hverandre — og figuren som får resten. Et tallfelt
+         blir ikke bedre av å være bredt; en tegning blir det.
+
+         `items-start`: uten den strakk radhøyden begge kolonnene like høye, så
+         figurkortet arvet skjemaets høyde og sto med dødplass under tegningen —
+         194 av 271 px for plata. Kortet hugger nå sin egen figur, og «figuren
+         fyller boksen sin» blir sant for BEGGE tverrsnittsformene i stedet for å
+         måtte bli det for én boks som bare kan passe den ene av dem. -->
+    <div class="px-5 pb-5 grid md:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] gap-6 items-start">
       <div class="space-y-4">
         <div class="seg" id="type-seg">
           <button type="button" data-v="beam">Beam</button>
@@ -243,13 +299,23 @@
              seksjonen, langt fra feltene de gjaldt. De er nå `title` på
              feltene selv (runde 6 §2.6): en opplysning om ET felt hører til
              DET feltet, ikke i en fotnote man har rullet forbi. -->
-        <div class="grid grid-cols-2 gap-3">
+        <!-- ÉN rad med TRE kolonner. Var fire til «Stirrup Ø» ble fjernet herfra:
+             bøylediameteren sto både her og i bøyleraden, to felt for ett fysisk
+             jern. De tre som står igjen — b, h og overdekning — er de samme for
+             bjelke og plate, så raden ser lik ut uansett tverrsnittstype.
+             Med to kolonner ville «Cover c» hoppet ned på egen linje, og et felt
+             som bytter plass mens du ser på
+             det er verre enn et hull. -->
+        <div class="grid grid-cols-3 gap-3">
           <label><span class="field-label">b — width [mm]</span><input id="i-b" type="text" inputmode="decimal" title="Accepts expressions: 35+8, 600/2, 20*5^2/8"></label>
           <label><span class="field-label">h — height [mm]</span><input id="i-h" type="text" inputmode="decimal" title="Accepts expressions: 35+8, 600/2, 20*5^2/8"></label>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
           <label><span class="field-label">Cover c [mm]</span><input id="i-cover" type="text" inputmode="decimal" title="Nominal cover to the outermost steel. Accepts expressions: 35+8, 600/2"></label>
-          <label id="w-stirrup"><span class="field-label">Stirrup Ø [mm]</span><input id="i-stirrup" type="text" inputmode="decimal" title="The same physical stirrup as the Ø in the stirrup row below — one value. Changing it moves every derived d_c."></label>
+          <!-- «Stirrup Ø» sto her OG i bøyleraden: to felt for ett fysisk jern,
+               holdt i takt av en synkronisering. To kilder til samme tall er
+               feilformen som har gitt gale tall i denne modulen runde etter
+               runde, og en synkronisering er ikke en løsning — den er et
+               vedlikeholdskrav. Diameteren bor nå bare i bøyleraden, og
+               `stirrupCoverDia` leser den største blant radene. -->
         </div>
         <!-- Skjærarmering. Ligger i geometriseksjonen, rett under «Stirrup Ø»:
              det er SAMME fysiske bøyle, og de to feltene skal kunne ses i
@@ -281,17 +347,11 @@
                `<details>` gjør dessuten auto-åpningen tvetydig: hvilken av de
                to skal åpnes når `validate()` klager på θ? -->
           <div class="border-t border-slate-700/70 px-3 pb-3 pt-2">
-            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Strut angle and lever arm</div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Strut angle and lever arm <button type="button" class="hint" data-hint="strut-angle" aria-expanded="false" aria-label="About the strut angle and lever arm">?</button></div>
             <div class="grid grid-cols-2 gap-3 max-w-md">
               <label><span class="field-label">θ — strut angle [°]</span><input id="i-strut-angle" type="text" inputmode="decimal"></label>
               <label><span class="field-label">z<sub>factor</sub> — z = z<sub>factor</sub>·d</span><input id="i-z-factor" type="text" inputmode="decimal"></label>
             </div>
-            <p class="pt-2 text-[11px] text-slate-500 leading-snug">
-              The variable strut inclination method, EC2 6.2.3(2): cot θ between 1.0 and 2.5,
-              that is θ between 45° and 21.8°. A flatter strut (θ → 21.8°) raises V<sub>Rd,s</sub>
-              and lowers V<sub>Rd,max</sub>. The lever arm is taken as z = z<sub>factor</sub>·d with
-              z<sub>factor</sub> = 0.9 as the usual approximation. Both apply to every stirrup row.
-            </p>
           </div>
         </details>
         <!-- Sidedekningen er SLÅTT SAMMEN med fri avstand (runde 6 §2.6): begge
@@ -302,7 +362,11 @@
         <details id="adv-spacing" class="rounded-lg border border-slate-700 bg-slate-900/40">
           <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-baseline gap-2">
             <span class="text-slate-500">▸</span>
-            <span class="text-slate-300">Side cover and clear spacing (EC2 8.2)</span>
+            <!-- Den ENESTE av de tre som står i en `<summary>`: teksten gjelder
+                 hele boksen, og boksen har ingen underoverskrift å henge den på.
+                 `hints.js` kaller `preventDefault()` på klikket, ellers ville ett
+                 trykk både åpnet hintet og foldet ut boksen. -->
+            <span class="text-slate-300">Side cover and clear spacing (EC2 8.2) <button type="button" class="hint" data-hint="bar-spacing" aria-expanded="false" aria-label="About clear spacing and side cover">?</button></span>
             <span id="spacing-summary" class="text-[11px] text-slate-500 num ml-auto"></span>
           </summary>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3 px-3 pb-3 pt-1">
@@ -311,13 +375,6 @@
             <label><span class="field-label">k<sub>2</sub></span><input id="i-k2" type="text" inputmode="decimal"></label>
             <label><span class="field-label">d<sub>g</sub> — max. aggregate size [mm]</span><input id="i-dg" type="text" inputmode="decimal"></label>
           </div>
-          <p class="px-3 pb-3 text-[11px] text-slate-500 leading-snug">
-            Minimum clear distance between parallel bars or horizontal layers, EC2 8.2(2): the
-            greatest of k<sub>1</sub>·Ø, (d<sub>g</sub> + k<sub>2</sub>) and 20 mm. Recommended
-            k<sub>1</sub> = 1, k<sub>2</sub> = 5. Applies both to bar spacing within a layer and
-            between stacked layers. The side cover is what the same check measures the bars in
-            from each edge.
-          </p>
         </details>
       </div>
       <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3"
@@ -372,7 +429,7 @@
   <!-- ═══════════════ 4 LASTVIRKNING ═══════════════ -->
   <section id="s-last" class="rounded-xl border border-slate-700 bg-slate-800/60">
     <div class="flex items-baseline gap-3 px-5 pt-4 pb-2">
-      <span class="sec-h">4 · Loads</span>
+      <span class="sec-h">4 · Loads <button type="button" class="hint" data-hint="loads" aria-expanded="false" aria-label="How the load combinations are used">?</button></span>
       <span id="load-summary" class="text-xs text-slate-500 num"></span>
     </div>
     <div class="px-5 pb-5 space-y-3">
@@ -382,23 +439,19 @@
         <button type="button" id="add-combo" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">+ Add combination</button>
       </div>
 
-      <!-- SEKS LINJER BLE ÉN (runde 6 §2.6). Fortegnskonvensjonen sto her som
-           brødtekst, men hver rad forklarer den allerede LIVE og for sitt eget
-           tall: `momentInterpretation` skriver «−174,6 kNm → sagging,
-           compression at the top face» under feltet mens man skriver. Det er
-           en langt bedre lærer enn et avsnitt man leser én gang og glemmer, og
-           de tre feltene bærer resten i `title`. Igjen står den ene setningen
-           ingen rad kan si, fordi den handler om ALLE radene. -->
-      <p class="text-[11px] text-slate-500 max-w-xl leading-snug">
-        Every combination is checked; the one with the highest utilisation within
-        [N<sub>min</sub>, N<sub>max</sub>] governs the headline numbers and the drawing.
-      </p>
+      <!-- SEKS LINJER BLE ÉN (runde 6 §2.6), OG DEN ENE BLE ET SPØRSMÅLSTEGN
+           (runde 8 §4). Fortegnskonvensjonen forsvant herfra fordi hver rad
+           forklarer den LIVE for sitt eget tall: `momentInterpretation` skriver
+           «−174,6 kNm → sagging, compression at the top face» under feltet mens
+           man skriver, og den skal ikke røres. Setningen som sto igjen kunne
+           ingen rad si — den handler om ALLE radene — men den leses én gang og
+           huskes, og står nå i `HINTS.loads`, bak merket i overskriften. -->
     </div>
   </section>
 
   <!-- ═══════════════ 5 ANALYSE ═══════════════ -->
   <section id="s-ana" class="rounded-xl border border-slate-700 bg-slate-800/60">
-    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2"><span class="sec-h">5 · Analysis</span></div>
+    <div class="flex items-baseline gap-3 px-5 pt-4 pb-2"><span class="sec-h">5 · Analysis <button type="button" class="hint" data-hint="analysis" aria-expanded="false" aria-label="Which combinations each analysis runs">?</button></span></div>
     <div class="px-5 pb-5">
       <div class="flex flex-wrap gap-1.5" id="ana-chips"></div>
       <p id="ana-desc" class="text-[11px] text-slate-500 mt-2 max-w-md leading-snug"></p>
@@ -570,8 +623,6 @@ const MODULE_CONFIG = {
     cover: { label: 'Cover', symbol: 'c', type: 'expression', unit: 'mm',
       default: 35, min: 0, required: true, category: 'geometry',
       description: 'To the outer edge of the reinforcement. Used for the derived d_c' },
-    stirrup_dia: { label: 'Stirrup diameter', symbol: 'Ø_b', type: 'expression', unit: 'mm',
-      default: 8, min: 0, required: false, category: 'geometry', description: 'Beam only' },
     cover_side: { label: 'Side cover', symbol: 'c_side', type: 'expression', unit: 'mm',
       default: 35, min: 0, required: false, category: 'geometry', description: 'Beam only' },
     'spacing.k1': { label: 'Clear spacing factor k1', symbol: 'k_1', type: 'expression', unit: '-',

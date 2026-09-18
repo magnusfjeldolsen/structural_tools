@@ -151,10 +151,19 @@ test('en bøyle med for stor senteravstand folder ut skjærboksen', () => {
 test('en feil på et ALLTID synlig felt folder ikke ut noe', () => {
   // Uten dette ville hver eneste geometrifeil åpnet alt — og en automatikk som
   // alltid åpner er en avdekking som ikke finnes.
+  //
+  // BØYLERADEN TAS BORT MED VILJE. Standardbjelken har én nå, og med h = 0 blir
+  // `s_l,max = 0,75·d` null, så bøyleraden får sin EGEN feil
+  // (`stirrup_spacing_exceeds_max`) — en følgefeil av høyden, ikke noe brukeren
+  // har gjort. Den ville åpnet skjærboksen og skjult det testen faktisk måler:
+  // at feilen på `geometry.h` i seg selv ikke folder ut noe. Følgefeilen er et
+  // eget spørsmål, og hører ikke hjemme i denne testen.
   const s = defaultState();
+  s.shear = { ...s.shear, stirrups: [] };
   s.geometry.h = 0;
   const issues = validate(s);
   assert.ok(issues.some((i) => i.code === 'invalid_height'));
+  assert.ok(!issues.some((i) => String(i.field).startsWith('shear')), 'ingen skjærfeil å bli forstyrret av');
   assert.deepEqual(boxesForIssues(issues), []);
 });
 
@@ -254,13 +263,29 @@ test('en bøylerad holder skjærboksen åpen ved HVER opptegning, ikke bare ved 
   // setter nettopp de to blant de alltid synlige feltene.
   // `boxesForNonDefaults` kunne ikke fange det: den kjøres bare ved oppstart
   // og lasting.
-  assert.deepEqual(boxesAlwaysOpen(defaultState()), []);
-  const s = defaultState();
-  s.shear = {
-    ...s.shear,
-    stirrups: [{ id: 'S1', dia: 12, spacing: 200, legs: 2, fywk: 500, alpha: 90 }],
+  //
+  // STANDARDBJELKEN HAR EN BØYLERAD NÅ, så den er selv tilfellet «en rad
+  // finnes»: skjærboksen skal stå åpen fra første opptegning, og Ø og c/c er
+  // dermed synlige med det samme — som §2.1 krever, og som er forutsetningen
+  // for at geometrifeltet «Stirrup Ø» kunne fjernes. En bjelke brukeren har
+  // tømt for bøyler er motstykket: ingen rad, ingen Ø og c/c å vise.
+  const beam = defaultState();
+  assert.equal(beam.shear.stirrups.length, 1);
+  assert.deepEqual(boxesAlwaysOpen(beam), ['adv-shear']);
+
+  const utenBøyler = defaultState();
+  utenBøyler.shear = { ...utenBøyler.shear, stirrups: [] };
+  assert.deepEqual(boxesAlwaysOpen(utenBøyler), []);
+
+  const flereRader = defaultState();
+  flereRader.shear = {
+    ...flereRader.shear,
+    stirrups: [
+      { id: 'S1', dia: 12, spacing: 200, legs: 2, fywk: 500, alpha: 90 },
+      { id: 'S2', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 },
+    ],
   };
-  assert.deepEqual(boxesAlwaysOpen(s), ['adv-shear']);
+  assert.deepEqual(boxesAlwaysOpen(flereRader), ['adv-shear'], 'én boks, ikke én per rad');
 });
 
 test('boxesAlwaysOpen tåler en halvferdig tilstand', () => {

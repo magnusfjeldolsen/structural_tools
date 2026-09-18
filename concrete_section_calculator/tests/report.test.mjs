@@ -57,7 +57,6 @@ const BEAM_STATE = {
     law: 'elasticplastic',
   },
   cover: 40,
-  stirrup_dia: 0,
   cover_side: 40,
   spacing: { k1: 1.0, k2: 5.0, d_g: 16 },
   layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50, dc_auto: false }],

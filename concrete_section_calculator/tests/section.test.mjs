@@ -44,7 +44,6 @@ const beamState = (patch = {}) => ({
     law: 'elasticplastic',
   },
   cover: 40,
-  stirrup_dia: 0,
   cover_side: 40,
   spacing: { k1: 1, k2: 5, d_g: 16 },
   layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50, dc_auto: false }],
@@ -311,6 +310,35 @@ test('validate regel 2: laget får ikke plass i bredden', () => {
     layers: [{ id: 'L1', mode: 'spacing', dia: 12, spacing: 113, edge: 'bottom', dc: 31 }],
   });
   assert.ok(!find(slab, 'layer_too_wide'));
+});
+
+test('validate regel 2: breddekontrollen leser BØYLERADEN, ikke et geometrifelt', () => {
+  // `section.js` regner `2·(cover_side + Ø_bøyle) + n·Ø + (n−1)·clear`.
+  // Ø_bøyle kom fra `state.stirrup_dia`; det feltet finnes ikke lenger, og
+  // tallet hentes nå fra `shear.stirrups` gjennom `stirrupCoverDia` — samme
+  // kilde som `dc` og som jernkoordinatene. Var den ikke det, ville
+  // valideringen sagt god for en bredde figuren viser som for trang.
+  //
+  // 4Ø25 i b = 270: clear = max(1·25, 16+5, 20) = 25
+  //   uten bøyle:  2·40        + 100 + 75 = 255 ≤ 270  → OK
+  //   med Ø12:     2·(40 + 12) + 100 + 75 = 279 > 270  → for trangt
+  const layers = [{ id: 'L1', mode: 'bars', dia: 25, count: 4, edge: 'bottom', dc: 60 }];
+  const geometry = { b: 270, h: 600 };
+  const row = (dia, id = 'S1') => ({ id, dia, spacing: 150, legs: 2, fywk: 500, alpha: 90 });
+  const shear = (...rows) => ({ strut_angle_deg: 45, z_factor: 0.9, stirrups: rows });
+
+  assert.ok(!find(beamState({ geometry, layers }), 'layer_too_wide'),
+    'uten bøylerad er det 255 mm som trengs');
+  assert.ok(find(beamState({ geometry, layers, shear: shear(row(12)) }), 'layer_too_wide'),
+    'Ø12-bøyla skal spise 24 mm av bredden');
+
+  // Flere rader: den GROVESTE gjelder, som i `stirrupCoverDia`.
+  //   Ø6 alene:    2·(40 + 6)  + 175 = 267 ≤ 270  → OK
+  //   Ø6 og Ø12:   2·(40 + 12) + 175 = 279 > 270  → for trangt
+  assert.ok(!find(beamState({ geometry, layers, shear: shear(row(6)) }), 'layer_too_wide'),
+    '2·(40+6) + 175 = 267 ≤ 270');
+  assert.ok(find(beamState({ geometry, layers, shear: shear(row(6), row(12, 'S2')) }),
+    'layer_too_wide'), 'den groveste bøyla styrer, ikke den første raden');
 });
 
 test('validate regel 3: materialfaktorer som ikke kan være 0', () => {

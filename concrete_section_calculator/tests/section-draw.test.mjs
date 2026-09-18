@@ -19,28 +19,59 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { drawSection, sectionViewBox, layerLabel, stirrupGeometry } from '../js/section-draw.js';
-import { barPositions, suggestedDc } from '../js/rebar.js';
+import { barPositions, stirrupCoverDia, suggestedDc } from '../js/rebar.js';
+
+/** Referansebjelkens bøyle: Ø8 c/c 150, 2 ben — «S1»-eksempelet i planen. */
+const STIRRUP_S1 = { id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 };
 
 /**
- * Referansebjelken fra planen §3.6. `cover_side = 32` og `stirrup_dia = 8` er
- * valgt slik at jernene havner på y = -100 / 0 / +100 — nøyaktig koordinatene i
+ * Referansebjelken fra planen §3.6. `cover_side = 32` og bøylas Ø8 er valgt
+ * slik at jernene havner på y = -100 / 0 / +100 — nøyaktig koordinatene i
  * `tests/fixtures/payload-beam-300x600.json`. Tegningen testes dermed mot den
  * samme geometrien motoren faktisk får.
+ *
+ * BØYLERADEN ER ENESTE KILDE til de 8 mm. Feltet `stirrup_dia` sto her før,
+ * og hver test som trengte en bøyle la en rad oppå — to tall for ett fysisk
+ * jern, der det ene kunne endres uten det andre. `stirrupCoverDia(BEAM)` er
+ * nå 8 fordi RADEN sier 8, og både den vannrette innrykkingen i
+ * `barPositions` og den loddrette i `dc` leser den samme bøyla. Bjelken har
+ * uansett bøyler i virkeligheten (EC2 9.2.2), så raden hører hjemme her.
  */
 const BEAM = {
   sectionType: 'beam',
   geometry: { b: 300, h: 600 },
-  cover: 22, cover_side: 32, stirrup_dia: 8,
+  cover: 22, cover_side: 32,
+  shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [STIRRUP_S1] },
   layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50 }],
 };
 
-/** Referanseplata: Ø12 c/c 113, dc = 31 ⇒ z = -69, som i plate-payloaden. */
+/** Samme bjelke UTEN `shear`-nøkkel — for testene som handler om at bøyla mangler. */
+const { shear: _beamShear, ...BEAM_UTEN_BØYLE } = BEAM;
+
+/** Referanseplata: Ø12 c/c 113, dc = 31 ⇒ z = -69, som i plate-payloaden.
+ *  Ingen `shear`: en plate har ingen bøyler, og `stirrupCoverDia` gir da 0. */
 const SLAB = {
   sectionType: 'slab',
   geometry: { b: 1000, h: 200 },
-  cover: 25, cover_side: 25, stirrup_dia: 0,
+  cover: 25, cover_side: 25,
   layers: [{ id: 'L1', mode: 'spacing', dia: 12, spacing: 113, edge: 'bottom', dc: 31 }],
 };
+
+/**
+ * `barPositions` sin `opts`, bygget slik PRODUKSJONSKODEN bygger den.
+ *
+ * `opts.stirrup_dia` er `barPositions` sin egen parameter, og den skal fylles
+ * med `stirrupCoverDia(state)`. Det var nettopp her de to kildene sto mot
+ * hverandre: tegningen bøyde seg om bøyleraden mens jernene ble rykket inn
+ * etter geometrifeltet. Testene går derfor gjennom denne ene helperen, slik at
+ * ingen av dem kan gjenopplive en andre kilde ved å plukke et felt selv.
+ */
+const barOpts = (state) => ({
+  sectionType: state.sectionType,
+  cover: state.cover,
+  cover_side: state.cover_side,
+  stirrup_dia: stirrupCoverDia(state),
+});
 
 function viewBoxOf(svg) {
   const m = /viewBox="([^"]+)"/.exec(svg);
@@ -69,6 +100,31 @@ test('sectionViewBox: papirbredden er alltid w * scale', () => {
   }
 });
 
+/**
+ * Merkelappsonen ER IKKE LENGER 34 mm fast — den måles fra merkelappene som
+ * faktisk skal tegnes: `LABEL_GAP(6) + lengste tekstlinje · skrift · GLYPH_W`,
+ * klemt til [4, 34]. Formelen skrives ut i ren aritmetikk her, ikke importeres,
+ * nettopp for å fange at DEN i `section-draw.js` endres.
+ *
+ * `labelLines` er de to linjene én merkelapp består av, med skriftstørrelsen sin.
+ */
+const GLYPH_W = 0.62;
+const LABEL_GAP = 6;
+function labelLines(layer) {
+  return [
+    { text: layerLabel(layer), size: 2.6 },
+    { text: `dc = ${layer.dc} mm`, size: 2.2 },
+  ];
+}
+function expectedLabelZone(state) {
+  let widest = 0;
+  for (const layer of state.layers) {
+    for (const l of labelLines(layer)) widest = Math.max(widest, l.text.length * l.size * GLYPH_W);
+  }
+  if (widest <= 0) return 4;
+  return Math.max(4, Math.min(34, LABEL_GAP + widest));
+}
+
 test('sectionViewBox: målestokken er den strengeste av bredde og høyde', () => {
   // Bjelken 300x600 er høy og smal -> høyden bestemmer.
   const beam = sectionViewBox(BEAM, { width: 174, height: 110 });
@@ -76,8 +132,14 @@ test('sectionViewBox: målestokken er den strengeste av bredde og høyde', () =>
   assert.ok(Math.abs(beam.h * beam.scale - 110) < 1e-9, 'papirhøyden fyller rammen');
 
   // Plata 1000x200 er bred og lav -> bredden bestemmer, og figuren blir lav.
+  // Merkelappene er «Ø12 c/c 113» (11 tegn à 2,6) og «dc = 31 mm» (10 à 2,2);
+  // den første er bredest, så sonen er 6 + 11·2,6·0,62 = 23,732 mm og
+  // tegneflaten 174 - 16 - 23,732 = 134,268 mm. Før den ble målt kostet den
+  // 34 mm fast, og plata måtte nøye seg med 124 mm.
   const slab = sectionViewBox(SLAB, { width: 174, height: 110 });
-  assert.ok(Math.abs(slab.scale - 124 / 1000) < 1e-12, `scale = ${slab.scale}`);
+  assert.equal(expectedLabelZone(SLAB), 23.732);
+  assert.ok(Math.abs(slab.scale - 134.268 / 1000) < 1e-12, `scale = ${slab.scale}`);
+  assert.ok(slab.scale > 124 / 1000, 'den målte sonen skal gi plata MER plass enn de faste 34 mm');
   assert.ok(slab.h * slab.scale < 110, 'plata skal ikke blåses opp til full høyde');
 });
 
@@ -85,9 +147,11 @@ test('sectionViewBox: tverrsnittet sentreres når det blir bredde til overs', ()
   const vb = sectionViewBox(BEAM, { width: 174, height: 110 });
   const left = (-BEAM.geometry.b / 2 - vb.minY) * vb.scale;
   const right = 174 - (BEAM.geometry.b / 2 - vb.minY) * vb.scale;
-  // Merkelappmargen (34 mm) er større enn målmargen (16 mm); overskuddet
-  // fordeles likt, så differansen skal være nøyaktig 34 - 16.
-  assert.ok(Math.abs((right - left) - 18) < 1e-9, `venstre ${left}, høyre ${right}`);
+  // Merkelappmargen er større enn målmargen (16 mm); overskuddet fordeles likt,
+  // så differansen skal være nøyaktig `sone - 16`. For bjelken er den bredeste
+  // linja «dc = 50 mm» (10 tegn à 2,2), altså 6 + 13,64 = 19,64 mm.
+  assert.equal(expectedLabelZone(BEAM), 19.64);
+  assert.ok(Math.abs((right - left) - 3.64) < 1e-9, `venstre ${left}, høyre ${right}`);
 });
 
 test('sectionViewBox: modellutsnittet er uavhengig av enheten', () => {
@@ -100,6 +164,147 @@ test('sectionViewBox: modellutsnittet er uavhengig av enheten', () => {
     assert.ok(Math.abs(mm[key] - px[key]) < 1e-9, `${key}: ${mm[key]} mot ${px[key]}`);
   }
   assert.ok(Math.abs(px.scale / mm.scale - 600 / 174) < 1e-12);
+});
+
+/* ------------------------------------------------------------------ *
+ * `height` er i KALLERENS enhet — enhetslekkasjen, planen §3 punkt 1
+ * ------------------------------------------------------------------ */
+
+/** Papirhøyden figuren faktisk opptar, i kallerens enhet. */
+function paperHeight(state, opts) {
+  const vb = sectionViewBox(state, opts);
+  return vb.h * vb.scale;
+}
+
+/**
+ * REGRESJON — `height` ble tolket i et ANNET TALLROM enn `width`.
+ *
+ * `availH` het `o.maxHeight * o.u - mTop - mBottom`, altså ble den oppgitte
+ * høyden ganget med `u = width / 174` sammen med marginene. For en skjermkaller
+ * med `{width: 300, unit: 'px'}` er `u = 1,724`, så `height: 247` betydde i
+ * praksis 425,9 px. MÅLT FØR RETTELSEN: figuren ble 300 × 425,9 px — 72 % for
+ * høy for boksen kalleren nettopp hadde beskrevet — uten en feilmelding noe
+ * sted. Den rant bare ut av kortet sitt.
+ *
+ * Dette er hele grunnen til at «send en generøs høyde fra `ui.js`» ikke virket:
+ * tallet betydde ikke det det sa.
+ */
+test('sectionViewBox: height måles i samme enhet som width, ikke i rapport-mm', () => {
+  // Skjermtilfellet, med det målte tallet fra før rettelsen.
+  const px247 = paperHeight(BEAM, { width: 300, unit: 'px', height: 247 });
+  assert.ok(Math.abs(px247 - 247) < 1e-9,
+    `en boks på 247 px skal gi en figur på 247 px, ikke ${px247.toFixed(1)} (før: 425,9)`);
+
+  // Og i mm, ved en annen bredde enn de 174 der u = 1 skjuler feilen. To i
+  // bredden (87 mm) med 60 mm å gå på ga før 30 mm — nøyaktig halvparten, som
+  // er `u`-faktoren i ren form.
+  const mm60 = paperHeight(BEAM, { width: 87, unit: 'mm', height: 60 });
+  assert.ok(Math.abs(mm60 - 60) < 1e-9, `87 mm bred, 60 mm høy: ${mm60} (før: 30)`);
+
+  // Standarden er uendret: uten `height` gjelder A4-regelen 110 rapport-mm,
+  // skalert med bredden, akkurat som før.
+  assert.ok(Math.abs(paperHeight(BEAM, { width: 174 }) - 110) < 1e-9);
+  assert.ok(Math.abs(paperHeight(BEAM, { width: 87 }) - 55) < 1e-9);
+  assert.ok(Math.abs(paperHeight(BEAM, { width: 300, unit: 'px' }) - 110 * (300 / 174)) < 1e-9);
+});
+
+/**
+ * En generøs høyde skal gi en STOR figur, og det skal kunne måles.
+ *
+ * Tallene er de målte utgangspunktene fra planen §3: bjelken 300×600 i en boks
+ * på 300 px bredde fylte 25,6 % av bredden fordi den arvet papirets 110
+ * rapport-mm. Den er høy og smal, så høyden vil alltid binde i en boks som er
+ * bredere enn den er høy — men hvor mye den binder, er kallerens valg, ikke
+ * papirets.
+ */
+test('sectionViewBox: en generøs høyde forstørrer figuren, målbart', () => {
+  const box = { width: 300, unit: 'px' };
+  const fill = (h) => {
+    const vb = sectionViewBox(BEAM, h === null ? box : { ...box, height: h });
+    return (BEAM.geometry.b * vb.scale) / box.width;
+  };
+
+  // Uten `height`: papirets tak, og planens målte 25,6 %.
+  assert.ok(Math.abs(fill(null) - 0.2557) < 5e-4, `arvet papirhøyde: ${fill(null)}`);
+
+  // Med kortets egen høyde: figuren vokser med 37 %.
+  assert.ok(Math.abs(fill(247) - 0.3513) < 5e-4, `height = 247: ${fill(247)}`);
+  assert.ok(fill(247) > fill(null) * 1.35);
+
+  // STRENGT VOKSENDE helt til bredden overtar. Uten dette kunne en «generøs»
+  // høyde i prinsippet bli sluppet på gulvet uten at noe feilet.
+  let forrige = 0;
+  for (const h of [120, 180, 247, 320, 400, 460]) {
+    const f = fill(h);
+    assert.ok(f > forrige, `height = ${h} ga ikke en større figur enn forrige (${f} mot ${forrige})`);
+    forrige = f;
+  }
+  // Og så slutter den å vokse: bredden binder, og mer høyde er bortkastet.
+  assert.ok(Math.abs(fill(2000) - fill(1000)) < 1e-9, 'bredden skal ta over som begrensning');
+});
+
+/**
+ * A4-GARANTIEN, skrevet som en test i stedet for som en forhåpning.
+ *
+ * `scale = min(availW/b, availH/h)` og `paperH = mTop + mBottom + h·scale`, så
+ * `paperH <= mTop + mBottom + availH = maxHeight` ALLTID — uansett hvor bred
+ * merkelappsonen blir. Det er denne ulikheten som gjør at en smalere
+ * merkelappsone bare kan gi en BREDERE figur, aldri en side som sprenges.
+ */
+test('sectionViewBox: papirhøyden overskrider aldri taket, med eller uten height', () => {
+  const former = [
+    { b: 300, h: 600 }, { b: 1000, h: 200 }, { b: 250, h: 2000 },
+    { b: 3000, h: 6000 }, { b: 5000, h: 100 }, { b: 200, h: 200 },
+  ];
+  for (const geometry of former) {
+    for (const opts of [{ width: 174 }, { width: 87 }, { width: 174, height: 60 },
+      { width: 300, unit: 'px' }, { width: 300, unit: 'px', height: 247 }]) {
+      const state = { ...BEAM, geometry };
+      const tak = opts.height ?? 110 * (opts.width / 174);
+      const paperH = paperHeight(state, opts);
+      assert.ok(paperH <= tak + 1e-9,
+        `${geometry.b}x${geometry.h} @ ${JSON.stringify(opts)}: ${paperH} over taket ${tak}`);
+    }
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * Merkelappsonen — målt, ikke fast
+ * ------------------------------------------------------------------ */
+
+/**
+ * REGRESJON — 34 rapport-mm ble reservert til merkelapper som ikke fantes.
+ *
+ * `MARGIN.right.on` var en fast kostnad: 19,5 % av figurbredden, permanent, helt
+ * uavhengig av hva merkelappene sa og av om det i det hele tatt var noen. Et
+ * tverrsnitt uten armering betalte full pris for en tom sone.
+ */
+test('sectionViewBox: merkelappsonen måles fra merkelappene, ikke fastsatt', () => {
+  // Plata er breddebundet, så `scale` ER tegneflaten delt på 1000 — sonen kan
+  // leses rett ut av målestokken uten å eksportere noe nytt fra modulen.
+  const kort = { ...SLAB, layers: [{ ...SLAB.layers[0], mode: 'bars', count: 4, dc: 31 }] };
+  const lang = { ...SLAB, layers: [{ ...SLAB.layers[0], mode: 'spacing', spacing: 1000, dc: 31 }] };
+  const ingen = { ...SLAB, layers: [] };
+
+  const sKort = sectionViewBox(kort, { width: 174, height: 110 }).scale;
+  const sLang = sectionViewBox(lang, { width: 174, height: 110 }).scale;
+  const sIngen = sectionViewBox(ingen, { width: 174, height: 110 }).scale;
+
+  // «4Ø12» er kortere enn «Ø12 c/c 1000», så den korte merkelappen skal gi den
+  // største figuren av de to som HAR merkelapper.
+  assert.ok(sKort > sLang, `kort merkelapp ga ikke større figur: ${sKort} mot ${sLang}`);
+  // Og uten merkelapper i det hele tatt skal sonen falle til minstemålet.
+  assert.ok(sIngen > sKort, `ingen merkelapper ga ingen gevinst: ${sIngen} mot ${sKort}`);
+  assert.ok(Math.abs(sIngen - (174 - 16 - 4) / 1000) < 1e-12,
+    `uten lag skal sonen være MARGIN.right.off = 4 mm: ${sIngen}`);
+
+  // Taket holder: en absurd lang merkelapp skal ikke spise mer enn de 34 mm
+  // sonen kostet før. Rapporten er den harde kunden, og den skal aldri bli
+  // dårligere enn den var.
+  const absurd = { ...SLAB, layers: [{ ...SLAB.layers[0], dia: 12, spacing: 1234567890, dc: 31 }] };
+  const sAbsurd = sectionViewBox(absurd, { width: 174, height: 110 }).scale;
+  assert.ok(Math.abs(sAbsurd - (174 - 16 - 34) / 1000) < 1e-12,
+    `sonen skal klemmes til 34 mm: ${sAbsurd}`);
 });
 
 test('sectionViewBox: uten mål og merkelapper blir tegningen større', () => {
@@ -151,12 +356,7 @@ test('drawSection: jernene i tegningen ER barPositions(), ikke egne tall', () =>
     const svg = drawSection(state, opts);
     const circles = rebarCircles(svg);
 
-    const forventet = state.layers.flatMap((l) => barPositions(l, state.geometry, {
-      sectionType: state.sectionType,
-      cover: state.cover,
-      cover_side: state.cover_side,
-      stirrup_dia: state.stirrup_dia,
-    }));
+    const forventet = state.layers.flatMap((l) => barPositions(l, state.geometry, barOpts(state)));
     assert.equal(circles.length, forventet.length,
       `${state.sectionType}: ${circles.length} sirkler mot ${forventet.length} jern`);
 
@@ -182,8 +382,52 @@ test('drawSection: jernene havner der payload-fixturen sier', () => {
   const sy = rebarCircles(drawSection(SLAB, { width: 174 }))
     .map((c) => c.cx / vs.scale + vs.minY);
   assert.equal(sy.length, 9);
-  assert.ok(Math.abs(sy[4]) < 1e-6, 'midterste jern på y = 0');
-  assert.ok(Math.abs((sy[1] - sy[0]) - 113) < 1e-6, 'faktisk senteravstand');
+  /*
+   * TOLERANSEN ER AVLEDET, IKKE GJETTET. `r()` runder hvert koordinat til tre
+   * desimaler, så hver `cx` bærer opptil 5e-4 papir-mm, som tilbakeregnet blir
+   * `5e-4 / scale` modell-mm — og en DIFFERANSE mellom to av dem det dobbelte.
+   *
+   * Her sto det 1e-6, og det gikk bare fordi målestokken tilfeldigvis var
+   * 0,124: 113 · 0,124 = 14,012, som er eksakt i tre desimaler. Første gang
+   * målestokken endret seg — her fordi merkelappsonen ble målt i stedet for
+   * fast — feilet testen på avrundingsstøy, ikke på en feil i tegningen. En
+   * toleranse som avhenger av at et produkt går opp, tester ikke det den sier.
+   */
+  const tol = 1e-3 / vs.scale;
+  assert.ok(Math.abs(sy[4]) < tol / 2, `midterste jern på y = 0: ${sy[4]}`);
+  assert.ok(Math.abs((sy[1] - sy[0]) - 113) < tol, `faktisk senteravstand: ${sy[1] - sy[0]}`);
+});
+
+/**
+ * ÉN BØYLE I BEGGE RETNINGER.
+ *
+ * Jernet rykkes VANNRETT inn av `barPositions` (`b/2 − cover_side − Ø_bøyle −
+ * dia/2`) og LODDRETT ned av `dc` (`cover + Ø_bøyle + dia/2`). Før leste de to
+ * hvert sitt tall: den vannrette geometrifeltet `stirrup_dia`, den loddrette
+ * det samme feltet, mens bøyla som ble TEGNET kom fra `shear.stirrups[0]`.
+ * Ø10 i skjærraden ga da en bøyle tegnet 2 mm inn i armeringen.
+ *
+ * Testen endrer ÉN ting — radens `dia` — og krever at BEGGE forskyvningene
+ * flytter seg nøyaktig like mye. En gjenoppstått andre kilde ville holdt den
+ * ene i ro.
+ */
+test('drawSection: samme bøyle styrer både den vannrette og den loddrette innrykkingen', () => {
+  for (const dia of [8, 12, 16]) {
+    const base = { ...BEAM, cover: 35, cover_side: 35,
+      shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ ...STIRRUP_S1, dia }] } };
+    const state = { ...base, layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3,
+      edge: 'bottom', dc: suggestedDc(base, 20), dc_auto: true }] };
+
+    const vb = sectionViewBox(state, { width: 174 });
+    const circles = rebarCircles(drawSection(state, { width: 174 }));
+    const ys = circles.map((c) => c.cx / vb.scale + vb.minY);
+    const zs = circles.map((c) => vb.minZ + vb.h - c.cy / vb.scale);
+
+    // Vannrett: 300/2 − 35 − Ø_bøyle − 20/2
+    assert.ok(Math.abs(ys[2] - (150 - 35 - dia - 10)) < 5e-3, `Ø${dia}: y = ${ys[2]}`);
+    // Loddrett: −600/2 + (35 + Ø_bøyle + 20/2)
+    assert.ok(Math.abs(zs[0] - (-300 + 35 + dia + 10)) < 5e-3, `Ø${dia}: z = ${zs[0]}`);
+  }
 });
 
 test('drawSection: små jern i en bred plate får en synlig minsteradius', () => {
@@ -207,6 +451,72 @@ test('drawSection: mål skrus av og på, og plata merkes per meter', () => {
   assert.ok(!/data-role="dims"/.test(uten));
 
   assert.match(drawSection(SLAB, {}), />b = 1000 mm \(per metre\)</);
+});
+
+/**
+ * VOKTEREN OVER MERKELAPPSONEN — den ene tingen som kan gå galt når sonen måles
+ * i stedet for å være fast.
+ *
+ * `section-draw.js` er DOM-fri med vilje (§2.3 punkt 2) og kan derfor ikke måle
+ * tekst; den anslår med `GLYPH_W = 0,62` middelbredde per tegn. Slår anslaget
+ * feil vei, skrives merkelappen ut over kanten av arket, og det ser man først
+ * etter utskrift.
+ *
+ * Denne testen anslår IKKE. Den bruker de ekte tegnbreddene fra Helvetica
+ * (AFM, tusendels em) for de tegnene merkelappene faktisk består av, og krever
+ * at hver eneste merkelapp ender innenfor figurens papirbredde. Den er
+ * uavhengig av `GLYPH_W` og vil derfor fange at konstanten settes for lavt.
+ */
+const HELVETICA = { ' ': 278, '=': 584, '/': 278, '.': 278, '–': 556, 'Ø': 778,
+  c: 500, d: 556, m: 833, '0': 556, '1': 556, '2': 556, '3': 556, '4': 556,
+  '5': 556, '6': 556, '7': 556, '8': 556, '9': 556 };
+
+/** Ekte tekstbredde i papirenheter. Ukjente tegn får den bredeste glyffen. */
+function helveticaWidth(text, fontSize) {
+  let em = 0;
+  for (const ch of text) em += (HELVETICA[ch] ?? 833) / 1000;
+  return em * fontSize;
+}
+
+test('drawSection: ingen merkelapp stikker ut over figurkanten', () => {
+  const stater = [
+    BEAM,
+    SLAB,
+    { ...SLAB, layers: [{ ...SLAB.layers[0], spacing: 1000, dc: 199 }] },
+    { ...SLAB, layers: [{ ...SLAB.layers[0], dia: 32, spacing: 987, dc: 188 }] },
+    { ...BEAM, layers: [{ ...BEAM.layers[0], count: 12, dia: 32, dc: 123 }] },
+    // Taket på 34 mm slår inn her; merkelappen skal fortsatt få plass, og det
+    // er nettopp den klemmen som gjør taket forsvarlig.
+    { ...SLAB, layers: [{ ...SLAB.layers[0], spacing: 1234567890, dc: 31 }] },
+  ];
+
+  for (const width of [174, 87, 300]) {
+    for (const state of stater) {
+      const svg = drawSection(state, { width, unit: width === 300 ? 'px' : 'mm' });
+      const vb = sectionViewBox(state, { width, unit: width === 300 ? 'px' : 'mm' });
+      const paperW = vb.w * vb.scale;
+      const g = /<g data-role="labels">([\s\S]*?)<\/g>/.exec(svg);
+      assert.ok(g, 'mangler merkelappgruppa');
+      const tekster = [...g[1].matchAll(
+        /<text x="([-\d.]+)"[^>]*font-size="([\d.]+)"[^>]*>([^<]*)<\/text>/g)];
+      assert.ok(tekster.length > 0, 'fant ingen merkelapper å måle');
+      for (const [, x, fs, text] of tekster) {
+        const slutt = Number(x) + helveticaWidth(text, Number(fs));
+        assert.ok(slutt <= paperW + 1e-6,
+          `«${text}» ender i ${slutt.toFixed(2)} av ${paperW.toFixed(2)} ` +
+          `(${state.sectionType} @ ${width})`);
+      }
+    }
+  }
+
+  // Og anslaget skal ha margin, ikke bare så vidt gå opp: det er den marginen
+  // som gjør at en merkelapp vi ikke har tenkt på også får plass.
+  const svg = drawSection(SLAB, { width: 174 });
+  const t = /<text x="([-\d.]+)"[^>]*font-size="([\d.]+)"[^>]*>(Ø12[^<]*)<\/text>/.exec(svg);
+  assert.ok(t, 'fant ikke plate-merkelappen');
+  const ekte = helveticaWidth(t[3], Number(t[2]));
+  const anslag = t[3].length * Number(t[2]) * 0.62;
+  assert.ok(anslag > ekte * 1.1, `anslaget (${anslag.toFixed(2)}) har for lite margin mot ${ekte.toFixed(2)}`);
 });
 
 test('drawSection: merkelappene bruker bransjenotasjonen fra UI-et', () => {
@@ -276,13 +586,10 @@ test('drawSection: tverrsnitt uten armering gir fortsatt en gyldig figur', () =>
  * Bøyler (skjærarmering) — endringsrunde 4, §5.3
  * ================================================================== */
 
-/** Referansebjelkens bøyle: Ø8 c/c 150, 2 ben — «S1»-eksempelet i planen. */
-const STIRRUP_S1 = { id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 };
-
 test('stirrupGeometry: null uten skjærarmering, uansett hvordan fraværet uttrykkes', () => {
   assert.equal(stirrupGeometry({ ...BEAM, shear: { stirrups: [] } }), null);
   assert.equal(stirrupGeometry({ ...BEAM, shear: undefined }), null);
-  assert.equal(stirrupGeometry(BEAM), null, 'BEAM har ingen shear-nøkkel i det hele tatt');
+  assert.equal(stirrupGeometry(BEAM_UTEN_BØYLE), null, 'ingen shear-nøkkel i det hele tatt');
 });
 
 test('stirrupGeometry: inset = cover_side/cover + dia/2, målt mot referansebjelken', () => {
@@ -379,8 +686,8 @@ test('stirrupGeometry: benavstanden er den samme formelen som s_t,max-kontrollen
 });
 
 test('drawSection: bøylene tegnes bare når lista ikke er tom, og nedtonet', () => {
-  const uten = drawSection(BEAM, {});
-  assert.ok(!/data-role="stirrup"/.test(uten), 'BEAM har ingen shear -> ingen bøyletegning');
+  const uten = drawSection(BEAM_UTEN_BØYLE, {});
+  assert.ok(!/data-role="stirrup"/.test(uten), 'ingen shear -> ingen bøyletegning');
 
   const med = drawSection({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } }, {});
   assert.match(med, /data-role="stirrup"/);
@@ -476,12 +783,7 @@ test('drawSection: ingen bøyleben ligger inntil et jern uten å være snappet t
 
   for (const state of states) {
     const g = stirrupGeometry(state);
-    const bars = barPositions(state.layers[0], state.geometry, {
-      sectionType: state.sectionType,
-      cover: state.cover,
-      cover_side: state.cover_side,
-      stirrup_dia: state.stirrup_dia,
-    });
+    const bars = barPositions(state.layers[0], state.geometry, barOpts(state));
     for (const y of g.legY) {
       for (const bar of bars) {
         const d = Math.abs(y - bar.y);
@@ -634,18 +936,22 @@ test('drawSection: bøylemerkelappen kolliderer ikke med jernene', () => {
  */
 test('stirrupGeometry: jernet ligger i bøyen også når dc er den AVLEDEDE verdien', () => {
   const dia = 20;
-  const base = { ...BEAM, cover: 35, cover_side: 35, stirrup_dia: 8 };
+  // Ø8-bøyla står i RADEN — `suggestedDc` leser den derfra. Tallet er det
+  // samme som før (35 + 8 + 10 = 53); det er kilden som er blitt én.
+  const base = { ...BEAM, cover: 35, cover_side: 35,
+    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ ...STIRRUP_S1, legs: 4 }] } };
   const dc = suggestedDc(base, dia);
+  assert.equal(dc, 53, 'dc = 35 + 8 + 20/2 — bøyla lest fra raden');
   const state = {
     ...base,
     layers: [{ id: 'L1', mode: 'bars', dia, count: 4, edge: 'bottom', dc, dc_auto: true }],
-    shear: { stirrups: [{ ...STIRRUP_S1, legs: 4 }] },
   };
   const g = stirrupGeometry(state);
 
   // Forutsetningen: dette ER tangeringstilfellet, ellers tester vi noe annet.
-  const bar = barPositions(state.layers[0], state.geometry,
-    { cover_side: state.cover_side, stirrup_dia: state.stirrup_dia })[0];
+  // SAMME bøyle i begge retninger: `dc` over og innrykkingen her leser nå én
+  // og samme rad, der de før leste hvert sitt felt.
+  const bar = barPositions(state.layers[0], state.geometry, barOpts(state))[0];
   const rad = (dia + STIRRUP_S1.dia) / 2;
   assert.ok(Math.abs((bar.z - rad) - g.z0) < 1e-9,
     `forutsetningen: jernet skal tangere bøylas underside (${bar.z - rad} mot ${g.z0})`);
@@ -672,9 +978,8 @@ test('stirrupGeometry: jernet ligger i bøyen også når dc er den AVLEDEDE verd
  * ytre, som er det som faktisk er bundet i bøylen.
  */
 test('stirrupGeometry: med to underkantlag bøyes benet rundt det YTRE jernet', () => {
-  const base = { ...BEAM, cover: 35, cover_side: 35, stirrup_dia: 8 };
   const state = {
-    ...base,
+    ...BEAM, cover: 35, cover_side: 35,
     layers: [
       { id: 'L1', mode: 'bars', dia: 20, count: 4, edge: 'bottom', dc: 53, dc_auto: true },
       { id: 'L2', mode: 'bars', dia: 20, count: 4, edge: 'bottom', dc: 94, dc_auto: true },

@@ -546,13 +546,16 @@ function assertNoNorwegian(svg, label) {
 const SECTION_BEAM = {
   sectionType: 'beam',
   geometry: { b: 300, h: 600 },
-  cover: 22, cover_side: 32, stirrup_dia: 8,
+  cover: 22, cover_side: 32,
+  // Bøyla bor i RADEN — `state.stirrup_dia` finnes ikke lenger.
+  shear: { strut_angle_deg: 45, z_factor: 0.9,
+    stirrups: [{ id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 }] },
   layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50 }],
 };
 const SECTION_SLAB = {
   sectionType: 'slab',
   geometry: { b: 1000, h: 200 },
-  cover: 25, cover_side: 25, stirrup_dia: 0,
+  cover: 25, cover_side: 25,
   layers: [{ id: 'L1', mode: 'spacing', dia: 12, spacing: 113, edge: 'bottom', dc: 31 }],
 };
 
