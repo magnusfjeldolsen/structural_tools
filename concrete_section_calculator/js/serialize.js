@@ -113,9 +113,19 @@ export function fromDocument(doc) {
   merged.layers = (Array.isArray(merged.layers) ? merged.layers : []).map((layer) =>
     createLayer(merged, { ...layer })
   );
-  merged.combos = (Array.isArray(merged.combos) ? merged.combos : []).map((combo) =>
-    createCombo(merged, { ...combo })
-  );
+  merged.combos = (Array.isArray(merged.combos) ? merged.combos : []).map((combo) => {
+    const raw = combo;
+    const normalized = createCombo(merged, { ...combo });
+    // STEG 2: advarsel BARE når fila FAKTISK hadde et `type`-felt som
+    // `createCombo` måtte rette. En fil helt uten `type` (alle filer lagret
+    // før denne runden) skal IKKE gi denne noten — den situasjonen er
+    // allerede dekket av `document_field_defaulted` ovenfor, og et felt som
+    // aldri var der er ikke det samme som et felt som var der og var ugyldig.
+    if ('type' in raw && raw.type !== normalized.type) {
+      notes.push({ code: 'combo_type_unknown', severity: 'warning', field: combo.id });
+    }
+    return normalized;
+  });
 
   // Endringsrunde 4 §2: en lagret fil kan være håndredigert, eller lagret av
   // en versjon som lot `analysis: 'bending'` stå sammen med en aksialkraft.

@@ -274,6 +274,11 @@ export const ENGINE_CODES = Object.freeze([
   'as_min_not_applicable',
   'checks_not_evaluated',
   'assessment_incomplete',
+  // STEG 2 — lastkombinasjonstype (§E6). Ingen `uls`-rad i det hele tatt er en
+  // ANNEN situasjon enn `axial_out_of_range` (som fortsatt betyr: det FANTES
+  // uls-rader, men ingen av dem lå i [n_min, n_max]) — to ulike meldinger.
+  'no_uls_combination',
+  'mc_active_not_uls',
 ]);
 
 /** Kodene `section.js` sin `validate()` kan produsere. Samme tabell, ett oppslag. */
@@ -320,6 +325,10 @@ export const RUNTIME_CODES = Object.freeze([
   // med tverrsnittet. `solver-client.js` eksporterer den som
   // `RUN_ALL_PARTIAL_CODE`.
   'run_all_partial',
+  // STEG 2 — `serialize.js:fromDocument` sin note når en fil hadde et `type`-
+  // felt `createCombo` måtte rette. En fil HELT UTEN `type` gir IKKE denne
+  // noten (den er dekket av `document_field_defaulted`) — se serialize.js.
+  'combo_type_unknown',
 ]);
 
 /**
@@ -417,6 +426,13 @@ export const CODE_MESSAGES = Object.freeze({
     'The overall assessment is inconclusive. At least one check could not be ' +
     'answered, so this section has not been vouched for. The technical detail names ' +
     'the rows that are open. Read "–" as a question still open, never as a pass.',
+  /* --- STEG 2 — lastkombinasjonstype --- */
+  mc_active_not_uls:
+    'Moment–curvature traces the failure state of the ACTIVE load combination, and that '
+    + 'row is not a ULS combination. Make a ULS row the active one.',
+  no_uls_combination:
+    'No load combination is of type ULS. Serviceability checks are not implemented ' +
+    'in this version, so there is nothing to check.',
 
   /* --- validering (`section.js`) --- */
   invalid_height: 'Height h must be greater than 0.',
@@ -492,6 +508,9 @@ export const CODE_MESSAGES = Object.freeze({
     'The file requested bending resistance with a non-zero axial force. A resistance ' +
     'quoted at a single axial force is one point on a curve, so the analysis was ' +
     'changed to the N–M interaction domain on load.',
+  combo_type_unknown:
+    'A load combination in the file had an unrecognised combination type. It has ' +
+    'been treated as ULS.',
 });
 
 /**

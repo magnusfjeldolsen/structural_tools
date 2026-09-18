@@ -508,6 +508,14 @@ export function createLayer(state = {}, patch = {}) {
 }
 
 /**
+ * De tre lastkombinasjonstypene STEG 2 kjenner. `uls` er den eneste som
+ * kontrolleres i denne runden — `characteristic` og `quasi_permanent` er
+ * SLS-typer, og bruksgrensetilstand er ikke implementert. En rad med en av
+ * de to får `checked: false` i motoren (engine.py) og vises nedtonet i UI-et.
+ */
+export const COMBO_TYPES = Object.freeze(['uls', 'characteristic', 'quasi_permanent']);
+
+/**
  * Ny lastkombinasjon. Ligger her, ved siden av `createLayer`, av samme grunn:
  * begge er per-rad-fabrikker som `store.js` (nye rader) og `serialize.js`
  * (normalisering av lastede filer, §5) kaller på samme måte.
@@ -520,6 +528,12 @@ export function createLayer(state = {}, patch = {}) {
  * `V_Ed` er nytt (§3.4/§4.1c): en STØRRELSE, fortegnet betyr ingenting for
  * skjærkapasiteten.
  *
+ * `type` (STEG 2): normaliseres til en av `COMBO_TYPES`, ELLERS `'uls'` — den
+ * konservative retningen, siden en `uls`-rad BLIR kontrollert. Normaliseringen
+ * MÅ stå ETTER `...patch`: fabrikken har ingen egen notat-kanal (den som
+ * kaller melder fra, se `serialize.js`), men skal likevel aldri slippe gjennom
+ * en ukjent/manglende type fra en fil eller et API-kall.
+ *
  * @param {object} state
  * @param {object} [patch]
  */
@@ -530,14 +544,17 @@ export function createCombo(state = {}, patch = {}) {
   // dimensjonerende raden — og å kreve at brukeren finner på et navn for hver
   // rad er nettopp den friksjonen som ikke skal finnes. Brukeren kan overskrive.
   const nr = /^C(\d+)$/.exec(id);
-  return {
+  const out = {
     id,
     name: nr ? `ULS ${nr[1]}` : '',
+    type: 'uls',
     N_Ed: 0,
     M_Ed: 0,
     V_Ed: 0,
     ...patch,
   };
+  out.type = COMBO_TYPES.includes(out.type) ? out.type : 'uls';
+  return out;
 }
 
 /**

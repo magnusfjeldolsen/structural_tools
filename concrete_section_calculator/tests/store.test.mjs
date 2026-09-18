@@ -472,9 +472,10 @@ test('bjelke → plate (endre alt) → bjelke: snittet er BIT-IDENTISK med utgan
   store.setState({ cover: 20 });
   store.updateLayer(store.getState().layers[0].id, { dia: 16, spacing: 125 });
   store.addLayer({ edge: 'top' });
-  // Plata har ingen bøylerad; her legges det på én, som heller ikke skal
-  // følge med tilbake til bjelken.
-  store.addStirrup();
+  // Plata får aldri bøyler (steg 1, §A1/A3 i store.js) — kallet er nå en
+  // no-op (returnerer `null`) i stedet for å legge på en rad som likevel
+  // ikke skulle følge med tilbake til bjelken.
+  assert.equal(store.addStirrup(), null);
 
   store.setSectionType('beam');
   assert.deepEqual(sectionOf(store.getState()), before);
@@ -611,12 +612,15 @@ test('INVARIANTENE kjøres etter gjenoppretting — stashet er tilstand, ikke en
   store.setSectionType('slab');
   const s = store.getState();
   assert.equal(s.geometry.b, 1000, 'enforceSlabWidth');
-  assert.equal(s.shear.stirrups[0].alpha, 90, 'normalisering gjennom createStirrup');
-  assert.equal(s.shear.stirrups[0].dia, 10, 'radens egen diameter overlever normaliseringen');
+  // STEG 1 (§A1/A2 i store.js): et håndredigert `stash.slab` med en bøylerad
+  // er nettopp den fjerde døra planen navngir — `enforceSlabStirrups` kjøres
+  // ETTER normaliseringen gjennom `createStirrup` (som satte `alpha: 90` før
+  // runden), men tømmer likevel lista, fordi plata aldri skal ha bøyler.
+  assert.deepEqual(s.shear.stirrups, [], 'plata får aldri bøyler, heller ikke fra et håndredigert stash');
   assert.equal(s.stirrup_dia, undefined, 'ÉN kilde — geometrifeltet finnes ikke');
-  // …og `dc` regnes av den: 35 + 10 + 12/2 = 51. Et platestash MED en bøylerad
-  // er uvanlig, men bøyla er da faktisk der, og skal telle.
-  assert.equal(s.layers[0].dc, 51);
+  // …og `dc` regnes UTEN bøyle: 35 + 0 + 12/2 = 41. Målt tidligere (før steg 1)
+  // som 51 — 10 mm for dypt, fordi S9 da fikk telle med.
+  assert.equal(s.layers[0].dc, 41);
   // Og løpenummeret hopper forbi L9, som ligger i det gjenopprettede snittet.
   assert.equal(store.addLayer({ edge: 'top' }).id, 'L10');
 });
@@ -651,4 +655,224 @@ test('et stash med TOM lag-liste får ikke et lag dyttet på seg', () => {
   });
   store.setSectionType('slab');
   assert.deepEqual(store.getState().layers, []);
+});
+
+/*
+ * ===========================================================================
+ * STEG 1 — SKJÆRARMERING UT AV PLATE (V_Rd,c blir værende)
+ * ===========================================================================
+ * EC2 6.2.3 og 9.2.2 er bjelkeregler, og 9.3.2 tillater ikke skjærarmering i
+ * plater tynnere enn 200 mm. V_Rd,c etter 6.2.2 gjelder derimot per meter
+ * platebredde, og skal fortsatt regnes — derfor tømmes bare `stirrups`-lista,
+ * `section.shear` sendes fortsatt (tom `stirrups`-liste ER V_Rd,c-signalet).
+ * Regelen ligger ÉTT sted (`enforceSlabStirrups` i store.js), kalt fra alle
+ * fem dørene inn til tilstanden.
+ */
+
+test('S1 — createStore med sectionType:slab og en bøylerad ⇒ stirrups tømmes (konstruktørdøra)', () => {
+  const s = createStore({
+    sectionType: 'slab',
+    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S1', dia: 12, spacing: 200, legs: 2, fywk: 500, alpha: 90 }] },
+  }).getState();
+  assert.deepEqual(s.shear.stirrups, [], 'plata får aldri bøyler, heller ikke fra initial-staten');
+});
+
+test('S2 — addStirrup() på en plate returnerer null og legger ikke til noe (knapp-døra)', () => {
+  const store = createStore();
+  store.setSectionType('slab');
+  assert.equal(store.addStirrup(), null, 'plata får aldri bøyler — programmatisk kall er en no-op');
+  assert.equal(store.getState().shear.stirrups.length, 0);
+});
+
+test('S3 — replaceState (setInputs / lastet fil) med plate og bøylerad ⇒ tom liste', () => {
+  const store = createStore();
+  store.replaceState({
+    sectionType: 'slab',
+    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S1', dia: 12, spacing: 200, legs: 2, fywk: 500, alpha: 90 }] },
+  });
+  assert.deepEqual(store.getState().shear.stirrups, [], 'setInputs/lastet fil er en av de fem dørene');
+});
+
+test('S4 — patch("shear", {stirrups}) på en aktiv plate ⇒ tom liste', () => {
+  const store = createStore();
+  store.setSectionType('slab');
+  store.patch('shear', { stirrups: [{ id: 'S1', dia: 12, spacing: 200, legs: 2, fywk: 500, alpha: 90 }] });
+  assert.deepEqual(store.getState().shear.stirrups, [], '`patch` er en lovlig, om uvanlig, vei inn i shear');
+});
+
+test('S5 — setState({sectionType:"slab"}) på en bjelke med bøylerad ⇒ tom liste', () => {
+  const store = createStore(); // standardbjelken har allerede S1
+  assert.equal(store.getState().shear.stirrups.length, 1);
+  store.setState({ sectionType: 'slab' });
+  assert.deepEqual(store.getState().shear.stirrups, [], '`setState` bærer ikke bjelkens bøylerad over på plata');
+});
+
+test('S6 — et HÅNDREDIGERT stash.slab med bøyler ryddes når man bytter TIL den platen', () => {
+  const store = createStore({
+    sectionType: 'beam',
+    stash: {
+      slab: {
+        geometry: { b: 1000, h: 240 },
+        shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ id: 'S9', dia: 10, spacing: 200, legs: 2, fywk: 500 }] },
+      },
+    },
+  });
+  store.setSectionType('slab');
+  assert.deepEqual(store.getState().shear.stirrups, [], 'et gjenopprettet stash er tilstand, ikke en omgåelse av regelen');
+});
+
+test('S7 — bjelken er URØRT: standardstoren har fortsatt S1, og addStirrup virker på bjelke', () => {
+  const store = createStore();
+  assert.equal(store.getState().shear.stirrups.length, 1);
+  assert.equal(store.getState().shear.stirrups[0].id, 'S1');
+  const row = store.addStirrup();
+  assert.equal(row.id, 'S2', 'addStirrup virker fortsatt normalt på en bjelke');
+  assert.equal(store.getState().shear.stirrups.length, 2);
+});
+
+test('S8 — dc følger med: bjelke med Ø12-bøyle → plate ⇒ dc = cover + dia/2 (ingen bøyle å ligge innenfor)', () => {
+  const store = createStore(); // standardlag L1 er Ø20 i bunn, standardbøyle S1 er Ø12
+  assert.equal(store.getState().layers[0].dc, 57, '35 + 12 + 20/2 — bøyla i raden teller fortsatt på bjelken');
+  store.setSectionType('slab');
+  const slab = store.getState().layers[0];
+  // Denne testen fanger feil rekkefølge mellom tømmingen og `applyAutoDc`:
+  // kjøres `applyAutoDc` FØR lista tømmes, blir `dc` stående 12 mm for stor
+  // (målt i runde 8: d = 543 der 555 er riktig).
+  assert.equal(slab.dc, 41, '35 + 0 + 12/2 — ingen bøyle på plata lenger');
+});
+
+test('S9 — payloaden beholder V_Rd,c-veien: section.shear for en plate er et OBJEKT med stirrups:[]', async () => {
+  const { buildPayload } = await import('../js/payload.js');
+  const store = createStore();
+  store.setSectionType('slab');
+  const payload = buildPayload(store.getState());
+  const shear = payload.section.shear;
+  assert.notEqual(shear, null, 'IKKE fraværende — en null her tar bort V_Rd,c helt (engine.py shear_ctx = None)');
+  assert.deepEqual(shear.stirrups, [], 'tom liste er signalet motoren bruker for V_Rd,c-veien, ikke et manglende objekt');
+});
+
+/*
+ * ===========================================================================
+ * STEG 2 — R3/R4: `enforceActiveCombo` fra HVER av de syv dørene
+ * ===========================================================================
+ * `activeCombo` skal peke på FØRSTE uls-rad når den peker på noe annet.
+ * ÉNVEIS: finnes ingen uls-rad, står `activeCombo` urørt (R4).
+ */
+
+function comboRow(id, type, name) {
+  return { id, name: name || id, type, N_Ed: 0, M_Ed: 0, V_Ed: 0 };
+}
+
+test('R3a — createStore (konstruktørdøra): activeCombo peker på en ikke-uls-rad ⇒ flyttes til første uls', () => {
+  const store = createStore({
+    combos: [comboRow('C1', 'characteristic'), comboRow('C2', 'uls')],
+    activeCombo: 'C1',
+  });
+  assert.equal(store.getState().activeCombo, 'C2');
+});
+
+test('R3b — setState: håndhevingen kjører her — ett av de to hullene v5 §2.4 navnga', () => {
+  const store = createStore();
+  store.setState({
+    combos: [comboRow('C1', 'uls'), comboRow('C2', 'characteristic')],
+    activeCombo: 'C2',
+  });
+  assert.equal(store.getState().activeCombo, 'C1', 'setState hadde INGEN håndheving før STEG 2');
+});
+
+test('R3c — addCombo: en nyopprettet uls-rad kan bli det eneste kandidatet og flytte aktiv', () => {
+  const store = createStore({
+    combos: [comboRow('C1', 'quasi_permanent')],
+    activeCombo: 'C1',
+  });
+  // Ingen uls-rad ennå: activeCombo skal stå urørt (R4-regelen) helt til én finnes.
+  assert.equal(store.getState().activeCombo, 'C1');
+  const added = store.addCombo({ type: 'uls' });
+  assert.equal(store.getState().activeCombo, added.id, 'nå finnes en uls-rad, og aktiv flyttes til den');
+});
+
+test('R3d — updateCombo: redigerer man den AKTIVE raden til characteristic, flyttes aktiv til neste uls', () => {
+  const store = createStore({
+    combos: [comboRow('C1', 'uls'), comboRow('C2', 'uls')],
+    activeCombo: 'C1',
+  });
+  store.updateCombo('C1', { type: 'characteristic' });
+  assert.equal(store.getState().activeCombo, 'C2');
+});
+
+test('R3e — removeCombo: fjernes den aktive og den nye aktive (combos[0]) er ikke uls, flyttes den videre', () => {
+  const store = createStore({
+    combos: [comboRow('C1', 'characteristic'), comboRow('C2', 'uls'), comboRow('C3', 'uls')],
+    activeCombo: 'C2',
+  });
+  store.removeCombo('C2');
+  // `removeCombo` sin egen regel setter først activeCombo til combos[0].id ('C1',
+  // characteristic) — `enforceActiveCombo` skal så flytte den videre til 'C3'.
+  assert.equal(store.getState().activeCombo, 'C3');
+});
+
+test('R3f — setActiveCombo: den VIKTIGSTE testen (v5 §2.4) — å KLIKKE en SLS-rad til aktiv bounces umiddelbart', () => {
+  const store = createStore({
+    combos: [comboRow('C1', 'uls'), comboRow('C2', 'characteristic')],
+    activeCombo: 'C1',
+  });
+  store.setActiveCombo('C2');
+  assert.equal(store.getState().activeCombo, 'C1', 'setActiveCombo hadde INGEN håndheving før STEG 2');
+});
+
+test('R3g — replaceState (setInputs/lastet fil): activeCombo pekt på en ikke-uls-rad rettes', () => {
+  const store = createStore();
+  store.replaceState({
+    combos: [comboRow('C1', 'characteristic'), comboRow('C2', 'uls')],
+    activeCombo: 'C1',
+  });
+  assert.equal(store.getState().activeCombo, 'C2');
+});
+
+test('R4 — ingen uls-rad i det hele tatt ⇒ activeCombo står URØRT (regelen er enveis)', () => {
+  const store = createStore();
+  store.replaceState({
+    combos: [comboRow('C1', 'characteristic'), comboRow('C2', 'quasi_permanent')],
+    activeCombo: 'C2',
+  });
+  assert.equal(store.getState().activeCombo, 'C2', 'ingen uls-kandidat — motorens no_uls_combination gjelder, ikke en stille omplassering');
+  // Samme regel gjennom setActiveCombo: å klikke den andre SLS-raden skal heller
+  // ikke bounce noe sted, fordi det uansett ikke finnes noe uls-mål å bounce til.
+  store.setActiveCombo('C1');
+  assert.equal(store.getState().activeCombo, 'C1');
+});
+
+/**
+ * REGRESJON: en ugyldig `type` slapp gjennom tre av dørene.
+ *
+ * `createCombo` normaliserte, men `updateCombo`, `setState` og `replaceState`
+ * gjorde det ikke. Målt: `updateCombo('C2', {type: 'søppel'})` ga «søppel» både
+ * i staten OG i payloaden — og da sa de tre lagene hver sin ting om samme rad:
+ * motoren normaliserte til `uls` og satte `checked: true`, `ui.js` leste
+ * `type === 'uls'` som false og tonet raden ned med «Not checked», og
+ * `<select>`-en viste «ULS» fordi ingen `<option>` matchet.
+ */
+test('en ugyldig kombinasjonstype faller til uls i ENHVER dør', () => {
+  const store = createStore();
+  store.addCombo({ name: 'C2' });
+
+  store.updateCombo('C2', { type: 'søppel' });
+  assert.equal(store.getState().combos[1].type, 'uls', 'updateCombo');
+
+  store.setState({
+    combos: [{ id: 'C1', name: 'x', type: 'tull', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
+    activeCombo: 'C1',
+  });
+  assert.equal(store.getState().combos[0].type, 'uls', 'setState');
+
+  store.replaceState({
+    combos: [{ id: 'C1', name: 'y', type: null, N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
+    activeCombo: 'C1',
+  });
+  assert.equal(store.getState().combos[0].type, 'uls', 'replaceState');
+
+  // Og motsatt: en GYLDIG type skal stå. Ellers ville normaliseringen vært en
+  // sletting, ikke en vakt.
+  store.updateCombo('C1', { type: 'quasi_permanent' });
+  assert.equal(store.getState().combos[0].type, 'quasi_permanent');
 });

@@ -47,7 +47,9 @@ const BEAM_STATE = {
   // Endringsrunde 2 §4.1: `loads` er erstattet av `combos` + `activeCombo`.
   // Endringsrunde 4 §1.2: ingen `direction` lenger — `M_Ed` er signert, og
   // `V_Ed` er nytt (§3.4).
-  combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
+  // STEG 2: `type` er med — `createCombo` (rebar.js) setter den alltid, og
+  // `payload.js` sender den rått videre (§C1).
+  combos: [{ id: 'C1', name: 'ULS 1', type: 'uls', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
   activeCombo: 'C1',
   analysis: 'bending',
   // Standard skjærtilstand (§3.4): ingen bøyler.
@@ -69,8 +71,13 @@ const SLAB_STATE = {
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
-/** Formen §4.2 krever — delt av begge testene pga. felles struktur. */
-const oneCombo = { id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0, theta: 0 };
+/**
+ * Formen §4.2 krever — delt av begge testene pga. felles struktur.
+ * STEG 2, §C1: `type` rett etter `name` — SAMME nøkkelrekkefølge som
+ * `payload.js` faktisk bygger, siden testen sammenlikner med `JSON.stringify`
+ * og ikke bare `deepEqual` (planens felle 8).
+ */
+const oneCombo = { id: 'C1', name: 'ULS 1', type: 'uls', N_Ed: 0, M_Ed: 0, V_Ed: 0, theta: 0 };
 
 /** `section.shear` med tom bøyleliste — formen §3.4/v3 §4.1 krever. */
 const noStirrups = { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] };
@@ -168,6 +175,24 @@ test('platepayloaden har formen fra endringsrunde 2 §4.2', () => {
   };
   assert.deepEqual(built, expected);
   assert.equal(JSON.stringify(built), JSON.stringify(expected));
+});
+
+/**
+ * R7 — STEG 2, §C1/C3. `type` er et RÅTT felt (normalisert allerede i
+ * `createCombo`), på nøyaktig samme sti nøkkelrekkefølge-testene over allerede
+ * bestått beviser: `payload.loads.combinations[i].type` — IKKE
+ * `payload.section.combos[i].type`, som v5 (feilaktig) navnga (§C3).
+ */
+test('R7 — type ligger i loads.combinations[i], ikke under section', () => {
+  const state = clone(BEAM_STATE);
+  state.combos = [
+    { id: 'C1', name: 'ULS 1', type: 'uls', N_Ed: 0, M_Ed: 0, V_Ed: 0 },
+    { id: 'C2', name: 'SLS 1', type: 'characteristic', N_Ed: 0, M_Ed: 0, V_Ed: 0 },
+  ];
+  const built = buildPayload(state);
+  assert.equal(built.loads.combinations[0].type, 'uls');
+  assert.equal(built.loads.combinations[1].type, 'characteristic');
+  assert.ok(!('combos' in built.section), 'payloaden har ingen section.combos — v5 sin sti var feil');
 });
 
 test('bars kommer FRA barPositions — ingen parallell koordinatregning', () => {
