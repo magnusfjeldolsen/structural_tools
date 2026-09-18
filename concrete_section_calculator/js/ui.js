@@ -1594,20 +1594,51 @@ export function createUI(deps) {
     // denne Ø-en og geometriens er den samme. Den står nå i `HINTS`, og merket
     // under peker på den — så forklaringen er der på ALLE rader i stedet for
     // bare den første, uten å koste en eneste linje i noen av dem.
+    //
+    // Geometrikolonnen er FAST smal (`minmax(0,26rem)` i index.html, ≈390px
+    // innvendig etter padding) uansett vindusbredde — en fast pikselbredde
+    // (`!w-NN`) på fire felt pluss en tekst og en knapp gikk derfor aldri opp,
+    // og f_ywk var den som måtte gi etter og falle ned på egen linje.
+    // Løsningen er et `grid grid-cols-4`: de fire feltene deler bredden som
+    // LIKE BRØKDELER av raden i stedet for faste piksler, så de alltid er
+    // like store og alltid på linje, uansett hvor smal kolonnen er.
+    // A_sw/s og sletteknappen flyttes til en EGEN rad under, høyrejustert med
+    // `ml-auto` — de er et sammendrag av raden over, ikke et femte felt som
+    // skal konkurrere med de fire om samme grid.
+    //
+    // Merkelappen ligger over feltet (`.field-label`, SAMME mønster som
+    // b/h/cover-raden lenger opp i skjemaet), ikke inni samme flex-linje som
+    // input-en: «legs» og «f_ywk» er lengre tekst enn «Ø» og «c/c», og delte
+    // de linja med input-en ville de fire boksene likevel blitt ULIKE store
+    // — bare grid-CELLA var lik, ikke input-en inni den.
     host.innerHTML = list.map((st) => `<div class="px-3 py-2 text-[13px]">
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="w-6 text-slate-500 text-[11px]">${esc(st.id)}</span>
-        <label class="flex items-center gap-1 text-[11px] text-slate-500">Ø
-          <input type="text" class="!w-16" data-sf="dia" data-s="${esc(st.id)}" value="${fmtNumber(st.dia, 1)}" aria-label="Stirrup diameter [mm]">
-          <button type="button" class="hint" data-hint="stirrup-dia" aria-expanded="false"
-                  aria-label="About the stirrup diameter">?</button></label>
-        <label class="flex items-center gap-1 text-[11px] text-slate-500">c/c
-          <input type="text" class="!w-20" data-sf="spacing" data-s="${esc(st.id)}" value="${fmtNumber(st.spacing, 1)}" aria-label="Stirrup spacing s [mm]"></label>
-        <label class="flex items-center gap-1 text-[11px] text-slate-500"
-               title="Number of legs crossing the shear plane — all of them count in A_sw (EC2 6.2.3).">legs
-          <input type="text" class="!w-14" data-sf="legs" data-s="${esc(st.id)}" value="${fmtNumber(st.legs, 0)}" aria-label="Number of legs"></label>
-        <label class="flex items-center gap-1 text-[11px] text-slate-500">f<sub>ywk</sub>
-          <input type="text" class="!w-20" data-sf="fywk" data-s="${esc(st.id)}" value="${fmtNumber(st.fywk, 0)}" aria-label="f_ywk [MPa]"></label>
+      <div class="flex items-start gap-2">
+        <span class="w-6 pt-4 text-slate-500 text-[11px] shrink-0">${esc(st.id)}</span>
+        <div class="grid grid-cols-4 gap-2 flex-1 min-w-0">
+          <label class="min-w-0">
+            <span class="field-label">Ø</span>
+            <span class="relative flex items-center">
+              <input type="text" class="!w-full min-w-0 !pr-5" data-sf="dia" data-s="${esc(st.id)}" value="${fmtNumber(st.dia, 1)}" aria-label="Stirrup diameter [mm]">
+              <button type="button" class="hint absolute right-0.5 top-1/2 -translate-y-1/2" data-hint="stirrup-dia" aria-expanded="false"
+                      aria-label="About the stirrup diameter">?</button>
+            </span>
+          </label>
+          <label class="min-w-0">
+            <span class="field-label">c/c</span>
+            <input type="text" class="!w-full min-w-0" data-sf="spacing" data-s="${esc(st.id)}" value="${fmtNumber(st.spacing, 1)}" aria-label="Stirrup spacing s [mm]">
+          </label>
+          <label class="min-w-0"
+                 title="Number of legs crossing the shear plane — all of them count in A_sw (EC2 6.2.3).">
+            <span class="field-label">legs</span>
+            <input type="text" class="!w-full min-w-0" data-sf="legs" data-s="${esc(st.id)}" value="${fmtNumber(st.legs, 0)}" aria-label="Number of legs">
+          </label>
+          <label class="min-w-0">
+            <span class="field-label">f<sub>ywk</sub></span>
+            <input type="text" class="!w-full min-w-0" data-sf="fywk" data-s="${esc(st.id)}" value="${fmtNumber(st.fywk, 0)}" aria-label="f_ywk [MPa]">
+          </label>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mt-1 pl-8">
         <span class="text-[11px] text-slate-500 num hidden md:inline">A<sub>sw</sub>/s ${fmtNumber(aswPerSpacing(st), 3)} mm²/mm</span>
         <button type="button" class="ml-auto px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300"
                 data-remove-stirrup="${esc(st.id)}" title="Remove stirrup row">✕</button>
@@ -2630,11 +2661,20 @@ export function createUI(deps) {
           `${fmtNumber(totalAswPerSpacing(list), 3)} mm²/mm · ${strut}`
         : `No stirrups · V<sub>Rd</sub> = V<sub>Rd,c</sub> · ${strut}`;
     }
+    // Knappen er en no-op når raden allerede finnes (se `setupShear`), og
+    // hintlinja forklarer noe brukeren ennå ikke har å se på — begge hører
+    // til FØR raden finnes, ikke etter. `render()` kjører på hver endring
+    // (også fjerning av raden), så synligheten må settes her, ikke bare ved
+    // oppstart.
+    const hasStirrups = (s.shear?.stirrups || []).length > 0;
+    const addStirrupBtn = $('#add-stirrup');
+    if (addStirrupBtn) addStirrupBtn.classList.toggle('hidden', hasStirrups);
     const shearHint = $('#shear-hint');
     if (shearHint) {
-      shearHint.innerHTML = (s.shear?.stirrups || []).length
-        ? 'The legs are drawn in the section, bent around the bars they meet.'
-        : '';
+      shearHint.classList.toggle('hidden', hasStirrups);
+      shearHint.innerHTML = hasStirrups
+        ? ''
+        : 'The legs are drawn in the section, bent around the bars they meet.';
     }
 
     const est = derived(s);
