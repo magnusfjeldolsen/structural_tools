@@ -299,32 +299,23 @@
              seksjonen, langt fra feltene de gjaldt. De er nå `title` på
              feltene selv (runde 6 §2.6): en opplysning om ET felt hører til
              DET feltet, ikke i en fotnote man har rullet forbi. -->
-        <!-- ÉN rad med FIRE kolonner, ikke to rader med to (runde 8 §3). Formen
-             er `adv-spacing` sin, og den er valgt bevisst: de fire feltene under
-             «Side cover and clear spacing» står allerede slik, og der skjules
-             `#w-cover-side` for plata uten at raden ser rar ut. `#w-stirrup`
-             skjules på nøyaktig samme måte her (`ui.js` setter `display:none`
-             for plate uten bøylerad), så den siste cellen blir tom og de tre
-             første står urørt på plassen sin — feltene flytter seg IKKE når man
-             bytter tverrsnittstype. Med to kolonner ville «Cover c» hoppet fra
-             venstre til å stå alene, og et felt som bytter plass mens du ser på
+        <!-- ÉN rad med TRE kolonner. Var fire til «Stirrup Ø» ble fjernet herfra:
+             bøylediameteren sto både her og i bøyleraden, to felt for ett fysisk
+             jern. De tre som står igjen — b, h og overdekning — er de samme for
+             bjelke og plate, så raden ser lik ut uansett tverrsnittstype.
+             Med to kolonner ville «Cover c» hoppet ned på egen linje, og et felt
+             som bytter plass mens du ser på
              det er verre enn et hull. -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="grid grid-cols-3 gap-3">
           <label><span class="field-label">b — width [mm]</span><input id="i-b" type="text" inputmode="decimal" title="Accepts expressions: 35+8, 600/2, 20*5^2/8"></label>
           <label><span class="field-label">h — height [mm]</span><input id="i-h" type="text" inputmode="decimal" title="Accepts expressions: 35+8, 600/2, 20*5^2/8"></label>
           <label><span class="field-label">Cover c [mm]</span><input id="i-cover" type="text" inputmode="decimal" title="Nominal cover to the outermost steel. Accepts expressions: 35+8, 600/2"></label>
-          <!-- `title`-en her sa det SAMME som linja under den første bøyleraden og
-               som `title` på bøyleradens egen Ø — tre utgaver av ett faktum. Alle
-               tre er nå ETT hint (`HINTS['stirrup-dia']`), og merket står begge
-               steder verdien vises. -->
-          <!-- MERKET STAAR ETTER INPUTEN, IKKE FOER DEN. En `label` uten `for=`
-               peker paa sin FOERSTE labelable etterkommer, og `button` er
-               labelable. Sto merket foerst, kapret det etiketten: `#i-stirrup`
-               fikk maalt INGEN tilgjengelig navn i det hele tatt, og et klikk paa
-               teksten fokuserte spoersmaalstegnet i stedet for feltet.
-               Ingen `title` her: etiketten GIR feltet navnet naar merket staar
-               etter inputen, og forklaringen bor i hintet — ett sted. -->
-          <label id="w-stirrup"><span class="field-label">Stirrup Ø [mm]</span><input id="i-stirrup" type="text" inputmode="decimal"><button type="button" class="hint" data-hint="stirrup-dia" aria-expanded="false" aria-label="About the stirrup diameter">?</button></label>
+          <!-- «Stirrup Ø» sto her OG i bøyleraden: to felt for ett fysisk jern,
+               holdt i takt av en synkronisering. To kilder til samme tall er
+               feilformen som har gitt gale tall i denne modulen runde etter
+               runde, og en synkronisering er ikke en løsning — den er et
+               vedlikeholdskrav. Diameteren bor nå bare i bøyleraden, og
+               `stirrupCoverDia` leser den største blant radene. -->
         </div>
         <!-- Skjærarmering. Ligger i geometriseksjonen, rett under «Stirrup Ø»:
              det er SAMME fysiske bøyle, og de to feltene skal kunne ses i
@@ -632,8 +623,6 @@ const MODULE_CONFIG = {
     cover: { label: 'Cover', symbol: 'c', type: 'expression', unit: 'mm',
       default: 35, min: 0, required: true, category: 'geometry',
       description: 'To the outer edge of the reinforcement. Used for the derived d_c' },
-    stirrup_dia: { label: 'Stirrup diameter', symbol: 'Ø_b', type: 'expression', unit: 'mm',
-      default: 8, min: 0, required: false, category: 'geometry', description: 'Beam only' },
     cover_side: { label: 'Side cover', symbol: 'c_side', type: 'expression', unit: 'mm',
       default: 35, min: 0, required: false, category: 'geometry', description: 'Beam only' },
     'spacing.k1': { label: 'Clear spacing factor k1', symbol: 'k_1', type: 'expression', unit: '-',

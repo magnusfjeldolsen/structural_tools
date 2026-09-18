@@ -37,7 +37,7 @@
 import { SCHEMA_VERSION } from './meta.js';
 import { ftkOf } from './materials.js';
 import { activeComboTheta, sectionHeight, sectionWidth, thetaFor } from './section.js';
-import { barPositions, equivalentStrip, layerArea } from './rebar.js';
+import { barPositions, equivalentStrip, layerArea, stirrupCoverDia } from './rebar.js';
 
 /** kN → N. */
 const KN_TO_N = 1000;
@@ -91,7 +91,16 @@ function rebarEntry(layer, state) {
     kind: 'bars',
     area,
     // IKKE regn koordinatene her. Se invariant 1.
-    bars: barPositions(layer, geometry, state),
+    //
+    // `stirrup_dia` MAA overstyres. `barPositions` leser `opts.stirrup_dia` for
+    // den vannrette innrykkingen, og det TILSTANDSFELTET finnes ikke lenger —
+    // boeyla bor bare i `shear.stirrups`. Sendte vi `state` raatt, ville
+    // payloaden regnet hvert jern med boeyle = 0 og lagt dem Ø_boeyle for langt
+    // ut mot sidekanten, mens tegningen og `dc` brukte riktig tall.
+    // MAALT paa standardbjelken: payloaden ga y = 105 der tegningen ga 93.
+    // Ingenting krasjer, og `M_Rd` endrer seg knapt for enakset boeyning fordi
+    // `z` er riktig — det er nettopp derfor den er farlig.
+    bars: barPositions(layer, geometry, { ...state, stirrup_dia: stirrupCoverDia(state) }),
   };
 }
 

@@ -19,28 +19,59 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { drawSection, sectionViewBox, layerLabel, stirrupGeometry } from '../js/section-draw.js';
-import { barPositions, suggestedDc } from '../js/rebar.js';
+import { barPositions, stirrupCoverDia, suggestedDc } from '../js/rebar.js';
+
+/** Referansebjelkens bøyle: Ø8 c/c 150, 2 ben — «S1»-eksempelet i planen. */
+const STIRRUP_S1 = { id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 };
 
 /**
- * Referansebjelken fra planen §3.6. `cover_side = 32` og `stirrup_dia = 8` er
- * valgt slik at jernene havner på y = -100 / 0 / +100 — nøyaktig koordinatene i
+ * Referansebjelken fra planen §3.6. `cover_side = 32` og bøylas Ø8 er valgt
+ * slik at jernene havner på y = -100 / 0 / +100 — nøyaktig koordinatene i
  * `tests/fixtures/payload-beam-300x600.json`. Tegningen testes dermed mot den
  * samme geometrien motoren faktisk får.
+ *
+ * BØYLERADEN ER ENESTE KILDE til de 8 mm. Feltet `stirrup_dia` sto her før,
+ * og hver test som trengte en bøyle la en rad oppå — to tall for ett fysisk
+ * jern, der det ene kunne endres uten det andre. `stirrupCoverDia(BEAM)` er
+ * nå 8 fordi RADEN sier 8, og både den vannrette innrykkingen i
+ * `barPositions` og den loddrette i `dc` leser den samme bøyla. Bjelken har
+ * uansett bøyler i virkeligheten (EC2 9.2.2), så raden hører hjemme her.
  */
 const BEAM = {
   sectionType: 'beam',
   geometry: { b: 300, h: 600 },
-  cover: 22, cover_side: 32, stirrup_dia: 8,
+  cover: 22, cover_side: 32,
+  shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [STIRRUP_S1] },
   layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3, edge: 'bottom', dc: 50 }],
 };
 
-/** Referanseplata: Ø12 c/c 113, dc = 31 ⇒ z = -69, som i plate-payloaden. */
+/** Samme bjelke UTEN `shear`-nøkkel — for testene som handler om at bøyla mangler. */
+const { shear: _beamShear, ...BEAM_UTEN_BØYLE } = BEAM;
+
+/** Referanseplata: Ø12 c/c 113, dc = 31 ⇒ z = -69, som i plate-payloaden.
+ *  Ingen `shear`: en plate har ingen bøyler, og `stirrupCoverDia` gir da 0. */
 const SLAB = {
   sectionType: 'slab',
   geometry: { b: 1000, h: 200 },
-  cover: 25, cover_side: 25, stirrup_dia: 0,
+  cover: 25, cover_side: 25,
   layers: [{ id: 'L1', mode: 'spacing', dia: 12, spacing: 113, edge: 'bottom', dc: 31 }],
 };
+
+/**
+ * `barPositions` sin `opts`, bygget slik PRODUKSJONSKODEN bygger den.
+ *
+ * `opts.stirrup_dia` er `barPositions` sin egen parameter, og den skal fylles
+ * med `stirrupCoverDia(state)`. Det var nettopp her de to kildene sto mot
+ * hverandre: tegningen bøyde seg om bøyleraden mens jernene ble rykket inn
+ * etter geometrifeltet. Testene går derfor gjennom denne ene helperen, slik at
+ * ingen av dem kan gjenopplive en andre kilde ved å plukke et felt selv.
+ */
+const barOpts = (state) => ({
+  sectionType: state.sectionType,
+  cover: state.cover,
+  cover_side: state.cover_side,
+  stirrup_dia: stirrupCoverDia(state),
+});
 
 function viewBoxOf(svg) {
   const m = /viewBox="([^"]+)"/.exec(svg);
@@ -325,12 +356,7 @@ test('drawSection: jernene i tegningen ER barPositions(), ikke egne tall', () =>
     const svg = drawSection(state, opts);
     const circles = rebarCircles(svg);
 
-    const forventet = state.layers.flatMap((l) => barPositions(l, state.geometry, {
-      sectionType: state.sectionType,
-      cover: state.cover,
-      cover_side: state.cover_side,
-      stirrup_dia: state.stirrup_dia,
-    }));
+    const forventet = state.layers.flatMap((l) => barPositions(l, state.geometry, barOpts(state)));
     assert.equal(circles.length, forventet.length,
       `${state.sectionType}: ${circles.length} sirkler mot ${forventet.length} jern`);
 
@@ -370,6 +396,38 @@ test('drawSection: jernene havner der payload-fixturen sier', () => {
   const tol = 1e-3 / vs.scale;
   assert.ok(Math.abs(sy[4]) < tol / 2, `midterste jern på y = 0: ${sy[4]}`);
   assert.ok(Math.abs((sy[1] - sy[0]) - 113) < tol, `faktisk senteravstand: ${sy[1] - sy[0]}`);
+});
+
+/**
+ * ÉN BØYLE I BEGGE RETNINGER.
+ *
+ * Jernet rykkes VANNRETT inn av `barPositions` (`b/2 − cover_side − Ø_bøyle −
+ * dia/2`) og LODDRETT ned av `dc` (`cover + Ø_bøyle + dia/2`). Før leste de to
+ * hvert sitt tall: den vannrette geometrifeltet `stirrup_dia`, den loddrette
+ * det samme feltet, mens bøyla som ble TEGNET kom fra `shear.stirrups[0]`.
+ * Ø10 i skjærraden ga da en bøyle tegnet 2 mm inn i armeringen.
+ *
+ * Testen endrer ÉN ting — radens `dia` — og krever at BEGGE forskyvningene
+ * flytter seg nøyaktig like mye. En gjenoppstått andre kilde ville holdt den
+ * ene i ro.
+ */
+test('drawSection: samme bøyle styrer både den vannrette og den loddrette innrykkingen', () => {
+  for (const dia of [8, 12, 16]) {
+    const base = { ...BEAM, cover: 35, cover_side: 35,
+      shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ ...STIRRUP_S1, dia }] } };
+    const state = { ...base, layers: [{ id: 'L1', mode: 'bars', dia: 20, count: 3,
+      edge: 'bottom', dc: suggestedDc(base, 20), dc_auto: true }] };
+
+    const vb = sectionViewBox(state, { width: 174 });
+    const circles = rebarCircles(drawSection(state, { width: 174 }));
+    const ys = circles.map((c) => c.cx / vb.scale + vb.minY);
+    const zs = circles.map((c) => vb.minZ + vb.h - c.cy / vb.scale);
+
+    // Vannrett: 300/2 − 35 − Ø_bøyle − 20/2
+    assert.ok(Math.abs(ys[2] - (150 - 35 - dia - 10)) < 5e-3, `Ø${dia}: y = ${ys[2]}`);
+    // Loddrett: −600/2 + (35 + Ø_bøyle + 20/2)
+    assert.ok(Math.abs(zs[0] - (-300 + 35 + dia + 10)) < 5e-3, `Ø${dia}: z = ${zs[0]}`);
+  }
 });
 
 test('drawSection: små jern i en bred plate får en synlig minsteradius', () => {
@@ -528,13 +586,10 @@ test('drawSection: tverrsnitt uten armering gir fortsatt en gyldig figur', () =>
  * Bøyler (skjærarmering) — endringsrunde 4, §5.3
  * ================================================================== */
 
-/** Referansebjelkens bøyle: Ø8 c/c 150, 2 ben — «S1»-eksempelet i planen. */
-const STIRRUP_S1 = { id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 };
-
 test('stirrupGeometry: null uten skjærarmering, uansett hvordan fraværet uttrykkes', () => {
   assert.equal(stirrupGeometry({ ...BEAM, shear: { stirrups: [] } }), null);
   assert.equal(stirrupGeometry({ ...BEAM, shear: undefined }), null);
-  assert.equal(stirrupGeometry(BEAM), null, 'BEAM har ingen shear-nøkkel i det hele tatt');
+  assert.equal(stirrupGeometry(BEAM_UTEN_BØYLE), null, 'ingen shear-nøkkel i det hele tatt');
 });
 
 test('stirrupGeometry: inset = cover_side/cover + dia/2, målt mot referansebjelken', () => {
@@ -631,8 +686,8 @@ test('stirrupGeometry: benavstanden er den samme formelen som s_t,max-kontrollen
 });
 
 test('drawSection: bøylene tegnes bare når lista ikke er tom, og nedtonet', () => {
-  const uten = drawSection(BEAM, {});
-  assert.ok(!/data-role="stirrup"/.test(uten), 'BEAM har ingen shear -> ingen bøyletegning');
+  const uten = drawSection(BEAM_UTEN_BØYLE, {});
+  assert.ok(!/data-role="stirrup"/.test(uten), 'ingen shear -> ingen bøyletegning');
 
   const med = drawSection({ ...BEAM, shear: { stirrups: [STIRRUP_S1] } }, {});
   assert.match(med, /data-role="stirrup"/);
@@ -728,12 +783,7 @@ test('drawSection: ingen bøyleben ligger inntil et jern uten å være snappet t
 
   for (const state of states) {
     const g = stirrupGeometry(state);
-    const bars = barPositions(state.layers[0], state.geometry, {
-      sectionType: state.sectionType,
-      cover: state.cover,
-      cover_side: state.cover_side,
-      stirrup_dia: state.stirrup_dia,
-    });
+    const bars = barPositions(state.layers[0], state.geometry, barOpts(state));
     for (const y of g.legY) {
       for (const bar of bars) {
         const d = Math.abs(y - bar.y);
@@ -886,18 +936,22 @@ test('drawSection: bøylemerkelappen kolliderer ikke med jernene', () => {
  */
 test('stirrupGeometry: jernet ligger i bøyen også når dc er den AVLEDEDE verdien', () => {
   const dia = 20;
-  const base = { ...BEAM, cover: 35, cover_side: 35, stirrup_dia: 8 };
+  // Ø8-bøyla står i RADEN — `suggestedDc` leser den derfra. Tallet er det
+  // samme som før (35 + 8 + 10 = 53); det er kilden som er blitt én.
+  const base = { ...BEAM, cover: 35, cover_side: 35,
+    shear: { strut_angle_deg: 45, z_factor: 0.9, stirrups: [{ ...STIRRUP_S1, legs: 4 }] } };
   const dc = suggestedDc(base, dia);
+  assert.equal(dc, 53, 'dc = 35 + 8 + 20/2 — bøyla lest fra raden');
   const state = {
     ...base,
     layers: [{ id: 'L1', mode: 'bars', dia, count: 4, edge: 'bottom', dc, dc_auto: true }],
-    shear: { stirrups: [{ ...STIRRUP_S1, legs: 4 }] },
   };
   const g = stirrupGeometry(state);
 
   // Forutsetningen: dette ER tangeringstilfellet, ellers tester vi noe annet.
-  const bar = barPositions(state.layers[0], state.geometry,
-    { cover_side: state.cover_side, stirrup_dia: state.stirrup_dia })[0];
+  // SAMME bøyle i begge retninger: `dc` over og innrykkingen her leser nå én
+  // og samme rad, der de før leste hvert sitt felt.
+  const bar = barPositions(state.layers[0], state.geometry, barOpts(state))[0];
   const rad = (dia + STIRRUP_S1.dia) / 2;
   assert.ok(Math.abs((bar.z - rad) - g.z0) < 1e-9,
     `forutsetningen: jernet skal tangere bøylas underside (${bar.z - rad} mot ${g.z0})`);
@@ -924,9 +978,8 @@ test('stirrupGeometry: jernet ligger i bøyen også når dc er den AVLEDEDE verd
  * ytre, som er det som faktisk er bundet i bøylen.
  */
 test('stirrupGeometry: med to underkantlag bøyes benet rundt det YTRE jernet', () => {
-  const base = { ...BEAM, cover: 35, cover_side: 35, stirrup_dia: 8 };
   const state = {
-    ...base,
+    ...BEAM, cover: 35, cover_side: 35,
     layers: [
       { id: 'L1', mode: 'bars', dia: 20, count: 4, edge: 'bottom', dc: 53, dc_auto: true },
       { id: 'L2', mode: 'bars', dia: 20, count: 4, edge: 'bottom', dc: 94, dc_auto: true },

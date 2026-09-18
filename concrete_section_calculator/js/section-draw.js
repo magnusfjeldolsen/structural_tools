@@ -50,7 +50,7 @@
  * refererer `N` og `M` til. SVG har y nedover, så `toPaper()` snur z.
  */
 
-import { barPositions } from './rebar.js';
+import { barPositions, stirrupCoverDia } from './rebar.js';
 // `sectionWidth` og ALDRI `state.geometry.b`: plata regnes per meter, og for
 // `sectionType === 'slab'` returnerer `sectionWidth` 1000 uansett hva som ligger
 // igjen i `geometry.b` fra en bjelke. Leste figuren `geometry.b` direkte, kunne
@@ -354,7 +354,10 @@ function allBars(state) {
     sectionType: state?.sectionType,
     cover: state?.cover,
     cover_side: state?.cover_side,
-    stirrup_dia: state?.stirrup_dia,
+    // Boeyla finnes bare i `shear.stirrups` naa. `stirrupCoverDia` tar den
+    // stoerste blant radene, saa den VANNRETTE innrykkingen her og den
+    // loddrette i `dc` bruker noeyaktig samme tall.
+    stirrup_dia: stirrupCoverDia(state || {}),
   };
   const out = [];
   for (const layer of layers) {
@@ -728,7 +731,10 @@ export function drawSection(state, opts = {}) {
     sectionType: state?.sectionType,
     cover: state?.cover,
     cover_side: state?.cover_side,
-    stirrup_dia: state?.stirrup_dia,
+    // Boeyla finnes bare i `shear.stirrups` naa. `stirrupCoverDia` tar den
+    // stoerste blant radene, saa den VANNRETTE innrykkingen her og den
+    // loddrette i `dc` bruker noeyaktig samme tall.
+    stirrup_dia: stirrupCoverDia(state || {}),
   };
 
   const drawn = [];   // {layer, bars}
