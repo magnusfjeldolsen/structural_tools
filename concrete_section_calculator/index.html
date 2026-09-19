@@ -439,6 +439,44 @@
         <button type="button" id="add-combo" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">+ Add combination</button>
       </div>
 
+      <!-- EKSPONERINGSKLASSEN DUKKER OPP DER DEN BLIR RELEVANT, ikke før.
+           Den styrer BARE rissviddegrensen, og rissvidde regnes bare for
+           tilnærmet permanente kombinasjoner. Har du ingen slik rad, er feltet
+           en gåte uten spørsmål, så `ui.js` skjuler hele boksen — nøyaktig samme
+           regel som SLS-kortet i resultatet følger. Bruker du SLS, står den
+           derimot rett under radene som utløste den, og ikke i en annen seksjon
+           man må lete i.
+
+           w_max er AVLEDET av klassen og vises som et avledet tall, slik f_cd og
+           f_yd gjør i materialraden. Overstyringen ligger bak «Advanced» sammen
+           med φ_ef og de tre faktorene i EC2 7.2 — det er verdier man setter én
+           gang per prosjekt, ikke per snitt. -->
+      <div id="sls-box" class="rounded-lg border border-slate-700 bg-slate-900/40 mt-3" style="display:none">
+        <div class="flex flex-wrap items-baseline gap-3 px-3 py-2">
+          <span class="text-xs text-slate-300">Serviceability <button type="button" class="hint" data-hint="sls-exposure" aria-expanded="false" aria-label="About the exposure class and the crack width limit">?</button></span>
+          <span id="sls-summary" class="text-[11px] text-slate-500 num ml-auto"></span>
+        </div>
+        <div class="grid grid-cols-2 gap-3 px-3 pb-3">
+          <label><span class="field-label">Exposure class</span><select id="i-exposure"></select></label>
+          <div><span class="field-label">w<sub>max</sub> [mm]</span>
+            <div class="pt-1.5 text-[13px] leading-tight"><span id="sls-wmax" class="num text-slate-200"></span>
+              <span id="sls-wmax-src" class="text-[11px] text-slate-500"></span></div></div>
+        </div>
+        <details id="adv-sls" class="border-t border-slate-700/70">
+          <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
+            <span class="text-slate-500">&#9656;</span><span>Advanced &mdash; creep and stress limits</span>
+            <span id="adv-sls-summary" class="text-[11px] text-slate-500 num ml-auto"></span>
+          </summary>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 px-3 pb-3">
+            <label><span class="field-label">&#966;<sub>ef</sub> &mdash; effective creep</span><input id="i-phi-ef" type="text" inputmode="decimal"></label>
+            <label><span class="field-label">w<sub>max</sub> override [mm]</span><input id="i-wmax" type="text" inputmode="decimal" placeholder="from class"></label>
+            <label><span class="field-label">k<sub>1</sub> &#963;<sub>c</sub>/f<sub>ck</sub> char</span><input id="i-sls-k1" type="text" inputmode="decimal"></label>
+            <label><span class="field-label">k<sub>3</sub> &#963;<sub>s</sub>/f<sub>yk</sub> char</span><input id="i-sls-k3" type="text" inputmode="decimal"></label>
+            <label><span class="field-label">k<sub>2</sub> &#963;<sub>c</sub>/f<sub>ck</sub> qp</span><input id="i-sls-k2" type="text" inputmode="decimal"></label>
+          </div>
+        </details>
+      </div>
+
       <!-- SEKS LINJER BLE ÉN (runde 6 §2.6), OG DEN ENE BLE ET SPØRSMÅLSTEGN
            (runde 8 §4). Fortegnskonvensjonen forsvant herfra fordi hver rad
            forklarer den LIVE for sitt eget tall: `momentInterpretation` skriver

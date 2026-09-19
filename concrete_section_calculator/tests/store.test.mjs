@@ -876,3 +876,80 @@ test('en ugyldig kombinasjonstype faller til uls i ENHVER dør', () => {
   store.updateCombo('C1', { type: 'quasi_permanent' });
   assert.equal(store.getState().combos[0].type, 'quasi_permanent');
 });
+
+/*
+ * ===========================================================================
+ * SLS §5 — `enforceSlsParams`, samme mønster som `enforceComboTypes`
+ * (§10 A2-oppdraget peker på DENNE tabellen: «hver av dørene»).
+ *
+ * FØR denne endringen fantes `state.sls` ikke i det hele tatt — `createStore`
+ * ga `sls: undefined`, og `store.getState().sls.exposure_class` kastet
+ * `TypeError: Cannot read properties of undefined`. Testene under ville
+ * derfor feilet på nettopp den linja, ikke bare gitt feil verdi.
+ * ===========================================================================
+ */
+
+test('SLS-1 — standardtilstanden: ingen klasse, phi_ef 2,0, de tre 7.2-faktorene (§5)', () => {
+  const store = createStore();
+  const sls = store.getState().sls;
+  assert.equal(sls.exposure_class, null, 'vi finner ALDRI på en klasse');
+  assert.equal(sls.w_max_override, null);
+  assert.equal(sls.phi_ef, 2.0);
+  assert.equal(sls.sigma_c_char_factor, 0.6);
+  assert.equal(sls.sigma_c_qp_factor, 0.45);
+  assert.equal(sls.sigma_s_char_factor, 0.8);
+});
+
+test('SLS-2 — createStore (konstruktørdøra): ukjent exposure_class ⇒ null, IKKE en nærmeste-klasse-gjetning', () => {
+  const store = createStore({ sls: { exposure_class: 'XQ9' } });
+  assert.equal(store.getState().sls.exposure_class, null);
+});
+
+test('SLS-3 — createStore: gyldig exposure_class overlever håndhevingen', () => {
+  const store = createStore({ sls: { exposure_class: 'XD3' } });
+  assert.equal(store.getState().sls.exposure_class, 'XD3');
+});
+
+test('SLS-4 — setState: samme håndheving som konstruktørdøra (§5 — «samme steder som enforceComboTypes»)', () => {
+  const store = createStore();
+  store.setState({ sls: { exposure_class: 'ikke-en-klasse', w_max_override: -1, phi_ef: -5 } });
+  const sls = store.getState().sls;
+  assert.equal(sls.exposure_class, null);
+  assert.equal(sls.w_max_override, null, 'negativ override ⇒ bruk den avledede grensa');
+  assert.equal(sls.phi_ef, 2.0, 'negativ phi_ef er ikke et lovlig kryptall');
+});
+
+test('SLS-5 — patch("sls", …): w_max_override som en STRENG (ikke et tall > 0) ⇒ null', () => {
+  const store = createStore();
+  store.patch('sls', { w_max_override: 'seksti' });
+  assert.equal(store.getState().sls.w_max_override, null);
+});
+
+test('SLS-6 — patch("sls", …): en GYLDIG override på 0,20 mm overlever', () => {
+  const store = createStore();
+  store.patch('sls', { w_max_override: 0.2 });
+  assert.equal(store.getState().sls.w_max_override, 0.2);
+});
+
+test('SLS-7 — de tre 7.2-faktorene: ikke et endelig tall > 0 ⇒ standardverdien, ÉN dør av gangen', () => {
+  const store = createStore();
+  store.patch('sls', { sigma_c_char_factor: 0, sigma_c_qp_factor: NaN, sigma_s_char_factor: -0.8 });
+  const sls = store.getState().sls;
+  assert.equal(sls.sigma_c_char_factor, 0.6);
+  assert.equal(sls.sigma_c_qp_factor, 0.45);
+  assert.equal(sls.sigma_s_char_factor, 0.8);
+});
+
+test('SLS-8 — replaceState (setInputs()): en lagret fil med en ugyldig klasse runder tilbake til null, ikke til feilen', () => {
+  const store = createStore();
+  store.replaceState({ ...store.getState(), sls: { ...store.getState().sls, exposure_class: 'X99' } });
+  assert.equal(store.getState().sls.exposure_class, null);
+});
+
+test('SLS-9 — cloneState: en dupliserende operasjon deler IKKE sls-objektet ved referanse', () => {
+  const store = createStore();
+  const before = store.getState().sls;
+  store.patch('sls', { phi_ef: 1.5 });
+  assert.equal(before.phi_ef, 2.0, 'det GAMLE objektet skal stå urørt — cloneState kopierte, mutasjonen skrev ikke gjennom');
+  assert.equal(store.getState().sls.phi_ef, 1.5);
+});

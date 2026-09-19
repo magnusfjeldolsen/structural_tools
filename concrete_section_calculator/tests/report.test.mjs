@@ -153,7 +153,9 @@ test('kapitlene står i rekkefølgen plan §8 krever, én gang hver', () => {
     [BEAM_STATE, null],
   ]) {
     const order = chapterOrder(buildReportHtml(state, result));
-    assert.deepEqual(order, [1, 2, 3, 4, 5, 6, 7]);
+    // Kapittel 6 · Serviceability finnes ALLTID (spec §7) — også uten
+    // SLS-rader, ellers ville nummereringen vært betinget.
+    assert.deepEqual(order, [1, 2, 3, 4, 5, 6, 7, 8]);
   }
 });
 
@@ -164,8 +166,12 @@ test('kapitteloverskriftene er nummererte og engelske', () => {
   assert.match(html, /<h3>3\. Reinforcement<\/h3>/);
   assert.match(html, /<h3>4\. Loads and combinations<\/h3>/);
   assert.match(html, /<h3>5\. Result<\/h3>/);
-  assert.match(html, /<h3>6\. Plot/);
-  assert.match(html, /<h3>7\. Assumptions and method<\/h3>/);
+  // Nytt kapittel 6 (spec §7): finnes ALLTID, uansett om det er noen SLS-rader
+  // eller ikke — betinget nummerering ville vært verre enn et kapittel med
+  // én linje (spec: «ellers ville nummereringen hoppet eller vært betinget»).
+  assert.match(html, /<h3>6\. Serviceability<\/h3>/);
+  assert.match(html, /<h3>7\. Plot/);
+  assert.match(html, /<h3>8\. Assumptions and method<\/h3>/);
 });
 
 test('topplinja bærer modulnavn og versjon fra meta.js', () => {
@@ -200,20 +206,20 @@ test('rapportfiguren er 174 mm bred, som trykkflaten på A4', () => {
 
 test('kapittel 2 viser snittet slik det er MATET INN — uten nøytralakse', () => {
   const ch2 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 2);
-  assert.ok(!ch2.includes('data-role="na"'), 'resultatoverlegget hører hjemme i kapittel 6');
+  assert.ok(!ch2.includes('data-role="na"'), 'resultatoverlegget hører hjemme i kapittel 7 (Plot)');
 });
 
 test('hver av de tre analysene får sitt eget, riktige plott', () => {
-  const bend = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 6);
+  const bend = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 7);
   assert.ok(bend.includes('data-role="na"'), 'bøyekapasitet: nøytralakse og trykksone');
   assert.ok(!bend.includes('data-role="envelope"'));
 
-  const mc = chapterBody(buildReportHtml(BEAM_STATE, MC), 6);
+  const mc = chapterBody(buildReportHtml(BEAM_STATE, MC), 7);
   assert.ok(mc.includes('data-role="curve"'), 'moment–krumning: M(κ)-kurven');
   assert.ok(!mc.includes('data-role="envelope"'), 'feil plott er verre enn ingen');
   assert.match(mc, /moment–curvature/i);
 
-  const dom = chapterBody(buildReportHtml(BEAM_STATE, NMDOM), 6);
+  const dom = chapterBody(buildReportHtml(BEAM_STATE, NMDOM), 7);
   assert.ok(dom.includes('data-role="envelope"'), 'M–N: kapasitetsomhyllingen');
   assert.ok(!dom.includes('data-role="curve"'));
   assert.match(dom, /N–M/);
@@ -221,8 +227,8 @@ test('hver av de tre analysene får sitt eget, riktige plott', () => {
 
 test('plottet er 174 mm bredt i alle tre analysene', () => {
   for (const res of [BENDING, MC, NMDOM]) {
-    const ch6 = chapterBody(buildReportHtml(BEAM_STATE, res), 6);
-    assert.match(ch6, /<svg[^>]*width="174mm"/, `mangler 174 mm-figur for ${res.analysis}`);
+    const ch7 = chapterBody(buildReportHtml(BEAM_STATE, res), 7);
+    assert.match(ch7, /<svg[^>]*width="174mm"/, `mangler 174 mm-figur for ${res.analysis}`);
   }
 });
 
@@ -239,30 +245,31 @@ test('plottet er 174 mm bredt i alle tre analysene', () => {
  * borte fra papiret uten at noe feilet: kapitlet var der, det var bare
  * fattigere enn dataen. Gaten er nå «finnes blokka».
  */
-test('«kjør alle»: kapittel 6 trykker både M–κ-kurven og M–N-omhyllingen', () => {
-  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, runAllResult('bending')), 6);
-  assert.ok(ch6.includes('data-role="curve"'), 'M–κ-kurven mangler');
-  assert.ok(ch6.includes('data-role="envelope"'), 'M–N-omhyllingen mangler');
-  assert.ok(ch6.includes('data-role="na"'), 'bøyefiguren med nøytralaksen mangler');
-  assert.equal((ch6.match(/<figure/g) || []).length, 3, 'tre plott, tre figurer');
-  assert.equal((ch6.match(/width="174mm"/g) || []).length, 3, 'alle tre fyller trykkflaten');
+test('«kjør alle»: kapittel 7 trykker både M–κ-kurven og M–N-omhyllingen', () => {
+  const ch7 = chapterBody(buildReportHtml(BEAM_STATE, runAllResult('bending')), 7);
+  assert.ok(ch7.includes('data-role="curve"'), 'M–κ-kurven mangler');
+  assert.ok(ch7.includes('data-role="envelope"'), 'M–N-omhyllingen mangler');
+  assert.ok(ch7.includes('data-role="na"'), 'bøyefiguren med nøytralaksen mangler');
+  assert.equal((ch7.match(/<figure/g) || []).length, 3, 'tre plott, tre figurer');
+  assert.equal((ch7.match(/width="174mm"/g) || []).length, 3, 'alle tre fyller trykkflaten');
   // Hver figur har sin egen overskrift — tre figurer under én tittel er en
   // rebus for leseren.
-  assert.match(ch6, /<h4>Strain state at failure<\/h4>/);
-  assert.match(ch6, /<h4>N–M diagram<\/h4>/);
-  assert.match(ch6, /<h4>Moment–curvature<\/h4>/);
+  assert.match(ch7, /<h4>Strain state at failure<\/h4>/);
+  assert.match(ch7, /<h4>N–M diagram<\/h4>/);
+  assert.match(ch7, /<h4>Moment–curvature<\/h4>/);
 });
 
 /**
  * Kapittelnummereringen er den ene egenskapen ved rapporten en endring kan
  * ødelegge helt stille (hodekommentaren). Tre plott skal ligge i ETT kapittel
- * 6, ikke i 6, 7 og 8 — ellers blir «Forutsetninger og metode» kapittel 9.
+ * 7, ikke i 7, 8 og 9 — ellers blir «Forutsetninger og metode» kapittel 10.
+ * (Serviceability er nå det NYE kapittel 6, spec §7 — plottet flyttet fra 6 til 7.)
  */
-test('«kjør alle» endrer ikke kapittelrekkefølgen — tre plott, ett kapittel 6', () => {
+test('«kjør alle» endrer ikke kapittelrekkefølgen — tre plott, ett kapittel 7', () => {
   const html = buildReportHtml(BEAM_STATE, runAllResult('bending'));
-  assert.deepEqual(chapterOrder(html), [1, 2, 3, 4, 5, 6, 7]);
-  assert.match(html, /<h3>6\. Plots<\/h3>/, 'flere plott gir flertallsoverskrift');
-  assert.match(html, /<h3>7\. Assumptions and method<\/h3>/);
+  assert.deepEqual(chapterOrder(html), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.match(html, /<h3>7\. Plots<\/h3>/, 'flere plott gir flertallsoverskrift');
+  assert.match(html, /<h3>8\. Assumptions and method<\/h3>/);
   // Kapittel 1 skal si hvilken analyse som ble kjørt, ikke tankestrek.
   assert.match(chapterBody(html, 1), /Run all/);
 });
@@ -280,16 +287,16 @@ test('én analyse gir nøyaktig ett plott — ingen tomme diagrammer, ingen fler
   ];
   for (const [res, title, marker] of cases) {
     const html = buildReportHtml(BEAM_STATE, res);
-    const ch6 = chapterBody(html, 6);
-    assert.ok(ch6.includes(marker), `${res.analysis}: feil eller manglende plott`);
-    assert.equal((ch6.match(/<figure/g) || []).length, 1, `${res.analysis}: ett plott, ikke flere`);
-    assert.ok(html.includes(`<h3>6. ${title}</h3>`), `${res.analysis}: feil kapitteltittel`);
-    assert.ok(!ch6.includes('<h4>'), `${res.analysis}: ett plott trenger ingen underoverskrift`);
+    const ch7 = chapterBody(html, 7);
+    assert.ok(ch7.includes(marker), `${res.analysis}: feil eller manglende plott`);
+    assert.equal((ch7.match(/<figure/g) || []).length, 1, `${res.analysis}: ett plott, ikke flere`);
+    assert.ok(html.includes(`<h3>7. ${title}</h3>`), `${res.analysis}: feil kapitteltittel`);
+    assert.ok(!ch7.includes('<h4>'), `${res.analysis}: ett plott trenger ingen underoverskrift`);
   }
   // Den rene bøyerapporten har INGEN av de to diagrammene, akkurat som i dag.
-  const bend6 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 6);
-  assert.ok(!bend6.includes('data-role="curve"'));
-  assert.ok(!bend6.includes('data-role="envelope"'));
+  const bend7 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 7);
+  assert.ok(!bend7.includes('data-role="curve"'));
+  assert.ok(!bend7.includes('data-role="envelope"'));
 });
 
 /**
@@ -298,15 +305,15 @@ test('én analyse gir nøyaktig ett plott — ingen tomme diagrammer, ingen fler
  * en bøyefigur det ikke finnes en bøyeblokk til.
  */
 test('delvis «kjør alle»: bare plottene for blokkene som faktisk kom gjennom', () => {
-  const ch6 = chapterBody(
+  const ch7 = chapterBody(
     buildReportHtml(BEAM_STATE, runAllResult('nm_domain', ['nm_domain', 'moment_curvature'])),
-    6
+    7
   );
-  assert.ok(ch6.includes('data-role="envelope"'));
-  assert.ok(ch6.includes('data-role="curve"'));
-  assert.ok(!ch6.includes('data-role="na"'), 'ingen bøyefigur uten en bøyeblokk');
-  assert.equal((ch6.match(/<figure/g) || []).length, 2);
-  assert.ok(!ch6.includes('Strain state at failure'), 'ingen overskrift uten innhold');
+  assert.ok(ch7.includes('data-role="envelope"'));
+  assert.ok(ch7.includes('data-role="curve"'));
+  assert.ok(!ch7.includes('data-role="na"'), 'ingen bøyefigur uten en bøyeblokk');
+  assert.equal((ch7.match(/<figure/g) || []).length, 2);
+  assert.ok(!ch7.includes('Strain state at failure'), 'ingen overskrift uten innhold');
 });
 
 /**
@@ -316,10 +323,10 @@ test('delvis «kjør alle»: bare plottene for blokkene som faktisk kom gjennom'
  */
 test('et resultat uten analyseblokk gir en ærlig setning, ikke en villedende figur', () => {
   const empty = runAllResult('bending', []);
-  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, empty), 6);
-  assert.ok(!ch6.includes('<figure'));
-  assert.ok(!ch6.includes('at failure'));
-  assert.match(ch6, /nothing to\s+plot/);
+  const ch7 = chapterBody(buildReportHtml(BEAM_STATE, empty), 7);
+  assert.ok(!ch7.includes('<figure'));
+  assert.ok(!ch7.includes('at failure'));
+  assert.match(ch7, /nothing to\s+plot/);
 });
 
 test('uten nøytralakse tegnes ingen linje, og rapporten sier hvorfor', () => {
@@ -327,18 +334,228 @@ test('uten nøytralakse tegnes ingen linje, og rapporten sier hvorfor', () => {
   const res = clone(BENDING);
   res.bending.x = null;
   res.bending.x_over_d = null;
-  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, res), 6);
-  assert.ok(!ch6.includes('data-role="na"'), 'en strek på slump er verre enn ingen strek');
-  assert.match(ch6, /pure compression/);
+  const ch7 = chapterBody(buildReportHtml(BEAM_STATE, res), 7);
+  assert.ok(!ch7.includes('data-role="na"'), 'en strek på slump er verre enn ingen strek');
+  assert.match(ch7, /pure compression/);
 });
 
-test('uten resultat er kapittel 5 og 6 ærlige om at ingenting er beregnet', () => {
+test('uten resultat er kapittel 5 og 7 ærlige om at ingenting er beregnet', () => {
   const html = buildReportHtml(BEAM_STATE, null);
   assert.match(chapterBody(html, 5), /No calculation has been run/);
-  assert.match(chapterBody(html, 6), /drawn once the calculation has been carried out/);
+  assert.match(chapterBody(html, 7), /drawn once the calculation has been carried out/);
   // Men snittet og armeringen er kjent uten motoren, og skal stå.
   assert.ok(chapterBody(html, 2).includes('data-role="concrete"'));
   assert.match(chapterBody(html, 3), /3Ø20/);
+});
+
+/* ================================================================== *
+ * Kapittel 6 — Serviceability (spec §4, §7)
+ *
+ * `result.sls` bygges I KODE (samme regel som A1/A2s AC11/AC12): spec §0.6
+ * sier fixturene i tests/fixtures/ regenereres BARE av koordinatoren, og
+ * ingen av de committede resultatfixturene bærer et `sls`-felt ennå.
+ * ================================================================== */
+
+/** Tall etter mønsteret spec §9 måler dem — strukturelt gyldig, ikke en
+ *  påstand om at DETTE er de eksakte engine-tallene (det er A1s ansvar). */
+function slsResult(rows, overrides = {}) {
+  return {
+    ...BENDING,
+    sls: {
+      phi_ef: 2.0,
+      Ecm: 32836.568031,
+      Ec_eff: 10945.522677,
+      alpha_e: 6.090770503,
+      f_ct_eff: 2.896468,
+      exposure_class: 'XC3',
+      w_max: 0.3,
+      w_max_source: 'class',
+      w_max_reason: null,
+      limits: {
+        sigma_c_char_factor: 0.6, sigma_c_char: 18.0,
+        sigma_c_qp_factor: 0.45, sigma_c_qp: 13.5,
+        sigma_s_char_factor: 0.8, sigma_s_char: 400.0,
+        sigma_c_char_required: true,
+      },
+      rows,
+      checks: { sigma_c_char_ok: true, sigma_s_char_ok: true, sigma_c_qp_ok: true, crack_width_ok: false },
+      not_applicable: {},
+      all_ok: false,
+      ...overrides,
+    },
+  };
+}
+
+const AC3_ROW = {
+  id: 'C1', name: 'Characteristic 1', type: 'characteristic',
+  N_Ed: 0, M_Ed: -120e6,
+  sigma_ct_uncracked: 6.102077, cracked: true,
+  Ec_used: 32836.568031, n_sec: 6.090770503,
+  state: {
+    x: 127.201637, z_na: 172.798363, eps_a: 4.271536e-4, chi_y: -2.471977e-6,
+    sigma_c: -12.390138, eps_1: 12.0e-4, eps_2: -6.0e-4, sigma_s_max: 250.835483,
+    layers: [],
+  },
+  state_reason: null,
+  sigma_c_initial: null, sigma_c_initial_reason: null,
+  stress: {
+    sigma_c: -12.390138, sigma_c_limit: 18.0, sigma_c_util: 0.688341, sigma_c_ok: true,
+    sigma_c_checked: 'state',
+    sigma_s: 250.835483, sigma_s_limit: 400.0, sigma_s_util: 0.627089, sigma_s_ok: true,
+  },
+  crack: null, crack_reason: 'not_quasi_permanent',
+};
+
+const AC1_ROW = {
+  id: 'C2', name: 'Quasi-permanent 1', type: 'quasi_permanent',
+  N_Ed: 0, M_Ed: -100e6,
+  sigma_ct_uncracked: 5.085064, cracked: true,
+  Ec_used: 10945.522677, n_sec: 18.272312,
+  state: {
+    x: 200.355056, z_na: 99.644944, eps_a: 3.5e-4, chi_y: -3.0e-6,
+    sigma_c: -6.886016, eps_1: 20.0e-4, eps_2: -3.0e-4, sigma_s_max: 219.577827,
+    layers: [],
+  },
+  state_reason: null,
+  sigma_c_initial: -10.325115, sigma_c_initial_reason: null,
+  stress: {
+    sigma_c: -10.325115, sigma_c_limit: 13.5, sigma_c_util: 0.764823, sigma_c_ok: true,
+    sigma_c_checked: 'initial',
+    sigma_s: null, sigma_s_limit: null, sigma_s_util: null, sigma_s_ok: null,
+  },
+  crack: {
+    d: 550.0, x: 200.355056,
+    h_c_eff: 125.0, h_c_eff_candidates: { '2.5(h-d)': 125.0, '(h-x)/3': 133.214981, 'h/2': 300.0 },
+    h_c_eff_governing: '2.5(h-d)',
+    A_c_eff: 37500, A_s_eff: 942.477796, layers_in_zone: ['L1'],
+    rho_p_eff: 0.025132741, alpha_e: 6.090770503, k_t: 0.4, f_ct_eff: 2.896468,
+    sigma_s: 219.577827, sigma_s_layer: 'L1',
+    eps_sm_eps_cm: 8.321121e-4, eps_equation: 8.321121e-4, eps_floor: 6.587e-4, eps_governing: 'equation',
+    eps_1: 20.0e-4, eps_2: -3.0e-4, eps_r: 0,
+    k1: 0.8, k2: 0.5, k3: 3.4, k4: 0.425,
+    c: 40.0, phi_eq: 20.0, bar_spacing: 100.0, spacing_threshold: 250.0,
+    sr_max_close: 271.281702, sr_max_far: 614.637872, sr_max: 271.281702, sr_max_branch: 'close',
+    w_k: 0.225737, w_max: 0.3, utilisation: 0.752457, ok: true, ok_reason: null,
+  },
+  crack_reason: null,
+};
+
+const AC14_ROW = {
+  ...AC1_ROW,
+  id: 'C3', name: 'Quasi-permanent 2 (XD3)',
+  crack: {
+    ...AC1_ROW.crack,
+    w_k: 0.211429, w_max: null, utilisation: null, ok: null, ok_reason: 'no_crack_width_limit',
+  },
+};
+
+const AC8A_ROW = {
+  id: 'C4', name: 'Quasi-permanent 3', type: 'quasi_permanent',
+  N_Ed: 800e3, M_Ed: -100e6,
+  sigma_ct_uncracked: 9.077837, cracked: true,
+  Ec_used: 10945.522677, n_sec: 18.272312,
+  state: null, state_reason: 'no_equilibrium_cracked',
+  sigma_c_initial: null, sigma_c_initial_reason: 'no_equilibrium_cracked',
+  stress: null, crack: null, crack_reason: 'no_equilibrium_cracked',
+};
+
+test('kapittel 6 finnes ALLTID, med Serviceability-tittelen, uansett resultat', () => {
+  for (const [state, result] of [[BEAM_STATE, BENDING], [BEAM_STATE, null], [BEAM_STATE, MC]]) {
+    const html = buildReportHtml(state, result);
+    assert.match(html, /<h3>6\. Serviceability<\/h3>/);
+    assert.match(chapterBody(html, 6), /No serviceability combinations were given/);
+  }
+});
+
+test('kapittel 6 leser result.sls UANSETT result.ok (spec §6.2)', () => {
+  const bad = { ...slsResult([AC3_ROW]), ok: false, error: { code: 'axial_out_of_range' } };
+  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, bad), 6);
+  assert.doesNotMatch(ch6, /No serviceability combinations were given/, 'sls finnes — skal ikke skjules bak {ok:false}');
+  assert.match(ch6, /Characteristic 1/);
+});
+
+test('kapittel 6: parameterblokken viser φ_ef, α_e og w_max med kilde, ikke standardens tabell', () => {
+  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, slsResult([AC1_ROW])), 6);
+  assert.match(ch6, /φ_ef/);
+  assert.match(ch6, /2\.00/, 'phi_ef skal stå med sin egen verdi');
+  assert.match(ch6, /α_e/);
+  assert.match(ch6, /6\.0908/);
+  assert.match(ch6, /0\.30 mm/, 'w_max fra klassen');
+  assert.match(ch6, /from exposure class/);
+});
+
+test('kapittel 6: en rad UTEN sls_c_char_required (ingen klasse) sier det, ikke et gjettet tall', () => {
+  const noClass = slsResult([AC3_ROW], {
+    exposure_class: null, w_max: null, w_max_source: null, w_max_reason: 'no_exposure_class',
+    limits: {
+      sigma_c_char_factor: 0.6, sigma_c_char: null,
+      sigma_c_qp_factor: 0.45, sigma_c_qp: 13.5,
+      sigma_s_char_factor: 0.8, sigma_s_char: 400.0,
+      sigma_c_char_required: null,
+    },
+    checks: { sigma_s_char_ok: true, sigma_c_qp_ok: true },
+    not_applicable: {},
+  });
+  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, noClass), 6);
+  assert.match(ch6, /no exposure class selected/i);
+});
+
+test('kapittel 6: hver SLS-rad viser type, M_Ed og de tre grenvalgene FREMHEVET', () => {
+  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, slsResult([AC1_ROW])), 6);
+  assert.match(ch6, /Quasi-permanent 1/);
+  assert.match(ch6, /Quasi-permanent<\/h4>|Quasi-permanent</, 'radens type skal stå');
+  // De tre grenvalgene (spec §3.3/§7) — hvert markert med <b>, ikke gjemt i tallet alene.
+  assert.match(ch6, /<b>2\.5\(h-d\)<\/b>/, 'h_c,eff sin gren');
+  assert.match(ch6, /<b>equation<\/b>/, 'lign. 7.9 sin gren');
+  assert.match(ch6, /<b>close<\/b>/, 's_r,max sin gren');
+});
+
+test('kapittel 6: σ_c ved påføring og den krøpne σ_c står som TO ulike tall, hver med sin etikett (spec §1.4)', () => {
+  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, slsResult([AC1_ROW])), 6);
+  assert.match(ch6, /at first loading/);
+  // Den krøpne tilstandens σ_c (state.sigma_c = -6.886016) skal IKKE forsvinne
+  // bare fordi 7.2(3) sjekkes mot sigma_c_initial (-10.325115).
+  assert.match(ch6, /-?6\.886/);
+  assert.match(ch6, /-?10\.3251/);
+});
+
+test('kapittel 6: en rad UTEN tilstand (AC8a) viser grunnen, og ingen stress-/crack-tabell', () => {
+  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, slsResult([AC8A_ROW])), 6);
+  assert.match(ch6, /no equilibrium/i, 'den engelske forklaringen for no_equilibrium_cracked');
+  assert.doesNotMatch(ch6, /EC2 7\.2 — stress limits/, 'ingen stress-tabell uten en tilstand');
+  assert.doesNotMatch(ch6, /EC2 7\.3\.4 — crack width/, 'ingen rissviddetabell uten en tilstand');
+});
+
+/**
+ * AC14 (spec §9, §3.5): `crack` er et FYLT objekt selv når `w_max` og `ok`
+ * er `null` — w_k SKAL stå. Ville FEILET med en implementasjon som leser
+ * §3.5-tabellen bokstavelig og setter `crack = None` når grensen mangler.
+ */
+test('kapittel 6: AC14 — crack er FYLT med w_k selv når w_max/ok er null', () => {
+  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, slsResult([AC14_ROW])), 6);
+  assert.match(ch6, /0\.211429/, 'w_k skal stå — den ER regnet');
+  assert.match(ch6, /no recommended crack width limit/i, 'ok_reason forklart i klartekst');
+});
+
+test('kapittel 6: checks-tabellen bruker samme hake/kryss/strek som ULS, og not_applicable har GRUNN, ikke symbol', () => {
+  const withNA = slsResult([AC3_ROW], {
+    checks: { sigma_c_char_ok: true, sigma_s_char_ok: true },
+    not_applicable: { crack_width_ok: 'no quasi-permanent load combination is present' },
+  });
+  const ch6 = chapterBody(buildReportHtml(BEAM_STATE, withNA), 6);
+  assert.match(ch6, /Concrete stress under characteristic load/);
+  assert.match(ch6, /Crack width w_k ≤ w_max/);
+  assert.match(ch6, /no quasi-permanent load combination is present/);
+});
+
+test('kapittel 6: ingen norsk tekst i noen av grenene (uncracked, cracked, AC14, AC8a)', () => {
+  const NORDIC = /[æåÆÅø]/;
+  const NORWEGIAN_WORDS = /\b(ikke|kapasitet|armering|tverrsnitt|beregning|utnyttelse|bjelke|krumning|overdekning)\b/i;
+  for (const rows of [[AC3_ROW], [AC1_ROW], [AC14_ROW], [AC8A_ROW], []]) {
+    const ch6 = chapterBody(buildReportHtml(BEAM_STATE, slsResult(rows)), 6);
+    assert.doesNotMatch(ch6, NORDIC, `nordisk tegn med rader ${JSON.stringify(rows.map((r) => r?.id))}`);
+    assert.doesNotMatch(ch6, NORWEGIAN_WORDS);
+  }
 });
 
 /* ================================================================== *
@@ -655,7 +872,11 @@ test('R16 — en ikke-ULS-rad STÅR i kombinasjonstabellen med «Not checked», 
 
 test('R17 — samme rad viser DASH i η-, V_Ed- og η_V-kolonnene, og SLS-fotnoten står under tabellen', () => {
   const ch4 = chapterBody(buildReportHtml(BEAM_STATE, withUncheckedCombo(BENDING)), 4);
-  assert.match(ch4, /Serviceability checks are not implemented in this version\./, 'G5-fotnoten');
+  // RETTET (spec §6.3): fotnoten påstod tidligere at SLS ikke fantes i det
+  // hele tatt. Den skal nå bare si at raden ikke er bruddkontrollert, og
+  // peke videre til Serviceability-kapitlet — ikke fornekte at det finnes.
+  assert.match(ch4, /carry no resistance check/, 'G5-fotnoten');
+  assert.match(ch4, /Serviceability chapter/, 'G5-fotnoten skal peke videre, ikke fornekte');
   // Radraden for C2 (SLS 1) skal ha DASH i η/V_Ed/η_V — tre DASH-er i den ene raden.
   const row = ch4.slice(ch4.indexOf('SLS 1'), ch4.indexOf('SLS 1') + 400);
   const dashesInRow = (row.match(new RegExp(DASH, 'g')) || []).length;
@@ -1058,11 +1279,11 @@ test('mc_endpoint_mismatch vises som merknad, ikke som ukjent kode', () => {
       detail: 'last point differs from M_Rd by 3.2 permille',
     },
   ];
-  const ch7 = chapterBody(buildReportHtml(BEAM_STATE, res), 7);
-  assert.ok(ch7.includes(escapeHtml(CODE_MESSAGES.mc_endpoint_mismatch)));
-  assert.ok(ch7.includes('Note'));
-  assert.ok(!ch7.includes('Unspecified message'), 'koden skal være kjent nå');
-  assert.ok(ch7.includes('<code>mc_endpoint_mismatch</code>'));
+  const ch8 = chapterBody(buildReportHtml(BEAM_STATE, res), 8);
+  assert.ok(ch8.includes(escapeHtml(CODE_MESSAGES.mc_endpoint_mismatch)));
+  assert.ok(ch8.includes('Note'));
+  assert.ok(!ch8.includes('Unspecified message'), 'koden skal være kjent nå');
+  assert.ok(ch8.includes('<code>mc_endpoint_mismatch</code>'));
 });
 
 test('et {ok:false}-svar rapporteres oversatt, ikke som rå ValueError', () => {
@@ -1127,48 +1348,48 @@ test('{ok:false} med full konvolutt: kapittel 2 og 3 bruker motorens EGNE tall, 
 });
 
 /* ================================================================== *
- * Kapittel 7 — det som gjør rapporten etterprøvbar
+ * Kapittel 8 — det som gjør rapporten etterprøvbar
  * ================================================================== */
 
 test('metodekapitlet sier det plan §8 punkt 7 krever', () => {
-  const ch7 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 7);
-  assert.match(ch7, /marin/i, 'integratoren');
-  assert.match(ch7, /subtract_bar_area/, 'stålarealtrekket');
-  assert.match(ch7, /scipy/, 'substitusjonen');
-  assert.match(ch7, /numpy/i, 'hva den er erstattet MED');
-  assert.ok(ch7.includes(STRUCTURALCODES_VERSION), 'structuralcodes-versjonen');
-  assert.ok(ch7.includes('1992-1-1'), 'EC2-referansene');
+  const ch8 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 8);
+  assert.match(ch8, /marin/i, 'integratoren');
+  assert.match(ch8, /subtract_bar_area/, 'stålarealtrekket');
+  assert.match(ch8, /scipy/, 'substitusjonen');
+  assert.match(ch8, /numpy/i, 'hva den er erstattet MED');
+  assert.ok(ch8.includes(STRUCTURALCODES_VERSION), 'structuralcodes-versjonen');
+  assert.ok(ch8.includes('1992-1-1'), 'EC2-referansene');
 });
 
 test('scipy-substitusjonen står som en substitusjon, ikke som en fotnote', () => {
-  const ch7 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 7);
-  assert.match(ch7, /replaced by a verified numpy equivalent/i);
-  assert.match(ch7, /lu_factor/);
-  assert.match(ch7, /0\.000e\+00/, 'ekvivalensen er målt, og målingen skal stå');
+  const ch8 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 8);
+  assert.match(ch8, /replaced by a verified numpy equivalent/i);
+  assert.match(ch8, /lu_factor/);
+  assert.match(ch8, /0\.000e\+00/, 'ekvivalensen er målt, og målingen skal stå');
 });
 
 test('den utsmurte stripa forklares for plata', () => {
-  const slab7 = chapterBody(buildReportHtml(SLAB_STATE, SLAB_BENDING), 7);
-  assert.match(slab7, /smeared/i);
-  assert.match(slab7, /0\.17 %/, 'verifikasjonen mot diskrete jern');
+  const slab8 = chapterBody(buildReportHtml(SLAB_STATE, SLAB_BENDING), 8);
+  assert.match(slab8, /smeared/i);
+  assert.match(slab8, /0\.17 %/, 'verifikasjonen mot diskrete jern');
   // Bjelken får den motsatte opplysningen — diskrete jern — og ikke stripa som sin modell.
-  const beam7 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 7);
-  assert.match(beam7, /Discrete bars/);
+  const beam8 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 8);
+  assert.match(beam8, /Discrete bars/);
 });
 
 test('subtract_bar_area beskrives med den konsekvensen valget har', () => {
-  const off = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 7);
+  const off = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 8);
   assert.match(off, /subtract_bar_area = off/);
   assert.match(off, /unsafe side/);
 
   const on = clone(BENDING);
   on.meta.subtract_bar_area = true;
-  const ch7 = chapterBody(buildReportHtml(BEAM_STATE, on), 7);
-  assert.match(ch7, /subtract_bar_area = on/);
-  assert.match(ch7, /punched out/);
+  const ch8 = chapterBody(buildReportHtml(BEAM_STATE, on), 8);
+  assert.match(ch8, /subtract_bar_area = on/);
+  assert.match(ch8, /punched out/);
 });
 
-test('ALLE advarsler står i kapittel 7, oversatt, med rå tekst som detalj', () => {
+test('ALLE advarsler står i kapittel 8, oversatt, med rå tekst som detalj', () => {
   const res = clone(BENDING);
   res.warnings = [
     {
@@ -1184,16 +1405,16 @@ test('ALLE advarsler står i kapittel 7, oversatt, med rå tekst som detalj', ()
       detail: 'StructuralCodesWarning: convergence not achieved',
     },
   ];
-  const ch7 = chapterBody(buildReportHtml(BEAM_STATE, res), 7);
-  assert.ok(ch7.includes(CODE_MESSAGES.bar_in_compression_zone));
-  assert.ok(ch7.includes(CODE_MESSAGES.mc_truncated));
-  assert.ok(ch7.includes('Warning'));
-  assert.ok(ch7.includes('Note'));
-  assert.ok(ch7.includes('Estimated error 2.1 kNm'), 'detaljen skal være tilgjengelig');
-  assert.ok(ch7.includes('<code>bar_in_compression_zone</code>'), 'koden er sporet');
+  const ch8 = chapterBody(buildReportHtml(BEAM_STATE, res), 8);
+  assert.ok(ch8.includes(CODE_MESSAGES.bar_in_compression_zone));
+  assert.ok(ch8.includes(CODE_MESSAGES.mc_truncated));
+  assert.ok(ch8.includes('Warning'));
+  assert.ok(ch8.includes('Note'));
+  assert.ok(ch8.includes('Estimated error 2.1 kNm'), 'detaljen skal være tilgjengelig');
+  assert.ok(ch8.includes('<code>bar_in_compression_zone</code>'), 'koden er sporet');
 });
 
-test('en axial_out_of_range-advarsel merket med kombinasjon viser navnet i kapittel 7', () => {
+test('en axial_out_of_range-advarsel merket med kombinasjon viser navnet i kapittel 8', () => {
   const res = clone(BENDING);
   res.warnings = [
     {
@@ -1204,14 +1425,14 @@ test('en axial_out_of_range-advarsel merket med kombinasjon viser navnet i kapit
       detail: 'n=-5e6 outside [n_min, n_max]',
     },
   ];
-  const ch7 = chapterBody(buildReportHtml(BEAM_STATE, res), 7);
-  assert.match(ch7, /ULS 3: /, 'kombinasjonsnavnet skal stå foran hovedmeldingen');
-  assert.ok(ch7.includes(escapeHtml(CODE_MESSAGES.axial_out_of_range)));
+  const ch8 = chapterBody(buildReportHtml(BEAM_STATE, res), 8);
+  assert.match(ch8, /ULS 3: /, 'kombinasjonsnavnet skal stå foran hovedmeldingen');
+  assert.ok(ch8.includes(escapeHtml(CODE_MESSAGES.axial_out_of_range)));
 });
 
 test('uten advarsler sier rapporten det uttrykkelig', () => {
-  const ch7 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 7);
-  assert.match(ch7, /No warnings/);
+  const ch8 = chapterBody(buildReportHtml(BEAM_STATE, BENDING), 8);
+  assert.match(ch8, /No warnings/);
 });
 
 /* ================================================================== *
@@ -1257,7 +1478,7 @@ test('ingen rapportvariant lekker NaN, undefined eller [object Object]', () => {
 
 test('en tom tilstand gir en rapport, ikke et unntak', () => {
   const html = buildReportHtml({}, null);
-  assert.deepEqual(chapterOrder(html), [1, 2, 3, 4, 5, 6, 7]);
+  assert.deepEqual(chapterOrder(html), [1, 2, 3, 4, 5, 6, 7, 8]);
   assert.match(html, /No reinforcement layers entered/);
 });
 
