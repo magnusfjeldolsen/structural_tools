@@ -516,6 +516,15 @@ function rebarChapter(state, result, props) {
  * alt betyr «denne raden styrer BØYING» (plan §5.2 sin advarsel om å ikke slå
  * sammen de to η-ene gjelder også hvilken RAD som fremheves).
  */
+// STEG 2 — lesbar etikett for lastkombinasjonstypen. `undefined` (gamle
+// resultatfixturer uten `type`-felt) gir DASH, ikke en gjettet type — feltet
+// fantes ikke i den kjøringen, og skal ikke late som det gjorde.
+const COMBO_TYPE_LABELS = Object.freeze({
+  uls: 'ULS',
+  characteristic: 'Characteristic',
+  quasi_permanent: 'Quasi-permanent',
+});
+
 function combinationsBlock(result) {
   const combos = allCombinations(result);
   if (!combos.length) return '';
@@ -526,27 +535,37 @@ function combinationsBlock(result) {
   const governingWord = result?.analysis === 'moment_curvature' ? 'Curve row' : 'Governing';
   const shearGoverningId = analysisBlock(result)?.shear_governing;
   const hasShearGoverning = shearGoverningId !== null && shearGoverningId !== undefined;
+  // STEG 2, G6: raden skal ALDRI forsvinne fra tabellen — den står med «Not
+  // checked» i stedet. `some(...)` alene, uten filter, dekker derfor alle rader.
+  const hasUnchecked = combos.some((c) => c.checked === false);
   const rows = combos
     .map((c) => {
       const isGoverning = governingId !== null && governingId !== undefined && c.id === governingId;
       const isShearGoverning = hasShearGoverning && c.id === shearGoverningId;
-      const outOfRange = c.within_limits === false;
+      // G3: `c.checked === false`, ALDRI `!c.checked` — de seks committede
+      // `result-*.json`-fixturene har ikke feltet, og `undefined` skal gi
+      // NØYAKTIG dagens oppførsel (planens felle 13).
+      const notChecked = c.checked === false;
+      const outOfRange = !notChecked && c.within_limits === false;
       // `flexure_solved === false` med `within_limits` i behold betyr at
       // moment–krumning tok raden med BARE for skjærets skyld: kurven hører til
       // den aktive kombinasjonen, og de øvrige radene er ikke bøyeregnet.
       // Uten denne cellen sto slike rader HELT tomme, med «–» under η, rett ved
       // siden av en rad merket «Governing» som kunne ha en tjuendedel av
       // momentet. Leseren hadde da ingen måte å se at tallet manglet med vilje.
-      const shearOnly = !outOfRange && c.flexure_solved === false;
+      const shearOnly = !notChecked && !outOfRange && c.flexure_solved === false;
       const dir = directionFromTheta(c.theta);
       const label = esc(comboLabel(c));
-      const status = outOfRange
-        ? 'Outside [N_min, N_max]'
-        : shearOnly
-          ? 'Shear only'
-          : isGoverning
-            ? governingWord
-            : '';
+      const typeLabel = c.type in COMBO_TYPE_LABELS ? COMBO_TYPE_LABELS[c.type] : DASH;
+      const status = notChecked
+        ? 'Not checked'
+        : outOfRange
+          ? 'Outside [N_min, N_max]'
+          : shearOnly
+            ? 'Shear only'
+            : isGoverning
+              ? governingWord
+              : '';
       const shear = c.shear;
       const shearEta = shear && shear.evaluated ? toNum(shear.utilisation) : null;
       const shearCell = shearEta === null ? DASH : fmtRatio(shearEta, 3);
@@ -554,17 +573,18 @@ function combinationsBlock(result) {
         isShearGoverning ? ' data-shear-governing="true"' : ''
       }>` +
         `<td>${isGoverning ? `<b>${label}</b>` : label}</td>` +
+        `<td>${esc(typeLabel)}</td>` +
         `<td class="num">${fmtForceKN(c.N_Ed)}</td>` +
         `<td class="num">${fmtMomentKNm(c.M_Ed)}</td>` +
         `<td>${esc(dir ? directionLabel(dir) : DASH)}</td>` +
-        `<td class="num">${outOfRange || shearOnly ? DASH : fmtRatio(c.utilisation, 3)}</td>` +
-        `<td class="num">${fmtForceKN(c.V_Ed)}</td>` +
-        `<td class="num">${isShearGoverning ? `<b>${shearCell}</b>` : shearCell}</td>` +
+        `<td class="num">${notChecked || outOfRange || shearOnly ? DASH : fmtRatio(c.utilisation, 3)}</td>` +
+        `<td class="num">${notChecked ? DASH : fmtForceKN(c.V_Ed)}</td>` +
+        `<td class="num">${notChecked ? DASH : (isShearGoverning ? `<b>${shearCell}</b>` : shearCell)}</td>` +
         `<td>${esc(status)}</td>` +
         `</tr>`;
     })
     .join('');
-  const mcNote = result?.analysis === 'moment_curvature' && combos.some((c) => c.flexure_solved === false)
+  const mcNote = result?.analysis === 'moment_curvature' && combos.some((c) => c.flexure_solved === false && c.checked !== false)
     ? `<p class="note">Moment–curvature solves the bending state for the active load ` +
       `combination only — the curve belongs to that row. The other rows are carried ` +
       `along for the shear check, and are marked <b>Shear only</b>. Run the bending ` +
@@ -575,12 +595,17 @@ function combinationsBlock(result) {
       `different row than the one governing bending (above): a large V_Ed with a small ` +
       `M_Ed can control shear without ever being close to controlling bending.</p>`
     : '';
+  // G5: fotnote når minst én rad er ukontrollert (SLS). Plassert ved siden av
+  // `mcNote`/`shearNote` — samme mønster, samme sted.
+  const slsNote = hasUnchecked
+    ? `<p class="note">Serviceability checks are not implemented in this version.</p>`
+    : '';
   return (
     `<h4>Load combinations</h4>` +
-    `<table><thead><tr><th>Combination</th><th class="num">N_Ed [kN]</th>` +
+    `<table><thead><tr><th>Combination</th><th>Type</th><th class="num">N_Ed [kN]</th>` +
     `<th class="num">M_Ed [kNm]</th><th>Direction</th><th class="num">η [–]</th>` +
     `<th class="num">V_Ed [kN]</th><th class="num">η_V [–]</th>` +
-    `<th>Status</th></tr></thead><tbody>${rows}</tbody></table>${mcNote}${shearNote}`
+    `<th>Status</th></tr></thead><tbody>${rows}</tbody></table>${mcNote}${shearNote}${slsNote}`
   );
 }
 

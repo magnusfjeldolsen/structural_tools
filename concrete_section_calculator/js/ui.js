@@ -348,6 +348,27 @@ export function governingLabel(result) {
 }
 
 /**
+ * `V_Rd` og `V_Ed` under skjærmerket i hovedresultatet.
+ *
+ * `η_V` alene sier hvor langt man er fra grensa, men ikke hva grensa ER — og
+ * det er kapasiteten en ingeniør skriver ned. Tallet sto bare i skjærpanelet
+ * lenger nede og i rapporten; nå står det der utnyttelsen står.
+ *
+ * `governing_mode` avgjør hvilket tall som ER `V_Rd`: `V_Rd,c` alene uten
+ * bøyler, ellers `min(V_Rd,s ; V_Rd,max)`. `V_Rd,c` LEGGES ALDRI TIL `V_Rd,s`
+ * (EC2 6.2.3(2)) — de tre tallene står ved siden av hverandre i panelet under,
+ * og her vises bare det ene som gjelder.
+ */
+function vRdLine(combo) {
+  const sh = combo && combo.shear;
+  if (!sh || !sh.evaluated) return '';
+  const vRd = toNum(sh.V_Rd);
+  if (vRd === null) return '';
+  return `<div class="text-[11px] opacity-70 num">V<sub>Rd</sub> ${fmtForceKN(vRd)} kN`
+    + ` · V<sub>Ed</sub> ${fmtForceKN(toNum(sh.V_Ed))} kN</div>`;
+}
+
+/**
  * Skjærmerket: ETT eget tall, ved siden av η — ALDRI slått sammen med det.
  * De svarer på to ulike spørsmål, og en rad med stor `V_Ed` og lite `M_Ed`
  * kan styre skjær uten å være i nærheten av å styre bøying. Samme utforming
@@ -365,6 +386,7 @@ export function shearBadge(result) {
     <div class="text-[11px] uppercase tracking-wide opacity-80">Shear <span class="normal-case">η<sub>V</sub></span></div>
     <div class="text-2xl font-bold num">${fmtRatio(eta, 2)}</div>
     <div class="text-[11px] opacity-70 num">${esc(SHEAR_UTILISATION_LABEL)} · ${esc(comboLabel(combo))}</div>
+    ${vRdLine(combo)}
   </div>`;
 }
 
@@ -1556,15 +1578,22 @@ export function createUI(deps) {
     // nøkkel/verdi-linjene i resultatpanelet, og en skygge her ville vært en
     // felle for den neste som skulle bruke den.
     const list = s.shear?.stirrups || [];
+    const isSlab = s.sectionType === 'slab';
 
     if (!list.length) {
       // Tom liste er IKKE et hull i skjemaet: den er signalet til motoren om å
-      // ta V_Rd,c-veien (EC2 6.2.1(4)), og riktig svar for en plate og for en
-      // bjelke som ennå ikke har fått bøyler.
-      host.innerHTML =
-        `<div class="px-3 py-3 text-[12px] text-slate-500">No stirrups. The shear capacity is then ` +
-        `V<sub>Rd</sub> = V<sub>Rd,c</sub> — the concrete alone (EC2 6.2.1(4)), which is what a slab ` +
-        `normally relies on. Press "+ Add stirrups" to add shear reinforcement.</div>`;
+      // ta V_Rd,c-veien (EC2 6.2.1(4)). For en plate er den tilstanden
+      // PERMANENT (§A1 i store.js) — teksten skal derfor ikke tilby en knapp
+      // som ikke finnes, og heller ikke ligge under en bjelke som ennå ikke
+      // har fått bøyler.
+      host.innerHTML = isSlab
+        ? `<div class="px-3 py-3 text-[12px] text-slate-500">Shear reinforcement is not designed for ` +
+          `slabs in this version. EC2 6.2.3 and 9.2.2 are beam rules, and 9.3.2 does not allow shear ` +
+          `reinforcement in slabs thinner than 200 mm. The shear capacity reported is V<sub>Rd,c</sub> ` +
+          `to EC2 6.2.2 — the concrete alone, per metre of slab width.</div>`
+        : `<div class="px-3 py-3 text-[12px] text-slate-500">No stirrups. The shear capacity is then ` +
+          `V<sub>Rd</sub> = V<sub>Rd,c</sub> — the concrete alone (EC2 6.2.1(4)), which is what a slab ` +
+          `normally relies on. Press "+ Add stirrups" to add shear reinforcement.</div>`;
       return;
     }
 
@@ -1572,20 +1601,51 @@ export function createUI(deps) {
     // denne Ø-en og geometriens er den samme. Den står nå i `HINTS`, og merket
     // under peker på den — så forklaringen er der på ALLE rader i stedet for
     // bare den første, uten å koste en eneste linje i noen av dem.
+    //
+    // Geometrikolonnen er FAST smal (`minmax(0,26rem)` i index.html, ≈390px
+    // innvendig etter padding) uansett vindusbredde — en fast pikselbredde
+    // (`!w-NN`) på fire felt pluss en tekst og en knapp gikk derfor aldri opp,
+    // og f_ywk var den som måtte gi etter og falle ned på egen linje.
+    // Løsningen er et `grid grid-cols-4`: de fire feltene deler bredden som
+    // LIKE BRØKDELER av raden i stedet for faste piksler, så de alltid er
+    // like store og alltid på linje, uansett hvor smal kolonnen er.
+    // A_sw/s og sletteknappen flyttes til en EGEN rad under, høyrejustert med
+    // `ml-auto` — de er et sammendrag av raden over, ikke et femte felt som
+    // skal konkurrere med de fire om samme grid.
+    //
+    // Merkelappen ligger over feltet (`.field-label`, SAMME mønster som
+    // b/h/cover-raden lenger opp i skjemaet), ikke inni samme flex-linje som
+    // input-en: «legs» og «f_ywk» er lengre tekst enn «Ø» og «c/c», og delte
+    // de linja med input-en ville de fire boksene likevel blitt ULIKE store
+    // — bare grid-CELLA var lik, ikke input-en inni den.
     host.innerHTML = list.map((st) => `<div class="px-3 py-2 text-[13px]">
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="w-6 text-slate-500 text-[11px]">${esc(st.id)}</span>
-        <label class="flex items-center gap-1 text-[11px] text-slate-500">Ø
-          <input type="text" class="!w-16" data-sf="dia" data-s="${esc(st.id)}" value="${fmtNumber(st.dia, 1)}" aria-label="Stirrup diameter [mm]">
-          <button type="button" class="hint" data-hint="stirrup-dia" aria-expanded="false"
-                  aria-label="About the stirrup diameter">?</button></label>
-        <label class="flex items-center gap-1 text-[11px] text-slate-500">c/c
-          <input type="text" class="!w-20" data-sf="spacing" data-s="${esc(st.id)}" value="${fmtNumber(st.spacing, 1)}" aria-label="Stirrup spacing s [mm]"></label>
-        <label class="flex items-center gap-1 text-[11px] text-slate-500"
-               title="Number of legs crossing the shear plane — all of them count in A_sw (EC2 6.2.3).">legs
-          <input type="text" class="!w-14" data-sf="legs" data-s="${esc(st.id)}" value="${fmtNumber(st.legs, 0)}" aria-label="Number of legs"></label>
-        <label class="flex items-center gap-1 text-[11px] text-slate-500">f<sub>ywk</sub>
-          <input type="text" class="!w-20" data-sf="fywk" data-s="${esc(st.id)}" value="${fmtNumber(st.fywk, 0)}" aria-label="f_ywk [MPa]"></label>
+      <div class="flex items-start gap-2">
+        <span class="w-6 pt-4 text-slate-500 text-[11px] shrink-0">${esc(st.id)}</span>
+        <div class="grid grid-cols-4 gap-2 flex-1 min-w-0">
+          <label class="min-w-0">
+            <span class="field-label">Ø</span>
+            <span class="relative flex items-center">
+              <input type="text" class="!w-full min-w-0 !pr-5" data-sf="dia" data-s="${esc(st.id)}" value="${fmtNumber(st.dia, 1)}" aria-label="Stirrup diameter [mm]">
+              <button type="button" class="hint absolute right-0.5 top-1/2 -translate-y-1/2" data-hint="stirrup-dia" aria-expanded="false"
+                      aria-label="About the stirrup diameter">?</button>
+            </span>
+          </label>
+          <label class="min-w-0">
+            <span class="field-label">c/c</span>
+            <input type="text" class="!w-full min-w-0" data-sf="spacing" data-s="${esc(st.id)}" value="${fmtNumber(st.spacing, 1)}" aria-label="Stirrup spacing s [mm]">
+          </label>
+          <label class="min-w-0"
+                 title="Number of legs crossing the shear plane — all of them count in A_sw (EC2 6.2.3).">
+            <span class="field-label">legs</span>
+            <input type="text" class="!w-full min-w-0" data-sf="legs" data-s="${esc(st.id)}" value="${fmtNumber(st.legs, 0)}" aria-label="Number of legs">
+          </label>
+          <label class="min-w-0">
+            <span class="field-label">f<sub>ywk</sub></span>
+            <input type="text" class="!w-full min-w-0" data-sf="fywk" data-s="${esc(st.id)}" value="${fmtNumber(st.fywk, 0)}" aria-label="f_ywk [MPa]">
+          </label>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mt-1 pl-8">
         <span class="text-[11px] text-slate-500 num hidden md:inline">A<sub>sw</sub>/s ${fmtNumber(aswPerSpacing(st), 3)} mm²/mm</span>
         <button type="button" class="ml-auto px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300"
                 data-remove-stirrup="${esc(st.id)}" title="Remove stirrup row">✕</button>
@@ -1774,12 +1834,20 @@ export function createUI(deps) {
     const s = store.getState();
     host.innerHTML = s.combos.map((combo) => {
       const active = combo.id === s.activeCombo;
-      return `<div class="px-3 py-2 text-[13px] ${active ? 'bg-sky-950/30' : ''}">
+      // STEG 2, H2: en ikke-ULS-rad er ikke kontrollert (SLS er ikke
+      // implementert), og tones ned for å si det visuelt, ikke bare i teksten.
+      const isUls = combo.type === 'uls';
+      return `<div class="px-3 py-2 text-[13px] ${active ? 'bg-sky-950/30' : ''} ${isUls ? '' : 'opacity-60'}">
         <div class="flex flex-wrap items-center gap-2">
           <button type="button" class="chip !py-0.5 !px-2 !text-[11px] shrink-0" data-active-combo="${esc(combo.id)}"
                   data-on="${String(active)}" title="${active ? 'Active — used for moment–curvature' : 'Set active for moment–curvature'}">
             ${active ? '● ' + esc(combo.id) : esc(combo.id)}
           </button>
+          <select class="!w-32 !text-[11px]" data-cf="type" data-c="${esc(combo.id)}" aria-label="Combination type" title="Only ULS rows are checked in this version — serviceability (SLS) is not implemented.">
+            <option value="uls" ${combo.type === 'uls' ? 'selected' : ''}>ULS</option>
+            <option value="characteristic" ${combo.type === 'characteristic' ? 'selected' : ''}>Characteristic</option>
+            <option value="quasi_permanent" ${combo.type === 'quasi_permanent' ? 'selected' : ''}>Quasi-permanent</option>
+          </select>
           <input type="text" class="!w-28" data-cf="name" data-c="${esc(combo.id)}" value="${esc(combo.name)}" placeholder="name" aria-label="Combination name">
           <label class="flex items-center gap-1 text-[11px] text-slate-500"
                  title="Axial force [kN] — compression is negative.">N<sub>Ed</sub>
@@ -1794,12 +1862,26 @@ export function createUI(deps) {
                   title="${s.combos.length <= 1 ? 'The last combination cannot be removed' : 'Remove combination'}">✕</button>
         </div>
         <div class="mt-1 text-[11px] text-slate-500 num" data-m-interp="${esc(combo.id)}">${esc(momentInterpretation(combo.M_Ed))}</div>
+        ${isUls ? '' : `<div class="mt-0.5 text-[11px] text-amber-500/80" data-combo-sls-note="${esc(combo.id)}">Not checked — SLS is not implemented yet</div>`}
       </div>`;
     }).join('');
     bindComboRows(host);
   }
 
   function bindComboRows(host) {
+    // STEG 2, H3: `<select>`-en for kombinasjonstype. UTEN `comboEditInFlight`
+    // — det flagget finnes for å hindre at `innerHTML`-omtegningen spiser
+    // TAB-en fra et TEKSTFELT (planens felle 11); en `<select>` mister ikke
+    // fokus på samme måte, og med flagget på ville raden ikke blitt tegnet om
+    // — altså ingen nedtoning, og `enforceActiveCombo` sin flytting av aktiv
+    // rad ville ikke vist seg.
+    host.querySelectorAll('select[data-cf="type"]').forEach((el) => {
+      el.onchange = () => {
+        store.updateCombo(el.dataset.c, { type: el.value });
+        invalidate();
+        render();
+      };
+    });
     host.querySelectorAll('[data-active-combo]').forEach((el) => {
       el.onclick = () => {
         store.setActiveCombo(el.dataset.activeCombo);
@@ -2601,18 +2683,34 @@ export function createUI(deps) {
       // §2.6: boksen er nå sammenfoldbar, og da må sammendraget bære ALLE
       // verdiene bak klikket — også θ og z_factor, som avgjør V_Rd,s og
       // V_Rd,max. Uten dem kunne en fil med θ = 30° sett ut som en fil med 45°.
+      // θ og z_factor styrer bare V_Rd,s/V_Rd,max, som ikke regnes for en
+      // plate (§A1 i store.js) — sammendraget skal derfor ikke vise dem for
+      // en plate, det ville påstått at trykkstavvinkelen betydde noe den ikke gjør.
       const strut = `θ ${fmtNumber(s.shear.strut_angle_deg, 1)}° · ` +
         `z ${fmtNumber(s.shear.z_factor, 2)}·d`;
       shearSum.innerHTML = list.length
         ? `${list.length} row${list.length === 1 ? '' : 's'} · ΣA<sub>sw</sub>/s ` +
           `${fmtNumber(totalAswPerSpacing(list), 3)} mm²/mm · ${strut}`
-        : `No stirrups · V<sub>Rd</sub> = V<sub>Rd,c</sub> · ${strut}`;
+        : s.sectionType === 'slab'
+          ? `V<sub>Rd</sub> = V<sub>Rd,c</sub> · no shear reinforcement (slab)`
+          : `No stirrups · V<sub>Rd</sub> = V<sub>Rd,c</sub> · ${strut}`;
     }
+    // Knappen er en no-op når raden allerede finnes (se `setupShear`), og
+    // hintlinja forklarer noe brukeren ennå ikke har å se på — begge hører
+    // til FØR raden finnes, ikke etter. `render()` kjører på hver endring
+    // (også fjerning av raden), så synligheten må settes her, ikke bare ved
+    // oppstart. En plate skal ALDRI se knappen eller hintet: den får aldri
+    // bøyler (§A1 i store.js), og knappen ville uansett vært en no-op.
+    const hasStirrups = (s.shear?.stirrups || []).length > 0;
+    const isSlabSection = s.sectionType === 'slab';
+    const addStirrupBtn = $('#add-stirrup');
+    if (addStirrupBtn) addStirrupBtn.classList.toggle('hidden', hasStirrups || isSlabSection);
     const shearHint = $('#shear-hint');
     if (shearHint) {
-      shearHint.innerHTML = (s.shear?.stirrups || []).length
-        ? 'The legs are drawn in the section, bent around the bars they meet.'
-        : '';
+      shearHint.classList.toggle('hidden', hasStirrups || isSlabSection);
+      shearHint.innerHTML = hasStirrups
+        ? ''
+        : 'The legs are drawn in the section, bent around the bars they meet.';
     }
 
     const est = derived(s);

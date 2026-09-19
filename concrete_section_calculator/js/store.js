@@ -27,7 +27,7 @@
 import { SCHEMA_VERSION } from './meta.js';
 import {
   createCombo, createLayer, createStirrup, DEFAULT_STIRRUP_DIA,
-  recomputeAutoDc, stackedDc, stirrupCoverDia,
+  COMBO_TYPES, recomputeAutoDc, stackedDc, stirrupCoverDia,
 } from './rebar.js';
 import { allowedAnalyses, SLAB_WIDTH } from './section.js';
 
@@ -121,7 +121,7 @@ export function defaultState() {
     // praksis (endringsrunde 4 §1). `direction` finnes ikke lenger — retningen
     // ER fortegnet, se `section.js:thetaFor`. `V_Ed` er en STØRRELSE: fortegnet
     // på skjærkraften betyr ingenting for kapasiteten (§4.1c).
-    combos: [{ id: 'C1', name: 'ULS 1', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
+    combos: [{ id: 'C1', name: 'ULS 1', type: 'uls', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
     activeCombo: 'C1',
     analysis: 'bending',
     // Skjær (endringsrunde 4 §3.4). Tom `stirrups`-liste = ingen
@@ -353,14 +353,71 @@ function enforceSlabWidth(s) {
 }
 
 /**
+ * Plata får ALDRI bøyler. EC2 6.2.3 (V_Rd,s/V_Rd,max) og 9.2.2 (A_sw/s-minimum,
+ * s_l,max, s_t,max) er BJELKEregler, og 9.3.2 tillater ikke skjærarmering i
+ * plater tynnere enn 200 mm. V_Rd,c etter 6.2.2 gjelder derimot nettopp
+ * «members not requiring shear reinforcement», og er gyldig per meter
+ * platebredde — derfor fjernes BØYLENE her, ikke skjærberegningen: en tom
+ * `stirrups`-liste er signalet motoren allerede bruker for å ta V_Rd,c-veien
+ * (`engine.py` sin `governing_mode = 'no_stirrups'`), og `section.shear` skal
+ * fortsatt sendes som et objekt — bare med tom liste — se `payload.js`.
+ * Samme énveis-prinsipp som `enforceSlabWidth`: retter bare når det faktisk
+ * står en bøylerad på en plate.
+ */
+function enforceSlabStirrups(s) {
+  if (s.sectionType !== 'slab') return s;
+  if (!(s.shear?.stirrups || []).length) return s;
+  return { ...s, shear: { ...s.shear, stirrups: [] } };
+}
+
+/**
+ * STEG 2 — `activeCombo` skal peke på en ULS-rad når det finnes en. Alt UI
+ * som viser «resultatet for aktiv rad» (M–N-diagrammet, moment–krumning) gir
+ * ingen mening for en SLS-rad (`characteristic`/`quasi_permanent`) — SLS er
+ * ikke implementert i denne runden (§10 i v5, uendret).
+ *
+ * ÉNVEIS, akkurat som `enforceSlabWidth`/`enforceSlabStirrups`: flytter bare
+ * når den aktive raden IKKE allerede er `uls`. Finnes det ingen `uls`-rad i
+ * det hele tatt, står `activeCombo` URØRT — det er da motorens
+ * `no_uls_combination`-feilboks som skal si det, ikke en stille omplassering
+ * til en rad som likevel ikke blir kontrollert (planens B1).
+ */
+/**
+ * Ugyldig `type` faller tilbake til `uls`, i ENHVER dør inn i staten.
+ *
+ * `createCombo` normaliserte, men `updateCombo`, `setState` og `replaceState`
+ * gjorde det ikke. Målt: `updateCombo('C2', {type: 'søppel'})` ga `'søppel'`
+ * både i staten og i payloaden — og da sa de tre lagene hver sin ting om samme
+ * rad: motoren normaliserte til `uls` og satte `checked: true`, `ui.js` leste
+ * `type === 'uls'` som false og tonet raden ned med «Not checked», og
+ * `<select>`-en viste «ULS» fordi ingen `<option>` matchet.
+ *
+ * Kjøres FØR `enforceActiveCombo`: den leter etter første `uls`-rad, og en rad
+ * med en ugyldig type skal telle som `uls` i den letingen — ikke hoppes over.
+ */
+function enforceComboTypes(s) {
+  const combos = s.combos || [];
+  if (combos.every((c) => COMBO_TYPES.includes(c.type))) return s;
+  return { ...s, combos: combos.map((c) => (COMBO_TYPES.includes(c.type) ? c : { ...c, type: 'uls' })) };
+}
+
+function enforceActiveCombo(s) {
+  const active = (s.combos || []).find((c) => c.id === s.activeCombo);
+  if (active && active.type === 'uls') return s;
+  const firstUls = (s.combos || []).find((c) => c.type === 'uls');
+  if (!firstUls || firstUls.id === s.activeCombo) return s;
+  return { ...s, activeCombo: firstUls.id };
+}
+
+/**
  * Lager en ny store.
  *
  * @param {object} [initial] slås sammen med `defaultState()`
  */
 export function createStore(initial) {
-  let state = enforceSlabWidth(
+  let state = enforceActiveCombo(enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(
     enforceAnalysis(cloneState({ ...defaultState(), ...(initial || {}) }))
-  );
+  ))));
   const listeners = new Set();
   // Løpenummer for lag-id-er. Teller ALDRI ned når et lag slettes: «L2» skal
   // ikke kunne bety to ulike lag i samme økt, ellers peker en gammel
@@ -429,6 +486,13 @@ export function createStore(initial) {
      */
     setState(patch) {
       state = cloneState({ ...state, ...patch });
+      // `setState({sectionType:'slab'})` er en av dørene inn til plata (§A1) —
+      // en bjelke med bøylerad skal ikke bære dem med seg over.
+      state = enforceSlabStirrups(state);
+      // STEG 2, B2: `setState` var ETT AV DE TO HULLENE v5 §2.4 navnga — ingen
+      // håndheving av aktiv kombinasjon kjørte her, så `setState({combos:[…]})`
+      // (workflow-API) kunne la `activeCombo` peke på en SLS-rad.
+      state = enforceActiveCombo(enforceComboTypes(state));
       if ('cover' in patch) applyAutoDc();
       notify();
       return state;
@@ -440,6 +504,10 @@ export function createStore(initial) {
      * og `applyAutoDc` regner `dc` på nytt.
      */
     addStirrup(patch = {}) {
+      // Plata får aldri bøyler (§A1) — knappen er skjult i UI-et (ui.js), men
+      // dette er sperra for programmatiske kall (workflow-API, tester).
+      // Eneste kallsted (`setupShear` i ui.js) ignorerer `null`.
+      if (state.sectionType === 'slab') return null;
       const row = createStirrup(state, { id: nextStirrupId(), ...patch });
       state = cloneState({
         ...state,
@@ -497,6 +565,11 @@ export function createStore(initial) {
     patch(group, values) {
       const beforeDia = stirrupCoverDia(state);
       state = cloneState({ ...state, [group]: { ...state[group], ...values } });
+      // `patch('shear', {stirrups})` på en plate er en av dørene inn (§A1).
+      // Dette MÅ skje FØR `applyAutoDc` kalles nedenfor: ellers regnes `dc`
+      // med en bøylediameter som ikke finnes lenger — målt i runde 8: d = 543
+      // der 555 er riktig.
+      state = enforceSlabStirrups(state);
       // `patch('shear', {stirrups})` er en lovlig, om enn uvanlig, vei inn, og
       // den kan flytte bøylediameteren like reelt som `updateStirrup`.
       // Sammenlikningen er på den AVLEDEDE diameteren, ikke på et felt: da kan
@@ -590,7 +663,7 @@ export function createStore(initial) {
       // INVARIANTENE KJØRES ETTER GJENOPPRETTING. Stashet er tilstand, ikke en
       // omgåelse av reglene: en plate er 1000 mm bred uansett hvilken dør den
       // kom inn gjennom.
-      state = enforceSlabWidth(state);
+      state = enforceSlabStirrups(enforceSlabWidth(state));
       // `suggestedDc` er ikke uavhengig av tverrsnittstypen: plata har ingen
       // bøyle, så `dc = cover + dia/2` der bjelken har `cover + Ø_bøyle + dia/2`.
       // Uten denne omregningen blir `dc` stående fra den forrige typen — 12 mm feil
@@ -683,18 +756,22 @@ export function createStore(initial) {
     /** Ny rad i lastkombinasjonstabellen. Retningen arves fra `createCombo`. */
     addCombo(patch = {}) {
       const combo = createCombo(state, { id: nextComboId(), ...patch });
-      state = enforceAnalysis(cloneState({ ...state, combos: [...state.combos, combo] }));
+      state = enforceActiveCombo(enforceComboTypes(
+        enforceAnalysis(cloneState({ ...state, combos: [...state.combos, combo] }))
+      ));
       notify();
       return combo;
     },
 
     updateCombo(id, values) {
-      state = enforceAnalysis(
-        cloneState({
-          ...state,
-          combos: state.combos.map((c) => (c.id === id ? { ...c, ...values } : c)),
-        })
-      );
+      state = enforceActiveCombo(enforceComboTypes(
+        enforceAnalysis(
+          cloneState({
+            ...state,
+            combos: state.combos.map((c) => (c.id === id ? { ...c, ...values } : c)),
+          })
+        )
+      ));
       notify();
       return state;
     },
@@ -708,13 +785,18 @@ export function createStore(initial) {
       if (state.combos.length <= 1) return state;
       const combos = state.combos.filter((c) => c.id !== id);
       const activeCombo = state.activeCombo === id ? combos[0].id : state.activeCombo;
-      state = enforceAnalysis(cloneState({ ...state, combos, activeCombo }));
+      state = enforceActiveCombo(enforceComboTypes(enforceAnalysis(cloneState({ ...state, combos, activeCombo }))));
       notify();
       return state;
     },
 
     setActiveCombo(id) {
       state = cloneState({ ...state, activeCombo: id });
+      // STEG 2, B2: `setActiveCombo` var DET ANDRE hullet v5 §2.4 navnga.
+      // Klikker brukeren en SLS-rad til aktiv, skal håndhevingen umiddelbart
+      // flytte den videre til første ULS-rad — IKKE la den ukontrollerte
+      // raden stå som «aktiv» og drive M–N-diagrammet.
+      state = enforceActiveCombo(enforceComboTypes(state));
       notify();
       return state;
     },
@@ -727,7 +809,9 @@ export function createStore(initial) {
      * kom dit, så `enforceAnalysis` gjelder her akkurat som for combo-endringer.
      */
     replaceState(next) {
-      state = enforceSlabWidth(enforceAnalysis(cloneState({ ...defaultState(), ...next, result: null })));
+      state = enforceActiveCombo(enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(
+        enforceAnalysis(cloneState({ ...defaultState(), ...next, result: null }))
+      ))));
       // Bøyleradene normaliseres gjennom SAMME fabrikk som `addStirrup` bruker
       // — `serialize.js` gjør dette for `layers` og `combos`, men ikke for
       // `stirrups`, så en fil uten `alpha` ville ellers fått

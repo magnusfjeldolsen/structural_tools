@@ -1248,6 +1248,201 @@ def test_shear_governing_can_differ_from_bendings_governing():
     assert result['bending']['governing'] != result['bending']['shear_governing']
 
 
+# ------------------------------------------------------------------ #
+# STEG 2 — lastkombinasjonstype (uls / characteristic / quasi_permanent)
+# ------------------------------------------------------------------ #
+
+def test_r8_a_characteristic_row_never_changes_a_single_number_the_uls_row_alone_would_give():
+    """R8 — DEN STERKESTE ENKELTPÅSTANDEN i STEG 2. En SLS-rad ved siden av en
+    uls-rad skal aldri endre et eneste tall `checks` viser: `checks` er
+    BIT-IDENTISK med en kjøring UTEN SLS-raden i det hele tatt.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'ULS 1', 'type': 'uls', 'N_Ed': 0.0, 'M_Ed': 150000000.0,
+             'theta': 0.0},
+        ],
+        'active': 'C1',
+    }
+    uls_only = engine.run(copy.deepcopy(payload))
+
+    payload['loads']['combinations'].append({
+        'id': 'C2', 'name': 'SLS 1', 'type': 'characteristic', 'N_Ed': -100000.0,
+        'M_Ed': 80000000.0, 'theta': 0.0,
+    })
+    with_sls = engine.run(payload)
+
+    assert with_sls['ok'] is True
+    assert with_sls['bending']['governing'] == 'C1'
+    assert with_sls['checks'] == uls_only['checks']
+    assert close(with_sls['bending']['M_Rd'], uls_only['bending']['M_Rd'])
+
+    sls_row = next(c for c in with_sls['bending']['combinations'] if c['id'] == 'C2')
+    assert sls_row['type'] == 'characteristic'
+    assert sls_row['checked'] is False
+    assert sls_row['within_limits'] is None      # ALDRI False — aksialsjekken ble aldri kjørt
+    assert sls_row['M_Rd'] is None
+    assert sls_row['flexure_solved'] is False
+    assert sls_row['shear'] is None
+
+
+def test_r9_a_characteristic_row_with_a_huge_v_ed_never_governs_shear():
+    """R9 — en `characteristic`-rad med `V_Ed` stor nok til å briste skal likevel
+    ALDRI kunne bli `shear_governing`, og skjærkontrollen (`shear_ok`) forblir sann:
+    raden har `shear: None`, den er aldri en kandidat i utgangspunktet.
+    """
+    payload = _shear_reference_payload()
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'ULS 1', 'type': 'uls', 'N_Ed': 0.0, 'M_Ed': -1.0,
+             'theta': 0.0, 'V_Ed': 10000.0},
+            {'id': 'C2', 'name': 'SLS 1', 'type': 'characteristic', 'N_Ed': 0.0,
+             'M_Ed': -1.0, 'theta': 0.0, 'V_Ed': 5000000.0},
+        ],
+        'active': 'C1',
+    }
+    result = engine.run(payload)
+
+    assert result['ok'] is True
+    assert result['checks']['shear_ok'] is True
+    assert result['bending']['shear_governing'] != 'C2'
+    row = next(c for c in result['bending']['combinations'] if c['id'] == 'C2')
+    assert row['shear'] is None
+    assert row['checked'] is False
+
+
+def test_r10_a_leading_sls_row_does_not_break_the_reference_used_for_section_props():
+    """R10 — rad 0 er `characteristic`, rad 1 er den ENESTE `uls`-raden.
+    `_select_governing` filtrerer på `checked` (§E5), så `section_props`/`checks`
+    regnes mot rad 1 — `as_min_ok` skal IKKE bli `None` bare fordi den FØRSTE
+    raden i lista tilfeldigvis er en SLS-rad.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'SLS 1', 'type': 'characteristic', 'N_Ed': 0.0,
+             'M_Ed': 0.0, 'theta': 0.0},
+            {'id': 'C2', 'name': 'ULS 1', 'type': 'uls', 'N_Ed': 0.0, 'M_Ed': 150000000.0,
+             'theta': 0.0},
+        ],
+        'active': 'C2',
+    }
+    result = engine.run(payload)
+
+    assert result['ok'] is True
+    assert result['bending']['governing'] == 'C2'
+    assert result['section_props']['d_eff'] is not None
+    assert result['checks']['as_min_ok'] is not None
+
+
+def test_r11_axial_ok_is_not_upset_by_an_sls_row_with_within_limits_none():
+    """R11 — `axial_ok = all(... if c['checked'])` (§E5): en SLS-rad med
+    `within_limits: None` skal ALDRI kunne velte `axial_ok`. Uten filteret ville
+    `all([True, None])` gitt `False` — Python regner `None` som usant i `all()`.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'ULS 1', 'type': 'uls', 'N_Ed': 0.0, 'M_Ed': 0.0,
+             'theta': 0.0},
+            {'id': 'C2', 'name': 'SLS 1', 'type': 'characteristic', 'N_Ed': 0.0,
+             'M_Ed': 0.0, 'theta': 0.0},
+        ],
+        'active': 'C1',
+    }
+    result = engine.run(payload)
+
+    row = next(c for c in result['bending']['combinations'] if c['id'] == 'C2')
+    assert row['within_limits'] is None
+    assert result['checks']['axial_ok'] is True
+
+
+def test_r12_no_uls_row_at_all_gives_a_different_error_than_axial_out_of_range():
+    """R12 — TO ULIKE SITUASJONER, TO ULIKE MELDINGER (§E6). Ingen `uls`-rad i det
+    hele tatt: `ok is False`, koden er `no_uls_combination` — IKKE
+    `axial_out_of_range` — meldingen nevner ikke aksialkraftområdet, `checks`
+    FINNES fortsatt, og `checks['all_ok'] is None` (§F i v5-avviket).
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['loads'] = {
+        'combinations': [
+            {'id': 'C1', 'name': 'SLS 1', 'type': 'characteristic', 'N_Ed': 0.0,
+             'M_Ed': 0.0, 'theta': 0.0},
+            {'id': 'C2', 'name': 'SLS 2', 'type': 'quasi_permanent', 'N_Ed': 0.0,
+             'M_Ed': 0.0, 'theta': 0.0},
+        ],
+        'active': 'C1',
+    }
+    result = engine.run(payload)
+
+    assert result['ok'] is False
+    assert result['error']['code'] == 'no_uls_combination'
+    assert 'axial force' not in result['error']['message']
+    assert 'kN' not in result['error']['message']
+    assert 'checks' in result
+    assert result['checks']['all_ok'] is None
+    assert all(c['checked'] is False for c in result['bending']['combinations'])
+    json.dumps(result, allow_nan=False)
+
+
+@pytest.mark.parametrize('payload_name,result_name', [
+    ('payload-beam-300x600.json', 'result-bending-beam-300x600.json'),
+    ('payload-slab-1000x200.json', 'result-bending-slab-1000x200.json'),
+    ('payload-beam-300x600-combos.json', 'result-bending-beam-300x600.json'),
+    ('payload-slab-1000x200-combos.json', 'result-bending-slab-1000x200.json'),
+])
+def test_r13_a_payload_with_no_type_field_at_all_gives_unchanged_numbers(payload_name, result_name):
+    """R13 — RENT ADDITIVITETSKRAV. De FIRE committede payload-fixturene har
+    ALDRI hatt et `type`-felt (de er fra før STEG 2). `checks`, `M_Rd` og HELE
+    skjærdikten på hver rad skal fortsatt matche `result-*.json` EKSAKT — bare
+    med `type: 'uls'`/`checked: True` lagt til additivt.
+    """
+    payload = load(payload_name)
+    expected = load(result_name)
+    result = engine.run(payload)
+
+    assert result['ok'] is True
+    assert result['checks'] == expected['checks']
+    assert close(result['bending']['M_Rd'], expected['bending']['M_Rd'])
+
+    got_rows = {c['id']: c for c in result['bending']['combinations']}
+    want_rows = {c['id']: c for c in expected['bending']['combinations']}
+    assert got_rows.keys() == want_rows.keys()
+    for cid, want in want_rows.items():
+        got = got_rows[cid]
+        # NYE felt, lagt til additivt — sjekkes for seg, ikke i sammenlikningen under.
+        assert got['type'] == 'uls'
+        assert got['checked'] is True
+        for key, value in want.items():
+            if key == 'layers':
+                continue
+            if key == 'name':
+                # `name` er IKKE en del av additivitetskravet: den gamle `loads`-
+                # forma gir alltid `''` (§4.2), mens `-combos`-fixturen navngir
+                # raden «ULS 1» — en forskjell mellom de to PAYLOAD-formene selv,
+                # ikke noe STEG 2 rørte.
+                continue
+            got_val = got[key]
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                assert close(got_val, value), f'{cid}.{key}: {got_val} != {value}'
+            else:
+                assert got_val == value, f'{cid}.{key}: {got_val} != {value}'
+
+
+def test_r14_the_old_loads_shape_gives_type_uls_and_checked_true():
+    """R14 — den GAMLE `loads`-formen (`{N_Ed, M_Ed}`, uten `combinations`) skal
+    ALLTID gi `type: 'uls'`, `checked: True` — den formen har ingen egen måte å
+    uttrykke en type på, og skal alltid bli kontrollert, som den alltid har.
+    """
+    payload = load('payload-beam-300x600.json')
+    assert 'combinations' not in payload['loads']
+    result = engine.run(payload)
+    combo = result['bending']['combinations'][0]
+    assert combo['type'] == 'uls'
+    assert combo['checked'] is True
+
+
 def _shear_all_ok_payload(v_ed=10000.0, stirrups=None, extra_out_of_range_combo=False):
     """Én gyldig kombinasjon (`C1`) som alene skal gi `all_ok: True`, med valgfri
     ekstra kombinasjon utenfor `[n_min, n_max]` for å isolere `axial_ok`."""

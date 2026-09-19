@@ -15,6 +15,7 @@ import {
   aswPerSpacing,
   barArea,
   barPositions,
+  COMBO_TYPES,
   createCombo,
   createLayer,
   DEFAULT_STIRRUP_DIA,
@@ -450,6 +451,27 @@ test('createCombo: ingen direction lenger — N_Ed/M_Ed/V_Ed er 0 som standard (
   // Patch vinner over standardverdiene, akkurat som for createLayer.
   assert.equal(createCombo({}, { M_Ed: -250 }).M_Ed, -250);
   assert.equal(createCombo({}, { id: 'C3', name: 'ULS 3' }).id, 'C3');
+});
+
+/*
+ * ===========================================================================
+ * STEG 2 — R1/R2: `createCombo` sin `type`-normalisering
+ * ===========================================================================
+ * Normaliseringen MÅ stå ETTER `...patch` (rebar.js §A2/felle 9): en fil med
+ * `type: null` eller `type: ''` skal IKKE slå ut defaulten `'uls'`.
+ */
+test('R1 — createCombo: ukjent/manglende/tom type gir alle "uls" (normalisering ETTER ...patch)', () => {
+  assert.equal(createCombo({}, {}).type, 'uls');
+  assert.equal(createCombo({}, { type: null }).type, 'uls');
+  assert.equal(createCombo({}, { type: '' }).type, 'uls');
+  assert.equal(createCombo({}, { type: 'tull' }).type, 'uls');
+});
+
+test('R2 — createCombo: en gyldig type overlever normaliseringen', () => {
+  assert.equal(createCombo({}, { type: 'quasi_permanent' }).type, 'quasi_permanent');
+  assert.equal(createCombo({}, { type: 'characteristic' }).type, 'characteristic');
+  assert.equal(createCombo({}, { type: 'uls' }).type, 'uls');
+  assert.deepEqual(COMBO_TYPES, ['uls', 'characteristic', 'quasi_permanent']);
 });
 
 /* ---------------- §2 — EC2 8.2, fri avstand ---------------- */
