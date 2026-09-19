@@ -57,6 +57,7 @@ import {
   CHECK_LABELS,
   checkRows,
   checkText,
+  CHECK_PASS_TEXT,
   directionLabel,
   directionFromTheta,
   analysisLabel,
@@ -82,6 +83,16 @@ import {
   SHEAR_UTILISATION_LABEL,
   SHEAR_GOVERNING_MODE_LABELS,
   shearGoverningModeLabel,
+  SLS_ROW_TYPE_LABELS,
+  slsRowTypeLabel,
+  SLS_CHECK_ORDER,
+  SLS_CHECK_LABELS,
+  slsCheckRows,
+  SLS_REASON_CODES,
+  SLS_REASON_TEXT,
+  slsReasonText,
+  slsRowUtilisation,
+  slsHeadlineCrack,
 } from '../js/results.js';
 // `RUN_ALL` hentes fra kilden sin: testen «samme streng som store.js» er
 // hele grunnen til at `results.js` kan skrive av strengen 'all' i stedet for
@@ -712,6 +723,192 @@ test('§1.7: «None» slipper aldri gjennom til en vist melding eller detalj', (
   assert.ok(!/\bNone\b/.test(w.message), 'hovedmeldingen skal aldri bære None');
 });
 
+/* ================================================================== *
+ * SLS — EC2 7.2/7.3.4 (spec §4, §6, §11) — A3-delen
+ *
+ * Testene her bygger `result.sls` I KODE, ikke fra en fixture: spec §0.6
+ * sier fixturene regenereres BARE av koordinatoren, og A1s payloadeksempler
+ * for AC11/AC12 gjør nøyaktig det samme. Tallene under er derfor SYNTETISKE
+ * eksempler som følger kontrakten i spec §4 — de skal påstå at LESESIDEN
+ * (`results.js`) tolker kontrakten riktig, ikke at motoren regner riktig
+ * (det er A1s test_sls.py sitt ansvar).
+ * ================================================================== */
+
+test('SLS: hver kode motoren kan emittere PÅ ett rad-felt har en engelsk tekst (spec §3.5/§11)', () => {
+  // Speiler '§1.7: de seks nye kodene ...' over, for den ANDRE tabellen.
+  // Ville FEILET før denne runden: verken tabellen eller funksjonen fantes.
+  for (const code of SLS_REASON_CODES) {
+    assert.ok(SLS_REASON_TEXT[code], `mangler engelsk tekst for SLS-grunnen «${code}»`);
+    assert.equal(typeof SLS_REASON_TEXT[code], 'string');
+    assert.ok(SLS_REASON_TEXT[code].length > 20, `teksten for «${code}» er for kort til å hjelpe noen`);
+    assert.equal(slsReasonText(code), SLS_REASON_TEXT[code]);
+  }
+  // UTTØMMENDE begge veier (spec §3.5: «Radene i tabellen over er
+  // UTTØMMENDE for crack = null»): en tekst uten kode er en løs tråd ingen
+  // kontroll fanger, like farlig som en kode uten tekst.
+  assert.deepEqual(
+    Object.keys(SLS_REASON_TEXT).sort(),
+    [...SLS_REASON_CODES].sort(),
+    'SLS_REASON_TEXT og SLS_REASON_CODES må liste NØYAKTIG de samme kodene',
+  );
+  // En ukjent kode skal IKKE late som den har tekst.
+  assert.match(slsReasonText('made_up_code'), /Unspecified reason/);
+  assert.equal(slsReasonText(''), DASH);
+  assert.equal(slsReasonText(null), DASH);
+});
+
+test('SLS: de tre nye varselkodene er i ENGINE_CODES og har tekst uten "not implemented" (spec §4, §6.3)', () => {
+  for (const code of ['sls_incomplete', 'sls_crack_width_exceeded', 'sls_stress_limit_exceeded']) {
+    assert.ok(ENGINE_CODES.includes(code), `«${code}» mangler i ENGINE_CODES`);
+    assert.ok(!messageForCode(code).includes('Unspecified message'), `«${code}» mangler tekst`);
+  }
+});
+
+/**
+ * RETTET (spec §6.3): denne koden påsto tidligere at «Serviceability checks
+ * are not implemented in this version» — usant fra og med SLS-kapittelet.
+ * Ville FEILET før: den gamle teksten inneholdt nettopp den påstanden.
+ */
+test('no_uls_combination sier ikke lenger at SLS er uimplementert (spec §6.3)', () => {
+  const msg = CODE_MESSAGES.no_uls_combination;
+  assert.ok(!/not implemented/i.test(msg), 'påstanden skal være fjernet, ikke omskrevet');
+  assert.match(msg, /serviceability/i, 'skal peke videre til at SLS-rader fortsatt evalueres');
+});
+
+test('slsRowTypeLabel: engelske etiketter, tankestrek for ukjent (spec §1.5)', () => {
+  assert.equal(slsRowTypeLabel('characteristic'), SLS_ROW_TYPE_LABELS.characteristic);
+  assert.equal(slsRowTypeLabel('quasi_permanent'), SLS_ROW_TYPE_LABELS.quasi_permanent);
+  assert.equal(slsRowTypeLabel('uls'), DASH, 'en ULS-rad skal aldri stå i SLS-tabellen');
+  assert.equal(slsRowTypeLabel(undefined), DASH);
+});
+
+/**
+ * `slsCheckRows` er IKKE `checkRows()`. Testen låser nettopp forskjellen
+ * (spec §10, A3-kravet): en `not_applicable`-nøkkel skal IKKE vises som
+ * ubesvart tankestrek — den skal vises MED sin grunn og uten hake/kryss.
+ * Ville FEILET før: funksjonen fantes ikke.
+ */
+test('slsCheckRows: not_applicable skiller seg fra null (spec §4, §10)', () => {
+  const sls = {
+    checks: { sigma_c_char_ok: null, sigma_s_char_ok: true },
+    not_applicable: {
+      sigma_c_qp_ok: 'no quasi-permanent load combination is present',
+      crack_width_ok: 'no quasi-permanent load combination is present',
+    },
+  };
+  const rows = slsCheckRows(sls);
+  assert.deepEqual(rows.map((r) => r.key), SLS_CHECK_ORDER, 'fast rekkefølge, spec §4');
+
+  const cCharUnanswered = rows.find((r) => r.key === 'sigma_c_char_ok');
+  assert.equal(cCharUnanswered.applicable, true, 'ubesvart er IKKE det samme som ikke-gjeldende');
+  assert.equal(cCharUnanswered.ok, null);
+  assert.equal(cCharUnanswered.text, DASH);
+  assert.equal(cCharUnanswered.reason, '');
+
+  const sCharOk = rows.find((r) => r.key === 'sigma_s_char_ok');
+  assert.equal(sCharOk.ok, true);
+  assert.equal(sCharOk.text, CHECK_PASS_TEXT);
+
+  const cQpNA = rows.find((r) => r.key === 'sigma_c_qp_ok');
+  assert.equal(cQpNA.applicable, false);
+  assert.equal(cQpNA.ok, null);
+  assert.equal(cQpNA.text, '', 'not_applicable har ingen hake/kryss/strek-symbol');
+  assert.match(cQpNA.reason, /no quasi-permanent/);
+
+  // En nøkkel som er HVERKEN i checks NOCH not_applicable finnes ikke i det
+  // hele tatt her (spec: bare de som GJELDER, resten i not_applicable) —
+  // `crack_width_ok` STÅR fordi den er i not_applicable, men en helt fjerde,
+  // oppdiktet nøkkel skal aldri dukke opp.
+  assert.equal(rows.length, 4, 'nøyaktig fire mulige nøkler, ingen oppdiktet');
+});
+
+test('slsCheckRows: en nøkkel som verken er i checks eller not_applicable, uteblir', () => {
+  const rows = slsCheckRows({ checks: { sigma_s_char_ok: true }, not_applicable: {} });
+  assert.deepEqual(rows.map((r) => r.key), ['sigma_s_char_ok']);
+});
+
+test('slsCheckRows: tåler et sls-objekt uten checks/not_applicable', () => {
+  assert.deepEqual(slsCheckRows({}), []);
+  assert.deepEqual(slsCheckRows(), []);
+});
+
+/**
+ * `slsRowUtilisation` siterer ALDRI et tall som ikke er regnet (doktrinen).
+ * Ville FEILET før: funksjonen fantes ikke.
+ */
+test('slsRowUtilisation: den STØRSTE av de KONTROLLERTE utnyttelsene, null uten noen (doktrinen)', () => {
+  assert.equal(
+    slsRowUtilisation({
+      stress: { sigma_c_util: 0.5, sigma_c_ok: true, sigma_s_util: 0.9, sigma_s_ok: true },
+      crack: { utilisation: 0.3, ok: true },
+    }),
+    0.9,
+  );
+  assert.equal(
+    slsRowUtilisation({
+      stress: { sigma_c_util: null, sigma_c_ok: null, sigma_s_util: null, sigma_s_ok: null },
+      crack: { utilisation: 0.845716, ok: false },
+    }),
+    0.845716,
+  );
+  assert.equal(slsRowUtilisation({ stress: null, crack: null }), null, 'ingen svar er null, ikke 0');
+  assert.equal(slsRowUtilisation({}), null);
+  assert.equal(slsRowUtilisation(), null);
+});
+
+test('slsRowUtilisation teller IKKE en grense som ikke gjelder (K5)', () => {
+  // EC2 7.2(2) gjelder bare XD/XF/XS. For en XC-klasse setter motoren
+  // `sigma_c_ok: null` MED en grunn, men utnyttelsen står igjen som det
+  // faktumet den er. η skal da drives av stålet, ikke av en grense
+  // kontrollista samtidig melder som «not applicable».
+  const row = {
+    stress: {
+      sigma_c_util: 0.93, sigma_c_ok: null, sigma_c_ok_reason: 'sigma_c_char_not_required',
+      sigma_s_util: 0.41, sigma_s_ok: true,
+    },
+    crack: null,
+  };
+  assert.equal(slsRowUtilisation(row), 0.41);
+
+  // Og uten en eneste dom: ingen η, ikke η = 0,93.
+  assert.equal(slsRowUtilisation({
+    stress: { sigma_c_util: 0.93, sigma_c_ok: null, sigma_s_util: null, sigma_s_ok: null },
+    crack: null,
+  }), null);
+});
+
+/**
+ * `slsHeadlineCrack`: den STØRSTE regnede `w_k` blant SLS-radene, eller
+ * `null` når INGEN rad fikk en rissvidde regnet — «er ingen rissvidde
+ * regnet, står det ingenting» (spec §6.2).
+ */
+test('slsHeadlineCrack: verste w_k blant radene, null uten en eneste', () => {
+  const result = {
+    sls: {
+      rows: [
+        { id: 'C1', crack: null, crack_reason: 'uncracked' },
+        { id: 'C2', crack: { w_k: 0.119760, w_max: 0.3 } },
+        { id: 'C3', crack: { w_k: 0.253408, w_max: 0.3 } },
+      ],
+    },
+  };
+  const worst = slsHeadlineCrack(result);
+  assert.equal(worst.w_k, 0.253408);
+  assert.equal(worst.w_max, 0.3);
+
+  assert.equal(slsHeadlineCrack({ sls: { rows: [{ crack: null }] } }), null);
+  assert.equal(slsHeadlineCrack({ sls: { rows: [] } }), null);
+  assert.equal(slsHeadlineCrack({}), null);
+  assert.equal(slsHeadlineCrack(null), null);
+
+  // AC14 (spec §9): en rad kan ha et FYLT crack-objekt med w_max: null (ingen
+  // anbefalt grense). `slsHeadlineCrack` skal fortsatt gi w_k — den leser
+  // ALDRI w_max som en forutsetning for at w_k finnes.
+  const ac14 = slsHeadlineCrack({ sls: { rows: [{ crack: { w_k: 0.211429, w_max: null } }] } });
+  assert.equal(ac14.w_k, 0.211429);
+  assert.equal(ac14.w_max, null);
+});
+
 /**
  * Plan §1.5: uten denne oppføringen skriver `failureModeLabel` ordrett
  * «Unknown failure mode ("unreinforced_tension_zone")» i rapportens kapittel 5
@@ -1175,6 +1372,10 @@ test('§1.5: ingen av tabellene i §1.3 inneholder norsk tekst', () => {
     SECTION_TYPE_LABELS,
     UTILISATION_LEVELS,
     SHEAR_GOVERNING_MODE_LABELS,
+    // SLS (spec §4, §6.3) — samme mekaniske kontroll, ikke en egen norsk-sjekk.
+    SLS_ROW_TYPE_LABELS,
+    SLS_CHECK_LABELS,
+    SLS_REASON_TEXT,
   };
 
   for (const [tableName, tbl] of Object.entries(tables)) {

@@ -30,6 +30,7 @@ import {
   COMBO_TYPES, recomputeAutoDc, stackedDc, stirrupCoverDia,
 } from './rebar.js';
 import { allowedAnalyses, SLAB_WIDTH } from './section.js';
+import { EXPOSURE_CLASSES, SLS_DEFAULTS } from './materials.js';
 
 /**
  * «Kjør alle» (endringsrunde 5 §D). Er ALLTID lovlig: den kjører nettopp de
@@ -143,6 +144,20 @@ export function defaultState() {
     // Det finnes BEVISST ingen `options.integrator`: marin er hardkodet i
     // `payload.js`, og `fiber` er kuttet med begrunnelse i plan §1.2.
     options: { subtract_bar_area: false, mc_pre_yield: 10, mc_post_yield: 10 },
+    // SLS (concrete_section_calculator-sls.md §5). `exposure_class: null` og
+    // `w_max_override: null` er BEVISST: uten en valgt klasse finnes ingen
+    // anbefalt grense, og vi finner ALDRI på en — en ubesvart kontroll med en
+    // grunn er tryggere enn en stille gjetning. `phi_ef = 2,0` er en INNDATA
+    // med en fornuftig standard, på linje med `gamma_c`/`alpha_cc` over — ikke
+    // en avledning (§5). De tre faktorene er EC2 7.2(2)/(3)/(5).
+    // De fire tallene kommer fra `SLS_DEFAULTS` (materials.js) og står ikke
+    // skrevet ut her: standarden og gjenopprettingen i `enforceSlsParams`
+    // skal ALDRI kunne bli to ulike tall.
+    sls: {
+      exposure_class: null,
+      w_max_override: null,
+      ...SLS_DEFAULTS,
+    },
     doc: { project: '', title: '', author: '', date: '', note: '' },
     /*
      * BJELKEN OG PLATA ER TO UAVHENGIGE SNITT (runde 8 §1).
@@ -298,6 +313,7 @@ function cloneState(s) {
     concrete: { ...s.concrete },
     steel: { ...s.steel },
     spacing: { ...s.spacing },
+    sls: { ...s.sls },
     // `stirrups` klones som ARRAY av nye objekter, av samme grunn som
     // `combos` under: `{ ...s.shear }` ville kopiert selve arrayen ved
     // REFERANSE, og en bøylerad endret utenfra ville mutert tilstanden.
@@ -371,10 +387,12 @@ function enforceSlabStirrups(s) {
 }
 
 /**
- * STEG 2 — `activeCombo` skal peke på en ULS-rad når det finnes en. Alt UI
- * som viser «resultatet for aktiv rad» (M–N-diagrammet, moment–krumning) gir
- * ingen mening for en SLS-rad (`characteristic`/`quasi_permanent`) — SLS er
- * ikke implementert i denne runden (§10 i v5, uendret).
+ * `activeCombo` skal peke på en ULS-rad når det finnes en. Alt UI som viser
+ * «resultatet for aktiv rad» (M–N-diagrammet, moment–krumning) er bygget på
+ * BRUDDGRENSE-kapasitet og gir ingen mening for en SLS-rad
+ * (`characteristic`/`quasi_permanent`). SLS er implementert, men det er en
+ * egen vurdering med egne tall: den bor i `result.sls` og har sin egen
+ * seksjon i resultatet, ikke i disse to diagrammene.
  *
  * ÉNVEIS, akkurat som `enforceSlabWidth`/`enforceSlabStirrups`: flytter bare
  * når den aktive raden IKKE allerede er `uls`. Finnes det ingen `uls`-rad i
@@ -401,6 +419,63 @@ function enforceComboTypes(s) {
   return { ...s, combos: combos.map((c) => (COMBO_TYPES.includes(c.type) ? c : { ...c, type: 'uls' })) };
 }
 
+/**
+ * Retter `state.sls` (§5) — ÉNVEIS, akkurat som `enforceComboTypes`: bytter
+ * bare et felt når det faktisk ER ulovlig, aldri en gjetning der brukeren
+ * ikke har lagt inn noe.
+ *
+ * `exposure_class` som ikke finnes i `EXPOSURE_CLASSES` ⇒ `null` — IKKE en
+ * nærmeste-klasse-gjetning. Det er nøyaktig den stille feil-selekteringen
+ * §11 advarer mot for XD3, ført videre til hele feltet: en ukjent klasse skal
+ * lese som «ikke valgt», ikke som «valgt til noe tilfeldig».
+ *
+ * `w_max_override` som ikke er et TALL > 0 ⇒ `null` (bruk den avledede
+ * grensa). `phi_ef` som ikke er et endelig tall ≥ 0 ⇒ 2,0. De tre faktorene:
+ * ikke et endelig tall > 0 ⇒ standardverdien (§5).
+ */
+function enforceSlsParams(s) {
+  const sls = s.sls || {};
+  const validClass = EXPOSURE_CLASSES.some((c) => c.value === sls.exposure_class);
+  const exposure_class = validClass ? sls.exposure_class : null;
+
+  const overrideNum = Number(sls.w_max_override);
+  const w_max_override = Number.isFinite(overrideNum) && overrideNum > 0 ? overrideNum : null;
+
+  const phiNum = Number(sls.phi_ef);
+  const phi_ef = Number.isFinite(phiNum) && phiNum >= 0 ? phiNum : SLS_DEFAULTS.phi_ef;
+
+  const fixFactor = (v, fallback) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  const sigma_c_char_factor = fixFactor(sls.sigma_c_char_factor, SLS_DEFAULTS.sigma_c_char_factor);
+  const sigma_c_qp_factor = fixFactor(sls.sigma_c_qp_factor, SLS_DEFAULTS.sigma_c_qp_factor);
+  const sigma_s_char_factor = fixFactor(sls.sigma_s_char_factor, SLS_DEFAULTS.sigma_s_char_factor);
+
+  if (
+    exposure_class === sls.exposure_class
+    && w_max_override === sls.w_max_override
+    && phi_ef === sls.phi_ef
+    && sigma_c_char_factor === sls.sigma_c_char_factor
+    && sigma_c_qp_factor === sls.sigma_c_qp_factor
+    && sigma_s_char_factor === sls.sigma_s_char_factor
+  ) {
+    return s;
+  }
+  return {
+    ...s,
+    sls: {
+      ...sls,
+      exposure_class,
+      w_max_override,
+      phi_ef,
+      sigma_c_char_factor,
+      sigma_c_qp_factor,
+      sigma_s_char_factor,
+    },
+  };
+}
+
 function enforceActiveCombo(s) {
   const active = (s.combos || []).find((c) => c.id === s.activeCombo);
   if (active && active.type === 'uls') return s;
@@ -415,9 +490,9 @@ function enforceActiveCombo(s) {
  * @param {object} [initial] slås sammen med `defaultState()`
  */
 export function createStore(initial) {
-  let state = enforceActiveCombo(enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(
+  let state = enforceSlsParams(enforceActiveCombo(enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(
     enforceAnalysis(cloneState({ ...defaultState(), ...(initial || {}) }))
-  ))));
+  )))));
   const listeners = new Set();
   // Løpenummer for lag-id-er. Teller ALDRI ned når et lag slettes: «L2» skal
   // ikke kunne bety to ulike lag i samme økt, ellers peker en gammel
@@ -493,6 +568,10 @@ export function createStore(initial) {
       // håndheving av aktiv kombinasjon kjørte her, så `setState({combos:[…]})`
       // (workflow-API) kunne la `activeCombo` peke på en SLS-rad.
       state = enforceActiveCombo(enforceComboTypes(state));
+      // `setState({sls:{...}})` (workflow-API) er en dør inn til `sls` (§5) —
+      // samme håndheving som `createStore`/`replaceState`, ellers kunne en
+      // ugyldig `exposure_class` stå urørt gjennom nettopp denne veien.
+      state = enforceSlsParams(state);
       if ('cover' in patch) applyAutoDc();
       notify();
       return state;
@@ -577,6 +656,9 @@ export function createStore(initial) {
       if (group === 'spacing' || stirrupCoverDia(state) !== beforeDia) {
         applyAutoDc();
       }
+      // `patch('sls', {...})` er den forventede veien inn til `sls`-gruppen
+      // fra `index.html` (§6.1) — samme håndheving som de andre dørene.
+      if (group === 'sls') state = enforceSlsParams(state);
       notify();
       return state;
     },
@@ -809,9 +891,9 @@ export function createStore(initial) {
      * kom dit, så `enforceAnalysis` gjelder her akkurat som for combo-endringer.
      */
     replaceState(next) {
-      state = enforceActiveCombo(enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(
+      state = enforceSlsParams(enforceActiveCombo(enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(
         enforceAnalysis(cloneState({ ...defaultState(), ...next, result: null }))
-      ))));
+      )))));
       // Bøyleradene normaliseres gjennom SAMME fabrikk som `addStirrup` bruker
       // — `serialize.js` gjør dette for `layers` og `combos`, men ikke for
       // `stirrups`, så en fil uten `alpha` ville ellers fått

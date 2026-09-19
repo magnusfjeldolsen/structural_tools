@@ -57,6 +57,17 @@ const BEAM_STATE = {
   options: { subtract_bar_area: false, mc_pre_yield: 10, mc_post_yield: 10 },
   doc: { project: '', title: '', author: '', date: '', note: '' },
   result: null,
+  // SLS §5-standarden, lagt til denne runden — samme verdier `defaultState()`
+  // gir. Uten denne fikk `payload.sls.phi_ef` `num(undefined)` = NaN, som
+  // JSON-serialiserer til `null` og slapp gjennom «ingen NaN»-testen under.
+  sls: {
+    exposure_class: null,
+    w_max_override: null,
+    phi_ef: 2.0,
+    sigma_c_char_factor: 0.6,
+    sigma_c_qp_factor: 0.45,
+    sigma_s_char_factor: 0.8,
+  },
 };
 
 /** Referanseplata, 1000×200, Ø12 c/c 113, overdekning 25. */
@@ -81,6 +92,23 @@ const oneCombo = { id: 'C1', name: 'ULS 1', type: 'uls', N_Ed: 0, M_Ed: 0, V_Ed:
 
 /** `section.shear` med tom bøyleliste — formen §3.4/v3 §4.1 krever. */
 const noStirrups = { strut_angle_deg: 45, z_factor: 0.9, stirrups: [] };
+
+/**
+ * `payload.sls` (SLS-spec §4) for BEAM_STATE/SLAB_STATE sin standard `sls`
+ * (§5): ingen klasse valgt, derfor `w_max`/`exposure_class`/`w_max_source`/
+ * `sigma_c_char_required` NULL, med grunnen `no_exposure_class`.
+ */
+const defaultSls = {
+  phi_ef: 2.0,
+  exposure_class: null,
+  w_max: null,
+  w_max_source: null,
+  w_max_reason: 'no_exposure_class',
+  sigma_c_char_factor: 0.6,
+  sigma_c_qp_factor: 0.45,
+  sigma_s_char_factor: 0.8,
+  sigma_c_char_required: null,
+};
 
 test('bjelkepayloaden har formen fra endringsrunde 2 §4.2', () => {
   const built = buildPayload(BEAM_STATE);
@@ -126,6 +154,7 @@ test('bjelkepayloaden har formen fra endringsrunde 2 §4.2', () => {
       mc_post_yield: 10,
       mc_chi: null,
     },
+    sls: defaultSls,
   };
   assert.deepEqual(built, expected);
   // …og med SAMME nøkkelrekkefølge, ikke bare `deepEqual`-lik.
@@ -172,6 +201,7 @@ test('platepayloaden har formen fra endringsrunde 2 §4.2', () => {
       mc_post_yield: 10,
       mc_chi: null,
     },
+    sls: defaultSls,
   };
   assert.deepEqual(built, expected);
   assert.equal(JSON.stringify(built), JSON.stringify(expected));
@@ -386,7 +416,18 @@ test('mc_chi er null som standard og settes av overrides', () => {
 
 test('payloaden er ren JSON — ingen NaN, Infinity eller undefined', () => {
   const text = JSON.stringify(buildPayload(BEAM_STATE));
-  assert.ok(!/null/.test(text.replace('"mc_chi":null', '')), 'uventet null i payloaden');
+  // `mc_chi` og `sls`s fire ubesvarte SLS-felt (§4/§5) er LOVLIGE `null`-er i
+  // kontrakten — BEAM_STATE har ingen valgt eksponeringsklasse, så
+  // `exposure_class`/`w_max`/`w_max_source` er `null` og `w_max_reason` er
+  // strengen 'no_exposure_class' (ikke null). Alt ANNET null ville fortsatt
+  // vært en NaN som slapp gjennom.
+  const withoutLegitimateNulls = text
+    .replace('"mc_chi":null', '')
+    .replace('"exposure_class":null', '')
+    .replace('"w_max":null', '')
+    .replace('"w_max_source":null', '')
+    .replace('"sigma_c_char_required":null', '');
+  assert.ok(!/null/.test(withoutLegitimateNulls), 'uventet null i payloaden');
   assert.doesNotThrow(() => JSON.parse(text));
 });
 
@@ -432,4 +473,55 @@ test('bøylediameteren er ÉN verdi i payloaden: jernkoordinatene og section.she
   // fra underkanten, altså z = −300 + 57. Denne veien ER riktig, fordi `dc`
   // regnes av `rebar.js:suggestedDc`, som leser bøyleraden.
   assert.equal(built.section.rebar[0].bars[0].z, -600 / 2 + 57);
+});
+
+/*
+ * ===========================================================================
+ * SLS §4 — `payload.sls` bærer TALL, aldri en klassestreng motoren skal slå
+ * opp (materials.js:slsLimits er den ENE JS-kilden som kjenner tabellen).
+ *
+ * FØR denne endringen fantes `payload.sls` ikke: `built.sls` var `undefined`,
+ * og `built.sls.w_max` under kastet `TypeError: Cannot read properties of
+ * undefined (reading 'w_max')`. Det er beviset for at disse ville feilet.
+ * ===========================================================================
+ */
+
+test('SLS-P1 — buildPayload: uten valgt klasse er sls.w_max null MED grunnen no_exposure_class, sigma_c_char_required null', () => {
+  const store = createStore();
+  const built = buildPayload(store.getState());
+  assert.equal(built.sls.exposure_class, null);
+  assert.equal(built.sls.w_max, null);
+  assert.equal(built.sls.w_max_reason, 'no_exposure_class');
+  assert.equal(built.sls.sigma_c_char_required, null);
+  assert.equal(built.sls.phi_ef, 2.0);
+  assert.equal(built.sls.sigma_c_char_factor, 0.6);
+  assert.equal(built.sls.sigma_c_qp_factor, 0.45);
+  assert.equal(built.sls.sigma_s_char_factor, 0.8);
+});
+
+test('SLS-P2 — buildPayload: XC3 valgt ⇒ w_max 0,30 fra klassen, kilde class, sigma_c_char_required false', () => {
+  const store = createStore();
+  store.patch('sls', { exposure_class: 'XC3' });
+  const built = buildPayload(store.getState());
+  assert.equal(built.sls.exposure_class, 'XC3');
+  assert.equal(built.sls.w_max, 0.3);
+  assert.equal(built.sls.w_max_source, 'class');
+  assert.equal(built.sls.sigma_c_char_required, false);
+});
+
+test('SLS-P3 — buildPayload: override vinner over klassen i payloaden også (§4/§11)', () => {
+  const store = createStore();
+  store.patch('sls', { exposure_class: 'XC3', w_max_override: 0.15 });
+  const built = buildPayload(store.getState());
+  assert.equal(built.sls.w_max, 0.15);
+  assert.equal(built.sls.w_max_source, 'manual');
+});
+
+test('SLS-P4 — buildPayload: XD3 uten override ⇒ w_max null MED grunnen no_crack_width_limit — IKKE samme grunn som SLS-P1 (AC14)', () => {
+  const store = createStore();
+  store.patch('sls', { exposure_class: 'XD3' });
+  const built = buildPayload(store.getState());
+  assert.equal(built.sls.w_max, null);
+  assert.equal(built.sls.w_max_reason, 'no_crack_width_limit');
+  assert.equal(built.sls.sigma_c_char_required, true);
 });

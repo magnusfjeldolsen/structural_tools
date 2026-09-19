@@ -27,6 +27,9 @@ import {
   matchConcreteGrade,
   matchSteelGrade,
   steelProps,
+  EXPOSURE_CLASSES,
+  slsLimits,
+  SLS_DEFAULTS,
 } from '../js/materials.js';
 
 const fixture = (name) =>
@@ -209,4 +212,104 @@ test('matchConcreteGrade: klassen eller null, aldri nærmeste', () => {
   assert.equal(matchConcreteGrade(33), null);
   assert.equal(matchConcreteGrade(''), null);
   assert.equal(matchConcreteGrade(undefined), null);
+});
+
+/*
+ * ===========================================================================
+ * SLS §11 — `EXPOSURE_CLASSES` og `slsLimits(state)`.
+ *
+ * FØR denne endringen fantes ikke `EXPOSURE_CLASSES`/`slsLimits` som eksport
+ * i `materials.js` — importen over ville feilet med
+ * `SyntaxError: The requested module '../js/materials.js' does not provide
+ * an export named 'EXPOSURE_CLASSES'`, og HELE denne filas tester (også de
+ * eksisterende) ville falle sammen. Det ER beviset for at testene under
+ * ville feilet før endringen: de kunne ikke engang lastes.
+ * ===========================================================================
+ */
+
+function slsState(over = {}) {
+  return {
+    concrete: { fck: 30 },
+    steel: { fyk: 500 },
+    sls: {
+      exposure_class: null,
+      w_max_override: null,
+      sigma_c_char_factor: 0.6,
+      sigma_c_qp_factor: 0.45,
+      sigma_s_char_factor: 0.8,
+      ...over,
+    },
+  };
+}
+
+test('SLS-A — EXPOSURE_CLASSES bærer BARE klassekoden, XD3 har w_max null (§11, ikke 0,30)', () => {
+  const xd3 = EXPOSURE_CLASSES.find((c) => c.value === 'XD3');
+  assert.equal(xd3.w_max, null, 'EC2 anbefaler INGEN rissviddegrense for XD3 for slakkarmert betong');
+  assert.equal(xd3.longitudinal_crack_check, true, 'XD3 er i XD-familien EC2 7.2(2) gjelder for');
+  const xc3 = EXPOSURE_CLASSES.find((c) => c.value === 'XC3');
+  assert.equal(xc3.w_max, 0.3);
+});
+
+test('SLS-B — slsLimits: ingen klasse valgt ⇒ w_max null MED grunnen no_exposure_class, sigma_c_char_required null', () => {
+  const limits = slsLimits(slsState());
+  assert.equal(limits.w_max, null);
+  assert.equal(limits.w_max_source, null);
+  assert.equal(limits.w_max_reason, 'no_exposure_class');
+  assert.equal(limits.sigma_c_char_required, null, 'TREVERDIG — ubesvart, ikke false (§4/§5)');
+});
+
+test('SLS-C — slsLimits: XC3 valgt ⇒ w_max 0,30 fra klassen, kilde "class"', () => {
+  const limits = slsLimits(slsState({ exposure_class: 'XC3' }));
+  assert.equal(limits.w_max, 0.3);
+  assert.equal(limits.w_max_source, 'class');
+  assert.equal(limits.w_max_reason, null);
+  assert.equal(limits.sigma_c_char_required, false, 'XC3 er ikke i XD/XF/XS');
+});
+
+test('SLS-D — slsLimits: XD3 valgt, INGEN override ⇒ w_max null MED grunnen no_crack_width_limit (AC14 — ulik grunn fra SLS-B)', () => {
+  const limits = slsLimits(slsState({ exposure_class: 'XD3' }));
+  assert.equal(limits.w_max, null);
+  assert.equal(limits.w_max_source, null);
+  assert.equal(limits.w_max_reason, 'no_crack_width_limit');
+  assert.notEqual(limits.w_max_reason, 'no_exposure_class', 'AC14: de to grunnene skal IKKE forveksles');
+  assert.equal(limits.sigma_c_char_required, true, 'XD3 er i XD-familien');
+});
+
+test('SLS-E — slsLimits: override vinner over klassen, OGSÅ over XD3 sin w_max:null (§11)', () => {
+  const limits = slsLimits(slsState({ exposure_class: 'XD3', w_max_override: 0.2 }));
+  assert.equal(limits.w_max, 0.2);
+  assert.equal(limits.w_max_source, 'manual');
+  assert.equal(limits.w_max_reason, null);
+});
+
+test('SLS-F — slsLimits regner INGEN spenningsgrense: grensene finnes bare ett sted, i motoren', () => {
+  // RETTET i runde 10. Funksjonen regnet ut `0.6·f_ck`, `0.45·f_ck` og
+  // `0.8·f_yk` — og INGEN leste dem: `payload.js` sender faktorene, og
+  // `engine.py` ganger dem med sine egne `f_ck`/`f_yk` og legger svaret i
+  // `result.sls.limits`. Tre tall som SÅ UT som beregningens tall, men ikke
+  // var det, er samme dobbeltkilde som har bitt modulen hver runde.
+  //
+  // Denne testen står igjen som VAKT: kommer de tilbake, kommer også det
+  // stille avviket tilbake.
+  for (const state of [slsState(), slsState({ exposure_class: 'XC3' })]) {
+    const limits = slsLimits(state);
+    assert.deepEqual(
+      Object.keys(limits).sort(),
+      ['sigma_c_char_required', 'w_max', 'w_max_reason', 'w_max_source'],
+      'slsLimits har fått et felt til — er det en grense, hører den hjemme i motoren'
+    );
+  }
+});
+
+test('SLS-F2 — SLS_DEFAULTS er den ENE kilden til de fire standardverdiene', () => {
+  // `defaultState()` og `enforceSlsParams()` (store.js) leser begge herfra.
+  // Testen låser TALLENE, ikke bare at nøklene finnes: de er EC2 7.2 sine
+  // anbefalte k1/k2/k3, og en endring skal være et bevisst valg.
+  assert.deepEqual({ ...SLS_DEFAULTS }, {
+    phi_ef: 2.0,
+    sigma_c_char_factor: 0.6,
+    sigma_c_qp_factor: 0.45,
+    sigma_s_char_factor: 0.8,
+  });
+  assert.ok(Object.isFrozen(SLS_DEFAULTS), 'standardene skal ikke kunne endres av en kaller');
 });

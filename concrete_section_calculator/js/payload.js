@@ -35,7 +35,7 @@
  */
 
 import { SCHEMA_VERSION } from './meta.js';
-import { ftkOf } from './materials.js';
+import { ftkOf, slsLimits } from './materials.js';
 import { activeComboTheta, sectionHeight, sectionWidth, thetaFor } from './section.js';
 import { barPositions, equivalentStrip, layerArea, stirrupCoverDia } from './rebar.js';
 
@@ -223,5 +223,27 @@ export function buildPayload(state = {}, overrides = {}) {
       mc_post_yield: num(options.mc_post_yield),
       mc_chi: overrides.mc_chi === undefined ? null : overrides.mc_chi,
     },
+    // SLS (concrete_section_calculator-sls.md §4/§5). Payloaden bærer TALL,
+    // ALDRI en klassestreng motoren skal slå opp — `slsLimits` (materials.js)
+    // er den ENE JS-siden kilden som kjenner `EXPOSURE_CLASSES`. Motoren
+    // gater selv `result.sls` på om det finnes en characteristic/
+    // quasi_permanent-rad (§4); dette objektet sendes derfor UBETINGET, akkurat
+    // som `section`/`loads` ellers er ubetinget selv når analysen ikke bruker
+    // hele innholdet.
+    sls: (() => {
+      const sls = state.sls || {};
+      const limits = slsLimits(state);
+      return {
+        phi_ef: num(sls.phi_ef),
+        exposure_class: sls.exposure_class || null,
+        w_max: limits.w_max,
+        w_max_source: limits.w_max_source,
+        w_max_reason: limits.w_max_reason,
+        sigma_c_char_factor: num(sls.sigma_c_char_factor),
+        sigma_c_qp_factor: num(sls.sigma_c_qp_factor),
+        sigma_s_char_factor: num(sls.sigma_s_char_factor),
+        sigma_c_char_required: limits.sigma_c_char_required,
+      };
+    })(),
   };
 }

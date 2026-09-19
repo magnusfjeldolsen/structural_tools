@@ -47,7 +47,11 @@ export const DOCUMENT_SCHEMA = 1;
  * standardverdier, siden den ville tatt den ALTERNATIVE grenen under
  * (erstatt hel, ikke felt for felt).
  */
-const NESTED_GROUPS = ['geometry', 'concrete', 'steel', 'spacing', 'shear', 'doc'];
+// 'sls' lagt til (SLS-spec §5): uten den ville en fil med et DELVIS
+// `sls`-objekt (t.d. bare `exposure_class`) falt tilbake til `undefined`-felt
+// for `phi_ef`/faktorene i stedet for standardverdiene — nøyaktig grunnen
+// `shear` allerede står her.
+const NESTED_GROUPS = ['geometry', 'concrete', 'steel', 'spacing', 'shear', 'sls', 'doc'];
 
 /**
  * Tilstanden → en fil. `result` er ALDRI med: det er motorens svar på tall

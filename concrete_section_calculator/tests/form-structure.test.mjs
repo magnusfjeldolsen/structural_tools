@@ -57,10 +57,15 @@ test('hver bindField-selektor finnes som id i index.html', () => {
 
 test('hvert inndatafelt i skjemaet er bundet til tilstanden', () => {
   // Den motsatte veien: et `<input id="i-…">` uten binding ser redigerbart ut,
-  // tar imot tastetrykk, og kaster dem. `#i-law-c`/`#i-law-s` og de to
-  // kvalitetsnedtrekkene er `<select>` og bindes for hånd, ikke med
-  // `bindField` — de står derfor oppført her.
-  const BOUND_BY_HAND = ['i-law-c', 'i-law-s', 'i-fck', 'i-steel-grade'];
+  // tar imot tastetrykk, og kaster dem. `#i-law-c`/`#i-law-s`, de to
+  // kvalitetsnedtrekkene og `#i-exposure` er `<select>` og bindes for hånd,
+  // ikke med `bindField` — de står derfor oppført her.
+  //
+  // `#i-wmax` er et vanlig `<input>` og likevel håndbundet, av én grunn:
+  // det er det ENESTE feltet der TOMT er et ekte valg («bruk klassens
+  // verdi»). `bindField` legger tilbake den gjeldende verdien når uttrykket
+  // ikke lar seg lese, og ville dermed gjort feltet umulig å tømme.
+  const BOUND_BY_HAND = ['i-law-c', 'i-law-s', 'i-fck', 'i-steel-grade', 'i-exposure', 'i-wmax'];
   const fields = Array.from(HTML.matchAll(/<input id="(i-[\w-]+)"/g), (m) => m[1]);
   assert.ok(fields.length >= 15, `fant bare ${fields.length} i-felt — regexen har råtnet`);
   for (const id of fields) {

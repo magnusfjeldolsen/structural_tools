@@ -124,31 +124,47 @@ sett fra to sider. CFRP er faktisk det *enkleste* tilfellet av laststeg: to steg
 
 ---
 
-## 4. SLS — rissvidde og spenningsbegrensning
+## FERDIG — 4. SLS: rissvidde og spenningsbegrensning (EC2 7.2 / 7.3.4)
 
-**Hva.** Rissvidde i tilnærmet permanent lastkombinasjon, og maksimal stålspenning i
-karakteristisk kombinasjon.
+Spec: `global-devspecs/concrete_section_calculator-sls.md`. 625 JS-tester, 145
+Python-tester, fixturene urørt. En uavhengig håndregning (utenfor repoet, CPython mot
+`structuralcodes` 0.7.2) traff motoren til 1e−11 på fem snitt før motorkoden ble skrevet —
+tallene i spec §9 er derfor akseptkriterier, ikke en avskrift av hva koden svarer.
 
-**To ulike vanskelighetsgrader, og de bør skilles.**
+**Hva som ble levert.** Rissvidde `w_k` for tilnærmet permanente kombinasjoner,
+spenningsgrensene i EC2 7.2 for karakteristiske, eksponeringsklasse med avledet `w_max` og
+manuell overstyring, kryptallet `φ_ef`, og et eget SLS-kapittel i både resultatet og
+rapporten — som dukker opp BARE når det finnes en bruksgrenserad. SLS er en ekstra
+vurdering man gjør etter ULS, og ser sånn ut i grensesnittet.
 
-**4a. Maksimal stålspenning — gjørbart nå.** `calculate_strain_profile(n, my, mz)` gir
-tøyningsplanet ved en gitt lastvirkning, og stålspenningen følger av
-`material.constitutive_law.get_stress(eps)`. Det krever et **andre sett materiallover** med
-`'elastic'` i stedet for design-lovene, siden SLS ikke bruker γ. `CONCRETE_LAWS` har
-allerede `'elastic'`.
+**De to avgjørelsene som bar runden:**
 
-**4b. Rissvidde — blokkert av scipy-stubben.**
-`codes/ec2_2004/_section_7_3_crack_control.py` bruker `scipy.interpolate.griddata` **to
-steder**, og stubben vår kaster på den. Tre veier ut, i stigende kostnad:
-1. **Implementer `griddata` i stubben** for de tilfellene modulen faktisk bruker. Krever at
-   noen leser kallstedene og ser om det er 1D-, 2D- eller spredt interpolasjon.
-2. **Last ekte scipy bare når SLS kjøres.** 13,9 MB på forespørsel, ikke ved sidelast.
-   Teknisk enkelt (`pyodide.loadPackage('scipy')` ved behov), men det dobler lastetiden
-   for den som bruker SLS.
-3. **Regn rissvidden selv** etter EC2 7.3.4. Formelen er ikke lang, men da eier vi den.
+1. **`calculate_strain_profile` kunne ikke brukes.** Den regner med DESIGN-lovene. Målt:
+   betongspenningen ble 9,41 MPa der håndregningen sier 12,39 — **24 % for lav**, på
+   usikker side, uten noe varsel. Løsningen er et eget, lineær-elastisk snitt ved siden av
+   (E_cm i trykk, null i strekk, elastisk stål), som treffer håndregningen til 0,00 %.
+2. **Rissvidden regnes av oss, ikke av pakkens 7.3-modul** — vei 3 i den gamle posten
+   under. `griddata`-stubben kaster fortsatt, men det spilte ingen rolle: `ec2_2004` sine
+   ENKELTFORMLER (`sr_max_close`, `sr_max_far`, `wk`, `eps_sm_eps_cm`) er tilgjengelige og
+   brukes som orakel i testene. Vi eier kjeden mellom dem; formlene er standardens.
 
-**Ingen av dem bør velges før noen har lest de to kallstedene.** Det er en halvtimes
-undersøkelse som avgjør et valg vi ellers ville gjettet på.
+**Det den ikke gjør.** Nedbøyning (EC2 7.4) — egen sak, egen post. Forspenning. Og
+`w_max` for en klasse EC2 ikke anbefaler noen verdi for (XD3) står som UBESVART, ikke som
+bestått: en manuell overstyring er veien videre der.
+
+### Rettet i gjennomgangen etter runden
+
+Samme form som hver runde før: **to kilder til samme tall**, og en tekst som sa noe annet
+enn koden gjorde.
+
+| hva | hvorfor det var galt |
+|---|---|
+| Ingen vei i UI-et til å velge eksponeringsklasse | `w_k` ble regnet, men rissviddekontrollen var permanent ubesvart, med et varsel brukeren ikke kunne gjøre noe med. |
+| `sls_incomplete` valgte grunnen på NØKKELNAVNET | `sigma_c_char_ok` fikk alltid «ingen klasse er valgt», også når klassen stod der og raden ikke lot seg løse. `sigma_s_char_ok` fikk ingen grunn i det hele tatt. Nå leses grunnen av raden som manglet svaret. |
+| `slsLimits()` regnet tre spenningsgrenser ingen leste | Tall som SÅ UT som beregningens, mens motoren gangte sine egne faktorer. Borte. |
+| De fire standardverdiene stod i fire filer | Nå i `SLS_DEFAULTS` (materials.js), med et navngitt speil i `engine.py` som en test holder i takt. |
+| Raden felte dom på EC2 7.2(2) også for XC-klasser | Kontrollista sa «not applicable», utledningen skrev «OK». Nå er dommen `null` MED grunnen, mens spenningen og utnyttelsen står igjen som de faktaene de er. |
+| `η` brøt ned på egen linje under 600 px | Radens viktigste tall, visuelt løsrevet fra navnet det hører til. Wrappingen ligger nå i den indre gruppa. |
 
 ---
 
@@ -258,17 +274,26 @@ historie i stedet for ett tall. Det er en modelleringsendring, ikke en beregning
 
 ## Foreslått rekkefølge
 
-1. **Skjær** (post 2) — planen finnes, motoren er ferdig oppstrøms, ingen avhengigheter.
-2. **Materialkatalog med nedtrekk og per-lag-materiale** (post 1) — låser opp 3 og 8.
-3. **Kombinasjonstype** (post 5b) — feltet legges inn tidlig, selv om bare `uls` virker
-4. **Utklippstavle for lastkombinasjoner** (post 5) — liten, uavhengig, høy nytte.
-5. **SLS 4a, maksimal stålspenning** — gjørbart uten å røre scipy-stubben.
-6. **UI-overhaling** (post 6) — etter at 1 og 2 har lagt sine felt inn.
-7. **CFRP** (post 3).
-8. **SLS 4b, rissvidde** — etter at `griddata`-spørsmålet er undersøkt.
-9. **Flere tverrsnittsformer** (post 7).
-10. **Lasthistorie** (post 8).
+Postene 2 (skjær), 5b (kombinasjonstype) og 4 (SLS) er **ferdige**. Det som står igjen,
+i den rekkefølgen bindingene tilsier:
 
-Undersøkelsen som bør gjøres **først**, fordi den er billig og avgjør et valg lenger ute:
-les de to `griddata`-kallstedene i `_section_7_3_crack_control.py` og avgjør hvilken av de
-tre veiene i post 4b som gjelder.
+1. **Småtteri brukeren har bestilt** — tallfelt i «numpad mode» på mobil, og bort med
+   `.0` der desimalen ikke betyr noe (geometri, armeringsdiameter). Uavhengig av alt
+   annet, og hver gang man ser dem er de irriterende.
+2. **Moment–krumning i BEGGE retninger**, med synlige punkter på kurven, når
+   kombinasjonene har både positivt og negativt moment.
+3. **Glideren under moment–krumning** — nøytralakse og spenningsutvikling per punkt, med
+   konturplot for betongen og fargekoding for armeringen ved siden av. **Kun i UI-et,
+   ikke i rapporten** (rapporten skal være minimal, men gjøre beregningen gjenskapbar).
+   Merk bindingen: konturplot krever punktprøving i tverrsnittet, og `create_detailed_result`
+   kaster gjennom `triangle`-stubben. `get_point_stress(y, z, group_label='L1')` virker
+   derimot — men returnerer STILLE 0 uten `group_label`, så den må kalles riktig.
+4. **Materialkatalog med nedtrekk og per-lag-materiale** (post 1) — låser opp 3 og 8.
+5. **Utklippstavle for lastkombinasjoner** (post 5) — liten, uavhengig, høy nytte.
+6. **Del opp `ui.js`** (3 200 linjer, den fila hver eneste runde kolliderer på).
+7. **Mobil** — målt 244 px overflyt ved 390 px bredde.
+8. **UI-overhaling** (post 6), **CFRP** (post 3), **flere tverrsnittsformer** (post 7),
+   **lasthistorie** (post 8).
+
+`griddata`-undersøkelsen som stod her er **ikke lenger nødvendig**: rissvidden regnes av
+oss, av enkeltformlene i `ec2_2004`, og pakkens 7.3-modul kalles aldri.
