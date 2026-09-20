@@ -88,11 +88,70 @@ export const EXPOSURE_CLASSES = Object.freeze([
  * standardverdi fra noen tabell, og skal derfor kunne endres.
  */
 export const SLS_DEFAULTS = Object.freeze({
+  // Livlina når φ IKKE lar seg utlede. Den skal aldri nås i produktet:
+  // `enforceSlsParams` holder krypinndataene gyldige, og `validate()` stopper
+  // en geometri som ikke gir en `h₀`. Den står som siste skanse, og `engine.py`
+  // speiler den for den som kaller motoren direkte.
   phi_ef: 2.0,
   sigma_c_char_factor: 0.6,
   sigma_c_qp_factor: 0.45,
   sigma_s_char_factor: 0.8,
 });
+
+/**
+ * Standardene for krypberegningen (EC2 tillegg B).
+ *
+ * RH 50 % er innendørs, som er der de fleste bjelker og dekker står. t₀ = 28
+ * døgn er den vanlige referansealderen. Levetiden er 50 år — brukskategorien i
+ * EN 1990 tabell 2.1 for bygninger — oppgitt i DØGN, fordi det er enheten hele
+ * tillegg B regner i og en omregning på veien er et sted å ta feil.
+ *
+ * Disse gir φ ≈ 2,35 for en bjelke 300×600 i C30/37. Den gamle FASTE
+ * standarden var 2,0, altså litt på usikker side for nettopp det snittet — og
+ * det er hele grunnen til at tallet nå utledes i stedet for å gjettes.
+ */
+export const CREEP_DEFAULTS = Object.freeze({
+  RH: 50,
+  t0: 28,
+  t_life: 50 * 365,
+  cement: 'N',
+});
+
+/**
+ * Kryptallet som SKAL BRUKES, og hvor det kom fra.
+ *
+ * ÉN kilde. `payload.js` sender tallet herfra til motoren, og `ui.js` viser
+ * nøyaktig det samme tallet i skjemaet — det finnes altså ingen vei der
+ * skjermen kan vise 2,35 mens beregningen bruker 2,0. Samme grep som
+ * `slsLimits()` er for `w_max`.
+ *
+ * `source: 'manual'` når brukeren har skrevet sitt eget φ. Overstyringen er
+ * IKKE en nødløsning: kryptall fra en rapport eller et prosjektkrav er et helt
+ * legitimt utgangspunkt, og et verktøy som insisterer på sin egen utledning er
+ * et verktøy man forlater.
+ *
+ * @returns {{phi:number|null, source:'manual'|'derived'|null, reason:string|null, chain:object|null}}
+ */
+export function resolveCreep(state = {}) {
+  const sls = state.sls || {};
+  const override = num(sls.phi_ef);
+  if (Number.isFinite(override) && override >= 0) {
+    return { phi: override, source: 'manual', reason: null, chain: null };
+  }
+  const h0 = Number.isFinite(num(sls.h0_override)) && num(sls.h0_override) > 0
+    ? num(sls.h0_override)
+    : notionalSize(state);
+  const chain = creepCoefficient({
+    fck: num(state.concrete?.fck),
+    h0,
+    RH: num(sls.RH),
+    t0: num(sls.t0),
+    t: num(sls.t_life),
+    cement: sls.cement,
+  });
+  if (chain.phi === null) return { phi: null, source: null, reason: chain.reason, chain: null };
+  return { phi: chain.phi, source: 'derived', reason: null, chain: { ...chain, h0 } };
+}
 
 /** Armeringskvaliteter. `k = f_tk/f_yk` er duktilitetsklassen (EC2 tillegg C). */
 export const STEEL_GRADES = [

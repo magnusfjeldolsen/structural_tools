@@ -31,8 +31,10 @@ import {
   slsLimits,
   SLS_DEFAULTS,
   CEMENT_CLASSES,
+  CREEP_DEFAULTS,
   creepCoefficient,
   notionalSize,
+  resolveCreep,
 } from '../js/materials.js';
 
 const fixture = (name) =>
@@ -449,4 +451,83 @@ test('kryp: standardsnittene gir tallene vi faktisk forventer', () => {
   const early = creepCoefficient({ fck: 30, h0: 200, RH: 50, t0: 7, t: 50 * 365, cement: 'N' });
   assert.ok(outdoor.phi < beam.phi, 'ute skal krype mindre enn inne');
   assert.ok(early.phi > beam.phi, 'tidlig lastet skal krype mer');
+});
+
+/* ================================================================== *
+ * `resolveCreep` — ÉN kilde til kryptallet
+ *
+ * `payload.js` sender tallet herfra til motoren, og `ui.js` viser det samme
+ * tallet fra den samme funksjonen. Det er hele poenget: det finnes ingen vei
+ * der skjermen kan si 2,35 mens beregningen bruker noe annet. Testene under
+ * låser nettopp DEN egenskapen, ikke bare at tallet er riktig.
+ * ================================================================== */
+
+const creepState = (sls = {}, extra = {}) => ({
+  sectionType: 'beam',
+  geometry: { b: 300, h: 600 },
+  concrete: { fck: 30 },
+  ...extra,
+  sls: { phi_ef: null, h0_override: null, ...CREEP_DEFAULTS, ...sls },
+});
+
+test('resolveCreep: uten overstyring UTLEDES phi av tillegg B', () => {
+  const r = resolveCreep(creepState());
+  assert.equal(r.source, 'derived');
+  assert.equal(r.reason, null);
+  // Bjelke 300×600 (h_0 = 200 mm), C30/37, RH 50 %, t_0 = 28 d, 50 år.
+  // Tallet er låst fordi det er det motoren regner med og rapporten trykker.
+  assert.ok(Math.abs(r.phi - 2.345772) < 1e-6, `phi = ${r.phi}`);
+  assert.equal(r.chain.h0, 200, 'h_0 skal komme fra geometrien');
+});
+
+test('resolveCreep: en overstyring VINNER, og 0 er en lovlig overstyring', () => {
+  const manual = resolveCreep(creepState({ phi_ef: 1.2 }));
+  assert.equal(manual.source, 'manual');
+  assert.equal(manual.phi, 1.2);
+  assert.equal(manual.chain, null, 'en overstyring har ingen utledning å vise');
+
+  // φ = 0 betyr «regn uten kryp», og det er et ekte valg — f.eks. for en
+  // korttidsvurdering. Det må derfor IKKE falle tilbake til utledningen, slik
+  // en naiv falsy-sjekk ville gjort.
+  const zero = resolveCreep(creepState({ phi_ef: 0 }));
+  assert.equal(zero.source, 'manual');
+  assert.equal(zero.phi, 0);
+});
+
+test('resolveCreep: h0_override slår geometrien, men bare når den er et ekte mål', () => {
+  const over = resolveCreep(creepState({ h0_override: 400 }));
+  assert.equal(over.chain.h0, 400);
+  assert.ok(over.phi < resolveCreep(creepState()).phi,
+    'et tykkere tverrsnitt tørker saktere og kryper mindre');
+
+  for (const bad of [null, 0, -5, NaN, '']) {
+    assert.equal(resolveCreep(creepState({ h0_override: bad })).chain.h0, 200,
+      `h0_override = ${bad} skal falle tilbake på geometrien`);
+  }
+});
+
+test('resolveCreep: retningene stemmer — det er dem brukeren justerer etter', () => {
+  const base = resolveCreep(creepState()).phi;
+  assert.ok(resolveCreep(creepState({ RH: 80 })).phi < base, 'fuktigere luft → mindre kryp');
+  assert.ok(resolveCreep(creepState({ RH: 40 })).phi > base, 'tørrere luft → mer kryp');
+  assert.ok(resolveCreep(creepState({ t0: 7 })).phi > base, 'tidligere lastet → mer kryp');
+  assert.ok(resolveCreep(creepState({ t0: 365 })).phi < base, 'senere lastet → mindre kryp');
+  assert.ok(resolveCreep(creepState({ t_life: 365 })).phi < base, 'kortere levetid → mindre kryp');
+  assert.ok(resolveCreep(creepState({ cement: 'R' })).phi < base, 'rask sement → mindre kryp');
+});
+
+test('resolveCreep: plata henter h0 av HØYDEN, ikke av bredden', () => {
+  const slab = creepState({}, { sectionType: 'slab', geometry: { b: 1000, h: 200 } });
+  assert.equal(resolveCreep(slab).chain.h0, 200);
+  // Plata er alltid 1000 bred; en bredde i tilstanden skal ikke kunne flytte h_0.
+  const odd = creepState({}, { sectionType: 'slab', geometry: { b: 250, h: 200 } });
+  assert.equal(resolveCreep(odd).chain.h0, 200);
+});
+
+test('resolveCreep: en geometri uten h0 gir en GRUNN, ikke et tall', () => {
+  const broken = creepState({}, { geometry: { b: 300, h: 0 } });
+  const r = resolveCreep(broken);
+  assert.equal(r.phi, null, 'et snitt uten høyde har ingen effektiv tykkelse');
+  assert.equal(r.source, null);
+  assert.equal(r.reason, 'creep_invalid_h0');
 });

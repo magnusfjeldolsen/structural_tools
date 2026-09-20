@@ -30,7 +30,7 @@ import {
   COMBO_TYPES, recomputeAutoDc, stackedDc, stirrupCoverDia,
 } from './rebar.js';
 import { allowedAnalyses, SLAB_WIDTH } from './section.js';
-import { EXPOSURE_CLASSES, SLS_DEFAULTS } from './materials.js';
+import { CEMENT_CLASSES, CREEP_DEFAULTS, EXPOSURE_CLASSES, SLS_DEFAULTS } from './materials.js';
 
 /**
  * «Kjør alle» (endringsrunde 5 §D). Er ALLTID lovlig: den kjører nettopp de
@@ -156,7 +156,17 @@ export function defaultState() {
     sls: {
       exposure_class: null,
       w_max_override: null,
-      ...SLS_DEFAULTS,
+      // `phi_ef: null` betyr UTLED, ikke «mangler». Tallet kommer av
+      // krypinndataene under, gjennom `resolveCreep` (materials.js). Skriver
+      // brukeren et eget tall her, vinner det — og en gammel lagret fil, som
+      // bærer `phi_ef: 2.0` fra den gang tallet var fast, blir dermed lest som
+      // en overstyring på 2,0 og gir NØYAKTIG samme svar som den gjorde da.
+      phi_ef: null,
+      h0_override: null,
+      ...CREEP_DEFAULTS,
+      sigma_c_char_factor: SLS_DEFAULTS.sigma_c_char_factor,
+      sigma_c_qp_factor: SLS_DEFAULTS.sigma_c_qp_factor,
+      sigma_s_char_factor: SLS_DEFAULTS.sigma_s_char_factor,
     },
     doc: { project: '', title: '', author: '', date: '', note: '' },
     /*
@@ -441,8 +451,29 @@ function enforceSlsParams(s) {
   const overrideNum = Number(sls.w_max_override);
   const w_max_override = Number.isFinite(overrideNum) && overrideNum > 0 ? overrideNum : null;
 
+  // `phi_ef` er en OVERSTYRING nå, ikke en verdi: `null` betyr «utled av
+  // krypinndataene». Derfor legges den IKKE tilbake til en standard når den er
+  // tom — et tomt felt er brukerens valg, ikke en feil.
   const phiNum = Number(sls.phi_ef);
-  const phi_ef = Number.isFinite(phiNum) && phiNum >= 0 ? phiNum : SLS_DEFAULTS.phi_ef;
+  const phi_ef = sls.phi_ef === null || sls.phi_ef === undefined || sls.phi_ef === ''
+    ? null
+    : (Number.isFinite(phiNum) && phiNum >= 0 ? phiNum : null);
+
+  const h0Num = Number(sls.h0_override);
+  const h0_override = Number.isFinite(h0Num) && h0Num > 0 ? h0Num : null;
+
+  // Krypinndataene. Alle fire holdes GYLDIGE her, slik at `resolveCreep` aldri
+  // møter noe den må avvise: en levetid som ikke er større enn belastnings-
+  // alderen ville gitt phi = 0, altså en tilnærmet permanent kontroll uten kryp
+  // i det hele tatt — stille.
+  const rhNum = Number(sls.RH);
+  const RH = Number.isFinite(rhNum) && rhNum > 0 && rhNum < 100 ? rhNum : CREEP_DEFAULTS.RH;
+  const t0Num = Number(sls.t0);
+  const t0 = Number.isFinite(t0Num) && t0Num > 0 ? t0Num : CREEP_DEFAULTS.t0;
+  const tNum = Number(sls.t_life);
+  const t_life = Number.isFinite(tNum) && tNum > t0 ? tNum : Math.max(CREEP_DEFAULTS.t_life, t0 + 1);
+  const cement = CEMENT_CLASSES.some((c) => c.value === sls.cement)
+    ? sls.cement : CREEP_DEFAULTS.cement;
 
   const fixFactor = (v, fallback) => {
     const n = Number(v);
@@ -456,6 +487,11 @@ function enforceSlsParams(s) {
     exposure_class === sls.exposure_class
     && w_max_override === sls.w_max_override
     && phi_ef === sls.phi_ef
+    && h0_override === sls.h0_override
+    && RH === sls.RH
+    && t0 === sls.t0
+    && t_life === sls.t_life
+    && cement === sls.cement
     && sigma_c_char_factor === sls.sigma_c_char_factor
     && sigma_c_qp_factor === sls.sigma_c_qp_factor
     && sigma_s_char_factor === sls.sigma_s_char_factor
@@ -469,6 +505,11 @@ function enforceSlsParams(s) {
       exposure_class,
       w_max_override,
       phi_ef,
+      h0_override,
+      RH,
+      t0,
+      t_life,
+      cement,
       sigma_c_char_factor,
       sigma_c_qp_factor,
       sigma_s_char_factor,

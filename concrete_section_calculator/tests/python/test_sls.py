@@ -843,10 +843,14 @@ def test_sls_defaults_mirror_the_js_source():
     js = {}
     for line in block.splitlines():
         line = line.strip().rstrip(',')
-        if not line or ':' not in line:
+        # Kommentarene i blokka inneholder ogsaa kolon; de er ikke felter.
+        if not line or line.startswith('//') or ':' not in line:
             continue
         key, value = line.split(':', 1)
-        js[key.strip()] = float(value.strip())
+        key, value = key.strip(), value.strip()
+        if not value or not value[0].isdigit():
+            continue
+        js[key] = float(value)
     assert js == engine._SLS_FALLBACK
 
 
