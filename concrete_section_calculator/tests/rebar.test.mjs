@@ -217,13 +217,29 @@ test('ett lag: alle tre tallene er like — derfor fanger fixturene ingen forskj
   assert.equal(tensionArea(one, 600, 0), totalArea(one));
 });
 
-test('tensionLayers krever theta og faller tilbake når ingen ligger i strekk', () => {
+test('tensionLayers: TOM liste når ingen ligger i strekk — ingen reservegren', () => {
   assert.throws(() => tensionLayers([beamLayer()], 600), /theta/);
-  // Alle lag i øvre halvdel + feltmoment: ingen geometrisk strekkarmering.
-  // Da er alternativet NaN, som er verre å lese enn et åpenbart rart tall.
+
+  // RETTET i runde 11. Her sto `picked.length ? picked : layers`, med
+  // begrunnelsen «alternativet er NaN, som er verre å lese enn et åpenbart rart
+  // tall». Den begrunnelsen holdt ikke:
+  //
+  //  * Motoren fjernet den tilsvarende grenen i `_effective_depth` og bruker 18
+  //    linjer på hvorfor — reserven ga `d = 50 mm` og ρ = 6,28 % for et snitt
+  //    uten ett eneste jern på strekksiden.
+  //  * MÅLT på det som sto igjen her: standardbjelken 300×600 med bare
+  //    underkantarmering og STØTTEMOMENT ga `d = 57 mm`, altså trykkjernet lest
+  //    som strekkarmering, og dermed `s_l,max = 42,8 mm` — som `validate()`
+  //    reiste som en HARD FEIL og BLOKKERTE hele kjøringen med.
+  //
+  // Et åpenbart rart tall er ikke ufarlig når noe regner videre på det. `NaN`
+  // forplanter seg og tvinger hver kaller til å ta stilling; 57 gjør ikke det.
   const onlyTop = [beamLayer({ edge: 'top', dc: 50 }), beamLayer({ id: 'L2', edge: 'top', dc: 100 })];
-  assert.deepEqual(tensionLayers(onlyTop, 600, 0), onlyTop);
-  assert.ok(Number.isFinite(effectiveDepthGeometric(onlyTop, 600, 0)));
+  assert.deepEqual(tensionLayers(onlyTop, 600, 0), [], 'feltmoment, alle lag i overkant');
+  assert.ok(Number.isNaN(effectiveDepthGeometric(onlyTop, 600, 0)));
+  // Og motsatt vei er de samme lagene hele strekksiden.
+  assert.equal(tensionLayers(onlyTop, 600, Math.PI).length, 2);
+  assert.ok(Number.isFinite(effectiveDepthGeometric(onlyTop, 600, Math.PI)));
 });
 
 test('effectiveDepth uten armering er NaN, ikke 0', () => {
@@ -307,8 +323,12 @@ test('totalArea og reinforcementRatio bruker EC2-definisjonen ρ = As/(b_t·d)',
   assert.equal(totalArea(layers), 942.4777960769379);
   const rho = reinforcementRatio(layers, BEAM_GEOM, 0);
   assert.ok(Math.abs(rho - 942.4777960769379 / (300 * 550)) < 1e-15);
-  // Støttemoment gir et helt annet ρ for det samme laget — d er 50, ikke 550.
-  assert.ok(reinforcementRatio(layers, BEAM_GEOM, Math.PI) > 10 * rho);
+  // Støttemoment: det ENE laget ligger i underkant, altså i TRYKK. Da finnes
+  // det ingen strekkside, og ρ er `NaN` — ikke et stort tall regnet av
+  // trykkarmeringen. Før runde 11 ga reservegrenen i `tensionLayers` ρ = 6,28 %
+  // her, som ser ut som en overarmert bjelke og ikke som et manglende svar.
+  assert.ok(Number.isNaN(reinforcementRatio(layers, BEAM_GEOM, Math.PI)),
+    'ingen strekkside ⇒ ingen ρ');
 });
 
 test('suggestedDc = overdekning + bøyle + Ø/2', () => {

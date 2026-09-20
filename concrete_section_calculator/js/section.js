@@ -420,6 +420,16 @@ export function validate(state = {}) {
     const slMax = 0.75 * d;
     const stMax = Math.min(0.75 * d, 600);
     const bw = sectionWidth(state);
+    // `d` er NaN når ingen armering står på strekksiden — f.eks. et
+    // støttemoment på en bjelke med bare underkantjern. Da FINNES det ingen
+    // s_l,max, og et tall regnet fra trykkarmeringen ville vært oppdiktet.
+    //
+    // MÅLT før reservegrenen i `tensionLayers` ble fjernet: nøyaktig det
+    // snittet ga `s_l,max = 42,8 mm` og en HARD FEIL som blokkerte kjøringen.
+    // Motoren svarer `evaluated: false` for den samme lasten og lar snittet
+    // regnes. En kalkulator som nekter å regne på grunn av et tall den selv
+    // har funnet på, er verre enn en som lar være å svare på ett punkt.
+    const hasTensionDepth = Number.isFinite(d) && d > 0;
 
     // Motoren summerer radene som PARALLELLE bøylesett (`engine.py:617-625`),
     // men figuren tegner bare rad 0 og `stirrup_dia`/`dc` følger bare rad 0.
@@ -452,7 +462,7 @@ export function validate(state = {}) {
     }
 
     stirrups.forEach((st, i) => {
-      if (num(st.spacing) > slMax) {
+      if (hasTensionDepth && num(st.spacing) > slMax) {
         out.push(
           issue(
             'stirrup_spacing_exceeds_max',
@@ -475,7 +485,7 @@ export function validate(state = {}) {
       }
       // Benavstand er bare et tema med mer enn to ben — med to ben ER benene
       // de ytre, og det finnes ingen indre avstand å sjekke (§3.3).
-      if (num(st.legs) > 2) {
+      if (hasTensionDepth && num(st.legs) > 2) {
         const legPitch =
           (bw - 2 * (num(state.cover_side) + num(st.dia) / 2)) / (num(st.legs) - 1);
         if (legPitch > stMax) {

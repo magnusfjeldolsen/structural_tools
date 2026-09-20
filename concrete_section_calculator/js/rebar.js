@@ -265,11 +265,25 @@ export function tensionLayers(layers = [], h, theta) {
     throw new Error('tensionLayers: theta er påkrevd (0 = feltmoment, π = støttemoment).');
   }
   const compressionOnTop = Math.cos(num(theta)) >= 0;
-  const picked = layers.filter((l) => {
+  return layers.filter((l) => {
     const z = layerCentroidZ(l, h);
     return compressionOnTop ? z < 0 : z > 0;
   });
-  return picked.length ? picked : layers;
+  // ⚠ INGEN RESERVEGREN. Den sto her som `picked.length ? picked : layers` og
+  // skulle «garantere et svar». Garantien VAR feilen — motoren fjernet den
+  // tilsvarende grenen i `_effective_depth` (engine.py) og bruker 18 linjer på
+  // å forklare hvorfor: reserven ga `d = 50 mm` og ρ = 6,28 % for et snitt som
+  // ikke har ett eneste jern på strekksiden.
+  //
+  // Én av de to sidene ble rettet. MÅLT på det som sto igjen her:
+  // standardbjelken 300×600 med bare underkantarmering, støttemoment, ga
+  // `d = 57 mm` — altså TRYKKjernet lest som strekkarmering — og dermed
+  // `s_l,max = 0,75·57 = 42,8 mm`, som `validate()` reiste som en HARD FEIL og
+  // blokkerte hele kjøringen med. Motoren ville sagt `evaluated: false`.
+  //
+  // Tom liste gir `NaN` videre gjennom `effectiveDepth` og `derived()`, og det
+  // er det ærlige svaret: det finnes ingen effektiv høyde uten en strekkside.
+  // Kallerne må tåle `NaN` — se `validate()` og `asMin()`.
 }
 
 /** Armeringsareal på den geometriske strekksiden [mm²]. Estimat, se over. */
