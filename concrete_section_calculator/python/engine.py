@@ -1171,7 +1171,7 @@ def _sls_cracked_eval(b, h, Ec, Es, rebar_zs, n_ed, m_ed):
     return eps_a, chi_y
 
 
-def _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed):
+def _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed, cracked):
     """EN formel for BEGGE tilstander (risset/urisset) og BEGGE retninger (spec §1.2's
     poeng med aa rapportere tilbake i den fysiske aksen): gitt `(eps_a, chi_y)` er
     `eps(z) = eps_a + chi_y*z` for enhver `z`, akkurat som `_layer_state` (ULS) allerede
@@ -1201,7 +1201,41 @@ def _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed):
         z_na = -eps_a / chi_y
         x = min(max(_depth(z_na, h, theta_equiv), 0.0), h)
 
-    sigma_c = Ec * (eps_a + chi_y * comp_face_z)
+    # TRYKKANTEN ER IKKE ALLTID DEN `theta` PEKER PAA.
+    #
+    # `comp_face_z` foelger fortegnet paa `M_Ed` alene, og det er riktig for et RISSET
+    # snitt: der er den ene kanten per definisjon trykksonen. For et URISSET snitt med
+    # DOMINERENDE AKSIALTRYKK baerer begge kantene, og den stoerste trykkspenningen kan
+    # ligge paa den kanten momentet IKKE peker paa.
+    #
+    # MAALT, helt ordinaer 300x600 med 3O20 i underkant og et lite stoettemoment:
+    #
+    #   karakteristisk, N = -3200 kN, M = +5 kNm, grense 18,0 MPa
+    #       rapportert  -16,23 MPa  (util 0,901, ok = TRUE)
+    #       sann maks   -18,28 MPa  (util 1,016 -> skulle vaert FALSE)
+    #
+    #   tilnaermet permanent, N = -2400 kN, M = +5 kNm, grense 13,5 MPa
+    #       rapportert  -12,23 MPa  (util 0,906, ok = TRUE)
+    #       sann maks   -13,65 MPa  (util 1,011)
+    #
+    # Altsaa 11-13 % for lavt, paa usikker side, og dommen snur. Uavhengig
+    # haandregning av det transformerte urissede snittet reproduserer begge fibrene.
+    #
+    # KLEMT MOT NULL: er BEGGE kantene i strekk (rent aksialstrekk), finnes det ingen
+    # trykkspenning, og `0` er det aerlige svaret. Foer dette stod det en STREKKspenning
+    # paa +1,851 MPa merket «compression face» og proevd mot trykkgrensa med `abs()` --
+    # altsaa et tall med feil fortegn i en kontroll det ikke hoerte hjemme i.
+    if cracked:
+        sigma_c = Ec * (eps_a + chi_y * comp_face_z)
+    else:
+        sigma_c = min(Ec * (eps_a + chi_y * (h / 2.0)),
+                      Ec * (eps_a + chi_y * (-h / 2.0)),
+                      0.0)
+
+    # `eps_1`/`eps_2` roeres IKKE. De gaar inn i `eps_r = max(0, eps_2)/eps_1` og
+    # videre til `k2` i rissviddekjeden (lign. 7.13), som bare kjoeres for et RISSET
+    # snitt -- der er `comp_face_z` riktig, og en omdefinering her ville flyttet `k2`
+    # for hver eneste rissvidde uten at noen ba om det.
     eps_2 = eps_a + chi_y * comp_face_z
     eps_1 = eps_a + chi_y * tens_face_z
 
@@ -1243,7 +1277,7 @@ def _sls_row_state(b, h, Ec, Es, rebar, rebar_zs, n_ed, m_ed, cracked, fck, fyk,
             return None, 'no_equilibrium_cracked'
         eps_a, chi_y = solved
 
-    state = _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed)
+    state = _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed, cracked)
 
     if cracked and (state['x'] <= 0.0 or state['x'] > h):
         # I PRAKSIS unaabart: bisection er klemt til `z_na` innenfor `[-h/2, h/2]`, som
