@@ -2458,6 +2458,27 @@ def _run_inner(payload, progress, t0):
     }
     if sls_result is not None:
         common['sls'] = sls_result
+        # «OVERALL ASSESSMENT» SKAL SE BRUKSGRENSEN OGSAA.
+        #
+        # Kommentaren over `checks['all_ok']` sier det allerede, om et annet
+        # tilfelle: «en Overall assessment: OK som overser ... er aktivt
+        # misvisende i et verktoey som dimensjonerer betong». SLS var nettopp
+        # det tilfellet én gang til.
+        #
+        # MAALT foer denne linja: en rissvidde paa 0,226 mm mot en grense paa
+        # 0,05 -- altsaa 4,5 ganger over -- gav `checks['all_ok'] = True`, og
+        # overskriften sto groenn med «STATUS OK». Advarselen `
+        # sls_crack_width_exceeded` laa riktignok i lista, men en advarsel ved
+        # siden av en groenn hake blir ikke lest.
+        #
+        # `sls['all_ok']` er allerede treverdig (`_three_valued_and` over
+        # `sls['checks']`), saa den kan mates rett inn i den samme OG-en:
+        # `False` slaar `None` slaar `True`. `sls['all_ok']` staar uroert ved
+        # siden av, for den som vil vite hvilken av de to som feilet.
+        checks['all_ok'] = _three_valued_and({
+            'uls': checks['all_ok'],
+            'sls': sls_result['all_ok'],
+        })
 
     if not has_candidate:
         # Full konvolutt, ikke bare `{ok, schema, error}` (§4.4): figurer, tabeller og
