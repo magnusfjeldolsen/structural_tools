@@ -902,6 +902,81 @@ def test_overall_assessment_is_untouched_without_serviceability_rows():
     assert result['checks']['all_ok'] is True
 
 
+def _extreme_fibres(row):
+    """Betongspenningen i BEGGE ytterfibrene, regnet av radens eget toeyningsplan."""
+    st = row['state']
+    ec = row['Ec_used']
+    return (ec * (st['eps_a'] + st['chi_y'] * 300.0),
+            ec * (st['eps_a'] + st['chi_y'] * -300.0))
+
+
+@pytest.mark.parametrize('n_ed, combo_type, limit', [
+    (-3200e3, 'characteristic', 18.0),
+    (-2400e3, 'quasi_permanent', 13.5),
+])
+def test_uncracked_sigma_c_is_read_at_the_face_that_is_actually_worst(n_ed, combo_type, limit):
+    """RETTET i runde 11. `comp_face_z` foelger fortegnet paa `M_Ed` alene. Det er
+    riktig for et RISSET snitt, der den ene kanten per definisjon ER trykksonen -- men
+    for et URISSET snitt med dominerende aksialtrykk baerer begge kantene, og den
+    stoerste trykkspenningen kan ligge paa den kanten momentet IKKE peker paa.
+
+    MAALT foer rettelsen, helt ordinaer 300x600 med 3O20 i underkant og et lite
+    stoettemoment: rapportert -16,23 MPa mot en sann maks paa -18,28 (grense 18,0).
+    Altsaa 11-13 % for lavt, paa usikker side, OG dommen snudde fra bestaatt til
+    ikke bestaatt.
+    """
+    payload = sls_payload(BEAM_REBAR, n_ed, 5e6, combo_type=combo_type, phi_ef=0.0,
+                           exposure_class='XC3', w_max=0.3, w_max_source='class',
+                           w_max_reason=None, sigma_c_char_required=True)
+    result = engine.run(payload)
+    row = result['sls']['rows'][0]
+    assert row['cracked'] is False, 'forutsetningen: aksialtrykket holder snittet urisset'
+
+    top, bot = _extreme_fibres(row)
+    worst = min(top, bot)
+    assert abs(top - bot) > 1.0, 'testen skal ha en REELL forskjell mellom kantene'
+    assert close(row['state']['sigma_c'], worst), \
+        f'sigma_c = {row["state"]["sigma_c"]} er ikke den stoerste trykkspenningen ({worst})'
+
+    stress = row['stress']
+    assert stress['sigma_c_util'] > 1.0
+    assert stress['sigma_c_ok'] is False, 'dommen skal snu naar den sanne spenningen brukes'
+
+
+def test_uncracked_section_entirely_in_tension_reports_no_compression():
+    """Rent aksialstrekk: BEGGE kantene er i strekk, og da finnes det ingen
+    trykkspenning. Foer rettelsen stod det +1,851 MPa merket «compression face» og
+    ble proevd mot TRYKKgrensa med `abs()` -- et tall med feil fortegn i en kontroll
+    det ikke hoerte hjemme i."""
+    payload = sls_payload(BEAM_REBAR, 300e3, 0.0, combo_type='characteristic',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=True)
+    result = engine.run(payload)
+    row = result['sls']['rows'][0]
+    top, bot = _extreme_fibres(row)
+    assert top > 0 and bot > 0, 'forutsetningen: hele snittet i strekk'
+    assert row['state']['sigma_c'] == 0.0
+    assert row['stress']['sigma_c_ok'] is True, 'ingen trykkspenning kan ikke sprenge en trykkgrense'
+
+
+def test_cracked_sigma_c_still_reads_the_face_theta_points_at():
+    """Motstykket, og grensa for rettelsen: for et RISSET snitt skal formelen staa
+    noeyaktig som foer. Der ER den ene kanten trykksonen, og `eps_1`/`eps_2` -- som gaar
+    videre til `k2` i lign. 7.13 -- bygger paa den samme definisjonen."""
+    payload = sls_payload(BEAM_REBAR, 0.0, -100e6, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    result = engine.run(payload)
+    row = result['sls']['rows'][0]
+    assert row['cracked'] is True
+    top, _bot = _extreme_fibres(row)
+    # Feltmoment: trykkanten er OK, og det er den `sigma_c` skal vise.
+    assert close(row['state']['sigma_c'], top)
+    assert row['state']['sigma_c'] < 0.0
+
+
 def test_sls_defaults_mirror_the_js_source():
     """`_SLS_FALLBACK` er et SPEIL av `SLS_DEFAULTS` i js/materials.js, ikke en fjerde
     kilde (runde 10 K3). Denne testen LESER begge og feiler hvis de gaar fra hverandre
