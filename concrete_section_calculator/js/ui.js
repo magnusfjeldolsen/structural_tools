@@ -610,7 +610,11 @@ function slsRowDerivation(row) {
         st2.sigma_c_ok === null && st2.sigma_c_ok_reason
           ? `${DASH} (${esc(slsReasonText(st2.sigma_c_ok_reason))})`
           : checkText(st2.sigma_c_ok), ''],
-      ['σ<sub>s</sub>, largest of all layers', fmtStress(st2.sigma_s, 2), 'MPa'],
+      // INGEN egen σ_s-verdi her: `stateRows` over trykker allerede
+      // «σ_s,max, all layers», og `stress.sigma_s` ER det samme tallet
+      // (engine.py setter det til `state['sigma_s_max']` for begge radtyper).
+      // To rader med samme tall under to merkelapper er akkurat den
+      // dobbeltkilden runden ellers har ryddet bort.
       ['σ<sub>s</sub> utilisation', st2.sigma_s_util === null || st2.sigma_s_util === undefined ? DASH : fmtRatio(st2.sigma_s_util, 3), ''],
       // Samme regel som σ_c over: en `null` som skyldes at grensa IKKE GJELDER
       // skal si det. For en tilnærmet permanent rad er dette normaltilfellet —
@@ -814,9 +818,20 @@ function panel(title, items) {
 }
 
 function rows(items) {
+  // `min-w` OG `max-w`, og begge trengs. En flex-rad med `justify-between`
+  // krymper BEGGE cellene når innholdet ikke får plass, proporsjonalt med hvor
+  // mye de inneholder — så en lang VERDI (f.eks. hele forklaringen på hvorfor
+  // en grense ikke gjelder) presset merkelappen ned til ett ord per linje.
+  // Målt: «σ_s ≤ limit — EC2 7.2» ble fire linjer ved siden av en tre-linjers
+  // verdi. Gulvet på merkelappen og taket på verdien gir hver av dem en
+  // bunnplanke, og en kort verdi står fortsatt helt ute til høyre som før.
+  //
+  // INGEN `text-right` på verdien. En ETTLINJES verdi står flush høyre uansett,
+  // fordi `justify-between` plasserer selve cellen der — mens en verdi som
+  // wrapper (en forklaring, ikke et tall) blir ragget i venstrekanten av den.
   return items.map(([k, v, u]) => `<div class="flex justify-between gap-3 py-[3px] border-b border-slate-800">
-    <span class="text-slate-400">${k}</span>
-    <span class="num text-slate-100">${v}${u ? ` <span class="text-slate-500">${u}</span>` : ''}</span></div>`).join('');
+    <span class="text-slate-400 min-w-[9ch]">${k}</span>
+    <span class="num text-slate-100 max-w-[64%]">${v}${u ? ` <span class="text-slate-500">${u}</span>` : ''}</span></div>`).join('');
 }
 
 /* ================================================================== *
