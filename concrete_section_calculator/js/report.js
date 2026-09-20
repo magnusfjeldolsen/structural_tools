@@ -1124,7 +1124,9 @@ function slsRowSection(row) {
       ['σ_s, largest of all layers [MPa]', fmtStress(s.sigma_s, 3)],
       ['σ_s limit [MPa]', fmtStress(s.sigma_s_limit, 1)],
       ['σ_s utilisation [–]', fmtRatio(s.sigma_s_util, 4)],
-      ['σ_s ≤ limit', checkText(s.sigma_s_ok)],
+      ['σ_s ≤ limit', s.sigma_s_ok === null && s.sigma_s_ok_reason
+        ? `${DASH} (${esc(slsReasonText(s.sigma_s_ok_reason))})`
+        : checkText(s.sigma_s_ok)],
     ];
     stressHtml = `<h5>EC2 7.2 — stress limits</h5>${kvTable(stressRows)}`;
   }

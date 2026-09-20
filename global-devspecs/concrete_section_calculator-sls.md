@@ -762,8 +762,14 @@ result.sls = {
       'sigma_c_ok': True|False|None,
       'sigma_c_ok_reason': str | None,
       'sigma_c_checked': 'state' | 'initial',   # hvilken spenning grensa ble prøvd på
+      # 'sigma_s' er state.sigma_s_max for BEGGE radtyper — største strekk-
+      # spenning over alle lag. For quasi_permanent finnes ingen grense (EC2
+      # 7.2(5) er en karakteristisk kontroll), men tallet står likevel: det er
+      # inngangen til rissvidden. Spenningen lign. 7.9 faktisk bruker er en
+      # ANNEN størrelse, crack.sigma_s i det styrende laget inne i A_c,eff.
       'sigma_s': float, 'sigma_s_limit': float | None, 'sigma_s_util': float | None,
       'sigma_s_ok': True|False|None,      # None for quasi_permanent-rader
+      'sigma_s_ok_reason': str | None,    # 'sigma_s_limit_characteristic_only' der
   } | None,
   'crack': {                              # None når 'crack_reason' er satt
       'd': float, 'x': float,

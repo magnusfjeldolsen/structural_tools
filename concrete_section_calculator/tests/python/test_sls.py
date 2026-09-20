@@ -789,6 +789,50 @@ def test_k5_quasi_permanent_723_applies_regardless_of_class():
     assert stress['sigma_c_ok_reason'] is None
 
 
+def test_quasi_permanent_row_reports_the_steel_stress_behind_the_crack_width():
+    """Bestilt av brukeren: staalspenningen skal staa ogsaa for en tilnaermet permanent
+    rad. Den har ingen GRENSE -- EC2 7.2(5) er en karakteristisk kontroll -- og ble
+    derfor ikke rapportert i det hele tatt foer. Men den er selve inngangen til
+    rissvidden, og en rad som viser w_k uten spenningen bak den kan ikke etterproeves.
+
+    Kontrakten: `stress['sigma_s']` er `state['sigma_s_max']` for BEGGE radtyper, altsaa
+    én definisjon. Grensa er `None`, dommen er `None`, og grunnen sier hvorfor.
+    """
+    payload = sls_payload(BEAM_REBAR, 0.0, -100e6, combo_type='quasi_permanent',
+                           phi_ef=2.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    result = engine.run(payload)
+    row = result['sls']['rows'][0]
+    stress = row['stress']
+
+    assert stress['sigma_s'] is not None, 'staalspenningen mangler fortsatt for QP'
+    assert stress['sigma_s'] > 0.0
+    # ÉN definisjon, ikke to: tallet ER radens egen `sigma_s_max`.
+    assert stress['sigma_s'] == row['state']['sigma_s_max']
+    assert stress['sigma_s_limit'] is None, 'EC2 7.2(5) er ikke en QP-kontroll'
+    assert stress['sigma_s_util'] is None
+    assert stress['sigma_s_ok'] is None
+    assert stress['sigma_s_ok_reason'] == 'sigma_s_limit_characteristic_only'
+
+    # Og spenningen lign. 7.9 FAKTISK bruker staar fortsatt for seg, med sitt eget
+    # lag: den er det STYRENDE laget inne i A_c,eff, ikke stoerste over snittet.
+    assert row['crack']['sigma_s'] > 0.0
+    assert row['crack']['sigma_s_layer'] == 'L1'
+
+
+def test_characteristic_row_still_gets_its_steel_stress_verdict():
+    """Motstykket: 7.2(5) GJELDER for karakteristisk last, og dommen skal staa."""
+    payload = sls_payload(BEAM_REBAR, 0.0, -120e6, combo_type='characteristic',
+                           exposure_class='XC3', w_max=0.3, w_max_source='class',
+                           w_max_reason=None, sigma_c_char_required=False)
+    stress = engine.run(payload)['sls']['rows'][0]['stress']
+    assert stress['sigma_s'] > 0.0
+    assert stress['sigma_s_limit'] == 0.8 * 500.0
+    assert isinstance(stress['sigma_s_ok'], bool)
+    assert stress['sigma_s_ok_reason'] is None
+
+
 def test_sls_defaults_mirror_the_js_source():
     """`_SLS_FALLBACK` er et SPEIL av `SLS_DEFAULTS` i js/materials.js, ikke en fjerde
     kilde (runde 10 K3). Denne testen LESER begge og feiler hvis de gaar fra hverandre

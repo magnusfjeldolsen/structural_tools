@@ -1502,14 +1502,27 @@ def _sls_row(combo, rebar, b, h, Ecm, Ec_eff, Es, fck, fyk, alpha_e_val, f_ct_ef
             sigma_s_limit = sigma_s_char_factor * fyk
             sigma_s_ok = bool(abs(sigma_s_val) <= sigma_s_limit)
             sigma_s_util = abs(sigma_s_val) / sigma_s_limit if sigma_s_limit else None
+            sigma_s_ok_reason = None
         else:
             sigma_c_checked = 'initial'
             sigma_c_val = sigma_c_initial
             sigma_c_limit = sigma_c_qp_factor * fck
-            sigma_s_val = None
+            # STAALSPENNINGEN STAAR OGSAA FOR EN QUASI-PERMANENT RAD. Den hadde
+            # ingen GRENSE foer -- EC2 7.2(5) gjelder karakteristisk last -- og ble
+            # derfor ikke rapportert i det hele tatt. Men den er selve inngangen til
+            # rissvidden (lign. 7.9), og en rad som viser w_k uten spenningen bak den
+            # er et resultat man ikke kan etterproeve.
+            #
+            # SAMME DEFINISJON som for en karakteristisk rad: `state['sigma_s_max']`,
+            # stoerste strekkspenning over ALLE lag. Ikke `crack['sigma_s']` -- den er
+            # spenningen i det STYRENDE laget inne i A_c,eff, en annen stoerrelse med
+            # sitt eget navn og sin egen rad i utledningen. To tall under samme
+            # merkelapp er nettopp den feilformen modulen har blitt bitt av hver runde.
+            sigma_s_val = state['sigma_s_max']
             sigma_s_limit = None
             sigma_s_ok = None
             sigma_s_util = None
+            sigma_s_ok_reason = 'sigma_s_limit_characteristic_only'
 
         # RETTET i runde 10 (K5). `sigma_c_ok` ble tidligere regnet for ENHVER
         # karakteristisk rad, ogsaa naar `_sls_checks` samtidig la `sigma_c_char_ok`
@@ -1547,6 +1560,7 @@ def _sls_row(combo, rebar, b, h, Ecm, Ec_eff, Es, fck, fyk, alpha_e_val, f_ct_ef
             'sigma_c_checked': sigma_c_checked,
             'sigma_s': _num(sigma_s_val), 'sigma_s_limit': _num(sigma_s_limit),
             'sigma_s_util': _num(sigma_s_util), 'sigma_s_ok': sigma_s_ok,
+            'sigma_s_ok_reason': sigma_s_ok_reason,
         }
 
     return {

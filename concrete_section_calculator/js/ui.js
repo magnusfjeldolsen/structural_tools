@@ -468,10 +468,30 @@ export function shearPanel(result) {
 export function slsSummarySuffix(result) {
   const worst = slsHeadlineCrack(result);
   if (!worst) return '';
-  const wk = fmtNumber(worst.w_k, 2);
-  return worst.w_max === null
-    ? ` · w<sub>k</sub> ${wk} mm`
-    : ` · w<sub>k</sub> ${wk}/${fmtNumber(worst.w_max, 2)} mm`;
+  return ` · w<sub>k</sub> ${crackPair(worst, 2, 2)} mm`;
+}
+
+/**
+ * «0.236/0.30» — rissvidden mot sin grense, som ETT uttrykk.
+ *
+ * ÉN SKRIVER for formen. Både sammendragslinja øverst og radlinjene under
+ * bruker den, og de skrev den hver sin gang før: sammendraget som
+ * `w_k/w_max` og raden som to atskilte felt med hver sin merkelapp. Når
+ * formen står ett sted, kan de heller ikke gli fra hverandre.
+ *
+ * Er det ingen grense (XD3, ingen klasse valgt), står tallet ALENE — ikke med
+ * en tankestrek etter skråstreken, som ville sett ut som et tall som glapp.
+ * Grunnen står i utledningen, der det er plass til å si den.
+ */
+function crackPair(crack, wkDecimals = 2, wmaxDecimals = 2) {
+  if (!crack) return DASH;
+  // Desimalene er kallerens: sammendraget øverst har plass til to, radlinja
+  // viser tre fordi det er DER man leser marginen. Grensa står med to begge
+  // steder — den er en gitt verdi, ikke et regnet tall.
+  const wk = fmtNumber(crack.w_k, wkDecimals);
+  return crack.w_max === null || crack.w_max === undefined
+    ? wk
+    : `${wk}/${fmtNumber(crack.w_max, wmaxDecimals)}`;
 }
 
 /**
@@ -493,9 +513,6 @@ function slsRowLine(row) {
   }
   const sigmaC = row.stress ? fmtStress(row.stress.sigma_c, 1) : DASH;
   const sigmaS = row.stress && toNum(row.stress.sigma_s) !== null ? fmtStress(row.stress.sigma_s, 1) : DASH;
-  const wk = row.crack ? fmtNumber(row.crack.w_k, 3) : DASH;
-  const wmax = row.crack && row.crack.w_max !== null && row.crack.w_max !== undefined
-    ? fmtNumber(row.crack.w_max, 2) : DASH;
   const eta = slsRowUtilisation(row);
   // ⚠ WRAPPINGEN LIGGER I DEN INDRE GRUPPA, IKKE I RADEN. Målt før denne
   // rettelsen: under ~600 px brøt den ytre `flex-wrap`-raden, og η — radens
@@ -511,8 +528,7 @@ function slsRowLine(row) {
       <span>${mEd}</span>
       <span>σ<sub>c</sub> ${sigmaC} MPa</span>
       <span>σ<sub>s</sub> ${sigmaS} MPa</span>
-      <span>w<sub>k</sub> ${wk} mm</span>
-      <span>w<sub>max</sub> ${wmax} mm</span>
+      <span>w<sub>k</sub> ${crackPair(row.crack, 3, 2)} mm</span>
     </span>
     <span class="ml-auto pl-2 shrink-0">η ${eta === null ? DASH : fmtRatio(eta, 2)}</span>
   </div>`;
@@ -594,8 +610,16 @@ function slsRowDerivation(row) {
         st2.sigma_c_ok === null && st2.sigma_c_ok_reason
           ? `${DASH} (${esc(slsReasonText(st2.sigma_c_ok_reason))})`
           : checkText(st2.sigma_c_ok), ''],
+      ['σ<sub>s</sub>, largest of all layers', fmtStress(st2.sigma_s, 2), 'MPa'],
       ['σ<sub>s</sub> utilisation', st2.sigma_s_util === null || st2.sigma_s_util === undefined ? DASH : fmtRatio(st2.sigma_s_util, 3), ''],
-      ['σ<sub>s</sub> ≤ limit — EC2 7.2', checkText(st2.sigma_s_ok), ''],
+      // Samme regel som σ_c over: en `null` som skyldes at grensa IKKE GJELDER
+      // skal si det. For en tilnærmet permanent rad er dette normaltilfellet —
+      // EC2 7.2(5) er en karakteristisk kontroll — og uten grunnen ville en
+      // naken strek her sett ut som et tall som glapp.
+      ['σ<sub>s</sub> ≤ limit — EC2 7.2',
+        st2.sigma_s_ok === null && st2.sigma_s_ok_reason
+          ? `${DASH} (${esc(slsReasonText(st2.sigma_s_ok_reason))})`
+          : checkText(st2.sigma_s_ok), ''],
     ]);
   }
 
@@ -604,6 +628,12 @@ function slsRowDerivation(row) {
     const c = row.crack;
     crackHtml = rows([
       ['h<sub>c,eff</sub> [mm] — EC2 7.3.2(3)', `<b>${fmtLength(c.h_c_eff, 2)}</b> — governing: <b>${esc(c.h_c_eff_governing)}</b>`, ''],
+      // INNGANGEN TIL LIGN. 7.9, og derfor den ene størrelsen hele rissvidden
+      // henger på. Den sto bare i rapporten før. Laget står med: σ_s her er
+      // spenningen i det STYRENDE laget inne i A_c,eff, ikke σ_s,max over
+      // snittet — uten lag-id-en ville de to sett like ut når de er ulike.
+      ['σ<sub>s</sub> into eq. 7.9 — governing layer inside A<sub>c,eff</sub>',
+        `${fmtStress(c.sigma_s, 2)} (${esc(c.sigma_s_layer)})`, 'MPa'],
       ['ε<sub>sm</sub>−ε<sub>cm</sub> — EC2 lign. 7.9', `<b>${fmtNumber(c.eps_sm_eps_cm, 6)}</b> — governing: <b>${esc(c.eps_governing)}</b>`, ''],
       ['s<sub>r,max</sub> [mm] — EC2 lign. 7.11', `<b>${fmtLength(c.sr_max, 2)}</b> — governing: <b>${esc(c.sr_max_branch)}</b>`, ''],
       ['w<sub>k</sub> — EC2 lign. 7.8', fmtNumber(c.w_k, 4), 'mm'],
