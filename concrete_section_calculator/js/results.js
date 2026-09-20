@@ -263,6 +263,10 @@ export const ENGINE_CODES = Object.freeze([
    * §1.7): «klausulen gjelder ikke denne tilstanden» er ikke et avvik, og en
    * gul trekant på den ville lært brukeren å overse gule trekanter. */
   'bending_capacity_exceeded',
+  // Bjelke med skjaerkraft og ingen boeyler (EC2 9.2.2(5)). EGEN kode og ikke
+  // `asw_below_minimum`, som gjelder en boeylerad som ER der men er for liten:
+  // «for lite» og «ingenting i det hele tatt» er to ulike paastander.
+  'asw_min_not_met',
   // Kapasiteten peker motsatt vei av lasten (runde 11). Egen kode og ikke en variant
   // av `bending_capacity_exceeded`, fordi det er en ANNEN påstand: der sier vi «for
   // lite», her sier vi «ingenting i det hele tatt, i den retningen».
@@ -493,6 +497,10 @@ export const CODE_MESSAGES = Object.freeze({
   stirrup_spacing_exceeds_max:
     'Stirrup spacing s exceeds s_l,max = 0.75·d (EC2 9.2.2(6)). Add stirrups or reduce ' +
     'the spacing.',
+  asw_min_not_met:
+    'A beam with a shear force has no shear reinforcement at all. EC2 9.2.2(5) requires ' +
+    'at least the minimum ratio rho_w,min in beams — the exemption in 6.2.1(4) covers ' +
+    'slabs and members of minor importance, not beams.',
   asw_below_minimum:
     'The shear reinforcement ratio A_sw/s is below the EC2 9.2.2(5) minimum ' +
     'ρ_w,min·b_w. This applies only where stirrups are present at all — a section ' +
@@ -1150,6 +1158,17 @@ export const SLS_REASON_CODES = Object.freeze([
   'no_crack_width_limit',
   'sigma_c_char_not_required',
   'sigma_s_limit_characteristic_only',
+  // Kryp-avvisningene (materials.js:creepCoefficient). De er FOEDT I JS, ikke i
+  // motoren, men de havner i nøyaktig de samme feltene og leses av den samme
+  // `slsReasonText()` — så de hører hjemme i den samme tabellen. Uten dem skrev
+  // skjermen «Unspecified reason from the calculation engine (code: …)», som er
+  // galt to ganger: koden kom ikke fra motoren, og den ga ingen grunn.
+  'creep_invalid_fck',
+  'creep_invalid_h0',
+  'creep_invalid_rh',
+  'creep_invalid_t0',
+  'creep_invalid_cement',
+  'creep_life_not_after_loading',
 ]);
 
 export const SLS_REASON_TEXT = Object.freeze({
@@ -1196,6 +1215,25 @@ export const SLS_REASON_TEXT = Object.freeze({
     'EC2 7.2(5) limits the reinforcement stress under the characteristic combination, ' +
     'not the quasi-permanent one. The stress is reported here because it is what drives ' +
     'the crack width in EC2 eq. 7.9 — but no limit is imposed on it for this row.',
+  creep_invalid_fck:
+    'The creep coefficient needs a concrete strength to start from, and f_ck is not a ' +
+    'positive number.',
+  creep_invalid_h0:
+    'The notional size h0 = 2·Ac/u could not be derived from the geometry, and no ' +
+    'manual value was entered. Check the width and height of the section.',
+  creep_invalid_rh:
+    'The relative humidity must lie strictly between 0 and 100 %. At 100 % the ' +
+    'humidity term of EC2 Annex B vanishes, and concrete under water creeps by a ' +
+    'different model than the one in that annex.',
+  creep_invalid_t0:
+    'The age of the concrete at loading must be a positive number of days.',
+  creep_invalid_cement:
+    'The cement class must be S, N or R — EC2 (B.9) has an exponent for each of them ' +
+    'and for nothing else.',
+  creep_life_not_after_loading:
+    'The service life must be LATER than the age at loading. At t = t0 the creep ' +
+    'development factor is zero, so the answer would be a quasi-permanent check with ' +
+    'no creep at all — almost always a typo rather than an intention.',
 });
 
 /**

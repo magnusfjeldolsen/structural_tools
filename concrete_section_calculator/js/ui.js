@@ -3344,9 +3344,19 @@ export function createUI(deps) {
     }
     const armWarn = $('#arm-warn');
     if (armWarn) {
-      armWarn.innerHTML = est.As_total < est.As_min
-        ? `⚠ below A<sub>s,min</sub> ≈ ${fmtArea(est.As_min)} mm²`
-        : '';
+      // ⚠ `NaN` GLIR GJENNOM `<` OG LANDER I «ALT ER I ORDEN».
+      //
+      // `A_s,min` er `NaN` når ingen armering står på strekksiden — et
+      // støttemoment på en bjelke med bare underkantjern. Det er det ærlige
+      // svaret fra `derived()`, men `NaN < NaN` er `false`, så hintet forsvant
+      // STILLE og så ut som en bestått kontroll. Samme feilform som resten av
+      // runden: et manglende svar som leses som et godkjent.
+      armWarn.innerHTML = !Number.isFinite(est.As_min)
+        ? '<span class="text-amber-200/80">A<sub>s,min</sub> can\'t be checked — '
+          + 'no layer is on the tension side for this moment direction</span>'
+        : est.As_total < est.As_min
+          ? `⚠ below A<sub>s,min</sub> ≈ ${fmtArea(est.As_min)} mm²`
+          : '';
     }
 
     const shInput = $('#sh-input');

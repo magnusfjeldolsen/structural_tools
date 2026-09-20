@@ -1020,3 +1020,53 @@ test('normaliseringen er idempotent — den kan kjøres om igjen uten å flytte 
   store.setState({});
   assert.equal(JSON.stringify(store.getState()), once, 'og enda en gang');
 });
+
+test('INGEN dør etterlater en tilstand normaliseringen ville endret', () => {
+  // EGENSKAPSTESTEN, og den som mangler i dag. Testen over prøver fire navngitte
+  // dører; denne prøver ALLE, og den trenger ikke å vite hva noen av dem gjør.
+  //
+  // Påstanden: etter en hvilken som helst dør skal tilstanden være et FIKSPUNKT
+  // for `normalise` — kjører du den igjen, flytter ingenting seg. En dør som
+  // glemmer en invariant bryter nettopp det, og da sier testen hvilken.
+  //
+  // `normalise` er ikke eksportert (den er et internt ledd), så fikspunktet
+  // prøves gjennom `replaceState`, som kjører den på veien inn: sender vi
+  // tilstanden inn igjen og får noe ANNET ut, var den ikke normalisert.
+  const doors = [
+    ['setState(sectionType)', (st) => st.setState({ sectionType: 'slab' })],
+    ['setState(combos)', (st) => st.setState({ combos: [
+      { id: 'C9', name: 'QP', type: 'quasi_permanent', N_Ed: 0, M_Ed: -50, V_Ed: 0 }] })],
+    ['setSectionType', (st) => st.setSectionType('slab')],
+    ['patch(geometry)', (st) => st.patch('geometry', { b: 300, h: 450 })],
+    ['patch(shear)', (st) => st.patch('shear', { stirrups: [] })],
+    ['patch(sls)', (st) => st.patch('sls', { exposure_class: 'XD1' })],
+    ['addStirrup', (st) => st.addStirrup({})],
+    ['updateStirrup', (st) => st.updateStirrup(st.getState().shear.stirrups[0]?.id, { dia: 16 })],
+    ['removeStirrup', (st) => st.removeStirrup(st.getState().shear.stirrups[0]?.id)],
+    ['addLayer', (st) => st.addLayer({})],
+    ['updateLayer', (st) => st.updateLayer(st.getState().layers[0].id, { dia: 25 })],
+    ['duplicateLayer', (st) => st.duplicateLayer(st.getState().layers[0].id)],
+    ['removeLayer', (st) => st.removeLayer(st.getState().layers[0].id)],
+    ['addCombo', (st) => st.addCombo({})],
+    ['updateCombo', (st) => st.updateCombo(st.getState().combos[0].id, { type: 'quasi_permanent' })],
+    ['removeCombo', (st) => st.removeCombo(st.getState().combos[0].id)],
+    ['setActiveCombo', (st) => st.setActiveCombo(st.getState().combos[0].id)],
+  ];
+
+  for (const [name, act] of doors) {
+    const store = createStore();
+    act(store);
+    const after = store.snapshot();
+
+    // `replaceState` kjører `normalise` på veien inn. Er `after` allerede et
+    // fikspunkt, kommer den uendret ut igjen.
+    const probe = createStore();
+    probe.replaceState(after);
+    const renormalised = probe.snapshot();
+
+    for (const key of ['sectionType', 'geometry', 'analysis', 'activeCombo', 'sls', 'shear']) {
+      assert.deepEqual(renormalised[key], after[key],
+        `${name}: «${key}» flyttet seg av en ny normalisering — døra hoppet over en invariant`);
+    }
+  }
+});

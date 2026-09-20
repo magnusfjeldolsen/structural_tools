@@ -660,6 +660,71 @@ def test_a_section_entirely_in_tension_gets_a_crack_width():
     assert '(h-x)/3' not in crack['h_c_eff_candidates']
 
 
+def _assert_no_crash(result):
+    """Payloadene her har BARE en bruksgrenserad, saa bruddgrensedelen melder
+    `no_uls_combination` -- det er forventet og ikke et kast. Alt annet `ok: False` er
+    en kjoerefeil, og da er hele svaret borte: ingen ULS, ingen figur, ingen advarsel."""
+    if result.get('ok') is False:
+        code = result['error']['code']
+        assert code == 'no_uls_combination',             f"{code}: {result['error'].get('detail', '').strip().splitlines()[-1][:120]}"
+
+
+ASYM_TIE_REBAR = [
+    bars_layer('L1', -250.0, 25.0, [-100.0, -33.0, 33.0, 100.0]),
+    bars_layer('L2', 250.0, 20.0, [-100.0, -33.0, 33.0, 100.0]),
+]
+
+
+def test_an_asymmetric_tie_does_not_take_the_whole_run_down():
+    """REGRESJON paa strekkloeseren selv, og paa TESTENE for den.
+
+    De to foerste strekktestene brukte et EKSAKT SYMMETRISK oppsett -- det ene
+    tilfellet der feilen ikke kan vises, fordi `SUM(A*z) = 0` gjoer at `chi_y` foelger
+    momentet alene. Med ULIKT jern i topp og bunn kommer krumningen fra armeringen, og
+    `_sls_theta_equiv(m_ed)` pekte da ut FEIL kant:
+
+        300x600, 4O25 UK + 4O20 OK, N = +900 kN, M = 0
+        sann   eps(topp) 1,8530e-03   eps(bunn) 1,0801e-03
+        antatt eps_1 = bunnen  ->  eps_r = 1,715  ->  `ec2_2004.k2()` KASTER
+        ->  {ok: False}: ingen ULS, ingen figur, ingen advarsel
+
+    47 av 140 proevde punkter krasjet. Paa master gav samme payload et pent
+    `fully_in_tension`; grenen byttet det mot total kjoerefeil.
+
+    Et strekkstag er sjelden eksakt symmetrisk, saa dette ER normaltilfellet.
+    """
+    payload = sls_payload(ASYM_TIE_REBAR, 900e3, 0.0, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    result = engine.run(payload)
+    _assert_no_crash(result)
+
+    row = result['sls']['rows'][0]
+    state, crack = row['state'], row['crack']
+    assert state is not None and state['tension_only'] is True
+    # `eps_1` ER strekkanten: den STOERSTE toeyningen, uansett hva momentet sier.
+    assert state['eps_1'] >= state['eps_2'] > 0.0
+    assert crack is not None
+    assert 0.0 <= crack['eps_r'] <= 1.0, 'eps_r utenfor [0,1] er det k2() kaster paa'
+    assert 0.5 < crack['k2'] < 1.0
+
+
+@pytest.mark.parametrize('dias', [(25.0, 20.0), (20.0, 25.0)])
+@pytest.mark.parametrize('n_ed', [400e3, 900e3])
+@pytest.mark.parametrize('m_ed', [-40e6, 0.0, 40e6])
+def test_the_tension_solver_never_throws_across_asymmetry(dias, n_ed, m_ed):
+    """Sveip: BEGGE retninger av usymmetri, med og uten moment. Et kast her er ikke en
+    manglende funksjon, det er et tapt svar -- ogsaa for bruddgrensedelen, som ikke har
+    noe med bruksgrensen aa gjoere."""
+    rebar = [bars_layer('L1', -250.0, dias[0], [-100.0, -33.0, 33.0, 100.0]),
+             bars_layer('L2', 250.0, dias[1], [-100.0, -33.0, 33.0, 100.0])]
+    payload = sls_payload(rebar, n_ed, m_ed, combo_type='quasi_permanent', phi_ef=0.0,
+                           exposure_class='XC3', w_max=0.3, w_max_source='class',
+                           w_max_reason=None, sigma_c_char_required=False)
+    _assert_no_crash(engine.run(payload))
+
+
 def test_eccentric_tension_gives_k2_between_the_two_ends():
     """Eksentrisk strekk ligger mellom ren strekk (k2 = 1,0) og ren boeyning (k2 = 0,5)
     -- lign. 7.13 er nettopp den interpolasjonen."""
