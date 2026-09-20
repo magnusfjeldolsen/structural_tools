@@ -1467,7 +1467,7 @@ def _sls_crack(rebar, state, b, h, m_ed, alpha_e_val, f_ct_eff, Es):
 def _sls_row(combo, rebar, b, h, Ecm, Ec_eff, Es, fck, fyk, alpha_e_val, f_ct_eff,
              w_max, w_max_source, w_max_reason,
              sigma_c_char_factor, sigma_c_qp_factor, sigma_s_char_factor,
-             sigma_c_char_required):
+             sigma_c_char_required, section_cracked):
     """Bygger ÉN `SlsRow` (spec §4). `rebar` er payloadens egen liste, i egen rekkefoelge
     -- state['layers'] faar SAMME rekkefoelge (bygd i `_sls_build_state` med `zip`), slik
     at `_tension_layers(rebar, state['layers'])` er lovlig lenger nede (§3.2)."""
@@ -1476,12 +1476,29 @@ def _sls_row(combo, rebar, b, h, Ecm, Ec_eff, Es, fck, fyk, alpha_e_val, f_ct_ef
     combo_type = combo['type']
     rebar_zs = [(float(l['area']), _layer_z(l)) for l in rebar]
 
-    # §1.1 -- rissbeslutningen, ALLTID med E_cm (riss er irreversibelt, se hodekommentar).
+    # §1.1 -- radens EGEN urissede strekkspenning, ALLTID med E_cm. Den staar i svaret
+    # fordi den er et faktum om raden og viser HVILKEN rad som sprengte rissgrensa.
     eps_a_u, chi_u = _sls_uncracked_eval(b, h, Ecm, Es, rebar_zs, n_ed, m_ed)
     sig_top_u = Ecm * (eps_a_u + chi_u * (h / 2.0))
     sig_bot_u = Ecm * (eps_a_u + chi_u * (-h / 2.0))
     sigma_ct_uncracked = max(sig_top_u, sig_bot_u)
-    cracked = sigma_ct_uncracked > f_ct_eff
+
+    # MEN TILSTANDEN FOELGER KONVOLUTTEN, IKKE RADEN.
+    #
+    # Hodekommentaren sier allerede «riss er irreversibelt» -- som begrunnelse for at
+    # E_cm brukes i rissBESLUTNINGEN. Den ble ikke brukt paa TILSTANDEN, og da kunne en
+    # rad som ikke selv sprenger rissgrensa bli regnet som urisset, enda snittet hadde
+    # sprukket av en annen rad. Riss forsvinner ikke naar lasten gaar ned.
+    #
+    # MAALT, 300x1000 med 3O16 i underkant, XC4, w_max = 0,30:
+    #   karakteristisk M = -200 kNm  ->  sigma_ct = 3,843 > f_ctm = 2,896  -> RISSER
+    #   tilnaermet perm M = -144 kNm  ->  sigma_ct = 2,767 < f_ctm        -> «urisset»
+    # Motoren svarte «no quasi-permanent load combination cracks the section» og
+    # `sls.all_ok = True`. Regnet som risset -- slik snittet FAKTISK er:
+    #   x = 230,0, sigma_s = 273,4, s_r,max = 311,9, w_k = 0,3030 mm mot 0,30
+    #   -> utilisation 1,010 -> crack_width_ok = FALSE.
+    # Samme feil traff `sigma_c_qp_ok`: 2,142 urisset mot 2,754 risset, 29 % lavt.
+    cracked = section_cracked
 
     Ec_used = Ecm if combo_type == 'characteristic' else Ec_eff
     n_sec = Es / Ec_used
@@ -1822,15 +1839,34 @@ def _compute_sls(payload, sls_cfg, combos, bundle, warnings_out):
         sls_cfg.get('sigma_s_char_factor', _SLS_FALLBACK['sigma_s_char_factor']))
     sigma_c_char_required = sls_cfg.get('sigma_c_char_required')
 
+    sls_combos = [c for c in combos
+                  if c['type'] in ('characteristic', 'quasi_permanent')]
+
+    # KONVOLUTTEN FOERST. Snittet er risset dersom NOEN bruksgrenserad sprenger
+    # f_ct,eff -- og da er det risset for alle radene, fordi riss ikke gaar tilbake naar
+    # lasten gaar ned. Se `_sls_row` for maalingen som gjorde dette noedvendig.
+    #
+    # E_cm i hele beslutningen: den urissede tilstanden er kortidsstivheten uansett
+    # hvilken kombinasjon raden er, og en kryprelatert forskjell her ville gjort
+    # rissgrensa avhengig av lastvarigheten.
+    section_cracked = False
+    for combo in sls_combos:
+        rebar_zs_env = [(float(l['area']), _layer_z(l)) for l in rebar]
+        eps_a_e, chi_e = _sls_uncracked_eval(
+            b, h, ecm, es, rebar_zs_env, combo['N_Ed'], combo['M_Ed'])
+        sig_top_e = ecm * (eps_a_e + chi_e * (h / 2.0))
+        sig_bot_e = ecm * (eps_a_e + chi_e * (-h / 2.0))
+        if max(sig_top_e, sig_bot_e) > f_ct_eff:
+            section_cracked = True
+            break
+
     rows = []
-    for combo in combos:
-        if combo['type'] not in ('characteristic', 'quasi_permanent'):
-            continue
+    for combo in sls_combos:
         row = _sls_row(
             combo, rebar, b, h, ecm, ec_eff, es, fck, fyk, alpha_e_val, f_ct_eff,
             w_max, w_max_source, w_max_reason,
             sigma_c_char_factor, sigma_c_qp_factor, sigma_s_char_factor,
-            sigma_c_char_required,
+            sigma_c_char_required, section_cracked,
         )
         rows.append(row)
 
@@ -1846,6 +1882,9 @@ def _compute_sls(payload, sls_cfg, combos, bundle, warnings_out):
         'phi_ef': _num(phi_ef), 'Ecm': _num(ecm), 'Ec_eff': _num(ec_eff),
         'alpha_e': _num(alpha_e_val), 'f_ct_eff': _num(f_ct_eff),
         'exposure_class': exposure_class,
+        # Konvoluttbeslutningen, paa toppnivaa: den gjelder snittet og ikke raden, og
+        # da skal den staa der de andre snittstoerrelsene staar.
+        'cracked': bool(section_cracked),
         'w_max': _num(w_max), 'w_max_source': w_max_source, 'w_max_reason': w_max_reason,
         'limits': {
             'sigma_c_char_factor': _num(sigma_c_char_factor),
