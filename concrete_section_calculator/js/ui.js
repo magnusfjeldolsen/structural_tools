@@ -881,6 +881,14 @@ export const DISCLOSURE_BOXES = [
     derived: ['steel.k', 'steel.epsuk'],
   },
   // Hele `shear`: bøylerader, trykkstavvinkel og z-faktor ligger i samme boks.
+  // Krypet er en BETONGEGENSKAP over tid, ikke en bruksgrenseinnstilling, og
+  // står derfor i seksjon 1 — tilgjengelig FØR det finnes en tilnærmet
+  // permanent lastkombinasjon. `phi_ef`/`h0_override` er med i stiene, men som
+  // `derived`: de er tomme som standard og skal ikke regnes som «endret» før
+  // noen faktisk har skrevet et tall. Uten det ville boksen åpnet seg av at
+  // brukeren tømte et felt.
+  { id: 'adv-creep', paths: ['sls.RH', 'sls.t0', 'sls.t_life', 'sls.cement',
+    'sls.phi_ef', 'sls.h0_override'] },
   { id: 'adv-shear', paths: ['shear'] },
   { id: 'adv-spacing', paths: ['cover_side', 'spacing'] },
 ];
@@ -1645,12 +1653,60 @@ export function createUI(deps) {
     const side = $('#w-cover-side');
     if (side) side.style.display = isSlab ? 'none' : '';
 
+    syncCreepBox(s);
     syncSlsBox(s);
 
     const lawC = $('#i-law-c');
     if (lawC) lawC.value = s.concrete.law;
     const lawS = $('#i-law-s');
     if (lawS) lawS.value = s.steel.law;
+  }
+
+  /**
+   * Krypboksen i materialseksjonen.
+   *
+   * KJØRES UBETINGET, i motsetning til `syncSlsBox`. Krypet avhenger av
+   * betongen, av tverrsnittets tykkelse og av miljøet — ikke av hvilke
+   * lastkombinasjoner som er skrevet inn. Lå den bak bruksgrenseboksen, måtte
+   * man først lage en tilnærmet permanent rad for å kunne sette den, og så
+   * tilbake igjen for å se hva den gjorde. Nå står den der den hører hjemme,
+   * og verdiene er satt før de trengs.
+   *
+   * `resolveCreep` er den SAMME funksjonen `payload.js` sender tallet fra, så
+   * skjermen kan ikke vise ett kryptall mens motoren regner med et annet.
+   * Kilden står ved siden av tallet, slik `w_max` gjør: et avledet tall uten
+   * opphav er et tall man ikke tør stole på.
+   */
+  function syncCreepBox(s) {
+    const put = (sel, value, decimals) => {
+      const el = $(sel);
+      if (!el || el === document.activeElement) return;
+      el.value = value === null || value === undefined ? '' : fmtNumber(value, decimals);
+    };
+    put('#i-rh', s.sls.RH, 0);
+    put('#i-t0', s.sls.t0, 0);
+    put('#i-tlife', s.sls.t_life / 365, 0);
+    put('#i-h0', s.sls.h0_override, 0);
+    put('#i-phi-ef', s.sls.phi_ef, 2);
+    const cemSel = $('#i-cement');
+    if (cemSel && cemSel !== document.activeElement) cemSel.value = s.sls.cement;
+
+    const text = (sel, value) => {
+      const el = $(sel);
+      if (el) el.textContent = value;
+    };
+    const creep = resolveCreep(s);
+    const h0 = s.sls.h0_override || notionalSize(s);
+    text('#sls-h0', Number.isFinite(h0) ? fmtNumber(h0, 0) : DASH);
+    text('#sls-h0-src', s.sls.h0_override ? 'manual override'
+      : s.sectionType === 'slab' ? 'drying top and bottom' : 'all four faces');
+    text('#sls-phi', creep.phi === null ? DASH : fmtNumber(creep.phi, 2));
+    text('#sls-phi-src', creep.source === 'manual' ? 'manual override'
+      : creep.source === 'derived' ? 'EC2 Annex B'
+      : slsReasonText(creep.reason));
+    text('#creep-summary', `φ ${creep.phi === null ? DASH : fmtNumber(creep.phi, 2)}`
+      + `${creep.source === 'manual' ? ' (manual)' : ''} · RH ${fmtNumber(s.sls.RH, 0)} % · `
+      + `t₀ ${fmtNumber(s.sls.t0, 0)} d · ${fmtNumber(s.sls.t_life / 365, 0)} yr`);
   }
 
   /**
@@ -1684,14 +1740,7 @@ export function createUI(deps) {
       if (!el || el === document.activeElement) return;
       el.value = value === null || value === undefined ? '' : fmtNumber(value, decimals);
     };
-    put('#i-phi-ef', s.sls.phi_ef, 2);
-    put('#i-h0', s.sls.h0_override, 0);
     put('#i-wmax', s.sls.w_max_override, 2);
-    put('#i-rh', s.sls.RH, 0);
-    put('#i-t0', s.sls.t0, 0);
-    put('#i-tlife', s.sls.t_life / 365, 0);
-    const cemSel = $('#i-cement');
-    if (cemSel && cemSel !== document.activeElement) cemSel.value = s.sls.cement;
     put('#i-sls-k1', s.sls.sigma_c_char_factor, 2);
     put('#i-sls-k2', s.sls.sigma_c_qp_factor, 2);
     put('#i-sls-k3', s.sls.sigma_s_char_factor, 2);
@@ -1715,28 +1764,14 @@ export function createUI(deps) {
       : limits.w_max_source === 'class' ? `from ${s.sls.exposure_class}`
       : limits.w_max_reason === 'no_crack_width_limit' ? 'no recommended value for this class'
       : 'select a class, or set a value below');
-    // KRYPET. `resolveCreep` er den SAMME funksjonen `payload.js` sender
-    // tallet fra — skjermen kan derfor ikke vise ett kryptall mens motoren
-    // regner med et annet. Kilden står ved siden av, slik `w_max` gjør: et
-    // avledet tall uten opphav er et tall man ikke tør stole på.
-    const creep = resolveCreep(s);
-    const h0 = s.sls.h0_override || notionalSize(s);
-    text('#sls-h0', Number.isFinite(h0) ? fmtNumber(h0, 0) : DASH);
-    text('#sls-h0-src', s.sls.h0_override ? 'manual override'
-      : s.sectionType === 'slab' ? 'drying top and bottom' : 'all four faces');
-    text('#sls-phi', creep.phi === null ? DASH : fmtNumber(creep.phi, 2));
-    text('#sls-phi-src', creep.source === 'manual' ? 'manual override'
-      : creep.source === 'derived' ? 'EC2 Annex B'
-      : slsReasonText(creep.reason));
-
     text('#sls-summary', `${s.sls.exposure_class || 'no class'} · w_max `
       + `${limits.w_max === null ? DASH : fmtNumber(limits.w_max, 2)} mm`);
-    // Sammendraget bak den lukkede folden sier KRYPET og hva det kom av —
-    // ikke de tre 7.2-faktorene, som nesten aldri endres. Én linje har plass
-    // til det som faktisk varierer.
-    text('#adv-sls-summary', `φ ${creep.phi === null ? DASH : fmtNumber(creep.phi, 2)}`
-      + `${creep.source === 'manual' ? ' (manual)' : ''} · RH ${fmtNumber(s.sls.RH, 0)} % · `
-      + `t₀ ${fmtNumber(s.sls.t0, 0)} d · ${fmtNumber(s.sls.t_life / 365, 0)} yr`);
+    // Folden inneholder nå bare grenser og overstyringer — krypet har sin egen
+    // boks i seksjon 1. Sammendraget sier derfor det som står i DENNE folden.
+    text('#adv-sls-summary', `${limits.w_max_source === 'manual' ? 'w_max manual · ' : ''}`
+      + `${fmtNumber(s.sls.sigma_c_char_factor, 2)}/`
+      + `${fmtNumber(s.sls.sigma_c_qp_factor, 2)}/`
+      + `${fmtNumber(s.sls.sigma_s_char_factor, 2)}`);
   }
 
   /* ---------------------------------------------------------------- *
