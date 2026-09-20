@@ -1138,6 +1138,7 @@ export const SLS_REASON_CODES = Object.freeze([
   'no_exposure_class',
   'no_crack_width_limit',
   'sigma_c_char_not_required',
+  'sigma_s_limit_characteristic_only',
 ]);
 
 export const SLS_REASON_TEXT = Object.freeze({
@@ -1180,6 +1181,10 @@ export const SLS_REASON_TEXT = Object.freeze({
     'EC2 7.2(2) limits the concrete compressive stress under the characteristic ' +
     'combination only for the exposure classes where longitudinal cracking matters — ' +
     'XD, XF and XS. The stress is reported for this row, but no limit is imposed on it.',
+  sigma_s_limit_characteristic_only:
+    'EC2 7.2(5) limits the reinforcement stress under the characteristic combination, ' +
+    'not the quasi-permanent one. The stress is reported here because it is what drives ' +
+    'the crack width in EC2 eq. 7.9 — but no limit is imposed on it for this row.',
 });
 
 /**

@@ -165,6 +165,7 @@ enn koden gjorde.
 | De fire standardverdiene stod i fire filer | Nå i `SLS_DEFAULTS` (materials.js), med et navngitt speil i `engine.py` som en test holder i takt. |
 | Raden felte dom på EC2 7.2(2) også for XC-klasser | Kontrollista sa «not applicable», utledningen skrev «OK». Nå er dommen `null` MED grunnen, mens spenningen og utnyttelsen står igjen som de faktaene de er. |
 | `η` brøt ned på egen linje under 600 px | Radens viktigste tall, visuelt løsrevet fra navnet det hører til. Wrappingen ligger nå i den indre gruppa. |
+| Ingen stålspenning for en tilnærmet permanent rad | Den har ingen GRENSE (EC2 7.2(5) er en karakteristisk kontroll) og ble derfor ikke rapportert i det hele tatt — men den er selve inngangen til rissvidden. Nå står den, med grunnen til at ingen grense felles, og utledningen viser i tillegg σ_s i det styrende laget som lign. 7.9 faktisk bruker. |
 
 ---
 
