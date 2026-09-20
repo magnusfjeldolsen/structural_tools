@@ -833,6 +833,75 @@ def test_characteristic_row_still_gets_its_steel_stress_verdict():
     assert stress['sigma_s_ok_reason'] is None
 
 
+def _uls_and_qp(w_max):
+    """Et snitt som BESTAAR bruddgrensen, med én tilnaermet permanent rad ved siden av."""
+    payload = sls_payload(BEAM_REBAR, 0.0, -100e6, combo_type='quasi_permanent',
+                           phi_ef=2.0, exposure_class='XC3', w_max=w_max,
+                           w_max_source='manual', w_max_reason=None,
+                           sigma_c_char_required=False)
+    payload['loads']['combinations'].insert(0, {
+        'id': 'C1', 'name': 'ULS', 'type': 'uls', 'N_Ed': 0.0, 'M_Ed': -100e6, 'V_Ed': 0.0})
+    payload['loads']['active'] = 'C1'
+    return payload
+
+
+def test_overall_assessment_sees_the_serviceability_limit():
+    """RETTET i runde 11. `checks['all_ok']` -- raden som HETER «Overall assessment»
+    og som rapporten trykker som samlet vurdering -- saa bare paa bruddgrensen.
+
+    MAALT foer rettelsen: en rissvidde paa 0,226 mm mot en grense paa 0,05, altsaa
+    4,5 ganger over, gav `checks['all_ok'] = True`. Advarselen laa i lista, men en
+    advarsel ved siden av en groenn hake blir ikke lest.
+
+    Kommentaren over `checks['all_ok']` i motoren sa det allerede, om et annet
+    tilfelle: «en Overall assessment: OK som overser ... er aktivt misvisende i et
+    verktoey som dimensjonerer betong».
+    """
+    result = engine.run(_uls_and_qp(0.05))
+    row = result['sls']['rows'][0]
+    assert row['crack']['ok'] is False
+    assert row['crack']['utilisation'] > 4.0, 'testen skal vaere grov, ikke marginal'
+
+    # Bruddgrensen ALENE bestaar -- det er nettopp det som gjoer feilen farlig.
+    uls_only = {k: v for k, v in result['checks'].items() if k != 'all_ok'}
+    assert all(v is True for v in uls_only.values()), uls_only
+
+    assert result['sls']['all_ok'] is False
+    assert result['checks']['all_ok'] is False, \
+        'samlet vurdering sier fortsatt OK med rissvidden 4,5x over grensa'
+    assert 'sls_crack_width_exceeded' in [w['code'] for w in result['warnings']]
+
+
+def test_overall_assessment_stays_true_when_serviceability_passes():
+    """Motstykket: en romslig grense skal ikke faa den samlede vurderingen til aa
+    falle. Uten denne ville rettelsen over kunne vaert «sett alltid False»."""
+    result = engine.run(_uls_and_qp(0.4))
+    assert result['sls']['rows'][0]['crack']['ok'] is True
+    assert result['sls']['all_ok'] is True
+    assert result['checks']['all_ok'] is True
+
+
+def test_overall_assessment_is_unanswered_when_serviceability_is():
+    """Treverdig hele veien: en ubesvart bruksgrensekontroll skal gi en ubesvart
+    samlet vurdering, ikke en bestaatt. XD3 har ingen anbefalt rissviddegrense."""
+    payload = _uls_and_qp(None)
+    payload['sls'].update({'exposure_class': 'XD3', 'w_max': None, 'w_max_source': None,
+                           'w_max_reason': 'no_crack_width_limit'})
+    result = engine.run(payload)
+    assert result['sls']['checks']['crack_width_ok'] is None
+    assert result['sls']['all_ok'] is None
+    assert result['checks']['all_ok'] is None, 'None skal slaa True, som ellers i kjeden'
+
+
+def test_overall_assessment_is_untouched_without_serviceability_rows():
+    """AC9: uten SLS-rader skal svaret vaere BIT FOR BIT som foer kapittelet fantes."""
+    payload = _uls_and_qp(0.4)
+    payload['loads']['combinations'] = [payload['loads']['combinations'][0]]
+    result = engine.run(payload)
+    assert 'sls' not in result
+    assert result['checks']['all_ok'] is True
+
+
 def test_sls_defaults_mirror_the_js_source():
     """`_SLS_FALLBACK` er et SPEIL av `SLS_DEFAULTS` i js/materials.js, ikke en fjerde
     kilde (runde 10 K3). Denne testen LESER begge og feiler hvis de gaar fra hverandre
