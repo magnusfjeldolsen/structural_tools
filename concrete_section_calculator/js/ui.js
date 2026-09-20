@@ -1697,14 +1697,18 @@ export function createUI(deps) {
     };
     const creep = resolveCreep(s);
     const h0 = s.sls.h0_override || notionalSize(s);
-    text('#sls-h0', Number.isFinite(h0) ? fmtNumber(h0, 0) : DASH);
+    // «h₀ = 200», ikke bare «200». Et avledet tall som står alene under en
+    // etikett tvinger leseren til å knytte de to sammen selv — og i en rad med
+    // fire felt ved siden av hverandre er det ett ledd for mye. Størrelsen og
+    // verdien hører sammen, og da skal de stå sammen.
+    text('#sls-h0', Number.isFinite(h0) ? `h₀ = ${fmtNumber(h0, 0)} mm` : DASH);
     text('#sls-h0-src', s.sls.h0_override ? 'manual override'
       : s.sectionType === 'slab' ? 'drying top and bottom' : 'all four faces');
-    text('#sls-phi', creep.phi === null ? DASH : fmtNumber(creep.phi, 2));
+    text('#sls-phi', creep.phi === null ? DASH : `φ = ${fmtNumber(creep.phi, 2)}`);
     text('#sls-phi-src', creep.source === 'manual' ? 'manual override'
       : creep.source === 'derived' ? 'EC2 Annex B'
       : slsReasonText(creep.reason));
-    text('#creep-summary', `φ ${creep.phi === null ? DASH : fmtNumber(creep.phi, 2)}`
+    text('#creep-summary', `φ = ${creep.phi === null ? DASH : fmtNumber(creep.phi, 2)}`
       + `${creep.source === 'manual' ? ' (manual)' : ''} · RH ${fmtNumber(s.sls.RH, 0)} % · `
       + `t₀ ${fmtNumber(s.sls.t0, 0)} d · ${fmtNumber(s.sls.t_life / 365, 0)} yr`);
   }
@@ -3235,10 +3239,24 @@ export function createUI(deps) {
     const matDer = $('#mat-derived');
     if (matDer) {
       const cell = (k, v, u) => `<div><span class="text-slate-500">${k}</span> <span class="text-slate-200">${v}</span> <span class="text-slate-600">${u}</span></div>`;
+      // KRYPTALLET STÅR HER, blant de andre AVLEDEDE materialverdiene — ikke
+      // bare inne i folden som lager det. φ er et resultat på linje med f_cd og
+      // E_cm: noe som FØLGER av det du har valgt, og som du må kunne lese uten
+      // å åpne noe. `E_c,eff` står ved siden av, fordi det er den størrelsen
+      // som faktisk går inn i beregningen — φ alene sier ikke hvor mye
+      // stivheten falt.
+      //
+      // SAMME `resolveCreep` som skjemaet og `payload.js` bruker. Tre steder
+      // viser tallet; alle tre leser det fra én funksjon.
+      const creep = resolveCreep(s);
+      const ecEff = creep.phi === null ? null : mats.Ecm / (1 + creep.phi);
       matDer.innerHTML =
         cell('f<sub>cd</sub>', fmtStress(mats.fcd), 'MPa') +
         cell('f<sub>ctm</sub>', fmtStress(mats.fctm, 2), 'MPa') +
         cell('E<sub>cm</sub>', fmtStress(mats.Ecm, 0), 'MPa') +
+        cell('φ(t,t<sub>0</sub>)', creep.phi === null ? DASH : fmtNumber(creep.phi, 2),
+          creep.source === 'manual' ? 'manual' : '') +
+        cell('E<sub>c,eff</sub>', ecEff === null ? DASH : fmtStress(ecEff, 0), 'MPa') +
         cell('f<sub>yd</sub>', fmtStress(mats.fyd), 'MPa') +
         cell('ε<sub>ud</sub>', fmtStrainPermille(mats.eps_ud, 1), '‰');
     }
