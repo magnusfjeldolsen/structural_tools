@@ -154,16 +154,30 @@ test('sectionViewBox: tverrsnittet sentreres når det blir bredde til overs', ()
   assert.ok(Math.abs((right - left) - 3.64) < 1e-9, `venstre ${left}, høyre ${right}`);
 });
 
-test('sectionViewBox: modellutsnittet er uavhengig av enheten', () => {
-  // 600 px og 174 mm skal dekke NØYAKTIG samme del av tverrsnittet; bare
-  // målestokken (papirenheter per mm) skiller. Det er dette som gjør at
-  // skjermfiguren og rapportfiguren ser like ut.
+test('sectionViewBox: utsnittets STØRRELSE og målestokk er uavhengig av enheten', () => {
+  // 600 px og 174 mm skal dekke like MYE av tverrsnittet og forstørre det like
+  // mye; det er dette som gjør at skjermfiguren og rapportfiguren ser like ut.
   const mm = sectionViewBox(BEAM, { width: 174, unit: 'mm' });
   const px = sectionViewBox(BEAM, { width: 600, unit: 'px' });
-  for (const key of ['minY', 'minZ', 'w', 'h']) {
+  for (const key of ['minZ', 'w', 'h']) {
     assert.ok(Math.abs(mm[key] - px[key]) < 1e-9, `${key}: ${mm[key]} mot ${px[key]}`);
   }
   assert.ok(Math.abs(px.scale / mm.scale - 600 / 174) < 1e-12);
+
+  // `minY` — den VANNRETTE plasseringen — får derimot avvike, og skal det.
+  // Skjermen har et GULV på merkelappskriften (`MIN_LABEL_PX`, 11 px mot 6,0
+  // px før): 2,6 rapport-mm er lesbart på et A4-ark man holder i hånda, men
+  // ikke i en 476 px boks på en skjerm. En større skrift trenger en bredere
+  // merkelappsone, og da flytter tverrsnittet seg til venstre INNI det samme
+  // utsnittet.
+  //
+  // Det er nettopp derfor `labelZone()` får skriftfaktoren som argument: sonen
+  // som RESERVERES og skriften som SETTES må komme fra samme tall, ellers
+  // stikker merkelappen ut over figurkanten.
+  assert.ok(px.minY > mm.minY,
+    'skjermen skal gi merkelappene MER plass enn papiret, ikke mindre');
+  assert.ok(Math.abs(px.minY - mm.minY) < 0.05 * mm.w,
+    'men forskjellen skal være en marg, ikke et annet utsnitt');
 });
 
 /* ------------------------------------------------------------------ *

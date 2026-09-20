@@ -13,9 +13,9 @@
 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Ultimate limit state capacity for reinforced concrete cross-sections to Eurocode 2, computed by fib structuralcodes in the browser. Beam b×h or slab per metre width, sagging and hogging moment, several reinforcement layers and load combinations. Gives M_Rd at a given N_Ed, neutral axis, strain and stress per layer, failure mode, A_s,min and A_s,max, moment–curvature curve and the full M–N capacity envelope with every load point plotted. Shear capacity to EC2 6.2 with and without stirrups, V_Rd,c, V_Rd,s and V_Rd,max per load combination, including the effect of axial force. Print-ready A4 report.">
-  <meta name="keywords" content="concrete, concrete section, reinforced concrete, ultimate limit state, ULS, Eurocode 2, EC2, moment capacity, M_Rd, bending resistance, neutral axis, strain, moment-curvature, M-N diagram, interaction domain, minimum reinforcement, As_min, reinforcement layers, beam, slab, load combinations, sagging, hogging, shear, shear capacity, shear reinforcement, stirrups, links, V_Rd, VRdc, VRds, EC2 6.2, axial force, structuralcodes, pyodide, concrete design">
-  <title>Concrete section ULS — bending, shear, M–κ and N–M to EC2</title>
+  <meta name="description" content="Ultimate limit state capacity for reinforced concrete cross-sections to Eurocode 2, computed by fib structuralcodes in the browser. Beam b×h or slab per metre width, sagging and hogging moment, several reinforcement layers and load combinations. Gives M_Rd at a given N_Ed, neutral axis, strain and stress per layer, failure mode, A_s,min and A_s,max, moment–curvature curve and the full M–N capacity envelope with every load point plotted. Shear capacity to EC2 6.2 with and without stirrups, V_Rd,c, V_Rd,s and V_Rd,max per load combination, including the effect of axial force. Serviceability to EC2 7.2 and 7.3.4 for characteristic and quasi-permanent combinations: crack width w_k against the limit for the exposure class, concrete and reinforcement stress limits, creep through the effective modulus, and the full derivation of s_r,max and the mean strain. Print-ready A4 report.">
+  <meta name="keywords" content="concrete, concrete section, reinforced concrete, ultimate limit state, ULS, Eurocode 2, EC2, moment capacity, M_Rd, bending resistance, neutral axis, strain, moment-curvature, M-N diagram, interaction domain, minimum reinforcement, As_min, reinforcement layers, beam, slab, load combinations, sagging, hogging, shear, shear capacity, shear reinforcement, stirrups, links, V_Rd, VRdc, VRds, EC2 6.2, axial force, serviceability, SLS, crack width, wk, w_k, crack control, EC2 7.3.4, EC2 7.2, stress limitation, exposure class, XC3, XD, XS, quasi-permanent, characteristic combination, creep, effective modulus, sr,max, tension stiffening, structuralcodes, pyodide, concrete design">
+  <title>Concrete section ULS and SLS — bending, shear, crack width and M–κ to EC2</title>
 
   <!-- Open Graph -->
   <meta property="og:title" content="Concrete section ULS — bending resistance, M–κ and N–M to EC2">
@@ -180,6 +180,20 @@
        rekkefølgen min egen, og dermed forutsigbar. */
     @media (max-width: 1279.98px) { .bar-cell-xl { display: none; } }
     @media (max-width: 1023.98px) { .bar-cell-lg { display: none; } }
+    /* KONTRAST. Målt: 87 tekstnoder under WCAG AA, og verst av dem ENHETENE
+       ved siden av tallene — `text-slate-600` på `bg-slate-900` gir 2,36:1 der
+       kravet er 4,5:1. Det er ikke pynt som er utydelig, det er «MPa», «mm» og
+       «kNm»: opplysningen som avgjør om tallet foran betyr det du tror.
+
+       Rettet på KLASSEN og ikke på 87 steder, fordi det er ÉN beslutning —
+       «hvor svak får sekundærtekst være» — og den skal stå ett sted. Bare
+       tekstfargen flyttes; `border-slate-600` og `bg-slate-800` er urørt, så
+       rammene og flatene ser ut nøyaktig som før.
+
+       `body` foran velgeren er ikke pynt heller: Play-CDN-en injiserer sitt
+       <style> ETTER dette dokumentet, så en naken `.text-slate-500` ville tapt.
+       Samme grunn som `.bar-cell`-reglene over. */
+    body .text-slate-500, body .text-slate-600 { color: #94a3b8; }
   </style>
 </head>
 
@@ -189,9 +203,16 @@
 <header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-700">
   <div class="max-w-5xl mx-auto px-5 flex items-center gap-4 h-12">
     <a href="../index.html" class="text-sky-400 hover:text-sky-300 text-sm shrink-0">← Tools</a>
-    <h1 class="text-base font-semibold text-white whitespace-nowrap">Concrete section · ULS</h1>
-    <span class="text-xs text-slate-500 hidden md:inline truncate">Bending resistance, moment–curvature and N–M to EC2</span>
-    <div class="ml-auto flex items-center gap-2 shrink-0">
+    <!-- `truncate` og IKKE `whitespace-nowrap` på overskrifta, og `shrink-0`
+         BORTE fra klyngen til høyre. Målt før: 244 px vannrett overflyt ved
+         390 px bredde — hele sida kunne dras sidelengs, og bunnlinjas tall
+         havnet utenfor skjermen. Årsaken var at BEGGE endene av topplinja
+         nektet å krympe, så det eneste elastiske leddet var luften mellom dem,
+         og den var allerede null. Nå gir overskrifta etter først; motorpilla og
+         knappene er det siste som ryker. -->
+    <h1 class="text-base font-semibold text-white truncate min-w-0">Concrete section · ULS</h1>
+    <span class="text-xs text-slate-500 hidden md:inline truncate">Bending, shear, crack width and N–M to EC2</span>
+    <div class="ml-auto flex items-center gap-2 min-w-0">
       <div id="engine-pill" class="flex items-center gap-2 text-xs px-2.5 py-1 rounded-full border border-slate-600 bg-slate-800"></div>
       <button type="button" id="btn-help" class="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded border border-slate-600" title="Keyboard shortcuts">?</button>
       <button type="button" id="btn-report" class="px-2.5 py-1 text-xs bg-sky-700 hover:bg-sky-600 rounded border border-sky-600">Report</button>

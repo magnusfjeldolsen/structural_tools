@@ -2965,7 +2965,87 @@ export function createUI(deps) {
    * Full opptegning
    * ---------------------------------------------------------------- */
 
+  /**
+   * ADRESSEN til et felt, uavhengig av DOM-noden det bor i akkurat nå.
+   *
+   * `render()` bygger `#layers`, `#stirrups` og `#combos` på nytt med
+   * `innerHTML`. Noden som hadde fokus finnes da ikke lenger — den er erstattet
+   * av en helt lik node — og nettleseren flytter fokus til `<body>`. En `id`
+   * eller et `data-cf`/`data-sf`-par peker derimot på det SAMME feltet i den
+   * nye oppbyggingen, og det er det denne strengen er.
+   *
+   * `null` betyr «ikke verdt å hente tilbake»: kroppen, eller et felt uten
+   * adresse. Da skal vi ikke gjette.
+   */
+  function focusAddress(el) {
+    if (!el || el === document.body) return null;
+    if (el.id) return `#${el.id}`;
+    // Radfeltene bærer BEGGE delene av adressen selv: hvilket felt (`data-cf`
+    // for en kombinasjon, `data-sf` for en bøyle, `data-f` for et armeringslag)
+    // og hvilken rad (`data-c`/`data-s`/`data-l`). De tre parene er de eneste
+    // stedene `render()` bygger om med `innerHTML`, og derfor de eneste som
+    // trenger en adresse i det hele tatt.
+    for (const [field, row] of [['cf', 'c'], ['sf', 's'], ['f', 'l']]) {
+      const name = el.dataset?.[field];
+      const id = el.dataset?.[row];
+      if (name && id) return `[data-${field}="${name}"][data-${row}="${id}"]`;
+    }
+    return null;
+  }
+
+  /** Finner feltet en `focusAddress()` peker på, i den NYE DOM-en. */
+  function elementAt(address) {
+    return address ? $(address) : null;
+  }
+
+  /**
+   * ⚠ FOKUS SKAL OVERLEVE EN OPPTEGNING.
+   *
+   * MÅLT FØR DENNE: `Ctrl+Mellomrom` i `M_Ed`-feltet kastet fokus til `<body>`,
+   * og veien tilbake kostet **46 tab-trykk**. Selve regnestykket tar 9 ms. Det
+   * er altså navigasjonen, ikke matematikken, som er dyr i ekspertsløyfa — og
+   * den sløyfa er hele poenget med at verktøyet skal kunne styres fra
+   * tastaturet.
+   *
+   * Fikset her og ikke i `calculate()`, fordi `render()` er stedet fokus
+   * FAKTISK forsvinner: den bygger radlistene på nytt med `innerHTML`. Hver
+   * eneste kaller — beregning, typebytte, en ny kombinasjon — arver dermed
+   * rettelsen, og den neste som legger til en radliste trenger ikke vite om
+   * dette i det hele tatt.
+   *
+   * VI TAR BARE TILBAKE FOKUS SOM FALT TIL `<body>`. Flyttet noe annet fokus
+   * med vilje — `refocusRow` når editoren åpnes, `f.focus()` når `F` hopper til
+   * et felt — skal det valget stå. Vi reparerer et tap, vi overstyrer ikke en
+   * beslutning.
+   *
+   * Markørposisjonen følger med: å komme tilbake til feltet med markøren
+   * plutselig i posisjon 0 er en halv rettelse.
+   */
   function render() {
+    const before = document.activeElement;
+    const address = focusAddress(before);
+    const caret = before && typeof before.selectionStart === 'number'
+      ? [before.selectionStart, before.selectionEnd] : null;
+
+    renderAll();
+
+    if (!address) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const el = elementAt(address);
+    if (!el || el.disabled) return;
+    el.focus();
+    if (caret && typeof el.setSelectionRange === 'function') {
+      try {
+        el.setSelectionRange(caret[0], caret[1]);
+      } catch {
+        // `setSelectionRange` kaster på inndatatyper som ikke har markør
+        // (f.eks. `number`). Fokuset er hentet tilbake uansett, og det er
+        // hovedsaken — markøren er bonusen.
+      }
+    }
+  }
+
+  function renderAll() {
     const s = store.getState();
     syncFields();
 
