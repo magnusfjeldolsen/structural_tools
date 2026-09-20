@@ -1222,6 +1222,31 @@ def _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed, cracked,
     comp_face_z = -h / 2.0 if hogging else h / 2.0
     tens_face_z = h / 2.0 if hogging else -h / 2.0
 
+    if tension_only:
+        # ⚠ FOR ET SNITT HELT I STREKK KOMMER KRUMNINGEN FRA ARMERINGEN, IKKE FRA `M_Ed`.
+        #
+        # `_sls_theta_equiv(m_ed)` peker ut strekkanten av fortegnet paa momentet. Det
+        # er riktig saa lenge momentet ER det som boeyer snittet. Men her staar
+        # likevekten i jernene alene, og `chi_y` foelger USYMMETRIEN i armeringen: med
+        # `M_Ed = 0` og ulikt jern i topp og bunn faar snittet en krumning momentet ikke
+        # vet om.
+        #
+        # MAALT (regresjon innfoert av strekkloeseren selv, og fanget av gjennomgang):
+        # 300x600, 4O25 UK + 4O20 OK, N = +900 kN, M = 0:
+        #     sann   eps(topp) 1,8530e-03   eps(bunn) 1,0801e-03
+        #     antatt eps_1 = 1,0801e-03 (bunn), eps_2 = 1,8530e-03 (topp)
+        #     -> eps_r = 1,715, og `ec2_2004.k2()` KASTER: «must be between 0 and 1»
+        #     -> hele svaret ble `{ok: False}` -- ingen ULS, ingen figur, ingen advarsel.
+        # 47 av 140 proevde punkter krasjet; alle symmetriske gikk bra, saa de to
+        # testene som ble skrevet for strekktilfellet kunne ikke se det.
+        #
+        # Samme rettelse som `sigma_c` fikk: LES AV DER DET FAKTISK ER VERST. Her er
+        # «verst» den stoerste strekktoeyningen, og den kjenner bare `chi_y`.
+        top = eps_a + chi_y * (h / 2.0)
+        bot = eps_a + chi_y * (-h / 2.0)
+        tens_face_z = h / 2.0 if top >= bot else -h / 2.0
+        comp_face_z = -tens_face_z
+
     if chi_y == 0.0 or not math.isfinite(chi_y):
         # Rent aksialt: ingen nullpunkt i tøyningsplanet. `x` blir en degenerert
         # rapportering (hele snittet har samme fortegn), ikke en feil -- se `_num` for
@@ -1273,10 +1298,11 @@ def _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed, cracked,
                       Ec * (eps_a + chi_y * (-h / 2.0)),
                       0.0)
 
-    # `eps_1`/`eps_2` roeres IKKE. De gaar inn i `eps_r = max(0, eps_2)/eps_1` og
-    # videre til `k2` i rissviddekjeden (lign. 7.13), som bare kjoeres for et RISSET
-    # snitt -- der er `comp_face_z` riktig, og en omdefinering her ville flyttet `k2`
-    # for hver eneste rissvidde uten at noen ba om det.
+    # `eps_1`/`eps_2` foelger KANTVALGET over, og bare det. For et risset snitt med
+    # trykksone er `comp_face_z` fra `M_Ed` riktig, og da staar de noeyaktig som foer --
+    # en omdefinering DER ville flyttet `k2` (lign. 7.13) for hver eneste rissvidde uten
+    # at noen ba om det. For et snitt helt i strekk er kanten valgt av toeyningen, og
+    # `eps_1` er per konstruksjon den stoerste: `eps_r` kan da ikke bli > 1.
     eps_2 = eps_a + chi_y * comp_face_z
     eps_1 = eps_a + chi_y * tens_face_z
 
@@ -1296,6 +1322,11 @@ def _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed, cracked,
         'eps_1': eps_1, 'eps_2': eps_2, 'sigma_s_max': sigma_s_max, 'layers': layers,
         # Rissviddekjeden maa vite det: uten trykksone gjelder ikke `(h-x)/3`.
         'tension_only': bool(tension_only),
+        # ÉN KILDE TIL HVILKEN KANT SOM ER STREKKANTEN. `_sls_crack` utledet den
+        # tidligere paa nytt av `m_ed`, og da kunne de to bli uenige for et snitt
+        # helt i strekk -- nettopp feilen over. Naa staar valget her, og kjeden
+        # leser det.
+        'tens_face_z': tens_face_z,
     }
 
 
@@ -1410,8 +1441,12 @@ def _sls_crack(rebar, state, b, h, m_ed, alpha_e_val, f_ct_eff, Es):
     (`test_engine.py`), aldri en andre produsent naar motoren kjoerer.
     """
     theta_equiv = _sls_theta_equiv(m_ed)
-    hogging = _is_hogging(theta_equiv)
-    tension_face_z = h / 2.0 if hogging else -h / 2.0
+    # STREKKANTEN LESES AV TILSTANDEN, ikke utledet paa nytt av `m_ed`. For et snitt
+    # helt i strekk er de to ikke enige (se `_sls_build_state`), og to uenige kilder til
+    # samme kant er den feilformen denne modulen har blitt bitt av i hver runde.
+    tension_face_z = state.get('tens_face_z')
+    if tension_face_z is None:
+        tension_face_z = h / 2.0 if _is_hogging(theta_equiv) else -h / 2.0
     x = state['x']
 
     tension = _tension_layers(rebar, state['layers'])
@@ -2597,6 +2632,28 @@ def _run_inner(payload, progress, t0):
         # av INGEN -- null treff paa `section['type']` i hele motoren.
         asw_min_ok = False
         stirrup_spacing_ok = True
+        # HVER `False` I MOTOREN BAERER EN NAVNGITT ADVARSEL. Uten den sier
+        # rapporten «NOT OK» i en rad og ingenting om hvorfor -- og raden er den
+        # eneste som svarer. (Fanget i gjennomgang: dommen var riktig, taushet
+        # var det ikke.)
+        warnings_out.append(_warning(
+            'asw_min_not_met',
+            'A beam with a shear force has no shear reinforcement. EC2 9.2.2(5) '
+            'requires at least the minimum ratio rho_w,min in beams; the exemption in '
+            '6.2.1(4) covers slabs and members of minor importance, not beams.',
+            'section type=beam, stirrups=0',
+            severity='error',
+        ))
+    elif stirrups_cfg and not evaluated_shear:
+        # Boeyler finnes, men INGEN rad lot seg regne -- da er minimumskravet ubesvart,
+        # ikke bestaatt. Samme feilform som `shear_ok` hadde 20 linjer over, og den
+        # faller ikke ned i `else`-grenen lenger.
+        asw_min_ok = None
+        stirrup_spacing_ok = None
+        null_reasons['asw_min_ok'] = (
+            'no load combination with a shear force could be evaluated, so the minimum '
+            'shear reinforcement could not be compared against anything'
+        )
     else:
         # EC2 6.2.1(4)/9.3.2: unntatt uten skjærarmering (plan §4.4) — plata er nettopp
         # dette tilfellet, og skal ikke feile bare fordi den ikke har bøyler.
@@ -2615,8 +2672,11 @@ def _run_inner(payload, progress, t0):
         # med skjaerkraft ikke lot seg regne. `bool(None)` er `False`, altsaa «brudd»,
         # og det er en sterkere paastand enn motoren har dekning for.
         'shear_ok': shear_ok,
-        'asw_min_ok': bool(asw_min_ok),
-        'stirrup_spacing_ok': bool(stirrup_spacing_ok),
+        # IKKE `bool(...)`: begge er treverdige naar boeyler finnes men ingen rad lot
+        # seg regne. `bool(None)` er `False`, altsaa «brudd», og det er en sterkere
+        # paastand enn motoren har dekning for.
+        'asw_min_ok': asw_min_ok,
+        'stirrup_spacing_ok': stirrup_spacing_ok,
     }
     # ALLE kontrollene, ikke bare de fire bøyningen alltid hadde. En «Overall assessment:
     # OK» som overser en aksialkraft utenfor [n_min, n_max] eller en strøket skjærkontroll

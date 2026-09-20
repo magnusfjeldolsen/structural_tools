@@ -799,7 +799,7 @@ export function createStore(initial) {
       // INVARIANTENE KJØRES ETTER GJENOPPRETTING. Stashet er tilstand, ikke en
       // omgåelse av reglene: en plate er 1000 mm bred uansett hvilken dør den
       // kom inn gjennom.
-      state = enforceSlabStirrups(enforceSlabWidth(state));
+      state = normalise(state);
       // `suggestedDc` er ikke uavhengig av tverrsnittstypen: plata har ingen
       // bøyle, så `dc = cover + dia/2` der bjelken har `cover + Ø_bøyle + dia/2`.
       // Uten denne omregningen blir `dc` stående fra den forrige typen — 12 mm feil
@@ -892,22 +892,18 @@ export function createStore(initial) {
     /** Ny rad i lastkombinasjonstabellen. Retningen arves fra `createCombo`. */
     addCombo(patch = {}) {
       const combo = createCombo(state, { id: nextComboId(), ...patch });
-      state = enforceActiveCombo(enforceComboTypes(
-        enforceAnalysis(cloneState({ ...state, combos: [...state.combos, combo] }))
-      ));
+      state = normalise(cloneState({ ...state, combos: [...state.combos, combo] }));
       notify();
       return combo;
     },
 
     updateCombo(id, values) {
-      state = enforceActiveCombo(enforceComboTypes(
-        enforceAnalysis(
+      state = normalise(
           cloneState({
             ...state,
             combos: state.combos.map((c) => (c.id === id ? { ...c, ...values } : c)),
           })
-        )
-      ));
+      );
       notify();
       return state;
     },
@@ -921,7 +917,7 @@ export function createStore(initial) {
       if (state.combos.length <= 1) return state;
       const combos = state.combos.filter((c) => c.id !== id);
       const activeCombo = state.activeCombo === id ? combos[0].id : state.activeCombo;
-      state = enforceActiveCombo(enforceComboTypes(enforceAnalysis(cloneState({ ...state, combos, activeCombo }))));
+      state = normalise(cloneState({ ...state, combos, activeCombo }));
       notify();
       return state;
     },
@@ -932,7 +928,7 @@ export function createStore(initial) {
       // Klikker brukeren en SLS-rad til aktiv, skal håndhevingen umiddelbart
       // flytte den videre til første ULS-rad — IKKE la den ukontrollerte
       // raden stå som «aktiv» og drive M–N-diagrammet.
-      state = enforceActiveCombo(enforceComboTypes(state));
+      state = normalise(state);
       notify();
       return state;
     },

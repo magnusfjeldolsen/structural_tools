@@ -245,8 +245,9 @@ export function buildPayload(state = {}, overrides = {}) {
         // tilbake på 2,0 ville vært et tall rapporten trykte uten at noen
         // valgte det — og det er nøyaktig den feilformen `requirePositive`
         // finnes for.
-        throw new Error(`Kryptallet kunne ikke utledes (${creep.reason}). `
-          + 'Skriv inn φ_ef manuelt, eller rett geometrien.');
+        // Brukervendt, altsaa ENGELSK som resten av grensesnittet.
+        throw new Error(`The creep coefficient could not be derived (${creep.reason}). `
+          + 'Enter φ_ef manually, or correct the geometry.');
       }
       return {
         phi_ef: creep.phi,
