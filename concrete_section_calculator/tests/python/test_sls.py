@@ -977,6 +977,75 @@ def test_cracked_sigma_c_still_reads_the_face_theta_points_at():
     assert row['state']['sigma_c'] < 0.0
 
 
+SLAB_1000_REBAR = [bars_layer('L1', -459.0, 16.0, [-100.0, 0.0, 100.0])]
+
+
+def _char_and_qp(m_char, m_qp):
+    """300x1000 med 3O16 i underkant: én karakteristisk og én tilnaermet permanent rad."""
+    payload = sls_payload(SLAB_1000_REBAR, 0.0, m_qp, combo_type='quasi_permanent',
+                           b=300.0, h=1000.0, phi_ef=2.0, exposure_class='XC4',
+                           w_max=0.3, w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    payload['loads']['combinations'].insert(0, {
+        'id': 'C0', 'name': 'Char', 'type': 'characteristic', 'N_Ed': 0.0, 'M_Ed': m_char})
+    return payload
+
+
+def test_cracking_is_decided_by_the_envelope_not_by_each_row():
+    """RETTET i runde 11. Rissbeslutningen ble tatt PER RAD. Motorens egen
+    hodekommentar sier «riss er irreversibelt» -- som begrunnelse for at E_cm brukes i
+    beslutningen -- men regelen ble ikke brukt paa TILSTANDEN.
+
+    MAALT foer rettelsen, 300x1000 med 3O16 UK:
+        karakteristisk M = -200 kNm  ->  sigma_ct = 3,84 > f_ctm = 2,90  -> RISSER
+        tilnaermet perm M = -144 kNm  ->  sigma_ct = 2,76 < f_ctm        -> «urisset»
+    Motoren svarte «no quasi-permanent load combination cracks the section» og
+    `sls.all_ok = True`, altsaa BESTAATT uten aa ha regnet rissvidden i det hele tatt.
+
+    Riss forsvinner ikke naar lasten gaar ned.
+    """
+    result = engine.run(_char_and_qp(-200e6, -144e6))
+    sls = result['sls']
+    rows = {r['id']: r for r in sls['rows']}
+
+    # Forutsetningene: de to radene ligger paa hver sin side av rissgrensa.
+    assert rows['C0']['sigma_ct_uncracked'] > sls['f_ct_eff']
+    assert rows['S1']['sigma_ct_uncracked'] < sls['f_ct_eff']
+
+    assert sls['cracked'] is True, 'snittet risser av den karakteristiske raden'
+    assert rows['S1']['cracked'] is True, 'og da er det risset ogsaa for den permanente'
+
+    # Kontrollen er FAKTISK utfoert, ikke lagt i not_applicable.
+    assert 'crack_width_ok' in sls['checks']
+    assert 'crack_width_ok' not in sls['not_applicable']
+    assert rows['S1']['crack'] is not None
+    assert rows['S1']['crack']['w_k'] > 0.0
+
+
+def test_an_uncracked_section_is_still_uncracked():
+    """Motstykket. Uten denne ville «sett alltid cracked» vaert en bestaatt rettelse --
+    og da ville hver eneste urissede plate faatt en oppdiktet rissvidde."""
+    result = engine.run(_char_and_qp(-80e6, -60e6))
+    sls = result['sls']
+    rows = {r['id']: r for r in sls['rows']}
+    assert rows['C0']['sigma_ct_uncracked'] < sls['f_ct_eff']
+    assert sls['cracked'] is False
+    assert all(r['cracked'] is False for r in sls['rows'])
+    assert sls['not_applicable']['crack_width_ok'] == \
+        'no quasi-permanent load combination cracks the section'
+
+
+def test_the_envelope_also_moves_the_concrete_stress_at_first_loading():
+    """Samme feil traff `sigma_c_qp_ok`: den urissede tilstanden gir en LAVERE
+    betongspenning enn den rissede, saa en rad som feilaktig ble regnet urisset fikk et
+    for lavt tall -- maalt 2,142 mot 2,754 MPa paa referansebjelken, altsaa 29 % lavt."""
+    cracked = engine.run(_char_and_qp(-200e6, -144e6))['sls']['rows'][1]
+    uncracked = engine.run(_char_and_qp(-80e6, -144e6))['sls']['rows'][1]
+    assert cracked['cracked'] is True and uncracked['cracked'] is False
+    assert abs(cracked['state']['sigma_c']) > abs(uncracked['state']['sigma_c']), \
+        'den rissede tilstanden skal gi stoerre betongtrykk for samme last'
+
+
 def test_sls_defaults_mirror_the_js_source():
     """`_SLS_FALLBACK` er et SPEIL av `SLS_DEFAULTS` i js/materials.js, ikke en fjerde
     kilde (runde 10 K3). Denne testen LESER begge og feiler hvis de gaar fra hverandre
