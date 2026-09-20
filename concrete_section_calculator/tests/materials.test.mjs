@@ -255,6 +255,25 @@ test('SLS-A — EXPOSURE_CLASSES bærer BARE klassekoden, XD3 har w_max null (§
   assert.equal(xc3.w_max, 0.3);
 });
 
+test('SLS-A2 — XF-familien finnes, og utløser EC2 7.2(2) (runde 11)', () => {
+  // XF manglet HELT, og det var ikke en liten utelatelse: for norsk utendørsbetong er
+  // XF den vanligste klassen som utløser betongtrykkgrensa under karakteristisk last.
+  // Ironien var at vår egen «not applicable»-tekst NEVNTE XF — «only XD, XF and XS
+  // are» — for en klasse ingen kunne velge.
+  const xf = EXPOSURE_CLASSES.filter((c) => c.value.startsWith('XF'));
+  assert.equal(xf.length, 4, 'XF1–XF4');
+  for (const c of xf) {
+    assert.equal(c.w_max, 0.3, `${c.value}: EC2 tabell 7.1N gir 0,30 mm`);
+    assert.equal(c.longitudinal_crack_check, true, `${c.value}: 7.2(2) gjelder`);
+    assert.equal(c.appearance_only, false);
+  }
+  // Og den avledede grensa følger med hele veien ut.
+  const limits = slsLimits(slsState({ exposure_class: 'XF3' }));
+  assert.equal(limits.w_max, 0.3);
+  assert.equal(limits.w_max_source, 'class');
+  assert.equal(limits.sigma_c_char_required, true);
+});
+
 test('SLS-B — slsLimits: ingen klasse valgt ⇒ w_max null MED grunnen no_exposure_class, sigma_c_char_required null', () => {
   const limits = slsLimits(slsState());
   assert.equal(limits.w_max, null);

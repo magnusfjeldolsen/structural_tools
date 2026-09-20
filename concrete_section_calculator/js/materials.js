@@ -65,6 +65,17 @@ export const EXPOSURE_CLASSES = Object.freeze([
   { value: 'XD2', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
   // EC2 anbefaler INGEN rissviddegrense for XD3 for slakkarmert betong (§11).
   { value: 'XD3', w_max: null, appearance_only: false, longitudinal_crack_check: true  },
+  // FROST. XF manglet HELT til runde 11, og det var ikke en liten utelatelse: for norsk
+  // utendørsbetong er XF den vanligste klassen som utløser betongtrykkgrensa i EC2
+  // 7.2(2). Ironien var at vår egen «not applicable»-tekst NEVNTE XF — «only XD, XF and
+  // XS are» — for en klasse ingen kunne velge.
+  //
+  // EC2 tabell 7.1N gir 0,30 mm for hele XF-familien for slakkarmert betong, og
+  // 7.2(2) regner XF med blant klassene der langsgående riss må begrenses.
+  { value: 'XF1', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
+  { value: 'XF2', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
+  { value: 'XF3', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
+  { value: 'XF4', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
   { value: 'XS1', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
   { value: 'XS2', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
   { value: 'XS3', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },

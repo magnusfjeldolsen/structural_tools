@@ -2073,6 +2073,11 @@ def _run_inner(payload, progress, t0):
     sc = section.section_calculator
 
     rebar = payload['section']['rebar']
+    # `section.type` ble sendt fra `payload.js` og lest av INGEN -- null treff i hele
+    # motoren foer runde 11. EC2 6.2.1(4) sitt unntak fra minimums-skjaerarmering
+    # gjelder plater og deler av mindre betydning, IKKE bjelker (9.2.2(5)), og det
+    # skillet kan ikke tas uten aa vite hvilken av delene snittet er.
+    section_type = str(payload['section'].get('type') or 'beam')
     as_total = sum(float(l['area']) for l in rebar)
     fctm = float(conc.fctm)
     fyk = float(payload['section']['steel']['fyk'])
@@ -2463,10 +2468,46 @@ def _run_inner(payload, progress, t0):
     evaluated_shear = [c['shear'] for c in combo_results
                         if c['checked'] and c.get('shear') and c['shear'].get('evaluated')]
     stirrups_cfg = (shear_ctx['cfg'].get('stirrups') or []) if shear_ctx else []
-    shear_ok = (
-        all(s['V_Rd'] is None or s['V_Ed'] <= s['V_Rd'] for s in evaluated_shear)
-        if evaluated_shear else True
-    )
+    # RADER SOM HAR EN SKJAERKRAFT MEN IKKE BLE REGNET (runde 11).
+    #
+    # `_shear_row` returnerer `evaluated: False` naar `d` mangler -- f.eks. et
+    # stoettemoment paa en bjelke uten toppjern, der det ikke finnes noen strekkside aa
+    # maale `d` fra. Det er riktig aa la vaere aa regne. Men `shear_ok` falt da tilbake
+    # paa `True`, og MAALT gav referansebjelken med `V_Ed = 900 kN`:
+    #
+    #     shear: evaluated=False, V_Rd=None, d=None
+    #     checks.shear_ok = TRUE,  advarsler: ingen skjaeradvarsel i det hele tatt
+    #
+    # Det er samme feilform runde 6 lukket for `as_min_ok` og `ductility_ok`: en
+    # kontroll som svarer BESTAATT uten aa ha regnet noe. `None` er det aerlige svaret,
+    # og `null_reasons` baerer grunnen videre til `assessment_incomplete`.
+    unevaluated_with_load = [
+        c for c in combo_results
+        if c['checked'] and c.get('shear') and not c['shear'].get('evaluated')
+        and (c['shear'].get('V_Ed') or 0.0) > 0.0
+    ]
+    if evaluated_shear:
+        shear_ok = all(s['V_Rd'] is None or s['V_Ed'] <= s['V_Rd'] for s in evaluated_shear)
+        if unevaluated_with_load and shear_ok:
+            # Noen rader gikk bra, andre ble ikke regnet: da kan vi ikke gaa god for
+            # snittet, men vi skal heller ikke paastaa brudd. `False` fra en regnet rad
+            # blir staaende -- et maalt brudd er sterkere enn en manglende maaling.
+            shear_ok = None
+    elif unevaluated_with_load:
+        shear_ok = None
+    else:
+        # Ingen rad hadde skjaerkraft i det hele tatt. Da er det ingenting aa kontrollere,
+        # og `True` er riktig -- ikke «ubesvart».
+        shear_ok = True
+
+    if shear_ok is None:
+        ids = ', '.join(c['id'] for c in unevaluated_with_load)
+        null_reasons['shear_ok'] = (
+            f'the shear resistance could not be evaluated for load combination(s) {ids}: '
+            'there is no reinforcement on the tension side to measure the effective '
+            'depth d from'
+        )
+
     if stirrups_cfg and evaluated_shear:
         asw_s_min_ref = evaluated_shear[0]['asw_s_min']
         asw_min_ok = bool(asw_s_min_ref is None or evaluated_shear[0]['asw_s'] >= asw_s_min_ref)
@@ -2477,6 +2518,21 @@ def _run_inner(payload, progress, t0):
             min_sl_max is None
             or all(float(st['spacing']) <= min_sl_max for st in stirrups_cfg)
         )
+    elif not stirrups_cfg and section_type == 'beam' and any(
+            (c['shear'].get('V_Ed') or 0.0) > 0.0
+            for c in combo_results if c['checked'] and c.get('shear')):
+        # EN BJELKE UTEN BOEYLER, MED SKJAERKRAFT (runde 11).
+        #
+        # EC2 6.2.1(4) unntar deler der skjaerarmering ikke er noedvendig for
+        # baereevnen -- plater, dekker, og deler av mindre betydning. Unntaket gjelder
+        # IKKE bjelker: 9.2.2(5) krever rho_w >= rho_w,min uansett.
+        #
+        # MAALT foer dette: 300x600 bjelke, tom boeyleliste, V_Ed = 60 kN gav
+        # `asw_min_ok = True`. `asw_s_min` er regnet og ligger i svaret (0,2629 mm2/mm),
+        # men ble aldri brukt. `payload.section.type` ble sendt fra `payload.js` og lest
+        # av INGEN -- null treff paa `section['type']` i hele motoren.
+        asw_min_ok = False
+        stirrup_spacing_ok = True
     else:
         # EC2 6.2.1(4)/9.3.2: unntatt uten skjærarmering (plan §4.4) — plata er nettopp
         # dette tilfellet, og skal ikke feile bare fordi den ikke har bøyler.
@@ -2491,7 +2547,10 @@ def _run_inner(payload, progress, t0):
         'axial_ok': axial_ok,
         'geometry_ok': bool(geometry_ok),
         'bending_ok': bending_ok,
-        'shear_ok': bool(shear_ok),
+        # IKKE `bool(...)`. `shear_ok` er TREVERDIG siden runde 11: `None` naar en rad
+        # med skjaerkraft ikke lot seg regne. `bool(None)` er `False`, altsaa «brudd»,
+        # og det er en sterkere paastand enn motoren har dekning for.
+        'shear_ok': shear_ok,
         'asw_min_ok': bool(asw_min_ok),
         'stirrup_spacing_ok': bool(stirrup_spacing_ok),
     }
