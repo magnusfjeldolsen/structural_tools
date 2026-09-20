@@ -169,6 +169,79 @@ enn koden gjorde.
 
 ---
 
+## FERDIG — kryptallet etter EC2 tillegg B, og første UX-runde
+
+### Kryp
+
+`φ(t, t₀)` utledes av relativ fuktighet, belastningsalder, levetid og
+sementklasse; `h₀ = 2A_c/u` kommer av geometrien. Egen sammenfoldbar boks i
+seksjon 1 — altså **tilgjengelig før det finnes en tilnærmet permanent
+lastkombinasjon**, fordi kryp er en betongegenskap og ikke en
+bruksgrenseinnstilling. Standardene (RH 50 %, 28 døgn, 50 år) gir et forsvarlig
+tall for den som aldri åpner boksen.
+
+**Skrevet i JS, ikke Python, og det var et valg.** `φ` må vises levende mens man
+skriver, altså før Pyodide har kjørt. Prisen er at vi eier formlene, og den er
+betalt med `tests/fixtures/creep-ec2-annexb.json`: 120 punkter regnet av
+`structuralcodes` selv, frosset, og prøvd i **hvert ledd** av kjeden — ikke bare
+på svaret. Avvik 0 ved 1e-12.
+
+**Den ene kanten som måtte voktes:** `t = t₀` gir `β_c = 0` og dermed `φ = 0`.
+Matematisk riktig — ved påføringsøyeblikket har ingenting krøpet — men som
+inndata er det nesten alltid en skrivefeil, og et stille `φ = 0` ville gjort en
+tilnærmet permanent kontroll om til en korttidskontroll uten å si fra.
+
+**Målt:** standardbjelken 300×600 i C30/37 innendørs, lastet ved 28 døgn, 50 år
+gir `φ = 2,346`. Den gamle faste standarden var 2,0 — altså på usikker side for
+nettopp det snittet, og hele grunnen til at tallet nå utledes.
+
+`φ_ef` er nå en OVERSTYRING (`null` = utled). En fil lagret da tallet var fast
+bærer `phi_ef: 2.0` og leses derfor som en overstyring på 2,0 — samme svar som
+den gang. `φ = 0` er også en lovlig overstyring.
+
+### Første UX-runde — fem målte feil
+
+Fra en uavhengig gjennomgang som målte i nettleseren i stedet for å se.
+
+| | før | etter |
+|---|---:|---:|
+| Tab tilbake til `M_Ed` etter `Ctrl+Space` | 46 | **0** |
+| Merkelapper i tverrsnittsfiguren | 6,0–7,1 px | **12–16 px** |
+| Vannrett overflyt ved 390 px | 244 px | **0** |
+| Tekstnoder under WCAG AA | 87 | **6** |
+| SLS-ord i `<title>`/meta | 0/5 | **5/5** |
+
+Fokusfeilen satt i `render()`, ikke i `calculate()`: opptegningen bygger
+radlistene på nytt med `innerHTML`, så noden som hadde fokus finnes ikke
+etterpå. Rettet der, så hver kaller arver det.
+
+Skriftfiksen bet to ganger, begge med husets egen feilform. Første forsøk ga
+merkelappsonen skriftfaktoren men glemte lagmerkelappene; andre forsøk lot sonen
+vokse fritt, og **platas fyllingsgrad falt fra 77 % til 61 %**. Nå er faktoren
+klemt mot sonens budsjett, og sonen som reserveres og teksten som settes leser
+samme funksjon.
+
+**To forslag ble avvist**, begge fordi de ville reversert bevisste valg: en
+Sagging/Hogging-bryter i stedet for fortegn (retningen ER fortegnet på `M_Ed`),
+og å lukke `#adv-shear` som standard (den inneholder bøyleradene, og regelen som
+holder den åpen finnes fordi en kalkulator som gjemmer en inndata den bruker,
+lyver).
+
+### Benchmark mot publiserte eksempler
+
+Kjeden treffer det offisielle EC2-regneeksempelet (European Concrete Platform
+2017, eks. 7.3) til **0,05–0,4 %** på x, σ_s, h_c,eff, ρ_p,eff, s_r,max og w_k
+når den mates med kildens egne forutsetninger. Det som gjenstår er to bevisste
+valg, begge til sikker side: `k_t = 0,4` (tilnærmet permanent) og
+`α_e = E_s/E_cm` i lign. 7.9, som er definisjonen i EC2 7.3.4(2).
+
+**Funn verdt å huske:** to av tre publiserte eksempler regner rissvidde uten å
+sjekke om snittet i det hele tatt risser — det ene på et snitt som ligger på
+26 % av rissmomentet. Vi svarer «urisset — ingen riss å måle», med grunnen i
+klartekst. Det betyr at vi gir en tankestrek der andre verktøy gir et tall.
+
+---
+
 ## 5. Lastkombinasjoner til og fra utklippstavla
 
 **Hva.** Kopiere kombinasjonene som tekst, og lime inn fra eksterne kilder.
@@ -281,6 +354,10 @@ i den rekkefølgen bindingene tilsier:
 1. **Småtteri brukeren har bestilt** — tallfelt i «numpad mode» på mobil, og bort med
    `.0` der desimalen ikke betyr noe (geometri, armeringsdiameter). Uavhengig av alt
    annet, og hver gang man ser dem er de irriterende.
+1b. **Resten av UX-runden** — dobbeltnedlastingen av Pyodide (15,4 → 9,7 MB), egen
+   melding ved feil fortegn på `M_Ed`, tegne figuren i boksens egen bredde med en
+   `viewBox` som følger snittformen, fokusfelle på rapportoverlegget, overskriftsnivåer
+   og `aria-live`.
 2. **Moment–krumning i BEGGE retninger**, med synlige punkter på kurven, når
    kombinasjonene har både positivt og negativt moment.
 3. **Glideren under moment–krumning** — nøytralakse og spenningsutvikling per punkt, med
