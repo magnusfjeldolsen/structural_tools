@@ -970,3 +970,53 @@ test('SLS-9 — cloneState: en dupliserende operasjon deler IKKE sls-objektet ve
   assert.equal(before.phi_ef, null, 'det GAMLE objektet skal stå urørt — cloneState kopierte, mutasjonen skrev ikke gjennom');
   assert.equal(store.getState().sls.phi_ef, 1.5);
 });
+
+/* ================================================================== *
+ * ALLE DØRENE, ALLE INVARIANTENE (runde 11)
+ * ================================================================== */
+
+test('hver muterende dør kjører HELE normaliseringen, ikke sitt eget utvalg', () => {
+  // Hodekommentaren til `enforceSlabWidth` lover «uansett hvilken dør». Tre av
+  // dem gikk likevel klar, fordi hver dør plukket sitt eget utvalg av enforcere
+  // — og det er det som alltid blir av en håndholdt liste.
+  //
+  // MÅLT før `normalise()`:
+  //   setState({sectionType:'slab'})      → geometry.b = 300, sectionWidth() = 1000
+  //   patch('geometry', {b:300}) på plate → geometry.b = 300, sectionWidth() = 1000
+  //
+  // Den andre kilden er ikke «feil tall» i seg selv — `sectionWidth()` svarte
+  // riktig hele tiden — men et felt som sier noe annet enn porten er nettopp det
+  // en figur eller en fremtidig leser kan komme til å tro på. Og det gjorde den:
+  // se `section-draw.test.mjs` sin «jernene plasseres gjennom sectionWidth».
+  const viaSetState = createStore();
+  viaSetState.setState({ sectionType: 'slab' });
+  assert.equal(viaSetState.getState().geometry.b, 1000, 'setState');
+
+  const viaPatch = createStore();
+  viaPatch.setSectionType('slab');
+  viaPatch.patch('geometry', { b: 300 });
+  assert.equal(viaPatch.getState().geometry.b, 1000, 'patch(geometry)');
+
+  const viaReplace = createStore();
+  viaReplace.replaceState({ sectionType: 'slab', geometry: { b: 300, h: 200 } });
+  assert.equal(viaReplace.getState().geometry.b, 1000, 'replaceState');
+
+  const viaCreate = createStore({ sectionType: 'slab', geometry: { b: 300, h: 200 } });
+  assert.equal(viaCreate.getState().geometry.b, 1000, 'createStore');
+});
+
+test('normaliseringen er idempotent — den kan kjøres om igjen uten å flytte noe', () => {
+  // Det er forutsetningen for at det er trygt å kjøre ALLE seks fra hver dør.
+  // Var én av dem toveis, ville to kall gitt to ulike tilstander.
+  //
+  // NB: `patch('spacing', …)` er IKKE med her, og det er med vilje — den døra
+  // kjører `applyAutoDc()` uansett, som er en egen og tilsiktet bivirkning.
+  // Påstanden gjelder normaliseringen, ikke alt en dør måtte gjøre i tillegg.
+  const store = createStore();
+  store.setState({ sectionType: 'slab' });
+  const once = JSON.stringify(store.getState());
+  store.setState({});
+  assert.equal(JSON.stringify(store.getState()), once, 'tilstanden flyttet seg av en tom dør');
+  store.setState({});
+  assert.equal(JSON.stringify(store.getState()), once, 'og enda en gang');
+});

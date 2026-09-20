@@ -530,10 +530,35 @@ function enforceActiveCombo(s) {
  *
  * @param {object} [initial] slås sammen med `defaultState()`
  */
+/**
+ * ALLE INVARIANTENE, ÉN GANG, I FAST REKKEFØLGE.
+ *
+ * ⚠ HVER MUTERENDE METODE SKAL KALLE DENNE. Det var ikke slik før: hver dør
+ * plukket sitt eget utvalg av enforcere, og da ble det som alltid blir av en
+ * håndholdt liste — tre av dørene gikk klar av noe. MÅLT:
+ *
+ *   setState({sectionType: 'slab'})      → geometry.b = 300, sectionWidth() = 1000
+ *   patch('geometry', {b: 300}) på plate → geometry.b = 300, sectionWidth() = 1000
+ *
+ * Den første er ORDRETT tilstanden `enforceSlabWidth` sin egen doc-kommentar
+ * beskriver som umulig. Og den er forutsetningen figurfeilen trengte for å bli
+ * synlig: `section-draw.js` leste `geometry.b` rått og tegnet jernene på
+ * ±105 mm der motoren regnet ±455.
+ *
+ * Rekkefølgen er den `replaceState` allerede hadde, og den er ikke tilfeldig:
+ * `enforceAnalysis` først (den leser `combos`), `enforceSlsParams` sist (den
+ * leser `concrete`). Alle seks er ENVEIS og IDEMPOTENTE — de returnerer `s`
+ * uendret når det ikke er noe å rette — så det koster ingenting å kjøre alle
+ * seks hver gang, og det er nettopp derfor det er trygt å gjøre det.
+ */
+function normalise(s) {
+  return enforceSlsParams(enforceActiveCombo(enforceComboTypes(
+    enforceSlabStirrups(enforceSlabWidth(enforceAnalysis(s)))
+  )));
+}
+
 export function createStore(initial) {
-  let state = enforceSlsParams(enforceActiveCombo(enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(
-    enforceAnalysis(cloneState({ ...defaultState(), ...(initial || {}) }))
-  )))));
+  let state = normalise(cloneState({ ...defaultState(), ...(initial || {}) }));
   const listeners = new Set();
   // Løpenummer for lag-id-er. Teller ALDRI ned når et lag slettes: «L2» skal
   // ikke kunne bety to ulike lag i samme økt, ellers peker en gammel
@@ -601,18 +626,10 @@ export function createStore(initial) {
      * og `updateStirrup` er veien inn.
      */
     setState(patch) {
-      state = cloneState({ ...state, ...patch });
-      // `setState({sectionType:'slab'})` er en av dørene inn til plata (§A1) —
-      // en bjelke med bøylerad skal ikke bære dem med seg over.
-      state = enforceSlabStirrups(state);
-      // STEG 2, B2: `setState` var ETT AV DE TO HULLENE v5 §2.4 navnga — ingen
-      // håndheving av aktiv kombinasjon kjørte her, så `setState({combos:[…]})`
-      // (workflow-API) kunne la `activeCombo` peke på en SLS-rad.
-      state = enforceActiveCombo(enforceComboTypes(state));
-      // `setState({sls:{...}})` (workflow-API) er en dør inn til `sls` (§5) —
-      // samme håndheving som `createStore`/`replaceState`, ellers kunne en
-      // ugyldig `exposure_class` stå urørt gjennom nettopp denne veien.
-      state = enforceSlsParams(state);
+      // `normalise` og ikke et utvalg: dette var én av de tre dørene som gikk
+      // klar av `enforceSlabWidth`, og `setState({sectionType:'slab'})` lot
+      // `geometry.b` stå på 300 mens `sectionWidth()` sa 1000.
+      state = normalise(cloneState({ ...state, ...patch }));
       if ('cover' in patch) applyAutoDc();
       notify();
       return state;
@@ -684,12 +701,11 @@ export function createStore(initial) {
      */
     patch(group, values) {
       const beforeDia = stirrupCoverDia(state);
-      state = cloneState({ ...state, [group]: { ...state[group], ...values } });
-      // `patch('shear', {stirrups})` på en plate er en av dørene inn (§A1).
-      // Dette MÅ skje FØR `applyAutoDc` kalles nedenfor: ellers regnes `dc`
-      // med en bøylediameter som ikke finnes lenger — målt i runde 8: d = 543
-      // der 555 er riktig.
-      state = enforceSlabStirrups(state);
+      // `normalise` FØR `applyAutoDc`: `enforceSlabStirrups` kan fjerne en
+      // bøylerad, og `dc` regnet med en bøylediameter som ikke finnes lenger ga
+      // målt d = 543 der 555 er riktig (runde 8). `patch('geometry', {b})` på en
+      // plate gikk dessuten klar av `enforceSlabWidth` helt til runde 11.
+      state = normalise(cloneState({ ...state, [group]: { ...state[group], ...values } }));
       // `patch('shear', {stirrups})` er en lovlig, om enn uvanlig, vei inn, og
       // den kan flytte bøylediameteren like reelt som `updateStirrup`.
       // Sammenlikningen er på den AVLEDEDE diameteren, ikke på et felt: da kan
@@ -697,9 +713,6 @@ export function createStore(initial) {
       if (group === 'spacing' || stirrupCoverDia(state) !== beforeDia) {
         applyAutoDc();
       }
-      // `patch('sls', {...})` er den forventede veien inn til `sls`-gruppen
-      // fra `index.html` (§6.1) — samme håndheving som de andre dørene.
-      if (group === 'sls') state = enforceSlsParams(state);
       notify();
       return state;
     },
@@ -932,9 +945,7 @@ export function createStore(initial) {
      * kom dit, så `enforceAnalysis` gjelder her akkurat som for combo-endringer.
      */
     replaceState(next) {
-      state = enforceSlsParams(enforceActiveCombo(enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(
-        enforceAnalysis(cloneState({ ...defaultState(), ...next, result: null }))
-      )))));
+      state = normalise(cloneState({ ...defaultState(), ...next, result: null }));
       // Bøyleradene normaliseres gjennom SAMME fabrikk som `addStirrup` bruker
       // — `serialize.js` gjør dette for `layers` og `combos`, men ikke for
       // `stirrups`, så en fil uten `alpha` ville ellers fått
