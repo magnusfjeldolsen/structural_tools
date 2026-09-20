@@ -136,6 +136,7 @@ test('hver sammenfoldbar boks trykker verdiene sine i summary', () => {
   // verdisammendrag er en boks man må åpne for å vite om man må åpne den.
   const SUMMARY_OF = {
     'adv-material': 'fac-summary',
+    'adv-creep': 'creep-summary',
     'adv-shear': 'shear-summary',
     'adv-spacing': 'spacing-summary',
   };
@@ -148,7 +149,11 @@ test('hver sammenfoldbar boks trykker verdiene sine i summary', () => {
     const boxHtml = HTML.slice(HTML.indexOf(`<details id="${box.id}"`));
     const summary = boxHtml.slice(0, boxHtml.indexOf('</summary>'));
     assert.ok(summary.includes(`id="${id}"`), `#${id} står ikke i <summary> til ${box.id}`);
-    assert.ok(UI.includes(`$('#${id}')`), `ui.js fyller ikke #${id}`);
+    // `'#id'` og ikke `$('#id')`: flere av sammendragene settes gjennom en
+    // liten lokal `text(sel, verdi)`-hjelper, altså med selektoren som
+    // ARGUMENT. Påstanden er den samme — at ui.js i det hele tatt fyller
+    // sammendraget — men den tvinger ikke fram et bestemt kallmønster.
+    assert.ok(UI.includes(`'#${id}'`), `ui.js fyller ikke #${id}`);
   }
 });
 
