@@ -57,7 +57,7 @@ import { barPositions, stirrupCoverDia } from './rebar.js';
 // en plate lastet inn via `setInputs`/dokumentlasting bli TEGNET 300 mm bred
 // mens motoren regnet 1000 mm — figur og tall ville vist to ulike tverrsnitt
 // uten at noen test feilet. Samme prinsipp som punkt 1 over.
-import { sectionWidth } from './section.js';
+import { sectionHeight, sectionWidth } from './section.js';
 
 /* ------------------------------------------------------------------ *
  * Papir: referansebredden og marginene
@@ -271,6 +271,31 @@ function layerLabelLines(layer) {
 }
 
 /**
+ * GEOMETRIEN JERNENE SKAL PLASSERES I — gjennom PORTEN, aldri rå.
+ *
+ * Hodekommentarens punkt 1 sier at `barPositions()` er eneste kilde til
+ * jernkoordinater, og fila leser derfor aldri `geometry.b` direkte. Den
+ * REGELEN ble fulgt; ARGUMENTET ble det ikke: begge kallene sendte
+ * `state.geometry` rått, mens `payload.js` sender
+ * `{b: sectionWidth(state), h: sectionHeight(state)}`.
+ *
+ * MÅLT, plate med en utdatert `geometry.b = 300` liggende igjen:
+ *
+ *     TEGNET  (rå geometri):   -105,0    0,0   +105,0
+ *     REGNET  (sectionWidth):  -455,0    0,0   +455,0
+ *
+ * Å kalle samme funksjon var ikke nok — argumentene må komme fra samme sted.
+ * `payload.js` lærte nøyaktig dette for `stirrup_dia` («payloaden ga y = 105
+ * der tegningen ga 93») og lot samme klasse overleve for `b`.
+ *
+ * `sectionViewBox()` brukte `sectionWidth()` hele tiden, så RAMMA ble 1000 mm
+ * bred mens jernene ikke ble det.
+ */
+function drawGeometry(state) {
+  return { b: sectionWidth(state), h: sectionHeight(state) };
+}
+
+/**
  * Bredden merkelappsonen faktisk trenger, i rapport-mm.
  *
  * FØR var dette et fast tall: 34 rapport-mm, uansett hva merkelappene sa —
@@ -428,7 +453,7 @@ function allBars(state) {
   };
   const out = [];
   for (const layer of layers) {
-    for (const p of barPositions(layer, state?.geometry || {}, opts) || []) {
+    for (const p of barPositions(layer, drawGeometry(state), opts) || []) {
       const y = Number(p.y);
       const z = Number(p.z);
       const d = Number(p.dia);
@@ -809,7 +834,7 @@ export function drawSection(state, opts = {}) {
   const drawn = [];   // {layer, bars}
   let bars = `<g data-role="rebar" fill="${c.rebar}">`;
   for (const layer of layers) {
-    const pos = barPositions(layer, state.geometry, barOpts) || [];
+    const pos = barPositions(layer, drawGeometry(state), barOpts) || [];
     drawn.push({ layer, bars: pos });
     for (const p of pos) {
       // Minsteradius: et Ø10-jern i en 1000 mm plate blir under en halv
