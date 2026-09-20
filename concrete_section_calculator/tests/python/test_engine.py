@@ -2032,3 +2032,110 @@ def test_brittle_check_does_not_reject_a_slab_armed_exactly_to_as_min():
     hogging = engine.run(_beam(theta=_math.pi, m_ed=5000000.0))
     assert hogging['checks']['brittle_ok'] is False
     assert hogging['bending']['failure_mode'] == 'unreinforced_tension_zone'
+
+# ------------------------------------------------------------------ #
+# Kapasiteten kan peke MOTSATT VEI av lasten (runde 11)
+# ------------------------------------------------------------------ #
+
+def _hogging_with_tension(n_ed, m_ed=70e6):
+    """Referansebjelken med 3O20 i UNDERKANT, stoettemoment og aksialstrekk.
+
+    Stoettemoment vil si strekk i OVERKANT -- der det ikke staar ett eneste jern. Med
+    nok aksialstrekk gir `calculate_bending_strength(theta=pi, n)` da et NEGATIVT
+    moment, altsaa kapasiteten den andre veien.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['options']['theta'] = math.pi
+    payload['loads'] = {
+        'combinations': [{'id': 'C1', 'name': 'ULS', 'N_Ed': n_ed, 'M_Ed': m_ed,
+                          'theta': math.pi}],
+        'active': 'C1',
+    }
+    return engine.run(payload)
+
+
+def test_capacity_pointing_the_other_way_is_a_failure_not_a_low_utilisation():
+    """MAALT foer denne vakten:
+
+        M_Ed = +70 kNm (stoette),  N = +300 kN strekk
+        ->  M_Rd = -70,51 kNm,  eta = 0,993,  bending_ok TRUE,  all_ok TRUE,
+            advarsler: INGEN
+
+    En groenn rapport for et snitt som ikke baerer lasten i det hele tatt. `_utilisation`
+    regner `abs(M_Ed)/abs(M_Rd)`, og absoluttverdiene skjulte at de to pekte hver sin vei.
+
+    Uavhengig bevis for at kapasiteten ER null i lastens retning: M-N-omhyllingen har
+    ikke ett eneste positivt moment ved N = +300 kN.
+    """
+    result = _hogging_with_tension(300e3)
+    assert result['ok'] is True
+    row = result['bending']['combinations'][0]
+
+    assert row['M_Rd'] < 0, 'forutsetningen for testen: kapasiteten kommer ut negativ'
+    assert row['capacity_opposes_load'] is True
+    assert result['checks']['bending_ok'] is False, \
+        'et snitt uten kapasitet i lastens retning er et BRUDD, ikke en lav utnyttelse'
+    assert result['checks']['all_ok'] is False
+
+    codes = [w['code'] for w in result['warnings']]
+    assert 'capacity_opposite_direction' in codes
+    warning = next(w for w in result['warnings'] if w['code'] == 'capacity_opposite_direction')
+    assert warning['severity'] == 'error'
+    # Advarselen skal baere BEGGE tallene, ellers kan ingen etterproeve paastanden.
+    assert '70.0' in warning['message'] and '-70.5' in warning['message']
+
+
+def test_capacity_direction_is_measured_against_theta_not_the_sign_of_m_ed():
+    """REGRESJON paa selve rettelsen. Foerste forsoek sammenliknet fortegnet paa `M_Ed`
+    med fortegnet paa `M_Rd`, og gav FALSKE POSITIVER paa den gamle payload-formen, der
+    `M_Ed` er en STOERRELSE og retningen staar i `theta` -- formen fixturene og
+    `test_three_combinations_one_out_of_range_does_not_upset_the_others` bruker.
+
+    `M_Ed: +150e6` med `theta: 0.0` er FELTMOMENT, og `M_Rd = -215 kNm` er da riktig vei.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['loads'] = {
+        'combinations': [{'id': 'C1', 'name': 'ULS', 'N_Ed': 0.0, 'M_Ed': 150e6,
+                          'theta': 0.0}],
+        'active': 'C1',
+    }
+    result = engine.run(payload)
+    row = result['bending']['combinations'][0]
+    assert row['M_Rd'] < 0
+    assert row['capacity_opposes_load'] is False, \
+        'gammel payload-form: fortegnet paa M_Ed er en stoerrelse, ikke en retning'
+    assert result['checks']['bending_ok'] is True
+
+
+def test_capacity_direction_leaves_the_ordinary_cases_alone():
+    """Vakten skal ikke kunne slaa inn paa noe som virket. Uten dette ville «sett alltid
+    True» vaert en bestaatt rettelse."""
+    # Stoettemoment UTEN aksialkraft: kapasiteten er liten (6,4 kNm) men RIKTIG vei.
+    small = _hogging_with_tension(0.0)
+    row = small['bending']['combinations'][0]
+    assert row['M_Rd'] > 0
+    assert row['capacity_opposes_load'] is False
+    # Den er overutnyttet, og det er den advarselen som skal komme -- ikke den nye.
+    codes = [w['code'] for w in small['warnings']]
+    assert 'bending_capacity_exceeded' in codes
+    assert 'capacity_opposite_direction' not in codes
+
+    # Feltmoment med trykk: helt ordinaert, og uroert.
+    payload = load('payload-beam-300x600.json')
+    payload['loads'] = {
+        'combinations': [{'id': 'C1', 'name': 'ULS', 'N_Ed': -500e3, 'M_Ed': -250e6,
+                          'theta': 0.0}],
+        'active': 'C1',
+    }
+    ordinary = engine.run(payload)
+    assert ordinary['bending']['combinations'][0]['capacity_opposes_load'] is False
+    assert ordinary['checks']['all_ok'] is True
+
+
+def test_capacity_direction_terskelen_ligger_der_kapasiteten_skifter_fortegn():
+    """Vakten skal foelge FYSIKKEN, ikke en terskel noen har skrevet inn. Maalt paa
+    referansebjelken ligger fortegnsskiftet mellom N = +20 og +40 kN aksialstrekk."""
+    below = _hogging_with_tension(20e3)['bending']['combinations'][0]
+    above = _hogging_with_tension(40e3)['bending']['combinations'][0]
+    assert below['M_Rd'] > 0 and below['capacity_opposes_load'] is False
+    assert above['M_Rd'] < 0 and above['capacity_opposes_load'] is True
