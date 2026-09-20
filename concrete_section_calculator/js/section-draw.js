@@ -107,6 +107,29 @@ const FS_LABEL = 2.6;   // lagets bransjenotasjon, «3Ø20»
 const FS_DIM = 2.2;     // måltall og «dc = 50 mm»
 
 /**
+ * SKJERMEN ER IKKE PAPIR, OG SKRIFTEN KAN IKKE VÆRE DET SAMME TALLET.
+ *
+ * 2,6 rapport-mm er riktig på et A4-ark: det er en lesbar merkelapp ved siden
+ * av en figur man holder i hånda. På skjermen ganges den bare med
+ * `u = bredde/174`, og MÅLT i en 476 px bred figur ble `b = 300 mm` rendret på
+ * **6,0 px** — mot 13 px for brødteksten rundt. Figuren er sidas STØRSTE
+ * objekt og samtidig den med minst lesbar tekst.
+ *
+ * Grunnen er at `u` er et FORSTØRRELSESTALL for geometri, ikke for typografi.
+ * En figur som blir dobbelt så bred skal ha dobbelt så tykke streker — men
+ * skriften skal bli lesbar, ikke proporsjonal.
+ *
+ * Derfor et GULV, ikke en fast størrelse: skriften får vokse med figuren som
+ * før når figuren er stor nok, men aldri falle under det man kan lese. Et fast
+ * tall ville gjort miniatyren i bunnlinja (48 px) til ren tekst.
+ *
+ * Gjelder BARE `unit: 'px'`. Papiret er urørt — der er 2,6 mm fortsatt 2,6 mm,
+ * og en rapport som endret seg av en skjermrettelse ville vært en regresjon.
+ */
+const MIN_LABEL_PX = 11;
+const MIN_DIM_PX = 10;
+
+/**
  * Anslått middelbredde per tegn, som andel av skriftstørrelsen.
  *
  * SVG kan ikke måle tekst uten et DOM, og denne fila er DOM-fri med vilje
@@ -177,6 +200,22 @@ function resolveOpts(opts = {}) {
   return {
     width,
     unit: opts.unit === 'px' ? 'px' : 'mm',
+    /*
+     * `fs` er den EKSTRA faktoren skriften får utover `u` — se `MIN_LABEL_PX`.
+     *
+     * ÉN kilde, og den må være det: `labelZone()` reserverer bredden til
+     * merkelappene av de samme `FS_*`-tallene som tegneløkka setter teksten
+     * med. Ganget bare den ene av dem opp, ville sonen blitt reservert for en
+     * liten skrift og teksten satt med en stor — og merkelappen stukket ut over
+     * figurkanten. Det er nøyaktig punkt 1 i hodekommentaren, og det er denne
+     * ene linja som hindrer det.
+     *
+     * Faktoren styres av den STRENGESTE av de to kravene, slik at begge
+     * gulvene holder.
+     */
+    fs: opts.unit === 'px'
+      ? Math.max(1, MIN_LABEL_PX / (FS_LABEL * u), MIN_DIM_PX / (FS_DIM * u))
+      : 1,
     /*
      * `maxHeight` er i KALLERENS enhet, den samme som `width` — ikke i
      * rapport-mm.
@@ -261,7 +300,7 @@ function layerLabelLines(layer) {
  * det for en marg. Å reservere litt for mye koster noen piksler; å reservere for
  * lite setter tekst utenfor arket.
  */
-function labelZone(state) {
+function widestLabel(state) {
   const layers = Array.isArray(state?.layers) ? state.layers : [];
   let widest = 0;
   for (const layer of layers) {
@@ -269,6 +308,34 @@ function labelZone(state) {
       widest = Math.max(widest, line.text.length * line.size * GLYPH_W);
     }
   }
+  return widest;
+}
+
+/**
+ * SKRIFTFAKTOREN SOM FAKTISK FÅR PLASS.
+ *
+ * `o.fs` er ØNSKET (gulvet i `MIN_LABEL_PX`). Her klemmes det mot budsjettet
+ * merkelappsonen har: `MARGIN.right.on` minus luften ut fra betongkanten.
+ *
+ * HVORFOR KLEMMEN MÅTTE INN: uten den vokste sonen med hele faktoren, og MÅLT
+ * falt platas fyllingsgrad fra 77 % til 61 % av bredden — plata er
+ * breddebundet, så hver millimeter merkelappsonen tar, tar den rett fra
+ * tverrsnittet. Lesbar skrift som er betalt med en mindre figur er ikke en
+ * forbedring, det er en byttehandel ingen ba om.
+ *
+ * ÉN funksjon, og både sonen og teksten leser den. Det er hele poenget:
+ * reserverer man plass med ett tall og setter tekst med et annet, stikker
+ * merkelappen ut over figurkanten — punkt 1 i hodekommentaren.
+ */
+function fontScale(state, o) {
+  if (!(o.fs > 1)) return 1;
+  const widest = widestLabel(state);
+  if (widest <= 0) return o.fs;
+  return Math.max(1, Math.min(o.fs, (MARGIN.right.on - LABEL_GAP) / widest));
+}
+
+function labelZone(state, fs = 1) {
+  const widest = widestLabel(state) * fs;
   if (widest <= 0) return MARGIN.right.off;
   return Math.max(MARGIN.right.off, Math.min(MARGIN.right.on, LABEL_GAP + widest));
 }
@@ -306,7 +373,7 @@ export function sectionViewBox(state, opts = {}) {
   const h = Math.max(1e-9, Number(state?.geometry?.h) || 0);
 
   const mLeft = (o.showDims ? MARGIN.left.on : MARGIN.left.off) * o.u;
-  const mRight = (o.showLabels ? labelZone(state) : MARGIN.right.off) * o.u;
+  const mRight = (o.showLabels ? labelZone(state, fontScale(state, o)) : MARGIN.right.off) * o.u;
   const mBottom = (o.showDims ? MARGIN.bottom.on : MARGIN.bottom.off) * o.u;
   const mTop = MARGIN.top * o.u;
 
@@ -599,8 +666,10 @@ export function drawSection(state, opts = {}) {
 
   const sw = 0.25 * o.u;          // grunnstrek, 0,25 mm på papir
   const swThick = 0.45 * o.u;     // tverrsnittets omriss
-  const fsLabel = FS_LABEL * o.u;
-  const fsDim = FS_DIM * o.u;
+  // Den KLEMTE faktoren, samme funksjon som sonen ble reservert med.
+  const fs = fontScale(state, o);
+  const fsLabel = FS_LABEL * o.u * fs;
+  const fsDim = FS_DIM * o.u * fs;
 
   const parts = [];
   parts.push(`<rect x="0" y="0" width="${r(paperW)}" height="${r(paperH)}" fill="${c.bg}"/>`);
@@ -808,9 +877,14 @@ export function drawSection(state, opts = {}) {
       g += `<line x1="${r(px(yRight))}" y1="${r(py(z))}" x2="${r(xText - 1 * o.u)}" y2="${r(py(z))}" ` +
            `stroke="${c.dim}" stroke-width="${r(sw)}" stroke-dasharray="${r(1.2 * o.u)} ${r(1.2 * o.u)}"/>`;
       g += `<text x="${r(xText)}" y="${r(py(z) + fsLabel * 0.35)}" font-family="${FONT}" ` +
-           `font-size="${r(lines[0].size * o.u)}" fill="${c.text}">${esc(lines[0].text)}</text>`;
+           // `o.fs` OGSÅ her. `labelZone()` reserverer bredden med den, så
+           // uten den ville sonen vært reservert for en stor skrift og teksten
+           // satt med en liten — samme tall, to steder, og det ene glemt.
+           // MÅLT da nettopp det skjedde: «dc = 57 mm» ble stående på 3,79 px
+           // mens måltallene rundt gikk til 10.
+           `font-size="${r(lines[0].size * o.u * fs)}" fill="${c.text}">${esc(lines[0].text)}</text>`;
       g += `<text x="${r(xText)}" y="${r(py(z) + fsLabel * 0.35 + fsDim * 1.25)}" font-family="${FONT}" ` +
-           `font-size="${r(lines[1].size * o.u)}" fill="${c.dim}">${esc(lines[1].text)}</text>`;
+           `font-size="${r(lines[1].size * o.u * fs)}" fill="${c.dim}">${esc(lines[1].text)}</text>`;
     }
     parts.push(g + `</g>`);
   }
