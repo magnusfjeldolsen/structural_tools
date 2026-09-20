@@ -282,3 +282,46 @@ test('rundtur gjennom fil: bjelken overlever lagring mens PLATA er den aktive', 
   assert.equal(reopened.getState().geometry.b, 300);
   assert.equal(reopened.getState().geometry.h, 600);
 });
+
+/*
+ * ===========================================================================
+ * SLS §5 — `sls` i `NESTED_GROUPS`, SAMME grunn som `shear` allerede står der.
+ *
+ * FØR denne endringen var `sls` IKKE i `NESTED_GROUPS`: en fil med et DELVIS
+ * `sls`-objekt (t.d. bare `exposure_class`) ville tatt «erstatt hel»-grenen
+ * i `fromDocument` og gitt `phi_ef: undefined` — ikke `2.0`. Testen under
+ * viser nettopp det tilfellet.
+ * ===========================================================================
+ */
+
+test('fil uten sls: standardverdien (§5) — ingen klasse, phi_ef 2,0, de tre 7.2-faktorene', () => {
+  const doc = toDocument(defaultState());
+  delete doc.state.sls;
+  const { state, notes } = fromDocument(doc);
+  assert.deepEqual(state.sls, {
+    exposure_class: null,
+    w_max_override: null,
+    phi_ef: 2.0,
+    sigma_c_char_factor: 0.6,
+    sigma_c_qp_factor: 0.45,
+    sigma_s_char_factor: 0.8,
+  });
+  assert.equal(notes.filter((n) => n.code === 'document_field_defaulted' && n.field === 'sls').length, 1);
+});
+
+test('fil med DELVIS sls-objekt: manglende felt fylles fra standarden, IKKE undefined (§5, akkurat som shear §8)', () => {
+  const doc = toDocument(defaultState());
+  doc.state.sls = { exposure_class: 'XC3' };
+  const { state } = fromDocument(doc);
+  assert.equal(state.sls.exposure_class, 'XC3', 'den lagrede verdien overlever');
+  assert.equal(state.sls.phi_ef, 2.0, 'manglende phi_ef fylles fra standarden, IKKE undefined');
+  assert.ok(state.sls.phi_ef !== undefined);
+});
+
+// MERK: `fromDocument` selv validerer IKKE `exposure_class` — den bare
+// slår sammen nøstede grupper (mønsteret over, likt `shear`). En ugyldig
+// klasse i fila overlever HIT UENDRET; det er `store.replaceState()` som
+// kjører `enforceSlsParams` på veien inn i staten (store.test.mjs: SLS-8),
+// akkurat som en ugyldig `combo.type` normaliseres av `createCombo` her,
+// men en ULOVLIG `activeCombo`-plassering først rettes av `enforceActiveCombo`
+// i store.js, ikke i denne fila.

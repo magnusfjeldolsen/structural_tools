@@ -64,11 +64,11 @@
  * går derfor gjennom `invalidate()`, uten unntak.
  */
 
-import { BAR_DIAMETERS, CONCRETE_GRADES, CONCRETE_LAWS, STEEL_GRADES, STEEL_LAWS, derivedMaterials,
-  matchConcreteGrade, matchSteelGrade } from './materials.js';
+import { BAR_DIAMETERS, CONCRETE_GRADES, CONCRETE_LAWS, EXPOSURE_CLASSES, STEEL_GRADES, STEEL_LAWS,
+  derivedMaterials, matchConcreteGrade, matchSteelGrade, slsLimits } from './materials.js';
 import { bindNumericInput, evaluate } from './numeric-input.js';
-import { aswPerSpacing, layerArea, layerBarCount, layerDepth, recomputeAutoDc, stackedDc,
-  suggestedDc, totalArea, totalAswPerSpacing } from './rebar.js';
+import { aswPerSpacing, hasSlsCombo, layerArea, layerBarCount, layerDepth, recomputeAutoDc,
+  stackedDc, suggestedDc, totalArea, totalAswPerSpacing } from './rebar.js';
 import { activeComboTheta, allowedAnalyses, axialForcesPresent, derived, sectionHeight, sectionWidth, thetaFor, validate }
   from './section.js';
 import { drawSection } from './section-draw.js';
@@ -79,7 +79,7 @@ import { isCancellable, phaseLabel, TOTAL_DOWNLOAD_BYTES } from './solver-client
 import { RUN_ALL, defaultState } from './store.js';
 import { fromDocument, toDocument } from './serialize.js';
 import {
-  DASH, analysisBlock, analysisLabel, checkRows, comboLabel, compressionEdgeLabel, describeWarnings,
+  DASH, analysisBlock, analysisLabel, checkRows, checkText, comboLabel, compressionEdgeLabel, describeWarnings,
   designMoment, directionFromTheta, directionLabel, failureModeLabel, failureModeNote, failureState,
   fmtArea,
   fmtCurvature, fmtForceKN, fmtLength, fmtMomentKNm, fmtNumber, fmtPercent, fmtRatio,
@@ -87,6 +87,7 @@ import {
   momentCapacity, sectionTypeLabel, shearGoverningCombo, shearGoverningModeLabel,
   shearHeadlineUtilisation, toNum, utilisationStatus, HEADLINE_UTILISATION_LABEL,
   RADIAL_UTILISATION_LABEL, SHEAR_UTILISATION_LABEL,
+  slsCheckRows, slsHeadlineCrack, slsReasonText, slsRowTypeLabel, slsRowUtilisation,
 } from './results.js';
 
 /* ================================================================== *
@@ -185,6 +186,17 @@ export const HINTS = {
     + 'longitudinal bars sit inside, so changing it moves every layer whose d<sub>c</sub> is '
     + 'derived. With several rows the largest diameter governs the cover — the conservative '
     + 'reading, since the bar nearest the surface is the one that decides.',
+
+  // Bruksgrenseboksen har ingen brødtekst i det hele tatt — hele forklaringen
+  // av hva klassen gjør, og hva den IKKE gjør, står her. Poenget den må bære:
+  // klassen setter én ting, rissviddegrensen, og et tomt valg er et ærlig
+  // «vet ikke», ikke en mangel.
+  'sls-exposure':
+    'The exposure class sets the recommended crack width limit w<sub>max</sub> (EC2 7.3.1) and '
+    + 'decides whether the concrete stress limit of EC2 7.2(2) applies at all — it applies to the '
+    + 'XD, XF and XS classes. With no class selected both are left unanswered rather than assumed. '
+    + 'Serviceability is only assessed for load combinations marked characteristic or '
+    + 'quasi-permanent: stresses for the first, stresses and crack width for the second.',
 
   // De tre siste sto som `<p>` nederst i hver sin avdekkingsboks, altså bak et
   // klikk allerede — men de gjorde boksen lengre hver eneste gang den var åpen.
@@ -432,6 +444,241 @@ export function shearPanel(result) {
 }
 
 /* ================================================================== *
+ * Serviceability (SLS) — EC2 7.2/7.3.4
+ * global-devspecs/concrete_section_calculator-sls.md §6.2
+ *
+ * EGEN SEKSJON, INGEN NY CHIP — brukerens beslutning (spec §0.1). Denne
+ * seksjonen dukker opp BARE når `result.sls` finnes, og motoren setter det
+ * feltet bare når payloaden hadde et `sls`-objekt OG minst én rad var
+ * `characteristic`/`quasi_permanent` (`engine.py`, spec §4). Ingen SLS-rader
+ * ⇒ ingen kort her, ingen ekstra kostnad — akkurat som `shearBadge` over.
+ *
+ * RENE STRENGBYGGERE, SAMME GRUNN SOM `governingLabel`/`shearBadge`/
+ * `shearPanel`: de rører ikke DOM-en og kan derfor testes i `node --test`
+ * uten jsdom (`ui.test.mjs`), mens selve monteringen i `renderResult()`
+ * bare verifiseres i nettleseren.
+ * ================================================================== */
+
+/**
+ * `#res-summary` sin bakre halvdel (spec §6.2): «· w_k 0.21/0.30 mm» med
+ * grense, «· w_k 0.21 mm» uten (klasse med `w_max: null`, f.eks. XD3), eller
+ * en TOM streng når INGEN rad fikk en rissvidde regnet — «Er ingen rissvidde
+ * regnet, står det ingenting. Ikke mer.»
+ */
+export function slsSummarySuffix(result) {
+  const worst = slsHeadlineCrack(result);
+  if (!worst) return '';
+  return ` · w<sub>k</sub> ${crackPair(worst, 2, 2)} mm`;
+}
+
+/**
+ * «0.236/0.30» — rissvidden mot sin grense, som ETT uttrykk.
+ *
+ * ÉN SKRIVER for formen. Både sammendragslinja øverst og radlinjene under
+ * bruker den, og de skrev den hver sin gang før: sammendraget som
+ * `w_k/w_max` og raden som to atskilte felt med hver sin merkelapp. Når
+ * formen står ett sted, kan de heller ikke gli fra hverandre.
+ *
+ * Er det ingen grense (XD3, ingen klasse valgt), står tallet ALENE — ikke med
+ * en tankestrek etter skråstreken, som ville sett ut som et tall som glapp.
+ * Grunnen står i utledningen, der det er plass til å si den.
+ */
+function crackPair(crack, wkDecimals = 2, wmaxDecimals = 2) {
+  if (!crack) return DASH;
+  // Desimalene er kallerens: sammendraget øverst har plass til to, radlinja
+  // viser tre fordi det er DER man leser marginen. Grensa står med to begge
+  // steder — den er en gitt verdi, ikke et regnet tall.
+  const wk = fmtNumber(crack.w_k, wkDecimals);
+  return crack.w_max === null || crack.w_max === undefined
+    ? wk
+    : `${wk}/${fmtNumber(crack.w_max, wmaxDecimals)}`;
+}
+
+/**
+ * Én linje per SLS-rad (spec §6.2), synlig uten et klikk. En rad UTEN
+ * tilstand (§1.2, f.eks. `no_equilibrium_cracked`) blir type, M_Ed og grunnen
+ * i klartekst — ALDRI en rekke tankestreker som ser ut som tall som ble
+ * regnet og bare tilfeldigvis ble `null`.
+ */
+function slsRowLine(row) {
+  const typeLabel = esc(slsRowTypeLabel(row.type));
+  const nameLabel = esc(comboLabel(row));
+  const mEd = `M<sub>Ed</sub> ${fmtMomentKNm(row.M_Ed)} kNm`;
+  if (!row.state) {
+    return `<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-1 border-b border-slate-800 last:border-0 num">
+      <span class="text-slate-200">${nameLabel}</span><span class="text-slate-500">${typeLabel}</span>
+      <span class="text-slate-500">${mEd}</span>
+      <span class="text-amber-200/80 ml-auto text-right">${esc(slsReasonText(row.state_reason))}</span>
+    </div>`;
+  }
+  const sigmaC = row.stress ? fmtStress(row.stress.sigma_c, 1) : DASH;
+  const sigmaS = row.stress && toNum(row.stress.sigma_s) !== null ? fmtStress(row.stress.sigma_s, 1) : DASH;
+  const eta = slsRowUtilisation(row);
+  // ⚠ WRAPPINGEN LIGGER I DEN INDRE GRUPPA, IKKE I RADEN. Målt før denne
+  // rettelsen: under ~600 px brøt den ytre `flex-wrap`-raden, og η — radens
+  // ENE viktigste tall — havnet alene på en linje for seg selv, visuelt løsrevet
+  // fra navnet det hører til. Nå wrapper de fem mellomtallene innbyrdes mens
+  // navnet står til venstre og η blir stående til høyre ved enhver bredde.
+  // `min-w-0` er det som gjør det mulig: uten den nekter en flex-boks å bli
+  // smalere enn innholdet sitt, og gruppa dytter η ut av raden igjen.
+  return `<div class="flex items-baseline gap-x-3 py-1 border-b border-slate-800 last:border-0 num">
+    <span class="text-slate-200 shrink-0">${nameLabel}</span>
+    <span class="text-slate-500 shrink-0">${typeLabel}</span>
+    <span class="flex flex-wrap gap-x-3 gap-y-0.5 min-w-0">
+      <span>${mEd}</span>
+      <span>σ<sub>c</sub> ${sigmaC} MPa</span>
+      <span>σ<sub>s</sub> ${sigmaS} MPa</span>
+      <span>w<sub>k</sub> ${crackPair(row.crack, 3, 2)} mm</span>
+    </span>
+    <span class="ml-auto pl-2 shrink-0">η ${eta === null ? DASH : fmtRatio(eta, 2)}</span>
+  </div>`;
+}
+
+/**
+ * SLS-kontrollene, samme hake/kryss/strek-mønster som `checkRows`-blokka i
+ * `renderResult()` — men bygd av `slsCheckRows()` (`results.js`), IKKE
+ * `checkRows()`: en `not_applicable`-nøkkel skal vises MED sin grunn og uten
+ * symbol, ikke som en tredje variant av ubesvart (spec §10, A3-kravet).
+ */
+function slsChecksHtml(sls) {
+  return slsCheckRows(sls).map((r) => {
+    if (!r.applicable) {
+      // Grunnen er en SETNING, ikke en status: den skyves til høyre med
+      // `ml-auto` som statusene ellers, men settes VENSTREJUSTERT og med en
+      // bredde-tak. Høyrejustert ble den ragget i venstrekanten og endte med
+      // ett ord alene på siste linje — målt på «(only XD, XF and XS are)».
+      return `<div class="flex items-start gap-3 py-1 text-slate-500">
+        <span class="w-[1ch] shrink-0"></span><span>${esc(r.label)}</span>
+        <span class="ml-auto max-w-[55%] text-left">${esc(r.reason)}</span></div>`;
+    }
+    const symbol = r.ok === true ? '✓' : r.ok === false ? '✕' : '–';
+    const cls = r.ok === true ? 'text-emerald-400' : r.ok === false ? 'text-rose-400' : 'text-slate-500';
+    return `<div class="flex items-start gap-2 py-1">
+      <span class="${cls} mt-px">${symbol}</span>
+      <span class="text-slate-200">${esc(r.label)}</span>
+      <span class="text-slate-500 ml-auto num">${esc(r.text)}</span></div>`;
+  }).join('');
+}
+
+/**
+ * Én rads utledning bak `<details id="sls-derivation">` (spec §6.2/§4). De
+ * tre grenvalgene — `h_c,eff`, lign. 7.9 og `s_r,max` — er FREMHEVET, samme
+ * krav som rapportens kapittel 6 (`report.js`), fordi grenen er akkurat det
+ * som ellers ser ut som en feil i verktøyet hvis den er gjemt (spec §3.3).
+ */
+function slsRowDerivation(row) {
+  const head = `<div class="text-slate-300 text-[12px] mt-3 mb-1 font-medium">${esc(comboLabel(row))} — ${esc(slsRowTypeLabel(row.type))}</div>`;
+  const top = rows([
+    ['N<sub>Ed</sub>', fmtForceKN(row.N_Ed), 'kN'],
+    ['M<sub>Ed</sub>', fmtMomentKNm(row.M_Ed), 'kNm'],
+    ['σ<sub>ct,uncracked</sub> (EC2 7.1(2), always E<sub>cm</sub>)', fmtStress(row.sigma_ct_uncracked, 3), 'MPa'],
+    ['Cracked', row.cracked ? 'Yes' : 'No', ''],
+  ]);
+  if (!row.state) {
+    return head + top +
+      `<p class="text-[11px] text-amber-200/80 mt-1">${esc(slsReasonText(row.state_reason))}</p>`;
+  }
+
+  const st = row.state;
+  const stateRows = rows([
+    ['x', fmtLength(st.x, 2), 'mm'],
+    ['σ<sub>c</sub> at the compression face', fmtStress(st.sigma_c, 3), 'MPa'],
+    ['σ<sub>s,max</sub>, all layers', fmtStress(st.sigma_s_max, 2), 'MPa'],
+  ]);
+
+  const initialHtml = row.type === 'quasi_permanent'
+    ? rows([[
+      'σ<sub>c</sub> at first loading (E<sub>cm</sub>) — EC2 7.2(3)',
+      row.sigma_c_initial === null
+        ? `${DASH} (${esc(slsReasonText(row.sigma_c_initial_reason))})`
+        : fmtStress(row.sigma_c_initial, 3),
+      row.sigma_c_initial === null ? '' : 'MPa',
+    ]])
+    : '';
+
+  let stressHtml = '';
+  if (row.stress) {
+    const st2 = row.stress;
+    stressHtml = rows([
+      ['σ<sub>c</sub> checked', st2.sigma_c_checked === 'initial' ? 'at first loading' : 'this row’s own state', ''],
+      ['σ<sub>c</sub> utilisation', fmtRatio(st2.sigma_c_util, 3), ''],
+      // Ikke `checkText` alene: står dommen som `null`, er det fordi grensa
+      // IKKE GJELDER for denne raden (f.eks. EC2 7.2(2) utenfor XD/XF/XS), og
+      // en naken tankestrek ville sett ut som et tall som glapp. Grunnen står
+      // derfor ved siden av — det er den samme koden kontrollista over leser.
+      ['σ<sub>c</sub> ≤ limit — EC2 7.2',
+        st2.sigma_c_ok === null && st2.sigma_c_ok_reason
+          ? `${DASH} (${esc(slsReasonText(st2.sigma_c_ok_reason))})`
+          : checkText(st2.sigma_c_ok), ''],
+      // INGEN egen σ_s-verdi her: `stateRows` over trykker allerede
+      // «σ_s,max, all layers», og `stress.sigma_s` ER det samme tallet
+      // (engine.py setter det til `state['sigma_s_max']` for begge radtyper).
+      // To rader med samme tall under to merkelapper er akkurat den
+      // dobbeltkilden runden ellers har ryddet bort.
+      ['σ<sub>s</sub> utilisation', st2.sigma_s_util === null || st2.sigma_s_util === undefined ? DASH : fmtRatio(st2.sigma_s_util, 3), ''],
+      // Samme regel som σ_c over: en `null` som skyldes at grensa IKKE GJELDER
+      // skal si det. For en tilnærmet permanent rad er dette normaltilfellet —
+      // EC2 7.2(5) er en karakteristisk kontroll — og uten grunnen ville en
+      // naken strek her sett ut som et tall som glapp.
+      ['σ<sub>s</sub> ≤ limit — EC2 7.2',
+        st2.sigma_s_ok === null && st2.sigma_s_ok_reason
+          ? `${DASH} (${esc(slsReasonText(st2.sigma_s_ok_reason))})`
+          : checkText(st2.sigma_s_ok), ''],
+    ]);
+  }
+
+  let crackHtml = '';
+  if (row.crack) {
+    const c = row.crack;
+    crackHtml = rows([
+      ['h<sub>c,eff</sub> [mm] — EC2 7.3.2(3)', `<b>${fmtLength(c.h_c_eff, 2)}</b> — governing: <b>${esc(c.h_c_eff_governing)}</b>`, ''],
+      // INNGANGEN TIL LIGN. 7.9, og derfor den ene størrelsen hele rissvidden
+      // henger på. Den sto bare i rapporten før. Laget står med: σ_s her er
+      // spenningen i det STYRENDE laget inne i A_c,eff, ikke σ_s,max over
+      // snittet — uten lag-id-en ville de to sett like ut når de er ulike.
+      ['σ<sub>s</sub> into eq. 7.9 — governing layer inside A<sub>c,eff</sub>',
+        `${fmtStress(c.sigma_s, 2)} (${esc(c.sigma_s_layer)})`, 'MPa'],
+      ['ε<sub>sm</sub>−ε<sub>cm</sub> — EC2 lign. 7.9', `<b>${fmtNumber(c.eps_sm_eps_cm, 6)}</b> — governing: <b>${esc(c.eps_governing)}</b>`, ''],
+      ['s<sub>r,max</sub> [mm] — EC2 lign. 7.11', `<b>${fmtLength(c.sr_max, 2)}</b> — governing: <b>${esc(c.sr_max_branch)}</b>`, ''],
+      ['w<sub>k</sub> — EC2 lign. 7.8', fmtNumber(c.w_k, 4), 'mm'],
+      [
+        'w<sub>max</sub>',
+        c.w_max === null || c.w_max === undefined
+          ? `${DASH} (${esc(slsReasonText(c.ok_reason))})`
+          : fmtLength(c.w_max, 2),
+        c.w_max === null || c.w_max === undefined ? '' : 'mm',
+      ],
+      ['w<sub>k</sub> ≤ w<sub>max</sub>', checkText(c.ok), ''],
+    ]);
+  } else if (row.crack_reason) {
+    crackHtml = `<p class="text-[11px] text-amber-200/80 mt-1">${esc(slsReasonText(row.crack_reason))}</p>`;
+  }
+
+  return head + top + stateRows + initialHtml + stressHtml + crackHtml;
+}
+
+/**
+ * Hele SLS-kortet (spec §6.2): synlig sammendrag, kontroller, og en
+ * sammenfoldet full utledning. `''` uten `result.sls` — kalleren i
+ * `renderResult()` kan derfor sette den rett inn i malen uten en egen
+ * `if`, akkurat som `shearBadge`/`shearPanel` gjør for skjær.
+ */
+export function slsSection(result) {
+  const sls = result?.sls;
+  if (!sls) return '';
+  const rowsArr = Array.isArray(sls.rows) ? sls.rows : [];
+  return `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+    <div class="text-xs text-slate-400 mb-1.5">Serviceability (EC2 7.2 / 7.3.4)</div>
+    <div class="text-[12px]">${rowsArr.map(slsRowLine).join('')}</div>
+    <div class="mt-2">${slsChecksHtml(sls)}</div>
+    <details id="sls-derivation" class="mt-2 rounded border border-slate-700/70">
+      <summary class="px-2 py-1.5 text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer">Derivation ▸</summary>
+      <div class="px-2 pb-2">${rowsArr.map(slsRowDerivation).join('')}</div>
+    </details>
+  </div>`;
+}
+
+/* ================================================================== *
  * Bunnlinjas inspeksjonsstripe
  * ================================================================== */
 
@@ -571,9 +818,20 @@ function panel(title, items) {
 }
 
 function rows(items) {
+  // `min-w` OG `max-w`, og begge trengs. En flex-rad med `justify-between`
+  // krymper BEGGE cellene når innholdet ikke får plass, proporsjonalt med hvor
+  // mye de inneholder — så en lang VERDI (f.eks. hele forklaringen på hvorfor
+  // en grense ikke gjelder) presset merkelappen ned til ett ord per linje.
+  // Målt: «σ_s ≤ limit — EC2 7.2» ble fire linjer ved siden av en tre-linjers
+  // verdi. Gulvet på merkelappen og taket på verdien gir hver av dem en
+  // bunnplanke, og en kort verdi står fortsatt helt ute til høyre som før.
+  //
+  // INGEN `text-right` på verdien. En ETTLINJES verdi står flush høyre uansett,
+  // fordi `justify-between` plasserer selve cellen der — mens en verdi som
+  // wrapper (en forklaring, ikke et tall) blir ragget i venstrekanten av den.
   return items.map(([k, v, u]) => `<div class="flex justify-between gap-3 py-[3px] border-b border-slate-800">
-    <span class="text-slate-400">${k}</span>
-    <span class="num text-slate-100">${v}${u ? ` <span class="text-slate-500">${u}</span>` : ''}</span></div>`).join('');
+    <span class="text-slate-400 min-w-[9ch]">${k}</span>
+    <span class="num text-slate-100 max-w-[64%]">${v}${u ? ` <span class="text-slate-500">${u}</span>` : ''}</span></div>`).join('');
 }
 
 /* ================================================================== *
@@ -1171,6 +1429,57 @@ export function createUI(deps) {
     bindField('#i-k2', (s) => s.spacing.k2, (v) => store.patch('spacing', { k2: v }), { min: 0 });
     bindField('#i-dg', (s) => s.spacing.d_g, (v) => store.patch('spacing', { d_g: v }), { min: 0 });
 
+    /* ── bruksgrense (SLS §6.1) ───────────────────────────────────────────
+       Alle seks går gjennom `store.patch('sls', …)`, som er den ene døra inn:
+       `enforceSlsParams` står rett bak den og legger tilbake standarden for en
+       verdi som ikke gir mening (negativ `φ_ef`, en klasse som ikke finnes).
+       Feltene KASTER resultatet som alle andre — en endret rissviddegrense er
+       like mye en ny beregning som en endret `f_ck`. */
+    bindField('#i-phi-ef', (s) => s.sls.phi_ef, (v) => store.patch('sls', { phi_ef: v }), { min: 0 });
+    // `w_max`-overstyringen er det ENESTE SLS-feltet som kan stå TOMT, og det
+    // tomme er et ekte valg: «bruk klassens verdi». `bindField` legger tilbake
+    // den gjeldende verdien når uttrykket ikke kan leses — derfor kan ikke det
+    // tomme feltet gå gjennom den, og lytteren er skrevet ut her.
+    const wmaxEl = $('#i-wmax');
+    if (wmaxEl) {
+      wmaxEl.addEventListener('input', () => {
+        const raw = wmaxEl.value.trim();
+        if (raw === '') {
+          store.patch('sls', { w_max_override: null });
+          invalidate();
+          render();
+          return;
+        }
+        const v = evaluate(raw);
+        if (v === null || !(v > 0)) return;
+        store.patch('sls', { w_max_override: v });
+        invalidate();
+        render();
+      });
+    }
+    bindField('#i-sls-k1', (s) => s.sls.sigma_c_char_factor,
+      (v) => store.patch('sls', { sigma_c_char_factor: v }), { min: 0.0001 });
+    bindField('#i-sls-k2', (s) => s.sls.sigma_c_qp_factor,
+      (v) => store.patch('sls', { sigma_c_qp_factor: v }), { min: 0.0001 });
+    bindField('#i-sls-k3', (s) => s.sls.sigma_s_char_factor,
+      (v) => store.patch('sls', { sigma_s_char_factor: v }), { min: 0.0001 });
+
+    const expSel = $('#i-exposure');
+    if (expSel) {
+      // `<option>`-ene fylles ÉN gang, aldri i `render()` — samme felle som
+      // kvalitetsnedtrekkene over, og samme grunn.
+      // «— none —» har verdien `''`, ikke en klasse: uten valgt klasse er det
+      // UKJENT om EC2 7.2(2) gjelder, og kontrollen skal da stå ubesvart. Et
+      // nedtrekk som startet på X0 ville svart på brukerens vegne.
+      expSel.innerHTML = '<option value="">— none selected —</option>'
+        + EXPOSURE_CLASSES.map((c) => `<option value="${esc(c.value)}">${esc(c.value)}</option>`).join('');
+      expSel.addEventListener('change', () => {
+        store.patch('sls', { exposure_class: expSel.value || null });
+        invalidate();
+        render();
+      });
+    }
+
     // Dokumentfeltene går bare i rapportens topptekst. De rører ikke noe tall,
     // og skal derfor ALDRI kaste resultatet.
     for (const key of ['project', 'title', 'author', 'date', 'note']) {
@@ -1301,10 +1610,76 @@ export function createUI(deps) {
     const side = $('#w-cover-side');
     if (side) side.style.display = isSlab ? 'none' : '';
 
+    syncSlsBox(s);
+
     const lawC = $('#i-law-c');
     if (lawC) lawC.value = s.concrete.law;
     const lawS = $('#i-law-s');
     if (lawS) lawS.value = s.steel.law;
+  }
+
+  /**
+   * SLS-boksen i lastseksjonen (spec §6.1).
+   *
+   * HVORFOR DEN DUKKER OPP OG FORSVINNER
+   * Eksponeringsklassen styrer BARE rissviddegrensen, og rissvidde regnes bare
+   * for en tilnærmet permanent kombinasjon. Uten en eneste bruksgrenserad er
+   * feltene et svar på et spørsmål ingen har stilt. Regelen er den SAMME som
+   * `result.sls` følger i motoren, og den leses fra det samme stedet
+   * (`hasSlsCombo`) — ellers kunne skjemaet og resultatet vært uenige om
+   * hvorvidt bruksgrense i det hele tatt er i bildet.
+   *
+   * `w_max` VISES, DEN SKRIVES IKKE
+   * Tallet under «w_max» er AVLEDET av `slsLimits(state)` — nøyaktig den
+   * funksjonen `payload.js` sender til motoren. Det finnes dermed ingen vei
+   * der skjermen kan vise 0,30 mens beregningen bruker 0,40. Vil man noe
+   * annet, skriver man en overstyring, og da sier merkelappen «manual».
+   */
+  function syncSlsBox(s) {
+    const box = $('#sls-box');
+    if (!box) return;
+    const show = hasSlsCombo(s);
+    box.style.display = show ? '' : 'none';
+    if (!show) return;
+
+    const expSel = $('#i-exposure');
+    if (expSel && expSel !== document.activeElement) expSel.value = s.sls.exposure_class || '';
+    const put = (sel, value, decimals) => {
+      const el = $(sel);
+      if (!el || el === document.activeElement) return;
+      el.value = value === null || value === undefined ? '' : fmtNumber(value, decimals);
+    };
+    put('#i-phi-ef', s.sls.phi_ef, 2);
+    put('#i-wmax', s.sls.w_max_override, 2);
+    put('#i-sls-k1', s.sls.sigma_c_char_factor, 2);
+    put('#i-sls-k2', s.sls.sigma_c_qp_factor, 2);
+    put('#i-sls-k3', s.sls.sigma_s_char_factor, 2);
+
+    // ⚠ INGEN `innerHTML` HER. `syncSlsBox` kalles fra `syncFields`, altså fra
+    // hvert eneste tastetrykk i skjemaet, og et `innerHTML` i den veien river
+    // ut og bygger opp igjen det den treffer — fella `#i-fck` og de andre
+    // nedtrekkene er beskyttet mot. Merkelappene er derfor rene tegn
+    // (`textContent`), og de faste `<sub>`-ene står i markupen.
+    const limits = slsLimits(s);
+    const text = (sel, value) => {
+      const el = $(sel);
+      if (el) el.textContent = value;
+    };
+    text('#sls-wmax', limits.w_max === null ? DASH : fmtNumber(limits.w_max, 2));
+    // De to tomme tilfellene har ULIK grunn og skal derfor ikke se like ut:
+    // «ingen klasse valgt» kan brukeren rette på, «klassen har ingen anbefalt
+    // verdi» kan hen ikke. Den lange forklaringen står i SLS-raden i
+    // resultatet (`slsReasonText`); her står bare den korte merkelappen.
+    text('#sls-wmax-src', limits.w_max_source === 'manual' ? 'manual override'
+      : limits.w_max_source === 'class' ? `from ${s.sls.exposure_class}`
+      : limits.w_max_reason === 'no_crack_width_limit' ? 'no recommended value for this class'
+      : 'select a class, or set a value below');
+    text('#sls-summary', `${s.sls.exposure_class || 'no class'} · w_max `
+      + `${limits.w_max === null ? DASH : fmtNumber(limits.w_max, 2)} mm`);
+    text('#adv-sls-summary', `φef ${fmtNumber(s.sls.phi_ef, 2)} · `
+      + `${fmtNumber(s.sls.sigma_c_char_factor, 2)}/`
+      + `${fmtNumber(s.sls.sigma_c_qp_factor, 2)}/`
+      + `${fmtNumber(s.sls.sigma_s_char_factor, 2)}`);
   }
 
   /* ---------------------------------------------------------------- *
@@ -1834,8 +2209,10 @@ export function createUI(deps) {
     const s = store.getState();
     host.innerHTML = s.combos.map((combo) => {
       const active = combo.id === s.activeCombo;
-      // STEG 2, H2: en ikke-ULS-rad er ikke kontrollert (SLS er ikke
-      // implementert), og tones ned for å si det visuelt, ikke bare i teksten.
+      // En ikke-ULS-rad er ikke KAPASITETS-kontrollert, og tones ned for å si
+      // det visuelt og ikke bare i teksten. Nedtoningen betyr «ikke med i
+      // bruddgrensen», ikke «ikke regnet»: raden har sine egne tall i
+      // SLS-seksjonen, og notatlinja under sier hvor de står.
       const isUls = combo.type === 'uls';
       return `<div class="px-3 py-2 text-[13px] ${active ? 'bg-sky-950/30' : ''} ${isUls ? '' : 'opacity-60'}">
         <div class="flex flex-wrap items-center gap-2">
@@ -1843,7 +2220,7 @@ export function createUI(deps) {
                   data-on="${String(active)}" title="${active ? 'Active — used for moment–curvature' : 'Set active for moment–curvature'}">
             ${active ? '● ' + esc(combo.id) : esc(combo.id)}
           </button>
-          <select class="!w-32 !text-[11px]" data-cf="type" data-c="${esc(combo.id)}" aria-label="Combination type" title="Only ULS rows are checked in this version — serviceability (SLS) is not implemented.">
+          <select class="!w-32 !text-[11px]" data-cf="type" data-c="${esc(combo.id)}" aria-label="Combination type" title="Only ULS rows are checked for resistance. Serviceability rows are evaluated in the serviceability section of the result.">
             <option value="uls" ${combo.type === 'uls' ? 'selected' : ''}>ULS</option>
             <option value="characteristic" ${combo.type === 'characteristic' ? 'selected' : ''}>Characteristic</option>
             <option value="quasi_permanent" ${combo.type === 'quasi_permanent' ? 'selected' : ''}>Quasi-permanent</option>
@@ -1862,7 +2239,7 @@ export function createUI(deps) {
                   title="${s.combos.length <= 1 ? 'The last combination cannot be removed' : 'Remove combination'}">✕</button>
         </div>
         <div class="mt-1 text-[11px] text-slate-500 num" data-m-interp="${esc(combo.id)}">${esc(momentInterpretation(combo.M_Ed))}</div>
-        ${isUls ? '' : `<div class="mt-0.5 text-[11px] text-amber-500/80" data-combo-sls-note="${esc(combo.id)}">Not checked — SLS is not implemented yet</div>`}
+        ${isUls ? '' : `<div class="mt-0.5 text-[11px] text-amber-500/80" data-combo-sls-note="${esc(combo.id)}">Not checked for resistance — used in the serviceability section</div>`}
       </div>`;
     }).join('');
     bindComboRows(host);
@@ -2187,13 +2564,19 @@ export function createUI(deps) {
       // `{ok: false}` er et SVAR, ikke en krasj (plan §3.3). Det skal vises som
       // et resultat med tallene motoren faktisk klarte å oppgi.
       const code = result.error?.code || 'engine_error';
-      if (summary) summary.textContent = 'No capacity found';
+      // SLS-seksjonen leses UANSETT `result.ok` (spec §6.2): motoren setter
+      // `sls` FØR aksialsjekken kan felle hele kjøringen (engine.py), så en
+      // ferdig regnet rissvidde skal ikke gjemmes bak en ULS-feilboks. Har
+      // brukeren bare SLS-rader, feiler ULS med `no_uls_combination`, og det
+      // ville vært absurd å skjule svaret på det brukeren faktisk spurte om.
+      if (summary) summary.innerHTML = `No capacity found${slsSummarySuffix(result)}`;
       body.innerHTML = `<div class="rounded-xl border border-rose-600/50 bg-rose-950/20 p-4 space-y-2">
         <div class="text-rose-200 font-medium">${esc(messageForCode(code, ''))}</div>
         ${result.error?.detail ? `<details><summary class="text-[11px] text-slate-400">Technical detail</summary>
            <pre class="text-[10px] text-slate-500 whitespace-pre-wrap mt-1">${esc(result.error.detail)}</pre></details>` : ''}
         <p class="text-[12px] text-slate-400">This is the engine's answer to the input, not a bug in the program.</p>
-      </div>`;
+      </div>${slsSection(result)}`;
+      wireSlsDerivation();
       return;
     }
 
@@ -2214,7 +2597,10 @@ export function createUI(deps) {
         // η_V står med EGEN merkelapp også her. Uten den ville to tall stått
         // ved siden av hverandre uten å si hvilket spørsmål de svarer på.
         (shearGoverningCombo(result) ? ` · η<sub>V</sub> ${fmtRatio(etaV, 2)}` : '') +
-        (gov ? ` · governing ${esc(gov)}` : '');
+        (gov ? ` · governing ${esc(gov)}` : '') +
+        // SLS-suffikset (spec §6.2) — tomt uten en regnet rissvidde, aldri et
+        // gjettet tall.
+        slsSummarySuffix(result);
     }
 
     const chart = renderChart(result, s);
@@ -2263,6 +2649,8 @@ export function createUI(deps) {
             <div class="text-xs text-slate-400 mb-2">Strain and stress per reinforcement layer</div>
             ${layerTable(bending, mats)}
           </div>
+
+          ${slsSection(result)}
 
           ${warnings.length ? `<div class="space-y-2">${warnings.map((w) => `
             <div class="rounded-lg border px-3 py-2 text-[12px] ${w.severity === 'error'
@@ -2338,6 +2726,34 @@ export function createUI(deps) {
         overlay: x === null ? null : { x, theta: toNum(result.meta?.theta) ?? activeComboTheta(s) },
       });
     }
+
+    wireSlsDerivation();
+  }
+
+  /**
+   * Åpen/lukket-tilstanden for `<details id="sls-derivation">` (spec §6.2),
+   * gjenbruker det EKSISTERENDE DISCLOSURE-mønsteret (`DISCLOSURE_KEY`,
+   * `readDisclosure`/`writeDisclosure` under) — ingen ny lagringsmekanisme.
+   *
+   * IKKE `DISCLOSURE_BOXES`/`setupDisclosure()`: den tabellen håndhever de TO
+   * reglene for et INNDATAFELT (§2.6 — «åpnes av et valideringsavvik», «åpnes
+   * av en verdi ulik standarden»). SLS-utledningen er et RESULTAT, ikke et
+   * felt noen kan validere eller sette til en standardverdi, og den blir bare
+   * skrevet inn i DOM-en NÅR `renderResult()` kjører — `setupDisclosure()`
+   * sin ENGANGS-binding ved oppstart ville aldri truffet den. Denne kalles
+   * derfor her, etter hver `body.innerHTML`, akkurat som `bindComboRows()`
+   * kalles etter `renderCombos()`.
+   */
+  function wireSlsDerivation() {
+    const el = document.getElementById('sls-derivation');
+    if (!el) return;
+    const saved = readDisclosure()['sls-derivation'];
+    if (typeof saved === 'boolean') el.open = saved;
+    el.addEventListener('toggle', () => {
+      const map = readDisclosure();
+      map['sls-derivation'] = el.open;
+      writeDisclosure(map);
+    });
   }
 
   function layerTable(bending, mats) {

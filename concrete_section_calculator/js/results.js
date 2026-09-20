@@ -279,6 +279,13 @@ export const ENGINE_CODES = Object.freeze([
   // uls-rader, men ingen av dem lå i [n_min, n_max]) — to ulike meldinger.
   'no_uls_combination',
   'mc_active_not_uls',
+  /* --- SLS (spec §4) — de tre eneste nye VARSELKODENE, alle `warning`.
+   * Grunnkodene PÅ ett SLS-felt (`state_reason`, `crack_reason`, …) er en
+   * ANNEN tabell, `SLS_REASON_CODES`/`SLS_REASON_TEXT` under — se den
+   * seksjonens hodekommentar for hvorfor de to ikke skal blandes. */
+  'sls_incomplete',
+  'sls_crack_width_exceeded',
+  'sls_stress_limit_exceeded',
 ]);
 
 /** Kodene `section.js` sin `validate()` kan produsere. Samme tabell, ett oppslag. */
@@ -431,8 +438,22 @@ export const CODE_MESSAGES = Object.freeze({
     'Moment–curvature traces the failure state of the ACTIVE load combination, and that '
     + 'row is not a ULS combination. Make a ULS row the active one.',
   no_uls_combination:
-    'No load combination is of type ULS. Serviceability checks are not implemented ' +
-    'in this version, so there is nothing to check.',
+    'No load combination is of type ULS, so there is no resistance check to run. Any ' +
+    'serviceability rows are still evaluated below, in their own section.',
+
+  /* --- SLS (spec §4, §6.3) --- */
+  sls_incomplete:
+    'One or more serviceability checks under EC2 7.2 or 7.3.4 could not be answered, ' +
+    'because a row state, a stress limit or a crack width was never resolved. The ' +
+    'technical detail names which checks are open — read them as unanswered, never as ' +
+    'passed.',
+  sls_crack_width_exceeded:
+    'The calculated crack width exceeds the limit w_max for at least one quasi-permanent ' +
+    'load combination (EC2 7.3.4). The technical detail names the row and the two ' +
+    'numbers compared.',
+  sls_stress_limit_exceeded:
+    'A stress limit under EC2 7.2 is exceeded for at least one serviceability load ' +
+    'combination. The technical detail names which limit.',
 
   /* --- validering (`section.js`) --- */
   invalid_height: 'Height h must be greater than 0.',
@@ -1011,4 +1032,215 @@ export function shearGoverningModeLabel(mode) {
  */
 export function isUsable(result) {
   return Boolean(result && result.ok);
+}
+
+/* ================================================================== *
+ * SLS — EC2 7.2 (spenningsbegrensning) og 7.3.4 (rissvidde)
+ * global-devspecs/concrete_section_calculator-sls.md §4, §6, §14
+ *
+ * HVORFOR EN EGEN SEKSJON HER OG IKKE I `CODE_MESSAGES`
+ * `result.sls.rows[i].state_reason`/`crack_reason` og `crack.ok_reason` er
+ * IKKE motorens `warnings`-koder (`ENGINE_CODES` over) — de er grunnkoder på
+ * ETT FELT i én rad, aldri en hendelse i `result.warnings`. Blander vi de to
+ * tabellene, kan en rissvidde-grunnkode ved et uhell slå ut som «Unspecified
+ * message from the calculation engine» i STEDET for varselteksten, eller
+ * omvendt. Én tabell, én betydning.
+ *
+ * INGEN PROSA FRA EC2 ER GJENGITT (spec §14). Etikettene og forklaringene
+ * under er formulert av oss; punktreferansen er en HENVISNING (fakta), ikke
+ * et sitat.
+ * ================================================================== */
+
+/** Radtypene SLS faktisk bærer (spec §1.5). `uls`-rader kommer aldri hit. */
+export const SLS_ROW_TYPE_LABELS = Object.freeze({
+  characteristic: 'Characteristic',
+  quasi_permanent: 'Quasi-permanent',
+});
+
+export function slsRowTypeLabel(type) {
+  return SLS_ROW_TYPE_LABELS[type] || DASH;
+}
+
+/**
+ * `sls.checks`-nøklene, i den rekkefølgen spec §4 lister dem — betong under
+ * karakteristisk last, stål under karakteristisk last, betong VED PÅFØRING
+ * under tilnærmet permanent last, rissvidde. Etikettene er de spec §4 selv
+ * gir (våre egne ord, med punktreferanse — ikke standardens tekst).
+ */
+export const SLS_CHECK_ORDER = Object.freeze([
+  'sigma_c_char_ok',
+  'sigma_s_char_ok',
+  'sigma_c_qp_ok',
+  'crack_width_ok',
+]);
+
+export const SLS_CHECK_LABELS = Object.freeze({
+  sigma_c_char_ok: 'Concrete stress under characteristic load ≤ k·f_ck (EC2 7.2(2))',
+  sigma_s_char_ok: 'Reinforcement stress under characteristic load ≤ k·f_yk (EC2 7.2(5))',
+  sigma_c_qp_ok:
+    'Concrete stress at first loading under quasi-permanent load ≤ k·f_ck — the ' +
+    'condition for treating creep as linear (EC2 7.2(3))',
+  crack_width_ok: 'Crack width w_k ≤ w_max (EC2 7.3.4)',
+});
+
+/**
+ * `sls.checks`/`sls.not_applicable` → én radliste, ferdig sortert.
+ *
+ * IKKE `checkRows()` (over). Den gjør en MANGLENDE nøkkel til `null` —
+ * riktig for `result.checks`, der en nøkkel alltid gjelder. I `sls.checks`
+ * betyr en manglende nøkkel derimot «gjelder ikke for disse radene», og
+ * grunnen står i `sls.not_applicable` (spec §4). Kjørte denne gjennom
+ * `checkRows()`, ville hver `not_applicable`-linje vist en tankestrek som om
+ * den var ubesvart — nøyaktig den forvekslingen §2.1 i spec-en advarer mot
+ * for `sigma_c_char_ok = null` mot `not_applicable`.
+ *
+ * @param {object} sls  `result.sls`
+ * @returns {Array<{key, label, ok, text, applicable, reason}>}
+ */
+export function slsCheckRows(sls = {}) {
+  const checks = sls.checks || {};
+  const notApplicable = sls.not_applicable || {};
+  const out = [];
+  for (const key of SLS_CHECK_ORDER) {
+    if (Object.prototype.hasOwnProperty.call(checks, key)) {
+      const ok = checks[key];
+      out.push({ key, label: SLS_CHECK_LABELS[key], ok, text: checkText(ok), applicable: true, reason: '' });
+    } else if (Object.prototype.hasOwnProperty.call(notApplicable, key)) {
+      out.push({
+        key, label: SLS_CHECK_LABELS[key], ok: null, text: '', applicable: false,
+        reason: String(notApplicable[key] || ''),
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Grunnkodene motoren kan sette på ETT SLS-felt (spec §3.5, §11) — IKKE
+ * varselkoder. To kilder samlet i én tabell: `state_reason`/`crack_reason`
+ * (spec §1.2/§3.5, ni koder) og `w_max_reason`/`crack.ok_reason` (spec §2.1/
+ * §3.5, to koder til). Rekkefølgen har ingen betydning; testen under påstår
+ * at listen er UTTØMMENDE for det motoren faktisk emitterer (spec §4: «Den
+ * engelske teksten bor i results.js ... en test skal påstå at hver kode
+ * motoren kan emittere ... har en tekst, og at ingen tekst finnes uten en
+ * kode»).
+ */
+export const SLS_REASON_CODES = Object.freeze([
+  'uncracked',
+  'not_quasi_permanent',
+  'fully_in_tension',
+  'no_equilibrium_cracked',
+  'stresses_outside_elastic_range',
+  'no_tension_reinforcement',
+  'no_bonded_bars_in_effective_area',
+  'no_tensile_stress_in_effective_area',
+  'no_bar_spacing',
+  'no_exposure_class',
+  'no_crack_width_limit',
+  'sigma_c_char_not_required',
+  'sigma_s_limit_characteristic_only',
+]);
+
+export const SLS_REASON_TEXT = Object.freeze({
+  uncracked:
+    'The section is uncracked: the tensile stress in the uncracked, transformed section ' +
+    'does not exceed f_ct,eff (EC2 7.1(2)). There is no crack to size.',
+  not_quasi_permanent:
+    'Crack width is only assessed for a quasi-permanent load combination — a ' +
+    'characteristic row answers the two stress limits instead.',
+  fully_in_tension:
+    'Both concrete faces are in tension in the uncracked state. A cross-section ' +
+    'entirely in tension needs an effective tension zone per face rather than the ' +
+    'single zone this assessment builds, and is outside its scope for now.',
+  no_equilibrium_cracked:
+    'No equilibrium was found for the cracked section with this reinforcement under ' +
+    'this load. The linear cracked-section state cannot be answered for this row.',
+  stresses_outside_elastic_range:
+    'The linear-elastic model no longer holds: the reinforcement or the concrete has ' +
+    'reached its strength in this state. A section already yielded or crushed under a ' +
+    'service load cannot be described by a linear stress plane.',
+  no_tension_reinforcement:
+    'No reinforcement layer is in tension at this load, so there is no crack to size.',
+  no_bonded_bars_in_effective_area:
+    'No tension layer has its centroid inside the effective tension area A_c,eff, so no ' +
+    'bar can be tied to the crack.',
+  no_tensile_stress_in_effective_area:
+    'The layers inside the effective tension area A_c,eff carry no tensile stress at ' +
+    'this load.',
+  no_bar_spacing:
+    'None of the layers inside the effective tension area has a bar spacing to report ' +
+    '— a layer with a single bar has no neighbour to measure to — so the crack spacing ' +
+    'cannot be derived.',
+  no_exposure_class:
+    'No exposure class is selected, so no recommended crack width limit applies, and it ' +
+    'is not known whether EC2 7.2(2) applies to the concrete stress either.',
+  no_crack_width_limit:
+    'The selected exposure class has no recommended crack width limit, and no manual ' +
+    'value has been entered in its place.',
+  sigma_c_char_not_required:
+    'EC2 7.2(2) limits the concrete compressive stress under the characteristic ' +
+    'combination only for the exposure classes where longitudinal cracking matters — ' +
+    'XD, XF and XS. The stress is reported for this row, but no limit is imposed on it.',
+  sigma_s_limit_characteristic_only:
+    'EC2 7.2(5) limits the reinforcement stress under the characteristic combination, ' +
+    'not the quasi-permanent one. The stress is reported here because it is what drives ' +
+    'the crack width in EC2 eq. 7.9 — but no limit is imposed on it for this row.',
+});
+
+/**
+ * Engelsk tekst for en SLS-grunnkode. Ukjent kode gir en plassholder MED
+ * koden i — samme regel som `messageForCode()`, og for samme grunn: en kode
+ * ingen har oversatt skal være synlig som nettopp det.
+ */
+export function slsReasonText(code) {
+  const key = String(code || '').trim();
+  if (Object.prototype.hasOwnProperty.call(SLS_REASON_TEXT, key)) return SLS_REASON_TEXT[key];
+  return key ? `Unspecified reason from the calculation engine (code: "${key}").` : DASH;
+}
+
+/**
+ * Den STYRENDE utnyttelsen for ÉN SLS-rad — den STØRSTE av utnyttelsene som
+ * FAKTISK ble regnet for raden (betongtrykk, stålstrekk, rissvidde). `null`
+ * når INGEN av dem kunne regnes — en rad uten et eneste svar skal ikke vises
+ * som en rad med margin (samme regel som `utilisationStatus(null)`).
+ *
+ * Dette er en SEKUNDÆR, avledet størrelse for den ene sammendragslinja per
+ * rad (spec §6.2: «type · M_Ed · σ_c · σ_s · w_k · w_max · η»). Den siterer
+ * ALDRI et tall som ikke står i raden selv — den velger bare den største av
+ * de tallene som allerede er der.
+ */
+export function slsRowUtilisation(row = {}) {
+  const vals = [];
+  // RETTET i runde 10 (K5): en utnyttelse teller BARE når den tilhørende
+  // kontrollen faktisk felte en dom. σ_c/0,6·f_ck er et tall også for en
+  // XC-klasse, men EC2 7.2(2) gjelder ikke der, og η er «den styrende
+  // utnyttelsen av det som ble kontrollert». Uten denne regelen kunne radens
+  // η være drevet av nøyaktig den grensa kontrollisten over den sier ikke
+  // gjelder — samme tall, to svar.
+  const push = (v, ok) => {
+    if (typeof ok !== 'boolean') return;
+    const n = toNum(v);
+    if (n !== null) vals.push(n);
+  };
+  push(row.stress?.sigma_c_util, row.stress?.sigma_c_ok);
+  push(row.stress?.sigma_s_util, row.stress?.sigma_s_ok);
+  push(row.crack?.utilisation, row.crack?.ok);
+  return vals.length ? Math.max(...vals) : null;
+}
+
+/**
+ * Rissvidden som skal stå bakerst i `#res-summary` (spec §6.2): den STØRSTE
+ * `w_k` blant SLS-radene som faktisk fikk en regnet rissvidde. `null` når
+ * INGEN rad har en — da skal sammendraget ikke få noe ekstra i det hele
+ * tatt («Er ingen rissvidde regnet, står det ingenting. Ikke mer.»).
+ */
+export function slsHeadlineCrack(result) {
+  const rows = Array.isArray(result?.sls?.rows) ? result.sls.rows : [];
+  let worst = null;
+  for (const row of rows) {
+    const wk = toNum(row?.crack?.w_k);
+    if (wk === null) continue;
+    if (worst === null || wk > worst.w_k) worst = { w_k: wk, w_max: toNum(row.crack.w_max) };
+  }
+  return worst;
 }

@@ -508,12 +508,34 @@ export function createLayer(state = {}, patch = {}) {
 }
 
 /**
- * De tre lastkombinasjonstypene STEG 2 kjenner. `uls` er den eneste som
- * kontrolleres i denne runden — `characteristic` og `quasi_permanent` er
- * SLS-typer, og bruksgrensetilstand er ikke implementert. En rad med en av
- * de to får `checked: false` i motoren (engine.py) og vises nedtonet i UI-et.
+ * De tre lastkombinasjonstypene. `uls` er den eneste som kontrolleres mot
+ * KAPASITET; `characteristic` og `quasi_permanent` er bruksgrensetyper og går
+ * til SLS-kapittelet i stedet (`engine.py:_compute_sls`). En SLS-rad får
+ * `checked: false` i bruddgrensedelen og vises nedtonet der.
  */
 export const COMBO_TYPES = Object.freeze(['uls', 'characteristic', 'quasi_permanent']);
+
+/**
+ * De to typene som går til bruksgrensekapittelet. EGEN liste, avledet av
+ * ingenting: `COMBO_TYPES.filter(t => t !== 'uls')` ville bundet SLS-utvalget
+ * til at ULS for alltid er den ene resten — en ny bruddgrensetype (f.eks. en
+ * ulykkeslast) ville da havnet i SLS uten at noen skrev det.
+ */
+export const SLS_COMBO_TYPES = Object.freeze(['characteristic', 'quasi_permanent']);
+
+/** Er raden en bruksgrenserad? ÉN kilde til spørsmålet, slik at UI, nyttelast
+ * og rapport ikke kan svare hver sitt. */
+export function isSlsCombo(combo) {
+  return SLS_COMBO_TYPES.includes(combo?.type);
+}
+
+/** Finnes det en bruksgrenserad i det hele tatt? Styrer BÅDE om SLS-boksen i
+ * skjemaet vises og om motoren i det hele tatt bygger `result.sls` — de to
+ * skal dukke opp og forsvinne sammen, ellers finnes det en rubrikk uten svar
+ * eller et svar uten rubrikk. */
+export function hasSlsCombo(state) {
+  return (state?.combos || []).some(isSlsCombo);
+}
 
 /**
  * Ny lastkombinasjon. Ligger her, ved siden av `createLayer`, av samme grunn:

@@ -41,6 +41,59 @@ export const CONCRETE_GRADES = [
   { label: 'C90/105', fck: 90 },
 ];
 
+/**
+ * Rissviddegrense per eksponeringsklasse [mm], for slakkarmert betong under
+ * tilnærmet permanent last, med den verdien EC2 7.3.1(5) anbefaler DER den
+ * anbefaler en (global-devspecs/concrete_section_calculator-sls.md §11).
+ * Dette er VÅR egen parameterliste med egne etiketter og en punktreferanse —
+ * ingen kolonneoverskrift, fotnote eller merknad er kopiert fra standarden.
+ *
+ * `w_max: null` betyr at EC2 IKKE anbefaler noen verdi for den klassen (i dag
+ * bare XD3 — se §11 for hvorfor den likevel blir stående i lista i stedet for
+ * å fjernes). Kontrollen blir da ubesvart (`null`), ikke bestått.
+ *
+ * `longitudinal_crack_check` merker klassene EC2 7.2(2) krever
+ * betongtrykkspenningskontroll for (XD/XF/XS-familien).
+ */
+export const EXPOSURE_CLASSES = Object.freeze([
+  { value: 'X0',  w_max: 0.40, appearance_only: true,  longitudinal_crack_check: false },
+  { value: 'XC1', w_max: 0.40, appearance_only: true,  longitudinal_crack_check: false },
+  { value: 'XC2', w_max: 0.30, appearance_only: false, longitudinal_crack_check: false },
+  { value: 'XC3', w_max: 0.30, appearance_only: false, longitudinal_crack_check: false },
+  { value: 'XC4', w_max: 0.30, appearance_only: false, longitudinal_crack_check: false },
+  { value: 'XD1', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
+  { value: 'XD2', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
+  // EC2 anbefaler INGEN rissviddegrense for XD3 for slakkarmert betong (§11).
+  { value: 'XD3', w_max: null, appearance_only: false, longitudinal_crack_check: true  },
+  { value: 'XS1', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
+  { value: 'XS2', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
+  { value: 'XS3', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
+]);
+
+/**
+ * STANDARDVERDIENE FOR BRUKSGRENSE — ÉN kilde (spec §4/§6.1).
+ *
+ * Disse fire tallene sto tidligere skrevet ut i FIRE filer: `defaultState()` og
+ * `enforceSlsParams()` i `store.js`, `slsLimits()` her, og `_compute_sls()` i
+ * `engine.py`. Fire kopier av det samme tallet er den feilformen modulen har
+ * blitt bitt av i hver eneste runde: den som retter 0,45 til noe annet retter
+ * to av dem, og de to andre står igjen og motsier resultatet uten å feile.
+ *
+ * Nå leser JS-siden dem herfra. `engine.py` har sin egen mirror med en
+ * kommentar som sier hva den er til for — den er BARE en livline for den som
+ * kaller motoren direkte, for `payload.js` sender alltid alle fire.
+ *
+ * Faktorene er EC2 7.2 sine anbefalte verdier (k1 = 0,6, k2 = 0,45, k3 = 0,8);
+ * `phi_ef = 2.0` er et vanlig utgangspunkt for innendørs betong, ikke en
+ * standardverdi fra noen tabell, og skal derfor kunne endres.
+ */
+export const SLS_DEFAULTS = Object.freeze({
+  phi_ef: 2.0,
+  sigma_c_char_factor: 0.6,
+  sigma_c_qp_factor: 0.45,
+  sigma_s_char_factor: 0.8,
+});
+
 /** Armeringskvaliteter. `k = f_tk/f_yk` er duktilitetsklassen (EC2 tillegg C). */
 export const STEEL_GRADES = [
   { label: 'B500NC (k = 1.08)', fyk: 500, k: 1.08, epsuk: 0.075 },
@@ -268,5 +321,59 @@ export function derivedMaterials(state = {}) {
   return {
     ...concreteProps(state.concrete),
     ...steelProps(state.steel),
+  };
+}
+
+/**
+ * Avleder `w_max` og de tre 7.2-grensene fra `state.sls`, SAMME mønster som
+ * `f_cd`/`f_yd`: brukeren ser tallet før en kjøring, og override vinner over
+ * klassen (§11, §5). Motoren slår ALDRI opp en klasse — den får bare tallene
+ * herfra, via `payload.sls` (§4) — dette er derfor den ENE JS-siden kilden
+ * til hvilken klasse som gir hvilken grense.
+ *
+ * Override vinner over klassen, OGSÅ over en klasse med `w_max: null`
+ * (XD3). Uten klasse: `w_max_reason: 'no_exposure_class'`. Med en klasse som
+ * IKKE har noen anbefalt grense og ingen override: `w_max_reason:
+ * 'no_crack_width_limit'` (AC14 — de to grunnene skal IKKE forveksles).
+ *
+ * `sigma_c_char_required` er TREVERDIG (§2.1, §4): `null` uten klasse, ellers
+ * klassens `longitudinal_crack_check`.
+ *
+ * @param {object} state
+ */
+export function slsLimits(state = {}) {
+  const sls = state.sls || {};
+  const cls = EXPOSURE_CLASSES.find((c) => c.value === sls.exposure_class) || null;
+  const override = Number(sls.w_max_override);
+  const hasOverride = Number.isFinite(override) && override > 0;
+
+  let w_max = null;
+  let w_max_source = null;
+  let w_max_reason = null;
+  if (hasOverride) {
+    w_max = override;
+    w_max_source = 'manual';
+  } else if (cls && cls.w_max != null) {
+    w_max = cls.w_max;
+    w_max_source = 'class';
+  } else if (cls) {
+    w_max_reason = 'no_crack_width_limit';
+  } else {
+    w_max_reason = 'no_exposure_class';
+  }
+
+  // INGEN SPENNINGSGRENSER HER. Funksjonen regnet tidligere ut `0.6·f_ck`,
+  // `0.45·f_ck` og `0.8·f_yk` — og ingen leste dem: `payload.js` sender
+  // FAKTORENE, og motoren ganger dem med sine egne `f_ck`/`f_yk`. Tre tall
+  // som så ut som beregningens tall, men ikke var det, er nøyaktig den
+  // dobbeltkilden som har bitt modulen i hver runde. De er borte; grensene
+  // finnes ett sted, i `result.sls.limits`, regnet av motoren.
+  return {
+    w_max,
+    w_max_source,
+    w_max_reason,
+    // `null` når ingen klasse er valgt — 7.2(2) er da ubesvart, ikke
+    // «gjelder ikke» (§4, §5).
+    sigma_c_char_required: cls ? cls.longitudinal_crack_check : null,
   };
 }

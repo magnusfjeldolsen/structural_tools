@@ -78,6 +78,10 @@ import {
   failureModeLabel,
   failureModeNote,
   checkRows,
+  checkText,
+  slsCheckRows,
+  slsReasonText,
+  slsRowTypeLabel,
   directionLabel,
   directionFromTheta,
   analysisLabel,
@@ -595,10 +599,16 @@ function combinationsBlock(result) {
       `different row than the one governing bending (above): a large V_Ed with a small ` +
       `M_Ed can control shear without ever being close to controlling bending.</p>`
     : '';
-  // G5: fotnote når minst én rad er ukontrollert (SLS). Plassert ved siden av
-  // `mcNote`/`shearNote` — samme mønster, samme sted.
+  // G5: fotnote når minst én rad er ukontrollert for BRUDD (ikke type ULS).
+  // RETTET (spec §6.3): påstanden var at SLS ikke fantes i det hele tatt —
+  // det er ikke lenger sant (spec-kapittelet §4). Setningen sier nå bare det
+  // som ER sant: raden bærer ingen bruddkontroll, og en eventuell rissvidde-
+  // eller spenningskontroll for den står i sin egen seksjon (kapittel 6),
+  // ikke i denne tabellen. Plassert ved siden av `mcNote`/`shearNote` —
+  // samme mønster, samme sted.
   const slsNote = hasUnchecked
-    ? `<p class="note">Serviceability checks are not implemented in this version.</p>`
+    ? `<p class="note">Rows that are not of type ULS carry no resistance check here. Any ` +
+      `serviceability row among them is still evaluated, in its own Serviceability chapter.</p>`
     : '';
   return (
     `<h4>Load combinations</h4>` +
@@ -942,23 +952,261 @@ function resultChapter(state, result) {
 }
 
 /* ------------------------------------------------------------------ *
- * 6. Plott
+ * 6. Serviceability — EC2 7.2 og 7.3.4
+ * global-devspecs/concrete_section_calculator-sls.md §4, §7
  * ------------------------------------------------------------------ */
 
 /**
- * Resultatet tegnet. ETT kapittel 6, men ikke nødvendigvis én figur: kapitlet
+ * Kapitlet FINNES ALLTID (spec §7) — betinget nummerering («hopper kapittel 6
+ * når det ikke er noe å si») er verre enn ett kapittel med én linje, fordi det
+ * gjør nummereringen av 7 og 8 avhengig av inndata. Uten `result.sls` (ingen
+ * SLS-inndata, eller ingen characteristic/quasi_permanent-rad, spec §4) sier
+ * kapitlet det rett ut, ellers ingenting.
+ *
+ * LESES UANSETT `result.ok` (spec §6.2, samme regel som resultatkapitlet):
+ * motoren setter `common['sls']` FØR aksialsjekken kan felle hele kjøringen,
+ * så en `{ok:false}`-konvolutt kan bære en ferdig regnet rissvidde. Å gjemme
+ * den bak en ULS-feilboks ville vært akkurat den tause skjulingen §6.2
+ * advarer mot.
+ */
+function slsChapter(state, result) {
+  const sls = result?.sls;
+  if (!sls) {
+    return chapter(
+      6,
+      'Serviceability',
+      '<p class="muted">No serviceability combinations were given, so no serviceability ' +
+        'check was carried out.</p>',
+      'atomic'
+    );
+  }
+
+  const rows = Array.isArray(sls.rows) ? sls.rows : [];
+  const lim = sls.limits || {};
+
+  // PARAMETERBLOKKEN (spec §7 punkt 1) bærer BARE de størrelsene som er de
+  // SAMME for alle rader (`sls`-toppnivået). `k1`/`k2`/`k3`/`k4`, `h_c,eff` og
+  // resten av 7.3.4-kjeden hører til ÉN rad (k2 avhenger av radens eps_r,
+  // spec §3.4) og står derfor i radens egen tabell under, ikke her — to
+  // tabeller som begge påsto å eie samme tall ville vært nøyaktig
+  // to-kilder-feilen doktrinen navngir.
+  const wMaxRow = sls.w_max === null || sls.w_max === undefined
+    ? [`w_max`, `${DASH} (${esc(slsReasonText(sls.w_max_reason))})`]
+    : [`w_max`, `${fmtLength(sls.w_max, 2)} mm (${esc(sls.w_max_source === 'manual' ? 'manual override' : 'from exposure class')})`];
+  const paramRows = [
+    ['φ_ef', fmtNumber(sls.phi_ef, 2)],
+    ['E_cm [MPa]', fmtStress(sls.Ecm, 0)],
+    ['E_c,eff = E_cm/(1+φ_ef) [MPa]', fmtStress(sls.Ec_eff, 0)],
+    ['α_e = E_s/E_cm — EC2 7.3.4(2), lign. 7.9', fmtRatio(sls.alpha_e, 4)],
+    ['f_ct,eff = f_ctm [MPa]', fmtStress(sls.f_ct_eff, 2)],
+    ['Exposure class', sls.exposure_class ? esc(sls.exposure_class) : DASH],
+    wMaxRow,
+    ['k_c,char — EC2 7.2(2)', fmtRatio(lim.sigma_c_char_factor, 2)],
+    [
+      'σ_c,char limit = k_c,char·f_ck [MPa]',
+      lim.sigma_c_char_required === false
+        ? `${DASH} (not required — the exposure class is outside XD/XF/XS)`
+        : lim.sigma_c_char_required === null
+          ? `${DASH} (no exposure class selected)`
+          : fmtStress(lim.sigma_c_char, 1),
+    ],
+    ['k_c,qp — EC2 7.2(3)', fmtRatio(lim.sigma_c_qp_factor, 2)],
+    ['σ_c,qp limit = k_c,qp·f_ck [MPa]', fmtStress(lim.sigma_c_qp, 1)],
+    ['k_s,char — EC2 7.2(5)', fmtRatio(lim.sigma_s_char_factor, 2)],
+    ['σ_s,char limit = k_s,char·f_yk [MPa]', fmtStress(lim.sigma_s_char, 1)],
+  ];
+
+  const checksTable = table(
+    ['Check', 'Status'],
+    slsCheckRows(sls).map((r) => [
+      esc(r.label),
+      r.applicable ? esc(r.text) : `<span class="muted">${esc(r.reason)}</span>`,
+    ])
+  );
+
+  const modelNotes =
+    '<p class="note">Linear-elastic analysis of the cracked section: concrete carries no ' +
+    'tension, and the transformed area n·A_s sits on the gross rectangle without ' +
+    'punching a hole for the bars — the same convention the ULS chapter uses with ' +
+    'subtract_bar_area off, so reinforcement inside the compression zone is counted ' +
+    'together with the concrete it displaces.</p>' +
+    '<p class="note">A row is cracked when the tensile stress in the UNCRACKED, ' +
+    'transformed section (always with E_cm, EC2 7.1(2)) exceeds f_ct,eff above. That is a ' +
+    'different rectangle than the gross one the bending chapter\'s cracking moment M_cr ' +
+    'uses, so the two criteria disagree in a band a few per cent above M_cr — this ' +
+    'section never carries an M_cr figure at all, precisely so the two are never read as ' +
+    'the same number.</p>' +
+    '<p class="note">For a quasi-permanent row, the concrete compression stress is given ' +
+    'TWICE, on purpose: <i>at first loading</i> (E_cm, no creep) is the one EC2 7.2(3) is ' +
+    'checked against, because non-linear creep is governed by the stress when the load ' +
+    'was first applied (EC2 3.1.4) — checking it against the already-crept stress would ' +
+    'assume the answer. <i>Long-term</i> (with φ_ef) is the state the rest of that row\'s ' +
+    'figures are computed on. The two are never the same figure and are never shown ' +
+    'without their own label.</p>' +
+    '<p class="note">This chapter\'s neutral axis depth x is a different quantity from the ' +
+    'bending chapter\'s x at failure — the two strain planes answer different questions ' +
+    'and should not be read side by side without their labels.</p>' +
+    '<p class="note">Shrinkage plays no part: EC2 2004 7.3.4 carries no shrinkage term in ' +
+    'its crack-width equations, so none is added here. w_k is a calculated check value ' +
+    'against a limit, not a prediction of a width anyone could measure on the ' +
+    'structure.</p>';
+
+  const rowsHtml = rows.map((row) => slsRowSection(row)).join('');
+
+  return chapter(
+    6,
+    'Serviceability',
+    `<h4>Parameters</h4>${kvTable(paramRows)}` +
+      rowsHtml +
+      `<h4>Checks</h4>${checksTable}` +
+      modelNotes
+  );
+}
+
+/**
+ * Én rads HELE kjede (spec §3.2, §7 punkt 2), ukomprimert — det er her
+ * etterprøvbarheten bor, ikke på skjermen (§6.2). De tre grenvalgene
+ * (`h_c,eff`, lign. 7.9, `s_r,max`) er markert med FET tekst, som spec §7
+ * krever.
+ */
+function slsRowSection(row) {
+  const typeLabel = slsRowTypeLabel(row.type);
+  const head = `<h4>${esc(comboLabel(row))} — ${esc(typeLabel)}</h4>`;
+
+  const top = [
+    ['N_Ed [kN]', fmtForceKN(row.N_Ed)],
+    ['M_Ed [kNm]', fmtMomentKNm(row.M_Ed)],
+    ['σ_ct,uncracked [MPa] (EC2 7.1(2), always E_cm)', fmtStress(row.sigma_ct_uncracked, 3)],
+    ['Cracked', row.cracked ? 'Yes' : 'No'],
+    ['E_c used [MPa]', fmtStress(row.Ec_used, 0)],
+    ['n_sec = E_s/E_c,used', fmtRatio(row.n_sec, 4)],
+  ];
+
+  if (!row.state) {
+    return (
+      head + kvTable(top) +
+      `<p class="note">${esc(slsReasonText(row.state_reason))}</p>`
+    );
+  }
+
+  const st = row.state;
+  const stateRows = [
+    ['x [mm]', fmtLength(st.x, 3)],
+    ['z_na [mm]', fmtLength(st.z_na, 3)],
+    ['ε_a [‰]', fmtStrainPermille(st.eps_a, 4)],
+    ['χ_y [10⁻⁶/mm]', fmtCurvature(st.chi_y, 4)],
+    ['σ_c at the compression face [MPa]', fmtStress(st.sigma_c, 4)],
+    ['ε at the outer tension face [‰]', fmtStrainPermille(st.eps_1, 4)],
+    ['ε at the opposite face [‰]', fmtStrainPermille(st.eps_2, 4)],
+    ['σ_s,max, all layers [MPa]', fmtStress(st.sigma_s_max, 3)],
+  ];
+
+  const initialRows = row.type === 'quasi_permanent'
+    ? [row.sigma_c_initial === null
+      ? ['σ_c at first loading (E_cm) [MPa]', `${DASH} (${esc(slsReasonText(row.sigma_c_initial_reason))})`]
+      : ['σ_c at first loading (E_cm) [MPa]', fmtStress(row.sigma_c_initial, 4)]]
+    : [];
+
+  let stressHtml = '';
+  if (row.stress) {
+    const s = row.stress;
+    const stressRows = [
+      [`σ_c checked (${s.sigma_c_checked === 'initial' ? 'at first loading' : 'this row\'s own state'}) [MPa]`, fmtStress(s.sigma_c, 4)],
+      ['σ_c limit [MPa]', fmtStress(s.sigma_c_limit, 1)],
+      ['σ_c utilisation [–]', fmtRatio(s.sigma_c_util, 4)],
+      // Samme regel som i UI-et: er dommen `null` fordi grensa IKKE GJELDER
+      // (EC2 7.2(2) utenfor XD/XF/XS), skal papiret si det og ikke bare sette
+      // en tankestrek som ser ut som et tall som glapp. Rapporten skal kunne
+      // leses alene, og en ubegrunnet tankestrek er ikke etterprøvbar.
+      ['σ_c ≤ limit', s.sigma_c_ok === null && s.sigma_c_ok_reason
+        ? `${DASH} (${esc(slsReasonText(s.sigma_c_ok_reason))})`
+        : checkText(s.sigma_c_ok)],
+      ['σ_s, largest of all layers [MPa]', fmtStress(s.sigma_s, 3)],
+      ['σ_s limit [MPa]', fmtStress(s.sigma_s_limit, 1)],
+      ['σ_s utilisation [–]', fmtRatio(s.sigma_s_util, 4)],
+      ['σ_s ≤ limit', s.sigma_s_ok === null && s.sigma_s_ok_reason
+        ? `${DASH} (${esc(slsReasonText(s.sigma_s_ok_reason))})`
+        : checkText(s.sigma_s_ok)],
+    ];
+    stressHtml = `<h5>EC2 7.2 — stress limits</h5>${kvTable(stressRows)}`;
+  }
+
+  let crackHtml = '';
+  if (row.crack) {
+    const c = row.crack;
+    const crackRows = [
+      ['d — centroid of the tension layers [mm]', fmtLength(c.d, 2)],
+      ['x [mm]', fmtLength(c.x, 3)],
+      [
+        // Grenvalget skal stå FREMHEVET (spec §3.3/§7 punkt 2) — i VERDIEN,
+        // ikke i etiketten: `kvTable()` escaper etiketten (den er brukertekst
+        // i andre rader), men lar verdien stå urørt fordi kalleren her
+        // allerede har formatert og escapet den (samme kontrakt som resten
+        // av rapporten bruker for `<b>`/`<i>` i tabellverdier).
+        'h_c,eff [mm] (spec §3.3, EC2 7.3.2(3))',
+        `<b>${fmtLength(c.h_c_eff, 3)}</b> — governing: <b>${esc(c.h_c_eff_governing)}</b> ` +
+        `(2.5(h−d)=${fmtLength(c.h_c_eff_candidates?.['2.5(h-d)'], 1)}, ` +
+        `(h−x)/3=${fmtLength(c.h_c_eff_candidates?.['(h-x)/3'], 1)}, h/2=${fmtLength(c.h_c_eff_candidates?.['h/2'], 1)})`,
+      ],
+      ['A_c,eff = b·h_c,eff [mm²]', fmtArea(c.A_c_eff, 0)],
+      ['A_s,eff, tension layers inside A_c,eff [mm²]', fmtArea(c.A_s_eff, 1)],
+      ['Layers inside A_c,eff', c.layers_in_zone?.length ? esc(c.layers_in_zone.join(', ')) : DASH],
+      ['ρ_p,eff = A_s,eff/A_c,eff — EC2 7.10', fmtNumber(c.rho_p_eff, 6)],
+      ['α_e — EC2 7.3.4(2), lign. 7.9 (E_cm, never E_c,eff)', fmtRatio(c.alpha_e, 4)],
+      ['k_t — EC2 lign. 7.9 (0.4: this is the long-term, quasi-permanent case)', fmtNumber(c.k_t, 2)],
+      ['σ_s, governing tension layer inside A_c,eff [MPa]', `${fmtStress(c.sigma_s, 3)} (${esc(c.sigma_s_layer)})`],
+      [
+        'ε_sm−ε_cm [–] — EC2 lign. 7.9',
+        `<b>${fmtNumber(c.eps_sm_eps_cm, 6)}</b> — governing: <b>${esc(c.eps_governing)}</b> ` +
+        `(main term=${fmtNumber(c.eps_equation, 6)}, floor 0.6σ_s/E_s=${fmtNumber(c.eps_floor, 6)})`,
+      ],
+      ['ε_1, outer tension face', fmtStrainPermille(c.eps_1, 4)],
+      ['ε_2, opposite face', fmtStrainPermille(c.eps_2, 4)],
+      ['ε_r = max(0,ε_2)/ε_1, into k2 — EC2 lign. 7.13', fmtRatio(c.eps_r, 4)],
+      ['k1 (bond) / k2 / k3 / k4 — EC2 7.3.4', `${fmtNumber(c.k1, 3)} / ${fmtNumber(c.k2, 3)} / ${fmtNumber(c.k3, 3)} / ${fmtNumber(c.k4, 3)}`],
+      ['c — cover to the outermost bar surface [mm]', fmtLength(c.c, 2)],
+      ['φ_eq = Σn·φ²/Σn·φ — EC2 lign. 7.12 [mm]', fmtLength(c.phi_eq, 2)],
+      ['Bar spacing s [mm]', fmtLength(c.bar_spacing, 1)],
+      ['Spacing threshold 5(c+φ/2) [mm]', fmtLength(c.spacing_threshold, 1)],
+      [
+        's_r,max [mm] — EC2 lign. 7.11',
+        `<b>${fmtLength(c.sr_max, 3)}</b> — governing: <b>${esc(c.sr_max_branch)}</b> ` +
+        `(close=${fmtLength(c.sr_max_close, 2)}, far=${fmtLength(c.sr_max_far, 2)})`,
+      ],
+      ['w_k = s_r,max·(ε_sm−ε_cm) — EC2 lign. 7.8 [mm]', fmtNumber(c.w_k, 6)],
+      ['w_max [mm]', c.w_max === null ? `${DASH} (${esc(slsReasonText(c.ok_reason))})` : fmtLength(c.w_max, 2)],
+      ['Utilisation w_k/w_max [–]', fmtRatio(c.utilisation, 4)],
+      ['w_k ≤ w_max', checkText(c.ok)],
+    ];
+    crackHtml = `<h5>EC2 7.3.4 — crack width</h5>${kvTable(crackRows)}`;
+  } else if (row.crack_reason) {
+    crackHtml = `<h5>EC2 7.3.4 — crack width</h5><p class="note">${esc(slsReasonText(row.crack_reason))}</p>`;
+  }
+
+  return head + kvTable(top) + kvTable(stateRows) + (initialRows.length ? kvTable(initialRows) : '') + stressHtml + crackHtml;
+}
+
+/* ------------------------------------------------------------------ *
+ * 7. Plott
+ * ------------------------------------------------------------------ */
+
+/**
+ * Resultatet tegnet. ETT kapittel 7, men ikke nødvendigvis én figur: kapitlet
  * trykker hvert plott resultatet bærer en blokk for (se `plotParts`). For de
  * tre enkeltanalysene er det fortsatt nøyaktig én — og da beholder kapitlet
  * sin egen, presise overskrift i stedet for et intetsigende «Plots».
  *
- * Kapittelnummeret er og blir 6. Et «kjør alle» som la hvert plott i sitt eget
- * kapittel ville flyttet kapittel 7 til 8 og brutt rekkefølgen plan §8 krever
- * — den ene egenskapen ved rapporten en senere endring kan ødelegge helt stille.
+ * KAPITTELNUMMERET FLYTTET FRA 6 TIL 7 (spec §7): SLS-kapittelet («6 ·
+ * Serviceability») er skjøvet inn FØR plottet, fordi resultatkapitlet (5)
+ * og bruksgrensevurderingen hører sammen — «hva det ble» før «hvordan det
+ * ser ut». Et «kjør alle» som la hvert plott i sitt eget kapittel ville
+ * flyttet kapittel 8 til 9 og brutt rekkefølgen — den ene egenskapen ved
+ * rapporten en senere endring kan ødelegge helt stille.
  */
 function plotChapter(state, result) {
   if (!result || !result.ok) {
     return chapter(
-      6,
+      7,
       'Plot',
       '<p class="muted">The plot is drawn once the calculation has been carried out.</p>',
       'atomic'
@@ -971,16 +1219,16 @@ function plotChapter(state, result) {
     // Da er en ærlig setning riktigere enn å tegne inndatasnittet under
     // overskriften «ved brudd» — den figuren ville sett ut som et resultat.
     return chapter(
-      6,
+      7,
       'Plot',
       '<p class="muted">The result carries no analysis block, so there is nothing to ' +
         'plot.</p>',
       'atomic'
     );
   }
-  if (parts.length === 1) return chapter(6, `Plot — ${parts[0].suffix}`, parts[0].html);
+  if (parts.length === 1) return chapter(7, `Plot — ${parts[0].suffix}`, parts[0].html);
   return chapter(
-    6,
+    7,
     'Plots',
     parts.map((p) => `<h4>${esc(p.heading)}</h4>${p.html}`).join('')
   );
@@ -1153,9 +1401,17 @@ function methodChapter(state, result) {
       `<code>numpy.linalg.solve</code> — the same LU factorisation with partial ` +
       `pivoting (LAPACK). The equivalence is measured at <b>0.000e+00 relative ` +
       `deviation</b> on the bending resistance, every moment–curvature point and the ` +
-      `entire N–M diagram, and is asserted by a dedicated test. The package's other ` +
-      `scipy functions belong to crack width control (SLS) and EC2:2023, both outside ` +
-      `this module's scope; they are stubbed to <b>throw</b>, not to approximate. ` +
+      `entire N–M diagram, and is asserted by a dedicated test. ` +
+      // RETTET (spec §6.3): «crack width control (SLS)» var usant fra og med SLS-
+      // kapittelet (§4) — rissvidden regnes nå, i lukket form, uten scipy. Det
+      // som FAKTISK går via scipy inne i 2004-grenen er BARE den forenklede
+      // 7.3.3-tabellmetoden (`griddata`, se `_section_7_3_crack_control.py`),
+      // som denne modulen ikke bruker (§3.1) — pluss hele EN 1992-1-1:2023.
+      `The package's other scipy functions belong to EN 1992-1-1:2023, which is ` +
+      `outside this module's scope. Inside the 2004 code, the only scipy user is ` +
+      `EC2 7.3.3's simplified table lookup for crack control — this module computes ` +
+      `7.3.4 directly instead, in closed form, and never reaches that lookup. ` +
+      `They are stubbed to <b>throw</b>, not to approximate. ` +
       `Status in this run: ${scipyStatusText(meta.scipy)}</li>`,
 
     `<li><b>Code basis.</b> EC2 (NS-EN 1992-1-1:2004) 3.1.6 and 3.1.7 for the ` +
@@ -1163,9 +1419,19 @@ function methodChapter(state, result) {
       `with axial force, and 9.2.1.1 for A_s,min and A_s,max. The material factors are ` +
       `those given, not a national annex read in automatically.</li>`,
 
-    `<li><b>Scope.</b> Ultimate limit state for bending with axial force. Shear, ` +
-      `cracking, deflection, torsion, anchorage, fire and exposure class are <b>not</b> ` +
-      `checked.</li>`,
+    // RETTET (spec §6.3): «cracking ... are not checked» ble usant i det denne
+    // modulen fikk en serviceability-seksjon (7.2/7.3.4). Setningen sier nå hva
+    // ER gjort der, og navngir de delene av risskontrollen som FORTSATT står
+    // utenfor (7.3.2 minimumsarmering og et snitt i rent strekk, se den
+    // seksjonens egne forutsetninger) — en rad kan svare med et åpent spørsmål
+    // der, ikke bare bestått/ikke bestått.
+    `<li><b>Scope.</b> Ultimate limit state for bending with axial force. A ` +
+      `serviceability assessment under EC2 7.2 (stress limits) and 7.3.4 (crack ` +
+      `width) is carried out for the load combinations marked characteristic or ` +
+      `quasi-permanent — see the Serviceability chapter for its own assumptions ` +
+      `and open questions. Deflection, torsion, anchorage and fire are <b>not</b> ` +
+      `checked, and neither is EC2 7.3.2 minimum reinforcement for crack control ` +
+      `or a cross-section entirely in tension.</li>`,
   ];
 
   const warnings = describeWarnings(result?.warnings);
@@ -1182,7 +1448,7 @@ function methodChapter(state, result) {
     : `<h4>Warnings from the calculation</h4><p class="muted">No warnings.</p>`;
 
   return chapter(
-    7,
+    8,
     'Assumptions and method',
     `<ul class="method">${items.join('')}</ul>${warnHtml}`
   );
@@ -1216,6 +1482,7 @@ export function buildReportHtml(state, result = null) {
     rebarChapter(st, res, props),
     loadsChapter(st, res, props),
     resultChapter(st, res),
+    slsChapter(st, res),
     plotChapter(st, res),
     methodChapter(st, res),
   ].join('\n');
