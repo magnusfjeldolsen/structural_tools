@@ -2139,3 +2139,85 @@ def test_capacity_direction_terskelen_ligger_der_kapasiteten_skifter_fortegn():
     above = _hogging_with_tension(40e3)['bending']['combinations'][0]
     assert below['M_Rd'] > 0 and below['capacity_opposes_load'] is False
     assert above['M_Rd'] < 0 and above['capacity_opposes_load'] is True
+
+# ------------------------------------------------------------------ #
+# Skjaerkontroller som svarte BESTAATT uten aa ha regnet noe (runde 11)
+# ------------------------------------------------------------------ #
+
+def _shear_case(v_ed, theta=0.0, stirrups=None, section_type='beam'):
+    payload = load('payload-beam-300x600.json')
+    payload['section']['type'] = section_type
+    payload['section']['shear'] = {'strut_angle_deg': 45.0, 'z_factor': 0.9,
+                                   'stirrups': stirrups or []}
+    payload['options']['theta'] = theta
+    m_ed = 150e6 if theta else -150e6
+    payload['loads'] = {
+        'combinations': [{'id': 'C1', 'name': 'ULS', 'N_Ed': 0.0, 'M_Ed': m_ed,
+                          'V_Ed': v_ed, 'theta': theta}],
+        'active': 'C1',
+    }
+    return engine.run(payload)
+
+
+def test_shear_that_could_not_be_evaluated_is_unanswered_not_passed():
+    """MAALT foer denne: referansebjelken med stoettemoment (ingen toppjern, altsaa ingen
+    strekkside aa maale `d` fra) og `V_Ed = 900 kN` gav
+
+        shear: evaluated=False, V_Rd=None, d=None
+        checks.shear_ok = TRUE,  og ingen skjaeradvarsel i det hele tatt
+
+    Samme feilform runde 6 lukket for `as_min_ok` og `ductility_ok`: en kontroll som
+    svarer BESTAATT uten aa ha regnet noe.
+    """
+    result = _shear_case(900e3, theta=math.pi)
+    row = result['bending']['combinations'][0]
+    assert row['shear']['evaluated'] is False
+    assert result['checks']['shear_ok'] is None, 'ubesvart, ikke bestaatt -- og ikke brudd'
+    assert result['checks']['all_ok'] is False
+
+    incomplete = next(w for w in result['warnings'] if w['code'] == 'assessment_incomplete')
+    assert 'shear_ok' in incomplete['detail']
+    assert 'effective depth' in incomplete['detail']
+
+
+def test_shear_without_any_load_is_passed_not_unanswered():
+    """Motstykket: ingen skjaerkraft er ingenting aa kontrollere, og da er `True`
+    riktig. `None` her ville gjort hver eneste rene boeyeberegning «ubesvart»."""
+    result = _shear_case(0.0)
+    assert result['checks']['shear_ok'] is True
+    assert result['checks']['all_ok'] is True
+
+
+def test_a_beam_without_stirrups_fails_minimum_shear_reinforcement():
+    """EC2 6.2.1(4) unntar deler der skjaerarmering ikke er noedvendig -- plater og deler
+    av mindre betydning. Unntaket gjelder IKKE bjelker: 9.2.2(5) krever rho_w >=
+    rho_w,min uansett.
+
+    MAALT foer denne: 300x600 bjelke, tom boeyleliste, V_Ed = 60 kN gav
+    `asw_min_ok = True`. `payload.section.type` ble sendt av `payload.js` og lest av
+    INGEN -- null treff i hele motoren.
+    """
+    result = _shear_case(60e3, section_type='beam')
+    assert result['checks']['asw_min_ok'] is False
+    assert result['checks']['all_ok'] is False
+
+
+def test_a_slab_without_stirrups_is_still_exempt():
+    """Plata er nettopp tilfellet EC2 6.2.1(4) unntar, og skal ikke feile av aa mangle
+    boeyler. Uten denne ville rettelsen over gjort hver eneste plate ikke-bestaatt."""
+    payload = load('payload-slab-1000x200.json')
+    payload['section']['type'] = 'slab'
+    payload['section']['shear'] = {'strut_angle_deg': 45.0, 'z_factor': 0.9, 'stirrups': []}
+    payload['loads'] = {
+        'combinations': [{'id': 'C1', 'name': 'ULS', 'N_Ed': 0.0, 'M_Ed': -40e6,
+                          'V_Ed': 60e3, 'theta': 0.0}],
+        'active': 'C1',
+    }
+    result = engine.run(payload)
+    assert result['checks']['asw_min_ok'] is True
+
+
+def test_a_beam_without_stirrups_and_without_shear_is_not_penalised():
+    """Og en bjelke uten skjaerkraft trenger ingen minimumsboeyler heller."""
+    result = _shear_case(0.0, section_type='beam')
+    assert result['checks']['asw_min_ok'] is True
