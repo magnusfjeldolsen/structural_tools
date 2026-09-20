@@ -1461,8 +1461,12 @@ export function createUI(deps) {
     // og bare to — her inn, og i `syncSlsBox` ut.
     bindField('#i-rh', (s) => s.sls.RH, (v) => store.patch('sls', { RH: v }), { min: 1, max: 99 });
     bindField('#i-t0', (s) => s.sls.t0, (v) => store.patch('sls', { t0: v }), { min: 0.5 });
-    bindField('#i-tlife', (s) => s.sls.t_life / 365,
-      (v) => store.patch('sls', { t_life: v * 365 }), { min: 0.01 });
+    // INGEN OMREGNING. Feltet er i doegn, som tillegg B, og `bindNumericInput`
+    // tar regnestykket: «50*365» blir 18250. Omregningen som sto her gjorde at
+    // det TRYKTE tallet ikke var det som ble REGNET — 1,5 år ble vist som «2 yr»
+    // mens phi ble regnet av 547,5 døgn.
+    bindField('#i-tlife', (s) => s.sls.t_life,
+      (v) => store.patch('sls', { t_life: v }), { min: 1 });
 
     // TRE felt kan stå TOMME, og det tomme er et ekte valg hos alle tre:
     // «bruk den avledede verdien». `bindField` legger tilbake den gjeldende
@@ -1685,7 +1689,11 @@ export function createUI(deps) {
     };
     put('#i-rh', s.sls.RH, 0);
     put('#i-t0', s.sls.t0, 0);
-    put('#i-tlife', s.sls.t_life / 365, 0);
+    // DESIMALEN BARE NAAR DEN FINNES. «365/2» gir 182,5 døgn, og `fmtNumber(…, 0)`
+    // trykte 183 — altså igjen et vist tall som ikke var det regnede, bare med en
+    // mindre feil enn årsomregningen som sto her før. Et helt antall døgn skal
+    // fortsatt stå uten «,0».
+    put('#i-tlife', s.sls.t_life, Number.isInteger(s.sls.t_life) ? 0 : 1);
     put('#i-h0', s.sls.h0_override, 0);
     put('#i-phi-ef', s.sls.phi_ef, 2);
     const cemSel = $('#i-cement');
@@ -1708,9 +1716,12 @@ export function createUI(deps) {
     text('#sls-phi-src', creep.source === 'manual' ? 'manual override'
       : creep.source === 'derived' ? 'EC2 Annex B'
       : slsReasonText(creep.reason));
+    // Aarene er AVLEDET av doegnene og staar rett under feltet — samme moenster
+    // som h_0 og phi: tallet du skriver, og tallet det betyr.
+    text('#tlife-years', `= ${fmtNumber(s.sls.t_life / 365, 1)} years`);
     text('#creep-summary', `φ = ${creep.phi === null ? DASH : fmtNumber(creep.phi, 2)}`
       + `${creep.source === 'manual' ? ' (manual)' : ''} · RH ${fmtNumber(s.sls.RH, 0)} % · `
-      + `t₀ ${fmtNumber(s.sls.t0, 0)} d · ${fmtNumber(s.sls.t_life / 365, 0)} yr`);
+      + `t₀ ${fmtNumber(s.sls.t0, 0)} d · t ${fmtNumber(s.sls.t_life, 0)} d`);
   }
 
   /**
@@ -3512,6 +3523,7 @@ export function createUI(deps) {
    *  tilstandsovergangen, og den ville sluttet å følge med den dagen lukkingen
    *  fikk noe mer å gjøre. */
   const closeReport = () => $('#report-close')?.click();
+
 
   /** Overlegget som ligger øverst nå, eller `null`. `Escape` lukker ETT om
    *  gangen: rapporten kan stå åpen bak hjelpelista. */

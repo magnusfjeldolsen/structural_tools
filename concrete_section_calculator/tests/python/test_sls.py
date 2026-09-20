@@ -601,19 +601,105 @@ def test_ac12_single_bar_layer_has_no_spacing_but_state_is_fine():
 # AC13 -- hele snittet i strekk: fully_in_tension, IKKE no_equilibrium_cracked
 # ------------------------------------------------------------------ #
 
-def test_ac13_fully_in_tension_is_distinct_from_ac8a():
-    rebar = [
-        bars_layer('L1', -250.0, 20.0, [-100.0, 0.0, 100.0]),
-        bars_layer('L2', 250.0, 20.0, [-100.0, 0.0, 100.0]),
-    ]
-    payload = sls_payload(rebar, 1000e3, 0.0, combo_type='quasi_permanent', phi_ef=0.0)
+TIE_REBAR = [
+    bars_layer('L1', -250.0, 20.0, [-100.0, 0.0, 100.0]),
+    bars_layer('L2', 250.0, 20.0, [-100.0, 0.0, 100.0]),
+]
+
+
+def test_ac13_fully_in_tension_beyond_yield_is_guarded_not_solved():
+    """N = 1000 kN paa 6O20 (1885 mm2) gir sigma_s = 530 MPa, over f_yk = 500.
+
+    OMSKREVET i runde 11. Foer svarte motoren `fully_in_tension` her -- den gav opp
+    fordi trykksonen ikke fantes. Naa loeses strekktilfellet (se
+    `_sls_tension_only_eval`), og da er det FLYTVAKTEN som slaar inn, slik den gjoer
+    for ethvert annet snitt der den lineaere modellen ikke lenger gjelder. Den gamle
+    grunnkoden svelget to helt ulike ting: «vi kan ikke regne denne formen» og
+    «staalet har flytt».
+    """
+    payload = sls_payload(TIE_REBAR, 1000e3, 0.0, combo_type='quasi_permanent', phi_ef=0.0)
     result = engine.run(payload)
     row = result['sls']['rows'][0]
     assert row['cracked'] is True
     assert row['state'] is None
-    assert row['state_reason'] == 'fully_in_tension'
+    assert row['state_reason'] == 'stresses_outside_elastic_range'
     assert row['state_reason'] != 'no_equilibrium_cracked'
-    assert row['crack_reason'] == 'fully_in_tension'
+
+
+def test_a_section_entirely_in_tension_gets_a_crack_width():
+    """Sentrisk strekk -- strekkstag, ringarmering i tanker, veggskiver -- er blant de
+    VIKTIGSTE rissviddetilfellene i EC2. Standarden har dem eksplisitt: fig. 7.1(c)
+    viser A_c,eff for et strekkstav, og k2 = 1,0 i lign. 7.13 finnes nettopp for ren
+    strekk. Motoren svarte `fully_in_tension -> crack_width_ok: None` og lot dem ligge.
+
+    Naar hele snittet er i strekk og risset baerer betongen ingenting, og likevekten
+    blir to LINEAERE likninger i (eps_a, chi) -- uten trykksonen den kubiske loeseren
+    maa lete seg fram til.
+    """
+    payload = sls_payload(TIE_REBAR, 800e3, 0.0, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    result = engine.run(payload)
+    row = result['sls']['rows'][0]
+    state, crack = row['state'], row['crack']
+
+    assert state is not None, row['state_reason']
+    assert state['x'] == 0.0, 'det finnes ingen trykksone'
+    assert state['sigma_c'] == 0.0, 'og dermed ingen trykkspenning'
+    # Likevekt: summen av staalkreftene ER aksialkraften.
+    force = sum(l['sigma'] * a for l, (a, _z)
+                in zip(state['layers'], [(float(l['area']), 0.0) for l in TIE_REBAR]))
+    assert close(force, 800e3, rel=1e-9), f'likevekten holder ikke: {force}'
+
+    assert crack is not None
+    assert crack['w_k'] > 0.0
+    assert close(crack['k2'], 1.0), 'EC2 lign. 7.13 gir k2 = 1,0 for ren strekk'
+    # `(h-x)/3` er utledet for en bjelke med trykksone og gjelder ikke her.
+    assert crack['h_c_eff_governing'] in ('h/2', '2.5(h-d)')
+    assert '(h-x)/3' not in crack['h_c_eff_candidates']
+
+
+def test_eccentric_tension_gives_k2_between_the_two_ends():
+    """Eksentrisk strekk ligger mellom ren strekk (k2 = 1,0) og ren boeyning (k2 = 0,5)
+    -- lign. 7.13 er nettopp den interpolasjonen."""
+    payload = sls_payload(TIE_REBAR, 800e3, -10e6, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    crack = engine.run(payload)['sls']['rows'][0]['crack']
+    assert crack is not None
+    assert 0.5 < crack['k2'] < 1.0, crack['k2']
+
+
+def test_a_single_layer_in_pure_tension_has_no_solution_and_says_so():
+    """ETT armeringslag kan bare baere momentet `N * z_1`. Alt annet er en likevekt som
+    ikke finnes, og da staar `fully_in_tension` igjen som den aerlige grunnen -- koden
+    er ikke borte, den er bare ikke lenger svaret paa alt."""
+    payload = sls_payload(BEAM_REBAR, 400e3, -60e6, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    row = engine.run(payload)['sls']['rows'][0]
+    assert row['state'] is None
+    assert row['state_reason'] in ('fully_in_tension', 'no_equilibrium_cracked')
+
+
+def test_ordinary_bending_is_untouched_by_the_tension_solver():
+    """Motstykket, og grensa for hele endringen: et vanlig feltmoment skal gi noeyaktig
+    de samme tallene som foer -- trykksone, `(h-x)/3` blant kandidatene, k2 = 0,5."""
+    payload = sls_payload(BEAM_REBAR, 0.0, -100e6, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    row = engine.run(payload)['sls']['rows'][0]
+    assert row['state']['x'] > 0.0
+    assert row['state']['sigma_c'] < 0.0
+    assert row['state'].get('tension_only') is False
+    crack = row['crack']
+    assert '(h-x)/3' in crack['h_c_eff_candidates']
+    assert close(crack['k2'], 0.5)
+    assert close(crack['w_k'], 0.2114290340096794, rel=1e-9)
 
 
 # ------------------------------------------------------------------ #

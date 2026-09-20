@@ -738,6 +738,11 @@ result.sls = {
       'sigma_c': float,                   # trykkanten, NEGATIV
       'eps_1': float, 'eps_2': float,     # ytterste strekkant / motsatt kant
       'sigma_s_max': float,               # største strekkspenning, ALLE lag  -> 7.2
+      # Hele snittet i strekk og risset (strekkstag, ringarmering i tanker).
+      # Da bærer betongen ingenting, likevekten står i jernene alene, og
+      # 'x' = 0 / 'sigma_c' = 0 er SVARET — ikke en degenerasjon. `(h-x)/3`
+      # faller da ut av h_c,eff, fordi den er utledet for en trykksone.
+      'tension_only': bool,
       'layers': [ {'id','z','eps','sigma','tension': bool}, ... ],
   } | None,
   'state_reason': str | None,             # grunnkode når 'state' er None

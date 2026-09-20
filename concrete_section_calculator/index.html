@@ -311,7 +311,15 @@
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
             <label><span class="field-label">RH &mdash; relative humidity [%]</span><input id="i-rh" type="text" inputmode="decimal"></label>
             <label><span class="field-label">t<sub>0</sub> &mdash; age at loading [days]</span><input id="i-t0" type="text" inputmode="decimal"></label>
-            <label><span class="field-label">t &mdash; service life [years]</span><input id="i-tlife" type="text" inputmode="decimal"></label>
+            <!-- DOEGN, ikke aar. Hele EC2 tillegg B regner i doegn, og en omregning
+                 paa veien inn er et sted aa ta feil: MAALT gav «1,5 aar» et lagret
+                 t = 547,5 d og et brukt phi = 1,911, mens feltet og rapporten
+                 trykte «2 yr». Naa staar tallet i den enheten det REGNES i.
+                 Feltet tar et REGNESTYKKE — «50*365» er lettere aa skrive og
+                 lettere aa lese enn 18250 — og aarene staar avledet under. -->
+            <label><span class="field-label">t &mdash; service life [days]</span>
+              <input id="i-tlife" type="text" inputmode="text" placeholder="50*365">
+              <span id="tlife-years" class="block text-[11px] text-slate-500 num pt-0.5"></span></label>
             <label><span class="field-label">Cement class</span><select id="i-cement"></select></label>
           </div>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
@@ -659,7 +667,7 @@
 </div>
 
 <!-- ═══════════════ rapportoverlegg (formet av print.css, fylt av report.js) ═══════════════ -->
-<div id="report-overlay" hidden>
+<div id="report-overlay" role="dialog" aria-modal="true" aria-label="Calculation report" hidden>
   <div class="report-toolbar">
     <b>Report</b>
     <button type="button" id="report-print" class="px-2.5 py-1 rounded bg-sky-700 hover:bg-sky-600 border border-sky-600">Print / PDF</button>
