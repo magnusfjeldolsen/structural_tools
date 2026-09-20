@@ -209,11 +209,49 @@ export function startApp() {
     host.innerHTML = buildReportHtml(state, state.result);
   }
 
+  /**
+   * FOKUS SKAL INN I RAPPORTEN, OG BLI DER.
+   *
+   * MAALT foer dette: overlegget legger seg over hele sida, men fokus blir
+   * liggende igjen bak det. Seks tab-trykk gikk gjennom skjemaet UNDER
+   * overlegget foer «Print / PDF» kom -- og fortsetter man, vandrer man ut av
+   * overlegget igjen og videre gjennom resten av sida, som man verken ser eller
+   * kan bruke. (`Escape` lukket derimot allerede; den virket.)
+   *
+   * Dette er ikke bare et tastaturhensyn. `aria-modal` i markupen er det som
+   * faar en skjermleser til aa slutte aa lese sida bak -- uten den finnes hele
+   * skjemaet fortsatt, usynlig og uklikkbart, men fullt lesbart.
+   *
+   * INGEN `tabindex` (forbudt i modulen, `tests/form-structure.test.mjs`):
+   * fella er en lytter som SNUR ved endene, ikke en omskriving av tab-ringen.
+   * Lytteren henges paa ÉN gang, ved oppstart, og overlever at innholdet
+   * bygges paa nytt -- den sitter paa overlegget, ikke paa knappene i det.
+   */
+  function focusableInReport(overlay) {
+    return [...overlay.querySelectorAll('button, [href], input, select, textarea, summary')]
+      .filter((el) => !el.disabled && el.offsetParent !== null);
+  }
+
+  function trapReportFocus(overlay) {
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab' || overlay.hidden) return;
+      const items = focusableInReport(overlay);
+      if (!items.length) return;
+      const edge = e.shiftKey ? items[0] : items[items.length - 1];
+      if (document.activeElement !== edge) return;
+      e.preventDefault();
+      (e.shiftKey ? items[items.length - 1] : items[0]).focus();
+    });
+  }
+
   function openReport() {
     const overlay = document.getElementById('report-overlay');
     if (!overlay) return;
     fillReport();
     overlay.hidden = false;
+    // Foerst NAA finnes innholdet, og da kan fokus settes i det.
+    const first = focusableInReport(overlay)[0];
+    if (first) first.focus();
   }
 
   function closeReport() {
@@ -222,6 +260,8 @@ export function startApp() {
   }
 
   function setupReport() {
+    const overlayEl = document.getElementById('report-overlay');
+    if (overlayEl) trapReportFocus(overlayEl);
     const close = document.getElementById('report-close');
     if (close) close.onclick = closeReport;
     const print = document.getElementById('report-print');

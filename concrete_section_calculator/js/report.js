@@ -1003,7 +1003,7 @@ function slsChapter(state, result) {
     ? 'manual override'
     : creep.source === 'derived'
       ? `EC2 Annex B: RH ${fmtNumber(sls_.RH, 0)} %, t_0 ${fmtNumber(sls_.t0, 0)} d, `
-        + `t ${fmtNumber(sls_.t_life / 365, 0)} yr, cement ${esc(sls_.cement)}, `
+        + `t ${fmtNumber(sls_.t_life, 0)} d, cement ${esc(sls_.cement)}, `
         + `h_0 ${fmtLength(creep.chain?.h0, 0)} mm`
       : esc(slsReasonText(creep.reason));
 

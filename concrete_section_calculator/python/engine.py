@@ -1171,7 +1171,39 @@ def _sls_cracked_eval(b, h, Ec, Es, rebar_zs, n_ed, m_ed):
     return eps_a, chi_y
 
 
-def _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed, cracked):
+def _sls_tension_only_eval(Es, rebar_zs, n_ed, m_ed):
+    """Toeyningsplanet naar HELE snittet er i strekk og risset.
+
+    Da baerer betongen ingenting -- all kraft staar i jernene -- og likevekten blir to
+    LINEAERE likninger i (eps_a, chi_y), uten den kubiske trykksonen `_sls_cracked_eval`
+    maa lete seg fram til:
+
+        N = E_s * [ eps_a * SUM(A_i)        + chi * SUM(A_i * z_i)   ]
+        M = E_s * [ eps_a * SUM(A_i * z_i)  + chi * SUM(A_i * z_i^2) ]
+
+    HVORFOR DEN MAA FINNES: sentrisk og eksentrisk strekk -- strekkstag, ringarmering i
+    tanker, veggskiver -- er blant de VIKTIGSTE rissviddetilfellene i EC2. Standarden har
+    dem eksplisitt: fig. 7.1(c) viser A_c,eff for et strekkstav, og k2 = 1,0 i
+    lign. 7.13 finnes nettopp for ren strekk. Motoren svarte
+    `fully_in_tension -> crack_width_ok: None` og lot dem ligge.
+
+    Returnerer `None` naar systemet er singulaert: ETT armeringslag kan bare baere
+    momentet `N * z_1`, og alt annet er en likevekt som ikke finnes. Det er en ekte
+    mangel paa loesning, ikke en numerisk sviktende rot.
+    """
+    sa = sum(a for a, _z in rebar_zs)
+    saz = sum(a * z for a, z in rebar_zs)
+    sazz = sum(a * z * z for a, z in rebar_zs)
+    det = sa * sazz - saz * saz
+    if sa <= 0.0 or abs(det) < 1e-12 * max(1.0, sa * sazz):
+        return None
+    eps_a = (n_ed * sazz - m_ed * saz) / (Es * det)
+    chi_y = (m_ed * sa - n_ed * saz) / (Es * det)
+    return eps_a, chi_y
+
+
+def _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed, cracked,
+                     tension_only=False):
     """EN formel for BEGGE tilstander (risset/urisset) og BEGGE retninger (spec §1.2's
     poeng med aa rapportere tilbake i den fysiske aksen): gitt `(eps_a, chi_y)` er
     `eps(z) = eps_a + chi_y*z` for enhver `z`, akkurat som `_layer_state` (ULS) allerede
@@ -1197,6 +1229,11 @@ def _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed, cracked)
         # (samme prinsipp som `_neutral_axis` for ULS, `engine.py`-hodet §5.4).
         z_na = None
         x = h if eps_a < 0.0 else 0.0
+    elif tension_only:
+        # Nullpunktet ligger UTENFOR snittet (begge kanter i strekk). `z_na` staar
+        # likevel som det matematiske punktet det er; `x` er null.
+        z_na = -eps_a / chi_y
+        x = 0.0
     else:
         z_na = -eps_a / chi_y
         x = min(max(_depth(z_na, h, theta_equiv), 0.0), h)
@@ -1225,7 +1262,11 @@ def _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed, cracked)
     # trykkspenning, og `0` er det aerlige svaret. Foer dette stod det en STREKKspenning
     # paa +1,851 MPa merket «compression face» og proevd mot trykkgrensa med `abs()` --
     # altsaa et tall med feil fortegn i en kontroll det ikke hoerte hjemme i.
-    if cracked:
+    if tension_only:
+        # Hele snittet er i strekk og risset: det FINNES ingen trykksone, og ingen
+        # trykkspenning. `x = 0` er ikke en degenerasjon her, det er svaret.
+        sigma_c = 0.0
+    elif cracked:
         sigma_c = Ec * (eps_a + chi_y * comp_face_z)
     else:
         sigma_c = min(Ec * (eps_a + chi_y * (h / 2.0)),
@@ -1253,6 +1294,8 @@ def _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, eps_a, chi_y, m_ed, cracked)
     return {
         'x': x, 'z_na': z_na, 'eps_a': eps_a, 'chi_y': chi_y, 'sigma_c': sigma_c,
         'eps_1': eps_1, 'eps_2': eps_2, 'sigma_s_max': sigma_s_max, 'layers': layers,
+        # Rissviddekjeden maa vite det: uten trykksone gjelder ikke `(h-x)/3`.
+        'tension_only': bool(tension_only),
     }
 
 
@@ -1273,7 +1316,18 @@ def _sls_row_state(b, h, Ec, Es, rebar, rebar_zs, n_ed, m_ed, cracked, fck, fyk,
         solved = _sls_cracked_eval(b, h, Ec, Es, rebar_zs, n_ed, m_ed)
         if solved is None:
             if sig_top_u > 0.0 and sig_bot_u > 0.0:
-                return None, 'fully_in_tension'
+                # BEGGE KANTENE I STREKK. Trykksonen `_sls_cracked_eval` leter etter
+                # finnes ikke, men snittet HAR en likevekt -- den staar bare helt i
+                # jernene. Se `_sls_tension_only_eval`.
+                pure = _sls_tension_only_eval(Es, rebar_zs, n_ed, m_ed)
+                if pure is None:
+                    return None, 'fully_in_tension'
+                state = _sls_build_state(b, h, Ec, Es, rebar, rebar_zs, pure[0], pure[1],
+                                          m_ed, cracked, tension_only=True)
+                abs_sigmas_t = [abs(l['sigma']) for l in state['layers'] if l['sigma'] is not None]
+                if (max(abs_sigmas_t) if abs_sigmas_t else 0.0) > fyk:
+                    return None, 'stresses_outside_elastic_range'
+                return state, None
             return None, 'no_equilibrium_cracked'
         eps_a, chi_y = solved
 
@@ -1366,11 +1420,17 @@ def _sls_crack(rebar, state, b, h, m_ed, alpha_e_val, f_ct_eff, Es):
 
     d, _as_tension = _weighted_depth(tension, h, theta_equiv)
 
+    # EC2 7.3.2(3) gir TRE kandidater, og `(h-x)/3` er den ene av dem som forutsetter
+    # at det FINNES en trykksone -- den er utledet for en bjelke med boeyning. For et
+    # snitt helt i strekk er `x = 0`, og `(h-0)/3 = h/3` er da ikke en fysisk
+    # begrunnet hoeyde, bare det formelen tilfeldigvis gir. Standarden sier for et
+    # strekkstag `min(2.5(h-d), h/2)` -- fig. 7.1(c) -- og det er de to som staar igjen.
     candidates = {
         '2.5(h-d)': 2.5 * (h - d),
-        '(h-x)/3': (h - x) / 3.0,
         'h/2': h / 2.0,
     }
+    if not state.get('tension_only'):
+        candidates['(h-x)/3'] = (h - x) / 3.0
     governing = min(candidates, key=candidates.get)
     h_c_eff = candidates[governing]
     a_c_eff = b * h_c_eff
@@ -1630,6 +1690,10 @@ def _sls_row(combo, rebar, b, h, Ecm, Ec_eff, Es, fck, fyk, alpha_e_val, f_ct_ef
             'sigma_c': _num(state['sigma_c']),
             'eps_1': _num(state['eps_1']), 'eps_2': _num(state['eps_2']),
             'sigma_s_max': _num(state['sigma_s_max']),
+            # Hele snittet i strekk: ingen trykksone, `x = 0` og `sigma_c = 0` er
+            # SVARET og ikke en degenerasjon. Feltet staar i svaret slik at rapporten
+            # og skjermen kan si hvorfor, i stedet for aa la leseren lure paa det.
+            'tension_only': bool(state.get('tension_only')),
             'layers': state['layers'],
         },
         'state_reason': state_reason,
