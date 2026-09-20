@@ -483,17 +483,46 @@
             <div class="pt-1.5 text-[13px] leading-tight"><span id="sls-wmax" class="num text-slate-200"></span>
               <span id="sls-wmax-src" class="text-[11px] text-slate-500"></span></div></div>
         </div>
+        <!-- KRYPET LIGGER I DEN FOLDEN SOM ALLEREDE FANTES, ikke i en ny.
+             Fire felt til på førstesida ville vært fire spørsmål før man har
+             stilt det første. Her koster de ett klikk, og bare for den som
+             faktisk har en bruksgrenserad å regne. φ og h₀ står som AVLEDEDE
+             tall over feltene som lager dem, slik w_max står over sine. -->
         <details id="adv-sls" class="border-t border-slate-700/70">
           <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
             <span class="text-slate-500">&#9656;</span><span>Advanced &mdash; creep and stress limits</span>
             <span id="adv-sls-summary" class="text-[11px] text-slate-500 num ml-auto"></span>
           </summary>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 px-3 pb-3">
-            <label><span class="field-label">&#966;<sub>ef</sub> &mdash; effective creep</span><input id="i-phi-ef" type="text" inputmode="decimal"></label>
-            <label><span class="field-label">w<sub>max</sub> override [mm]</span><input id="i-wmax" type="text" inputmode="decimal" placeholder="from class"></label>
-            <label><span class="field-label">k<sub>1</sub> &#963;<sub>c</sub>/f<sub>ck</sub> char</span><input id="i-sls-k1" type="text" inputmode="decimal"></label>
-            <label><span class="field-label">k<sub>3</sub> &#963;<sub>s</sub>/f<sub>yk</sub> char</span><input id="i-sls-k3" type="text" inputmode="decimal"></label>
-            <label><span class="field-label">k<sub>2</sub> &#963;<sub>c</sub>/f<sub>ck</sub> qp</span><input id="i-sls-k2" type="text" inputmode="decimal"></label>
+
+          <div class="px-3 pb-3">
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1 mt-1">Creep &mdash; EC2 Annex B
+              <button type="button" class="hint" data-hint="creep" aria-expanded="false" aria-label="About the creep coefficient">?</button></div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <label><span class="field-label">RH &mdash; relative humidity [%]</span><input id="i-rh" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">t<sub>0</sub> &mdash; age at loading [days]</span><input id="i-t0" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">t &mdash; service life [years]</span><input id="i-tlife" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">Cement class</span><select id="i-cement"></select></label>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+              <div><span class="field-label">h<sub>0</sub> = 2A<sub>c</sub>/u [mm]</span>
+                <div class="pt-1.5 text-[13px] leading-tight"><span id="sls-h0" class="num text-slate-200"></span>
+                  <span id="sls-h0-src" class="text-[11px] text-slate-500"></span></div></div>
+              <label><span class="field-label">h<sub>0</sub> override [mm]</span><input id="i-h0" type="text" inputmode="decimal" placeholder="from geometry"></label>
+              <div><span class="field-label">&#966;(t, t<sub>0</sub>)</span>
+                <div class="pt-1.5 text-[13px] leading-tight"><span id="sls-phi" class="num text-slate-200"></span>
+                  <span id="sls-phi-src" class="text-[11px] text-slate-500"></span></div></div>
+              <label><span class="field-label">&#966;<sub>ef</sub> override</span><input id="i-phi-ef" type="text" inputmode="decimal" placeholder="derived"></label>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-700/70 px-3 pb-3 pt-2">
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Limits &mdash; EC2 7.2 / 7.3</div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <label><span class="field-label">w<sub>max</sub> override [mm]</span><input id="i-wmax" type="text" inputmode="decimal" placeholder="from class"></label>
+              <label><span class="field-label">k<sub>1</sub> &#963;<sub>c</sub>/f<sub>ck</sub> char</span><input id="i-sls-k1" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">k<sub>3</sub> &#963;<sub>s</sub>/f<sub>yk</sub> char</span><input id="i-sls-k3" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">k<sub>2</sub> &#963;<sub>c</sub>/f<sub>ck</sub> qp</span><input id="i-sls-k2" type="text" inputmode="decimal"></label>
+            </div>
           </div>
         </details>
       </div>

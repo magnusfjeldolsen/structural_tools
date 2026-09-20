@@ -64,8 +64,9 @@
  * går derfor gjennom `invalidate()`, uten unntak.
  */
 
-import { BAR_DIAMETERS, CONCRETE_GRADES, CONCRETE_LAWS, EXPOSURE_CLASSES, STEEL_GRADES, STEEL_LAWS,
-  derivedMaterials, matchConcreteGrade, matchSteelGrade, slsLimits } from './materials.js';
+import { BAR_DIAMETERS, CEMENT_CLASSES, CONCRETE_GRADES, CONCRETE_LAWS, EXPOSURE_CLASSES,
+  STEEL_GRADES, STEEL_LAWS, derivedMaterials, matchConcreteGrade, matchSteelGrade,
+  notionalSize, resolveCreep, slsLimits } from './materials.js';
 import { bindNumericInput, evaluate } from './numeric-input.js';
 import { aswPerSpacing, hasSlsCombo, layerArea, layerBarCount, layerDepth, recomputeAutoDc,
   stackedDc, suggestedDc, totalArea, totalAswPerSpacing } from './rebar.js';
@@ -186,6 +187,18 @@ export const HINTS = {
     + 'longitudinal bars sit inside, so changing it moves every layer whose d<sub>c</sub> is '
     + 'derived. With several rows the largest diameter governs the cover — the conservative '
     + 'reading, since the bar nearest the surface is the one that decides.',
+
+  // Kryptallet er den ene SLS-inndataen som ikke er et VALG, men en
+  // beregning — med fire inndata ingen husker utenat. Teksten sier hvilken vei
+  // hver av dem drar, for det er det man trenger når man justerer.
+  creep:
+    'The creep coefficient is derived from EC2 Annex B: relative humidity, the age of the '
+    + 'concrete when the load is applied, the service life, the cement class, and the notional '
+    + 'size h<sub>0</sub> = 2A<sub>c</sub>/u from the geometry. Drier air, earlier loading and a '
+    + 'thinner member all increase it. Creep enters the quasi-permanent rows only, through '
+    + 'E<sub>c,eff</sub> = E<sub>cm</sub>/(1 + φ<sub>ef</sub>): it lowers the neutral axis, '
+    + 'raises the steel stress and widens the crack. Enter your own φ<sub>ef</sub> to override '
+    + 'the derivation — a project specification often fixes it.',
 
   // Bruksgrenseboksen har ingen brødtekst i det hele tatt — hele forklaringen
   // av hva klassen gjør, og hva den IKKE gjør, står her. Poenget den må bære:
@@ -1435,24 +1448,46 @@ export function createUI(deps) {
        verdi som ikke gir mening (negativ `φ_ef`, en klasse som ikke finnes).
        Feltene KASTER resultatet som alle andre — en endret rissviddegrense er
        like mye en ny beregning som en endret `f_ck`. */
-    bindField('#i-phi-ef', (s) => s.sls.phi_ef, (v) => store.patch('sls', { phi_ef: v }), { min: 0 });
-    // `w_max`-overstyringen er det ENESTE SLS-feltet som kan stå TOMT, og det
-    // tomme er et ekte valg: «bruk klassens verdi». `bindField` legger tilbake
-    // den gjeldende verdien når uttrykket ikke kan leses — derfor kan ikke det
-    // tomme feltet gå gjennom den, og lytteren er skrevet ut her.
-    const wmaxEl = $('#i-wmax');
-    if (wmaxEl) {
-      wmaxEl.addEventListener('input', () => {
-        const raw = wmaxEl.value.trim();
+    // Krypinndataene (EC2 tillegg B). Levetiden SKRIVES i år og LAGRES i døgn:
+    // tillegg B regner i døgn, brukeren tenker i år. Omregningen står to steder
+    // og bare to — her inn, og i `syncSlsBox` ut.
+    bindField('#i-rh', (s) => s.sls.RH, (v) => store.patch('sls', { RH: v }), { min: 1, max: 99 });
+    bindField('#i-t0', (s) => s.sls.t0, (v) => store.patch('sls', { t0: v }), { min: 0.5 });
+    bindField('#i-tlife', (s) => s.sls.t_life / 365,
+      (v) => store.patch('sls', { t_life: v * 365 }), { min: 0.01 });
+
+    // TRE felt kan stå TOMME, og det tomme er et ekte valg hos alle tre:
+    // «bruk den avledede verdien». `bindField` legger tilbake den gjeldende
+    // verdien når uttrykket ikke kan leses, og ville dermed gjort dem umulige
+    // å tømme. Derfor én egen liten binder, og ikke tre håndskrevne lyttere:
+    // regelen er den samme, og da skal den stå ett sted.
+    const optional = (sel, key) => {
+      const el = $(sel);
+      if (!el) return;
+      el.addEventListener('input', () => {
+        const raw = el.value.trim();
         if (raw === '') {
-          store.patch('sls', { w_max_override: null });
-          invalidate();
-          render();
-          return;
+          store.patch('sls', { [key]: null });
+        } else {
+          const v = evaluate(raw);
+          if (v === null || !(v > 0)) return;
+          store.patch('sls', { [key]: v });
         }
-        const v = evaluate(raw);
-        if (v === null || !(v > 0)) return;
-        store.patch('sls', { w_max_override: v });
+        invalidate();
+        render();
+      });
+    };
+    optional('#i-phi-ef', 'phi_ef');
+    optional('#i-h0', 'h0_override');
+    optional('#i-wmax', 'w_max_override');
+
+    const cemSel = $('#i-cement');
+    if (cemSel) {
+      // `<option>`-ene fylles ÉN gang — samme felle som de andre nedtrekkene.
+      cemSel.innerHTML = CEMENT_CLASSES
+        .map((c) => `<option value="${esc(c.value)}">${esc(c.label)}</option>`).join('');
+      cemSel.addEventListener('change', () => {
+        store.patch('sls', { cement: cemSel.value });
         invalidate();
         render();
       });
@@ -1650,7 +1685,13 @@ export function createUI(deps) {
       el.value = value === null || value === undefined ? '' : fmtNumber(value, decimals);
     };
     put('#i-phi-ef', s.sls.phi_ef, 2);
+    put('#i-h0', s.sls.h0_override, 0);
     put('#i-wmax', s.sls.w_max_override, 2);
+    put('#i-rh', s.sls.RH, 0);
+    put('#i-t0', s.sls.t0, 0);
+    put('#i-tlife', s.sls.t_life / 365, 0);
+    const cemSel = $('#i-cement');
+    if (cemSel && cemSel !== document.activeElement) cemSel.value = s.sls.cement;
     put('#i-sls-k1', s.sls.sigma_c_char_factor, 2);
     put('#i-sls-k2', s.sls.sigma_c_qp_factor, 2);
     put('#i-sls-k3', s.sls.sigma_s_char_factor, 2);
@@ -1674,12 +1715,28 @@ export function createUI(deps) {
       : limits.w_max_source === 'class' ? `from ${s.sls.exposure_class}`
       : limits.w_max_reason === 'no_crack_width_limit' ? 'no recommended value for this class'
       : 'select a class, or set a value below');
+    // KRYPET. `resolveCreep` er den SAMME funksjonen `payload.js` sender
+    // tallet fra — skjermen kan derfor ikke vise ett kryptall mens motoren
+    // regner med et annet. Kilden står ved siden av, slik `w_max` gjør: et
+    // avledet tall uten opphav er et tall man ikke tør stole på.
+    const creep = resolveCreep(s);
+    const h0 = s.sls.h0_override || notionalSize(s);
+    text('#sls-h0', Number.isFinite(h0) ? fmtNumber(h0, 0) : DASH);
+    text('#sls-h0-src', s.sls.h0_override ? 'manual override'
+      : s.sectionType === 'slab' ? 'drying top and bottom' : 'all four faces');
+    text('#sls-phi', creep.phi === null ? DASH : fmtNumber(creep.phi, 2));
+    text('#sls-phi-src', creep.source === 'manual' ? 'manual override'
+      : creep.source === 'derived' ? 'EC2 Annex B'
+      : slsReasonText(creep.reason));
+
     text('#sls-summary', `${s.sls.exposure_class || 'no class'} · w_max `
       + `${limits.w_max === null ? DASH : fmtNumber(limits.w_max, 2)} mm`);
-    text('#adv-sls-summary', `φef ${fmtNumber(s.sls.phi_ef, 2)} · `
-      + `${fmtNumber(s.sls.sigma_c_char_factor, 2)}/`
-      + `${fmtNumber(s.sls.sigma_c_qp_factor, 2)}/`
-      + `${fmtNumber(s.sls.sigma_s_char_factor, 2)}`);
+    // Sammendraget bak den lukkede folden sier KRYPET og hva det kom av —
+    // ikke de tre 7.2-faktorene, som nesten aldri endres. Én linje har plass
+    // til det som faktisk varierer.
+    text('#adv-sls-summary', `φ ${creep.phi === null ? DASH : fmtNumber(creep.phi, 2)}`
+      + `${creep.source === 'manual' ? ' (manual)' : ''} · RH ${fmtNumber(s.sls.RH, 0)} % · `
+      + `t₀ ${fmtNumber(s.sls.t0, 0)} d · ${fmtNumber(s.sls.t_life / 365, 0)} yr`);
   }
 
   /* ---------------------------------------------------------------- *

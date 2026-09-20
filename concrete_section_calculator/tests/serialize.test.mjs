@@ -294,14 +294,19 @@ test('rundtur gjennom fil: bjelken overlever lagring mens PLATA er den aktive', 
  * ===========================================================================
  */
 
-test('fil uten sls: standardverdien (§5) — ingen klasse, phi_ef 2,0, de tre 7.2-faktorene', () => {
+test('fil uten sls: standardverdien (§5) — ingen klasse, phi_ef utledet, de tre 7.2-faktorene', () => {
   const doc = toDocument(defaultState());
   delete doc.state.sls;
   const { state, notes } = fromDocument(doc);
   assert.deepEqual(state.sls, {
     exposure_class: null,
     w_max_override: null,
-    phi_ef: 2.0,
+    phi_ef: null,
+    h0_override: null,
+    RH: 50,
+    t0: 28,
+    t_life: 50 * 365,
+    cement: 'N',
     sigma_c_char_factor: 0.6,
     sigma_c_qp_factor: 0.45,
     sigma_s_char_factor: 0.8,
@@ -314,8 +319,15 @@ test('fil med DELVIS sls-objekt: manglende felt fylles fra standarden, IKKE unde
   doc.state.sls = { exposure_class: 'XC3' };
   const { state } = fromDocument(doc);
   assert.equal(state.sls.exposure_class, 'XC3', 'den lagrede verdien overlever');
-  assert.equal(state.sls.phi_ef, 2.0, 'manglende phi_ef fylles fra standarden, IKKE undefined');
+  // MIGRERINGEN: en fil LAGRET DA `phi_ef` VAR ET FAST TALL bærer `phi_ef: 2.0`,
+  // og den skal fortsatt gi nøyaktig samme svar. Den leses derfor som en
+  // OVERSTYRING på 2,0 — ikke som en verdi som skal erstattes av utledningen.
+  // En fil UTEN `sls` i det hele tatt har aldri hatt et kryptall, og får
+  // utledningen.
+  assert.equal(state.sls.phi_ef, null, 'uten et lagret phi_ef skal det utledes');
   assert.ok(state.sls.phi_ef !== undefined);
+  assert.equal(state.sls.RH, 50, 'krypinndataene fylles fra standarden');
+  assert.equal(state.sls.cement, 'N');
 });
 
 // MERK: `fromDocument` selv validerer IKKE `exposure_class` — den bare

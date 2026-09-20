@@ -889,12 +889,21 @@ test('en ugyldig kombinasjonstype faller til uls i ENHVER dør', () => {
  * ===========================================================================
  */
 
-test('SLS-1 — standardtilstanden: ingen klasse, phi_ef 2,0, de tre 7.2-faktorene (§5)', () => {
+test('SLS-1 — standardtilstanden: ingen klasse, phi_ef UTLEDES, de tre 7.2-faktorene (§5)', () => {
   const store = createStore();
   const sls = store.getState().sls;
   assert.equal(sls.exposure_class, null, 'vi finner ALDRI på en klasse');
   assert.equal(sls.w_max_override, null);
-  assert.equal(sls.phi_ef, 2.0);
+  // `phi_ef: null` betyr UTLED, ikke «mangler». Tallet kommer av
+  // krypinndataene under (EC2 tillegg B) gjennom `resolveCreep`. Den gamle
+  // faste 2,0 var et gjettet tall, og målt for standardbjelken ligger det
+  // under det EC2 gir (2,35) — altså på usikker side.
+  assert.equal(sls.phi_ef, null, 'phi_ef skal utledes som standard, ikke være et fast tall');
+  assert.equal(sls.h0_override, null);
+  assert.equal(sls.RH, 50);
+  assert.equal(sls.t0, 28);
+  assert.equal(sls.t_life, 50 * 365, 'levetiden er i DØGN, som resten av tillegg B');
+  assert.equal(sls.cement, 'N');
   assert.equal(sls.sigma_c_char_factor, 0.6);
   assert.equal(sls.sigma_c_qp_factor, 0.45);
   assert.equal(sls.sigma_s_char_factor, 0.8);
@@ -912,11 +921,19 @@ test('SLS-3 — createStore: gyldig exposure_class overlever håndhevingen', () 
 
 test('SLS-4 — setState: samme håndheving som konstruktørdøra (§5 — «samme steder som enforceComboTypes»)', () => {
   const store = createStore();
-  store.setState({ sls: { exposure_class: 'ikke-en-klasse', w_max_override: -1, phi_ef: -5 } });
+  store.setState({ sls: { exposure_class: 'ikke-en-klasse', w_max_override: -1, phi_ef: -5,
+    RH: 0, t0: -3, cement: 'X' } });
   const sls = store.getState().sls;
   assert.equal(sls.exposure_class, null);
   assert.equal(sls.w_max_override, null, 'negativ override ⇒ bruk den avledede grensa');
-  assert.equal(sls.phi_ef, 2.0, 'negativ phi_ef er ikke et lovlig kryptall');
+  assert.equal(sls.phi_ef, null, 'negativ phi_ef er ikke en lovlig overstyring — den faller til UTLEDNING');
+  // Krypinndataene legges derimot tilbake til standarden, og det er et annet
+  // valg med en annen grunn: `resolveCreep` skal ALDRI møte noe den må avvise.
+  // En RH på 0 eller en negativ belastningsalder er ikke et tomt felt, det er
+  // et ugyldig tall, og da er standarden det eneste ærlige svaret.
+  assert.equal(sls.RH, 50, 'RH = 0 er ikke en lovlig fuktighet');
+  assert.equal(sls.t0, 28, 'negativ belastningsalder finnes ikke');
+  assert.equal(sls.cement, 'N', 'ukjent sementklasse faller til N');
 });
 
 test('SLS-5 — patch("sls", …): w_max_override som en STRENG (ikke et tall > 0) ⇒ null', () => {
@@ -950,6 +967,6 @@ test('SLS-9 — cloneState: en dupliserende operasjon deler IKKE sls-objektet ve
   const store = createStore();
   const before = store.getState().sls;
   store.patch('sls', { phi_ef: 1.5 });
-  assert.equal(before.phi_ef, 2.0, 'det GAMLE objektet skal stå urørt — cloneState kopierte, mutasjonen skrev ikke gjennom');
+  assert.equal(before.phi_ef, null, 'det GAMLE objektet skal stå urørt — cloneState kopierte, mutasjonen skrev ikke gjennom');
   assert.equal(store.getState().sls.phi_ef, 1.5);
 });
