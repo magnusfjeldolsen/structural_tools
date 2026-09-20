@@ -263,6 +263,10 @@ export const ENGINE_CODES = Object.freeze([
    * §1.7): «klausulen gjelder ikke denne tilstanden» er ikke et avvik, og en
    * gul trekant på den ville lært brukeren å overse gule trekanter. */
   'bending_capacity_exceeded',
+  // Kapasiteten peker motsatt vei av lasten (runde 11). Egen kode og ikke en variant
+  // av `bending_capacity_exceeded`, fordi det er en ANNEN påstand: der sier vi «for
+  // lite», her sier vi «ingenting i det hele tatt, i den retningen».
+  'capacity_opposite_direction',
   'm_rd_below_m_cr',
   // MÅLT, IKKE ANTATT: motoren i denne grenen sender sprøbruddet under navnet
   // `brittle_failure_risk` (`engine.py:1379`), ikke `m_rd_below_m_cr` som
@@ -401,6 +405,13 @@ export const CODE_MESSAGES = Object.freeze({
     'The design moment exceeds the bending resistance for at least one load ' +
     'combination: M_Ed > M_Rd(N_Ed). The section does not carry the applied moment. ' +
     'Everything else in this report describes a section that would already have failed.',
+  capacity_opposite_direction:
+    'The load acts in one direction while the computed resistance acts in the other: a ' +
+    'sagging moment against a hogging resistance, or the reverse. The section has no ' +
+    'bending resistance in the direction of this load — the tension face has no ' +
+    'reinforcement. This happens with axial tension on a section reinforced on one face ' +
+    'only. The utilisation shown for that combination compares two numbers that point ' +
+    'opposite ways and does not mean what it looks like.',
   m_rd_below_m_cr: M_RD_BELOW_M_CR_MESSAGE,
   /**
    * PROVISORISK ALIAS. Motoren i denne grenen sender koden som

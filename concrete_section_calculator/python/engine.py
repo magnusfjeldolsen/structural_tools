@@ -991,6 +991,10 @@ def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
         'N_Ed': _num(n_ed), 'M_Ed': _num(m_ed), 'theta': _num(theta_c),
         'V_Ed': _num(v_ed), 'shear': shear,
         'M_Rd': _num(m_rd_signed), 'utilisation': _num(_utilisation(m_ed, m_rd_signed)),
+        # Se `_capacity_opposes_load`. Flagget staar paa raden og ikke bare i
+        # `utilisation`, fordi `utilisation = None` alene ikke kan skilles fra «kunne
+        # ikke regnes» -- og de to skal foere til hver sin dom.
+        'capacity_opposes_load': _capacity_opposes_load(m_rd_signed, theta_c),
         'x': _num(x), 'x_over_d': _num(x / d_eff) if (x is not None and d_eff) else None,
         'eps_a': _num(eps_a), 'chi_y': _num(chi_y),
         'eps_c_top': _num(eps_edge), 'eps_s_max': _num(eps_s_max),
@@ -1846,11 +1850,54 @@ def _error(code, message, detail=''):
     }
 
 
+def _capacity_opposes_load(m_rd, theta):
+    """Peker kapasiteten MOTSATT VEI av den retningen lasten virker i?
+
+    `calculate_bending_strength(theta, n)` kan for et USYMMETRISK armert snitt med
+    aksialkraft gi et moment med motsatt fortegn av det `theta` ber om. Snittet har da
+    INGEN kapasitet i lastens retning -- tallet som kommer tilbake er kapasiteten den
+    andre veien, og den er irrelevant for lasten som staar paa.
+
+    MAALT foer denne vakten, referansebjelken 300x600 med 3O20 i UNDERKANT og
+    aksialstrekk N = +300 kN, stoettemoment (theta = pi):
+
+        M_Ed = +70 kNm  ->  M_Rd = -70,51 kNm,  eta = 0,993,  bending_ok TRUE,
+                            all_ok TRUE,  ADVARSLER: INGEN
+
+    En groenn rapport for et snitt uten kapasitet i lastens retning. Uavhengig bevis:
+    M-N-omhyllingen har ikke ETT eneste positivt moment ved N = +300 kN, saa straalen fra
+    origo mot (+300, +70) krysser den aldri. Terskelen er ~30 kN aksialstrekk; SYMMETRISKE
+    snitt rammes aldri, usymmetriske rammes ved strekk og naer `n_min`. Trykkgrenen fanges
+    i praksis av `brittle_ok`; strekkgrenen gav ingenting.
+
+    SAMMENLIKNINGEN GAAR MOT `theta`, IKKE MOT FORTEGNET PAA `M_Ed`.
+
+    Det var det foerste forsoeket, og det gav FALSKE POSITIVER paa den gamle
+    payload-formen, der `M_Ed` er en STOERRELSE og retningen staar i `theta`:
+    `test_engine.py:746` og fixturene bruker den formen, og `M_Ed: +150e6` med
+    `theta: 0.0` betyr der feltmoment. `theta` er derimot det
+    `calculate_bending_strength` FAKTISK ble kalt med, i begge former, og dermed den
+    eneste entydige kilden til hvilken vei lasten virker.
+
+    Feltmoment (theta = 0) skal gi NEGATIV kapasitet, stoettemoment (theta = pi) positiv
+    -- `structuralcodes` sin egen konvensjon. Null er ikke en retning; en kapasitet paa
+    null haandteres av kalleren.
+    """
+    if not m_rd:
+        return False
+    return (m_rd > 0) != _is_hogging(theta)
+
+
 def _utilisation(m_ed, m_rd):
     """Alltid den VERTIKALE utnyttelsen, M_Ed/M_Rd(N_Ed), i alle tre analysene.
 
     Radiell λ er et sekundært lastvei-tall og regnes i `charts.js`. Samme snitt og samme
     last skal aldri kunne vise to ulike η i to faner.
+
+    Utnyttelsen staar UROERT naar kapasiteten peker motsatt vei: `abs/abs` er fortsatt
+    det formelen gir, og raden baerer `capacity_opposes_load` ved siden av. Det er
+    FLAGGET som feller dommen, ikke et manglende tall -- en `None` her ville ikke
+    kunnet skilles fra «kunne ikke regnes», og de to skal foere til hver sin dom.
     """
     if not m_ed:
         return 0.0
@@ -2190,7 +2237,25 @@ def _run_inner(payload, progress, t0):
                     if c['within_limits'] and c['flexure_solved'] and c['checked']]
     over_utilised = [c for c in bending_rows
                       if c['utilisation'] is not None and c['utilisation'] > 1.0]
-    if over_utilised:
+    # Kapasiteten peker motsatt vei av lasten -- snittet baerer ikke i det hele tatt i
+    # den retningen. Det er et BRUDD, ikke en ubesvart kontroll, og skal derfor gi
+    # `False` og ikke `None`: «kan ikke gaa god for» ville vaert for mildt for et snitt
+    # der kapasiteten i lastens retning er null.
+    opposed = [c for c in bending_rows if c.get('capacity_opposes_load')]
+    if opposed:
+        bending_ok = False
+        worst = opposed[0]
+        warnings_out.append(_warning(
+            'capacity_opposite_direction',
+            f'Load combination "{worst["id"]}" acts in one direction while the computed '
+            f'resistance acts in the other: M_Ed = {worst["M_Ed"] / 1e6:.1f} kNm against '
+            f'M_Rd = {worst["M_Rd"] / 1e6:.1f} kNm. The section has no bending resistance '
+            'in the direction of this load — add reinforcement on the tension face.',
+            ', '.join(f'{c["id"]}: M_Ed={c["M_Ed"]}, M_Rd={c["M_Rd"]}, N_Ed={c["N_Ed"]}'
+                      for c in opposed),
+            severity='error',
+        ))
+    elif over_utilised:
         bending_ok = False
     elif not bending_rows:
         bending_ok = None
@@ -2277,7 +2342,12 @@ def _run_inner(payload, progress, t0):
             'reduce the reinforcement.',
             f'eps_s_max={eps_s_max} < eps_yd={eps_yd}',
         ))
-    if bending_ok is False:
+    # `over_utilised` og IKKE `bending_ok is False`. De to var det samme helt til
+    # `capacity_opposes_load` kom til: den setter ogsaa `bending_ok = False`, men har
+    # sin EGEN advarsel (`capacity_opposite_direction`) og ingen utnyttelse aa rangere
+    # etter -- `max()` over en tom liste kastet. Betingelsen skal spoerre om det den
+    # faktisk handler om.
+    if over_utilised:
         # ÉN advarsel som navngir den verste raden, ikke én per rad. `axial_out_of_range`
         # legger én per kombinasjon fordi hver av dem har sin egen grunn til å ligge
         # utenfor; her er grunnen den samme for alle, og en liste med ti like meldinger
