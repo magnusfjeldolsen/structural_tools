@@ -30,6 +30,9 @@ import {
   EXPOSURE_CLASSES,
   slsLimits,
   SLS_DEFAULTS,
+  CEMENT_CLASSES,
+  creepCoefficient,
+  notionalSize,
 } from '../js/materials.js';
 
 const fixture = (name) =>
@@ -312,4 +315,138 @@ test('SLS-F2 — SLS_DEFAULTS er den ENE kilden til de fire standardverdiene', (
     sigma_s_char_factor: 0.8,
   });
   assert.ok(Object.isFrozen(SLS_DEFAULTS), 'standardene skal ikke kunne endres av en kaller');
+});
+
+/* ================================================================== *
+ * KRYPTALLET — EC2 tillegg B, mot `structuralcodes` sitt eget orakel
+ *
+ * `creepCoefficient()` er skrevet ut for hånd i JS fordi φ må vises LEVENDE
+ * mens brukeren skriver (se hodekommentaren i materials.js). Prisen for det
+ * er at vi eier formlene — og denne testen er det som betales med: 120
+ * punkter regnet av `structuralcodes` selv i CPython, frosset som fixtur, og
+ * prøvd her i hvert eneste ledd av kjeden, ikke bare på svaret.
+ *
+ * Feiler den, har enten en formel her råtnet eller pakka endret seg. Begge
+ * deler skal stoppe en commit.
+ * ================================================================== */
+
+const CREEP = JSON.parse(
+  readFileSync(fileURLToPath(new URL('./fixtures/creep-ec2-annexb.json', import.meta.url)), 'utf8')
+);
+
+test('kryp: hele tillegg B-kjeden treffer structuralcodes i alle 120 punktene', () => {
+  const col = Object.fromEntries(CREEP.columns.map((c, i) => [c, i]));
+  assert.ok(CREEP.cases.length >= 100, `bare ${CREEP.cases.length} punkter — fixturen har krympet`);
+
+  let worst = { rel: 0, where: null };
+  for (const row of CREEP.cases) {
+    const input = {
+      fck: row[col.fck], h0: row[col.h0], RH: row[col.RH],
+      t0: row[col.t0], t: row[col.t], cement: row[col.cement],
+    };
+    const got = creepCoefficient(input);
+    const label = `fck ${input.fck}, h0 ${input.h0}, RH ${input.RH}, `
+      + `t0 ${input.t0}, t ${input.t}, ${input.cement}`;
+
+    // t = t0 er den ene raden der fixturen har phi = 0. Den er en ekte kant i
+    // matematikken, men et ULOVLIG inndatapunkt hos oss — vi avviser den med
+    // en grunn i stedet for å levere en kryplos beregning som ser gyldig ut.
+    if (input.t <= input.t0) {
+      assert.equal(got.phi, null, `${label}: t = t0 skal avvises, ikke gi phi = 0`);
+      assert.equal(got.reason, 'creep_life_not_after_loading');
+      continue;
+    }
+
+    assert.equal(got.reason, null, `${label}: avvist, men skulle regnet`);
+    for (const key of ['phi_RH', 'beta_t0', 'phi_0', 'beta_H', 'beta_c', 'phi']) {
+      const want = row[col[key]];
+      const rel = Math.abs(got[key] - want) / Math.max(1e-12, Math.abs(want));
+      if (rel > worst.rel) worst = { rel, where: `${key} @ ${label}` };
+      assert.ok(
+        rel <= 1e-12,
+        `${label}: ${key} = ${got[key]} mot orakelets ${want} (rel ${rel.toExponential(2)})`
+      );
+    }
+  }
+  // Ikke en påstand, en opplysning: står den på 0, er kjeden bit-identisk.
+  assert.ok(worst.rel <= 1e-12, `største relative avvik ${worst.rel} ved ${worst.where}`);
+});
+
+test('kryp: hver ugyldig inndata får SIN EGEN grunn, aldri et tall', () => {
+  const ok = { fck: 30, h0: 250, RH: 65, t0: 28, t: 18250, cement: 'N' };
+  assert.ok(creepCoefficient(ok).phi > 0);
+
+  const cases = [
+    [{ ...ok, fck: 0 }, 'creep_invalid_fck'],
+    [{ ...ok, h0: -1 }, 'creep_invalid_h0'],
+    [{ ...ok, RH: 0 }, 'creep_invalid_rh'],
+    // RH = 100 %: (1 − RH/100) blir null, og betong under vann kryper etter
+    // en annen modell enn tillegg B. Avvist, ikke regnet.
+    [{ ...ok, RH: 100 }, 'creep_invalid_rh'],
+    [{ ...ok, t0: 0 }, 'creep_invalid_t0'],
+    [{ ...ok, t: 28 }, 'creep_life_not_after_loading'],
+    [{ ...ok, t: 27 }, 'creep_life_not_after_loading'],
+    [{ ...ok, cement: 'X' }, 'creep_invalid_cement'],
+    [{ ...ok, RH: null }, 'creep_invalid_rh'],
+    [{ ...ok, t0: 'tull' }, 'creep_invalid_t0'],
+  ];
+  for (const [input, reason] of cases) {
+    const got = creepCoefficient(input);
+    assert.equal(got.phi, null, `${reason}: ga et tall i stedet for null`);
+    assert.equal(got.reason, reason);
+  }
+});
+
+test('kryp: sementklassen flytter BARE t0_adj', () => {
+  // EC2 (B.9): eksponenten treffer den justerte alderen og ingenting annet.
+  // Står dette fast, kan en framtidig endring i klasselista ikke lekke inn i
+  // resten av kjeden uten at denne testen sier fra.
+  const base = { fck: 30, h0: 250, RH: 65, t0: 28, t: 18250 };
+  const [S, N, R] = ['S', 'N', 'R'].map((c) => creepCoefficient({ ...base, cement: c }));
+  for (const key of ['fcm', 'phi_RH', 'beta_fcm', 'beta_H', 'alpha_1', 'alpha_2', 'alpha_3']) {
+    assert.equal(S[key], N[key], `${key} endret seg med sementklassen`);
+    assert.equal(R[key], N[key], `${key} endret seg med sementklassen`);
+  }
+  assert.ok(S.t0_adj < N.t0_adj, 'langsom sement gir LAVERE effektiv alder');
+  assert.ok(R.t0_adj > N.t0_adj, 'rask sement gir HØYERE effektiv alder');
+  assert.ok(S.phi > N.phi && N.phi > R.phi, 'og dermed synkende kryp S → N → R');
+  assert.equal(CEMENT_CLASSES.length, 3);
+});
+
+test('kryp: h0 avledes av geometrien, og plata gir h0 = h', () => {
+  // h0 = 2A_c/u. For en plate per meter tørker bare over og under, altså
+  // u = 2·1000, som gir h0 = h EKSAKT — den vanlige forenklingen, her som en
+  // konsekvens av regelen og ikke som et eget unntak.
+  assert.equal(notionalSize({ sectionType: 'slab', geometry: { b: 1000, h: 200 } }), 200);
+  // Plata er alltid 1000 bred, så bredden skal ikke kunne flytte h0.
+  assert.equal(notionalSize({ sectionType: 'slab', geometry: { b: 300, h: 200 } }), 200);
+
+  // Bjelke 300×600: 2·300·600 / (2·(300+600)) = 200 mm.
+  assert.equal(notionalSize({ sectionType: 'beam', geometry: { b: 300, h: 600 } }), 200);
+  // En bred, lav bjelke nærmer seg plata: 1000×200 → 2·200000/2400 = 166,67.
+  assert.ok(Math.abs(notionalSize({ sectionType: 'beam', geometry: { b: 1000, h: 200 } })
+    - 1000 * 200 / 1200) < 1e-9);
+
+  for (const bad of [{}, { geometry: {} }, { geometry: { b: 300, h: 0 } },
+    { sectionType: 'beam', geometry: { b: 0, h: 600 } }]) {
+    assert.ok(Number.isNaN(notionalSize(bad)), 'ugyldig geometri skal gi NaN, ikke 0');
+  }
+});
+
+test('kryp: standardsnittene gir tallene vi faktisk forventer', () => {
+  // Ikke en formeltest — en RIMELIGHETSTEST, og den eneste som ville fanget at
+  // hele kjeden var riktig implementert men matet med feil enhet (døgn mot år).
+  const beam = creepCoefficient({
+    fck: 30, h0: notionalSize({ sectionType: 'beam', geometry: { b: 300, h: 600 } }),
+    RH: 50, t0: 28, t: 50 * 365, cement: 'N',
+  });
+  assert.ok(beam.phi > 2.3 && beam.phi < 2.4,
+    `bjelke 300×600 innendørs, lastet ved 28 døgn, 50 år: phi = ${beam.phi}`);
+
+  // Ute (RH 80) kryper mindre; tidlig lastet kryper mer. Retningene er det som
+  // låses her, ikke tallene.
+  const outdoor = creepCoefficient({ fck: 30, h0: 200, RH: 80, t0: 28, t: 50 * 365, cement: 'N' });
+  const early = creepCoefficient({ fck: 30, h0: 200, RH: 50, t0: 7, t: 50 * 365, cement: 'N' });
+  assert.ok(outdoor.phi < beam.phi, 'ute skal krype mindre enn inne');
+  assert.ok(early.phi > beam.phi, 'tidlig lastet skal krype mer');
 });
