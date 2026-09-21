@@ -481,6 +481,51 @@ Steg 2 og 9 er VÅRE fra og med runde 10 (§3.1), med pakken som test-orakel.
 Formene over er skrevet ut her fordi de nå er vårt ansvar, og fordi
 grenvalgene i §3.3 ikke kan rapporteres uten dem.
 
+**Kjeden kjøres PER KANT, ikke én gang for hele snittet. NYTT I RUNDE 12.**
+Steg 1–5, 8 og 12–17 leses av DEN ENE kantens egen sone; bare `α_e`, `k_t`,
+`f_ct,eff`, `k1`, `k3`, `k4` og `ε_r`/`k2` (steg 6, 7, 10, 11) er
+snittstørrelser som er felles. `w_k` er MAKSIMUM over kantene.
+
+En kant er en betongoverflate med `ε > 0` i tøyningsplanet — for et bøyd snitt
+er det nøyaktig én (trykkanten har `ε ≤ 0` og faller ut av seg selv), for et
+strekkstag er det to. Til hver kant hører de strekklagene som er NÆRMEST den
+(på eksakt halv høyde velges kanten `state.tens_face_z` alt har pekt ut), og:
+
+```
+d_kant  = arealvektet avstand fra KANTEN til tyngdepunktet av DENS egne strekklag
+h_c,ef  = min( 2,5·d_kant , (h−x)/3 når det finnes en trykksone , h/2 )
+```
+
+`2,5(h−d)` i 7.3.2(3) er altså `2,5·d_kant`, og `d` som rapporteres er fortsatt
+målt fra den MOTSATTE overflaten (`d = h − d_kant`), slik at `2,5(h−d)` og
+orakelet `cc.hc_eff(h, d, x)` står uendret.
+
+**Hvorfor:** EN 1992-1-1 fig. 7.1 deltegning (c) viser strekkstaven med TO
+effektive soner, én mot hver overflate, og `(h−d)` er avstanden fra DEN
+overflaten sonen ligger mot til tyngdepunktet av armeringen som hører til DEN
+sonen. `h/2` i kandidatlista er ANTI-OVERLAPPSTAKET for nettopp det tilfellet —
+to soner à `h/2` møtes eksakt på halv høyde — ikke en påstand om at en
+strekkstavs sone er halve snittet. Mekanisk: `A_c,eff` er betongen heften rekker
+ut i fra stengene nær den overflaten risset måles på; et jern 300 mm inne i
+snittet kan ikke holde igjen et overflateriss.
+
+**Målt** (sveip over 3 888 strekkstag/veggskiver, 1 536 med rissvidde både før
+og etter): 1 476 av dem har armering ved begge kanter, og før fikk bare ÉN av
+de to overflatene et svar. I 32,2 % av tilfellene var det gamle svaret FOR
+LAVT — ned til 0,3448× den riktige verdien. Verst i `far`-grenen (79,2 % for
+lave), der `s_r,max = 1,3(h−x)` ikke avhenger av `ρ_p,eff` og bare den senkende
+virkningen av en fortynnet `ρ_p,eff` står igjen. Regelen var dessuten
+DISKONTINUERLIG: et lag flyttet 2 mm gjennom halv høyde hoppet `w_k` med faktor
+1,4158 (målt, `A_s,eff` 1 472,6 → 2 415,1 mm²); kantvis er største nabosprang
+over ±10 mm 1,0011.
+
+**Ren bøyning er per definisjon uberørt** — med strekkarmering ved bare én kant
+er kantens lagsett HELE strekksettet og `d_kant = h − d`. Verifisert bit for bit
+mot koden før endringen på 41 bøyningssnitt × 32 størrelser: 0 avvik.
+`2,5(h−d) > h` — en effektiv sone dypere enn hele snittet — kan da heller ikke
+lenger oppstå: målt 0 av 3 012 kanter i sveipet, mot at det var normaltilstanden
+for et strekkstag før.
+
 Steg 8: er den største strekkspenningen blant lagene i `A_c,eff` ikke positiv,
 finnes ingen strekkarmering å regne rissvidde på i sonen. `crack` er `null` med
 grunnen `no_tensile_stress_in_effective_area`, og lign. 7.9 kalles ikke — hverken
@@ -650,6 +695,17 @@ Grunnkoder, alle med treverdig oppførsel:
 | `no_tensile_stress_in_effective_area` | lag finnes i `A_c,eff`, men ingen har `σ_s > 0` (§3.2 steg 8) |
 | `no_bar_spacing` | ingen av lagene i `A_c,eff` har en senteravstand (§3.4) |
 
+**En kant som ikke kan regnes gjør HELE rissvidden ubesvart. NYTT I RUNDE 12.**
+Gir én av kantene `no_bonded_bars_in_effective_area`, `no_bar_spacing` eller
+`no_tensile_stress_in_effective_area`, er `crack` `null` med DEN grunnen — også
+når den andre kanten kunne regnes. Svaret er «største rissvidde over
+overflatene», og det kan ikke gis når bare den ene er kjent; den andre kanten
+skal ikke stille bli «svaret». Med armering ved bare én kant er dette ordrett
+den oppførselen tabellen over alltid har beskrevet. `no_tension_reinforcement`
+gjelder fortsatt snittet, ikke en kant. En strekkant uten et eneste jern nærmest
+seg får `no_bonded_bars_in_effective_area` — overflaten risser, men 7.3.4 har
+ingen heftende armering å regne med der.
+
 Radene i tabellen over er UTTØMMENDE for `crack = null`: er `crack_reason`
 ingen av dem, er `crack` et fylt objekt. De tre kodene `fully_in_tension`,
 `no_equilibrium_cracked` og `stresses_outside_elastic_range` er samtidig
@@ -777,11 +833,17 @@ result.sls = {
       'sigma_s_ok_reason': str | None,    # 'sigma_s_limit_characteristic_only' der
   } | None,
   'crack': {                              # None når 'crack_reason' er satt
-      'd': float, 'x': float,
+      # ALLE feltene fram til 'edges' er DEN STYRENDE KANTENS — kanten med størst
+      # w_k. Ingen av dem er fjernet eller omdefinert i runde 12: for et bøyd
+      # snitt, som har én kant, er de bit for bit de samme tallene som før.
+      'd': float,                         # målt fra den MOTSATTE overflaten
+      'd_edge': float,                    # = h - d, avstand fra KANTENS overflate
+      'x': float,
       'h_c_eff': float,
       'h_c_eff_candidates': {'2.5(h-d)': float, '(h-x)/3': float, 'h/2': float},
       'h_c_eff_governing': '2.5(h-d)' | '(h-x)/3' | 'h/2',
       'A_c_eff': float, 'A_s_eff': float, 'layers_in_zone': [str, ...],
+      'layers_at_face': [str, ...],       # strekklagene som HØRER TIL kanten
       'rho_p_eff': float, 'alpha_e': float, 'k_t': float, 'f_ct_eff': float,
       'sigma_s': float, 'sigma_s_layer': str,
       'eps_sm_eps_cm': float, 'eps_equation': float, 'eps_floor': float,
@@ -791,13 +853,42 @@ result.sls = {
       'c': float, 'phi_eq': float, 'bar_spacing': float, 'spacing_threshold': float,
       'sr_max_close': float, 'sr_max_far': float,
       'sr_max': float, 'sr_max_branch': 'close' | 'far',
-      'w_k': float, 'w_max': float | None,
+      'w_k': float,                       # = max(edges[*].w_k)
+      # BEGGE kantene står, ikke bare den styrende: leseren må kunne se hvilken
+      # overflate som ble målt og hva den andre gav (§3.2).
+      'governing_edge': 'bottom' | 'top',
+      'governing_edge_face_z': float,
+      'edges': [ {                        # 1 for bøyning, 2 for et strekkstag
+          'face': 'bottom' | 'top', 'face_z': float,
+          'd_edge': float, 'd': float, 'x': float,
+          'h_c_eff': float, 'h_c_eff_candidates': {...}, 'h_c_eff_governing': str,
+          'A_c_eff': float, 'A_s_eff': float,
+          'layers_in_zone': [str, ...], 'layers_at_face': [str, ...],
+          'rho_p_eff': float, 'alpha_e': float, 'k_t': float, 'f_ct_eff': float,
+          'sigma_s': float, 'sigma_s_layer': str,
+          'eps_sm_eps_cm': float, 'eps_equation': float, 'eps_floor': float,
+          'eps_governing': str,
+          'eps_1': float, 'eps_2': float, 'eps_r': float,   # snittets, ikke kantens
+          'k1': float, 'k2': float, 'k3': float, 'k4': float,
+          'c': float, 'phi_eq': float,
+          'bar_spacing': float, 'spacing_threshold': float,
+          'sr_max_close': float, 'sr_max_far': float,
+          'sr_max': float, 'sr_max_branch': str, 'w_k': float,
+      }, ... ],
+      'w_max': float | None,
       'utilisation': float | None, 'ok': True|False|None,
       'ok_reason': str | None,            # satt NÅR 'ok' er None, se §3.5
   } | None,
   'crack_reason': str | None,
 }
 ```
+
+`d_edge`, `layers_at_face`, `governing_edge`, `governing_edge_face_z` og
+`edges` er nye i runde 12 og er RENT ADDITIVE — ingen eksisterende nøkkel er
+fjernet eller har byttet betydning, slik at `results.js` og `report.js` leser
+akkurat som før uten å endres. `eps_1`, `eps_2`, `eps_r` og `k2` står i hver
+kant selv om de er snittstørrelser: en kantrad man må lese en annen rad for å
+forstå, er ikke en etterprøvbar rad.
 
 `h_c_eff_candidates`, `h_c_eff_governing`, `eps_equation`, `eps_floor` og
 `eps_governing` er lovlige felter fra og med runde 10 FORDI §3.1 flyttet de to
