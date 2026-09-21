@@ -27,6 +27,8 @@
  * brukeren har ingen måte å oppdage at det skjedde.
  */
 
+import { ENGINE_DIR, ENTRY_MODULE, PYTHON_MODULES } from '../js/python-manifest.js';
+
 const PYODIDE_VERSION = '314.0.7';
 const PYODIDE_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 
@@ -37,12 +39,19 @@ const SC_WHEEL_URL = new URL(
   '../vendor/structuralcodes-0.7.2-py3-none-any.whl',
   import.meta.url,
 ).href;
-const ENGINE_URL = new URL('../python/engine.py', import.meta.url).href;
-const STUBS_URL = new URL('../python/wasm_stubs.py', import.meta.url).href;
-
-// Der Python-fila legges i Pyodides virtuelle filsystem. Egen mappe framfor site-packages
-// fordi motoren da kan byttes uten å røre pakkeinstallasjonen.
-const ENGINE_DIR = '/csc';
+// HVILKE Python-filer motoren består av, står i `js/python-manifest.js` og INGEN
+// ANDRE STEDER. `tests/wasm-verify.mjs` gjør nøyaktig den samme lastingen for å
+// bevise at den virker i en ekte Pyodide, og hadde sin egen kopi av lista — to
+// beskrivelser av den samme motoren, hvorav bare den ene blir rettet når noe
+// endrer seg. Verifiseringen ville da sagt «motoren laster» om en motor
+// brukeren ikke får.
+//
+// Rekkefølgen i lista er en SEKVENS: stubbene må ligge der før `engine.py`
+// importerer `structuralcodes`.
+const PYTHON_URLS = PYTHON_MODULES.map((name) => ({
+  name,
+  url: new URL(`../python/${name}`, import.meta.url).href,
+}));
 
 /* ------------------------------------------------------------------ *
  * Meldinger ut
@@ -162,13 +171,15 @@ async function initialise(msgId) {
 
   progress(msgId, 'engine', 82, { message: 'Starter beregningsmotoren …' });
   try {
-    const [stubsSource, engineSource] = await Promise.all([
-      fetchCounted(STUBS_URL, 'text'),
-      fetchCounted(ENGINE_URL, 'text'),
-    ]);
+    // Hentes PARALLELT, skrives i LISTAS REKKEFØLGE. Hentingen er nettverk og
+    // har ingen rekkefølge å bryte; skrivingen har det (se manifestet).
+    const sources = await Promise.all(
+      PYTHON_URLS.map(({ url }) => fetchCounted(url, 'text'))
+    );
     pyodide.FS.mkdirTree(ENGINE_DIR);
-    pyodide.FS.writeFile(`${ENGINE_DIR}/wasm_stubs.py`, stubsSource);
-    pyodide.FS.writeFile(`${ENGINE_DIR}/engine.py`, engineSource);
+    PYTHON_URLS.forEach(({ name }, i) => {
+      pyodide.FS.writeFile(`${ENGINE_DIR}/${name}`, sources[i]);
+    });
 
     // Ingen bakoverfnutter i denne Python-kilden: den ligger i et template literal, og
     // en bakoverfnutt i en kommentar ville avsluttet strengen midt i koden.
@@ -181,12 +192,12 @@ sys.path.insert(0, ${JSON.stringify(ENGINE_DIR)})
 import wasm_stubs
 wasm_stubs.install_stubs()
 
-import engine
-engine.structuralcodes.__version__
+import ${ENTRY_MODULE}
+${ENTRY_MODULE}.structuralcodes.__version__
 `);
     // Hentes som ett uttrykk framfor `globals.get('engine').run_json`: da finnes det bare
     // én proxy å holde styr på, og den lever like lenge som worker-en.
-    runJson = pyodide.runPython('engine.run_json');
+    runJson = pyodide.runPython(`${ENTRY_MODULE}.run_json`);
   } catch (error) {
     throw Object.assign(new Error('engine'), { code: 'engine_load_failed', cause: error });
   }
