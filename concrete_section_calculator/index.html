@@ -645,6 +645,25 @@
             <div class="pt-1.5 text-[13px] leading-tight"><span id="sls-wmax" class="num text-slate-200"></span>
               <span id="sls-wmax-src" class="text-[11px] text-slate-500"></span></div></div>
         </div>
+        <!-- STADIUM II: SYNLIG, IKKE BAK «ADVANCED».
+             Man leter etter denne haken nøyaktig i det øyeblikket rissvidden
+             mangler og man lurer på hvorfor — altså når man er forvirret. Å
+             legge svaret bak en fold ville gjentatt akkurat det problemet.
+
+             Den står under w_max og ikke ved siden av, fordi den ikke er en
+             VERDI som de to over: den er en forutsetning for hele beregningen,
+             og en avkrysning i en kolonne med to tallfelt leses som et tredje
+             tall. -->
+        <div class="px-3 pb-3 -mt-1">
+          <label class="flex items-start gap-2 text-[12px] text-slate-300 cursor-pointer">
+            <input type="checkbox" id="i-assume-cracked" class="mt-0.5 shrink-0">
+            <span>Assume cracked (state II)
+              <button type="button" class="hint" data-hint="sls-assume-cracked" aria-expanded="false"
+                      aria-label="About assuming a cracked section">?</button>
+              <span class="block text-[11px] text-slate-500">Compute w<sub>k</sub> even when the quasi-permanent load stays below the cracking moment.</span>
+            </span>
+          </label>
+        </div>
         <!-- KRYPET LIGGER I DEN FOLDEN SOM ALLEREDE FANTES, ikke i en ny.
              Fire felt til på førstesida ville vært fire spørsmål før man har
              stilt det første. Her koster de ett klikk, og bare for den som

@@ -215,6 +215,16 @@ export const HINTS = {
     + 'Serviceability is only assessed for load combinations marked characteristic or '
     + 'quasi-permanent: stresses for the first, stresses and crack width for the second.',
 
+  // Haken er den ENE inngangen brukeren har til en forutsetning i stedet for en
+  // verdi, og teksten må derfor si både hva den gjør OG når man vil ha den.
+  'sls-assume-cracked':
+    'Normally the crack width is only computed when the quasi-permanent load takes the '
+    + 'section past its cracking moment. Tick this to compute w<sub>k</sub> as if the '
+    + 'section were cracked (state II) even when it is not — the case for cracking from '
+    + 'shrinkage, restraint or temperature, none of which M<sub>Ed</sub> carries. The '
+    + 'assumption is conservative, and the result is labelled as assumed so it is never '
+    + 'read as the computed state.',
+
   // De tre siste sto som `<p>` nederst i hver sin avdekkingsboks, altså bak et
   // klikk allerede — men de gjorde boksen lengre hver eneste gang den var åpen.
   'material-factors':
@@ -1610,6 +1620,18 @@ export function createUI(deps) {
     bindField('#i-sls-k3', (s) => s.sls.sigma_s_char_factor,
       (v) => store.patch('sls', { sigma_s_char_factor: v }), { min: 0.0001 });
 
+    const assume = $('#i-assume-cracked');
+    if (assume) {
+      // KASTER resultatet, i motsetning til `setResultView`. Dette er en
+      // FORUTSETNING for beregningen, ikke en visning av den: motoren må løse
+      // snittet i stadium II på nytt. Se `invalidate()` for doktrinen.
+      assume.addEventListener('change', () => {
+        store.patch('sls', { assume_cracked: assume.checked });
+        invalidate();
+        render();
+      });
+    }
+
     const expSel = $('#i-exposure');
     if (expSel) {
       // `<option>`-ene fylles ÉN gang, aldri i `render()` — samme felle som
@@ -1867,6 +1889,10 @@ export function createUI(deps) {
       if (!el || el === document.activeElement) return;
       el.value = value === null || value === undefined ? '' : fmtInput(value, decimals);
     };
+    const assumeBox = $('#i-assume-cracked');
+    if (assumeBox && assumeBox !== document.activeElement) {
+      assumeBox.checked = Boolean(s.sls.assume_cracked);
+    }
     put('#i-wmax', s.sls.w_max_override, 2);
     markOverride('#i-wmax', s.sls.w_max_override);
     put('#i-sls-k1', s.sls.sigma_c_char_factor, 2);

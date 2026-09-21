@@ -89,6 +89,8 @@
     "f_ct_eff": 2.896468153816889,
     "exposure_class": "XD3",
     "cracked": true,
+    "sigma_ct_max": 6.344213917827519,
+    "cracked_assumed": false,
     "w_max": null,
     "w_max_source": null,
     "w_max_reason": "no_crack_width_limit",

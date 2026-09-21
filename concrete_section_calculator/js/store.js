@@ -186,6 +186,11 @@ export function defaultState() {
       phi_ef: null,
       h0_override: null,
       ...CREEP_DEFAULTS,
+      // STADIUM II PÅ FORESPØRSEL. Et snitt som ikke risser av lasten alene kan
+      // likevel risse — svinn, fastholding og temperatur ligger ikke i `M_Ed`.
+      // Haken lar brukeren spørre «hvilken rissvidde ville jeg fått da» uten å
+      // måtte dikte opp et større moment, som ville flyttet ALLE tallene.
+      assume_cracked: false,
       sigma_c_char_factor: SLS_DEFAULTS.sigma_c_char_factor,
       sigma_c_qp_factor: SLS_DEFAULTS.sigma_c_qp_factor,
       sigma_s_char_factor: SLS_DEFAULTS.sigma_s_char_factor,

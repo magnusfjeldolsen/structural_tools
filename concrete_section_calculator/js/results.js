@@ -315,6 +315,7 @@ export const ENGINE_CODES = Object.freeze([
    * seksjonens hodekommentar for hvorfor de to ikke skal blandes. */
   'sls_incomplete',
   'sls_crack_width_exceeded',
+  'crack_state_assumed',
   'sls_stress_limit_exceeded',
 ]);
 
@@ -528,6 +529,11 @@ export const CODE_MESSAGES = Object.freeze({
   stirrup_spacing_exceeds_max:
     'Stirrup spacing s exceeds s_l,max = 0.75·d (EC2 9.2.2(6)). Add stirrups or reduce ' +
     'the spacing.',
+  crack_state_assumed:
+    'The crack width is computed for an ASSUMED cracked section (state II). Under the ' +
+    'quasi-permanent load the section does not reach its cracking moment, so this is ' +
+    'what the crack width would be if it cracked anyway — from shrinkage or restraint, ' +
+    'which M_Ed does not carry. Untick "assume cracked" for the computed state.',
   stirrup_spacing_not_positive:
     'Stirrup spacing must be greater than zero. A row with s = 0 is not a row of ' +
     'stirrups: the engine skips it, so the section would be analysed as if it had no ' +

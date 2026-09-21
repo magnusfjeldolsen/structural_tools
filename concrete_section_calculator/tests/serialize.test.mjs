@@ -307,6 +307,7 @@ test('fil uten sls: standardverdien (§5) — ingen klasse, phi_ef utledet, de t
     t0: 28,
     t_life: 50 * 365,
     cement: 'N',
+    assume_cracked: false,
     sigma_c_char_factor: 0.6,
     sigma_c_qp_factor: 0.45,
     sigma_s_char_factor: 0.8,

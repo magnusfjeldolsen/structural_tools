@@ -64,6 +64,7 @@ const BEAM_STATE = {
     exposure_class: null,
     w_max_override: null,
     phi_ef: 2.0,
+    assume_cracked: false,
     sigma_c_char_factor: 0.6,
     sigma_c_qp_factor: 0.45,
     sigma_s_char_factor: 0.8,
@@ -104,6 +105,8 @@ const defaultSls = {
   w_max: null,
   w_max_source: null,
   w_max_reason: 'no_exposure_class',
+  // Stadium II på forespørsel: `false` er «regn tilstanden», ikke «ikke spurt».
+  assume_cracked: false,
   sigma_c_char_factor: 0.6,
   sigma_c_qp_factor: 0.45,
   sigma_s_char_factor: 0.8,

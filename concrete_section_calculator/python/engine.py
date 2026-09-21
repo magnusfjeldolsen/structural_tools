@@ -1944,7 +1944,26 @@ def _sls_row(combo, rebar, b, h, Ecm, Ec_eff, Es, fck, fyk, alpha_e_val, f_ct_ef
     }
 
 
-def _sls_checks(rows, sigma_c_char_required):
+def _uncracked_reason(sigma_ct_max, f_ct_eff):
+    """«Risser ikke» sagt med tallene som avgjorde det.
+
+    Uten dem er setningen en paastand leseren maa tro paa. Med dem kan hen selv
+    se om konklusjonen er komfortabel eller henger paa andre desimal -- og det
+    er nettopp den vurderingen som avgjoer om man vil hake av for stadium II.
+    """
+    if sigma_ct_max is None or f_ct_eff in (None, 0):
+        return 'no quasi-permanent load combination cracks the section'
+    andel = sigma_ct_max / f_ct_eff
+    return (
+        'the section does not crack: the largest tensile stress in the uncracked '
+        f'section is {sigma_ct_max:.2f} MPa against f_ct,eff = {f_ct_eff:.2f} MPa '
+        f'({andel * 100:.0f} % of the cracking limit). Tick "assume cracked '
+        '(state II)" to see the crack width the section would have if it cracked '
+        'anyway - from shrinkage or restraint, which M_Ed does not carry.'
+    )
+
+
+def _sls_checks(rows, sigma_c_char_required, sigma_ct_max=None, f_ct_eff=None):
     """Spec §4 -- hvilke `sls.checks`-noekler som GJELDER, resten i `not_applicable`.
     Bruker `_three_valued_and` per noekkel over radene den gjelder for -- en rad uten
     `stress`/`crack` (tilstanden mangler) telles som `None` og ikke som utelatt: en
@@ -1983,7 +2002,11 @@ def _sls_checks(rows, sigma_c_char_required):
 
         cracked_qp = [r for r in qp_rows if r['cracked']]
         if not cracked_qp:
-            not_applicable['crack_width_ok'] = 'no quasi-permanent load combination cracks the section'
+            # MED TALLET. «Risser ikke» er riktig, men det er ikke et svar paa
+            # spoersmaalet brukeren sitter med -- hvor langt unna er vi? Marginen
+            # avgjoer om dette er en komfortabel konklusjon eller en som henger
+            # paa andre desimal.
+            not_applicable['crack_width_ok'] = _uncracked_reason(sigma_ct_max, f_ct_eff)
         else:
             vals_w = [(r['crack']['ok'] if r['crack'] else None) for r in cracked_qp]
             checks['crack_width_ok'] = _three_valued_and(dict(enumerate(vals_w)))
@@ -2152,16 +2175,42 @@ def _compute_sls(payload, sls_cfg, combos, bundle, warnings_out):
     # E_cm i hele beslutningen: den urissede tilstanden er kortidsstivheten uansett
     # hvilken kombinasjon raden er, og en kryprelatert forskjell her ville gjort
     # rissgrensa avhengig av lastvarigheten.
-    section_cracked = False
+    # MARGINEN TAS VARE PAA, ikke bare beslutningen. Loekka regnet allerede
+    # `sigma_ct` for hver rad og kastet tallet; igjen sto en paastand uten noe
+    # bak seg. MAALT paa en plate 1000x200, XC3, M_qp = -20 kNm/m: motoren visste
+    # `sigma_ct = 0,325 MPa` mot `f_ct,eff = 2,90`, men skjermen sa bare «no
+    # quasi-permanent load combination cracks the section». Spoersmaalet
+    # brukeren sitter med -- «er vi like under rissmomentet?» -- kunne besvares
+    # av et tall motoren allerede hadde.
+    #
+    # Ingen `break`: vi vil ha den STOERSTE strekkspenningen over alle radene,
+    # ikke bare den foerste som eventuelt sprenger grensa.
+    sigma_ct_max = None
     for combo in sls_combos:
         rebar_zs_env = [(float(l['area']), _layer_z(l)) for l in rebar]
         eps_a_e, chi_e = _sls_uncracked_eval(
             b, h, ecm, es, rebar_zs_env, combo['N_Ed'], combo['M_Ed'])
         sig_top_e = ecm * (eps_a_e + chi_e * (h / 2.0))
         sig_bot_e = ecm * (eps_a_e + chi_e * (-h / 2.0))
-        if max(sig_top_e, sig_bot_e) > f_ct_eff:
-            section_cracked = True
-            break
+        worst_e = max(sig_top_e, sig_bot_e)
+        if sigma_ct_max is None or worst_e > sigma_ct_max:
+            sigma_ct_max = worst_e
+    section_cracked = sigma_ct_max is not None and sigma_ct_max > f_ct_eff
+
+    # STADIUM II PAA FORESPOERSEL. Et snitt som ikke risser av lasten alene kan
+    # likevel risse: svinn, fastholding, temperatur og lasthistorikk ligger ikke i
+    # `M_Ed`. EC2 7.3.2(2) krever dessuten minimumsarmering nettopp for det
+    # tilfellet. Brukeren skal derfor kunne spoerre «hvilken rissvidde ville jeg
+    # faatt om det risset likevel» uten aa maatte oppdikte et stoerre moment.
+    #
+    # ANTAKELSEN ER KONSERVATIV -- den paastaar riss der beregningen ikke finner
+    # det -- men den er fortsatt en ANTAKELSE, og skal aldri kunne forveksles med
+    # et regnet resultat. Derfor `cracked_assumed` i svaret og en egen advarsel:
+    # den som leser rapporten skal se at tilstanden ble valgt, ikke funnet.
+    assume_cracked = bool(sls_cfg.get('assume_cracked'))
+    cracked_assumed = bool(assume_cracked and not section_cracked)
+    if assume_cracked:
+        section_cracked = True
 
     rows = []
     for combo in sls_combos:
@@ -2177,9 +2226,29 @@ def _compute_sls(payload, sls_cfg, combos, bundle, warnings_out):
     # gjelder hele snittet (én eksponeringsklasse), og staar allerede ett sted i
     # svaret -- `sls['limits']['sigma_c_char_required']`. Et felt per rad hadde vaert
     # den samme opplysningen skrevet N + 1 ganger, og dermed N + 1 steder aa endre.
-    checks, not_applicable = _sls_checks(rows, sigma_c_char_required)
+    checks, not_applicable = _sls_checks(rows, sigma_c_char_required,
+                                        sigma_ct_max, f_ct_eff)
     sls_all_ok = _three_valued_and(checks)
     warnings_out.extend(_sls_warnings(checks, rows, sigma_c_char_required))
+
+    # ANTAKELSEN SKAL VAERE SYNLIG. En rissvidde regnet for en tilstand brukeren
+    # VALGTE ser ut nøyaktig som en regnet for en tilstand motoren FANT -- samme
+    # tall, samme enhet, samme grense. Forskjellen finnes bare i forutsetningen,
+    # og den maa derfor staa i lista som foelger tallet inn i rapporten.
+    #
+    # `info` og ikke `warning`: brukeren har gjort noe fornuftig og bevisst, og
+    # et gult merke for et valg man nettopp tok er stoy.
+    if cracked_assumed:
+        warnings_out.append(_warning(
+            'crack_state_assumed',
+            'The crack width is computed for an assumed cracked section (state II). '
+            'Under the quasi-permanent load the section does not reach its cracking '
+            f'moment: the largest tensile stress is {sigma_ct_max:.2f} MPa against '
+            f'f_ct,eff = {f_ct_eff:.2f} MPa. The result answers what the crack width '
+            'would be if the section cracked anyway.',
+            f'sigma_ct_max={sigma_ct_max}, f_ct_eff={f_ct_eff}',
+            severity='info',
+        ))
 
     return {
         'phi_ef': _num(phi_ef), 'Ecm': _num(ecm), 'Ec_eff': _num(ec_eff),
@@ -2188,6 +2257,15 @@ def _compute_sls(payload, sls_cfg, combos, bundle, warnings_out):
         # Konvoluttbeslutningen, paa toppnivaa: den gjelder snittet og ikke raden, og
         # da skal den staa der de andre snittstoerrelsene staar.
         'cracked': bool(section_cracked),
+        # Den STOERSTE strekkspenningen i det urissede snittet over alle
+        # bruksgrenseradene, ved siden av grensa den maales mot. Sammen er de to
+        # hele begrunnelsen for `cracked`, og de gjoer «risser ikke» til et svar
+        # med et tall i stedet for en paastand.
+        'sigma_ct_max': _num(sigma_ct_max),
+        # Ble tilstanden VALGT av brukeren i stedet for regnet? Bare `True` naar
+        # antakelsen faktisk endret noe -- risser snittet av seg selv, er det
+        # ingen antakelse aa opplyse om.
+        'cracked_assumed': cracked_assumed,
         'w_max': _num(w_max), 'w_max_source': w_max_source, 'w_max_reason': w_max_reason,
         'limits': {
             'sigma_c_char_factor': _num(sigma_c_char_factor),
