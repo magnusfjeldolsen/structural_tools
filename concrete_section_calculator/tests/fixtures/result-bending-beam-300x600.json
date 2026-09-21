@@ -120,7 +120,9 @@
           }
         ],
         "within_limits": true,
-        "flexure_solved": true
+        "flexure_solved": true,
+        "bending_ok": true,
+        "shear_ok": true
       }
     ],
     "governing": "C1",

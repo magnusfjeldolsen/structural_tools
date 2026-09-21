@@ -383,7 +383,9 @@
           }
         ],
         "within_limits": true,
-        "flexure_solved": true
+        "flexure_solved": true,
+        "bending_ok": true,
+        "shear_ok": true
       },
       {
         "id": "C2",
@@ -406,7 +408,9 @@
         "failure_mode": null,
         "layers": null,
         "within_limits": null,
-        "flexure_solved": false
+        "flexure_solved": false,
+        "bending_ok": null,
+        "shear_ok": true
       },
       {
         "id": "C3",
@@ -429,7 +433,9 @@
         "failure_mode": null,
         "layers": null,
         "within_limits": null,
-        "flexure_solved": false
+        "flexure_solved": false,
+        "bending_ok": null,
+        "shear_ok": true
       }
     ],
     "governing": "C1",

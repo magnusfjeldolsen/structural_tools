@@ -942,6 +942,109 @@ export function analysisBlock(result) {
   return result[result.analysis] || null;
 }
 
+/** Verdien av `state.resultView` som betyr «verste av alle kombinasjoner». */
+export const RESULT_VIEW_ENVELOPE = 'envelope';
+
+/**
+ * SEKSJON 6 SETT GJENNOM ÉN LASTKOMBINASJON I STEDET FOR GJENNOM ENVELOPEN.
+ *
+ * Seksjonen har alltid vært en envelope, og per grensetilstand hver for seg:
+ * MÅLT med tre rader der den aktive var den minste (C1 η 0,29) kom bøyningen
+ * fra C2 (η 0,92) og skjæret fra C3 (η 0,87). Det er riktig som standardsvar —
+ * det er slik man ser med én gang om snittet holder — men man må også kunne gå
+ * inn i én rad og se den alene.
+ *
+ * INGEN NY BEREGNING. Hvert toppnivåfelt i analyseblokka finnes allerede per
+ * rad: `M_Rd`, `x`, `x_over_d`, `failure_mode`, `eps_a`, `eps_c_top`,
+ * `eps_s_max`, `chi_y`, `utilisation`, `layers` og `shear`. Toppnivået ER en
+ * kopi av den dimensjonerende raden. Å bytte visning er derfor et OPPSLAG i et
+ * svar vi allerede har, ikke en ny kjøring — og derfor skal det heller aldri gå
+ * gjennom `invalidate()`: ingenting resultatet ble regnet for har endret seg.
+ *
+ * DOMMEN KOMMER FRA MOTOREN, OGSÅ PER RAD. `bending_ok`/`shear_ok` ligger på
+ * raden fordi terskelen (η ≤ 1,0 uten toleranse) og definisjonsmengden er valg
+ * med en historie i `engine.py`. Å gjenta dem her ville vært to kilder til den
+ * samme dommen.
+ *
+ * Returnerer resultatet UENDRET når visningen er envelopen, eller når raden
+ * ikke finnes — en slettet rad skal gi envelopen, ikke en tom seksjon.
+ *
+ * @param {object} result motorens svar
+ * @param {string} view `RESULT_VIEW_ENVELOPE` eller en kombinasjons-id
+ */
+export function withResultView(result, view) {
+  if (!result || !view || view === RESULT_VIEW_ENVELOPE) return result;
+  const block = analysisBlock(result);
+  if (!block || !Array.isArray(block.combinations)) return result;
+  const row = block.combinations.find((c) => c.id === view);
+  if (!row) return result;
+
+  // Feltene toppnivået har som en kopi av den dimensjonerende raden. Listet
+  // eksplisitt og ikke spredt med `...row`: raden har også felt som IKKE hører
+  // hjemme på toppnivå (`id`, `name`, `type`, `checked`, `theta`), og et
+  // toppnivå som plutselig bærer en `id` ville sett ut som noe annet enn det er.
+  const projected = { ...block, governing: row.id, shear_governing: row.id };
+  for (const key of [
+    'M_Ed', 'M_Rd', 'N_Ed', 'x', 'x_over_d', 'failure_mode',
+    'eps_a', 'eps_c_top', 'eps_s_max', 'chi_y', 'utilisation', 'layers',
+  ]) {
+    if (row[key] !== undefined) projected[key] = row[key];
+  }
+
+  const out = { ...result, [analysisKey(result)]: projected };
+  if (result.bending && result.bending === block) out.bending = projected;
+
+  // Dommen: radens egen, fra motoren. `undefined` (en eldre fixtur uten
+  // per-rad-verdikt) lar envelopens stå — bedre en dom som gjelder for mye enn
+  // ingen dom i det hele tatt.
+  out.checks = { ...(result.checks || {}) };
+  if (row.bending_ok !== undefined) out.checks.bending_ok = row.bending_ok;
+  if (row.shear_ok !== undefined) out.checks.shear_ok = row.shear_ok;
+
+  // BRUKSGRENSEN: bare raden selv, og bare hvis den ER en bruksgrenserad. En
+  // ULS-rad har ingen rissvidde, og da skal rissviddelinja være borte — ikke
+  // stå igjen med envelopens tall under et radnavn den ikke gjelder for.
+  if (result.sls && Array.isArray(result.sls.rows)) {
+    const slsRow = result.sls.rows.find((r) => r.id === view);
+    out.sls = {
+      ...result.sls,
+      rows: slsRow ? [slsRow] : [],
+      checks: slsRow ? slsRowChecks(slsRow) : {},
+    };
+  }
+  return out;
+}
+
+/** Nøkkelen analysens blokk ligger under (`bending`, `moment_curvature`, …). */
+function analysisKey(result) {
+  if (result.analysis === RUN_ALL_ANALYSIS) {
+    for (const key of [result.primary, ...RUN_ALL_BLOCK_ORDER]) {
+      if (key && result[key]) return key;
+    }
+  }
+  return result.analysis;
+}
+
+/**
+ * `sls.checks` for ÉN rad, bygget av radens EGNE `ok`-felt.
+ *
+ * Ikke utledet av tall: `crack.ok`, `stress.sigma_c_ok` og `stress.sigma_s_ok`
+ * er motorens egne treverdige svar for nettopp denne raden. Her flyttes de bare
+ * dit `slsCheckRows()` leter.
+ */
+function slsRowChecks(row) {
+  const st = row.stress || {};
+  const out = {};
+  if (st.sigma_c_ok !== undefined) {
+    out[row.type === 'quasi_permanent' ? 'sigma_c_qp_ok' : 'sigma_c_char_ok'] = st.sigma_c_ok;
+  }
+  if (st.sigma_s_ok !== undefined && row.type !== 'quasi_permanent') {
+    out.sigma_s_char_ok = st.sigma_s_ok;
+  }
+  if (row.crack && row.crack.ok !== undefined) out.crack_width_ok = row.crack.ok;
+  return out;
+}
+
 /**
  * Hovedtallet: den VERTIKALE utnyttelsen, `M_Ed / M_Rd(N_Ed)`. Identisk i alle
  * tre analysene (plan §5.2), og derfor hentet fra analysens egen blokk uten
@@ -1191,6 +1294,21 @@ export function limitStateRows(result = {}) {
   const bending = result.bending || block;
   const rows = [];
 
+  /**
+   * HVILKEN RAD GAV DETTE TALLET.
+   *
+   * Linjene ER en envelope, og per grensetilstand hver for seg. MÅLT med tre
+   * rader der den aktive var den minste (C1 η 0,29): bøyningslinja kom fra C2
+   * (η 0,92) og skjærlinja fra C3 (η 0,87) — to ulike rader, ingen av dem den
+   * aktive. Uten navnet kan leseren verken se at det er en envelope, eller
+   * hvilken kombinasjon hen skal gå tilbake til for å se nærmere på det verste.
+   */
+  const comboRef = (id) => {
+    if (id === null || id === undefined) return null;
+    const c = allCombinations(result).find((x) => x.id === id);
+    return { id, name: c?.name || id };
+  };
+
   const mRd = toNum(bending.M_Rd);
   if (mRd !== null) {
     // `M_Ed` fra den DIMENSJONERENDE raden, ikke fra blokka: blokkas eget felt er
@@ -1205,6 +1323,7 @@ export function limitStateRows(result = {}) {
       unit: 'kNm', scale: 1e6, decimals: 1,
       eta: toNum(bending.utilisation),
       ok: result.checks ? result.checks.bending_ok : null,
+      combo: comboRef(bending.governing ?? null),
     });
   }
 
@@ -1221,6 +1340,7 @@ export function limitStateRows(result = {}) {
       unit: 'kN', scale: 1e3, decimals: 1,
       eta: toNum(shear.utilisation),
       ok: result.checks ? result.checks.shear_ok : null,
+      combo: comboRef(shearGoverningCombo(result)?.id ?? null),
     });
   }
 
@@ -1243,6 +1363,7 @@ export function limitStateRows(result = {}) {
       unit: 'mm', scale: 1, decimals: 3, rightDecimals: 2,
       eta: toNum(worst.utilisation),
       ok: result.sls ? result.sls.checks?.crack_width_ok ?? null : null,
+      combo: worst.id === null ? null : { id: worst.id, name: worst.name },
     });
   }
 
@@ -1268,6 +1389,7 @@ function worstStressRow(result) {
       if (!best || u > best.eta) {
         best = {
           key: 'stress', label: 'Stress (EC2 7.2)',
+          combo: { id: row.id ?? null, name: row.name || row.id || '' },
           left: which, leftValue: Math.abs(toNum(val)),
           right: 'limit', rightValue: Math.abs(toNum(lim)),
           unit: 'MPa', scale: 1, decimals: 1, eta: u, ok,
@@ -1437,7 +1559,16 @@ export function slsHeadlineCrack(result) {
     // er MOTORENS egen -- ikke `w_k/w_max` regnet om igjen her. To steder som
     // deler samme brøk er én for mye.
     if (worst === null || wk > worst.w_k) {
-      worst = { w_k: wk, w_max: toNum(row.crack.w_max), utilisation: toNum(row.crack.utilisation) };
+      // `id`/`name` er med fordi grensetilstandslinja skal kunne si HVILKEN rad
+      // som gav den verste rissvidden. Uten det er envelopen usynlig: leseren
+      // ser ett tall og kan ikke vite at det kom fra en annen rad enn den over.
+      worst = {
+        id: row.id ?? null,
+        name: row.name || row.id || '',
+        w_k: wk,
+        w_max: toNum(row.crack.w_max),
+        utilisation: toNum(row.crack.utilisation),
+      };
     }
   }
   return worst;

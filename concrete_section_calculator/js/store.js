@@ -48,6 +48,16 @@ import { CEMENT_CLASSES, CREEP_DEFAULTS, EXPOSURE_CLASSES, SLS_DEFAULTS } from '
  */
 export const RUN_ALL = 'all';
 
+/**
+ * «Envelope» som verdi for `state.resultView`. SAMME streng som `results.js`
+ * eksporterer som `RESULT_VIEW_ENVELOPE`, skrevet av her av nøyaktig samme grunn
+ * som `RUN_ALL` er skrevet av DER: `results.js` skal bare avhenge av
+ * `materials.js`, og `store.js` skal ikke dra formateringslaget inn i
+ * tilstandslaget. Duplikatet er låst av en test som importerer begge og påstår
+ * at de er like.
+ */
+export const RESULT_VIEW = 'envelope';
+
 /*
  * Standardoverdekningen og standard bøylediameter STÅR ETT STED. `dc` for
  * standardlaget sto tidligere som `35 + 8 + 10` — en tredje kopi av de samme
@@ -126,6 +136,16 @@ export function defaultState() {
     // på skjærkraften betyr ingenting for kapasiteten (§4.1c).
     combos: [{ id: 'C1', name: 'ULS 1', type: 'uls', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
     activeCombo: 'C1',
+    // HVILKEN RAD SEKSJON 6 VISER. `'envelope'` er verste av alle
+    // kombinasjonene, per grensetilstand hver for seg — standardsvaret, fordi
+    // det er slik man ser med én gang om snittet holder. En id her viser den
+    // ene raden alene.
+    //
+    // IKKE det samme som `activeCombo`, som er raden MOTOREN regner
+    // moment–krumning for. Den må være én konkret rad (en kurve har ingen
+    // envelope) og er en del av payloaden; denne er ren visning og når aldri
+    // motoren.
+    resultView: RESULT_VIEW,
     analysis: 'bending',
     // Skjær (endringsrunde 4 §3.4). Tom `stirrups`-liste = ingen
     // skjærarmering ⇒ V_Rd,c-veien — standard for både plate og en fersk
@@ -445,6 +465,21 @@ function enforceSlabStirrups(s) {
  * Kjøres ETTER `enforceComboTypes`, som er den som gjør en ugyldig type til
  * `uls` — ellers ville navnet blitt satt etter en type som ikke overlever.
  */
+/**
+ * En visning som peker på en rad som ikke finnes, faller til envelopen.
+ *
+ * Raden kan forsvinne på tre måter: brukeren sletter den, et lastet dokument
+ * har andre id-er, eller en delt lenke er laget før raden ble til. Alle tre gir
+ * det samme riktige svaret — vis envelopen — og ingen av dem skal gi en tom
+ * seksjon 6 eller en visning låst til et navn ingen kan se.
+ */
+function enforceResultView(s) {
+  if (s.resultView === RESULT_VIEW) return s;
+  return (s.combos || []).some((c) => c.id === s.resultView)
+    ? s
+    : { ...s, resultView: RESULT_VIEW };
+}
+
 function enforceComboNames(s) {
   const combos = (s.combos || []).map((c) => (
     isAutoComboName(c.name, c.id) && c.name !== autoComboName(c.id, c.type)
@@ -583,8 +618,8 @@ function enforceActiveCombo(s) {
  * seks hver gang, og det er nettopp derfor det er trygt å gjøre det.
  */
 function normalise(s) {
-  return enforceSlsParams(enforceActiveCombo(enforceComboNames(enforceComboTypes(
-    enforceSlabStirrups(enforceSlabWidth(enforceAnalysis(s)))
+  return enforceResultView(enforceSlsParams(enforceActiveCombo(enforceComboNames(
+    enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(enforceAnalysis(s))))
   ))));
 }
 
@@ -949,6 +984,20 @@ export function createStore(initial) {
       const combos = state.combos.filter((c) => c.id !== id);
       const activeCombo = state.activeCombo === id ? combos[0].id : state.activeCombo;
       state = normalise(cloneState({ ...state, combos, activeCombo }));
+      notify();
+      return state;
+    },
+
+    /**
+     * Bytter hvilken rad seksjon 6 viser.
+     *
+     * KASTER IKKE RESULTATET, og det er hele poenget: hvert toppnivåfelt finnes
+     * allerede per rad i det svaret vi har, så dette er et oppslag og ikke en ny
+     * kjøring. `invalidate()` er forbeholdt endringer i det resultatet ble
+     * REGNET for — her er ingenting av det rørt.
+     */
+    setResultView(view) {
+      state = normalise(cloneState({ ...state, resultView: view }));
       notify();
       return state;
     },
