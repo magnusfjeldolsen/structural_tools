@@ -575,14 +575,8 @@ export function hasSlsCombo(state) {
  */
 export function createCombo(state = {}, patch = {}) {
   const id = patch.id || 'C1';
-  // Navnet settes automatisk av id-en: «C3» blir «ULS 3». En rad uten navn er
-  // ubrukelig i rapportens kombinasjonstabell og i advarslene, som navngir den
-  // dimensjonerende raden — og å kreve at brukeren finner på et navn for hver
-  // rad er nettopp den friksjonen som ikke skal finnes. Brukeren kan overskrive.
-  const nr = /^C(\d+)$/.exec(id);
   const out = {
     id,
-    name: nr ? `ULS ${nr[1]}` : '',
     type: 'uls',
     N_Ed: 0,
     M_Ed: 0,
@@ -590,7 +584,50 @@ export function createCombo(state = {}, patch = {}) {
     ...patch,
   };
   out.type = COMBO_TYPES.includes(out.type) ? out.type : 'uls';
+  // Navnet settes ETTER at typen er normalisert, og AV den — ellers ville en
+  // rad opprettet med `{type: 'quasi_permanent'}` fått «ULS 3» ved fødselen.
+  if (out.name === undefined || out.name === null) out.name = autoComboName(id, out.type);
   return out;
+}
+
+/**
+ * Hva en lastkombinasjon heter når brukeren ikke har døpt den selv.
+ *
+ * ORDET FORAN ER TYPEN, IKKE ALLTID «ULS». Navnet ble laget av id-en alene, så
+ * hver rad het «ULS n» uansett hva den var: en kvasi-permanent rad sto som
+ * «ULS 3» i tabellen, i SLS-kortet («ULS 3 Quasi-permanent») og i advarslene
+ * som navngir den dimensjonerende raden. Etiketten sa altså det motsatte av
+ * radens egen type, på det stedet leseren stoler mest på den.
+ *
+ * En rad UTEN navn er ikke et alternativ: rapportens kombinasjonstabell og
+ * advarslene peker på raden ved navn, og å kreve at brukeren finner på et navn
+ * for hver rad er nettopp den friksjonen som ikke skal finnes. Brukeren kan
+ * fortsatt overskrive — se `isAutoComboName`.
+ */
+export const COMBO_TYPE_NAMES = Object.freeze({
+  uls: 'ULS',
+  characteristic: 'Characteristic',
+  quasi_permanent: 'Quasi-permanent',
+});
+
+/** `('C3', 'quasi_permanent')` → `'Quasi-permanent 3'`. Tom streng for et id uten nummer. */
+export function autoComboName(id, type) {
+  const nr = /^C(\d+)$/.exec(String(id || ''));
+  if (!nr) return '';
+  return `${COMBO_TYPE_NAMES[type] || COMBO_TYPE_NAMES.uls} ${nr[1]}`;
+}
+
+/**
+ * Er navnet ETT modulen fant på selv, eller ett brukeren har skrevet?
+ *
+ * Spørsmålet må stilles mot ALLE typene, ikke bare mot radens nåværende: det er
+ * nettopp når typen nettopp ble endret at navnet skal følge etter. «ULS 3» på en
+ * rad som akkurat ble kvasi-permanent er et navn ingen valgte, og skal byttes.
+ * «Egenvekt + snø» er valgt, og skal stå.
+ */
+export function isAutoComboName(name, id) {
+  if (name === undefined || name === null || name === '') return true;
+  return COMBO_TYPES.some((t) => autoComboName(id, t) === name);
 }
 
 /**

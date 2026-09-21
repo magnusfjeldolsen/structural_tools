@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
   aswPerSpacing,
+  autoComboName,
+  isAutoComboName,
   barArea,
   barPositions,
   COMBO_TYPES,
@@ -750,4 +752,40 @@ test('createLayer: platas standard er Ø12 c/c 200 — bøylenes c/c 150 er et A
 
   // Og en eksplisitt senteravstand slår fortsatt gjennom.
   assert.equal(createLayer({ sectionType: 'slab' }, { spacing: 125 }).spacing, 125);
+});
+
+/* ------------- automatisk navn følger typen (runde 12) ------------- */
+
+test('autoComboName: ordet foran er TYPEN, ikke alltid «ULS»', () => {
+  // Navnet ble laget av id-en alene, så hver rad het «ULS n» uansett type. En
+  // kvasi-permanent rad sto som «ULS 3» i kombinasjonstabellen, i SLS-kortet
+  // («ULS 3 Quasi-permanent») og i advarslene som navngir den dimensjonerende
+  // raden — etiketten sa det motsatte av radens egen type.
+  assert.equal(autoComboName('C1', 'uls'), 'ULS 1');
+  assert.equal(autoComboName('C2', 'characteristic'), 'Characteristic 2');
+  assert.equal(autoComboName('C3', 'quasi_permanent'), 'Quasi-permanent 3');
+  // En ukjent type faller til ULS-ordet, som `createCombo` faller til `'uls'`.
+  assert.equal(autoComboName('C4', 'søppel'), 'ULS 4');
+  // Et id uten nummer har ingen automatikk å hente navnet fra.
+  assert.equal(autoComboName('hva-som-helst', 'uls'), '');
+});
+
+test('isAutoComboName spør mot ALLE typene, ikke bare mot radens nåværende', () => {
+  // Det er nettopp når typen NETTOPP ble endret at navnet henger igjen: «ULS 3»
+  // på en rad som akkurat ble kvasi-permanent er et navn ingen valgte.
+  assert.equal(isAutoComboName('ULS 3', 'C3'), true);
+  assert.equal(isAutoComboName('Quasi-permanent 3', 'C3'), true);
+  assert.equal(isAutoComboName('Characteristic 3', 'C3'), true);
+  assert.equal(isAutoComboName('', 'C3'), true);
+  assert.equal(isAutoComboName(undefined, 'C3'), true);
+  // …men et navn brukeren har skrevet er hens.
+  assert.equal(isAutoComboName('Egenvekt + snø', 'C3'), false);
+  // Riktig ord, feil nummer: det er ikke et automatisk navn for DENNE raden.
+  assert.equal(isAutoComboName('ULS 2', 'C3'), false);
+});
+
+test('createCombo døper etter typen den faktisk får, ikke etter «uls»', () => {
+  assert.equal(createCombo({}, { id: 'C2', type: 'quasi_permanent' }).name, 'Quasi-permanent 2');
+  // Et navn som følger med i patchen er brukerens og skal stå urørt.
+  assert.equal(createCombo({}, { id: 'C2', type: 'uls', name: 'Egenvekt' }).name, 'Egenvekt');
 });
