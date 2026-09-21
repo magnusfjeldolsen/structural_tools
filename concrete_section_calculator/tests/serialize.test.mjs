@@ -337,3 +337,34 @@ test('fil med DELVIS sls-objekt: manglende felt fylles fra standarden, IKKE unde
 // akkurat som en ugyldig `combo.type` normaliseres av `createCombo` her,
 // men en ULOVLIG `activeCombo`-plassering først rettes av `enforceActiveCombo`
 // i store.js, ikke i denne fila.
+
+/* ================================================================== *
+ * `doc_schema` — skrevet siden dag én, LEST først nå (oppgave C2)
+ * ================================================================== */
+
+test('doc_schema STØRRE enn DOCUMENT_SCHEMA: `document_schema_newer` (warning), og fila leses videre', () => {
+  const doc = { ...toDocument(defaultState()), doc_schema: DOCUMENT_SCHEMA + 1 };
+  doc.state.geometry = { b: 425, h: 875 };
+  const { state, notes } = fromDocument(doc);
+  const note = notes.find((n) => n.code === 'document_schema_newer');
+  assert.ok(note, 'noten skal finnes');
+  assert.equal(note.severity, 'warning');
+  // «Les videre» er ikke en detalj, det er hele beslutningen: flettinga er
+  // felt-for-felt mot standarden, så en nyere fil gir en GYLDIG tilstand
+  // uansett. Å nekte ville vært å kaste en fil brukeren kan bruke.
+  assert.ok(state, 'tilstanden skal være lastet, ikke forkastet');
+  assert.equal(state.geometry.b, 425);
+  assert.equal(state.geometry.h, 875);
+});
+
+test('doc_schema LIK eller LAVERE gir INGEN note — 1 er den eneste versjonen som har eksistert', () => {
+  for (const schema of [DOCUMENT_SCHEMA, 0, -3, undefined, null, 'tull', NaN]) {
+    const doc = { ...toDocument(defaultState()), doc_schema: schema };
+    const { state, notes } = fromDocument(doc);
+    assert.ok(state);
+    assert.equal(
+      notes.some((n) => n.code === 'document_schema_newer'), false,
+      `doc_schema=${String(schema)} skal ikke gi noten`
+    );
+  }
+});

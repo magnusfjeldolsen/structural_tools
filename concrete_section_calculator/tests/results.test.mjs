@@ -53,6 +53,7 @@ import {
   FAILURE_MODES,
   failureModeLabel,
   failureModeNote,
+  limitStateRows,
   CHECK_ORDER,
   CHECK_LABELS,
   checkRows,
@@ -181,10 +182,66 @@ test('run_all_partial er med, i RUNTIME_CODES, og sier hva som mangler', () => {
   assert.match(msg, /detail/i, 'leseren må få vite HVOR den ser hvilken analyse som falt ut');
 });
 
+test('HVER kode motoren emitterer har en tekst i JS — lest ut av engine.py', () => {
+  // DEN ENE KILDEN ER MOTOREN. Kodene har til nå stått i to håndholdte lister:
+  // `_warning('…')` i `engine.py` og `CODE_MESSAGES` her. Ingen test bandt dem,
+  // så en ny advarsel i motoren kunne nå brukeren som
+  //
+  //     «Unspecified message from the calculation engine (code: "…")»
+  //
+  // — teknisk sant, og fullstendig ubrukelig for den som skal avgjøre om
+  // snittet holder. Det er ikke en teoretisk fare: `sls_crack_width_exceeded`,
+  // `sls_incomplete` og `sls_stress_limit_exceeded` kom til i SLS-runden, og
+  // ingen av dem står i `ENGINE_CODES` den dag i dag. De har tekst, men det er
+  // fordi noen husket det, ikke fordi noe krevde det.
+  //
+  // Testen leser `engine.py` i stedet for å liste kodene på nytt her — en
+  // håndskrevet liste ville vært nøyaktig den tredje kilden problemet handler
+  // om.
+  const engine = readFileSync(
+    fileURLToPath(new URL('../python/engine.py', import.meta.url)), 'utf8'
+  );
+  const codes = [...new Set(
+    [...engine.matchAll(/_warning\(\s*\n?\s*'([a-z0-9_]+)'/g)].map((m) => m[1])
+  )].sort();
+  // Går regexen i stykker (blir `_warning` skrevet om), skal testen si fra om
+  // DET, ikke stille gå grønn på en tom liste.
+  assert.ok(codes.length >= 19, `fant bare ${codes.length} koder i engine.py`);
+
+  const missing = codes.filter((code) => {
+    const [d] = describeWarnings([{ code, severity: 'warning', message: '', detail: '' }]);
+    return /Unspecified message/.test(d.message);
+  });
+  assert.deepEqual(missing, [], `disse motorkodene mangler tekst i results.js: ${missing.join(', ')}`);
+});
+
+test('limitStateRows: en regnet w_k UTEN anbefalt grense staar likevel', () => {
+  // MAALT paa XD3-plata (`result-bending-slab-1000x200-combos.json`): motoren gir
+  // `w_k = 0,13886 mm` og `w_max = null`, fordi XD3 ikke har en anbefalt grense i
+  // tabellen modulen bruker. Linja gatet paa `w_max`, saa HELE rissvidden
+  // forsvant -- mens «Overall assessment» sto paa `null` uten en synlig grunn.
+  // Fire groenne linjer over en samlet vurdering ingen kunne forklare.
+  const res = fixture('result-bending-slab-1000x200-combos');
+  const crack = limitStateRows(res).find((r) => r.key === 'crack');
+  assert.ok(crack, 'rissviddelinja mangler selv om w_k er regnet');
+  assert.ok(crack.leftValue > 0, `w_k = ${crack.leftValue}`);
+  assert.equal(crack.rightValue, null, 'grensa skal vaere tom, ikke null-som-tall');
+  assert.equal(crack.ok, null, 'ubesvart, ikke bestaatt');
+
+  // Og motsatt: uten en regnet rissvidde skal linja fortsatt VAERE borte.
+  const utenSls = { ...res, sls: { ...res.sls, rows: [] } };
+  assert.equal(
+    limitStateRows(utenSls).find((r) => r.key === 'crack'),
+    undefined,
+    'uten en regnet rissvidde skal linja ikke finnes'
+  );
+});
+
 test('de nye kodene fra endringsrunde 4 er med, i riktig liste (§4.4, §4.5, §2)', () => {
   assert.ok(ENGINE_CODES.includes('shear_asl_ambiguous'));
   assert.ok(ENGINE_CODES.includes('shear_not_evaluated'));
   assert.ok(VALIDATION_CODES.includes('stirrup_spacing_exceeds_max'));
+  assert.ok(VALIDATION_CODES.includes('stirrup_spacing_not_positive'));
   assert.ok(VALIDATION_CODES.includes('asw_below_minimum'));
   assert.ok(VALIDATION_CODES.includes('stirrup_legs_spacing_exceeds_max'));
   assert.ok(VALIDATION_CODES.includes('invalid_strut_angle'));
@@ -195,6 +252,7 @@ test('de nye kodene fra endringsrunde 4 er med, i riktig liste (§4.4, §4.5, §
   // testen finnes for.
   for (const code of [
     'shear_asl_ambiguous', 'shear_not_evaluated', 'stirrup_spacing_exceeds_max',
+    'stirrup_spacing_not_positive',
     'asw_below_minimum', 'stirrup_legs_spacing_exceeds_max', 'invalid_strut_angle',
     'stirrup_alpha_unsupported', 'stirrup_mixed_fywk', 'analysis_forced_to_nm_domain',
   ]) {
@@ -726,13 +784,24 @@ test('§1.7: «None» slipper aldri gjennom til en vist melding eller detalj', (
 /* ================================================================== *
  * SLS — EC2 7.2/7.3.4 (spec §4, §6, §11) — A3-delen
  *
- * Testene her bygger `result.sls` I KODE, ikke fra en fixture: spec §0.6
- * sier fixturene regenereres BARE av koordinatoren, og A1s payloadeksempler
- * for AC11/AC12 gjør nøyaktig det samme. Tallene under er derfor SYNTETISKE
- * eksempler som følger kontrakten i spec §4 — de skal påstå at LESESIDEN
- * (`results.js`) tolker kontrakten riktig, ikke at motoren regner riktig
- * (det er A1s test_sls.py sitt ansvar).
+ * `slsCheckRows`/`slsRowUtilisation` er VELGERE: de skal plukke riktig nøkkel
+ * og den største av flere utnyttelser. Argumentene deres er derfor fortsatt
+ * små, håndskrevne objekter — tallene i dem er SKILLEMERKER (0,5 mot 0,9 mot
+ * 0,3), ikke påstander om hva motoren regner, og en fixturverdi ville gjort
+ * testene dårligere, ikke bedre.
+ *
+ * Der en test derimot påstår noe om FORMEN motoren faktisk leverer, kommer
+ * tallet fra fixturene under. Den formen er ikke lenger noe testen kan finne
+ * på selv: `payload-*-combos.json` bærer en `sls`-blokk med begge SLS-typene,
+ * og `docs/fixture-generator.py` kjører motoren på dem.
  * ================================================================== */
+
+const BEAM_COMBOS = fixture('result-bending-beam-300x600-combos');
+/** Plata kjøres med XD3, som EC2 ikke anbefaler noen rissviddegrense for —
+ *  derfor er det HER AC14-formen (`crack` fylt, `w_max: null`) finnes uten at
+ *  noen må dikte den opp. */
+const SLAB_COMBOS = fixture('result-bending-slab-1000x200-combos');
+const slsRow = (result, type) => result.sls.rows.find((r) => r.type === type);
 
 test('SLS: hver kode motoren kan emittere PÅ ett rad-felt har en engelsk tekst (spec §3.5/§11)', () => {
   // Speiler '§1.7: de seks nye kodene ...' over, for den ANDRE tabellen.
@@ -822,6 +891,32 @@ test('slsCheckRows: not_applicable skiller seg fra null (spec §4, §10)', () =>
   assert.equal(rows.length, 4, 'nøyaktig fire mulige nøkler, ingen oppdiktet');
 });
 
+/**
+ * ANKERET: de tre velgerne over kjørt mot MOTORENS EGNE `sls`-blokker, ikke
+ * mot et objekt testen har satt sammen. De to fixturene dekker hver sin gren
+ * av `not_applicable`/`null`:
+ *
+ *   bjelken (XC3): `sigma_c_char_ok` er IKKE-GJELDENDE — EC2 7.2(2) stiller
+ *     bare σ_c-grensen for XD/XF/XS, så nøkkelen ligger i `not_applicable`.
+ *   plata (XD3):   `crack_width_ok` er UBESVART — klassen har ingen anbefalt
+ *     w_max, så dommen kan ikke felles, og `null` er ikke det samme som «ok».
+ *
+ * De to skal aldri kunne bytte plass, og det var nettopp den forskjellen
+ * ingen håndskrevet `sls`-blokk her kunne bevise.
+ */
+test('slsCheckRows mot motorens egne sls-blokker: ikke-gjeldende og ubesvart er to ulike ting', () => {
+  const beam = slsCheckRows(BEAM_COMBOS.sls);
+  const beamSigmaC = beam.find((r) => r.key === 'sigma_c_char_ok');
+  assert.equal(beamSigmaC.applicable, false, 'XC3 krever ikke σ_c-grensen');
+  assert.equal(beamSigmaC.text, '', 'ikke-gjeldende har ingen hake/kryss/strek');
+  assert.ok(beamSigmaC.reason.length > 0, 'og den skal ha en grunn i klartekst');
+
+  const slabCrack = slsCheckRows(SLAB_COMBOS.sls).find((r) => r.key === 'crack_width_ok');
+  assert.equal(slabCrack.applicable, true, 'XD3 SKAL rissviddesjekkes — den mangler bare grensen');
+  assert.equal(slabCrack.ok, null);
+  assert.equal(slabCrack.text, DASH, 'ubesvart er en tankestrek, ikke en tom celle');
+});
+
 test('slsCheckRows: en nøkkel som verken er i checks eller not_applicable, uteblir', () => {
   const rows = slsCheckRows({ checks: { sigma_s_char_ok: true }, not_applicable: {} });
   assert.deepEqual(rows.map((r) => r.key), ['sigma_s_char_ok']);
@@ -883,18 +978,24 @@ test('slsRowUtilisation teller IKKE en grense som ikke gjelder (K5)', () => {
  * regnet, står det ingenting» (spec §6.2).
  */
 test('slsHeadlineCrack: verste w_k blant radene, null uten en eneste', () => {
+  // De to rissviddene er MOTORENS: plata (XD3) og bjelken (XC3), begge
+  // kvasi-permanente. Bjelken er den største, så den skal vinne — og det er
+  // dens w_max som følger med, ikke platas.
+  const SLAB_WK = slsRow(SLAB_COMBOS, 'quasi_permanent').crack.w_k;
+  const BEAM_CRACK = slsRow(BEAM_COMBOS, 'quasi_permanent').crack;
+  assert.ok(BEAM_CRACK.w_k > SLAB_WK, 'forutsetningen for denne testen');
   const result = {
     sls: {
       rows: [
         { id: 'C1', crack: null, crack_reason: 'uncracked' },
-        { id: 'C2', crack: { w_k: 0.119760, w_max: 0.3 } },
-        { id: 'C3', crack: { w_k: 0.253408, w_max: 0.3 } },
+        { id: 'C2', crack: { w_k: SLAB_WK, w_max: BEAM_CRACK.w_max } },
+        { id: 'C3', crack: { w_k: BEAM_CRACK.w_k, w_max: BEAM_CRACK.w_max } },
       ],
     },
   };
   const worst = slsHeadlineCrack(result);
-  assert.equal(worst.w_k, 0.253408);
-  assert.equal(worst.w_max, 0.3);
+  assert.equal(worst.w_k, BEAM_CRACK.w_k);
+  assert.equal(worst.w_max, BEAM_CRACK.w_max);
 
   assert.equal(slsHeadlineCrack({ sls: { rows: [{ crack: null }] } }), null);
   assert.equal(slsHeadlineCrack({ sls: { rows: [] } }), null);
@@ -904,8 +1005,10 @@ test('slsHeadlineCrack: verste w_k blant radene, null uten en eneste', () => {
   // AC14 (spec §9): en rad kan ha et FYLT crack-objekt med w_max: null (ingen
   // anbefalt grense). `slsHeadlineCrack` skal fortsatt gi w_k — den leser
   // ALDRI w_max som en forutsetning for at w_k finnes.
-  const ac14 = slsHeadlineCrack({ sls: { rows: [{ crack: { w_k: 0.211429, w_max: null } }] } });
-  assert.equal(ac14.w_k, 0.211429);
+  const slabCrack = slsRow(SLAB_COMBOS, 'quasi_permanent').crack;
+  assert.equal(slabCrack.w_max, null, 'XD3 har ingen anbefalt grense — det er poenget');
+  const ac14 = slsHeadlineCrack({ sls: { rows: [{ crack: slabCrack }] } });
+  assert.equal(ac14.w_k, slabCrack.w_k);
   assert.equal(ac14.w_max, null);
 });
 
