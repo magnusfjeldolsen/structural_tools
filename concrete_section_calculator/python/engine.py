@@ -1429,56 +1429,97 @@ def _sls_layer_spacing(layer):
     return 1000.0 * math.pi * phi * phi / (4.0 * area)
 
 
-def _sls_crack(rebar, state, b, h, m_ed, alpha_e_val, f_ct_eff, Es):
-    """Spec §3.2 -- rissviddekjeden (EC2 7.3.4), i rekkefoelgen kapittelet gir. Kalles
-    BARE naar raden er `quasi_permanent` OG risset (§1.5) -- kalleren har allerede
-    filtrert det. Returnerer `(crack_dict, None)` eller `(None, reason)`.
+def _sls_edge_face_z(z, h, tie_face_z):
+    """Hvilken KANT et armeringslag hoerer til: den det er NAERMEST.
 
-    `h_c,eff` og `eps_sm - eps_cm` er VAAR EGEN kode (spec §3.1, RETTET i runde 10):
-    pakkens `ec2_2004.hc_eff`/`ec2_2004.eps_sm_eps_cm` gir bare det ENDELIGE tallet, ikke
-    kandidatene/leddene §4 krever aa rapportere, og aa regne begge veier ville gitt to
-    produsenter for samme stoerrelse uten kryssjekk. Pakken er i stedet et TEST-ORAKEL
-    (`test_engine.py`), aldri en andre produsent naar motoren kjoerer.
+    Regelen er geometrisk og har ingen fortegn aa komme i utakt med. Paa eksakt halv
+    hoeyde er avstanden lik til begge, og da faller laget til den kanten toeyningen
+    allerede har pekt ut som strekkanten (`state['tens_face_z']`) -- ett deterministisk
+    valg, ikke et tilfeldig.
     """
-    theta_equiv = _sls_theta_equiv(m_ed)
-    # STREKKANTEN LESES AV TILSTANDEN, ikke utledet paa nytt av `m_ed`. For et snitt
-    # helt i strekk er de to ikke enige (se `_sls_build_state`), og to uenige kilder til
-    # samme kant er den feilformen denne modulen har blitt bitt av i hver runde.
-    tension_face_z = state.get('tens_face_z')
-    if tension_face_z is None:
-        tension_face_z = h / 2.0 if _is_hogging(theta_equiv) else -h / 2.0
-    x = state['x']
+    d_bot = z + h / 2.0
+    d_top = h / 2.0 - z
+    if d_bot < d_top:
+        return -h / 2.0
+    if d_top < d_bot:
+        return h / 2.0
+    return tie_face_z
 
-    tension = _tension_layers(rebar, state['layers'])
-    if not tension:
-        return None, 'no_tension_reinforcement'
 
-    d, _as_tension = _weighted_depth(tension, h, theta_equiv)
+def _sls_crack_edge(rebar, state, b, h, x, face_z, own_tension, tension_ids,
+                    alpha_e_val, f_ct_eff, Es):
+    """EN kant sin egen effektive strekksone og sin egen rissvidde (EC2 7.3.4).
 
-    # EC2 7.3.2(3) gir TRE kandidater, og `(h-x)/3` er den ene av dem som forutsetter
-    # at det FINNES en trykksone -- den er utledet for en bjelke med boeyning. For et
-    # snitt helt i strekk er `x = 0`, og `(h-0)/3 = h/3` er da ikke en fysisk
-    # begrunnet hoeyde, bare det formelen tilfeldigvis gir. Standarden sier for et
-    # strekkstag `min(2.5(h-d), h/2)` -- fig. 7.1(c) -- og det er de to som staar igjen.
+    `own_tension` er strekklagene som hoerer til DENNE kanten (naermest den). Alt
+    kjeden trenger -- `d_kant`, `h_c,ef`, `A_s,eff`, `sigma_s`, `c`, `phi_eq`, `s` --
+    leses av denne kantens EGEN sone. `eps_1`/`eps_2` (og dermed `k2`) er derimot
+    snittstoerrelser: de er ytterfibertoeyningene i ETT toeyningsplan, ikke noe en
+    enkelt kant eier, og de staar derfor uendret i begge kantene.
+
+    Returnerer `(edge_dict, None)` eller `(None, reason)`.
+    """
+    if not own_tension:
+        # En strekkANT uten et eneste jern naermest seg. Overflaten risser, men
+        # 7.3.4 har ingen heftlengde aa regne med -- samme aerlige grunnkode som naar
+        # jernene finnes, men ligger utenfor sonen.
+        return None, 'no_bonded_bars_in_effective_area'
+
+    # `d_kant` REGNES IKKE MED EN NY FORMEL. `_weighted_depth` er modulens ene
+    # definisjon av «arealvektet tyngdepunktsdybde», og den maaler fra trykkanten --
+    # altsaa fra den MOTSATTE overflaten av den vi staar paa. `theta` velges deretter:
+    # staar vi paa underkanten (`face_z < 0`), er overkanten den motsatte, og det er
+    # akkurat `theta = 0`. `d_kant = h - d` gjoer da `2,5*d_kant` til bit for bit det
+    # SAMME uttrykket `2,5(h-d)` alltid har vaert. MAALT hvorfor det er verdt en linje:
+    # med en egen sum her ble `d` paa en 250x400 349,99999999999994 mot dagens 350,0 --
+    # ett ULP, paa et snitt endringen per definisjon ikke skal roere.
+    theta_edge = 0.0 if face_z < 0.0 else math.pi
+    d_opposite, _total = _weighted_depth(own_tension, h, theta_edge)
+    if d_opposite is None:
+        # Bare naabart med null samlet areal, som `_tension_layers` ikke slipper
+        # gjennom -- men da finnes det ingen heftende armering ved kanten, og det er
+        # den grunnkoden som sier det.
+        return None, 'no_bonded_bars_in_effective_area'
+    d_edge = h - d_opposite
+
+    # EC2 7.3.2(3) med fig. 7.1. `(h-d)` i lign.-teksten er avstanden fra DEN
+    # OVERFLATEN sonen ligger mot til tyngdepunktet av armeringen som hoerer til DEN
+    # sonen -- her `d_kant`. `h/2` er ANTI-OVERLAPPSTAKET for det tosidige tilfellet i
+    # fig. 7.1(c): to soner à `h/2` moetes eksakt paa halv hoeyde, og ingen betong kan
+    # telles to ganger. Taket er altsaa ikke en paastand om at en strekkstavs sone ER
+    # halve snittet.
     candidates = {
-        '2.5(h-d)': 2.5 * (h - d),
+        '2.5(h-d)': 2.5 * d_edge,
         'h/2': h / 2.0,
     }
     if not state.get('tension_only'):
+        # `(h-x)/3` forutsetter en trykksone og er utledet for boeyning. Uten trykksone
+        # er `(h-0)/3` bare det formelen tilfeldigvis gir, ikke en begrunnet hoeyde.
         candidates['(h-x)/3'] = (h - x) / 3.0
     governing = min(candidates, key=candidates.get)
     h_c_eff = candidates[governing]
+
+    # `h/2` staar ALLTID i kandidatlista, saa dette er en identitet, ikke en sjekk paa
+    # inndata. Den staar fordi den er selve grunnen til at to soner kan eksistere side
+    # om side uten aa overlappe -- brytes den, er A_c,eff talt to ganger.
+    assert h_c_eff <= h / 2.0 + 1e-9, (
+        f'h_c,ef {h_c_eff} over anti-overlappstaket h/2 = {h / 2.0}'
+    )
+
     a_c_eff = b * h_c_eff
 
     # SONEMEDLEMSKAP ER GEOMETRISK, over ALLE lag -- ikke bare de allerede filtrert til
     # strekk. Grunnen: `no_tensile_stress_in_effective_area` (spec §3.5) skal kunne
     # svare paa et lag som geometrisk ligger i sonen men numerisk IKKE er i strekk (en
-    # defensiv vakt, akkurat som `x > h`-sjekken over -- vanskelig aa naa i praksis,
-    # billig aa ha). Filteret til `A_s,eff` selv (under) er likevel STREKKLAG, slik
-    # spec §3.2 steg 4 sier ordrett.
+    # defensiv vakt -- vanskelig aa naa i praksis, billig aa ha). Filteret til
+    # `A_s,eff` selv er likevel STREKKLAG, slik spec §3.2 steg 4 sier ordrett.
+    #
+    # Sonen kan ikke naa forbi halv hoeyde (taket over), saa et lag i DENNE sonen er
+    # per konstruksjon naermest DENNE kanten: medlemskapet og kanttilordningen kan
+    # ikke bli uenige, og et jern telles aldri i to A_s,eff -- unntatt et lag som
+    # ligger EKSAKT paa halv hoeyde, som da er like langt fra begge overflatene og
+    # ligger paa randen av begge sonene. Det er riktig, og det er kontinuerlig.
     zone_layers = [layer for layer in rebar
-                   if abs(_layer_z(layer) - tension_face_z) <= h_c_eff + 1e-9]
-    tension_ids = {layer['id'] for layer in tension}
+                   if abs(_layer_z(layer) - face_z) <= h_c_eff + 1e-9]
     zone_tension_layers = [layer for layer in zone_layers if layer['id'] in tension_ids]
     if not zone_tension_layers:
         return None, 'no_bonded_bars_in_effective_area'
@@ -1496,25 +1537,20 @@ def _sls_crack(rebar, state, b, h, m_ed, alpha_e_val, f_ct_eff, Es):
     rho_p_eff = float(ec2_2004.rho_p_eff(a_s_eff, 0.0, 0.0, a_c_eff))
 
     # eps_sm - eps_cm (lign. 7.9) -- VAAR EGEN formel (spec §3.1), IDENTISK matematikk
-    # til `ec2_2004.eps_sm_eps_cm` (verifisert bit for bit i en egen orakel-test), men skrevet
-    # her fordi vi trenger begge leddene og grenvalget hver for seg (spec §3.3/§4).
+    # til `ec2_2004.eps_sm_eps_cm` (verifisert bit for bit i en egen orakel-test), men
+    # skrevet her fordi vi trenger begge leddene og grenvalget hver for seg (§3.3/§4).
     tension_stiffening = _SLS_KT * f_ct_eff / rho_p_eff * (1.0 + alpha_e_val * rho_p_eff)
     eps_equation = (sigma_s - tension_stiffening) / Es
     eps_floor = 0.6 * sigma_s / Es
     eps_sm_eps_cm = max(eps_equation, eps_floor)
     eps_governing = 'equation' if eps_equation >= eps_floor else 'floor'
 
-    eps_1 = state['eps_1']
-    eps_2 = state['eps_2']
-    eps_r = max(0.0, eps_2) / eps_1
-    k1 = float(ec2_2004.k1('bond'))
-    k2 = float(ec2_2004.k2(eps_r))
-    k3 = float(ec2_2004.k3())
-    k4 = float(ec2_2004.k4())
-
-    outer = min(zone_tension_layers, key=lambda l: h / 2.0 - abs(_layer_z(l)))
+    # `c` og det ytterste laget maales fra DENNE kantens overflate. For et snitt med
+    # armering bare ved én kant er `|z - face_z|` det samme tallet som `h/2 - |z|`
+    # var foer -- laget ligger jo paa den siden -- saa boeyning er uroert.
+    outer = min(zone_tension_layers, key=lambda l: abs(_layer_z(l) - face_z))
     phi_outer = _sls_layer_phi(outer)
-    c = (h / 2.0 - abs(_layer_z(outer))) - phi_outer / 2.0
+    c = abs(_layer_z(outer) - face_z) - phi_outer / 2.0
 
     groups = [g for layer in zone_tension_layers for g in _sls_bar_groups(layer)]
     phi_eq = (sum(n * p * p for n, p in groups) / sum(n * p for n, p in groups))
@@ -1525,6 +1561,15 @@ def _sls_crack(rebar, state, b, h, m_ed, alpha_e_val, f_ct_eff, Es):
         return None, 'no_bar_spacing'
     s = max(spacings)
 
+    # `eps_1`/`eps_2` er snittets ytterfibertoeyninger, ikke kantens -- se docstringen.
+    eps_1 = state['eps_1']
+    eps_2 = state['eps_2']
+    eps_r = max(0.0, eps_2) / eps_1
+    k1 = float(ec2_2004.k1('bond'))
+    k2 = float(ec2_2004.k2(eps_r))
+    k3 = float(ec2_2004.k3())
+    k4 = float(ec2_2004.k4())
+
     threshold = float(ec2_2004.w_spacing(c, phi_eq))
     branch = 'close' if s <= threshold else 'far'
     sr_max_close = float(ec2_2004.sr_max_close(c, phi_eq, rho_p_eff, k1, k2, k3, k4))
@@ -1532,13 +1577,22 @@ def _sls_crack(rebar, state, b, h, m_ed, alpha_e_val, f_ct_eff, Es):
     sr_max = sr_max_close if branch == 'close' else sr_max_far
     w_k = float(ec2_2004.wk(sr_max, eps_sm_eps_cm))
 
-    crack = {
-        'd': _num(d), 'x': _num(x),
+    edge = {
+        'face': 'top' if face_z > 0.0 else 'bottom',
+        'face_z': _num(face_z),
+        'd_edge': _num(d_edge),
+        # `d` staar fortsatt MAALT FRA DEN MOTSATTE KANTEN, slik resten av modulen og
+        # EC2s egen skrivemaate `2,5(h-d)` gjoer det. Da er orakelet
+        # `ec2_2004.hc_eff(h, d, x)` fortsatt en gyldig uavhengig kontroll av kantens
+        # `h_c,ef`, og boeyningsraden rapporterer det samme tallet som foer.
+        'd': _num(d_opposite),
+        'x': _num(x),
         'h_c_eff': _num(h_c_eff),
         'h_c_eff_candidates': {k: _num(v) for k, v in candidates.items()},
         'h_c_eff_governing': governing,
         'A_c_eff': _num(a_c_eff), 'A_s_eff': _num(a_s_eff),
         'layers_in_zone': [layer['id'] for layer in zone_tension_layers],
+        'layers_at_face': [layer['id'] for layer in own_tension],
         'rho_p_eff': _num(rho_p_eff), 'alpha_e': _num(alpha_e_val),
         'k_t': _num(_SLS_KT), 'f_ct_eff': _num(f_ct_eff),
         'sigma_s': _num(sigma_s), 'sigma_s_layer': outer['id'],
@@ -1551,11 +1605,161 @@ def _sls_crack(rebar, state, b, h, m_ed, alpha_e_val, f_ct_eff, Es):
         'sr_max_close': _num(sr_max_close), 'sr_max_far': _num(sr_max_far),
         'sr_max': _num(sr_max), 'sr_max_branch': branch,
         'w_k': _num(w_k),
-        # `w_max`/`utilisation`/`ok`/`ok_reason` fylles av kalleren (§1.5, §3.5): de
-        # avhenger av `sls['w_max']`, en stoerrelse paa TVERRS av rader, ikke av
-        # rissviddekjeden alene.
-        'w_max': None, 'utilisation': None, 'ok': None, 'ok_reason': None,
     }
+    return edge, None
+
+
+def _sls_crack(rebar, state, b, h, m_ed, alpha_e_val, f_ct_eff, Es):
+    """Spec §3.2 -- rissviddekjeden (EC2 7.3.4), i rekkefoelgen kapittelet gir. Kalles
+    BARE naar raden er `quasi_permanent` OG risset (§1.5) -- kalleren har allerede
+    filtrert det. Returnerer `(crack_dict, None)` eller `(None, reason)`.
+
+    `h_c,eff` og `eps_sm - eps_cm` er VAAR EGEN kode (spec §3.1, RETTET i runde 10):
+    pakkens `ec2_2004.hc_eff`/`ec2_2004.eps_sm_eps_cm` gir bare det ENDELIGE tallet, ikke
+    kandidatene/leddene §4 krever aa rapportere, og aa regne begge veier ville gitt to
+    produsenter for samme stoerrelse uten kryssjekk. Pakken er i stedet et TEST-ORAKEL
+    (`test_engine.py`), aldri en andre produsent naar motoren kjoerer.
+
+    DEN EFFEKTIVE STREKKSONEN REGNES PER KANT, IKKE ÉN FOR HELE SNITTET.
+    ==================================================================
+    Foer dette regnet kjeden `d` som det snittvektede tyngdepunktet over ALLE
+    strekklag og bygde ÉN sone fra den kanten toeyningen pekte paa. For et snitt med
+    strekkarmering ved BEGGE kanter -- strekkstag, ringarmering i tanker, veggskiver --
+    ble da bare den ene overflaten maalt, og den andre aldri sett paa.
+
+    MAALT I DENNE OEKTEN (sveip over 3 888 strekkstag/veggskiver: b 300/600/1000,
+    h 200-600, overdekning 35/50/70, armeringsforhold 1,0/1,6/2,5 %, usymmetri
+    A_UK/A_OK 1/2/4, sigma_s 180/260/340 MPa, moment 0 til 0,09*N*h -- 1 536 av dem
+    gav en rissvidde baade foer og etter; resten falt ut som urisset eller over
+    flytegrensa, likt i begge motorer). Hvert tall er kjoert, ikke resonnert fram:
+
+      * 1 476 av de 1 536 har strekkarmering ved BEGGE kanter. Foer fikk bare ÉN av
+        de to overflatene et svar -- den kanten toeyningen var stoerst ved. Den andre
+        ble aldri regnet, og i 1 440 av tilfellene gir de to kantene ULIK rissvidde.
+      * i 32,2 % av de 1 536 var det gamle svaret FOR LAVT, altsaa paa usikker side.
+        Verste maalte tilfelle: 0,3448x riktig verdi. Medianen blant de lave: 0,9000x.
+        Med vanlig overdekning (35/50 mm) alene: 37,4 % for lave.
+      * verstetilfellet i klartekst -- b 600, h 200, overdekning 70, rho 1,0 %,
+        Ø20 i UK mot Ø16 i OK, sigma_s 340 MPa:
+            foer     w_k 0,2823   (bare UK maalt, far-gren, s_r,max 260,0)
+            etter    UK 0,2823    OK 0,8186   (close-gren, s_r,max 754,4)  -> 0,8186
+        De 0,8186 mm er en overflate verktoeyet ikke saa paa i det hele tatt.
+      * de 60 tilfellene med armering ved BARE ÉN kant gav forholdet 1,0000 eksakt.
+
+    HVOR DET ER VERST, OG HVORFOR: i `far`-grenen (`s_r,max = 1,3(h-x)`, uavhengig av
+    `rho_p,eff`) var 79,2 % av svarene for lave, mot 14,2 % i `close`-grenen. Grunnen
+    er at de to leddene trekker hver sin vei: en for stor `A_c,eff` fortynner
+    `rho_p,eff`, og lav `rho` gir BAADE lengre `s_r,max` (som hever w_k) og stoerre
+    strekkstivningsledd (som senker den). I `close`-grenen dominerer `s_r,max`-leddet
+    og feilen blir stort sett konservativ; i `far`-grenen finnes `s_r,max`-leddet
+    ikke, og da staar bare den senkende virkningen igjen. Det er derfor det ikke er
+    nok aa kalle den gamle regelen «konservativ».
+
+    OGSAA DISKONTINUERLIG. Den gamle sonen var ETT intervall fra én overflate, og et
+    lag som krysset halv hoeyde falt inn i eller ut av den. MAALT paa b 400, h 400,
+    Ø25 ved begge kanter og et Ø20-lag flyttet i 2 mm-steg gjennom halv hoeyde,
+    N = 1 400 kN:
+        foer   w_k 0,8555 -> 0,6042 over 2 mm = faktor 1,4158
+               (`A_s,eff` hoppet 1 472,6 -> 2 415,1 mm2 paa samme snitt)
+        etter  0,6533 -> 0,6527 -> 0,6533; stoerste nabosprang over hele +/-10 mm
+               var 1,0011
+    Samme maaling paa b 300, h 300, Ø20, N = 900 kN: foer faktor 1,4595, etter 1,0028.
+
+    Mekanikken bak: `A_c,eff` er betongen heften rekker ut i fra stengene NAER den
+    overflaten risset maales paa. Et jern 300 mm inne i snittet kan ikke holde igjen
+    et overflateriss. EC2 7.3.2(3) med fig. 7.1 sier det samme: deltegning (c) viser
+    strekkstaven med TO effektive soner, én mot hver overflate, og `(h-d)` er
+    avstanden fra DEN overflaten sonen ligger mot til tyngdepunktet av armeringen som
+    hoerer til DEN sonen.
+
+    REGELEN, per kant som er i STREKK:
+      `d_kant`  = arealvektet avstand fra kanten til tyngdepunktet av strekklagene
+                  som hoerer til den (et lag hoerer til den kanten det er naermest)
+      `h_c,ef`  = min(2,5*d_kant, (h-x)/3 naar det finnes en trykksone, h/2)
+      alt annet -- `A_s,eff`, `sigma_s`, `c`, `phi_eq`, `s` -- fra kantens EGEN sone
+      `w_k`     = MAKS over kantene, og BEGGE kantene rapporteres i `edges`.
+
+    REN BOEYNING ER UROERT, og det er ikke et haap, det er en identitet: med
+    strekkarmering bare ved én kant er kantens lagsett HELE strekksettet, `d_kant` er
+    det samme tallet `h - d` var, og sonen er den samme sonen. VERIFISERT ved aa
+    kjoere 41 boeyningssnitt (bjelker 250-450 mm brede, h 300-800, Ø12-Ø32, plater med
+    stripelag Ø10-Ø20 c/c 125-200, trykkarmering i OK, stoettemoment, og aksialkraft
+    -500 til +200 kN) gjennom BEGGE motorene og sammenligne 32 stoerrelser i `crack`
+    -- `h_c_eff`, kandidatene, `A_c_eff`, `A_s_eff`, `rho_p_eff`, `sigma_s`, begge
+    leddene i lign. 7.9, k1-k4, `c`, `phi_eq`, `s`, terskelen, begge `s_r,max`-grenene
+    og `w_k`: 0 avvik, stoerste relative avvik 0,0. De 32 tilfellene i det sveipet
+    som IKKE gav rissvidde gav samme grunnkode i begge motorene.
+
+    De 27 snittene `test_pure_bending_gets_exactly_the_same_zone_as_before` laaser er
+    kjoert paa samme maate, felt for felt: 27 x 31 sammenligninger med `!=`, 0 avvik.
+    Referansebjelken staar paa `h_c,eff = 125,00 [2.5(h-d)]`, `d = 550,0` og
+    `w_k = 0,2114290340096794` -- de samme sifrene som foer endringen.
+
+    Ett ULP av det maatte kjoepes med vilje: se kommentaren over `_weighted_depth`-
+    kallet i `_sls_crack_edge`.
+
+    EN STREKKANT SOM IKKE KAN REGNES GJOER HELE RISSVIDDEN UBESVART. Gir én av de to
+    overflatene en grunnkode (`no_bar_spacing`, `no_bonded_bars_in_effective_area`),
+    kan vi ikke svare «stoerste rissvidde» -- vi kjenner bare den ene. Da er `crack`
+    `null` med DEN grunnen, i stedet for at den andre kanten stille blir «svaret».
+    Med armering ved bare én kant er dette ordrett dagens oppfoersel.
+    """
+    x = state['x']
+
+    tension = _tension_layers(rebar, state['layers'])
+    if not tension:
+        return None, 'no_tension_reinforcement'
+    tension_ids = {layer['id'] for layer in tension}
+
+    # STREKKANTEN LESES AV TOEYNINGSPLANET, ikke utledet paa nytt av `m_ed`. En
+    # overflate risser naar betongen DER er i strekk -- det er den ene definisjonen,
+    # og den gjelder like godt for én som for to kanter. For et risset boeyd snitt har
+    # trykkanten `eps <= 0` og faller ut av seg selv, saa lista blir da ett element.
+    eps_a = state['eps_a']
+    chi_y = state['chi_y']
+
+    # Kanten tilstanden selv pekte ut. Brukes til to ting, og ingen av dem er en ny
+    # regel: aa bryte likheten naar et lag ligger EKSAKT paa halv hoeyde, og som
+    # reserve hvis ingen av overflatene kommer ut som strekk.
+    tie_face_z = state.get('tens_face_z')
+    if tie_face_z is None:
+        tie_face_z = h / 2.0 if _is_hogging(_sls_theta_equiv(m_ed)) else -h / 2.0
+
+    faces = [face_z for face_z in (-h / 2.0, h / 2.0)
+             if eps_a + chi_y * face_z > 0.0]
+    if not faces:
+        # Uannaabar i praksis (et risset snitt HAR en strekkant; `x` er klemt til
+        # `(0, h]` av vakten i `_sls_row_state`), men `x = h` eksakt gir `eps = 0` paa
+        # strekkanten. Da staar `tie_face_z` igjen -- samme kilde som foer endringen.
+        faces = [tie_face_z]
+
+    edges = []
+    for face_z in faces:
+        own = [layer for layer in tension
+               if _sls_edge_face_z(_layer_z(layer), h, tie_face_z) == face_z]
+        edge, reason = _sls_crack_edge(rebar, state, b, h, x, face_z, own,
+                                       tension_ids, alpha_e_val, f_ct_eff, Es)
+        if edge is None:
+            # Se docstringen: en ubesvart overflate gjoer hele rissvidden ubesvart.
+            return None, reason
+        edges.append(edge)
+
+    edges.sort(key=lambda e: e['face_z'])
+    lead = max(edges, key=lambda e: e['w_k'])
+
+    crack = dict(lead)
+    crack.pop('face', None)
+    crack.pop('face_z', None)
+    crack['governing_edge'] = lead['face']
+    crack['governing_edge_face_z'] = lead['face_z']
+    crack['edges'] = edges
+    # `w_max`/`utilisation`/`ok`/`ok_reason` fylles av kalleren (§1.5, §3.5): de
+    # avhenger av `sls['w_max']`, en stoerrelse paa TVERRS av rader, ikke av
+    # rissviddekjeden alene.
+    crack['w_max'] = None
+    crack['utilisation'] = None
+    crack['ok'] = None
+    crack['ok_reason'] = None
     return crack, None
 
 
