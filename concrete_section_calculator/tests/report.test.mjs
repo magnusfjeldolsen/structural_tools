@@ -351,109 +351,53 @@ test('uten resultat er kapittel 5 og 7 ærlige om at ingenting er beregnet', () 
 /* ================================================================== *
  * Kapittel 6 — Serviceability (spec §4, §7)
  *
- * `result.sls` bygges I KODE (samme regel som A1/A2s AC11/AC12): spec §0.6
- * sier fixturene i tests/fixtures/ regenereres BARE av koordinatoren, og
- * ingen av de committede resultatfixturene bærer et `sls`-felt ennå.
+ * TALLENE KOMMER FRA MOTOREN. `payload-*-combos.json` bærer nå både
+ * `section.shear` og en `sls`-blokk med begge SLS-typene, og
+ * `docs/fixture-generator.py` kjører `engine.run()` på dem — så
+ * `result-bending-*-combos.json` har et EKTE `sls`-felt. De håndskrevne
+ * radene som sto her var ikke bare uten opphav; to av dem løy:
+ * `AC3_ROW.eps_a/chi_y` (4.271536e-4 / −2.471977e-6) er ikke motorens
+ * tøyningsplan for M_Ed = −120 kNm (det er 5.125843e-4 / −2.9663724e-6), og
+ * `slsResult()` paret XC3 med `sigma_c_char_required: true` selv om
+ * EXPOSURE_CLASSES i materials.js sier `false` for XC3 — altså en σ_c-grense
+ * kontrollista aldri skulle ha stilt.
  * ================================================================== */
 
-/** Tall etter mønsteret spec §9 måler dem — strukturelt gyldig, ikke en
- *  påstand om at DETTE er de eksakte engine-tallene (det er A1s ansvar). */
+const BEAM_COMBOS = fixture('result-bending-beam-300x600-combos');
+const SLAB_COMBOS = fixture('result-bending-slab-1000x200-combos');
+
+/** Motorens egen SLS-blokk (XC3, φ_ef = 2,0), med radene byttet ut slik hver
+ *  test trenger. Parameterne, grensene og kontrollene er motorens. */
 function slsResult(rows, overrides = {}) {
-  return {
-    ...BENDING,
-    sls: {
-      phi_ef: 2.0,
-      Ecm: 32836.568031,
-      Ec_eff: 10945.522677,
-      alpha_e: 6.090770503,
-      f_ct_eff: 2.896468,
-      exposure_class: 'XC3',
-      w_max: 0.3,
-      w_max_source: 'class',
-      w_max_reason: null,
-      limits: {
-        sigma_c_char_factor: 0.6, sigma_c_char: 18.0,
-        sigma_c_qp_factor: 0.45, sigma_c_qp: 13.5,
-        sigma_s_char_factor: 0.8, sigma_s_char: 400.0,
-        sigma_c_char_required: true,
-      },
-      rows,
-      checks: { sigma_c_char_ok: true, sigma_s_char_ok: true, sigma_c_qp_ok: true, crack_width_ok: false },
-      not_applicable: {},
-      all_ok: false,
-      ...overrides,
-    },
-  };
+  return { ...BENDING, sls: { ...clone(BEAM_COMBOS.sls), rows, ...overrides } };
 }
 
-const AC3_ROW = {
-  id: 'C1', name: 'Characteristic 1', type: 'characteristic',
-  N_Ed: 0, M_Ed: -120e6,
-  sigma_ct_uncracked: 6.102077, cracked: true,
-  Ec_used: 32836.568031, n_sec: 6.090770503,
-  state: {
-    x: 127.201637, z_na: 172.798363, eps_a: 4.271536e-4, chi_y: -2.471977e-6,
-    sigma_c: -12.390138, eps_1: 12.0e-4, eps_2: -6.0e-4, sigma_s_max: 250.835483,
-    layers: [],
-  },
-  state_reason: null,
-  sigma_c_initial: null, sigma_c_initial_reason: null,
-  stress: {
-    sigma_c: -12.390138, sigma_c_limit: 18.0, sigma_c_util: 0.688341, sigma_c_ok: true,
-    sigma_c_checked: 'state',
-    sigma_s: 250.835483, sigma_s_limit: 400.0, sigma_s_util: 0.627089, sigma_s_ok: true,
-  },
-  crack: null, crack_reason: 'not_quasi_permanent',
-};
+const slsRow = (result, type) => clone(result.sls.rows.find((r) => r.type === type));
 
-const AC1_ROW = {
-  id: 'C2', name: 'Quasi-permanent 1', type: 'quasi_permanent',
-  N_Ed: 0, M_Ed: -100e6,
-  sigma_ct_uncracked: 5.085064, cracked: true,
-  Ec_used: 10945.522677, n_sec: 18.272312,
-  state: {
-    x: 200.355056, z_na: 99.644944, eps_a: 3.5e-4, chi_y: -3.0e-6,
-    sigma_c: -6.886016, eps_1: 20.0e-4, eps_2: -3.0e-4, sigma_s_max: 219.577827,
-    layers: [],
-  },
-  state_reason: null,
-  sigma_c_initial: -10.325115, sigma_c_initial_reason: null,
-  stress: {
-    sigma_c: -10.325115, sigma_c_limit: 13.5, sigma_c_util: 0.764823, sigma_c_ok: true,
-    sigma_c_checked: 'initial',
-    sigma_s: null, sigma_s_limit: null, sigma_s_util: null, sigma_s_ok: null,
-  },
-  crack: {
-    d: 550.0, x: 200.355056,
-    h_c_eff: 125.0, h_c_eff_candidates: { '2.5(h-d)': 125.0, '(h-x)/3': 133.214981, 'h/2': 300.0 },
-    h_c_eff_governing: '2.5(h-d)',
-    A_c_eff: 37500, A_s_eff: 942.477796, layers_in_zone: ['L1'],
-    rho_p_eff: 0.025132741, alpha_e: 6.090770503, k_t: 0.4, f_ct_eff: 2.896468,
-    sigma_s: 219.577827, sigma_s_layer: 'L1',
-    eps_sm_eps_cm: 8.321121e-4, eps_equation: 8.321121e-4, eps_floor: 6.587e-4, eps_governing: 'equation',
-    eps_1: 20.0e-4, eps_2: -3.0e-4, eps_r: 0,
-    k1: 0.8, k2: 0.5, k3: 3.4, k4: 0.425,
-    c: 40.0, phi_eq: 20.0, bar_spacing: 100.0, spacing_threshold: 250.0,
-    sr_max_close: 271.281702, sr_max_far: 614.637872, sr_max: 271.281702, sr_max_branch: 'close',
-    w_k: 0.225737, w_max: 0.3, utilisation: 0.752457, ok: true, ok_reason: null,
-  },
-  crack_reason: null,
-};
+/** AC3 — den KARAKTERISTISKE raden: σ_c mot `state`, ingen rissvidde. */
+const AC3_ROW = slsRow(BEAM_COMBOS, 'characteristic');
 
-const AC14_ROW = {
-  ...AC1_ROW,
-  id: 'C3', name: 'Quasi-permanent 2 (XD3)',
-  crack: {
-    ...AC1_ROW.crack,
-    w_k: 0.211429, w_max: null, utilisation: null, ok: null, ok_reason: 'no_crack_width_limit',
-  },
-};
+/** AC1 — den KVASI-PERMANENTE raden: σ_c ved påføring OG den krøpne, og w_k. */
+const AC1_ROW = slsRow(BEAM_COMBOS, 'quasi_permanent');
 
+/**
+ * AC14 — `crack` er FYLT med w_k selv uten `w_max`. Raden er PLATAS
+ * kvasi-permanente rad: `payload-slab-1000x200-combos.json` bærer XD3, som
+ * EC2 ikke anbefaler noen rissviddegrense for. Det er derfor motoren selv,
+ * ikke en håndskrevet `w_max: null`, som produserer grenen.
+ * `id`/`name` er satt om så raden kan stå side om side med AC1 uten å kollidere.
+ */
+const AC14_ROW = { ...slsRow(SLAB_COMBOS, 'quasi_permanent'), id: 'C3', name: 'Quasi-permanent 2 (XD3)' };
+
+/**
+ * AC8a — raden UTEN tilstand. Ingen payload i fixturmappa gir
+ * `no_equilibrium_cracked` (den krever et aksialtrykk snittet ikke kan bære i
+ * risset tilstand), så grenene nulles her. Det er en STRUKTUR, ikke et tall:
+ * alle tallene som blir stående er fortsatt motorens.
+ */
 const AC8A_ROW = {
-  id: 'C4', name: 'Quasi-permanent 3', type: 'quasi_permanent',
-  N_Ed: 800e3, M_Ed: -100e6,
-  sigma_ct_uncracked: 9.077837, cracked: true,
-  Ec_used: 10945.522677, n_sec: 18.272312,
+  ...AC1_ROW,
+  id: 'C4', name: 'Quasi-permanent 3',
   state: null, state_reason: 'no_equilibrium_cracked',
   sigma_c_initial: null, sigma_c_initial_reason: 'no_equilibrium_cracked',
   stress: null, crack: null, crack_reason: 'no_equilibrium_cracked',
@@ -533,7 +477,9 @@ test('kapittel 6: en rad UTEN tilstand (AC8a) viser grunnen, og ingen stress-/cr
  */
 test('kapittel 6: AC14 — crack er FYLT med w_k selv når w_max/ok er null', () => {
   const ch6 = chapterBody(buildReportHtml(BEAM_STATE, slsResult([AC14_ROW])), 6);
-  assert.match(ch6, /0\.211429/, 'w_k skal stå — den ER regnet');
+  // Tallet hentes fra fixturen, ikke skrevet av. Rapporten trykker w_k med seks
+  // desimaler; står det noe annet enn motorens w_k der, feiler dette.
+  assert.ok(ch6.includes(AC14_ROW.crack.w_k.toFixed(6)), 'w_k skal stå — den ER regnet');
   assert.match(ch6, /no recommended crack width limit/i, 'ok_reason forklart i klartekst');
 });
 
@@ -1085,10 +1031,19 @@ test('uten skjærdata i det hele tatt: ingen skjærmerke, og kapittel 5 sier det
 });
 
 /**
- * Tallene her er de MÅLTE fra plan §4.2 (referansebjelken, 2Ø8 c/c 150).
- * Fixturen kjenner ikke skjær (eldre kontrakt), så testen setter den inn på
- * én kombinasjon selv — samme mønster som `threeCombos()` bruker for bøying.
+ * Skjærblokka er MOTORENS, hentet fra `result-bending-beam-300x600-combos.json`:
+ * referansebjelken med 2Ø8 c/c 150 og V_Ed = 120 kN på ULS-raden. Tallene sto
+ * tidligere som literaler her, og fire av dem var feil på andre desimal
+ * (V_Rd 143453,3 mot motorens 144240,08; V_Rd,c 81615,24 mot 81829,08; η_V
+ * 0,83651 mot 0,8319463; d 547 mot 550 — testen antok en `d` som la bøylen inn
+ * i overdekningen, mens motoren regner `d` av armeringslagets z).
+ *
+ * De tre andre analysene bærer den samme blokka fordi motoren garanterer
+ * bit-identisk skjær i alle tre (bølge 1); grafteksten her legger den bare
+ * inn i fixturer som er kjørt uten skjærdata.
  */
+const SHEAR = clone(BEAM_COMBOS.bending.combinations.find((c) => c.id === 'C1').shear);
+
 function withShear(base, governing = 'C1') {
   const r = clone(base);
   // ENDRINGSRUNDE 5: skjæret legges i HVER analyseblokk resultatet bærer, ikke
@@ -1100,18 +1055,14 @@ function withShear(base, governing = 'C1') {
     if (!blk || !Array.isArray(blk.combinations)) continue;
     blk.shear_governing = governing;
     const combo = blk.combinations.find((c) => c.id === governing) || blk.combinations[0];
-    combo.V_Ed = 120000.0;
-    combo.shear = {
-      evaluated: true, V_Ed: 120000.0,
-      V_Rd: 143453.3, V_Rd_c: 81615.2393, V_Rd_s: 143453.3, V_Rd_max: 779803.2,
-      governing_mode: 'stirrups', utilisation: 0.83651,
-      Asl: 942.4778, d: 547.0, bw: 300.0, z: 492.3,
-      asw_s: 0.670206, asw_s_min: 0.262907, asw_s_required: 0.560634,
-      sl_max: 410.25, st_max: 410.25,
-    };
+    combo.V_Ed = SHEAR.V_Ed;
+    combo.shear = clone(SHEAR);
   }
   return r;
 }
+
+/** kN med én desimal, slik kapittel 5 trykker dem — tallet fra fixturen. */
+const kN1 = (n) => (n / 1000).toFixed(1);
 
 /**
  * SKJÆRET ER ANALYSE-AGNOSTISK (§4.3, endringsrunde 5 §D punkt 4).
@@ -1134,7 +1085,8 @@ test('skjærmerket viser η_V ved siden av η_M, EGET tall, ikke slått sammen (
     const ch5 = chapterBody(buildReportHtml(BEAM_STATE, res), 5);
     assert.match(ch5, /class="result-main result-shear"/, name);
     assert.match(ch5, /η_V = V_Ed \/ V_Rd/, name);
-    assert.match(ch5, /V 0\.84/, `${name}: V_Ed/V_Rd = 0,83651, avrundet til 2 desimaler`);
+    assert.ok(ch5.includes(`V ${SHEAR.utilisation.toFixed(2)}`),
+      `${name}: V_Ed/V_Rd fra fixturen, avrundet til 2 desimaler`);
     // η_M (hovedtallet) skal FORTSATT stå, uendret av at skjæret er lagt til.
     assert.match(ch5, /η = M_Ed \/ M_Rd\(N_Ed\)/, name);
   }
@@ -1144,10 +1096,10 @@ test('skjærdelen av kapittel 5 viser V_Rd,c/V_Rd,s/V_Rd,max og governing mode, 
   for (const [name, res] of SHEAR_CASES()) {
     const ch5 = chapterBody(buildReportHtml(BEAM_STATE, res), 5);
     assert.match(ch5, /<h4>Shear<\/h4>/, name);
-    assert.ok(ch5.includes('143.5'), `${name}: V_Rd i kN`);
-    assert.ok(ch5.includes('81.6'), `${name}: V_Rd,c i kN`);
+    assert.ok(ch5.includes(kN1(SHEAR.V_Rd)), `${name}: V_Rd i kN`);
+    assert.ok(ch5.includes(kN1(SHEAR.V_Rd_c)), `${name}: V_Rd,c i kN`);
     assert.match(ch5, /Stirrups govern/, name);
-    assert.ok(ch5.includes('942'), `${name}: A_sl`);
+    assert.ok(ch5.includes(String(Math.trunc(SHEAR.Asl))), `${name}: A_sl`);
     assert.match(ch5, /V_Rd,c is never added to V_Rd,s/, name);
   }
 });
@@ -1158,8 +1110,8 @@ test('lastkombinasjonstabellen (kapittel 4) får V_Ed- og η_V-kolonner, og mark
     assert.match(ch4, /V_Ed \[kN\]/, name);
     assert.match(ch4, /η_V \[–\]/, name);
     assert.match(ch4, /data-shear-governing="true"/, name);
-    assert.ok(ch4.includes('120.0'), `${name}: V_Ed i kN`);
-    assert.ok(ch4.includes('0.837'), `${name}: η_V med tre desimaler, som η_M`);
+    assert.ok(ch4.includes(kN1(SHEAR.V_Ed)), `${name}: V_Ed i kN`);
+    assert.ok(ch4.includes(SHEAR.utilisation.toFixed(3)), `${name}: η_V med tre desimaler, som η_M`);
   }
 });
 

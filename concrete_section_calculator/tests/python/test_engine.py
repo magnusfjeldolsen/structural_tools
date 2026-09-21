@@ -1389,14 +1389,20 @@ def test_r12_no_uls_row_at_all_gives_a_different_error_than_axial_out_of_range()
 @pytest.mark.parametrize('payload_name,result_name', [
     ('payload-beam-300x600.json', 'result-bending-beam-300x600.json'),
     ('payload-slab-1000x200.json', 'result-bending-slab-1000x200.json'),
-    ('payload-beam-300x600-combos.json', 'result-bending-beam-300x600.json'),
-    ('payload-slab-1000x200-combos.json', 'result-bending-slab-1000x200.json'),
 ])
 def test_r13_a_payload_with_no_type_field_at_all_gives_unchanged_numbers(payload_name, result_name):
-    """R13 — RENT ADDITIVITETSKRAV. De FIRE committede payload-fixturene har
+    """R13 — RENT ADDITIVITETSKRAV. De to `loads`-formede payload-fixturene har
     ALDRI hatt et `type`-felt (de er fra før STEG 2). `checks`, `M_Rd` og HELE
     skjærdikten på hver rad skal fortsatt matche `result-*.json` EKSAKT — bare
     med `type: 'uls'`/`checked: True` lagt til additivt.
+
+    KOMBINASJONSFORMA uten `type` sto her før, mot de samme to resultatfilene.
+    Den sammenlikningen holdt bare så lenge `-combos`-payloadene beskrev nøyaktig
+    samme lasttilfelle som de typeløse; siden har de fått både `section.shear` og
+    to bruksgrenserader for å gi skjær og SLS et MÅLT regresjonsgrunnlag, og da
+    er `result-bending-*.json` ikke lenger fasiten for dem. Selve additiviteten
+    for den forma er derfor flyttet til `test_r13b` under, som ikke trenger noen
+    fixtur å hvile på; tallene deres er bundet av `test_fixtures.py`.
     """
     payload = load(payload_name)
     expected = load(result_name)
@@ -1428,6 +1434,47 @@ def test_r13_a_payload_with_no_type_field_at_all_gives_unchanged_numbers(payload
                 assert close(got_val, value), f'{cid}.{key}: {got_val} != {value}'
             else:
                 assert got_val == value, f'{cid}.{key}: {got_val} != {value}'
+
+
+@pytest.mark.parametrize('payload_name', [
+    'payload-beam-300x600-combos.json',
+    'payload-slab-1000x200-combos.json',
+])
+def test_r13b_an_absent_type_is_the_same_as_an_explicit_uls(payload_name):
+    """R13b — ADDITIVITETEN FOR KOMBINASJONSFORMA, uttrykt som en LIKHET i stedet
+    for mot en fixtur.
+
+    Kravet er at et manglende `type` betyr nøyaktig `type: 'uls'` — ikke «omtrent»
+    og ikke «for de feltene noen husket å sammenlikne». Da er den ærligste testen
+    å kjøre den samme payloaden to ganger, én gang uten feltet og én gang med det
+    skrevet ut, og kreve at HELE svaret er identisk. Den kan ikke råtne slik en
+    fixtursammenlikning kan: vokser motorens svar med et nytt felt, er det med i
+    likheten fra første stund.
+
+    Bruksgrenseradene tas ut først — det er den TYPELØSE formen som er saken her,
+    og en rad med `type` i er per definisjon ikke den.
+    """
+    bare = load(payload_name)
+    bare['loads']['combinations'] = [
+        c for c in bare['loads']['combinations'] if 'type' not in c
+    ]
+    assert bare['loads']['combinations'], 'fixturen har ingen typeløs rad igjen'
+    assert bare['loads']['active'] == bare['loads']['combinations'][0]['id']
+
+    explicit = json.loads(json.dumps(bare))
+    for combo in explicit['loads']['combinations']:
+        combo['type'] = 'uls'
+
+    engine.reset_cache()
+    without = engine.run(json.loads(json.dumps(bare)))
+    engine.reset_cache()        # ellers kunne svar nummer to kommet fra hylla
+    with_uls = engine.run(explicit)
+
+    assert without['ok'] is True
+    for result in (without, with_uls):
+        # `meta` bærer veggklokka, som aldri er lik to ganger.
+        result.pop('meta', None)
+    assert without == with_uls
 
 
 def test_r14_the_old_loads_shape_gives_type_uls_and_checked_true():

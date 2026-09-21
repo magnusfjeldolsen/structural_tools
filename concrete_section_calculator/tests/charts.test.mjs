@@ -387,6 +387,27 @@ test('nmDomainSvg: hver kombinasjon med within_limits får et punkt; governing s
   assert.match(svg, /data-role="ray"/);
 });
 
+/**
+ * ANKERET for `MULTI` over: den SAMME regelen kjørt mot motorens eget svar.
+ * `result-nmdomain-beam-300x600-combos.json` har tre rader — én ULS
+ * (`within_limits: true`) og to SLS-rader som motoren med vilje gir
+ * `within_limits: null`, fordi ingen aksialsjekk har rørt dem. En SLS-rad
+ * tegnet inn i M–N-diagrammet ville sagt at den ER bruddgrensekontrollert.
+ * `MULTI` bruker `false` for den samme grenen; her måles `null`, og det er
+ * nettopp verdien motoren faktisk sender.
+ */
+test('nmDomainSvg: motorens egne SLS-rader (within_limits: null) tegnes IKKE', () => {
+  const dom = fixture('result-nmdomain-beam-300x600-combos.json').nm_domain;
+  const sls = dom.combinations.filter((c) => c.type !== 'uls');
+  assert.equal(sls.length, 2, 'fixturen skal bære begge SLS-typene');
+  assert.ok(sls.every((c) => c.within_limits === null), 'motoren gir dem null, ikke false');
+
+  const svg = nmDomainSvg(dom, {});
+  const points = (svg.match(/data-role="load-point(-governing)?"/g) || []).length;
+  assert.equal(points, 1, 'bare ULS-raden får et punkt');
+  for (const c of sls) assert.ok(!svg.includes(c.name), `«${c.name}» skal ikke stå i diagrammet`);
+});
+
 test('nmDomainSvg: autoskaleringen inkluderer ALLE kombinasjonspunktene, ikke bare governing', () => {
   const OUTLIER = {
     ...DOM_BEAM,
