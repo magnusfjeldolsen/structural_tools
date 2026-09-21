@@ -462,6 +462,25 @@ export function validate(state = {}) {
     }
 
     stirrups.forEach((st, i) => {
+      // FØRST: en senteravstand som ikke er positiv er ikke et skjevt tall, det
+      // er ingen bøylerad. Motoren hopper over raden (`engine.py`, bøyleløkka),
+      // og uten denne feilen ville brukeren sett en tegning med bøyler i, en
+      // `A_sw/s` som ikke var et tall, og et svar som var regnet HELT UTEN
+      // skjærarmering — tre beskrivelser av tre ulike snitt, alle grønne.
+      //
+      // `error` og ikke `warning`: alle tallene som følger av senteravstanden —
+      // V_Rd,s, A_sw/s, minstekravet — er meningsløse til den er rettet.
+      if (!(num(st.spacing) > 0)) {
+        out.push(
+          issue(
+            'stirrup_spacing_not_positive',
+            'error',
+            `Bøyle ${st.id || i + 1}: senteravstanden må være større enn null. `
+              + `Har s = ${st.spacing}.`,
+            `shear.stirrups.${i}.spacing`
+          )
+        );
+      }
       if (hasTensionDepth && num(st.spacing) > slMax) {
         out.push(
           issue(
@@ -509,7 +528,12 @@ export function validate(state = {}) {
     const rhoWMin = (0.08 * Math.sqrt(num((state.concrete || {}).fck))) / num(stirrups[0].fywk);
     const aswSMin = rhoWMin * bw;
     const aswS = totalAswPerSpacing(stirrups);
-    if (aswS < aswSMin) {
+    // Hopp over minstekravet når en rad allerede er avvist over: da er `aswS`
+    // regnet uten den raden, og en «A_sw/s = 0 er under minstekravet» ved siden
+    // av «senteravstanden må være større enn null» er den samme feilen sagt to
+    // ganger, hvorav den ene peker på feil årsak.
+    const spacingBroken = stirrups.some((st) => !(num(st.spacing) > 0));
+    if (!spacingBroken && aswS < aswSMin) {
       out.push(
         issue(
           'asw_below_minimum',

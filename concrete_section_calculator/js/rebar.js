@@ -649,10 +649,26 @@ export function stirrupArea(st = {}) {
 /**
  * Én bøylerads `A_sw/s` [mm²/mm] — det VRds og Asw_s_required faktisk bruker.
  *
+ * EN IKKE-POSITIV SENTERAVSTAND GIR 0, IKKE `Infinity`.
+ *
+ * Motoren har alltid hoppet over en slik rad (`engine.py`, bøyleløkka:
+ * `if spacing <= 0: continue`), mens denne delte på null. MÅLT før denne
+ * linja, med `spacing = 0`: JS-sida fikk `A_sw/s = Infinity`, og
+ * `asw_below_minimum` i `section.js` sammenliknet `Infinity < minstekravet` —
+ * altså USANT, så ingen advarsel. Motoren, som hoppet over raden, regnet
+ * samtidig snittet som HELT UTEN skjærarmering. De to halvdelene beskrev to
+ * ulike snitt, og ingen av dem sa fra.
+ *
+ * At feilen nå også fanges som en egen valideringsfeil i `section.js`
+ * (`stirrup_spacing_not_positive`) gjør ikke denne vakten overflødig: en
+ * lagret fil eller en delt lenke kan bære tallet inn i en hvilken som helst
+ * annen leser av denne funksjonen, og `Infinity` sprer seg stille videre.
+ *
  * @param {{dia:number, legs:number, spacing:number}} st
  */
 export function aswPerSpacing(st = {}) {
-  return stirrupArea(st) / num(st.spacing);
+  const spacing = num(st.spacing);
+  return spacing > 0 ? stirrupArea(st) / spacing : 0;
 }
 
 /**

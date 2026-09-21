@@ -24,6 +24,8 @@
  */
 import { loadPyodide } from 'pyodide';
 
+import { ENGINE_DIR, ENTRY_MODULE, PYTHON_MODULES } from '../js/python-manifest.js';
+
 const BASE = 'http://localhost:8099/concrete_section_calculator';
 const t0 = Date.now();
 const log = (s) => console.log(`${String(Date.now() - t0).padStart(6)} ms  ${s}`);
@@ -45,24 +47,30 @@ await pyodide.loadPackage(`${BASE}/vendor/structuralcodes-0.7.2-py3-none-any.whl
   checkIntegrity: false,
 });
 
-log('henter wasm_stubs.py og engine.py …');
-const stubsSrc = await text(`${BASE}/python/wasm_stubs.py`);
-const engineSrc = await text(`${BASE}/python/engine.py`);
+// SAMME LISTE SOM WORKEREN. Sto før som to håndskrevne filnavn her og to til i
+// `workers/solver-worker.mjs`; da kunne denne verifiseringen gå grønn på en
+// annen motor enn den nettleseren faktisk laster — og det er nøyaktig det
+// verifiseringen finnes for å utelukke.
+log(`henter ${PYTHON_MODULES.join(', ')} …`);
+const sources = await Promise.all(
+  PYTHON_MODULES.map((name) => text(`${BASE}/python/${name}`))
+);
 
-pyodide.FS.mkdirTree('/csc');
-pyodide.FS.writeFile('/csc/wasm_stubs.py', stubsSrc);
-pyodide.FS.writeFile('/csc/engine.py', engineSrc);
+pyodide.FS.mkdirTree(ENGINE_DIR);
+PYTHON_MODULES.forEach((name, i) => {
+  pyodide.FS.writeFile(`${ENGINE_DIR}/${name}`, sources[i]);
+});
 
 log('installerer stubber og importerer structuralcodes …');
 const info = await pyodide.runPythonAsync(`
 import sys
-sys.path.insert(0, '/csc')
+sys.path.insert(0, ${JSON.stringify(ENGINE_DIR)})
 import wasm_stubs
 wasm_stubs.install_stubs()
-import engine
+import ${ENTRY_MODULE}
 import scipy, triangle
 n_scipy = len([m for m in sys.modules if m == 'scipy' or m.startswith('scipy.')])
-f"{engine.structuralcodes.__version__}|{n_scipy}|{scipy.__version__}|{triangle.__version__}"
+f"{${ENTRY_MODULE}.structuralcodes.__version__}|{n_scipy}|{scipy.__version__}|{triangle.__version__}"
 `);
 const [scVer, nScipy, scipyVer, triVer] = info.split('|');
 log(`structuralcodes ${scVer}, scipy-stub ${scipyVer} (${nScipy} undermoduler), triangle-stub ${triVer}`);
@@ -73,7 +81,7 @@ const expect = await (await fetch(`${BASE}/tests/fixtures/result-bending-beam-30
 const ticks = [];
 const progress = (phase, done, total) => { ticks.push(`${phase}:${done}/${total}`); };
 
-const runJson = pyodide.runPython('engine.run_json');
+const runJson = pyodide.runPython(`${ENTRY_MODULE}.run_json`);
 log('kjoerer boeyekapasitet …');
 const out = JSON.parse(runJson(JSON.stringify(payload), progress));
 

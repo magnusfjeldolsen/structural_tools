@@ -483,6 +483,38 @@ test('validate skjær 1: stirrup_spacing_exceeds_max — spacing > sl_max = 0,75
   assert.ok(!find(ok, 'stirrup_spacing_exceeds_max'));
 });
 
+test('validate skjær: stirrup_spacing_not_positive — s = 0 er ingen bøylerad', () => {
+  // DEN MÅLTE FEILEN: med `spacing = 0` ga JS-sida `A_sw/s = Infinity`,
+  // `validate()` sa ingenting, og payloaden bar tallet videre til motoren, som
+  // hopper over raden og altså regner snittet HELT UTEN skjærarmering. Tegning,
+  // tabell og svar beskrev tre ulike snitt, og alle tre var grønne.
+  for (const spacing of [0, -150]) {
+    const s = beamState({
+      shear: {
+        strut_angle_deg: 45,
+        z_factor: 0.9,
+        stirrups: [{ id: 'S1', dia: 12, spacing, legs: 2, fywk: 500, alpha: 90 }],
+      },
+    });
+    const m = find(s, 'stirrup_spacing_not_positive');
+    assert.ok(m, `s = ${spacing}: mangler stirrup_spacing_not_positive`);
+    assert.equal(m.severity, 'error');
+    assert.equal(isValid(s), false, `s = ${spacing} skal stanse kjøringen`);
+    // ÉN feil, ikke to. `asw_below_minimum` ville pekt på minstekravet, som er
+    // en helt annen sak enn at raden ikke finnes.
+    assert.ok(!find(s, 'asw_below_minimum'), `s = ${spacing}: dobbeltmelding`);
+  }
+  // En gyldig senteravstand skal fortsatt slippe forbi.
+  const ok = beamState({
+    shear: {
+      strut_angle_deg: 45,
+      z_factor: 0.9,
+      stirrups: [{ id: 'S1', dia: 12, spacing: 150, legs: 2, fywk: 500, alpha: 90 }],
+    },
+  });
+  assert.ok(!find(ok, 'stirrup_spacing_not_positive'));
+});
+
 test('validate skjær 2: asw_below_minimum — KUN når lista er ikke-tom (§4.4)', () => {
   const s = beamState({
     shear: {

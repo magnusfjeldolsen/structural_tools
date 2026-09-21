@@ -665,6 +665,25 @@ test('aswPerSpacing: A_sw/s — §4.2 sitt målte 0,670206 mm²/mm', () => {
   assert.ok(Math.abs(asws - 0.670206) < 1e-5, `A_sw/s = ${asws}`);
 });
 
+test('aswPerSpacing: en ikke-positiv senteravstand gir 0, ikke Infinity', () => {
+  // MOTORENS SVAR ER FASITEN. `engine.py` har alltid hoppet over en slik rad
+  // (`if spacing <= 0: continue`); denne delte på null og fikk `Infinity`.
+  //
+  // Hvorfor det var farlig og ikke bare stygt: `section.js` sammenlikner
+  // `A_sw/s < minstekravet` for å varsle `asw_below_minimum`. `Infinity` er
+  // ikke mindre enn noe som helst, så varselet uteble — samtidig som motoren,
+  // som hoppet over raden, regnet snittet som HELT UTEN skjærarmering.
+  for (const spacing of [0, -150, Number.NaN]) {
+    const asws = aswPerSpacing(stirrup({ spacing }));
+    assert.ok(Number.isFinite(asws), `s = ${spacing} ga ${asws}`);
+    assert.equal(asws, 0, `s = ${spacing}`);
+  }
+  // Summen skal arve det samme: én ødelagt rad skal ikke gjøre hele summen
+  // meningsløs, den skal bare ikke telle med.
+  const total = totalAswPerSpacing([stirrup(), stirrup({ id: 'S2', spacing: 0 })]);
+  assert.ok(Math.abs(total - aswPerSpacing(stirrup())) < 1e-12, `total = ${total}`);
+});
+
 test('totalAswPerSpacing summerer flere bøylesett, ikke bare tar det siste', () => {
   const one = aswPerSpacing(stirrup());
   const list = [stirrup(), stirrup({ id: 'S2', dia: 6, spacing: 300, legs: 2 })];
