@@ -84,6 +84,28 @@ export function fmtNumber(value, decimals = 2) {
   return s;
 }
 
+/**
+ * Tallet slik det skal stå I ET INNDATAFELT: uten desimaler som ikke betyr noe.
+ *
+ * `fmtNumber(300, 1)` gir «300.0», og det er riktig for et REGNET tall — der sier
+ * desimalen hvor nøyaktig svaret er. Men i et felt brukeren selv har skrevet er
+ * den bare støy: ingen taster «Ø 12,0» eller «c/c 150,0», og en bredde på 300 er
+ * 300, ikke 300,0.
+ *
+ * FLYTTALL AKSEPTERES FORTSATT — `maxDecimals` er et tak, ikke et krav. Skriver
+ * noen 12,5, står det 12,5. Det som forsvinner er nullene ingen skrev.
+ *
+ * Skilt ut som egen funksjon og ikke løst med `Number.isInteger` på hvert
+ * kallsted: regelen «slik ser et inndatafelt ut» skal stå ett sted, ellers
+ * driver de fjorten feltene fra hverandre ved første rettelse.
+ */
+export function fmtInput(value, maxDecimals = 2) {
+  const x = toNum(value);
+  if (x === null) return '';
+  const s = x.toFixed(maxDecimals);
+  return s.includes('.') ? s.replace(/\.?0+$/, '') : s;
+}
+
 /** Lengde [mm] slik motoren gir den. */
 export function fmtLength(mm, decimals = 1) {
   return fmtNumber(mm, decimals);
@@ -1135,6 +1157,108 @@ export function slsCheckRows(sls = {}) {
 }
 
 /**
+ * ÉN LINJE PER GRENSETILSTAND SOM FAKTISK BLE KONTROLLERT.
+ *
+ * Toppkortet viste før alt om hverandre i én brytende rad — η, M_Rd, bruddform,
+ * skjærmerke, status — og rissvidden lå 1 285 px lenger ned i et eget kapittel.
+ * Et snitt har flere grenser, og de er sidestilte: bøyning, skjær, rissvidde,
+ * spenning. Hver av dem er ETT spørsmål med ETT svar, og da skal de stå som
+ * like linjer under hverandre.
+ *
+ * DEN SOM IKKE GJELDER, VISES IKKE. Ingen skjærkraft ⇒ ingen skjærlinje; ingen
+ * bruksgrenserad ⇒ ingen rissviddelinje. En tom rad med tankestreker er støy
+ * som ser ut som et svar som mangler.
+ *
+ * Bygget HER og ikke i `ui.js`, fordi rapporten trenger nøyaktig den samme
+ * lista. Skjærtabellen i denne modulen er allerede bygget to steder med 16 mot
+ * 17 rader og ulike desimaler — den feilen skal ikke gjentas for denne.
+ *
+ * @returns {{key, label, left, right, unit, eta, ok}[]}
+ */
+export function limitStateRows(result = {}) {
+  const block = analysisBlock(result) || {};
+  const bending = result.bending || block;
+  const rows = [];
+
+  const mRd = toNum(bending.M_Rd);
+  if (mRd !== null) {
+    // `M_Ed` fra den DIMENSJONERENDE raden, ikke fra blokka: blokkas eget felt er
+    // 0 i et M–N-svar, og et «M_Ed = 0» ved siden av en kapasitet er et tall som
+    // ikke svarer på noe.
+    const govRow = allCombinations(result).find((c) => c.id === bending.governing);
+    rows.push({
+      key: 'bending',
+      label: 'Bending',
+      left: 'M_Ed', leftValue: toNum(govRow?.M_Ed ?? bending.M_Ed),
+      right: 'M_Rd', rightValue: mRd,
+      unit: 'kNm', scale: 1e6, decimals: 1,
+      eta: toNum(bending.utilisation),
+      ok: result.checks ? result.checks.bending_ok : null,
+    });
+  }
+
+  // `V_Ed > 0` og ikke bare «det finnes en V_Rd»: kapasiteten regnes uansett, men
+  // uten en skjærkraft er det ingenting å kontrollere, og en linje med η = 0 ser
+  // ut som et svar på et spørsmål ingen stilte.
+  const shear = shearGoverningCombo(result)?.shear;
+  if (shear && toNum(shear.V_Rd) !== null && toNum(shear.V_Ed) > 0) {
+    rows.push({
+      key: 'shear',
+      label: 'Shear',
+      left: 'V_Ed', leftValue: toNum(shear.V_Ed),
+      right: 'V_Rd', rightValue: toNum(shear.V_Rd),
+      unit: 'kN', scale: 1e3, decimals: 1,
+      eta: toNum(shear.utilisation),
+      ok: result.checks ? result.checks.shear_ok : null,
+    });
+  }
+
+  const worst = slsHeadlineCrack(result);
+  if (worst && worst.w_max !== null && worst.w_max !== undefined) {
+    rows.push({
+      key: 'crack',
+      label: 'Crack width',
+      left: 'w_k', leftValue: toNum(worst.w_k),
+      right: 'w_max', rightValue: toNum(worst.w_max),
+      unit: 'mm', scale: 1, decimals: 3, rightDecimals: 2,
+      eta: toNum(worst.utilisation),
+      ok: result.sls ? result.sls.checks?.crack_width_ok ?? null : null,
+    });
+  }
+
+  const stress = worstStressRow(result);
+  if (stress) rows.push(stress);
+  return rows;
+}
+
+/** Den SLS-raden som har den største spenningsutnyttelsen, eller `null`. */
+function worstStressRow(result) {
+  const sls = result.sls;
+  if (!sls || !Array.isArray(sls.rows)) return null;
+  let best = null;
+  for (const row of sls.rows) {
+    const st = row.stress;
+    if (!st) continue;
+    for (const [which, util, val, lim, ok] of [
+      ['σ_c', st.sigma_c_util, st.sigma_c, st.sigma_c_limit, st.sigma_c_ok],
+      ['σ_s', st.sigma_s_util, st.sigma_s, st.sigma_s_limit, st.sigma_s_ok],
+    ]) {
+      const u = toNum(util);
+      if (u === null || typeof ok !== 'boolean') continue;
+      if (!best || u > best.eta) {
+        best = {
+          key: 'stress', label: 'Stress (EC2 7.2)',
+          left: which, leftValue: Math.abs(toNum(val)),
+          right: 'limit', rightValue: Math.abs(toNum(lim)),
+          unit: 'MPa', scale: 1, decimals: 1, eta: u, ok,
+        };
+      }
+    }
+  }
+  return best;
+}
+
+/**
  * Grunnkodene motoren kan sette på ETT SLS-felt (spec §3.5, §11) — IKKE
  * varselkoder. To kilder samlet i én tabell: `state_reason`/`crack_reason`
  * (spec §1.2/§3.5, ni koder) og `w_max_reason`/`crack.ok_reason` (spec §2.1/
@@ -1289,7 +1413,12 @@ export function slsHeadlineCrack(result) {
   for (const row of rows) {
     const wk = toNum(row?.crack?.w_k);
     if (wk === null) continue;
-    if (worst === null || wk > worst.w_k) worst = { w_k: wk, w_max: toNum(row.crack.w_max) };
+    // `utilisation` er med fordi grensetilstandslinja trenger den, og fordi den
+    // er MOTORENS egen -- ikke `w_k/w_max` regnet om igjen her. To steder som
+    // deler samme brøk er én for mye.
+    if (worst === null || wk > worst.w_k) {
+      worst = { w_k: wk, w_max: toNum(row.crack.w_max), utilisation: toNum(row.crack.utilisation) };
+    }
   }
   return worst;
 }

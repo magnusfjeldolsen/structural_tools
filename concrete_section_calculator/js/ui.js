@@ -80,7 +80,7 @@ import { isCancellable, phaseLabel, TOTAL_DOWNLOAD_BYTES } from './solver-client
 import { RUN_ALL, defaultState } from './store.js';
 import { fromDocument, toDocument } from './serialize.js';
 import {
-  DASH, analysisBlock, analysisLabel, checkRows, checkText, comboLabel, compressionEdgeLabel, describeWarnings,
+  DASH, analysisBlock, analysisLabel, checkRows, checkText, comboLabel, compressionEdgeLabel, describeWarnings, fmtInput, limitStateRows,
   designMoment, directionFromTheta, directionLabel, failureModeLabel, failureModeNote, failureState,
   fmtArea,
   fmtCurvature, fmtForceKN, fmtLength, fmtMomentKNm, fmtNumber, fmtPercent, fmtRatio,
@@ -505,6 +505,37 @@ function crackPair(crack, wkDecimals = 2, wmaxDecimals = 2) {
   return crack.w_max === null || crack.w_max === undefined
     ? wk
     : `${wk}/${fmtNumber(crack.w_max, wmaxDecimals)}`;
+}
+
+/**
+ * Grensetilstandene som ble kontrollert, én linje hver.
+ *
+ * Toppkortet viste før alt om hverandre i én brytende rad — η, M_Rd, bruddform,
+ * skjærmerke, status — mens rissvidden lå 1 285 px lenger ned i et eget
+ * kapittel. Et snitt har flere grenser, og de er SIDESTILTE: bøyning, skjær,
+ * rissvidde, spenning. Hver er ett spørsmål med ett svar, og da skal de stå som
+ * like linjer under hverandre, ikke som fire ulike ting.
+ *
+ * DEN SOM IKKE GJELDER, VISES IKKE — `limitStateRows()` tar det valget, og den
+ * er ÉN kilde: rapporten skal kunne lese den samme lista.
+ */
+function limitStateHtml(result) {
+  const rows = limitStateRows(result);
+  if (!rows.length) return '';
+  return `<div class="mt-3 border-t border-slate-100/10 pt-2 space-y-1">${rows.map((r) => {
+    const st = utilisationStatus(r.eta);
+    const left = `${esc(r.left)} ${fmtNumber(r.leftValue / r.scale, r.decimals)}`;
+    // Grensa har sin EGEN presisjon: `w_max` er 0,30 og ikke 0,300 — den er en
+    // gitt verdi, ikke et regnet tall.
+    const right = `${esc(r.right)} ${fmtNumber(r.rightValue / r.scale, r.rightDecimals ?? r.decimals)} ${esc(r.unit)}`;
+    const mark = r.ok === true ? '✓' : r.ok === false ? '✕' : '–';
+    return `<div class="flex items-baseline gap-x-3 text-[12px] num">
+      <span class="w-[9rem] shrink-0 opacity-80">${esc(r.label)}</span>
+      <span class="opacity-70">${left} / ${right}</span>
+      <span class="ml-auto pl-2 shrink-0 font-semibold ${esc(st.text || '')}">η ${fmtRatio(r.eta, 2)}</span>
+      <span class="w-[1.2rem] shrink-0 text-right">${mark}</span>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 /**
@@ -1596,10 +1627,12 @@ export function createUI(deps) {
   /** Feltverdiene skrives bare når feltet IKKE har fokus — ellers hopper markøren. */
   function syncFields() {
     const s = store.getState();
+    // `fmtInput` og ikke `fmtNumber`: et felt brukeren selv skriver i skal ikke
+    // vise desimaler ingen har tastet. Argumentet er et TAK — 12,5 blir stående.
     const put = (sel, value, decimals = 3) => {
       const el = $(sel);
       if (!el || el === document.activeElement) return;
-      el.value = fmtNumber(value, decimals);
+      el.value = fmtInput(value, decimals);
     };
     put('#i-b', sectionWidth(s), 1);
     put('#i-h', s.geometry.h, 1);
@@ -1666,6 +1699,12 @@ export function createUI(deps) {
     if (lawS) lawS.value = s.steel.law;
   }
 
+  /** Merker et overstyringsfelt som overstyrt. ÉN regel, tre felt. */
+  function markOverride(sel, value) {
+    const el = $(sel);
+    if (el) el.classList.toggle('is-override', value !== null && value !== undefined && value !== '');
+  }
+
   /**
    * Krypboksen i materialseksjonen.
    *
@@ -1685,10 +1724,15 @@ export function createUI(deps) {
     const put = (sel, value, decimals) => {
       const el = $(sel);
       if (!el || el === document.activeElement) return;
-      el.value = value === null || value === undefined ? '' : fmtNumber(value, decimals);
+      el.value = value === null || value === undefined ? '' : fmtInput(value, decimals);
     };
     put('#i-rh', s.sls.RH, 0);
     put('#i-t0', s.sls.t0, 0);
+    // Et felt med et tall i er en OVERSTYRING av den avledede verdien ved siden
+    // av. Rammen sier det på ett blikk; uten den må man lese to celler og
+    // sammenligne for å vite hvilken som gjelder.
+    markOverride('#i-h0', s.sls.h0_override);
+    markOverride('#i-phi-ef', s.sls.phi_ef);
     // DESIMALEN BARE NAAR DEN FINNES. «365/2» gir 182,5 døgn, og `fmtNumber(…, 0)`
     // trykte 183 — altså igjen et vist tall som ikke var det regnede, bare med en
     // mindre feil enn årsomregningen som sto her før. Et helt antall døgn skal
@@ -1753,9 +1797,10 @@ export function createUI(deps) {
     const put = (sel, value, decimals) => {
       const el = $(sel);
       if (!el || el === document.activeElement) return;
-      el.value = value === null || value === undefined ? '' : fmtNumber(value, decimals);
+      el.value = value === null || value === undefined ? '' : fmtInput(value, decimals);
     };
     put('#i-wmax', s.sls.w_max_override, 2);
+    markOverride('#i-wmax', s.sls.w_max_override);
     put('#i-sls-k1', s.sls.sigma_c_char_factor, 2);
     put('#i-sls-k2', s.sls.sigma_c_qp_factor, 2);
     put('#i-sls-k3', s.sls.sigma_s_char_factor, 2);
@@ -1891,13 +1936,13 @@ export function createUI(deps) {
           <span class="field-label">Diameter Ø [mm]</span>
           <div class="flex flex-wrap items-center gap-1.5">
             ${BAR_DIAMETERS.map((d) => `<button type="button" class="chip !text-[11px]" data-dia="${esc(layer.id)}" data-v="${d}" data-on="${String(Number(layer.dia) === d)}">${d}</button>`).join('')}
-            <input type="text" class="!w-20 ml-1" data-f="dia" data-l="${esc(layer.id)}" value="${fmtNumber(layer.dia, 2)}" aria-label="Diameter">
+            <input type="text" inputmode="text" class="!w-20 ml-1" data-f="dia" data-l="${esc(layer.id)}" value="${fmtInput(layer.dia, 2)}" aria-label="Diameter">
           </div>
         </div>
         <div class="grid grid-cols-2 gap-3 max-w-md">
           ${isSpacing
-            ? `<label><span class="field-label">Spacing c/c [mm]</span><input type="text" data-f="spacing" data-l="${esc(layer.id)}" value="${fmtNumber(layer.spacing, 1)}"></label>`
-            : `<label><span class="field-label">Number of bars</span><input type="text" data-f="count" data-l="${esc(layer.id)}" value="${fmtNumber(layer.count, 0)}"></label>`}
+            ? `<label><span class="field-label">Spacing c/c [mm]</span><input type="text" inputmode="text" data-f="spacing" data-l="${esc(layer.id)}" value="${fmtInput(layer.spacing, 1)}"></label>`
+            : `<label><span class="field-label">Number of bars</span><input type="text" inputmode="numeric" data-f="count" data-l="${esc(layer.id)}" value="${fmtInput(layer.count, 0)}"></label>`}
           <div>
             <span class="field-label">Edge d<sub>c</sub> is measured from</span>
             <div class="seg w-full" data-edgeseg="${esc(layer.id)}">
@@ -1911,7 +1956,7 @@ export function createUI(deps) {
           <div class="flex items-center gap-2">
             <button type="button" class="chip shrink-0" data-lock="${esc(layer.id)}"
                     title="${locked ? 'Unlock to type d_c yourself' : 'Lock to the EC2 8.2 derived value'}">${locked ? '🔒 derived' : '🔓 custom value'}</button>
-            <input type="text" data-f="dc" data-l="${esc(layer.id)}" value="${fmtNumber(layer.dc, 2)}"
+            <input type="text" inputmode="text" data-f="dc" data-l="${esc(layer.id)}" value="${fmtInput(layer.dc, 2)}"
                    ${locked ? 'readonly class="opacity-60"' : ''} aria-label="d_c">
           </div>
           <p class="text-[11px] text-slate-500 mt-1 num">
@@ -2107,23 +2152,23 @@ export function createUI(deps) {
           <label class="min-w-0">
             <span class="field-label">Ø</span>
             <span class="relative flex items-center">
-              <input type="text" class="!w-full min-w-0 !pr-5" data-sf="dia" data-s="${esc(st.id)}" value="${fmtNumber(st.dia, 1)}" aria-label="Stirrup diameter [mm]">
+              <input type="text" inputmode="text" class="!w-full min-w-0 !pr-5" data-sf="dia" data-s="${esc(st.id)}" value="${fmtInput(st.dia, 1)}" aria-label="Stirrup diameter [mm]">
               <button type="button" class="hint absolute right-0.5 top-1/2 -translate-y-1/2" data-hint="stirrup-dia" aria-expanded="false"
                       aria-label="About the stirrup diameter">?</button>
             </span>
           </label>
           <label class="min-w-0">
             <span class="field-label">c/c</span>
-            <input type="text" class="!w-full min-w-0" data-sf="spacing" data-s="${esc(st.id)}" value="${fmtNumber(st.spacing, 1)}" aria-label="Stirrup spacing s [mm]">
+            <input type="text" inputmode="text" class="!w-full min-w-0" data-sf="spacing" data-s="${esc(st.id)}" value="${fmtInput(st.spacing, 1)}" aria-label="Stirrup spacing s [mm]">
           </label>
           <label class="min-w-0"
                  title="Number of legs crossing the shear plane — all of them count in A_sw (EC2 6.2.3).">
             <span class="field-label">legs</span>
-            <input type="text" class="!w-full min-w-0" data-sf="legs" data-s="${esc(st.id)}" value="${fmtNumber(st.legs, 0)}" aria-label="Number of legs">
+            <input type="text" inputmode="numeric" class="!w-full min-w-0" data-sf="legs" data-s="${esc(st.id)}" value="${fmtInput(st.legs, 0)}" aria-label="Number of legs">
           </label>
           <label class="min-w-0">
             <span class="field-label">f<sub>ywk</sub></span>
-            <input type="text" class="!w-full min-w-0" data-sf="fywk" data-s="${esc(st.id)}" value="${fmtNumber(st.fywk, 0)}" aria-label="f_ywk [MPa]">
+            <input type="text" inputmode="text" class="!w-full min-w-0" data-sf="fywk" data-s="${esc(st.id)}" value="${fmtInput(st.fywk, 0)}" aria-label="f_ywk [MPa]">
           </label>
         </div>
       </div>
@@ -2206,6 +2251,35 @@ export function createUI(deps) {
     invalidate();
     render();
     field.focus();
+  }
+
+  /**
+   * MARKER TEKSTEN I RADFELTENE OGSÅ.
+   *
+   * `bindNumericInput` gjør det for de faste feltene i skjemaet, men radene —
+   * armering, bøyler, lastkombinasjoner — bygges med `innerHTML` ved hver
+   * opptegning, og en lytter hengt på selve feltet ville dødd ved neste
+   * omtegning. Derfor ÉN delegert lytter på `document`, som overlever alt
+   * under seg. Samme grep som `hints.js` bruker, og av samme grunn.
+   *
+   * `focusin` og ikke `focus`: bare `focusin` bobler, og en delegert lytter
+   * trenger nettopp det.
+   */
+  function setupRowFieldSelect() {
+    document.addEventListener('focusin', (e) => {
+      const el = e.target;
+      if (!el || el.tagName !== 'INPUT') return;
+      if (!(el.dataset?.sf || el.dataset?.f || el.dataset?.cf)) return;
+      if (el.type !== 'text') return;
+      requestAnimationFrame(() => {
+        if (document.activeElement !== el) return;
+        try {
+          el.select();
+        } catch {
+          // Se `selectOnFocus` i numeric-input.js: fokuset er satt uansett.
+        }
+      });
+    });
   }
 
   function setupShorthand() {
@@ -2335,12 +2409,12 @@ export function createUI(deps) {
           <input type="text" class="!w-28" data-cf="name" data-c="${esc(combo.id)}" value="${esc(combo.name)}" placeholder="name" aria-label="Combination name">
           <label class="flex items-center gap-1 text-[11px] text-slate-500"
                  title="Axial force [kN] — compression is negative.">N<sub>Ed</sub>
-            <input type="text" class="!w-24" data-cf="N_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.N_Ed, 2)}" aria-label="N_Ed [kN], compression negative"></label>
+            <input type="text" inputmode="text" class="!w-24" data-cf="N_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.N_Ed, 2)}" aria-label="N_Ed [kN], compression negative"></label>
           <label class="flex items-center gap-1 text-[11px] text-slate-500" title="Sign convention follows fib structuralcodes: sagging (compression at the top face) is negative.">M<sub>Ed</sub> [kNm] — sagging negative
-            <input type="text" class="!w-24" data-cf="M_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.M_Ed, 2)}" aria-label="M_Ed [kNm], sagging negative"></label>
+            <input type="text" inputmode="text" class="!w-24" data-cf="M_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.M_Ed, 2)}" aria-label="M_Ed [kNm], sagging negative"></label>
           <label class="flex items-center gap-1 text-[11px] text-slate-500"
                  title="Shear force [kN] — a magnitude; its sign does not affect the shear capacity.">V<sub>Ed</sub>
-            <input type="text" class="!w-24" data-cf="V_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.V_Ed, 2)}" aria-label="V_Ed [kN], magnitude — the sign does not matter"></label>
+            <input type="text" inputmode="text" class="!w-24" data-cf="V_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.V_Ed, 2)}" aria-label="V_Ed [kN], magnitude — the sign does not matter"></label>
           <button type="button" class="ml-auto px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
                   data-remove-combo="${esc(combo.id)}" ${s.combos.length <= 1 ? 'disabled' : ''}
                   title="${s.combos.length <= 1 ? 'The last combination cannot be removed' : 'Remove combination'}">✕</button>
@@ -2714,7 +2788,15 @@ export function createUI(deps) {
     const warnings = describeWarnings(result.warnings);
 
     body.innerHTML = `
-      <div class="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+      <!-- ÉN SPALTE. Sidespalta på 320 px sto med «Failure state», «Section fra
+           motoren», skjærtabellen, kontrollista og materialverdiene — fem
+           paneler som alle er OPPSLAG, ikke svar. De møtte brukeren samtidig
+           med selve svaret og konkurrerte med det om oppmerksomheten.
+
+           Nå ligger de nederst, etter figuren, plottene og lagtabellen: den som
+           vil slå opp, ruller ned og finner dem samlet; den som bare vil vite om
+           snittet holder, ser fire linjer og er ferdig. -->
+      <div class="space-y-5 items-start">
         <div class="space-y-4">
           <div class="rounded-xl border p-4 ${esc(status.classes)}">
             <div class="flex flex-wrap items-end gap-x-8 gap-y-3">
@@ -2733,12 +2815,12 @@ export function createUI(deps) {
                 <div class="text-lg font-medium text-sky-300">${esc(failureModeLabel(bending.failure_mode))}</div>
                 <div class="text-[11px] text-slate-400 num">x/d = ${fmtRatio(bending.x_over_d)}</div>
               </div>
-              ${shearBadge(result)}
               <div class="ml-auto text-right text-slate-100">
                 <div class="text-[11px] text-slate-400 uppercase tracking-wide">Status</div>
                 <div class="text-lg">${esc(status.label)}</div>
               </div>
             </div>
+            ${limitStateHtml(result)}
             <p class="text-[11px] mt-2 opacity-70">${esc(failureModeNote(bending.failure_mode))}</p>
           </div>
 
@@ -2769,7 +2851,7 @@ export function createUI(deps) {
             </div>`).join('')}</div>` : ''}
         </div>
 
-        <div class="space-y-3 text-[12px]">
+        <div class="grid md:grid-cols-2 gap-3 text-[12px] items-start">
           ${panel('Failure state', [
             ['Neutral axis x', fmtLength(bending.x), 'mm'],
             ['x / d', fmtRatio(bending.x_over_d), ''],
@@ -3816,6 +3898,7 @@ export function createUI(deps) {
       // markup i dag, men et merke inne i en radliste ville dødd ved neste
       // `innerHTML` hvis lytteren satt lenger inn — og «klikk utenfor lukker»
       // krever uansett at klikk hvor som helst på sida når fram hit.
+      setupRowFieldSelect();
       hints = attachHints(document.body, HINTS);
       render();
     },
