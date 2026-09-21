@@ -2268,3 +2268,75 @@ def test_a_beam_without_stirrups_and_without_shear_is_not_penalised():
     """Og en bjelke uten skjaerkraft trenger ingen minimumsboeyler heller."""
     result = _shear_case(0.0, section_type='beam')
     assert result['checks']['asw_min_ok'] is True
+
+
+# ------------------------------------------------------------------ #
+# Per-rad-verdikt (runde 12) — seksjon 6 kan vise ÉN kombinasjon
+# ------------------------------------------------------------------ #
+
+def _combo_verdict_payload(m_ed_c1):
+    payload = load('payload-beam-300x600-combos.json')
+    payload['loads']['combinations'][0]['M_Ed'] = m_ed_c1
+    return payload
+
+
+@pytest.mark.parametrize('m_ed_c1,forventet', [
+    (-100e6, True),    # godt innenfor
+    (-300e6, False),   # over kapasitet
+])
+def test_per_row_bending_ok_agrees_with_the_envelope_verdict(m_ed_c1, forventet):
+    """Radens egen dom og snittets dom kan ikke si hver sin ting.
+
+    `checks.bending_ok` er en ENVELOPE-dom: den gjelder snittet mot ALLE
+    lastkombinasjonene. Nå som seksjon 6 kan vise én valgt rad, trengs også et
+    svar per rad — og da er faren at de to begynner å drive fra hverandre, slik
+    at en rad står med ✓ under en samlet vurdering som sier ✕, eller verre:
+    motsatt.
+
+    Per-rad-verdiktet er derfor en MERKELAPP på de samme mengdene
+    (`bending_rows`, `over_utilised`, `opposed`), ikke en ny regel. Testen låser
+    den ene retningen som virkelig kan gjøre skade.
+    """
+    result = engine.run(_combo_verdict_payload(m_ed_c1))
+    assert result['ok'] is True
+    rows = result['bending']['combinations']
+    assert result['checks']['bending_ok'] is forventet
+
+    # HVER rad har et svar, og det er treverdig.
+    for c in rows:
+        assert c['bending_ok'] in (True, False, None), f"{c['id']}: {c['bending_ok']}"
+        assert c['shear_ok'] in (True, False, None), f"{c['id']}: {c['shear_ok']}"
+
+    # DEN FARLIGE RETNINGEN: en rad som IKKE holder, under en samlet vurdering
+    # som sier at alt er i orden.
+    if result['checks']['bending_ok'] is True:
+        assert not any(c['bending_ok'] is False for c in rows), \
+            'en rad er underkjent mens envelopen sier OK'
+    # …og motsatt: sier envelopen brudd, må minst én rad kunne peke på hvorfor.
+    if result['checks']['bending_ok'] is False:
+        assert any(c['bending_ok'] is False for c in rows), \
+            'envelopen sier brudd, men ingen enkeltrad gjør det'
+
+
+def test_per_row_shear_ok_agrees_with_the_envelope_verdict():
+    """Samme krav for skjær, og med samme begrunnelse.
+
+    Predikatet er skrevet ut ÉN gang (`_row_shear_ok`) og brukes både til radens
+    dom og — gjennom `evaluated_shear` — til envelopens, slik at de ikke KAN
+    komme i utakt.
+    """
+    payload = load('payload-beam-300x600-combos.json')
+    payload['loads']['combinations'][0]['V_Ed'] = 900e3   # langt over V_Rd
+    result = engine.run(payload)
+
+    assert result['ok'] is True
+    rows = result['bending']['combinations']
+    assert result['checks']['shear_ok'] is False
+    assert any(c['shear_ok'] is False for c in rows)
+
+    # En SLS-rad kontrolleres ikke for bruddgrense og skal ikke stå som
+    # «bestått» på bøyning — det ville vært den samme «bestått uten å ha regnet
+    # noe» som `as_min_ok` og `ductility_ok` ble lukket for i runde 6.
+    for c in rows:
+        if not c['checked']:
+            assert c['bending_ok'] is None, f"{c['id']} er ikke kontrollert, men står som {c['bending_ok']}"

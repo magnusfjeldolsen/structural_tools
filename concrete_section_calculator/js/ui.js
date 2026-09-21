@@ -90,6 +90,9 @@ import {
   shearHeadlineUtilisation, toNum, utilisationStatus, HEADLINE_UTILISATION_LABEL,
   RADIAL_UTILISATION_LABEL, SHEAR_UTILISATION_LABEL,
   slsCheckRows, slsHeadlineCrack, slsReasonText, slsRowTypeLabel, slsRowUtilisation,
+  allCombinations,
+  withResultView,
+  RESULT_VIEW_ENVELOPE,
 } from './results.js';
 
 /* ================================================================== *
@@ -509,6 +512,38 @@ function crackPair(crack, wkDecimals = 2, wmaxDecimals = 2) {
 }
 
 /**
+ * VELGEREN FOR HVA SEKSJON 6 VISER: envelopen, eller én lastkombinasjon.
+ *
+ * Envelopen er standardsvaret fordi den svarer på spørsmålet man har FØRST —
+ * holder snittet i det hele tatt — og fordi den ser på alle radene samtidig, én
+ * for hver grensetilstand. MÅLT med tre kombinasjoner: bøyningen kom fra C2
+ * (η 0,92) og skjæret fra C3 (η 0,87), mens den aktive raden var C1 (η 0,29).
+ * Uten en envelope måtte man klikket seg gjennom hver rad for å finne det ut.
+ *
+ * Så kommer det andre spørsmålet — hva skjer i AKKURAT denne lasten — og det er
+ * det knappene er til for.
+ *
+ * VISES BARE MED MER ENN ÉN RAD. Med én kombinasjon er envelopen den raden, og
+ * to knapper som gir nøyaktig samme skjermbilde er en beslutning brukeren ikke
+ * har.
+ *
+ * Merkene er de SAMME `.chip`-knappene som lastkombinasjonstabellen bruker, med
+ * samme `data-on`. En ny knappestil her ville sagt at dette er en annen slags
+ * valg enn det i seksjon 4, og det er det ikke.
+ */
+function resultViewChips(result, view) {
+  const combos = allCombinations(result);
+  if (combos.length <= 1) return '';
+  const chip = (id, label, title) => `<button type="button" class="chip !py-0.5 !px-2 !text-[11px] shrink-0"
+      data-result-view="${esc(id)}" data-on="${String(view === id)}" title="${esc(title)}">${esc(label)}</button>`;
+  return `<div class="flex flex-wrap items-center gap-1.5 mb-3 text-[11px]">
+    <span class="opacity-60 pr-1">Showing</span>
+    ${chip(RESULT_VIEW_ENVELOPE, 'Envelope', `Worst of ${combos.length} load combinations, one per limit state`)}
+    ${combos.map((c) => chip(c.id, c.id, c.name || c.id)).join('')}
+  </div>`;
+}
+
+/**
  * Grensetilstandene som ble kontrollert, én linje hver.
  *
  * Toppkortet viste før alt om hverandre i én brytende rad — η, M_Rd, bruddform,
@@ -520,9 +555,17 @@ function crackPair(crack, wkDecimals = 2, wmaxDecimals = 2) {
  * DEN SOM IKKE GJELDER, VISES IKKE — `limitStateRows()` tar det valget, og den
  * er ÉN kilde: rapporten skal kunne lese den samme lista.
  */
-function limitStateHtml(result) {
+function limitStateHtml(result, view) {
   const rows = limitStateRows(result);
   if (!rows.length) return '';
+  // Radnavnet bak linja opplyser bare i ENVELOPE-visning, der linjene kan komme
+  // fra ulike rader. Har man valgt én kombinasjon, står den allerede uthevet i
+  // velgeren over, og «C2» bak hver linje gjentar et valg brukeren nettopp tok.
+  //
+  // Kriteriet er VISNINGEN, ikke om `governing` og `shear_governing` er like:
+  // i envelopen kan én rad godt styre begge, og da skal navnet fortsatt stå —
+  // det er nettopp da det er verdt å vite at det er samme last.
+  const flere = view === RESULT_VIEW_ENVELOPE && allCombinations(result).length > 1;
   return `<div class="mt-3 border-t border-slate-100/10 pt-2 space-y-1">${rows.map((r) => {
     const st = utilisationStatus(r.eta);
     // DELER IKKE FØR NULLSJEKKEN. `null / 1` er `0`, og `fmtNumber(0)` gir
@@ -541,11 +584,24 @@ function limitStateHtml(result) {
     // gitt verdi, ikke et regnet tall.
     const right = `${side(r.right, r.rightValue, r.rightDecimals ?? r.decimals)} ${esc(r.unit)}`;
     const mark = r.ok === true ? '✓' : r.ok === false ? '✕' : '–';
+    // HVILKEN RAD GAV TALLET. Linjene er en envelope, og per grensetilstand hver
+    // for seg: målt med tre kombinasjoner kom bøyningslinja fra C2 og
+    // skjærlinja fra C3, mens den aktive var C1. Uten navnet ser leseren fire
+    // tall uten å vite at de kommer fra ulike laster — og vet heller ikke
+    // hvilken rad hen skal gå tilbake til for å se nærmere på det verste.
+    //
+    // Vises BARE når det finnes mer enn én rad å velge mellom. Med én
+    // kombinasjon er «C1» bak hver linje ren støy: det finnes ikke noe annet
+    // sted tallet kunne kommet fra.
+    const tag = flere && r.combo
+      ? `<span class="shrink-0 pl-1 text-[11px] opacity-50" title="${esc(r.combo.name)}">${esc(r.combo.id)}</span>`
+      : '';
     return `<div class="flex items-baseline gap-x-3 text-[12px] num">
       <span class="w-[9rem] shrink-0 opacity-80">${esc(r.label)}</span>
       <span class="opacity-70">${left} / ${right}</span>
       <span class="ml-auto pl-2 shrink-0 font-semibold ${esc(st.text || '')}">η ${fmtRatio(r.eta, 2)}</span>
       <span class="w-[1.2rem] shrink-0 text-right">${mark}</span>
+      ${tag}
     </div>`;
   }).join('')}</div>`;
 }
@@ -2277,6 +2333,28 @@ export function createUI(deps) {
    * `focusin` og ikke `focus`: bare `focusin` bobler, og en delegert lytter
    * trenger nettopp det.
    */
+  /**
+   * Velgeren for hva seksjon 6 viser.
+   *
+   * DELEGERT PÅ `document`, som radfeltene og hintene: `#res-body` bygges med
+   * `innerHTML` ved hver opptegning, så en lytter hengt på selve knappen ville
+   * dødd i det den ble trykket.
+   *
+   * `render()` ALENE, uten `invalidate()`. Dette er det eneste stedet i modulen
+   * der en knapp endrer tilstanden UTEN å kaste resultatet, og det er med vilje:
+   * hvert toppnivåfelt finnes allerede per rad i svaret vi har, så å bytte
+   * visning er et oppslag. `invalidate()` er forbeholdt endringer i det
+   * resultatet ble REGNET for.
+   */
+  function setupResultView() {
+    document.addEventListener('click', (e) => {
+      const btn = e.target?.closest?.('[data-result-view]');
+      if (!btn) return;
+      store.setResultView(btn.dataset.resultView);
+      render();
+    });
+  }
+
   function setupRowFieldSelect() {
     document.addEventListener('focusin', (e) => {
       const el = e.target;
@@ -2945,7 +3023,15 @@ export function createUI(deps) {
     const summary = $('#res-summary');
     if (!body) return;
     const s = store.getState();
-    const result = s.result;
+    // ÉN LINJE, OG ALT UNDER FØLGER DEN. Seksjon 6 leser ikke motorens svar
+    // direkte, men svaret sett gjennom `s.resultView`: enten envelopen (verste
+    // rad per grensetilstand, som før) eller én valgt lastkombinasjon.
+    //
+    // Projeksjonen ligger i `results.js` og ikke her, fordi den er en regel om
+    // HVA et tall betyr, ikke om hvordan det tegnes — og fordi den da kan testes
+    // uten en DOM. `s.result` står urørt ved siden av: rapporten bygges av den,
+    // og skal alltid være envelopen uansett hvilken knapp som sist ble trykket.
+    const result = withResultView(s.result, s.resultView);
 
     if (!result) {
       if (summary) summary.textContent = '';
@@ -3012,6 +3098,7 @@ export function createUI(deps) {
            snittet holder, ser fire linjer og er ferdig. -->
       <div class="space-y-5 items-start">
         <div class="space-y-4">
+          ${resultViewChips(result, s.resultView)}
           <div class="rounded-xl border p-4 ${esc(status.classes)}">
             <div class="flex flex-wrap items-end gap-x-8 gap-y-3">
               <div>
@@ -3034,7 +3121,7 @@ export function createUI(deps) {
                 <div class="text-lg">${esc(status.label)}</div>
               </div>
             </div>
-            ${limitStateHtml(result)}
+            ${limitStateHtml(result, s.resultView)}
             <p class="text-[11px] mt-2 opacity-70">${esc(failureModeNote(bending.failure_mode))}</p>
           </div>
 
@@ -4147,6 +4234,7 @@ export function createUI(deps) {
       // `innerHTML` hvis lytteren satt lenger inn — og «klikk utenfor lukker»
       // krever uansett at klikk hvor som helst på sida når fram hit.
       setupRowFieldSelect();
+      setupResultView();
       hints = attachHints(document.body, HINTS);
       render();
     },

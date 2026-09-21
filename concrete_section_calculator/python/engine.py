@@ -2623,6 +2623,30 @@ def _run_inner(payload, progress, t0):
     # `False` og ikke `None`: «kan ikke gaa god for» ville vaert for mildt for et snitt
     # der kapasiteten i lastens retning er null.
     opposed = [c for c in bending_rows if c.get('capacity_opposes_load')]
+
+    # PER RAD, AV DE SAMME MENGDENE. Seksjon 6 kan vise EN valgt lastkombinasjon
+    # i stedet for envelopen, og trenger da et svar paa «holder DENNE raden».
+    #
+    # Svaret hoerer hjemme her og ikke i visningslaget: terskelen er `eta <= 1,0`
+    # UTEN toleranse (se begrunnelsen over `over_utilised`), og
+    # definisjonsmengden er `within_limits and flexure_solved and checked`. Begge
+    # er valg med en historie. En kopi av dem i `results.js` ville vaert to
+    # kilder til den samme dommen, og den ene ville sakket etter.
+    #
+    # Det er altsaa INGEN ny regel her -- bare en merkelapp paa `bending_rows`,
+    # `over_utilised` og `opposed`, som alle er regnet ferdig over.
+    _scope_ids = {c['id'] for c in bending_rows}
+    _bad_ids = {c['id'] for c in over_utilised} | {c['id'] for c in opposed}
+    for c in combo_results:
+        if c['id'] not in _scope_ids or c['utilisation'] is None:
+            # Utenfor definisjonsmengden, eller uten et tall aa maale mot: UBESVART.
+            # `False` ville paastaatt et brudd ingen har regnet, og `True` ville
+            # vaert den «bestaatt uten aa ha regnet noe» kodebasen har lukket
+            # tre ganger foer.
+            c['bending_ok'] = None
+        else:
+            c['bending_ok'] = c['id'] not in _bad_ids
+
     if opposed:
         bending_ok = False
         worst = opposed[0]
@@ -2789,6 +2813,23 @@ def _run_inner(payload, progress, t0):
         if c['checked'] and c.get('shear') and not c['shear'].get('evaluated')
         and (c['shear'].get('V_Ed') or 0.0) > 0.0
     ]
+    # PER RAD, samme predikat som `all(...)` under bruker. Skrevet ut EN gang og
+    # brukt begge steder, slik at envelope-dommen og radens egen dom ikke kan
+    # komme i utakt.
+    def _row_shear_ok(combo):
+        sh = combo.get('shear')
+        if not sh:
+            # Ingen skjaerblokk i det hele tatt: ingenting aa kontrollere.
+            return True
+        if not sh.get('evaluated'):
+            # Ikke regnet. Har raden last, er det ubesvart; har den det ikke,
+            # er det ingenting aa svare paa.
+            return None if (sh.get('V_Ed') or 0.0) > 0.0 and combo.get('checked') else True
+        return sh['V_Rd'] is None or sh['V_Ed'] <= sh['V_Rd']
+
+    for c in combo_results:
+        c['shear_ok'] = _row_shear_ok(c)
+
     if evaluated_shear:
         shear_ok = all(s['V_Rd'] is None or s['V_Ed'] <= s['V_Rd'] for s in evaluated_shear)
         if unevaluated_with_load and shear_ok:

@@ -17,8 +17,8 @@ kurve og ikke bare paa «lista er ulik».
 
 | Status | Antall |
 | --- | --- |
-| `UENDRET` | 305 |
-| `NYTT` | 44 |
+| `UENDRET` | 349 |
+| `NYTT` | 6 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
@@ -29,119 +29,119 @@ Maalt ved generering: `wall_time_ms = 13.8`, `runtime = 'cpython 3.11.9'`. Begge
 | Status | Antall |
 | --- | --- |
 | `UENDRET` | 102 |
-| `NYTT` | 0 |
+| `NYTT` | 2 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
-Maalt ved generering: `wall_time_ms = 14.2`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
+Maalt ved generering: `wall_time_ms = 17.0`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
 
 ## `result-bending-slab-1000x200-combos.json`
 
 | Status | Antall |
 | --- | --- |
-| `UENDRET` | 309 |
-| `NYTT` | 44 |
+| `UENDRET` | 353 |
+| `NYTT` | 6 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
-Maalt ved generering: `wall_time_ms = 15.5`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
+Maalt ved generering: `wall_time_ms = 19.0`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
 
 ## `result-bending-slab-1000x200.json`
 
 | Status | Antall |
 | --- | --- |
 | `UENDRET` | 102 |
-| `NYTT` | 0 |
+| `NYTT` | 2 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
-Maalt ved generering: `wall_time_ms = 14.0`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
+Maalt ved generering: `wall_time_ms = 16.4`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
 
 ## `result-mc-beam-300x600-combos.json`
 
 | Status | Antall |
 | --- | --- |
-| `UENDRET` | 355 |
-| `NYTT` | 44 |
+| `UENDRET` | 399 |
+| `NYTT` | 6 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
-Maalt ved generering: `wall_time_ms = 253.7`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
+Maalt ved generering: `wall_time_ms = 262.6`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
 
 ## `result-mc-beam-300x600.json`
 
 | Status | Antall |
 | --- | --- |
 | `UENDRET` | 152 |
-| `NYTT` | 0 |
+| `NYTT` | 2 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
-Maalt ved generering: `wall_time_ms = 261.5`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
+Maalt ved generering: `wall_time_ms = 280.9`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
 
 ## `result-mc-slab-1000x200-combos.json`
 
 | Status | Antall |
 | --- | --- |
-| `UENDRET` | 359 |
-| `NYTT` | 44 |
+| `UENDRET` | 403 |
+| `NYTT` | 6 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
-Maalt ved generering: `wall_time_ms = 313.7`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
+Maalt ved generering: `wall_time_ms = 331.9`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
 
 ## `result-mc-slab-1000x200.json`
 
 | Status | Antall |
 | --- | --- |
 | `UENDRET` | 152 |
-| `NYTT` | 0 |
+| `NYTT` | 2 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
-Maalt ved generering: `wall_time_ms = 305.7`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
+Maalt ved generering: `wall_time_ms = 339.5`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
 
 ## `result-nmdomain-beam-300x600-combos.json`
 
 | Status | Antall |
 | --- | --- |
-| `UENDRET` | 516 |
-| `NYTT` | 44 |
+| `UENDRET` | 560 |
+| `NYTT` | 6 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
-Maalt ved generering: `wall_time_ms = 41.9`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
+Maalt ved generering: `wall_time_ms = 48.2`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
 
 ## `result-nmdomain-beam-300x600.json`
 
 | Status | Antall |
 | --- | --- |
 | `UENDRET` | 313 |
-| `NYTT` | 0 |
+| `NYTT` | 2 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
-Maalt ved generering: `wall_time_ms = 40.0`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
+Maalt ved generering: `wall_time_ms = 45.4`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
 
 ## `result-nmdomain-slab-1000x200-combos.json`
 
 | Status | Antall |
 | --- | --- |
-| `UENDRET` | 520 |
-| `NYTT` | 44 |
+| `UENDRET` | 564 |
+| `NYTT` | 6 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
-Maalt ved generering: `wall_time_ms = 46.6`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
+Maalt ved generering: `wall_time_ms = 46.9`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
 
 ## `result-nmdomain-slab-1000x200.json`
 
 | Status | Antall |
 | --- | --- |
 | `UENDRET` | 313 |
-| `NYTT` | 0 |
+| `NYTT` | 2 |
 | `NORMALISERT` | 2 |
 | `FLYTTET` | 0 |
 
-Maalt ved generering: `wall_time_ms = 46.2`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
+Maalt ved generering: `wall_time_ms = 47.6`, `runtime = 'cpython 3.11.9'`. Begge normalisert bort i fixturen.
 

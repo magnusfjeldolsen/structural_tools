@@ -368,3 +368,20 @@ test('doc_schema LIK eller LAVERE gir INGEN note — 1 er den eneste versjonen s
     );
   }
 });
+
+test('resultView deles med lenka, men en rad som ikke finnes faller til envelope', () => {
+  // Visningen er med i dokumentet fordi en delt lenke skal vise mottakeren det
+  // samme som avsenderen så på. Men id-en kan være foreldet: avsenderen slettet
+  // raden, eller lenka er eldre enn den. Da er envelopen det riktige svaret —
+  // ikke en tom seksjon 6, og ikke en velger låst til et navn ingen kan se.
+  const st = createStore();
+  st.addCombo();
+  st.setResultView('C2');
+  const doc = JSON.parse(JSON.stringify(toDocument(st.getState())));
+  assert.equal(doc.state.resultView, 'C2', 'visningen skal følge med dokumentet');
+
+  doc.state.resultView = 'C9';
+  const mottaker = createStore();
+  mottaker.replaceState(fromDocument(doc).state);
+  assert.equal(mottaker.getState().resultView, 'envelope');
+});

@@ -54,6 +54,8 @@ import {
   failureModeLabel,
   failureModeNote,
   limitStateRows,
+  RESULT_VIEW_ENVELOPE,
+  withResultView,
   CHECK_ORDER,
   CHECK_LABELS,
   checkRows,
@@ -1219,6 +1221,21 @@ test('«samme streng som store.js»: RUN_ALL_ANALYSIS kan ikke drive fra RUN_ALL
     '«Run all» er den lengste kjøringen i modulen og MÅ kunne avbrytes');
 });
 
+test('«samme streng som store.js»: RESULT_VIEW_ENVELOPE kan ikke drive fra RESULT_VIEW', async () => {
+  // Samme avveining som for RUN_ALL over: `results.js` skal bare avhenge av
+  // `materials.js`, og `store.js` skal ikke dra formateringslaget inn i
+  // tilstandslaget. Duplikatet er tillatt fordi DENNE testen finnes.
+  //
+  // Driver de fra hverandre, blir konsekvensen stille og stygg: `store.js` ville
+  // satt en `resultView` ingen `withResultView()` kjenner igjen, og seksjon 6
+  // ville vist envelopen mens velgeren sto på en rad.
+  const { RESULT_VIEW } = await import('../js/store.js');
+  assert.equal(RESULT_VIEW_ENVELOPE, RESULT_VIEW);
+  assert.equal(RESULT_VIEW_ENVELOPE, 'envelope');
+  // …og den må ikke kunne kollidere med en kombinasjons-id.
+  assert.ok(!/^C\d+$/.test(RESULT_VIEW_ENVELOPE));
+});
+
 test('analysisBlock peker på primary når analysis === «all», og på analysen ellers', () => {
   const bendingFirst = runAllResult('bending');
   assert.equal(analysisBlock(bendingFirst), bendingFirst.bending, 'primary bending');
@@ -1509,4 +1526,64 @@ test('brukervendte faseetiketter i solver-client er engelske', async () => {
   }
   const ukjent = client.phaseLabel('finnes-ikke');
   assert.ok(!norskeOrd.test(ukjent), `reservenavnet er norsk: «${ukjent}»`);
+});
+
+/* -------- withResultView: envelope mot én lastkombinasjon (runde 12) -------- */
+
+const COMBOS_FIX = fixture('result-bending-beam-300x600-combos');
+
+test('withResultView: envelopen er uendret, og ukjente id-er faller tilbake til den', () => {
+  // En rad kan forsvinne på tre måter — slettet, et lastet dokument med andre
+  // id-er, en delt lenke laget før raden ble til. Alle tre skal gi envelopen,
+  // ikke en tom seksjon 6.
+  assert.equal(withResultView(COMBOS_FIX, RESULT_VIEW_ENVELOPE), COMBOS_FIX);
+  assert.equal(withResultView(COMBOS_FIX, null), COMBOS_FIX);
+  assert.equal(withResultView(COMBOS_FIX, 'C99'), COMBOS_FIX);
+});
+
+test('withResultView: ÉN rad gir den radens tall, og motorens dom for den raden', () => {
+  const row = COMBOS_FIX.bending.combinations.find((c) => c.id === 'C1');
+  const view = withResultView(COMBOS_FIX, 'C1');
+
+  // INGEN NY BEREGNING: tallene skal være radens egne, tegn for tegn.
+  for (const key of ['M_Rd', 'x', 'x_over_d', 'failure_mode', 'utilisation', 'eps_a', 'chi_y']) {
+    assert.deepEqual(view.bending[key], row[key], key);
+  }
+  assert.equal(view.bending.governing, 'C1');
+  assert.equal(view.bending.shear_governing, 'C1');
+
+  // DOMMEN KOMMER FRA MOTOREN, ikke fra en terskel gjentatt her.
+  assert.equal(view.checks.bending_ok, row.bending_ok);
+  assert.equal(view.checks.shear_ok, row.shear_ok);
+
+  // Kilden er urørt — rapporten bygges av den og skal alltid være envelopen.
+  assert.notEqual(view, COMBOS_FIX);
+  assert.equal(COMBOS_FIX.bending.governing, 'C1');
+});
+
+test('withResultView: en ULS-rad har ingen rissvidde, og da står ikke linja', () => {
+  // Uten dette ville envelopens rissvidde blitt stående under et radnavn den
+  // ikke gjelder for — et tall lånt fra en annen last.
+  const uls = limitStateRows(withResultView(COMBOS_FIX, 'C1')).map((r) => r.key);
+  assert.ok(uls.includes('bending'));
+  assert.ok(!uls.includes('crack'), 'en ULS-rad skal ikke ha rissviddelinje');
+
+  // …og motsatt: en kvasi-permanent rad kontrolleres ikke for bruddgrense.
+  const qp = COMBOS_FIX.sls.rows.find((r) => r.type === 'quasi_permanent');
+  const keys = limitStateRows(withResultView(COMBOS_FIX, qp.id)).map((r) => r.key);
+  assert.ok(keys.includes('crack'));
+  assert.ok(!keys.includes('shear'), 'en SLS-rad har ingen skjærkontroll');
+});
+
+test('limitStateRows navngir raden hvert tall kom fra', () => {
+  // Linjene ER en envelope, og per grensetilstand hver for seg. Uten navnet kan
+  // leseren verken se det, eller vite hvilken rad hen skal gå tilbake til.
+  const rows = limitStateRows(COMBOS_FIX);
+  for (const r of rows) {
+    assert.ok(r.combo, `${r.key} mangler radnavn`);
+    assert.ok(r.combo.id, `${r.key} mangler id`);
+  }
+  const crack = rows.find((r) => r.key === 'crack');
+  const qp = COMBOS_FIX.sls.rows.find((r) => r.type === 'quasi_permanent');
+  assert.equal(crack.combo.id, qp.id, 'rissvidden skal peke på SLS-raden som gav den');
 });
