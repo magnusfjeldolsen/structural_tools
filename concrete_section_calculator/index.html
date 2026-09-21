@@ -194,6 +194,17 @@
        <style> ETTER dette dokumentet, så en naken `.text-slate-500` ville tapt.
        Samme grunn som `.bar-cell`-reglene over. */
     body .text-slate-500, body .text-slate-600 { color: #94a3b8; }
+    /* ET OVERSTYRT FELT SER OVERSTYRT UT.
+       `φ_ef`, `w_max` og `h₀` har alle en AVLEDET verdi ved siden av seg, og et
+       tall i feltet betyr at den avledede ikke brukes. Uten et merke må man
+       lese to celler og sammenligne for å vite hvilken som gjelder — og den
+       som ikke gjør det, tror han ser utledningen. Rammen sier det på ett blikk;
+       merkelappen ved siden av tallet sier hva som gjelder. */
+    input.is-override {
+      border-color: #f59e0b;
+      background-color: rgba(245, 158, 11, .08);
+    }
+    input.is-override:focus { outline-color: #f59e0b; }
   </style>
 </head>
 
