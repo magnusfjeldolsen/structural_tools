@@ -255,6 +255,9 @@ export function buildPayload(state = {}, overrides = {}) {
         w_max: limits.w_max,
         w_max_source: limits.w_max_source,
         w_max_reason: limits.w_max_reason,
+        // Rå boolsk verdi: motoren eier hva antakelsen GJØR, dette laget bare
+        // at brukeren ba om den.
+        assume_cracked: Boolean(sls.assume_cracked),
         sigma_c_char_factor: num(sls.sigma_c_char_factor),
         sigma_c_qp_factor: num(sls.sigma_c_qp_factor),
         sigma_s_char_factor: num(sls.sigma_s_char_factor),

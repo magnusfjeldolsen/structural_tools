@@ -1182,8 +1182,13 @@ def test_an_uncracked_section_is_still_uncracked():
     assert rows['C0']['sigma_ct_uncracked'] < sls['f_ct_eff']
     assert sls['cracked'] is False
     assert all(r['cracked'] is False for r in sls['rows'])
-    assert sls['not_applicable']['crack_width_ok'] == \
-        'no quasi-permanent load combination cracks the section'
+    # Grunnen skal SI hvorfor, med tallene som avgjorde det -- ikke bare
+    # konkludere. Laaser INNHOLDET og ikke strengen: en bedre formulering skal
+    # ikke gjoere denne testen roed, men et tall som forsvinner skal.
+    grunn = sls['not_applicable']['crack_width_ok']
+    assert 'does not crack' in grunn, grunn
+    assert f"{sls['sigma_ct_max']:.2f}" in grunn, grunn
+    assert f"{sls['f_ct_eff']:.2f}" in grunn, grunn
 
 
 def test_the_envelope_also_moves_the_concrete_stress_at_first_loading():
@@ -1700,3 +1705,96 @@ def test_an_edge_that_cannot_be_evaluated_makes_the_whole_answer_unanswered():
     assert row['state'] is not None, row['state_reason']
     assert row['crack'] is None
     assert row['crack_reason'] == 'no_bar_spacing'
+
+
+# ------------------------------------------------------------------ #
+# Stadium II på forespørsel (runde 12)
+# ------------------------------------------------------------------ #
+
+def _uncracked_qp_payload(assume=False):
+    """Et snitt som IKKE risser av den tilnærmet permanente lasten."""
+    # 300x600-bjelken testfila bruker ellers. `M_cr` ~ 2,90 * 300*600^2/6 =
+    # 52,1 kNm, saa -30 kNm holder snittet trygt urisset.
+    rebar = [bars_layer('L1', -250.0, 20.0, [-100.0, 0.0, 100.0])]
+    p = sls_payload(rebar, 0.0, -30e6, combo_type='quasi_permanent', phi_ef=0.0,
+                    exposure_class='XC3', w_max=0.3, w_max_source='class',
+                    w_max_reason=None, sigma_c_char_required=False)
+    p['sls']['assume_cracked'] = assume
+    return p
+
+
+def test_uncracked_reason_carries_the_numbers_that_decided_it():
+    """«Risser ikke» skal ikke være en påstand uten noe bak seg.
+
+    MÅLT på en plate 1000×200, XC3, M_qp = −8 kNm/m: motoren visste
+    `sigma_ct = 1,16 MPa` mot `f_ct,eff = 2,90`, men svarte bare «no
+    quasi-permanent load combination cracks the section». Brukeren måtte gjette
+    på om snittet lå like under rissmomentet eller langt unna — og det er
+    nettopp den vurderingen som avgjør om man vil regne stadium II likevel.
+    """
+    engine.reset_cache()
+    sls = engine.run(_uncracked_qp_payload())['sls']
+
+    assert sls['cracked'] is False
+    assert sls['cracked_assumed'] is False
+    assert sls['sigma_ct_max'] is not None
+    assert sls['sigma_ct_max'] < sls['f_ct_eff'], 'testen forutsetter et urisset snitt'
+
+    grunn = sls['not_applicable']['crack_width_ok']
+    # Begge tallene, og andelen — ikke bare konklusjonen.
+    assert f"{sls['sigma_ct_max']:.2f}" in grunn, grunn
+    assert f"{sls['f_ct_eff']:.2f}" in grunn, grunn
+    assert '% of the cracking limit' in grunn, grunn
+    # …og hva man kan gjøre med det.
+    assert 'state II' in grunn, grunn
+
+
+def test_assume_cracked_forces_state_II_and_says_that_it_did():
+    """Haken skal gi en rissvidde OG merke den som en forutsetning.
+
+    En rissvidde regnet for en tilstand brukeren VALGTE ser ut nøyaktig som en
+    regnet for en tilstand motoren FANT — samme tall, samme enhet, samme grense.
+    Forskjellen finnes bare i forutsetningen, så den må stå i svaret.
+    """
+    engine.reset_cache()
+    res = engine.run(_uncracked_qp_payload(assume=True))
+    sls = res['sls']
+
+    assert sls['cracked'] is True
+    assert sls['cracked_assumed'] is True, 'antakelsen endret tilstanden og skal opplyses'
+
+    row = sls['rows'][0]
+    assert row['cracked'] is True
+    assert row['crack'] is not None, 'stadium II skal gi en rissvidde'
+    assert row['crack']['w_k'] > 0
+
+    # Synlig i advarselslista, som følger tallet inn i rapporten.
+    koder = [w['code'] for w in res['warnings']]
+    assert 'crack_state_assumed' in koder
+    melding = next(w for w in res['warnings'] if w['code'] == 'crack_state_assumed')
+    assert melding['severity'] == 'info', 'et bevisst valg er ikke en advarsel'
+    assert f"{sls['sigma_ct_max']:.2f}" in melding['message']
+
+
+def test_assume_cracked_changes_nothing_when_the_section_cracks_by_itself():
+    """Risser snittet av lasten, er det ingen antakelse å opplyse om.
+
+    `cracked_assumed` skal være `False` — ellers ville rapporten båret en
+    forutsetning som ikke ble brukt, og leseren ville mistrodd et helt vanlig
+    regnet resultat.
+    """
+    rebar = [bars_layer('L1', -250.0, 20.0, [-100.0, 0.0, 100.0])]
+    base = dict(exposure_class='XC3', w_max=0.3, w_max_source='class',
+                w_max_reason=None, sigma_c_char_required=False)
+    svar = {}
+    for assume in (False, True):
+        p = sls_payload(rebar, 0.0, -100e6, combo_type='quasi_permanent',
+                        phi_ef=0.0, **base)
+        p['sls']['assume_cracked'] = assume
+        engine.reset_cache()
+        svar[assume] = engine.run(p)['sls']
+
+    assert svar[False]['cracked'] is True, 'testen forutsetter et snitt som risser selv'
+    assert svar[True]['cracked_assumed'] is False
+    # …og tallene skal være IDENTISKE: antakelsen rørte ingenting.
+    assert svar[False]['rows'][0]['crack']['w_k'] == svar[True]['rows'][0]['crack']['w_k']
