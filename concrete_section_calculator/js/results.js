@@ -334,6 +334,7 @@ export const VALIDATION_CODES = Object.freeze([
   'insufficient_layer_spacing',
   // Skjærvalidering, endringsrunde 4 §4.4 — samme tabell, ett oppslag.
   'stirrup_spacing_exceeds_max',
+  'stirrup_spacing_not_positive',
   'asw_below_minimum',
   'stirrup_legs_spacing_exceeds_max',
   'invalid_strut_angle',
@@ -354,6 +355,14 @@ export const RUNTIME_CODES = Object.freeze([
   'document_not_recognised',
   'document_field_ignored',
   'document_field_defaulted',
+  // DELBAR LENKE (oppgave C). Begge gjelder BÅDE fil og lenke, og vises i
+  // SAMME `#doc-load-notes`-liste — en lenke er et dokument som kom en annen
+  // vei, ikke en egen visningsvei.
+  //   `document_schema_newer`: `doc_schema` er STØRRE enn `DOCUMENT_SCHEMA`.
+  //   `link_format_unsupported`: ukjent prefiks eller ødelagt base64 — ingen
+  //   tilstand lastes i det hele tatt.
+  'document_schema_newer',
+  'link_format_unsupported',
   // Serialisering, endringsrunde 4 §2 — en lagret fil med `analysis: 'bending'`
   // og `N_Ed ≠ 0` normaliseres til `nm_domain` ved lasting.
   'analysis_forced_to_nm_domain',
@@ -519,6 +528,10 @@ export const CODE_MESSAGES = Object.freeze({
   stirrup_spacing_exceeds_max:
     'Stirrup spacing s exceeds s_l,max = 0.75·d (EC2 9.2.2(6)). Add stirrups or reduce ' +
     'the spacing.',
+  stirrup_spacing_not_positive:
+    'Stirrup spacing must be greater than zero. A row with s = 0 is not a row of ' +
+    'stirrups: the engine skips it, so the section would be analysed as if it had no ' +
+    'shear reinforcement at all.',
   asw_min_not_met:
     'A beam with a shear force has no shear reinforcement at all. EC2 9.2.2(5) requires ' +
     'at least the minimum ratio rho_w,min in beams — the exemption in 6.2.1(4) covers ' +
@@ -561,6 +574,14 @@ export const CODE_MESSAGES = Object.freeze({
   document_not_recognised: 'This is not a concrete section calculator file.',
   document_field_ignored: 'An unknown field in the file was ignored.',
   document_field_defaulted: 'A missing field in the file was filled with its default.',
+  document_schema_newer:
+    'This was saved by a newer version of the calculator. Everything this version ' +
+    'recognises has been loaded, but any field the newer version added is missing — ' +
+    'check the input before you trust a number.',
+  link_format_unsupported:
+    'This link could not be read. It is either truncated — links break when an email ' +
+    'client wraps them across two lines — or it was made by a different version of the ' +
+    'link format. Nothing was loaded; ask for the link again, or for the saved file.',
   run_all_partial:
     'One of the analyses in "Run all" did not complete. The results shown are from the ' +
     'analyses that did — the technical detail says which one is missing and why. ' +
@@ -984,16 +1005,6 @@ export function designMoment(result) {
   return toNum(analysisBlock(result)?.M_Ed);
 }
 
-/** Dimensjonerende normalkraft (N, fortegnsatt — trykk negativ). */
-export function designAxial(result) {
-  return toNum(analysisBlock(result)?.N_Ed);
-}
-
-/** Status for hovedtallet, klar til pille og rapportboks. */
-export function resultStatus(result) {
-  return utilisationStatus(headlineUtilisation(result));
-}
-
 /**
  * ALLE lastkombinasjonene analysen ble kjørt mot (endringsrunde 2, §4.3), i
  * den rekkefølgen motoren ga dem. Tom array når blokka ikke bærer feltet
@@ -1213,8 +1224,17 @@ export function limitStateRows(result = {}) {
     });
   }
 
+  // GATER PAA `w_k`, IKKE PAA `w_max`. En eksponeringsklasse uten anbefalt grense
+  // (XD3 i tabellen modulen bruker) ga `w_max = null`, og da forsvant hele linja
+  // -- samtidig som «Overall assessment» sto paa `null` fordi `crack_width_ok`
+  // var ubesvart. MAALT paa XD3-plata: `w_k = 0,13886 mm` regnet og vist
+  // ingensteds, med fire groenne linjer over en samlet vurdering uten grunn.
+  //
+  // «Den som ikke gjelder, vises ikke» var kravet, og en REGNET rissvidde
+  // gjelder. Det er grensa som mangler, og da staar det en tankestrek der
+  // grensa skulle vaert -- samme sprak som `slsSummarySuffix` allerede bruker.
   const worst = slsHeadlineCrack(result);
-  if (worst && worst.w_max !== null && worst.w_max !== undefined) {
+  if (worst && toNum(worst.w_k) !== null) {
     rows.push({
       key: 'crack',
       label: 'Crack width',

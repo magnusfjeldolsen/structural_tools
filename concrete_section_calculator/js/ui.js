@@ -79,6 +79,7 @@ import { attachHints } from './hints.js';
 import { isCancellable, phaseLabel, TOTAL_DOWNLOAD_BYTES } from './solver-client.js';
 import { RUN_ALL, defaultState } from './store.js';
 import { fromDocument, toDocument } from './serialize.js';
+import { toLink } from './share-link.js';
 import {
   DASH, analysisBlock, analysisLabel, checkRows, checkText, comboLabel, compressionEdgeLabel, describeWarnings, fmtInput, limitStateRows,
   designMoment, directionFromTheta, directionLabel, failureModeLabel, failureModeNote, failureState,
@@ -524,10 +525,21 @@ function limitStateHtml(result) {
   if (!rows.length) return '';
   return `<div class="mt-3 border-t border-slate-100/10 pt-2 space-y-1">${rows.map((r) => {
     const st = utilisationStatus(r.eta);
-    const left = `${esc(r.left)} ${fmtNumber(r.leftValue / r.scale, r.decimals)}`;
+    // DELER IKKE FØR NULLSJEKKEN. `null / 1` er `0`, og `fmtNumber(0)` gir
+    // «0.000» — en manglende grense ville stått som en grense på null, altså et
+    // krav ingen kan oppfylle. `fmtNumber(null)` gir tankestreken.
+    //
+    // Det er ikke en teoretisk sak: XD3 har ingen anbefalt rissviddegrense i
+    // tabellen modulen bruker, så `w_max` ER null der samtidig som `w_k` er
+    // regnet. MÅLT på XD3-plata: w_k = 0,13886 mm.
+    const side = (label, value, decimals) => {
+      const n = value === null || value === undefined ? null : value / r.scale;
+      return `${esc(label)} ${fmtNumber(n, decimals)}`;
+    };
+    const left = side(r.left, r.leftValue, r.decimals);
     // Grensa har sin EGEN presisjon: `w_max` er 0,30 og ikke 0,300 — den er en
     // gitt verdi, ikke et regnet tall.
-    const right = `${esc(r.right)} ${fmtNumber(r.rightValue / r.scale, r.rightDecimals ?? r.decimals)} ${esc(r.unit)}`;
+    const right = `${side(r.right, r.rightValue, r.rightDecimals ?? r.decimals)} ${esc(r.unit)}`;
     const mark = r.ok === true ? '✓' : r.ok === false ? '✕' : '–';
     return `<div class="flex items-baseline gap-x-3 text-[12px] num">
       <span class="w-[9rem] shrink-0 opacity-80">${esc(r.label)}</span>
@@ -2563,11 +2575,26 @@ export function createUI(deps) {
   }
 
   /** Notene fra `fromDocument` vises som andre advarsler (§5.2) — samme
-   *  `describeWarning`/`CODE_MESSAGES`-vei som resultatets `warnings`. */
+   *  `describeWarning`/`CODE_MESSAGES`-vei som resultatets `warnings`.
+   *
+   *  ÉN LISTE FOR BÅDE FIL OG LENKE (oppgave C). En delbar lenke er et dokument
+   *  som kom en annen vei, ikke en egen visningsvei — `link_format_unsupported`
+   *  og `document_schema_newer` havner derfor her, ved siden av
+   *  `document_field_ignored`, og ingen ny boks ble funnet opp for dem. */
   function renderDocNotes(notes) {
     const host = $('#doc-load-notes');
     if (!host) return;
     if (!notes || !notes.length) { host.innerHTML = ''; return; }
+    // Boksen er LUKKET ved sidelast, og en lenke som ikke lot seg lese blir
+    // lastet FØR brukeren har åpnet noe som helst. Uten dette ville den
+    // eneste forklaringen på et tomt skjema ligget gjemt bak en `<summary>`.
+    // Bare `error`/`warning` åpner den: `info`-notene («et felt ble fylt fra
+    // standarden») er en fotnote, ikke noe som skal slå opp en boks.
+    if (notes.some((n) => n.severity === 'error' || n.severity === 'warning')) {
+      const box = host.closest('details');
+      if (box) box.open = true;
+      host.scrollIntoView({ block: 'center' });
+    }
     const described = describeWarnings(notes.map((n) => ({
       code: n.code,
       severity: n.severity,
@@ -2577,6 +2604,33 @@ export function createUI(deps) {
       w.severity === 'error' ? 'border-rose-600/50 bg-rose-950/30 text-rose-200' : 'border-sky-600/50 bg-sky-950/20 text-sky-200'
     }"><span>${w.severity === 'error' ? '✕' : 'ℹ'}</span><span><b>${esc(w.severityLabel)}:</b> ${esc(w.message)}${
       w.hasDetail ? ` <span class="opacity-70">(${esc(w.detail)})</span>` : ''}</span></div>`).join('');
+  }
+
+  /**
+   * ÉN VEI INN I STATEN FOR ET DOKUMENT, uansett om det kom fra en fil eller
+   * fra en delt lenke.
+   *
+   * Dette var før kroppen av `loadJsonFile`. Den er løftet ut fordi
+   * lenkelastingen i `main.js` skal gå NØYAKTIG samme vei — `replaceState`,
+   * notene, den nullstilte `steelGradeCustom` og `revealNonDefaults()` FØR
+   * `render()`. En andre, nesten-lik kopi av de fem linjene ville sakket etter
+   * første gang noen la til et sjette trinn her.
+   *
+   * @param {{state: object|null, notes: Array<object>}} doc svaret fra
+   *        `fromDocument` eller `fromLink` — begge har samme form, og begge
+   *        kaster aldri
+   */
+  function applyDocument({ state, notes }) {
+    if (state) store.replaceState(state);
+    renderDocNotes(notes);
+    // §2.6: en innlastet fil med θ = 30° skal ikke skjule nettopp det som gjør
+    // den fila spesiell. Kalles FØR `render()`, så den første opptegningen
+    // allerede har boksene i riktig stilling — ellers ville de blinket opp
+    // etterpå. Den låste `k`/`ε_uk`-tilstanden nullstilles samtidig: en fil
+    // bærer tall, ikke en beslutning om å redigere dem.
+    steelGradeCustom = false;
+    if (state) revealNonDefaults();
+    render();
   }
 
   async function loadJsonFile(file) {
@@ -2590,17 +2644,7 @@ export function createUI(deps) {
       renderDocNotes([{ code: 'document_not_recognised', severity: 'error' }]);
       return;
     }
-    const { state, notes } = fromDocument(parsed);
-    if (state) store.replaceState(state);
-    renderDocNotes(notes);
-    // §2.6: en innlastet fil med θ = 30° skal ikke skjule nettopp det som gjør
-    // den fila spesiell. Kalles FØR `render()`, så den første opptegningen
-    // allerede har boksene i riktig stilling — ellers ville de blinket opp
-    // etterpå. Den låste `k`/`ε_uk`-tilstanden nullstilles samtidig: en fil
-    // bærer tall, ikke en beslutning om å redigere dem.
-    steelGradeCustom = false;
-    if (state) revealNonDefaults();
-    render();
+    applyDocument(fromDocument(parsed));
   }
 
   function setupDocIO() {
@@ -2615,6 +2659,152 @@ export function createUI(deps) {
         loadJsonFile(file).finally(() => { input.value = ''; });
       });
     }
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Delbar lenke (oppgave C)
+   * ---------------------------------------------------------------- */
+
+  /**
+   * ADRESSEFELTET SKAL ALDRI BESKRIVE NOE ANNET ENN SKJERMEN — og det skrives
+   * likevel BARE på to tidspunkt: når brukeren trykker «Share», og ÉN gang
+   * etter det, for å rydde.
+   *
+   * HVORFOR IKKE ÉN `replaceState` PER TASTETRYKK, som ville holdt adressa
+   * alltid oppdatert: Safari struper `history.replaceState` til ~100 kall per
+   * 30 sekunder og kaster `SecurityError` over det. Ett kall per tegn i et
+   * `M_Ed`-felt passerer den grensa etter en halv brukerøkt — altså hos
+   * brukeren, aldri i en test, og med et unntak fra en funksjon som bare
+   * pusset på adressefeltet.
+   *
+   * KONSEKVENSEN ER AKSEPTERT: man kan ikke bokmerke gjeldende tilstand fra
+   * adressefeltet. Man må trykke «Share». Til gjengjeld lyver adressefeltet
+   * aldri.
+   */
+  let disarmHashClear = null;
+
+  /**
+   * Armerer ÉN opprydding: ved FØRSTE tilstandsendring etter dette fjernes
+   * hashen, og lytteren melder seg AV.
+   *
+   * AVMELDINGEN ER EKSPLISITT, ikke en `if (alreadyCleared) return` inni
+   * lytteren. En slik vakt ville latt lytteren bli liggende og kjøre ved hver
+   * eneste endring resten av økta, og da hadde struping-regelen over vært et
+   * spørsmål om når, ikke om.
+   */
+  function armHashClear() {
+    // Armeres på nytt ved hvert «Share». Den forrige meldes AV først, slik at
+    // det aldri finnes to lyttere som vil rydde samme hash.
+    if (disarmHashClear) disarmHashClear();
+    const off = store.subscribe(() => {
+      off();
+      disarmHashClear = null;
+      // Ingen hash igjen: `pathname + search` er adressa uten fragmentet, og
+      // `replaceState` bytter den uten en navigering (og uten en ny oppføring
+      // i historikken, som ville gjort «tilbake» til en meningsløs knapp).
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    });
+    disarmHashClear = off;
+  }
+
+  /** `#share-row`: reserveveien når utklippstavla ikke finnes, og klartekst
+   *  når nettleseren er for gammel for `CompressionStream`. */
+  function showShareRow(message, url) {
+    const row = $('#share-row');
+    const status = $('#share-status');
+    const field = $('#share-url');
+    if (!row || !status || !field) return;
+    row.hidden = false;
+    status.textContent = message;
+    field.hidden = !url;
+    field.value = url || '';
+    // Boksen ÅPNES ALLTID når det står noe her. Raden bor inne i en lukket
+    // `<details>`, og en beskjed om at knappen ikke virket er verdiløs hvis den
+    // legger seg bak en `<summary>` brukeren aldri klikker.
+    const box = row.closest('details');
+    if (box) box.open = true;
+    row.scrollIntoView({ block: 'center' });
+    if (url) {
+      field.focus();
+      field.select();
+    }
+  }
+
+  function hideShareRow() {
+    const row = $('#share-row');
+    if (row) { row.hidden = true; }
+    const field = $('#share-url');
+    if (field) { field.hidden = true; field.value = ''; }
+  }
+
+  /**
+   * Kortvarig kvittering PÅ knappen.
+   *
+   * IKONET BYTTES, IKKE BARE TEKSTEN: ordet «Share» er skjult under 640 px
+   * (målt — med det synlig ble topplinja 20 px for bred ved 390 px), og en
+   * «Copied» ingen ser er ingen kvittering. Haken står i alle bredder.
+   *
+   * Teksten skrives i `#btn-share-label`, ALDRI i `btn.textContent`: det siste
+   * ville slettet begge ikonene ut av knappen for godt.
+   *
+   * Én timer, som nullstilles: to raske trykk skal ikke gi en knapp som blir
+   * stående på «Copied».
+   */
+  let shareFlashTimer = null;
+  function flashShareButton(text, ok) {
+    const label = $('#btn-share-label');
+    const link = $('#share-icon-link');
+    const check = $('#share-icon-ok');
+    if (!label) return;
+    if (shareFlashTimer) clearTimeout(shareFlashTimer);
+    label.textContent = text;
+    // `classList`, ikke `hidden`-attributtet — se kommentaren i `index.html`.
+    if (link) link.classList.toggle('hidden', Boolean(ok));
+    if (check) check.classList.toggle('hidden', !ok);
+    shareFlashTimer = setTimeout(() => {
+      label.textContent = 'Share';
+      if (link) link.classList.remove('hidden');
+      if (check) check.classList.add('hidden');
+      shareFlashTimer = null;
+    }, 1800);
+  }
+
+  async function shareCurrentState() {
+    const fragment = await toLink(store.getState());
+    if (!fragment) {
+      // `toLink` gir `null` bare når `CompressionStream` mangler (under Safari
+      // 16.4 / Chrome 103 / Firefox 113). Det sies i KLARTEKST; en stille
+      // ukomprimert reservelenke ville vært lesbar i NØYAKTIG denne
+      // nettleseren og ingen andre — se hodet i `share-link.js`.
+      flashShareButton('Not supported');
+      showShareRow(
+        'This browser is too old to build a share link — it lacks CompressionStream '
+        + '(added in Chrome 103, Firefox 113 and Safari 16.4). Use "Save JSON" instead, '
+        + 'or open the page in a newer browser.',
+        ''
+      );
+      return;
+    }
+    const url = `${window.location.origin}${window.location.pathname}`
+      + `${window.location.search}#${fragment}`;
+    history.replaceState(null, '', `#${fragment}`);
+    armHashClear();
+    try {
+      await navigator.clipboard.writeText(url);
+      hideShareRow();
+      flashShareButton('Copied', true);
+    } catch {
+      // `navigator.clipboard` finnes ikke uten https, og løftet avvises når
+      // fanen ikke er i fokus. Uten denne grenen ville brukeren trykt en knapp
+      // og fått ingenting — lenka er bygget, den må bare hentes for hånd.
+      flashShareButton('Copy it');
+      showShareRow('Could not reach the clipboard. The link is selected below — copy it with Ctrl+C.', url);
+    }
+  }
+
+  function setupShare() {
+    const btn = $('#btn-share');
+    if (btn) btn.onclick = () => { shareCurrentState(); };
   }
 
   /* ---------------------------------------------------------------- *
@@ -2658,7 +2848,16 @@ export function createUI(deps) {
       : '';
 
     if (pill) {
-      pill.innerHTML = `<span class="w-2 h-2 rounded-full ${dot}"></span><span class="text-slate-300 num">${esc(short)}</span>`;
+      // `hidden sm:inline` PÅ ORDET, ikke på pilla: prikken skal stå i alle
+      // bredder — den er det eneste som sier at motoren lever. Under 640 px er
+      // det bare 40 px igjen til pilla i topplinja (regnestykket står ved
+      // `#engine-pill` i `index.html`), og den lengste teksten her er
+      // «Downloading the runtime · ≈ 4.2 / 10.2 MB» på 190 px.
+      // `title` er derfor ikke pynt: den er stedet ordet fortsatt finnes når
+      // det er skjult, og den tar med punkttelleren som ordet ikke har plass
+      // til i noen bredde.
+      pill.innerHTML = `<span class="w-2 h-2 shrink-0 rounded-full ${dot}"></span><span class="text-slate-300 num hidden sm:inline">${esc(short)}</span>`;
+      pill.title = short + counter;
     }
     if (barEng) {
       barEng.innerHTML = st.state === 'ready'
@@ -3093,7 +3292,11 @@ export function createUI(deps) {
       issuesBtn.hidden = issues.length === 0;
       if (issues.length) {
         const bad = errors > 0;
-        issuesBtn.className = 'shrink-0 px-2 py-1 rounded border text-[11px] leading-none num ' +
+        // `tap24` MÅ stå her OG i `index.html`. Denne linja setter `className`,
+        // altså HELE lista, så klassen fra markupen er borte fra første
+        // opptegning. Målingen viste nøyaktig det: merket ble stående igjen som
+        // eneste flate under 24 px (42 × 21) etter at de tolv andre var rettet.
+        issuesBtn.className = 'tap24 shrink-0 px-2 py-1 rounded border text-[11px] leading-none num ' +
           (bad ? 'border-rose-600/50 bg-rose-950/40 text-rose-200 hover:bg-rose-900/50'
                : 'border-amber-600/50 bg-amber-950/40 text-amber-200 hover:bg-amber-900/50');
         issuesBtn.textContent = `${bad ? '✕' : '⚠'} ${errors || warnings}`;
@@ -3820,6 +4023,35 @@ export function createUI(deps) {
   }
 
   function setupNav() {
+    /**
+     * SEKSJONSANKRENE MÅ IKKE FÅ OVERSKRIVE EN DELT LENKE.
+     *
+     * Navigasjonen er `<a href="#s-mat">` … `#s-res`, og ett klikk ville skrevet
+     * `#s-geo` over `#d1.…` — trykk F5 etterpå, og snittet er borte. Det er en
+     * lenke som slutter å virke fordi man BRUKTE sida den peker på.
+     *
+     * Løsningen er ÉN DELEGERT LYTTER, ikke seks: `render()` bygger radlister
+     * med `innerHTML`, og selv om navlenkene er statiske i dag, er «én lytter
+     * i oppsettet» regelen i denne fila.
+     *
+     * OG DEN ER NOK, fordi lysmerket settes av IntersectionObserver-en under —
+     * ikke av hashen. Ruller vi selv med `scrollIntoView`, gjør observatøren
+     * nøyaktig det den ellers ville gjort.
+     *
+     * BARE VENSTREKLIKK UTEN MODIFIKATORTASTER. Ctrl/⌘-klikk og midtklikk
+     * åpner i ny fane, og et `preventDefault()` der ville drept en helt vanlig
+     * nettleserhandling for å beskytte en hash som uansett følger med over.
+     */
+    document.querySelector('nav')?.addEventListener('click', (e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const link = e.target.closest?.('a.navlink');
+      if (!link) return;
+      const target = document.getElementById(link.getAttribute('href').slice(1));
+      if (!target) return;
+      e.preventDefault();
+      target.scrollIntoView({ block: 'start' });
+    });
+
     if (!('IntersectionObserver' in window)) return;
     // `s-calc` er borte (seksjon 6 slettet). Lista må følge navigasjonen i
     // `index.html`: en id som ikke finnes gir ingen feil, bare en lenke som
@@ -3884,6 +4116,7 @@ export function createUI(deps) {
       setupShear();
       setupCombos();
       setupDocIO();
+      setupShare();
       setupButtons();
       setupKeyboard();
       setupNav();
@@ -3904,6 +4137,16 @@ export function createUI(deps) {
     },
     render,
     renderEngine,
+    /**
+     * Et dokument inn i staten — fra en fil eller fra en delt lenke. `main.js`
+     * bruker den for `#d1.…` i adressa ved oppstart, slik at en lenke går
+     * NØYAKTIG samme vei som «Load JSON», `revealNonDefaults()` inkludert.
+     */
+    applyDocument,
+    /** Armerer den ENE oppryddingen av hashen — se `armHashClear`. `main.js`
+     *  kaller den etter at en delt lenke er lastet: hashen skal STÅ til
+     *  brukeren endrer noe (en delt lenke skal tåle F5), og forsvinne da. */
+    armHashClear,
     /** Ruller til valideringsboksen. `main.js` bruker den når `validate()`
      *  stoppet kjøringen — boksen flyttet med seksjon 6, og et hardkodet
      *  `#s-calc` i `main.js` ville bare rullet til ingenting. */
