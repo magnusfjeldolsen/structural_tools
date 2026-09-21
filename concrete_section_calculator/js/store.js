@@ -28,6 +28,8 @@ import { SCHEMA_VERSION } from './meta.js';
 import {
   createCombo, createLayer, createStirrup, DEFAULT_STIRRUP_DIA,
   COMBO_TYPES, recomputeAutoDc, stackedDc, stirrupCoverDia,
+  autoComboName,
+  isAutoComboName,
 } from './rebar.js';
 import { allowedAnalyses, SLAB_WIDTH } from './section.js';
 import { CEMENT_CLASSES, CREEP_DEFAULTS, EXPOSURE_CLASSES, SLS_DEFAULTS } from './materials.js';
@@ -423,6 +425,35 @@ function enforceSlabStirrups(s) {
  * Kjøres FØR `enforceActiveCombo`: den leter etter første `uls`-rad, og en rad
  * med en ugyldig type skal telle som `uls` i den letingen — ikke hoppes over.
  */
+/**
+ * ET AUTOMATISK NAVN SKAL FØLGE TYPEN.
+ *
+ * Navnet ble laget av id-en alene (`C3` → «ULS 3»), så en kvasi-permanent rad
+ * sto som «ULS 3» — i kombinasjonstabellen, i SLS-kortet («ULS 3
+ * Quasi-permanent») og i advarslene som navngir den dimensjonerende raden.
+ * Etiketten sa altså det motsatte av radens egen type, på de tre stedene
+ * leseren stoler mest på den.
+ *
+ * ET NAVN BRUKEREN HAR SKREVET RØRES ALDRI. `isAutoComboName` spør om navnet er
+ * ett modulen fant på selv — mot ALLE typene, ikke bare mot den raden har nå,
+ * for det er nettopp i det øyeblikket typen endres at navnet henger igjen.
+ * «Egenvekt + snø» står; «ULS 3» på en rad som akkurat ble kvasi-permanent
+ * gjør det ikke.
+ *
+ * Her, i `normalise`, og ikke i `updateCombo`: en type kommer også inn gjennom
+ * `replaceState`, en lastet fil og en delt lenke. Én regel ved alle dørene.
+ * Kjøres ETTER `enforceComboTypes`, som er den som gjør en ugyldig type til
+ * `uls` — ellers ville navnet blitt satt etter en type som ikke overlever.
+ */
+function enforceComboNames(s) {
+  const combos = (s.combos || []).map((c) => (
+    isAutoComboName(c.name, c.id) && c.name !== autoComboName(c.id, c.type)
+      ? { ...c, name: autoComboName(c.id, c.type) }
+      : c
+  ));
+  return combos.some((c, i) => c !== s.combos[i]) ? { ...s, combos } : s;
+}
+
 function enforceComboTypes(s) {
   const combos = s.combos || [];
   if (combos.every((c) => COMBO_TYPES.includes(c.type))) return s;
@@ -552,9 +583,9 @@ function enforceActiveCombo(s) {
  * seks hver gang, og det er nettopp derfor det er trygt å gjøre det.
  */
 function normalise(s) {
-  return enforceSlsParams(enforceActiveCombo(enforceComboTypes(
+  return enforceSlsParams(enforceActiveCombo(enforceComboNames(enforceComboTypes(
     enforceSlabStirrups(enforceSlabWidth(enforceAnalysis(s)))
-  )));
+  ))));
 }
 
 export function createStore(initial) {

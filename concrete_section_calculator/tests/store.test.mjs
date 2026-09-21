@@ -1070,3 +1070,23 @@ test('INGEN dør etterlater en tilstand normaliseringen ville endret', () => {
     }
   }
 });
+
+test('normalise: et automatisk kombinasjonsnavn følger typen ved ALLE dørene', () => {
+  // Her og ikke i `updateCombo`: en type kommer også inn gjennom
+  // `replaceState`, en lastet fil og en delt lenke. Én regel ved alle dørene.
+  const st = createStore();
+  st.addCombo();
+  st.updateCombo('C2', { type: 'quasi_permanent' });
+  assert.equal(st.getState().combos.find((c) => c.id === 'C2').name, 'Quasi-permanent 2');
+
+  // …og gjennom `replaceState`, som er en HELT annen dør.
+  const s = st.getState();
+  s.combos = s.combos.map((c) => (c.id === 'C2' ? { ...c, type: 'characteristic', name: 'ULS 2' } : c));
+  st.replaceState(s);
+  assert.equal(st.getState().combos.find((c) => c.id === 'C2').name, 'Characteristic 2');
+
+  // Et navn brukeren har skrevet overlever et typebytte.
+  st.updateCombo('C2', { name: 'Egenvekt + snø' });
+  st.updateCombo('C2', { type: 'uls' });
+  assert.equal(st.getState().combos.find((c) => c.id === 'C2').name, 'Egenvekt + snø');
+});

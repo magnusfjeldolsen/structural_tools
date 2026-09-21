@@ -2402,12 +2402,27 @@ export function createUI(deps) {
     const s = store.getState();
     host.innerHTML = s.combos.map((combo) => {
       const active = combo.id === s.activeCombo;
-      // En ikke-ULS-rad er ikke KAPASITETS-kontrollert, og tones ned for å si
-      // det visuelt og ikke bare i teksten. Nedtoningen betyr «ikke med i
-      // bruddgrensen», ikke «ikke regnet»: raden har sine egne tall i
-      // SLS-seksjonen, og notatlinja under sier hvor de står.
+      // `opacity-60` ER BORTE. Den skulle si «ikke med i bruddgrensen», men
+      // 60 % dekkevne betyr noe annet i nøyaktig denne fila: de tre andre
+      // stedene den brukes er et LÅST `d_c`-felt, en knapp som ikke gjelder
+      // for plate, og «Beregn» mens den kjører — alle sammen DEAKTIVERT.
+      // En SLS-rad er det motsatte av deaktivert: den er den eneste raden som
+      // gir σ_c, σ_s og w_k. Målt på en tilnærmet permanent rad med
+      // M_Ed = −110 kNm: w_k 0,288 mot w_max 0,30 mm, η 0,96 — det er ikke en
+      // rad man skal måtte myse for å lese.
+      //
+      // Kanten til venstre sier det samme uten å svekke noe: teal er IKKE
+      // brukt til status noe annet sted i modulen (grønn/gul/rød eies av
+      // `utilisationStatus()`), så den kan bety «annen grensetilstand» uten å
+      // bli forvekslet med «nesten for høy».
+      //
+      // `!border-l-*` med utropstegn, og det er MÅLT: verten `#combos` har
+      // `divide-slate-700/70`, og den regelen treffer som
+      // `.divide-slate-700\/70 > :not([hidden]) ~ :not([hidden])` — to klasser
+      // og to pseudoklasser mot vår ene. Uten `!` ble kanten `rgba(51,65,85,.7)`,
+      // altså skillelinjas egen grå, og merket fantes ikke i det hele tatt.
       const isUls = combo.type === 'uls';
-      return `<div class="px-3 py-2 text-[13px] ${active ? 'bg-sky-950/30' : ''} ${isUls ? '' : 'opacity-60'}">
+      return `<div class="px-3 py-2 text-[13px] border-l-2 ${isUls ? '!border-l-transparent' : '!border-l-teal-400'} ${active ? 'bg-sky-950/30' : ''}">
         <div class="flex flex-wrap items-center gap-2">
           <button type="button" class="chip !py-0.5 !px-2 !text-[11px] shrink-0" data-active-combo="${esc(combo.id)}"
                   data-on="${String(active)}" title="${active ? 'Active — used for moment–curvature' : 'Set active for moment–curvature'}">
@@ -2432,7 +2447,7 @@ export function createUI(deps) {
                   title="${s.combos.length <= 1 ? 'The last combination cannot be removed' : 'Remove combination'}">✕</button>
         </div>
         <div class="mt-1 text-[11px] text-slate-500 num" data-m-interp="${esc(combo.id)}">${esc(momentInterpretation(combo.M_Ed))}</div>
-        ${isUls ? '' : `<div class="mt-0.5 text-[11px] text-amber-500/80" data-combo-sls-note="${esc(combo.id)}">Not checked for resistance — used in the serviceability section</div>`}
+        ${isUls ? '' : `<div class="mt-0.5 text-[11px] text-teal-300/90" data-combo-sls-note="${esc(combo.id)}">Serviceability row — gives σ<sub>c</sub>, σ<sub>s</sub> and w<sub>k</sub> in section 6. Not checked for resistance.</div>`}
       </div>`;
     }).join('');
     bindComboRows(host);
