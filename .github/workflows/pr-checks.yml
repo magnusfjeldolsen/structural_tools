@@ -110,11 +110,18 @@ jobs:
             echo "Ingen endringer i modulen; hopper over."
           fi
 
+      # NODE 22, ikke 20 som jobben over. `npm run test:concrete-section` kjoerer
+      # `node --test "<glob>"`, og glob-stoette i testkjoereren kom i Node 21.
+      # Paa Node 20 blir moensteret lest som et LITERALT filnavn:
+      #   Could not find '.../concrete_section_calculator/tests/*.test.mjs'
+      # Skriptet har altsaa alltid vaert versjonsavhengig; det ble bare aldri
+      # kjoert noe annet sted enn paa en utviklermaskin med nyere Node.
+      # `check-2dfea` staar paa 20 og roeres ikke -- den bygger et annet prosjekt.
       - name: Setup Node.js
         if: steps.changes.outputs.csc == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Setup Python
         if: steps.changes.outputs.csc == 'true'
