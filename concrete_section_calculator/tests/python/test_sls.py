@@ -30,6 +30,11 @@ MODULE_DIR = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(MODULE_DIR / 'python'))
 
 import engine  # noqa: E402
+# BRUKSGRENSENS INTERNE er i `csc_sls` etter delingen i runde 12. Testene som
+# proever en enkelt funksjon der importerer den DIREKTE i stedet for aa gaa via
+# `engine` -- en gjennomeksport bare for testenes skyld ville vaert en port inn i
+# modulen som produksjonskoden ikke har, og dermed en usann grense.
+import csc_sls  # noqa: E402
 from structuralcodes.codes import ec2_2004  # noqa: E402
 
 REL_TOL = 1e-6
@@ -544,7 +549,7 @@ def test_ac11_strip_spacing_inversion_uses_1000_not_b():
     platefixturen gir 113.0 med BEGGE (fordi b = 1000 der ogsaa)."""
     area_200 = (1000.0 / 200.0) * math.pi * 12.0 ** 2 / 4.0
     layer = strip_layer('L1', -250.0, 12.0, area_200)
-    s = engine._sls_layer_spacing(layer)
+    s = csc_sls._sls_layer_spacing(layer)
     assert close(s, 200.0, rel=1e-6)
     # Den GALE b-formelen (feilen spec §3.4 navngir) ville gitt 60.0 paa en 300 mm bjelke.
     wrong = 300.0 * math.pi * 12.0 ** 2 / (4.0 * area_200)
@@ -557,7 +562,7 @@ def test_ac11_branch_choice_differs_between_the_two_formulas():
     gal s = 90 (close) -- de to formlene velger HVER SIN gren."""
     area_300 = (1000.0 / 300.0) * math.pi * 16.0 ** 2 / 4.0
     layer = strip_layer('L1', -250.0, 16.0, area_300)
-    s = engine._sls_layer_spacing(layer)
+    s = csc_sls._sls_layer_spacing(layer)
     assert close(s, 300.0, rel=1e-6)
     wrong = 300.0 * math.pi * 16.0 ** 2 / (4.0 * area_300)
     assert close(wrong, 90.0, rel=1e-6)
@@ -572,7 +577,7 @@ def test_ac11_plate_fixture_geometry_cannot_see_the_bug():
     right = 1000.0 * math.pi * 12.0 ** 2 / (4.0 * layer['area'])
     wrong = 1000.0 * math.pi * 12.0 ** 2 / (4.0 * layer['area'])  # b == 1000 her ogsaa
     assert close(right, wrong, rel=1e-9)
-    assert close(engine._sls_layer_spacing(layer), 113.0, rel=1e-3)
+    assert close(csc_sls._sls_layer_spacing(layer), 113.0, rel=1e-3)
 
 
 # ------------------------------------------------------------------ #
@@ -1220,7 +1225,7 @@ def test_sls_defaults_mirror_the_js_source():
         if not value or not value[0].isdigit():
             continue
         js[key] = float(value)
-    assert js == engine._SLS_FALLBACK
+    assert js == csc_sls._SLS_FALLBACK
 
 
 def test_sls_incomplete_detail_names_the_check_and_the_class_when_no_class_is_chosen():

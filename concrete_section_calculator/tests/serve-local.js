@@ -6,8 +6,14 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = 'C:\\Python\\structural_tools-csc';
-const PORT = 8099;
+// ROTA UTLEDES, den skrives ikke. Sto før som en absolutt sti til ETT
+// arbeidstre, og da kunne fila bare brukes av den som tilfeldigvis hadde
+// akkurat det treet — ikke i CI, ikke i hovedrepoet, ikke hos noen andre.
+// Serveren ligger i `<rot>/concrete_section_calculator/tests/`, så rota er to
+// nivåer opp.
+const ROOT = path.resolve(__dirname, '..', '..');
+// Porten kan overstyres, slik at to kjøringer ikke slåss om den samme.
+const PORT = Number(process.env.CSC_PORT || 8099);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
