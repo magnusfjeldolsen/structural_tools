@@ -28,6 +28,10 @@
  */
 export const PYTHON_MODULES = Object.freeze([
   'wasm_stubs.py',
+  // `csc_common` før `csc_sls` før `engine`: hver importerer den forrige, og
+  // Pyodide leser dem fra filsystemet i den rekkefølgen de skrives.
+  'csc_common.py',
+  'csc_sls.py',
   'engine.py',
 ]);
 

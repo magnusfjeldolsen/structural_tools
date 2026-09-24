@@ -12,10 +12,14 @@
     "preview": "npm run build && npm run dev:serve",
     "test:deploy": "node scripts/test-deployment.js",
     "test:concrete-section": "node --test \"concrete_section_calculator/tests/*.test.mjs\"",
+    "test:concrete-section:wasm": "node concrete_section_calculator/tests/wasm-verify-run.mjs",
+    "test:concrete-section:py": "python -m pytest concrete_section_calculator/tests/python -q",
+    "test:concrete-section:all": "npm run test:concrete-section && npm run test:concrete-section:py && npm run test:concrete-section:wasm",
     "help": "node scripts/show-help.js"
   },
   "devDependencies": {
-    "http-server": "^14.1.1"
+    "http-server": "^14.1.1",
+    "pyodide": "^314.0.7"
   },
   "keywords": [
     "structural-engineering",

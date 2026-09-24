@@ -26,7 +26,9 @@ import { loadPyodide } from 'pyodide';
 
 import { ENGINE_DIR, ENTRY_MODULE, PYTHON_MODULES } from '../js/python-manifest.js';
 
-const BASE = 'http://localhost:8099/concrete_section_calculator';
+// Porten kan overstyres, som i `serve-local.js` — ellers kan ikke to kjøringer
+// (eller CI og et lokalt vindu) leve side om side.
+const BASE = `http://localhost:${process.env.CSC_PORT || 8099}/concrete_section_calculator`;
 const t0 = Date.now();
 const log = (s) => console.log(`${String(Date.now() - t0).padStart(6)} ms  ${s}`);
 

@@ -184,7 +184,7 @@ test('run_all_partial er med, i RUNTIME_CODES, og sier hva som mangler', () => {
   assert.match(msg, /detail/i, 'leseren må få vite HVOR den ser hvilken analyse som falt ut');
 });
 
-test('HVER kode motoren emitterer har en tekst i JS — lest ut av engine.py', () => {
+test('HVER kode motoren emitterer har en tekst i JS — lest ut av modulene selv', async () => {
   // DEN ENE KILDEN ER MOTOREN. Kodene har til nå stått i to håndholdte lister:
   // `_warning('…')` i `engine.py` og `CODE_MESSAGES` her. Ingen test bandt dem,
   // så en ny advarsel i motoren kunne nå brukeren som
@@ -200,15 +200,21 @@ test('HVER kode motoren emitterer har en tekst i JS — lest ut av engine.py', (
   // Testen leser `engine.py` i stedet for å liste kodene på nytt her — en
   // håndskrevet liste ville vært nøyaktig den tredje kilden problemet handler
   // om.
-  const engine = readFileSync(
-    fileURLToPath(new URL('../python/engine.py', import.meta.url)), 'utf8'
-  );
+  // ALLE motormodulene, ikke bare `engine.py`. Delingen i runde 12 flyttet hele
+  // bruksgrensen til `csc_sls.py`, og testen sto da og leste halve motoren mens
+  // den trodde den leste hele — den fant seks koder færre og ble rød, som den
+  // skulle. Lista over hvilke filer motoren BESTÅR av finnes allerede ett sted,
+  // manifestet, og leses derfor der i stedet for å skrives opp på nytt her.
+  const { PYTHON_MODULES } = await import('../js/python-manifest.js');
+  const kilde = PYTHON_MODULES
+    .map((navn) => readFileSync(fileURLToPath(new URL(`../python/${navn}`, import.meta.url)), 'utf8'))
+    .join('\n');
   const codes = [...new Set(
-    [...engine.matchAll(/_warning\(\s*\n?\s*'([a-z0-9_]+)'/g)].map((m) => m[1])
+    [...kilde.matchAll(/_warning\(\s*\n?\s*'([a-z0-9_]+)'/g)].map((m) => m[1])
   )].sort();
   // Går regexen i stykker (blir `_warning` skrevet om), skal testen si fra om
   // DET, ikke stille gå grønn på en tom liste.
-  assert.ok(codes.length >= 19, `fant bare ${codes.length} koder i engine.py`);
+  assert.ok(codes.length >= 19, `fant bare ${codes.length} koder i motormodulene`);
 
   const missing = codes.filter((code) => {
     const [d] = describeWarnings([{ code, severity: 'warning', message: '', detail: '' }]);
