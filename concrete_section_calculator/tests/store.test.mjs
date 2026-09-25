@@ -889,12 +889,21 @@ test('en ugyldig kombinasjonstype faller til uls i ENHVER dør', () => {
  * ===========================================================================
  */
 
-test('SLS-1 — standardtilstanden: ingen klasse, phi_ef 2,0, de tre 7.2-faktorene (§5)', () => {
+test('SLS-1 — standardtilstanden: ingen klasse, phi_ef UTLEDES, de tre 7.2-faktorene (§5)', () => {
   const store = createStore();
   const sls = store.getState().sls;
   assert.equal(sls.exposure_class, null, 'vi finner ALDRI på en klasse');
   assert.equal(sls.w_max_override, null);
-  assert.equal(sls.phi_ef, 2.0);
+  // `phi_ef: null` betyr UTLED, ikke «mangler». Tallet kommer av
+  // krypinndataene under (EC2 tillegg B) gjennom `resolveCreep`. Den gamle
+  // faste 2,0 var et gjettet tall, og målt for standardbjelken ligger det
+  // under det EC2 gir (2,35) — altså på usikker side.
+  assert.equal(sls.phi_ef, null, 'phi_ef skal utledes som standard, ikke være et fast tall');
+  assert.equal(sls.h0_override, null);
+  assert.equal(sls.RH, 50);
+  assert.equal(sls.t0, 28);
+  assert.equal(sls.t_life, 50 * 365, 'levetiden er i DØGN, som resten av tillegg B');
+  assert.equal(sls.cement, 'N');
   assert.equal(sls.sigma_c_char_factor, 0.6);
   assert.equal(sls.sigma_c_qp_factor, 0.45);
   assert.equal(sls.sigma_s_char_factor, 0.8);
@@ -912,11 +921,19 @@ test('SLS-3 — createStore: gyldig exposure_class overlever håndhevingen', () 
 
 test('SLS-4 — setState: samme håndheving som konstruktørdøra (§5 — «samme steder som enforceComboTypes»)', () => {
   const store = createStore();
-  store.setState({ sls: { exposure_class: 'ikke-en-klasse', w_max_override: -1, phi_ef: -5 } });
+  store.setState({ sls: { exposure_class: 'ikke-en-klasse', w_max_override: -1, phi_ef: -5,
+    RH: 0, t0: -3, cement: 'X' } });
   const sls = store.getState().sls;
   assert.equal(sls.exposure_class, null);
   assert.equal(sls.w_max_override, null, 'negativ override ⇒ bruk den avledede grensa');
-  assert.equal(sls.phi_ef, 2.0, 'negativ phi_ef er ikke et lovlig kryptall');
+  assert.equal(sls.phi_ef, null, 'negativ phi_ef er ikke en lovlig overstyring — den faller til UTLEDNING');
+  // Krypinndataene legges derimot tilbake til standarden, og det er et annet
+  // valg med en annen grunn: `resolveCreep` skal ALDRI møte noe den må avvise.
+  // En RH på 0 eller en negativ belastningsalder er ikke et tomt felt, det er
+  // et ugyldig tall, og da er standarden det eneste ærlige svaret.
+  assert.equal(sls.RH, 50, 'RH = 0 er ikke en lovlig fuktighet');
+  assert.equal(sls.t0, 28, 'negativ belastningsalder finnes ikke');
+  assert.equal(sls.cement, 'N', 'ukjent sementklasse faller til N');
 });
 
 test('SLS-5 — patch("sls", …): w_max_override som en STRENG (ikke et tall > 0) ⇒ null', () => {
@@ -950,6 +967,126 @@ test('SLS-9 — cloneState: en dupliserende operasjon deler IKKE sls-objektet ve
   const store = createStore();
   const before = store.getState().sls;
   store.patch('sls', { phi_ef: 1.5 });
-  assert.equal(before.phi_ef, 2.0, 'det GAMLE objektet skal stå urørt — cloneState kopierte, mutasjonen skrev ikke gjennom');
+  assert.equal(before.phi_ef, null, 'det GAMLE objektet skal stå urørt — cloneState kopierte, mutasjonen skrev ikke gjennom');
   assert.equal(store.getState().sls.phi_ef, 1.5);
+});
+
+/* ================================================================== *
+ * ALLE DØRENE, ALLE INVARIANTENE (runde 11)
+ * ================================================================== */
+
+test('hver muterende dør kjører HELE normaliseringen, ikke sitt eget utvalg', () => {
+  // Hodekommentaren til `enforceSlabWidth` lover «uansett hvilken dør». Tre av
+  // dem gikk likevel klar, fordi hver dør plukket sitt eget utvalg av enforcere
+  // — og det er det som alltid blir av en håndholdt liste.
+  //
+  // MÅLT før `normalise()`:
+  //   setState({sectionType:'slab'})      → geometry.b = 300, sectionWidth() = 1000
+  //   patch('geometry', {b:300}) på plate → geometry.b = 300, sectionWidth() = 1000
+  //
+  // Den andre kilden er ikke «feil tall» i seg selv — `sectionWidth()` svarte
+  // riktig hele tiden — men et felt som sier noe annet enn porten er nettopp det
+  // en figur eller en fremtidig leser kan komme til å tro på. Og det gjorde den:
+  // se `section-draw.test.mjs` sin «jernene plasseres gjennom sectionWidth».
+  const viaSetState = createStore();
+  viaSetState.setState({ sectionType: 'slab' });
+  assert.equal(viaSetState.getState().geometry.b, 1000, 'setState');
+
+  const viaPatch = createStore();
+  viaPatch.setSectionType('slab');
+  viaPatch.patch('geometry', { b: 300 });
+  assert.equal(viaPatch.getState().geometry.b, 1000, 'patch(geometry)');
+
+  const viaReplace = createStore();
+  viaReplace.replaceState({ sectionType: 'slab', geometry: { b: 300, h: 200 } });
+  assert.equal(viaReplace.getState().geometry.b, 1000, 'replaceState');
+
+  const viaCreate = createStore({ sectionType: 'slab', geometry: { b: 300, h: 200 } });
+  assert.equal(viaCreate.getState().geometry.b, 1000, 'createStore');
+});
+
+test('normaliseringen er idempotent — den kan kjøres om igjen uten å flytte noe', () => {
+  // Det er forutsetningen for at det er trygt å kjøre ALLE seks fra hver dør.
+  // Var én av dem toveis, ville to kall gitt to ulike tilstander.
+  //
+  // NB: `patch('spacing', …)` er IKKE med her, og det er med vilje — den døra
+  // kjører `applyAutoDc()` uansett, som er en egen og tilsiktet bivirkning.
+  // Påstanden gjelder normaliseringen, ikke alt en dør måtte gjøre i tillegg.
+  const store = createStore();
+  store.setState({ sectionType: 'slab' });
+  const once = JSON.stringify(store.getState());
+  store.setState({});
+  assert.equal(JSON.stringify(store.getState()), once, 'tilstanden flyttet seg av en tom dør');
+  store.setState({});
+  assert.equal(JSON.stringify(store.getState()), once, 'og enda en gang');
+});
+
+test('INGEN dør etterlater en tilstand normaliseringen ville endret', () => {
+  // EGENSKAPSTESTEN, og den som mangler i dag. Testen over prøver fire navngitte
+  // dører; denne prøver ALLE, og den trenger ikke å vite hva noen av dem gjør.
+  //
+  // Påstanden: etter en hvilken som helst dør skal tilstanden være et FIKSPUNKT
+  // for `normalise` — kjører du den igjen, flytter ingenting seg. En dør som
+  // glemmer en invariant bryter nettopp det, og da sier testen hvilken.
+  //
+  // `normalise` er ikke eksportert (den er et internt ledd), så fikspunktet
+  // prøves gjennom `replaceState`, som kjører den på veien inn: sender vi
+  // tilstanden inn igjen og får noe ANNET ut, var den ikke normalisert.
+  const doors = [
+    ['setState(sectionType)', (st) => st.setState({ sectionType: 'slab' })],
+    ['setState(combos)', (st) => st.setState({ combos: [
+      { id: 'C9', name: 'QP', type: 'quasi_permanent', N_Ed: 0, M_Ed: -50, V_Ed: 0 }] })],
+    ['setSectionType', (st) => st.setSectionType('slab')],
+    ['patch(geometry)', (st) => st.patch('geometry', { b: 300, h: 450 })],
+    ['patch(shear)', (st) => st.patch('shear', { stirrups: [] })],
+    ['patch(sls)', (st) => st.patch('sls', { exposure_class: 'XD1' })],
+    ['addStirrup', (st) => st.addStirrup({})],
+    ['updateStirrup', (st) => st.updateStirrup(st.getState().shear.stirrups[0]?.id, { dia: 16 })],
+    ['removeStirrup', (st) => st.removeStirrup(st.getState().shear.stirrups[0]?.id)],
+    ['addLayer', (st) => st.addLayer({})],
+    ['updateLayer', (st) => st.updateLayer(st.getState().layers[0].id, { dia: 25 })],
+    ['duplicateLayer', (st) => st.duplicateLayer(st.getState().layers[0].id)],
+    ['removeLayer', (st) => st.removeLayer(st.getState().layers[0].id)],
+    ['addCombo', (st) => st.addCombo({})],
+    ['updateCombo', (st) => st.updateCombo(st.getState().combos[0].id, { type: 'quasi_permanent' })],
+    ['removeCombo', (st) => st.removeCombo(st.getState().combos[0].id)],
+    ['setActiveCombo', (st) => st.setActiveCombo(st.getState().combos[0].id)],
+  ];
+
+  for (const [name, act] of doors) {
+    const store = createStore();
+    act(store);
+    const after = store.snapshot();
+
+    // `replaceState` kjører `normalise` på veien inn. Er `after` allerede et
+    // fikspunkt, kommer den uendret ut igjen.
+    const probe = createStore();
+    probe.replaceState(after);
+    const renormalised = probe.snapshot();
+
+    for (const key of ['sectionType', 'geometry', 'analysis', 'activeCombo', 'sls', 'shear']) {
+      assert.deepEqual(renormalised[key], after[key],
+        `${name}: «${key}» flyttet seg av en ny normalisering — døra hoppet over en invariant`);
+    }
+  }
+});
+
+test('normalise: et automatisk kombinasjonsnavn følger typen ved ALLE dørene', () => {
+  // Her og ikke i `updateCombo`: en type kommer også inn gjennom
+  // `replaceState`, en lastet fil og en delt lenke. Én regel ved alle dørene.
+  const st = createStore();
+  st.addCombo();
+  st.updateCombo('C2', { type: 'quasi_permanent' });
+  assert.equal(st.getState().combos.find((c) => c.id === 'C2').name, 'Quasi-permanent 2');
+
+  // …og gjennom `replaceState`, som er en HELT annen dør.
+  const s = st.getState();
+  s.combos = s.combos.map((c) => (c.id === 'C2' ? { ...c, type: 'characteristic', name: 'ULS 2' } : c));
+  st.replaceState(s);
+  assert.equal(st.getState().combos.find((c) => c.id === 'C2').name, 'Characteristic 2');
+
+  // Et navn brukeren har skrevet overlever et typebytte.
+  st.updateCombo('C2', { name: 'Egenvekt + snø' });
+  st.updateCombo('C2', { type: 'uls' });
+  assert.equal(st.getState().combos.find((c) => c.id === 'C2').name, 'Egenvekt + snø');
 });

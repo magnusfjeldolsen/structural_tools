@@ -28,9 +28,11 @@ import { SCHEMA_VERSION } from './meta.js';
 import {
   createCombo, createLayer, createStirrup, DEFAULT_STIRRUP_DIA,
   COMBO_TYPES, recomputeAutoDc, stackedDc, stirrupCoverDia,
+  autoComboName,
+  isAutoComboName,
 } from './rebar.js';
 import { allowedAnalyses, SLAB_WIDTH } from './section.js';
-import { EXPOSURE_CLASSES, SLS_DEFAULTS } from './materials.js';
+import { CEMENT_CLASSES, CREEP_DEFAULTS, EXPOSURE_CLASSES, SLS_DEFAULTS } from './materials.js';
 
 /**
  * «Kjør alle» (endringsrunde 5 §D). Er ALLTID lovlig: den kjører nettopp de
@@ -45,6 +47,16 @@ import { EXPOSURE_CLASSES, SLS_DEFAULTS } from './materials.js';
  * tilbake uendret.
  */
 export const RUN_ALL = 'all';
+
+/**
+ * «Envelope» som verdi for `state.resultView`. SAMME streng som `results.js`
+ * eksporterer som `RESULT_VIEW_ENVELOPE`, skrevet av her av nøyaktig samme grunn
+ * som `RUN_ALL` er skrevet av DER: `results.js` skal bare avhenge av
+ * `materials.js`, og `store.js` skal ikke dra formateringslaget inn i
+ * tilstandslaget. Duplikatet er låst av en test som importerer begge og påstår
+ * at de er like.
+ */
+export const RESULT_VIEW = 'envelope';
 
 /*
  * Standardoverdekningen og standard bøylediameter STÅR ETT STED. `dc` for
@@ -124,6 +136,16 @@ export function defaultState() {
     // på skjærkraften betyr ingenting for kapasiteten (§4.1c).
     combos: [{ id: 'C1', name: 'ULS 1', type: 'uls', N_Ed: 0, M_Ed: 0, V_Ed: 0 }],
     activeCombo: 'C1',
+    // HVILKEN RAD SEKSJON 6 VISER. `'envelope'` er verste av alle
+    // kombinasjonene, per grensetilstand hver for seg — standardsvaret, fordi
+    // det er slik man ser med én gang om snittet holder. En id her viser den
+    // ene raden alene.
+    //
+    // IKKE det samme som `activeCombo`, som er raden MOTOREN regner
+    // moment–krumning for. Den må være én konkret rad (en kurve har ingen
+    // envelope) og er en del av payloaden; denne er ren visning og når aldri
+    // motoren.
+    resultView: RESULT_VIEW,
     analysis: 'bending',
     // Skjær (endringsrunde 4 §3.4). Tom `stirrups`-liste = ingen
     // skjærarmering ⇒ V_Rd,c-veien — standard for både plate og en fersk
@@ -156,7 +178,22 @@ export function defaultState() {
     sls: {
       exposure_class: null,
       w_max_override: null,
-      ...SLS_DEFAULTS,
+      // `phi_ef: null` betyr UTLED, ikke «mangler». Tallet kommer av
+      // krypinndataene under, gjennom `resolveCreep` (materials.js). Skriver
+      // brukeren et eget tall her, vinner det — og en gammel lagret fil, som
+      // bærer `phi_ef: 2.0` fra den gang tallet var fast, blir dermed lest som
+      // en overstyring på 2,0 og gir NØYAKTIG samme svar som den gjorde da.
+      phi_ef: null,
+      h0_override: null,
+      ...CREEP_DEFAULTS,
+      // STADIUM II PÅ FORESPØRSEL. Et snitt som ikke risser av lasten alene kan
+      // likevel risse — svinn, fastholding og temperatur ligger ikke i `M_Ed`.
+      // Haken lar brukeren spørre «hvilken rissvidde ville jeg fått da» uten å
+      // måtte dikte opp et større moment, som ville flyttet ALLE tallene.
+      assume_cracked: false,
+      sigma_c_char_factor: SLS_DEFAULTS.sigma_c_char_factor,
+      sigma_c_qp_factor: SLS_DEFAULTS.sigma_c_qp_factor,
+      sigma_s_char_factor: SLS_DEFAULTS.sigma_s_char_factor,
     },
     doc: { project: '', title: '', author: '', date: '', note: '' },
     /*
@@ -413,6 +450,50 @@ function enforceSlabStirrups(s) {
  * Kjøres FØR `enforceActiveCombo`: den leter etter første `uls`-rad, og en rad
  * med en ugyldig type skal telle som `uls` i den letingen — ikke hoppes over.
  */
+/**
+ * ET AUTOMATISK NAVN SKAL FØLGE TYPEN.
+ *
+ * Navnet ble laget av id-en alene (`C3` → «ULS 3»), så en kvasi-permanent rad
+ * sto som «ULS 3» — i kombinasjonstabellen, i SLS-kortet («ULS 3
+ * Quasi-permanent») og i advarslene som navngir den dimensjonerende raden.
+ * Etiketten sa altså det motsatte av radens egen type, på de tre stedene
+ * leseren stoler mest på den.
+ *
+ * ET NAVN BRUKEREN HAR SKREVET RØRES ALDRI. `isAutoComboName` spør om navnet er
+ * ett modulen fant på selv — mot ALLE typene, ikke bare mot den raden har nå,
+ * for det er nettopp i det øyeblikket typen endres at navnet henger igjen.
+ * «Egenvekt + snø» står; «ULS 3» på en rad som akkurat ble kvasi-permanent
+ * gjør det ikke.
+ *
+ * Her, i `normalise`, og ikke i `updateCombo`: en type kommer også inn gjennom
+ * `replaceState`, en lastet fil og en delt lenke. Én regel ved alle dørene.
+ * Kjøres ETTER `enforceComboTypes`, som er den som gjør en ugyldig type til
+ * `uls` — ellers ville navnet blitt satt etter en type som ikke overlever.
+ */
+/**
+ * En visning som peker på en rad som ikke finnes, faller til envelopen.
+ *
+ * Raden kan forsvinne på tre måter: brukeren sletter den, et lastet dokument
+ * har andre id-er, eller en delt lenke er laget før raden ble til. Alle tre gir
+ * det samme riktige svaret — vis envelopen — og ingen av dem skal gi en tom
+ * seksjon 6 eller en visning låst til et navn ingen kan se.
+ */
+function enforceResultView(s) {
+  if (s.resultView === RESULT_VIEW) return s;
+  return (s.combos || []).some((c) => c.id === s.resultView)
+    ? s
+    : { ...s, resultView: RESULT_VIEW };
+}
+
+function enforceComboNames(s) {
+  const combos = (s.combos || []).map((c) => (
+    isAutoComboName(c.name, c.id) && c.name !== autoComboName(c.id, c.type)
+      ? { ...c, name: autoComboName(c.id, c.type) }
+      : c
+  ));
+  return combos.some((c, i) => c !== s.combos[i]) ? { ...s, combos } : s;
+}
+
 function enforceComboTypes(s) {
   const combos = s.combos || [];
   if (combos.every((c) => COMBO_TYPES.includes(c.type))) return s;
@@ -441,8 +522,29 @@ function enforceSlsParams(s) {
   const overrideNum = Number(sls.w_max_override);
   const w_max_override = Number.isFinite(overrideNum) && overrideNum > 0 ? overrideNum : null;
 
+  // `phi_ef` er en OVERSTYRING nå, ikke en verdi: `null` betyr «utled av
+  // krypinndataene». Derfor legges den IKKE tilbake til en standard når den er
+  // tom — et tomt felt er brukerens valg, ikke en feil.
   const phiNum = Number(sls.phi_ef);
-  const phi_ef = Number.isFinite(phiNum) && phiNum >= 0 ? phiNum : SLS_DEFAULTS.phi_ef;
+  const phi_ef = sls.phi_ef === null || sls.phi_ef === undefined || sls.phi_ef === ''
+    ? null
+    : (Number.isFinite(phiNum) && phiNum >= 0 ? phiNum : null);
+
+  const h0Num = Number(sls.h0_override);
+  const h0_override = Number.isFinite(h0Num) && h0Num > 0 ? h0Num : null;
+
+  // Krypinndataene. Alle fire holdes GYLDIGE her, slik at `resolveCreep` aldri
+  // møter noe den må avvise: en levetid som ikke er større enn belastnings-
+  // alderen ville gitt phi = 0, altså en tilnærmet permanent kontroll uten kryp
+  // i det hele tatt — stille.
+  const rhNum = Number(sls.RH);
+  const RH = Number.isFinite(rhNum) && rhNum > 0 && rhNum < 100 ? rhNum : CREEP_DEFAULTS.RH;
+  const t0Num = Number(sls.t0);
+  const t0 = Number.isFinite(t0Num) && t0Num > 0 ? t0Num : CREEP_DEFAULTS.t0;
+  const tNum = Number(sls.t_life);
+  const t_life = Number.isFinite(tNum) && tNum > t0 ? tNum : Math.max(CREEP_DEFAULTS.t_life, t0 + 1);
+  const cement = CEMENT_CLASSES.some((c) => c.value === sls.cement)
+    ? sls.cement : CREEP_DEFAULTS.cement;
 
   const fixFactor = (v, fallback) => {
     const n = Number(v);
@@ -456,6 +558,11 @@ function enforceSlsParams(s) {
     exposure_class === sls.exposure_class
     && w_max_override === sls.w_max_override
     && phi_ef === sls.phi_ef
+    && h0_override === sls.h0_override
+    && RH === sls.RH
+    && t0 === sls.t0
+    && t_life === sls.t_life
+    && cement === sls.cement
     && sigma_c_char_factor === sls.sigma_c_char_factor
     && sigma_c_qp_factor === sls.sigma_c_qp_factor
     && sigma_s_char_factor === sls.sigma_s_char_factor
@@ -469,6 +576,11 @@ function enforceSlsParams(s) {
       exposure_class,
       w_max_override,
       phi_ef,
+      h0_override,
+      RH,
+      t0,
+      t_life,
+      cement,
       sigma_c_char_factor,
       sigma_c_qp_factor,
       sigma_s_char_factor,
@@ -489,10 +601,35 @@ function enforceActiveCombo(s) {
  *
  * @param {object} [initial] slås sammen med `defaultState()`
  */
+/**
+ * ALLE INVARIANTENE, ÉN GANG, I FAST REKKEFØLGE.
+ *
+ * ⚠ HVER MUTERENDE METODE SKAL KALLE DENNE. Det var ikke slik før: hver dør
+ * plukket sitt eget utvalg av enforcere, og da ble det som alltid blir av en
+ * håndholdt liste — tre av dørene gikk klar av noe. MÅLT:
+ *
+ *   setState({sectionType: 'slab'})      → geometry.b = 300, sectionWidth() = 1000
+ *   patch('geometry', {b: 300}) på plate → geometry.b = 300, sectionWidth() = 1000
+ *
+ * Den første er ORDRETT tilstanden `enforceSlabWidth` sin egen doc-kommentar
+ * beskriver som umulig. Og den er forutsetningen figurfeilen trengte for å bli
+ * synlig: `section-draw.js` leste `geometry.b` rått og tegnet jernene på
+ * ±105 mm der motoren regnet ±455.
+ *
+ * Rekkefølgen er den `replaceState` allerede hadde, og den er ikke tilfeldig:
+ * `enforceAnalysis` først (den leser `combos`), `enforceSlsParams` sist (den
+ * leser `concrete`). Alle seks er ENVEIS og IDEMPOTENTE — de returnerer `s`
+ * uendret når det ikke er noe å rette — så det koster ingenting å kjøre alle
+ * seks hver gang, og det er nettopp derfor det er trygt å gjøre det.
+ */
+function normalise(s) {
+  return enforceResultView(enforceSlsParams(enforceActiveCombo(enforceComboNames(
+    enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(enforceAnalysis(s))))
+  ))));
+}
+
 export function createStore(initial) {
-  let state = enforceSlsParams(enforceActiveCombo(enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(
-    enforceAnalysis(cloneState({ ...defaultState(), ...(initial || {}) }))
-  )))));
+  let state = normalise(cloneState({ ...defaultState(), ...(initial || {}) }));
   const listeners = new Set();
   // Løpenummer for lag-id-er. Teller ALDRI ned når et lag slettes: «L2» skal
   // ikke kunne bety to ulike lag i samme økt, ellers peker en gammel
@@ -560,18 +697,10 @@ export function createStore(initial) {
      * og `updateStirrup` er veien inn.
      */
     setState(patch) {
-      state = cloneState({ ...state, ...patch });
-      // `setState({sectionType:'slab'})` er en av dørene inn til plata (§A1) —
-      // en bjelke med bøylerad skal ikke bære dem med seg over.
-      state = enforceSlabStirrups(state);
-      // STEG 2, B2: `setState` var ETT AV DE TO HULLENE v5 §2.4 navnga — ingen
-      // håndheving av aktiv kombinasjon kjørte her, så `setState({combos:[…]})`
-      // (workflow-API) kunne la `activeCombo` peke på en SLS-rad.
-      state = enforceActiveCombo(enforceComboTypes(state));
-      // `setState({sls:{...}})` (workflow-API) er en dør inn til `sls` (§5) —
-      // samme håndheving som `createStore`/`replaceState`, ellers kunne en
-      // ugyldig `exposure_class` stå urørt gjennom nettopp denne veien.
-      state = enforceSlsParams(state);
+      // `normalise` og ikke et utvalg: dette var én av de tre dørene som gikk
+      // klar av `enforceSlabWidth`, og `setState({sectionType:'slab'})` lot
+      // `geometry.b` stå på 300 mens `sectionWidth()` sa 1000.
+      state = normalise(cloneState({ ...state, ...patch }));
       if ('cover' in patch) applyAutoDc();
       notify();
       return state;
@@ -643,12 +772,11 @@ export function createStore(initial) {
      */
     patch(group, values) {
       const beforeDia = stirrupCoverDia(state);
-      state = cloneState({ ...state, [group]: { ...state[group], ...values } });
-      // `patch('shear', {stirrups})` på en plate er en av dørene inn (§A1).
-      // Dette MÅ skje FØR `applyAutoDc` kalles nedenfor: ellers regnes `dc`
-      // med en bøylediameter som ikke finnes lenger — målt i runde 8: d = 543
-      // der 555 er riktig.
-      state = enforceSlabStirrups(state);
+      // `normalise` FØR `applyAutoDc`: `enforceSlabStirrups` kan fjerne en
+      // bøylerad, og `dc` regnet med en bøylediameter som ikke finnes lenger ga
+      // målt d = 543 der 555 er riktig (runde 8). `patch('geometry', {b})` på en
+      // plate gikk dessuten klar av `enforceSlabWidth` helt til runde 11.
+      state = normalise(cloneState({ ...state, [group]: { ...state[group], ...values } }));
       // `patch('shear', {stirrups})` er en lovlig, om enn uvanlig, vei inn, og
       // den kan flytte bøylediameteren like reelt som `updateStirrup`.
       // Sammenlikningen er på den AVLEDEDE diameteren, ikke på et felt: da kan
@@ -656,9 +784,6 @@ export function createStore(initial) {
       if (group === 'spacing' || stirrupCoverDia(state) !== beforeDia) {
         applyAutoDc();
       }
-      // `patch('sls', {...})` er den forventede veien inn til `sls`-gruppen
-      // fra `index.html` (§6.1) — samme håndheving som de andre dørene.
-      if (group === 'sls') state = enforceSlsParams(state);
       notify();
       return state;
     },
@@ -745,7 +870,7 @@ export function createStore(initial) {
       // INVARIANTENE KJØRES ETTER GJENOPPRETTING. Stashet er tilstand, ikke en
       // omgåelse av reglene: en plate er 1000 mm bred uansett hvilken dør den
       // kom inn gjennom.
-      state = enforceSlabStirrups(enforceSlabWidth(state));
+      state = normalise(state);
       // `suggestedDc` er ikke uavhengig av tverrsnittstypen: plata har ingen
       // bøyle, så `dc = cover + dia/2` der bjelken har `cover + Ø_bøyle + dia/2`.
       // Uten denne omregningen blir `dc` stående fra den forrige typen — 12 mm feil
@@ -838,22 +963,18 @@ export function createStore(initial) {
     /** Ny rad i lastkombinasjonstabellen. Retningen arves fra `createCombo`. */
     addCombo(patch = {}) {
       const combo = createCombo(state, { id: nextComboId(), ...patch });
-      state = enforceActiveCombo(enforceComboTypes(
-        enforceAnalysis(cloneState({ ...state, combos: [...state.combos, combo] }))
-      ));
+      state = normalise(cloneState({ ...state, combos: [...state.combos, combo] }));
       notify();
       return combo;
     },
 
     updateCombo(id, values) {
-      state = enforceActiveCombo(enforceComboTypes(
-        enforceAnalysis(
+      state = normalise(
           cloneState({
             ...state,
             combos: state.combos.map((c) => (c.id === id ? { ...c, ...values } : c)),
           })
-        )
-      ));
+      );
       notify();
       return state;
     },
@@ -867,7 +988,21 @@ export function createStore(initial) {
       if (state.combos.length <= 1) return state;
       const combos = state.combos.filter((c) => c.id !== id);
       const activeCombo = state.activeCombo === id ? combos[0].id : state.activeCombo;
-      state = enforceActiveCombo(enforceComboTypes(enforceAnalysis(cloneState({ ...state, combos, activeCombo }))));
+      state = normalise(cloneState({ ...state, combos, activeCombo }));
+      notify();
+      return state;
+    },
+
+    /**
+     * Bytter hvilken rad seksjon 6 viser.
+     *
+     * KASTER IKKE RESULTATET, og det er hele poenget: hvert toppnivåfelt finnes
+     * allerede per rad i det svaret vi har, så dette er et oppslag og ikke en ny
+     * kjøring. `invalidate()` er forbeholdt endringer i det resultatet ble
+     * REGNET for — her er ingenting av det rørt.
+     */
+    setResultView(view) {
+      state = normalise(cloneState({ ...state, resultView: view }));
       notify();
       return state;
     },
@@ -878,7 +1013,7 @@ export function createStore(initial) {
       // Klikker brukeren en SLS-rad til aktiv, skal håndhevingen umiddelbart
       // flytte den videre til første ULS-rad — IKKE la den ukontrollerte
       // raden stå som «aktiv» og drive M–N-diagrammet.
-      state = enforceActiveCombo(enforceComboTypes(state));
+      state = normalise(state);
       notify();
       return state;
     },
@@ -891,9 +1026,7 @@ export function createStore(initial) {
      * kom dit, så `enforceAnalysis` gjelder her akkurat som for combo-endringer.
      */
     replaceState(next) {
-      state = enforceSlsParams(enforceActiveCombo(enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(
-        enforceAnalysis(cloneState({ ...defaultState(), ...next, result: null }))
-      )))));
+      state = normalise(cloneState({ ...defaultState(), ...next, result: null }));
       // Bøyleradene normaliseres gjennom SAMME fabrikk som `addStirrup` bruker
       // — `serialize.js` gjør dette for `layers` og `combos`, men ikke for
       // `stirrups`, så en fil uten `alpha` ville ellers fått

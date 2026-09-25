@@ -54,7 +54,7 @@
 
 import { MODULE_NAME, MODULE_VERSION, STRUCTURALCODES_VERSION } from './meta.js';
 import { derived, thetaFor, sectionWidth, sectionHeight, layerSummary } from './section.js';
-import { derivedMaterials } from './materials.js';
+import { derivedMaterials, resolveCreep } from './materials.js';
 import { drawSection, layerLabel } from './section-draw.js';
 import { momentCurvatureSvg, nmDomainSvg, radialUtilisation } from './charts.js';
 import {
@@ -993,8 +993,22 @@ function slsChapter(state, result) {
   const wMaxRow = sls.w_max === null || sls.w_max === undefined
     ? [`w_max`, `${DASH} (${esc(slsReasonText(sls.w_max_reason))})`]
     : [`w_max`, `${fmtLength(sls.w_max, 2)} mm (${esc(sls.w_max_source === 'manual' ? 'manual override' : 'from exposure class')})`];
+  // HVOR φ KOM FRA, paa samme linje som tallet. Rapporten skal vaere
+  // minimalistisk, men gjoere beregningen GJENSKAPBAR — og et kryptall uten
+  // sine fire inndata kan ingen regne etter. Derfor ikke fire nye rader, men
+  // én parentes: den koster én linje og gjoer kapittelet etterproevbart.
+  const creep = resolveCreep(state);
+  const sls_ = state.sls || {};
+  const creepOrigin = creep.source === 'manual'
+    ? 'manual override'
+    : creep.source === 'derived'
+      ? `EC2 Annex B: RH ${fmtNumber(sls_.RH, 0)} %, t_0 ${fmtNumber(sls_.t0, 0)} d, `
+        + `t ${fmtNumber(sls_.t_life, 0)} d, cement ${esc(sls_.cement)}, `
+        + `h_0 ${fmtLength(creep.chain?.h0, 0)} mm`
+      : esc(slsReasonText(creep.reason));
+
   const paramRows = [
-    ['φ_ef', fmtNumber(sls.phi_ef, 2)],
+    ['φ_ef', `${fmtNumber(sls.phi_ef, 2)} (${creepOrigin})`],
     ['E_cm [MPa]', fmtStress(sls.Ecm, 0)],
     ['E_c,eff = E_cm/(1+φ_ef) [MPa]', fmtStress(sls.Ec_eff, 0)],
     ['α_e = E_s/E_cm — EC2 7.3.4(2), lign. 7.9', fmtRatio(sls.alpha_e, 4)],

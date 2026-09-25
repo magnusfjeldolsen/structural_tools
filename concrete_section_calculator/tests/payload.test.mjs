@@ -64,6 +64,7 @@ const BEAM_STATE = {
     exposure_class: null,
     w_max_override: null,
     phi_ef: 2.0,
+    assume_cracked: false,
     sigma_c_char_factor: 0.6,
     sigma_c_qp_factor: 0.45,
     sigma_s_char_factor: 0.8,
@@ -104,6 +105,8 @@ const defaultSls = {
   w_max: null,
   w_max_source: null,
   w_max_reason: 'no_exposure_class',
+  // Stadium II på forespørsel: `false` er «regn tilstanden», ikke «ikke spurt».
+  assume_cracked: false,
   sigma_c_char_factor: 0.6,
   sigma_c_qp_factor: 0.45,
   sigma_s_char_factor: 0.8,
@@ -493,7 +496,12 @@ test('SLS-P1 — buildPayload: uten valgt klasse er sls.w_max null MED grunnen n
   assert.equal(built.sls.w_max, null);
   assert.equal(built.sls.w_max_reason, 'no_exposure_class');
   assert.equal(built.sls.sigma_c_char_required, null);
-  assert.equal(built.sls.phi_ef, 2.0);
+  // UTLEDET, ikke gjettet: standardtilstanden har ingen overstyring, så
+  // `resolveCreep` regner EC2 tillegg B for bjelken 300×600 i C30/37 ved
+  // RH 50, t0 = 28 døgn og 50 år. Tallet er låst her fordi det er det
+  // rapporten trykker og motoren regner med.
+  assert.ok(Math.abs(built.sls.phi_ef - 2.3458) < 5e-4,
+    `phi_ef = ${built.sls.phi_ef}, ventet ~2,3458 (EC2 tillegg B)`);
   assert.equal(built.sls.sigma_c_char_factor, 0.6);
   assert.equal(built.sls.sigma_c_qp_factor, 0.45);
   assert.equal(built.sls.sigma_s_char_factor, 0.8);

@@ -30,6 +30,11 @@ MODULE_DIR = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(MODULE_DIR / 'python'))
 
 import engine  # noqa: E402
+# BRUKSGRENSENS INTERNE er i `csc_sls` etter delingen i runde 12. Testene som
+# proever en enkelt funksjon der importerer den DIREKTE i stedet for aa gaa via
+# `engine` -- en gjennomeksport bare for testenes skyld ville vaert en port inn i
+# modulen som produksjonskoden ikke har, og dermed en usann grense.
+import csc_sls  # noqa: E402
 from structuralcodes.codes import ec2_2004  # noqa: E402
 
 REL_TOL = 1e-6
@@ -544,7 +549,7 @@ def test_ac11_strip_spacing_inversion_uses_1000_not_b():
     platefixturen gir 113.0 med BEGGE (fordi b = 1000 der ogsaa)."""
     area_200 = (1000.0 / 200.0) * math.pi * 12.0 ** 2 / 4.0
     layer = strip_layer('L1', -250.0, 12.0, area_200)
-    s = engine._sls_layer_spacing(layer)
+    s = csc_sls._sls_layer_spacing(layer)
     assert close(s, 200.0, rel=1e-6)
     # Den GALE b-formelen (feilen spec §3.4 navngir) ville gitt 60.0 paa en 300 mm bjelke.
     wrong = 300.0 * math.pi * 12.0 ** 2 / (4.0 * area_200)
@@ -557,7 +562,7 @@ def test_ac11_branch_choice_differs_between_the_two_formulas():
     gal s = 90 (close) -- de to formlene velger HVER SIN gren."""
     area_300 = (1000.0 / 300.0) * math.pi * 16.0 ** 2 / 4.0
     layer = strip_layer('L1', -250.0, 16.0, area_300)
-    s = engine._sls_layer_spacing(layer)
+    s = csc_sls._sls_layer_spacing(layer)
     assert close(s, 300.0, rel=1e-6)
     wrong = 300.0 * math.pi * 16.0 ** 2 / (4.0 * area_300)
     assert close(wrong, 90.0, rel=1e-6)
@@ -572,7 +577,7 @@ def test_ac11_plate_fixture_geometry_cannot_see_the_bug():
     right = 1000.0 * math.pi * 12.0 ** 2 / (4.0 * layer['area'])
     wrong = 1000.0 * math.pi * 12.0 ** 2 / (4.0 * layer['area'])  # b == 1000 her ogsaa
     assert close(right, wrong, rel=1e-9)
-    assert close(engine._sls_layer_spacing(layer), 113.0, rel=1e-3)
+    assert close(csc_sls._sls_layer_spacing(layer), 113.0, rel=1e-3)
 
 
 # ------------------------------------------------------------------ #
@@ -601,19 +606,170 @@ def test_ac12_single_bar_layer_has_no_spacing_but_state_is_fine():
 # AC13 -- hele snittet i strekk: fully_in_tension, IKKE no_equilibrium_cracked
 # ------------------------------------------------------------------ #
 
-def test_ac13_fully_in_tension_is_distinct_from_ac8a():
-    rebar = [
-        bars_layer('L1', -250.0, 20.0, [-100.0, 0.0, 100.0]),
-        bars_layer('L2', 250.0, 20.0, [-100.0, 0.0, 100.0]),
-    ]
-    payload = sls_payload(rebar, 1000e3, 0.0, combo_type='quasi_permanent', phi_ef=0.0)
+TIE_REBAR = [
+    bars_layer('L1', -250.0, 20.0, [-100.0, 0.0, 100.0]),
+    bars_layer('L2', 250.0, 20.0, [-100.0, 0.0, 100.0]),
+]
+
+
+def test_ac13_fully_in_tension_beyond_yield_is_guarded_not_solved():
+    """N = 1000 kN paa 6O20 (1885 mm2) gir sigma_s = 530 MPa, over f_yk = 500.
+
+    OMSKREVET i runde 11. Foer svarte motoren `fully_in_tension` her -- den gav opp
+    fordi trykksonen ikke fantes. Naa loeses strekktilfellet (se
+    `_sls_tension_only_eval`), og da er det FLYTVAKTEN som slaar inn, slik den gjoer
+    for ethvert annet snitt der den lineaere modellen ikke lenger gjelder. Den gamle
+    grunnkoden svelget to helt ulike ting: «vi kan ikke regne denne formen» og
+    «staalet har flytt».
+    """
+    payload = sls_payload(TIE_REBAR, 1000e3, 0.0, combo_type='quasi_permanent', phi_ef=0.0)
     result = engine.run(payload)
     row = result['sls']['rows'][0]
     assert row['cracked'] is True
     assert row['state'] is None
-    assert row['state_reason'] == 'fully_in_tension'
+    assert row['state_reason'] == 'stresses_outside_elastic_range'
     assert row['state_reason'] != 'no_equilibrium_cracked'
-    assert row['crack_reason'] == 'fully_in_tension'
+
+
+def test_a_section_entirely_in_tension_gets_a_crack_width():
+    """Sentrisk strekk -- strekkstag, ringarmering i tanker, veggskiver -- er blant de
+    VIKTIGSTE rissviddetilfellene i EC2. Standarden har dem eksplisitt: fig. 7.1(c)
+    viser A_c,eff for et strekkstav, og k2 = 1,0 i lign. 7.13 finnes nettopp for ren
+    strekk. Motoren svarte `fully_in_tension -> crack_width_ok: None` og lot dem ligge.
+
+    Naar hele snittet er i strekk og risset baerer betongen ingenting, og likevekten
+    blir to LINEAERE likninger i (eps_a, chi) -- uten trykksonen den kubiske loeseren
+    maa lete seg fram til.
+    """
+    payload = sls_payload(TIE_REBAR, 800e3, 0.0, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    result = engine.run(payload)
+    row = result['sls']['rows'][0]
+    state, crack = row['state'], row['crack']
+
+    assert state is not None, row['state_reason']
+    assert state['x'] == 0.0, 'det finnes ingen trykksone'
+    assert state['sigma_c'] == 0.0, 'og dermed ingen trykkspenning'
+    # Likevekt: summen av staalkreftene ER aksialkraften.
+    force = sum(l['sigma'] * a for l, (a, _z)
+                in zip(state['layers'], [(float(l['area']), 0.0) for l in TIE_REBAR]))
+    assert close(force, 800e3, rel=1e-9), f'likevekten holder ikke: {force}'
+
+    assert crack is not None
+    assert crack['w_k'] > 0.0
+    assert close(crack['k2'], 1.0), 'EC2 lign. 7.13 gir k2 = 1,0 for ren strekk'
+    # `(h-x)/3` er utledet for en bjelke med trykksone og gjelder ikke her.
+    assert crack['h_c_eff_governing'] in ('h/2', '2.5(h-d)')
+    assert '(h-x)/3' not in crack['h_c_eff_candidates']
+
+
+def _assert_no_crash(result):
+    """Payloadene her har BARE en bruksgrenserad, saa bruddgrensedelen melder
+    `no_uls_combination` -- det er forventet og ikke et kast. Alt annet `ok: False` er
+    en kjoerefeil, og da er hele svaret borte: ingen ULS, ingen figur, ingen advarsel."""
+    if result.get('ok') is False:
+        code = result['error']['code']
+        assert code == 'no_uls_combination',             f"{code}: {result['error'].get('detail', '').strip().splitlines()[-1][:120]}"
+
+
+ASYM_TIE_REBAR = [
+    bars_layer('L1', -250.0, 25.0, [-100.0, -33.0, 33.0, 100.0]),
+    bars_layer('L2', 250.0, 20.0, [-100.0, -33.0, 33.0, 100.0]),
+]
+
+
+def test_an_asymmetric_tie_does_not_take_the_whole_run_down():
+    """REGRESJON paa strekkloeseren selv, og paa TESTENE for den.
+
+    De to foerste strekktestene brukte et EKSAKT SYMMETRISK oppsett -- det ene
+    tilfellet der feilen ikke kan vises, fordi `SUM(A*z) = 0` gjoer at `chi_y` foelger
+    momentet alene. Med ULIKT jern i topp og bunn kommer krumningen fra armeringen, og
+    `_sls_theta_equiv(m_ed)` pekte da ut FEIL kant:
+
+        300x600, 4O25 UK + 4O20 OK, N = +900 kN, M = 0
+        sann   eps(topp) 1,8530e-03   eps(bunn) 1,0801e-03
+        antatt eps_1 = bunnen  ->  eps_r = 1,715  ->  `ec2_2004.k2()` KASTER
+        ->  {ok: False}: ingen ULS, ingen figur, ingen advarsel
+
+    47 av 140 proevde punkter krasjet. Paa master gav samme payload et pent
+    `fully_in_tension`; grenen byttet det mot total kjoerefeil.
+
+    Et strekkstag er sjelden eksakt symmetrisk, saa dette ER normaltilfellet.
+    """
+    payload = sls_payload(ASYM_TIE_REBAR, 900e3, 0.0, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    result = engine.run(payload)
+    _assert_no_crash(result)
+
+    row = result['sls']['rows'][0]
+    state, crack = row['state'], row['crack']
+    assert state is not None and state['tension_only'] is True
+    # `eps_1` ER strekkanten: den STOERSTE toeyningen, uansett hva momentet sier.
+    assert state['eps_1'] >= state['eps_2'] > 0.0
+    assert crack is not None
+    assert 0.0 <= crack['eps_r'] <= 1.0, 'eps_r utenfor [0,1] er det k2() kaster paa'
+    assert 0.5 < crack['k2'] < 1.0
+
+
+@pytest.mark.parametrize('dias', [(25.0, 20.0), (20.0, 25.0)])
+@pytest.mark.parametrize('n_ed', [400e3, 900e3])
+@pytest.mark.parametrize('m_ed', [-40e6, 0.0, 40e6])
+def test_the_tension_solver_never_throws_across_asymmetry(dias, n_ed, m_ed):
+    """Sveip: BEGGE retninger av usymmetri, med og uten moment. Et kast her er ikke en
+    manglende funksjon, det er et tapt svar -- ogsaa for bruddgrensedelen, som ikke har
+    noe med bruksgrensen aa gjoere."""
+    rebar = [bars_layer('L1', -250.0, dias[0], [-100.0, -33.0, 33.0, 100.0]),
+             bars_layer('L2', 250.0, dias[1], [-100.0, -33.0, 33.0, 100.0])]
+    payload = sls_payload(rebar, n_ed, m_ed, combo_type='quasi_permanent', phi_ef=0.0,
+                           exposure_class='XC3', w_max=0.3, w_max_source='class',
+                           w_max_reason=None, sigma_c_char_required=False)
+    _assert_no_crash(engine.run(payload))
+
+
+def test_eccentric_tension_gives_k2_between_the_two_ends():
+    """Eksentrisk strekk ligger mellom ren strekk (k2 = 1,0) og ren boeyning (k2 = 0,5)
+    -- lign. 7.13 er nettopp den interpolasjonen."""
+    payload = sls_payload(TIE_REBAR, 800e3, -10e6, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    crack = engine.run(payload)['sls']['rows'][0]['crack']
+    assert crack is not None
+    assert 0.5 < crack['k2'] < 1.0, crack['k2']
+
+
+def test_a_single_layer_in_pure_tension_has_no_solution_and_says_so():
+    """ETT armeringslag kan bare baere momentet `N * z_1`. Alt annet er en likevekt som
+    ikke finnes, og da staar `fully_in_tension` igjen som den aerlige grunnen -- koden
+    er ikke borte, den er bare ikke lenger svaret paa alt."""
+    payload = sls_payload(BEAM_REBAR, 400e3, -60e6, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    row = engine.run(payload)['sls']['rows'][0]
+    assert row['state'] is None
+    assert row['state_reason'] in ('fully_in_tension', 'no_equilibrium_cracked')
+
+
+def test_ordinary_bending_is_untouched_by_the_tension_solver():
+    """Motstykket, og grensa for hele endringen: et vanlig feltmoment skal gi noeyaktig
+    de samme tallene som foer -- trykksone, `(h-x)/3` blant kandidatene, k2 = 0,5."""
+    payload = sls_payload(BEAM_REBAR, 0.0, -100e6, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    row = engine.run(payload)['sls']['rows'][0]
+    assert row['state']['x'] > 0.0
+    assert row['state']['sigma_c'] < 0.0
+    assert row['state'].get('tension_only') is False
+    crack = row['crack']
+    assert '(h-x)/3' in crack['h_c_eff_candidates']
+    assert close(crack['k2'], 0.5)
+    assert close(crack['w_k'], 0.2114290340096794, rel=1e-9)
 
 
 # ------------------------------------------------------------------ #
@@ -833,6 +989,224 @@ def test_characteristic_row_still_gets_its_steel_stress_verdict():
     assert stress['sigma_s_ok_reason'] is None
 
 
+def _uls_and_qp(w_max):
+    """Et snitt som BESTAAR bruddgrensen, med én tilnaermet permanent rad ved siden av."""
+    payload = sls_payload(BEAM_REBAR, 0.0, -100e6, combo_type='quasi_permanent',
+                           phi_ef=2.0, exposure_class='XC3', w_max=w_max,
+                           w_max_source='manual', w_max_reason=None,
+                           sigma_c_char_required=False)
+    payload['loads']['combinations'].insert(0, {
+        'id': 'C1', 'name': 'ULS', 'type': 'uls', 'N_Ed': 0.0, 'M_Ed': -100e6, 'V_Ed': 0.0})
+    payload['loads']['active'] = 'C1'
+    return payload
+
+
+def test_overall_assessment_sees_the_serviceability_limit():
+    """RETTET i runde 11. `checks['all_ok']` -- raden som HETER «Overall assessment»
+    og som rapporten trykker som samlet vurdering -- saa bare paa bruddgrensen.
+
+    MAALT foer rettelsen: en rissvidde paa 0,226 mm mot en grense paa 0,05, altsaa
+    4,5 ganger over, gav `checks['all_ok'] = True`. Advarselen laa i lista, men en
+    advarsel ved siden av en groenn hake blir ikke lest.
+
+    Kommentaren over `checks['all_ok']` i motoren sa det allerede, om et annet
+    tilfelle: «en Overall assessment: OK som overser ... er aktivt misvisende i et
+    verktoey som dimensjonerer betong».
+    """
+    result = engine.run(_uls_and_qp(0.05))
+    row = result['sls']['rows'][0]
+    assert row['crack']['ok'] is False
+    assert row['crack']['utilisation'] > 4.0, 'testen skal vaere grov, ikke marginal'
+
+    # Bruddgrensen ALENE bestaar -- det er nettopp det som gjoer feilen farlig.
+    uls_only = {k: v for k, v in result['checks'].items() if k != 'all_ok'}
+    assert all(v is True for v in uls_only.values()), uls_only
+
+    assert result['sls']['all_ok'] is False
+    assert result['checks']['all_ok'] is False, \
+        'samlet vurdering sier fortsatt OK med rissvidden 4,5x over grensa'
+    assert 'sls_crack_width_exceeded' in [w['code'] for w in result['warnings']]
+
+
+def test_overall_assessment_stays_true_when_serviceability_passes():
+    """Motstykket: en romslig grense skal ikke faa den samlede vurderingen til aa
+    falle. Uten denne ville rettelsen over kunne vaert «sett alltid False»."""
+    result = engine.run(_uls_and_qp(0.4))
+    assert result['sls']['rows'][0]['crack']['ok'] is True
+    assert result['sls']['all_ok'] is True
+    assert result['checks']['all_ok'] is True
+
+
+def test_overall_assessment_is_unanswered_when_serviceability_is():
+    """Treverdig hele veien: en ubesvart bruksgrensekontroll skal gi en ubesvart
+    samlet vurdering, ikke en bestaatt. XD3 har ingen anbefalt rissviddegrense."""
+    payload = _uls_and_qp(None)
+    payload['sls'].update({'exposure_class': 'XD3', 'w_max': None, 'w_max_source': None,
+                           'w_max_reason': 'no_crack_width_limit'})
+    result = engine.run(payload)
+    assert result['sls']['checks']['crack_width_ok'] is None
+    assert result['sls']['all_ok'] is None
+    assert result['checks']['all_ok'] is None, 'None skal slaa True, som ellers i kjeden'
+
+
+def test_overall_assessment_is_untouched_without_serviceability_rows():
+    """AC9: uten SLS-rader skal svaret vaere BIT FOR BIT som foer kapittelet fantes."""
+    payload = _uls_and_qp(0.4)
+    payload['loads']['combinations'] = [payload['loads']['combinations'][0]]
+    result = engine.run(payload)
+    assert 'sls' not in result
+    assert result['checks']['all_ok'] is True
+
+
+def _extreme_fibres(row):
+    """Betongspenningen i BEGGE ytterfibrene, regnet av radens eget toeyningsplan."""
+    st = row['state']
+    ec = row['Ec_used']
+    return (ec * (st['eps_a'] + st['chi_y'] * 300.0),
+            ec * (st['eps_a'] + st['chi_y'] * -300.0))
+
+
+@pytest.mark.parametrize('n_ed, combo_type, limit', [
+    (-3200e3, 'characteristic', 18.0),
+    (-2400e3, 'quasi_permanent', 13.5),
+])
+def test_uncracked_sigma_c_is_read_at_the_face_that_is_actually_worst(n_ed, combo_type, limit):
+    """RETTET i runde 11. `comp_face_z` foelger fortegnet paa `M_Ed` alene. Det er
+    riktig for et RISSET snitt, der den ene kanten per definisjon ER trykksonen -- men
+    for et URISSET snitt med dominerende aksialtrykk baerer begge kantene, og den
+    stoerste trykkspenningen kan ligge paa den kanten momentet IKKE peker paa.
+
+    MAALT foer rettelsen, helt ordinaer 300x600 med 3O20 i underkant og et lite
+    stoettemoment: rapportert -16,23 MPa mot en sann maks paa -18,28 (grense 18,0).
+    Altsaa 11-13 % for lavt, paa usikker side, OG dommen snudde fra bestaatt til
+    ikke bestaatt.
+    """
+    payload = sls_payload(BEAM_REBAR, n_ed, 5e6, combo_type=combo_type, phi_ef=0.0,
+                           exposure_class='XC3', w_max=0.3, w_max_source='class',
+                           w_max_reason=None, sigma_c_char_required=True)
+    result = engine.run(payload)
+    row = result['sls']['rows'][0]
+    assert row['cracked'] is False, 'forutsetningen: aksialtrykket holder snittet urisset'
+
+    top, bot = _extreme_fibres(row)
+    worst = min(top, bot)
+    assert abs(top - bot) > 1.0, 'testen skal ha en REELL forskjell mellom kantene'
+    assert close(row['state']['sigma_c'], worst), \
+        f'sigma_c = {row["state"]["sigma_c"]} er ikke den stoerste trykkspenningen ({worst})'
+
+    stress = row['stress']
+    assert stress['sigma_c_util'] > 1.0
+    assert stress['sigma_c_ok'] is False, 'dommen skal snu naar den sanne spenningen brukes'
+
+
+def test_uncracked_section_entirely_in_tension_reports_no_compression():
+    """Rent aksialstrekk: BEGGE kantene er i strekk, og da finnes det ingen
+    trykkspenning. Foer rettelsen stod det +1,851 MPa merket «compression face» og
+    ble proevd mot TRYKKgrensa med `abs()` -- et tall med feil fortegn i en kontroll
+    det ikke hoerte hjemme i."""
+    payload = sls_payload(BEAM_REBAR, 300e3, 0.0, combo_type='characteristic',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=True)
+    result = engine.run(payload)
+    row = result['sls']['rows'][0]
+    top, bot = _extreme_fibres(row)
+    assert top > 0 and bot > 0, 'forutsetningen: hele snittet i strekk'
+    assert row['state']['sigma_c'] == 0.0
+    assert row['stress']['sigma_c_ok'] is True, 'ingen trykkspenning kan ikke sprenge en trykkgrense'
+
+
+def test_cracked_sigma_c_still_reads_the_face_theta_points_at():
+    """Motstykket, og grensa for rettelsen: for et RISSET snitt skal formelen staa
+    noeyaktig som foer. Der ER den ene kanten trykksonen, og `eps_1`/`eps_2` -- som gaar
+    videre til `k2` i lign. 7.13 -- bygger paa den samme definisjonen."""
+    payload = sls_payload(BEAM_REBAR, 0.0, -100e6, combo_type='quasi_permanent',
+                           phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                           w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    result = engine.run(payload)
+    row = result['sls']['rows'][0]
+    assert row['cracked'] is True
+    top, _bot = _extreme_fibres(row)
+    # Feltmoment: trykkanten er OK, og det er den `sigma_c` skal vise.
+    assert close(row['state']['sigma_c'], top)
+    assert row['state']['sigma_c'] < 0.0
+
+
+SLAB_1000_REBAR = [bars_layer('L1', -459.0, 16.0, [-100.0, 0.0, 100.0])]
+
+
+def _char_and_qp(m_char, m_qp):
+    """300x1000 med 3O16 i underkant: én karakteristisk og én tilnaermet permanent rad."""
+    payload = sls_payload(SLAB_1000_REBAR, 0.0, m_qp, combo_type='quasi_permanent',
+                           b=300.0, h=1000.0, phi_ef=2.0, exposure_class='XC4',
+                           w_max=0.3, w_max_source='class', w_max_reason=None,
+                           sigma_c_char_required=False)
+    payload['loads']['combinations'].insert(0, {
+        'id': 'C0', 'name': 'Char', 'type': 'characteristic', 'N_Ed': 0.0, 'M_Ed': m_char})
+    return payload
+
+
+def test_cracking_is_decided_by_the_envelope_not_by_each_row():
+    """RETTET i runde 11. Rissbeslutningen ble tatt PER RAD. Motorens egen
+    hodekommentar sier «riss er irreversibelt» -- som begrunnelse for at E_cm brukes i
+    beslutningen -- men regelen ble ikke brukt paa TILSTANDEN.
+
+    MAALT foer rettelsen, 300x1000 med 3O16 UK:
+        karakteristisk M = -200 kNm  ->  sigma_ct = 3,84 > f_ctm = 2,90  -> RISSER
+        tilnaermet perm M = -144 kNm  ->  sigma_ct = 2,76 < f_ctm        -> «urisset»
+    Motoren svarte «no quasi-permanent load combination cracks the section» og
+    `sls.all_ok = True`, altsaa BESTAATT uten aa ha regnet rissvidden i det hele tatt.
+
+    Riss forsvinner ikke naar lasten gaar ned.
+    """
+    result = engine.run(_char_and_qp(-200e6, -144e6))
+    sls = result['sls']
+    rows = {r['id']: r for r in sls['rows']}
+
+    # Forutsetningene: de to radene ligger paa hver sin side av rissgrensa.
+    assert rows['C0']['sigma_ct_uncracked'] > sls['f_ct_eff']
+    assert rows['S1']['sigma_ct_uncracked'] < sls['f_ct_eff']
+
+    assert sls['cracked'] is True, 'snittet risser av den karakteristiske raden'
+    assert rows['S1']['cracked'] is True, 'og da er det risset ogsaa for den permanente'
+
+    # Kontrollen er FAKTISK utfoert, ikke lagt i not_applicable.
+    assert 'crack_width_ok' in sls['checks']
+    assert 'crack_width_ok' not in sls['not_applicable']
+    assert rows['S1']['crack'] is not None
+    assert rows['S1']['crack']['w_k'] > 0.0
+
+
+def test_an_uncracked_section_is_still_uncracked():
+    """Motstykket. Uten denne ville «sett alltid cracked» vaert en bestaatt rettelse --
+    og da ville hver eneste urissede plate faatt en oppdiktet rissvidde."""
+    result = engine.run(_char_and_qp(-80e6, -60e6))
+    sls = result['sls']
+    rows = {r['id']: r for r in sls['rows']}
+    assert rows['C0']['sigma_ct_uncracked'] < sls['f_ct_eff']
+    assert sls['cracked'] is False
+    assert all(r['cracked'] is False for r in sls['rows'])
+    # Grunnen skal SI hvorfor, med tallene som avgjorde det -- ikke bare
+    # konkludere. Laaser INNHOLDET og ikke strengen: en bedre formulering skal
+    # ikke gjoere denne testen roed, men et tall som forsvinner skal.
+    grunn = sls['not_applicable']['crack_width_ok']
+    assert 'does not crack' in grunn, grunn
+    assert f"{sls['sigma_ct_max']:.2f}" in grunn, grunn
+    assert f"{sls['f_ct_eff']:.2f}" in grunn, grunn
+
+
+def test_the_envelope_also_moves_the_concrete_stress_at_first_loading():
+    """Samme feil traff `sigma_c_qp_ok`: den urissede tilstanden gir en LAVERE
+    betongspenning enn den rissede, saa en rad som feilaktig ble regnet urisset fikk et
+    for lavt tall -- maalt 2,142 mot 2,754 MPa paa referansebjelken, altsaa 29 % lavt."""
+    cracked = engine.run(_char_and_qp(-200e6, -144e6))['sls']['rows'][1]
+    uncracked = engine.run(_char_and_qp(-80e6, -144e6))['sls']['rows'][1]
+    assert cracked['cracked'] is True and uncracked['cracked'] is False
+    assert abs(cracked['state']['sigma_c']) > abs(uncracked['state']['sigma_c']), \
+        'den rissede tilstanden skal gi stoerre betongtrykk for samme last'
+
+
 def test_sls_defaults_mirror_the_js_source():
     """`_SLS_FALLBACK` er et SPEIL av `SLS_DEFAULTS` i js/materials.js, ikke en fjerde
     kilde (runde 10 K3). Denne testen LESER begge og feiler hvis de gaar fra hverandre
@@ -843,11 +1217,15 @@ def test_sls_defaults_mirror_the_js_source():
     js = {}
     for line in block.splitlines():
         line = line.strip().rstrip(',')
-        if not line or ':' not in line:
+        # Kommentarene i blokka inneholder ogsaa kolon; de er ikke felter.
+        if not line or line.startswith('//') or ':' not in line:
             continue
         key, value = line.split(':', 1)
-        js[key.strip()] = float(value.strip())
-    assert js == engine._SLS_FALLBACK
+        key, value = key.strip(), value.strip()
+        if not value or not value[0].isdigit():
+            continue
+        js[key] = float(value)
+    assert js == csc_sls._SLS_FALLBACK
 
 
 def test_sls_incomplete_detail_names_the_check_and_the_class_when_no_class_is_chosen():
@@ -957,3 +1335,471 @@ def test_pure_axial_row_gives_null_z_na_and_a_drawable_x():
     assert row['state']['z_na'] is None, 'ingen nullakse naar toeyningen er konstant'
     assert row['state']['x'] == 600.0, 'hele snittet i trykk -> x = h, ikke None'
     assert row['state']['sigma_c'] < 0.0
+
+
+# ------------------------------------------------------------------ #
+# Den effektive strekksonen regnes PER KANT (EC2 7.3.2(3), fig. 7.1(c))
+# ------------------------------------------------------------------ #
+#
+# ADVARSEL TIL NESTE LESER: de to eldste strekktestene over
+# (`test_a_section_entirely_in_tension_gets_a_crack_width` og
+# `test_ac13_...`) bruker et EKSAKT SYMMETRISK oppsett. Det er det ene
+# tilfellet der en kantvis feil IKKE kan vises, fordi de to kantene da gir
+# samme tall uansett hvilken av dem som blir maalt. Testene under er derfor
+# usymmetriske med vilje -- i diameter, i armeringsmengde og i moment.
+
+
+def spacing_strip(layer_id, z, dia, spacing):
+    """Et `spacing`-lag slik `rebar.js:87` bygger det: ALLTID per meter (1000/s),
+    uansett tverrsnittstype (spec §3.4)."""
+    return strip_layer(layer_id, z, dia, (1000.0 / spacing) * math.pi * dia * dia / 4.0)
+
+
+# Vegg 1000x300, Ø20 c/c 250 i BEGGE sider, jernsenter 50 mm fra hver overflate.
+WALL_REBAR = [spacing_strip('BOT', -100.0, 20.0, 250.0),
+              spacing_strip('TOP', 100.0, 20.0, 250.0)]
+
+
+def test_a_wall_reinforced_at_both_faces_is_measured_at_both_faces():
+    """Vegg 1000x300, Ø20 c/c 250 i begge sider, N = +950 kN (rent strekk).
+
+    Foer ble det bygd ÉN sone fra den kanten toeyningen pekte paa, med
+    `h_c,eff = h/2 = 150,0` -- hele halve veggen som effektiv betong, men bare
+    jernene ved den ene overflaten inni den. Det gav `rho_p,eff = 0,008378` og
+    `w_k = 1,1024`; den andre overflaten ble aldri regnet.
+
+    Kantvis er sonen `2,5*d_kant = 125,0` mot HVER overflate, med det jernlaget som
+    faktisk ligger der: `rho_p,eff = 0,010053`, `s_r,max = 812,41` og
+    `w_k = 1,0386` -- maalt paa begge overflatene, ikke paa én.
+    """
+    payload = sls_payload(WALL_REBAR, 950e3, 0.0, combo_type='quasi_permanent',
+                          b=1000.0, h=300.0, section_type='wall', phi_ef=0.0,
+                          exposure_class='XC3', w_max=0.3, w_max_source='class',
+                          w_max_reason=None, sigma_c_char_required=False)
+    crack = engine.run(payload)['sls']['rows'][0]['crack']
+    assert crack is not None
+
+    assert len(crack['edges']) == 2, 'begge overflatene skal staa i svaret'
+    assert [e['face'] for e in crack['edges']] == ['bottom', 'top']
+    for edge in crack['edges']:
+        assert close(edge['d_edge'], 50.0)
+        assert edge['h_c_eff_governing'] == '2.5(h-d)'
+        assert close(edge['h_c_eff'], 125.0)
+        assert close(edge['A_s_eff'], 1256.6370614359173)
+        assert close(edge['rho_p_eff'], 0.010053096491487345)
+        assert close(edge['c'], 40.0)
+        assert close(edge['sr_max'], 812.4085081405548)
+        assert close(edge['w_k'], 1.0386216045928696)
+        assert edge['layers_at_face'] == [edge['layers_in_zone'][0]]
+
+    # Den gamle ENE sonen paa h/2 er ikke lenger svaret noe sted.
+    assert crack['h_c_eff'] != 150.0
+    assert close(crack['w_k'], 1.0386216045928696)
+    assert crack['governing_edge'] in ('bottom', 'top')
+    assert close(crack['w_k'], max(e['w_k'] for e in crack['edges']))
+
+
+def test_the_face_the_old_rule_never_looked_at_can_be_the_governing_one():
+    """Verstetilfellet i sveipet (§ docstringen til `_sls_crack`): b 600, h 200,
+    jernsenter 70 mm fra hver overflate, LIK armeringsmengde men Ø20 i UK mot Ø16 i
+    OK, sigma_s ~ 340 MPa, lite moment.
+
+    De to overflatene havner i HVER SIN gren av `s_r,max`: UK har grovere jern og
+    stoerre senteravstand (523,6 > terskel 350) og faller i `far`, OK i `close`.
+    Foer ble bare UK maalt -- 0,2823 mm. OK, som ingen saa paa, gir 0,8186 mm.
+    Det gamle svaret var 0,345x det riktige.
+
+    Usymmetrien her er i DIAMETER, ikke i mengde: samme `A_s` paa begge sider.
+    Et snitt som ser symmetrisk ut i en armeringsliste er det altsaa ikke
+    noedvendigvis i 7.3.4.
+    """
+    b, h, cov = 600.0, 200.0, 70.0
+    a_face = 0.010 * b * h / 2.0
+    rebar = [strip_layer('BOT', -(h / 2 - cov), 20.0, a_face),
+             strip_layer('TOP', (h / 2 - cov), 16.0, a_face)]
+    n_ed = 340.0 * 2.0 * a_face
+    payload = sls_payload(rebar, n_ed, -0.03 * n_ed * h / 1000.0,
+                          combo_type='quasi_permanent', b=b, h=h,
+                          section_type='wall', phi_ef=0.0, exposure_class='XC3',
+                          w_max=0.3, w_max_source='class', w_max_reason=None,
+                          sigma_c_char_required=False)
+    crack = engine.run(payload)['sls']['rows'][0]['crack']
+    assert crack is not None
+
+    bot, top = crack['edges']
+    assert (bot['face'], top['face']) == ('bottom', 'top')
+    assert bot['sr_max_branch'] == 'far' and top['sr_max_branch'] == 'close'
+    assert close(bot['w_k'], 0.28229836014787657)
+    assert close(top['w_k'], 0.8186273295349383)
+    assert crack['governing_edge'] == 'top'
+    assert close(crack['w_k'], 0.8186273295349383)
+    assert close(crack['sr_max'], 754.4375749500332)
+    assert bot['w_k'] / top['w_k'] < 0.35, 'den umaalte kanten var 2,9 ganger verre'
+
+
+def test_both_edges_of_a_tie_carry_their_own_zone_not_a_shared_one():
+    """Usymmetrisk strekkstag: 4Ø25 i UK mot 4Ø16 i OK, med moment.
+
+    Poenget er at de to kantene har HVER SIN `A_s,eff`, `sigma_s`, `c` og `phi_eq` --
+    ingen av dem regnes av et snittvektet tyngdepunkt over begge lagene.
+    """
+    ys = [-100.0, -33.0, 33.0, 100.0]
+    rebar = [bars_layer('L1', -250.0, 25.0, ys), bars_layer('L2', 250.0, 16.0, ys)]
+    payload = sls_payload(rebar, 700e3, -30e6, combo_type='quasi_permanent',
+                          phi_ef=0.0, exposure_class='XC3', w_max=0.3,
+                          w_max_source='class', w_max_reason=None,
+                          sigma_c_char_required=False)
+    row = engine.run(payload)['sls']['rows'][0]
+    crack = row['crack']
+    assert crack is not None, row['crack_reason']
+    bot, top = crack['edges']
+
+    assert bot['layers_in_zone'] == ['L1'] and top['layers_in_zone'] == ['L2']
+    assert bot['layers_at_face'] == ['L1'] and top['layers_at_face'] == ['L2']
+    assert close(bot['A_s_eff'], 4 * math.pi * 25.0 ** 2 / 4.0)
+    assert close(top['A_s_eff'], 4 * math.pi * 16.0 ** 2 / 4.0)
+    assert close(bot['phi_eq'], 25.0) and close(top['phi_eq'], 16.0)
+    assert close(bot['c'], 50.0 - 12.5) and close(top['c'], 50.0 - 8.0)
+    # To ULIKE staalspenninger. Her er det den LETTE kanten (4Ø16 i OK) som er
+    # hardest paastrengt, ikke den tunge -- maalt 360,59 mot 208,81 MPa. Nettopp
+    # derfor holder det ikke aa maale bare den ene overflaten.
+    assert top['sigma_s'] > bot['sigma_s'] > 0.0
+    assert crack['governing_edge'] == 'top'
+    assert crack['w_k'] == max(bot['w_k'], top['w_k'])
+    # `eps_1`/`eps_2` er snittets, ikke kantens: de skal vaere like i begge.
+    assert bot['eps_1'] == top['eps_1'] and bot['eps_2'] == top['eps_2']
+    assert bot['k2'] == top['k2']
+
+
+# ------------------------------------------------------------------ #
+# Ren boeyning skal vaere UROERT -- 27 snitt, bit for bit
+# ------------------------------------------------------------------ #
+
+def _bending_cases():
+    """Snitt med strekkarmering ved BARE ÉN kant. For dem er kantvis regel per
+    definisjon den samme sonen som foer, og testen under laaser at det stemmer.
+
+    Lastnivaaene er valgt saa ALLE 27 faktisk risser og holder seg elastiske -- en
+    parametrisering der halvparten faller ut som `uncracked` er ikke en
+    bit-identitetssjekk paa 27 snitt, den er det paa de som ble igjen. Utvalget
+    treffer begge `h_c,eff`-grenene (19 x `2,5(h-d)`, 8 x `(h-x)/3`) og begge
+    `s_r,max`-grenene (24 `close`, 3 `far`) -- maalt, ikke antatt.
+    """
+    out = []
+    for h, dia, ys, m in [(600.0, 20.0, [-100.0, 0.0, 100.0], -88.1e6),
+                          (600.0, 25.0, [-90.0, 0.0, 90.0], -137.7e6),
+                          (800.0, 32.0, [-100.0, 0.0, 100.0], -307.6e6)]:
+        for b in (250.0, 300.0, 450.0):
+            out.append(('bjelke %gx%g O%g' % (b, h, dia),
+                        [bars_layer('L1', -(h / 2 - 50.0), dia, ys)],
+                        0.0, m, b, h, 'beam'))
+    out.append(('bjelke 250x400 O16', [bars_layer('L1', -150.0, 16.0, [-80.0, 80.0])],
+                0.0, -23.9e6, 250.0, 400.0, 'beam'))
+    out.append(('bjelke 300x400 O16', [bars_layer('L1', -150.0, 16.0, [-80.0, 80.0])],
+                0.0, -35.9e6, 300.0, 400.0, 'beam'))
+    thin = [-100.0, -33.0, 33.0, 100.0]
+    out.append(('bjelke 250x500 O12', [bars_layer('L1', -200.0, 12.0, thin)],
+                0.0, -34.6e6, 250.0, 500.0, 'beam'))
+    out.append(('bjelke 300x500 O12', [bars_layer('L1', -200.0, 12.0, thin)],
+                0.0, -51.9e6, 300.0, 500.0, 'beam'))
+    for h, dia, s_cc, m in [(200.0, 12.0, 150.0, -30e6), (200.0, 12.0, 200.0, -22e6),
+                            (200.0, 16.0, 200.0, -25e6), (250.0, 16.0, 150.0, -45e6),
+                            (300.0, 20.0, 200.0, -80e6), (180.0, 10.0, 125.0, -18e6)]:
+        out.append(('plate %g O%g c%g' % (h, dia, s_cc),
+                    [spacing_strip('L1', -(h / 2 - 25.0 - dia / 2), dia, s_cc)],
+                    0.0, m, 1000.0, h, 'slab'))
+    for m in (100e6, 140e6, 180e6):
+        out.append(('stoettemoment M%g' % (m / 1e6),
+                    [bars_layer('L1', 250.0, 20.0, [-100.0, 0.0, 100.0]),
+                     bars_layer('L2', -250.0, 16.0, [-100.0, 100.0])],
+                    0.0, m, 300.0, 600.0, 'beam'))
+    for m in (-100e6, -160e6):
+        out.append(('trykkarmering M%g' % (m / 1e6),
+                    [bars_layer('L1', -250.0, 20.0, [-100.0, 0.0, 100.0]),
+                     bars_layer('L2', 250.0, 16.0, [-100.0, 100.0])],
+                    0.0, m, 300.0, 600.0, 'beam'))
+    for n, m in ((-500e3, -200e6), (-200e3, -150e6), (200e3, -120e6)):
+        out.append(('bjelke N%g M%g' % (n / 1e3, m / 1e6),
+                    [bars_layer('L1', -250.0, 20.0, [-100.0, 0.0, 100.0])],
+                    n, m, 300.0, 600.0, 'beam'))
+    return out
+
+
+BENDING_CASES = _bending_cases()
+
+
+def test_the_bending_sweep_is_wide_enough_to_be_a_check():
+    """En bit-identitetssjekk paa fem snitt beviser ingenting. Kravet var MINST 20."""
+    assert len(BENDING_CASES) >= 20, len(BENDING_CASES)
+
+
+@pytest.mark.parametrize('name,rebar,n_ed,m_ed,b,h,section_type', BENDING_CASES,
+                          ids=[c[0] for c in BENDING_CASES])
+def test_pure_bending_gets_exactly_the_same_zone_as_before(
+    name, rebar, n_ed, m_ed, b, h, section_type,
+):
+    """REN BOEYNING ER UROERT. Med strekkarmering ved bare én kant er kantens lagsett
+    HELE strekksettet, og `d_kant = h - d`.
+
+    `d` regnes her paa nytt av payloaden med DEN GAMLE formelen -- arealvektet dybde
+    fra trykkanten over alle lag med eps > 0, akkurat slik `_weighted_depth` gjoer det
+    -- og sammenlignes med `==`, ikke med toleranse. Det er hele bit-identitetskravet
+    i én paastand: er `d` bit-lik, er `2,5(h-d)` det, og dermed `h_c,eff`, `A_c,eff`,
+    `rho_p,eff` og `w_k`.
+
+    `h_c,eff` kryssjekkes i tillegg mot pakkens `ec2_2004.hc_eff` (spec §3.1: pakken
+    er TEST-orakel, aldri en andre produsent i motoren).
+    """
+    payload = sls_payload(rebar, n_ed, m_ed, combo_type='quasi_permanent', b=b, h=h,
+                          section_type=section_type, phi_ef=0.0)
+    row = engine.run(payload)['sls']['rows'][0]
+    crack = row['crack']
+    assert crack is not None, row['crack_reason'] or row['state_reason']
+
+    # ÉN kant: et boeyd snitt har én overflate i strekk, og trykkanten er ikke en av dem.
+    assert len(crack['edges']) == 1
+    assert crack['edges'][0]['w_k'] == crack['w_k']
+    assert crack['governing_edge'] == crack['edges'][0]['face']
+
+    hogging = m_ed > 0.0
+    total = 0.0
+    weighted = 0.0
+    for layer, st in zip(rebar, row['state']['layers']):
+        if st['eps'] is None or st['eps'] <= 0.0:
+            continue
+        z = layer['bars'][0]['z'] if layer['kind'] == 'bars' else layer['strip']['z']
+        a = float(layer['area'])
+        total += a
+        weighted += a * ((z + h / 2.0) if hogging else (h / 2.0 - z))
+    d_old = weighted / total
+    assert crack['d'] == d_old, (crack['d'], d_old)
+    assert crack['d_edge'] == h - d_old
+    assert crack['h_c_eff_candidates']['2.5(h-d)'] == 2.5 * (h - d_old)
+
+    assert crack['h_c_eff'] == float(ec2_2004.hc_eff(h, crack['d'], crack['x']))
+
+
+def test_the_reference_beam_still_gives_the_number_it_always_gave():
+    """Grensa for hele endringen, i ett tall."""
+    payload = sls_payload(BEAM_REBAR, 0.0, -100e6, combo_type='quasi_permanent',
+                          phi_ef=0.0)
+    crack = engine.run(payload)['sls']['rows'][0]['crack']
+    assert crack['h_c_eff'] == 125.0
+    assert crack['h_c_eff_governing'] == '2.5(h-d)'
+    assert crack['d'] == 550.0
+    assert crack['d_edge'] == 50.0
+    assert crack['w_k'] == 0.2114290340096794
+
+
+# ------------------------------------------------------------------ #
+# Diskontinuiteten paa halv hoeyde
+# ------------------------------------------------------------------ #
+
+def test_a_layer_moved_through_mid_height_gives_a_smooth_curve():
+    """Den gamle sonen var ETT intervall fra én overflate. Et lag som krysset halv
+    hoeyde falt inn i eller ut av det, og svaret hoppet paa et snitt som ellers var
+    identisk. MAALT paa geometrien under: `A_s,eff` gikk 1 472,6 -> 2 415,1 mm2 og
+    `w_k` 0,8555 -> 0,6042 over 2 mm -- faktor 1,4158.
+
+    Kantvis hoerer laget til den kanten det er naermest, og de to kantene bytter rolle
+    kontinuerlig naar det krysser. MAALT etter: 0,6533 -> 0,6527 -> 0,6533, altsaa en
+    glatt bunn, og stoerste sprang mellom nabopunkter over hele +/-10 mm er 1,00111.
+    """
+    h = 400.0
+    w_ks = []
+    for z in [-10.0 + 2.0 * k for k in range(11)]:
+        rebar = [bars_layer('BOT', -(h / 2 - 50.0), 25.0, [-80.0, 0.0, 80.0]),
+                 bars_layer('MID', z, 20.0, [-80.0, 0.0, 80.0]),
+                 bars_layer('TOP', (h / 2 - 50.0), 25.0, [-80.0, 0.0, 80.0])]
+        payload = sls_payload(rebar, 1400e3, 0.0, combo_type='quasi_permanent',
+                              b=400.0, h=h, section_type='wall', phi_ef=0.0,
+                              exposure_class='XC3', w_max=0.3, w_max_source='class',
+                              w_max_reason=None, sigma_c_char_required=False)
+        row = engine.run(payload)['sls']['rows'][0]
+        assert row['crack'] is not None, (z, row['crack_reason'], row['state_reason'])
+        w_ks.append(row['crack']['w_k'])
+
+    jumps = [max(a / b, b / a) for a, b in zip(w_ks, w_ks[1:])]
+    assert max(jumps) < 1.01, (max(jumps), w_ks)
+    # og bunnen ligger DER laget er paa halv hoeyde, ikke et vilkaarlig sted
+    assert w_ks[5] == min(w_ks)
+
+
+# ------------------------------------------------------------------ #
+# Vakter: sonen kan ikke bli dypere enn snittet, og strekkloeseren skal ikke kaste
+# ------------------------------------------------------------------ #
+
+def _two_face_sweep():
+    for b, h in ((300.0, 300.0), (600.0, 200.0), (1000.0, 400.0)):
+        for cov in (35.0, 50.0):
+            for asym in (1.0, 2.0, 4.0):
+                a_tot = 0.016 * b * h
+                for dias in ((20.0, 16.0), (16.0, 20.0)):
+                    rebar = [strip_layer('BOT', -(h / 2 - cov), dias[0],
+                                         a_tot * asym / (1.0 + asym)),
+                             strip_layer('TOP', (h / 2 - cov), dias[1],
+                                         a_tot / (1.0 + asym))]
+                    for sig in (180.0, 260.0):
+                        n_ed = sig * a_tot
+                        for mfac in (0.0, -0.03, 0.03):
+                            yield (b, h, cov, asym, dias, sig, mfac, rebar, n_ed,
+                                   mfac * n_ed * h / 1000.0)
+
+
+def test_the_effective_zone_can_no_longer_be_deeper_than_the_section():
+    """`2,5(h-d) > h` var symptomet paa at `d` ble regnet over ALLE strekklagene: en
+    effektiv strekksone dypere enn hele snittet. Kantvis er `2,5*d_kant` bundet til
+    kantens egne jern, og `h/2` staar dessuten som anti-overlappstak.
+
+    MAALT over hovedsveipet (3 888 snitt, 1 536 med rissvidde): 0 kanter med
+    `2,5(h-d) > h` og 0 med `h_c,eff > h/2`. Denne testen kjoerer den samme paastanden
+    paa et lite, raskt utsnitt.
+    """
+    n_seen = 0
+    for b, h, cov, asym, dias, sig, mfac, rebar, n_ed, m_ed in _two_face_sweep():
+        payload = sls_payload(rebar, n_ed, m_ed, combo_type='quasi_permanent', b=b,
+                              h=h, section_type='wall', phi_ef=0.0,
+                              exposure_class='XC3', w_max=0.3, w_max_source='class',
+                              w_max_reason=None, sigma_c_char_required=False)
+        crack = engine.run(payload)['sls']['rows'][0]['crack']
+        if crack is None:
+            continue
+        for edge in crack['edges']:
+            n_seen += 1
+            assert edge['h_c_eff_candidates']['2.5(h-d)'] <= h, (b, h, cov, asym, edge)
+            assert edge['h_c_eff'] <= h / 2.0 + 1e-9
+            assert 0.0 <= edge['eps_r'] <= 1.0
+    assert n_seen >= 40, n_seen
+
+
+def test_no_two_face_section_takes_the_whole_run_down():
+    """Sveip over usymmetri x aksialkraft x moment paa snitt med armering ved BEGGE
+    kanter. Et kast her er ikke en manglende funksjon, det er et tapt svar -- ogsaa
+    for bruddgrensedelen, som ikke har noe med bruksgrensen aa gjoere.
+
+    MAALT i hovedsveipet: 0 krasj av 3 888, og `eps_r` innenfor [0,1] i alle.
+    """
+    n = 0
+    for b, h, cov, asym, dias, sig, mfac, rebar, n_ed, m_ed in _two_face_sweep():
+        payload = sls_payload(rebar, n_ed, m_ed, combo_type='quasi_permanent', b=b,
+                              h=h, section_type='wall', phi_ef=0.0,
+                              exposure_class='XC3', w_max=0.3, w_max_source='class',
+                              w_max_reason=None, sigma_c_char_required=False)
+        _assert_no_crash(engine.run(payload))
+        n += 1
+    assert n >= 100, n
+
+
+def test_an_edge_that_cannot_be_evaluated_makes_the_whole_answer_unanswered():
+    """300x300 i rent strekk, 2Ø20 i UK og ETT Ø32 i OK. Det ene jernet har ingen
+    nabo og dermed ingen senteravstand (spec §3.4), saa OK-overflaten kan ikke regnes.
+
+    Foer stod det et ferdig tall der -- 0,4069 mm -- fordi bare den ene overflaten
+    ble maalt. Naa er `crack` `null` med grunnen `no_bar_spacing`: «stoerste rissvidde
+    over overflatene» er ikke noe vi kan svare paa naar vi bare kjenner den ene. Det
+    er samme regel som allerede gjelder for et boeyd snitt (AC12), bare naadd fra en
+    overflate til.
+    """
+    rebar = [bars_layer('L1', -100.0, 20.0, [-80.0, 0.0]),
+             bars_layer('L2', 100.0, 32.0, [0.0])]
+    payload = sls_payload(rebar, 300e3, 0.0, combo_type='quasi_permanent',
+                          b=300.0, h=300.0, section_type='wall', phi_ef=0.0,
+                          exposure_class='XC3', w_max=0.3, w_max_source='class',
+                          w_max_reason=None, sigma_c_char_required=False)
+    row = engine.run(payload)['sls']['rows'][0]
+    assert row['state'] is not None, row['state_reason']
+    assert row['crack'] is None
+    assert row['crack_reason'] == 'no_bar_spacing'
+
+
+# ------------------------------------------------------------------ #
+# Stadium II på forespørsel (runde 12)
+# ------------------------------------------------------------------ #
+
+def _uncracked_qp_payload(assume=False):
+    """Et snitt som IKKE risser av den tilnærmet permanente lasten."""
+    # 300x600-bjelken testfila bruker ellers. `M_cr` ~ 2,90 * 300*600^2/6 =
+    # 52,1 kNm, saa -30 kNm holder snittet trygt urisset.
+    rebar = [bars_layer('L1', -250.0, 20.0, [-100.0, 0.0, 100.0])]
+    p = sls_payload(rebar, 0.0, -30e6, combo_type='quasi_permanent', phi_ef=0.0,
+                    exposure_class='XC3', w_max=0.3, w_max_source='class',
+                    w_max_reason=None, sigma_c_char_required=False)
+    p['sls']['assume_cracked'] = assume
+    return p
+
+
+def test_uncracked_reason_carries_the_numbers_that_decided_it():
+    """«Risser ikke» skal ikke være en påstand uten noe bak seg.
+
+    MÅLT på en plate 1000×200, XC3, M_qp = −8 kNm/m: motoren visste
+    `sigma_ct = 1,16 MPa` mot `f_ct,eff = 2,90`, men svarte bare «no
+    quasi-permanent load combination cracks the section». Brukeren måtte gjette
+    på om snittet lå like under rissmomentet eller langt unna — og det er
+    nettopp den vurderingen som avgjør om man vil regne stadium II likevel.
+    """
+    engine.reset_cache()
+    sls = engine.run(_uncracked_qp_payload())['sls']
+
+    assert sls['cracked'] is False
+    assert sls['cracked_assumed'] is False
+    assert sls['sigma_ct_max'] is not None
+    assert sls['sigma_ct_max'] < sls['f_ct_eff'], 'testen forutsetter et urisset snitt'
+
+    grunn = sls['not_applicable']['crack_width_ok']
+    # Begge tallene, og andelen — ikke bare konklusjonen.
+    assert f"{sls['sigma_ct_max']:.2f}" in grunn, grunn
+    assert f"{sls['f_ct_eff']:.2f}" in grunn, grunn
+    assert '% of the cracking limit' in grunn, grunn
+    # …og hva man kan gjøre med det.
+    assert 'state II' in grunn, grunn
+
+
+def test_assume_cracked_forces_state_II_and_says_that_it_did():
+    """Haken skal gi en rissvidde OG merke den som en forutsetning.
+
+    En rissvidde regnet for en tilstand brukeren VALGTE ser ut nøyaktig som en
+    regnet for en tilstand motoren FANT — samme tall, samme enhet, samme grense.
+    Forskjellen finnes bare i forutsetningen, så den må stå i svaret.
+    """
+    engine.reset_cache()
+    res = engine.run(_uncracked_qp_payload(assume=True))
+    sls = res['sls']
+
+    assert sls['cracked'] is True
+    assert sls['cracked_assumed'] is True, 'antakelsen endret tilstanden og skal opplyses'
+
+    row = sls['rows'][0]
+    assert row['cracked'] is True
+    assert row['crack'] is not None, 'stadium II skal gi en rissvidde'
+    assert row['crack']['w_k'] > 0
+
+    # Synlig i advarselslista, som følger tallet inn i rapporten.
+    koder = [w['code'] for w in res['warnings']]
+    assert 'crack_state_assumed' in koder
+    melding = next(w for w in res['warnings'] if w['code'] == 'crack_state_assumed')
+    assert melding['severity'] == 'info', 'et bevisst valg er ikke en advarsel'
+    assert f"{sls['sigma_ct_max']:.2f}" in melding['message']
+
+
+def test_assume_cracked_changes_nothing_when_the_section_cracks_by_itself():
+    """Risser snittet av lasten, er det ingen antakelse å opplyse om.
+
+    `cracked_assumed` skal være `False` — ellers ville rapporten båret en
+    forutsetning som ikke ble brukt, og leseren ville mistrodd et helt vanlig
+    regnet resultat.
+    """
+    rebar = [bars_layer('L1', -250.0, 20.0, [-100.0, 0.0, 100.0])]
+    base = dict(exposure_class='XC3', w_max=0.3, w_max_source='class',
+                w_max_reason=None, sigma_c_char_required=False)
+    svar = {}
+    for assume in (False, True):
+        p = sls_payload(rebar, 0.0, -100e6, combo_type='quasi_permanent',
+                        phi_ef=0.0, **base)
+        p['sls']['assume_cracked'] = assume
+        engine.reset_cache()
+        svar[assume] = engine.run(p)['sls']
+
+    assert svar[False]['cracked'] is True, 'testen forutsetter et snitt som risser selv'
+    assert svar[True]['cracked_assumed'] is False
+    # …og tallene skal være IDENTISKE: antakelsen rørte ingenting.
+    assert svar[False]['rows'][0]['crack']['w_k'] == svar[True]['rows'][0]['crack']['w_k']

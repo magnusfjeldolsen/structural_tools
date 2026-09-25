@@ -103,6 +103,37 @@ export function formatNumber(v, decimals = 3) {
  * @param {{min?:number, max?:number, integer?:boolean}} [rules]
  * @returns {() => void} avmelding
  */
+/**
+ * ⚠ TEKSTEN MARKERES NÅR FELTET FÅR FOKUS.
+ *
+ * Feltene her er SMÅ og inneholder ETT tall man nesten alltid vil erstatte, ikke
+ * redigere: «300» blir «400», «12» blir «16». Uten markering må man først
+ * markere selv, eller slette tegn for tegn — og klikker man midt i «300» og
+ * skriver «4», står det plutselig «3400».
+ *
+ * `requestAnimationFrame` fordi nettleseren selv setter markøren ETTER
+ * `focus`-hendelsen: en `select()` som kjøres med én gang blir overskrevet av
+ * klikket som utløste den. Etter én ramme er plasseringen ferdig, og vår
+ * markering blir stående.
+ *
+ * Bare når feltet får fokus UTENFRA. Står markøren allerede der og brukeren
+ * klikker en gang til for å plassere den, skal det valget stå — da redigerer
+ * man, og da er markering i veien.
+ */
+function selectOnFocus(el) {
+  el.addEventListener('focus', () => {
+    requestAnimationFrame(() => {
+      if (document.activeElement !== el) return;
+      try {
+        el.select();
+      } catch {
+        // `select()` finnes ikke på alle inndatatyper. Fokuset er satt uansett,
+        // og det er hovedsaken.
+      }
+    });
+  });
+}
+
 export function bindNumericInput(el, onCommit, rules = {}) {
   if (!el || typeof el.addEventListener !== 'function') {
     throw new Error('bindNumericInput: trenger et element med addEventListener.');
@@ -117,6 +148,7 @@ export function bindNumericInput(el, onCommit, rules = {}) {
   };
   el.addEventListener('blur', commit);
   el.addEventListener('keydown', onKey);
+  selectOnFocus(el);
   return () => {
     if (typeof el.removeEventListener === 'function') {
       el.removeEventListener('blur', commit);

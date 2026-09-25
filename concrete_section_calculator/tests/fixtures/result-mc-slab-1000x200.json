@@ -5,13 +5,13 @@
   "meta": {
     "structuralcodes_version": "0.7.2",
     "engine_version": "1.0.0",
-    "runtime": "cpython 3.11.9",
+    "runtime": "cpython",
     "integrator": "marin",
     "scipy": "real",
     "theta": 0.0,
     "direction": "sagging",
     "subtract_bar_area": false,
-    "wall_time_ms": 327.0,
+    "wall_time_ms": null,
     "mc_active_combo": "C1"
   },
   "materials": {
@@ -144,6 +144,8 @@
       {
         "id": "C1",
         "name": "",
+        "type": "uls",
+        "checked": true,
         "N_Ed": 0.0,
         "M_Ed": 0.0,
         "theta": 0.0,
@@ -151,6 +153,7 @@
         "shear": null,
         "M_Rd": -69918940.09775558,
         "utilisation": 0.0,
+        "capacity_opposes_load": false,
         "x": 27.401116655366607,
         "x_over_d": 0.16213678494299769,
         "eps_a": 0.009273202070633552,
@@ -169,7 +172,9 @@
           }
         ],
         "within_limits": true,
-        "flexure_solved": true
+        "flexure_solved": true,
+        "bending_ok": true,
+        "shear_ok": true
       }
     ],
     "governing": "C1",

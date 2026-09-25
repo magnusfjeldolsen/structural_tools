@@ -35,7 +35,7 @@
  */
 
 import { SCHEMA_VERSION } from './meta.js';
-import { ftkOf, slsLimits } from './materials.js';
+import { ftkOf, resolveCreep, slsLimits } from './materials.js';
 import { activeComboTheta, sectionHeight, sectionWidth, thetaFor } from './section.js';
 import { barPositions, equivalentStrip, layerArea, stirrupCoverDia } from './rebar.js';
 
@@ -233,12 +233,31 @@ export function buildPayload(state = {}, overrides = {}) {
     sls: (() => {
       const sls = state.sls || {};
       const limits = slsLimits(state);
+      // `phi_ef` er UTLEDET av krypinndataene (EC2 tillegg B) med mindre
+      // brukeren har skrevet sitt eget tall — og det er `resolveCreep` som
+      // avgjør hvilken av delene, ÉN gang. Skjemaet viser nøyaktig det samme
+      // tallet fra den samme funksjonen, så det finnes ingen vei der skjermen
+      // sier 2,35 mens beregningen bruker noe annet.
+      const creep = resolveCreep(state);
+      if (creep.phi === null) {
+        // I praksis unåelig: `enforceSlsParams` holder krypinndataene gyldige,
+        // og `validate()` stopper en geometri uten `h₀`. Men et stille fall
+        // tilbake på 2,0 ville vært et tall rapporten trykte uten at noen
+        // valgte det — og det er nøyaktig den feilformen `requirePositive`
+        // finnes for.
+        // Brukervendt, altsaa ENGELSK som resten av grensesnittet.
+        throw new Error(`The creep coefficient could not be derived (${creep.reason}). `
+          + 'Enter φ_ef manually, or correct the geometry.');
+      }
       return {
-        phi_ef: num(sls.phi_ef),
+        phi_ef: creep.phi,
         exposure_class: sls.exposure_class || null,
         w_max: limits.w_max,
         w_max_source: limits.w_max_source,
         w_max_reason: limits.w_max_reason,
+        // Rå boolsk verdi: motoren eier hva antakelsen GJØR, dette laget bare
+        // at brukeren ba om den.
+        assume_cracked: Boolean(sls.assume_cracked),
         sigma_c_char_factor: num(sls.sigma_c_char_factor),
         sigma_c_qp_factor: num(sls.sigma_c_qp_factor),
         sigma_s_char_factor: num(sls.sigma_s_char_factor),

@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
   aswPerSpacing,
+  autoComboName,
+  isAutoComboName,
   barArea,
   barPositions,
   COMBO_TYPES,
@@ -217,13 +219,29 @@ test('ett lag: alle tre tallene er like — derfor fanger fixturene ingen forskj
   assert.equal(tensionArea(one, 600, 0), totalArea(one));
 });
 
-test('tensionLayers krever theta og faller tilbake når ingen ligger i strekk', () => {
+test('tensionLayers: TOM liste når ingen ligger i strekk — ingen reservegren', () => {
   assert.throws(() => tensionLayers([beamLayer()], 600), /theta/);
-  // Alle lag i øvre halvdel + feltmoment: ingen geometrisk strekkarmering.
-  // Da er alternativet NaN, som er verre å lese enn et åpenbart rart tall.
+
+  // RETTET i runde 11. Her sto `picked.length ? picked : layers`, med
+  // begrunnelsen «alternativet er NaN, som er verre å lese enn et åpenbart rart
+  // tall». Den begrunnelsen holdt ikke:
+  //
+  //  * Motoren fjernet den tilsvarende grenen i `_effective_depth` og bruker 18
+  //    linjer på hvorfor — reserven ga `d = 50 mm` og ρ = 6,28 % for et snitt
+  //    uten ett eneste jern på strekksiden.
+  //  * MÅLT på det som sto igjen her: standardbjelken 300×600 med bare
+  //    underkantarmering og STØTTEMOMENT ga `d = 57 mm`, altså trykkjernet lest
+  //    som strekkarmering, og dermed `s_l,max = 42,8 mm` — som `validate()`
+  //    reiste som en HARD FEIL og BLOKKERTE hele kjøringen med.
+  //
+  // Et åpenbart rart tall er ikke ufarlig når noe regner videre på det. `NaN`
+  // forplanter seg og tvinger hver kaller til å ta stilling; 57 gjør ikke det.
   const onlyTop = [beamLayer({ edge: 'top', dc: 50 }), beamLayer({ id: 'L2', edge: 'top', dc: 100 })];
-  assert.deepEqual(tensionLayers(onlyTop, 600, 0), onlyTop);
-  assert.ok(Number.isFinite(effectiveDepthGeometric(onlyTop, 600, 0)));
+  assert.deepEqual(tensionLayers(onlyTop, 600, 0), [], 'feltmoment, alle lag i overkant');
+  assert.ok(Number.isNaN(effectiveDepthGeometric(onlyTop, 600, 0)));
+  // Og motsatt vei er de samme lagene hele strekksiden.
+  assert.equal(tensionLayers(onlyTop, 600, Math.PI).length, 2);
+  assert.ok(Number.isFinite(effectiveDepthGeometric(onlyTop, 600, Math.PI)));
 });
 
 test('effectiveDepth uten armering er NaN, ikke 0', () => {
@@ -307,8 +325,12 @@ test('totalArea og reinforcementRatio bruker EC2-definisjonen ρ = As/(b_t·d)',
   assert.equal(totalArea(layers), 942.4777960769379);
   const rho = reinforcementRatio(layers, BEAM_GEOM, 0);
   assert.ok(Math.abs(rho - 942.4777960769379 / (300 * 550)) < 1e-15);
-  // Støttemoment gir et helt annet ρ for det samme laget — d er 50, ikke 550.
-  assert.ok(reinforcementRatio(layers, BEAM_GEOM, Math.PI) > 10 * rho);
+  // Støttemoment: det ENE laget ligger i underkant, altså i TRYKK. Da finnes
+  // det ingen strekkside, og ρ er `NaN` — ikke et stort tall regnet av
+  // trykkarmeringen. Før runde 11 ga reservegrenen i `tensionLayers` ρ = 6,28 %
+  // her, som ser ut som en overarmert bjelke og ikke som et manglende svar.
+  assert.ok(Number.isNaN(reinforcementRatio(layers, BEAM_GEOM, Math.PI)),
+    'ingen strekkside ⇒ ingen ρ');
 });
 
 test('suggestedDc = overdekning + bøyle + Ø/2', () => {
@@ -645,6 +667,25 @@ test('aswPerSpacing: A_sw/s — §4.2 sitt målte 0,670206 mm²/mm', () => {
   assert.ok(Math.abs(asws - 0.670206) < 1e-5, `A_sw/s = ${asws}`);
 });
 
+test('aswPerSpacing: en ikke-positiv senteravstand gir 0, ikke Infinity', () => {
+  // MOTORENS SVAR ER FASITEN. `engine.py` har alltid hoppet over en slik rad
+  // (`if spacing <= 0: continue`); denne delte på null og fikk `Infinity`.
+  //
+  // Hvorfor det var farlig og ikke bare stygt: `section.js` sammenlikner
+  // `A_sw/s < minstekravet` for å varsle `asw_below_minimum`. `Infinity` er
+  // ikke mindre enn noe som helst, så varselet uteble — samtidig som motoren,
+  // som hoppet over raden, regnet snittet som HELT UTEN skjærarmering.
+  for (const spacing of [0, -150, Number.NaN]) {
+    const asws = aswPerSpacing(stirrup({ spacing }));
+    assert.ok(Number.isFinite(asws), `s = ${spacing} ga ${asws}`);
+    assert.equal(asws, 0, `s = ${spacing}`);
+  }
+  // Summen skal arve det samme: én ødelagt rad skal ikke gjøre hele summen
+  // meningsløs, den skal bare ikke telle med.
+  const total = totalAswPerSpacing([stirrup(), stirrup({ id: 'S2', spacing: 0 })]);
+  assert.ok(Math.abs(total - aswPerSpacing(stirrup())) < 1e-12, `total = ${total}`);
+});
+
 test('totalAswPerSpacing summerer flere bøylesett, ikke bare tar det siste', () => {
   const one = aswPerSpacing(stirrup());
   const list = [stirrup(), stirrup({ id: 'S2', dia: 6, spacing: 300, legs: 2 })];
@@ -711,4 +752,40 @@ test('createLayer: platas standard er Ø12 c/c 200 — bøylenes c/c 150 er et A
 
   // Og en eksplisitt senteravstand slår fortsatt gjennom.
   assert.equal(createLayer({ sectionType: 'slab' }, { spacing: 125 }).spacing, 125);
+});
+
+/* ------------- automatisk navn følger typen (runde 12) ------------- */
+
+test('autoComboName: ordet foran er TYPEN, ikke alltid «ULS»', () => {
+  // Navnet ble laget av id-en alene, så hver rad het «ULS n» uansett type. En
+  // kvasi-permanent rad sto som «ULS 3» i kombinasjonstabellen, i SLS-kortet
+  // («ULS 3 Quasi-permanent») og i advarslene som navngir den dimensjonerende
+  // raden — etiketten sa det motsatte av radens egen type.
+  assert.equal(autoComboName('C1', 'uls'), 'ULS 1');
+  assert.equal(autoComboName('C2', 'characteristic'), 'Characteristic 2');
+  assert.equal(autoComboName('C3', 'quasi_permanent'), 'Quasi-permanent 3');
+  // En ukjent type faller til ULS-ordet, som `createCombo` faller til `'uls'`.
+  assert.equal(autoComboName('C4', 'søppel'), 'ULS 4');
+  // Et id uten nummer har ingen automatikk å hente navnet fra.
+  assert.equal(autoComboName('hva-som-helst', 'uls'), '');
+});
+
+test('isAutoComboName spør mot ALLE typene, ikke bare mot radens nåværende', () => {
+  // Det er nettopp når typen NETTOPP ble endret at navnet henger igjen: «ULS 3»
+  // på en rad som akkurat ble kvasi-permanent er et navn ingen valgte.
+  assert.equal(isAutoComboName('ULS 3', 'C3'), true);
+  assert.equal(isAutoComboName('Quasi-permanent 3', 'C3'), true);
+  assert.equal(isAutoComboName('Characteristic 3', 'C3'), true);
+  assert.equal(isAutoComboName('', 'C3'), true);
+  assert.equal(isAutoComboName(undefined, 'C3'), true);
+  // …men et navn brukeren har skrevet er hens.
+  assert.equal(isAutoComboName('Egenvekt + snø', 'C3'), false);
+  // Riktig ord, feil nummer: det er ikke et automatisk navn for DENNE raden.
+  assert.equal(isAutoComboName('ULS 2', 'C3'), false);
+});
+
+test('createCombo døper etter typen den faktisk får, ikke etter «uls»', () => {
+  assert.equal(createCombo({}, { id: 'C2', type: 'quasi_permanent' }).name, 'Quasi-permanent 2');
+  // Et navn som følger med i patchen er brukerens og skal stå urørt.
+  assert.equal(createCombo({}, { id: 'C2', type: 'uls', name: 'Egenvekt' }).name, 'Egenvekt');
 });

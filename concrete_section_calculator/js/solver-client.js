@@ -759,6 +759,23 @@ export function createSolverClient(options = {}) {
         checks: base.checks,
         warnings,
       };
+      // ⚠ BRUKSGRENSEN ER IKKE EN ANALYSE — den er en EGENSKAP ved svaret.
+      //
+      // `merged` bygges nøkkel for nøkkel fordi de tre analysene har hver sin
+      // blokk, og en naiv spredning ville blandet dem. Men `sls` hører ikke til
+      // noen av de tre: motoren regner den ÉN gang, av lastkombinasjonene, og
+      // legger den ved uansett hvilken analyse som kjørte.
+      //
+      // MÅLT før denne linja: «Run all» ga 0 SLS-rader der «Bending resistance»
+      // ga 2. Hele kapittelet forsvant fra resultatet, og `· w_k 0.21/0.30 mm`
+      // falt ut av sammendragslinja — uten en eneste feilmelding. Det er samme
+      // form som resten: et felt som blir borte på veien gjennom et lag som
+      // bygger et objekt for hånd.
+      //
+      // `undefined` sendes ikke videre: uten SLS-rader finnes nøkkelen ikke i
+      // `base` heller, og da skal den heller ikke finnes her (§4/AC9 — svaret
+      // skal være BIT FOR BIT som før SLS fantes).
+      if (base.sls !== undefined) merged.sls = base.sls;
       for (const a of done) {
         const block = answers.get(a)?.[a];
         if (block) merged[a] = block;

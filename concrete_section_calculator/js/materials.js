@@ -65,6 +65,17 @@ export const EXPOSURE_CLASSES = Object.freeze([
   { value: 'XD2', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
   // EC2 anbefaler INGEN rissviddegrense for XD3 for slakkarmert betong (§11).
   { value: 'XD3', w_max: null, appearance_only: false, longitudinal_crack_check: true  },
+  // FROST. XF manglet HELT til runde 11, og det var ikke en liten utelatelse: for norsk
+  // utendørsbetong er XF den vanligste klassen som utløser betongtrykkgrensa i EC2
+  // 7.2(2). Ironien var at vår egen «not applicable»-tekst NEVNTE XF — «only XD, XF and
+  // XS are» — for en klasse ingen kunne velge.
+  //
+  // EC2 tabell 7.1N gir 0,30 mm for hele XF-familien for slakkarmert betong, og
+  // 7.2(2) regner XF med blant klassene der langsgående riss må begrenses.
+  { value: 'XF1', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
+  { value: 'XF2', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
+  { value: 'XF3', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
+  { value: 'XF4', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
   { value: 'XS1', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
   { value: 'XS2', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
   { value: 'XS3', w_max: 0.30, appearance_only: false, longitudinal_crack_check: true  },
@@ -88,11 +99,70 @@ export const EXPOSURE_CLASSES = Object.freeze([
  * standardverdi fra noen tabell, og skal derfor kunne endres.
  */
 export const SLS_DEFAULTS = Object.freeze({
+  // Livlina når φ IKKE lar seg utlede. Den skal aldri nås i produktet:
+  // `enforceSlsParams` holder krypinndataene gyldige, og `validate()` stopper
+  // en geometri som ikke gir en `h₀`. Den står som siste skanse, og `engine.py`
+  // speiler den for den som kaller motoren direkte.
   phi_ef: 2.0,
   sigma_c_char_factor: 0.6,
   sigma_c_qp_factor: 0.45,
   sigma_s_char_factor: 0.8,
 });
+
+/**
+ * Standardene for krypberegningen (EC2 tillegg B).
+ *
+ * RH 50 % er innendørs, som er der de fleste bjelker og dekker står. t₀ = 28
+ * døgn er den vanlige referansealderen. Levetiden er 50 år — brukskategorien i
+ * EN 1990 tabell 2.1 for bygninger — oppgitt i DØGN, fordi det er enheten hele
+ * tillegg B regner i og en omregning på veien er et sted å ta feil.
+ *
+ * Disse gir φ ≈ 2,35 for en bjelke 300×600 i C30/37. Den gamle FASTE
+ * standarden var 2,0, altså litt på usikker side for nettopp det snittet — og
+ * det er hele grunnen til at tallet nå utledes i stedet for å gjettes.
+ */
+export const CREEP_DEFAULTS = Object.freeze({
+  RH: 50,
+  t0: 28,
+  t_life: 50 * 365,
+  cement: 'N',
+});
+
+/**
+ * Kryptallet som SKAL BRUKES, og hvor det kom fra.
+ *
+ * ÉN kilde. `payload.js` sender tallet herfra til motoren, og `ui.js` viser
+ * nøyaktig det samme tallet i skjemaet — det finnes altså ingen vei der
+ * skjermen kan vise 2,35 mens beregningen bruker 2,0. Samme grep som
+ * `slsLimits()` er for `w_max`.
+ *
+ * `source: 'manual'` når brukeren har skrevet sitt eget φ. Overstyringen er
+ * IKKE en nødløsning: kryptall fra en rapport eller et prosjektkrav er et helt
+ * legitimt utgangspunkt, og et verktøy som insisterer på sin egen utledning er
+ * et verktøy man forlater.
+ *
+ * @returns {{phi:number|null, source:'manual'|'derived'|null, reason:string|null, chain:object|null}}
+ */
+export function resolveCreep(state = {}) {
+  const sls = state.sls || {};
+  const override = num(sls.phi_ef);
+  if (Number.isFinite(override) && override >= 0) {
+    return { phi: override, source: 'manual', reason: null, chain: null };
+  }
+  const h0 = Number.isFinite(num(sls.h0_override)) && num(sls.h0_override) > 0
+    ? num(sls.h0_override)
+    : notionalSize(state);
+  const chain = creepCoefficient({
+    fck: num(state.concrete?.fck),
+    h0,
+    RH: num(sls.RH),
+    t0: num(sls.t0),
+    t: num(sls.t_life),
+    cement: sls.cement,
+  });
+  if (chain.phi === null) return { phi: null, source: null, reason: chain.reason, chain: null };
+  return { phi: chain.phi, source: 'derived', reason: null, chain: { ...chain, h0 } };
+}
 
 /** Armeringskvaliteter. `k = f_tk/f_yk` er duktilitetsklassen (EC2 tillegg C). */
 export const STEEL_GRADES = [
@@ -115,6 +185,130 @@ export const STEEL_LAWS = [
   { value: 'elasticperfectlyplastic', label: 'Ideally elastoplastic (horizontal branch)' },
   { value: 'elasticplastic', label: 'With strain hardening (rising branch to ε_ud)' },
 ];
+
+/* ================================================================== *
+ * KRYPTALLET — EC2 tillegg B
+ *
+ * HVORFOR DETTE ER SKREVET I JS NÅR `structuralcodes` HAR DET I PYTHON
+ * `φ` må vises LEVENDE mens brukeren skriver RH og t₀ — altså før motoren
+ * har kjørt én gang. Et tall som først dukker opp etter en Pyodide-runde er
+ * ikke et felt man kan justere seg fram med; det er en gjetning etterfulgt av
+ * en venting.
+ *
+ * Det er den samme arbeidsdelingen resten av modulen allerede har:
+ * `payload.js` gjør ALT av utledning, `engine.py` gjør INGENTING. `w_max` og
+ * `sigma_c_char_required` utledes her, av nøyaktig samme grunn.
+ *
+ * MEN DA EIER VI FORMLENE, og noe må holde dem i takt med pakka. Det noe er
+ * `tests/fixtures/creep-ec2-annexb.json`: 120 punkter regnet av
+ * `structuralcodes` selv, frosset, og prøvd mot denne koden i hvert punkt
+ * (`tests/materials.test.mjs`). Flytter et tall seg der, er det en regresjon
+ * og ikke en oppdatering. Det er samme grep som `engine.py` bruker for
+ * lign. 7.9, som også er skrevet ut for hånd og låst mot pakkens orakel.
+ * ================================================================== */
+
+/**
+ * Sementklassen, og eksponenten den gir i EC2 (B.9). Den flytter BARE den
+ * justerte belastningsalderen `t₀,adj` — ingenting annet i kjeden.
+ */
+export const CEMENT_CLASSES = Object.freeze([
+  { value: 'S', alpha: -1, label: 'S — slow (CEM 32.5 N)' },
+  { value: 'N', alpha: 0, label: 'N — normal (CEM 32.5 R, 42.5 N)' },
+  { value: 'R', alpha: 1, label: 'R — rapid (CEM 42.5 R, 52.5 N/R)' },
+]);
+
+/**
+ * Den effektive tykkelsen h₀ = 2·A_c/u [mm] (EC2 3.1.4(5)).
+ *
+ * `u` er omkretsen som TØRKER, ikke hele omkretsen — og det er en
+ * modellvurdering, ikke en avledning. Standardene her:
+ *
+ *   bjelke: alle fire flater, u = 2(b + h). En fritt eksponert bjelke.
+ *   plate:  over og under, u = 2·1000 per meter. Kantene er ikke med, fordi
+ *           en plate per meter ikke HAR kanter — den er et utsnitt av noe
+ *           bredere. Det gir h₀ = h eksakt, som er den vanlige forenklingen.
+ *
+ * Er dekket over av en membran eller støpt mot grunn, tørker færre flater og
+ * h₀ blir større; derfor kan tallet overstyres i skjemaet.
+ */
+export function notionalSize(state = {}) {
+  const geometry = state.geometry || {};
+  const h = num(geometry.h);
+  if (!Number.isFinite(h) || h <= 0) return NaN;
+  if (state.sectionType === 'slab') return h;
+  const b = num(geometry.b);
+  if (!Number.isFinite(b) || b <= 0) return NaN;
+  return (2 * b * h) / (2 * (b + h));
+}
+
+/**
+ * Kryptallet φ(t, t₀) etter EC2 tillegg B, med hele kjeden ut.
+ *
+ * Returnerer `{ phi: null, reason }` når inndataene ikke gir en beregning —
+ * ALDRI et tall som later som. `reason` er en kode `results.js` oversetter,
+ * samme tre-verdi-regel som resten av bruksgrensekapittelet.
+ *
+ * DEN ENE KANTEN SOM MÅ VOKTES: `t = t₀` gir β_c = 0 og dermed φ = 0, altså
+ * en beregning uten kryp i det hele tatt. Det er matematisk riktig — ved
+ * påføringsøyeblikket har ingenting krøpet — men som INNDATA er det nesten
+ * alltid en skrivefeil, og et stille φ = 0 ville gjort en tilnærmet permanent
+ * kontroll om til en korttidskontroll uten å si fra. Derfor er `t > t₀` et
+ * krav her, ikke en advarsel.
+ *
+ * @param {{fck:number,h0:number,RH:number,t0:number,t:number,cement:string}} o
+ */
+export function creepCoefficient(o = {}) {
+  const fck = num(o.fck);
+  const h0 = num(o.h0);
+  const RH = num(o.RH);
+  const t0 = num(o.t0);
+  const t = num(o.t);
+  const cls = CEMENT_CLASSES.find((c) => c.value === String(o.cement || '').toUpperCase());
+
+  const bad = (reason) => ({ phi: null, reason });
+  if (!Number.isFinite(fck) || fck <= 0) return bad('creep_invalid_fck');
+  if (!Number.isFinite(h0) || h0 <= 0) return bad('creep_invalid_h0');
+  // RH = 100 % gir (1 − RH/100) = 0 og et φ_RH som ikke betyr noe fysisk;
+  // under vann kryper betong etter en annen modell enn tillegg B.
+  if (!Number.isFinite(RH) || RH <= 0 || RH >= 100) return bad('creep_invalid_rh');
+  if (!Number.isFinite(t0) || t0 <= 0) return bad('creep_invalid_t0');
+  if (!Number.isFinite(t) || t <= t0) return bad('creep_life_not_after_loading');
+  if (!cls) return bad('creep_invalid_cement');
+
+  const fcm = fck + 8;
+  // (B.9). Gulvet på 0,5 døgn er pakkens og standardens: en betong lastet
+  // tidligere enn et halvt døgn er utenfor modellen, ikke inne i den.
+  const t0adj = Math.max(t0 * Math.pow(9 / (2 + Math.pow(t0, 1.2)) + 1, cls.alpha), 0.5);
+
+  const alpha1 = Math.pow(35 / fcm, 0.7);
+  const alpha2 = Math.pow(35 / fcm, 0.2);
+  const alpha3 = Math.pow(35 / fcm, 0.5);
+
+  // (B.3). GRENVALGET på f_cm = 35 er ekte: over den grensa kommer α₁ og α₂
+  // inn, under den er de ikke med i det hele tatt.
+  const rhTerm = (1 - RH / 100) / (0.1 * Math.pow(h0, 1 / 3));
+  const phi_RH = fcm <= 35 ? 1 + rhTerm : (1 + rhTerm * alpha1) * alpha2;
+
+  const beta_fcm = 16.8 / Math.sqrt(fcm);          // (B.4)
+  const beta_t0 = 1 / (0.1 + Math.pow(t0adj, 0.2)); // (B.5)
+  const phi_0 = phi_RH * beta_fcm * beta_t0;        // (B.2)
+
+  // (B.8a/b), samme gren på f_cm = 35, og samme tak på 1500 (·α₃ over grensa).
+  const rhAge = 1.5 * (1 + Math.pow(0.012 * RH, 18)) * h0;
+  const beta_H = fcm <= 35
+    ? Math.min(rhAge + 250, 1500)
+    : Math.min(rhAge + 250 * alpha3, 1500 * alpha3);
+
+  const tLoad = Math.max(t - t0adj, 0);
+  const beta_c = Math.pow(tLoad / (beta_H + tLoad), 0.3);  // (B.7)
+
+  return {
+    phi: phi_0 * beta_c,                                    // (B.1)
+    reason: null,
+    fcm, t0_adj: t0adj, alpha_1: alpha1, alpha_2: alpha2, alpha_3: alpha3,
+    phi_RH, beta_fcm, beta_t0, phi_0, beta_H, beta_c,
+  };
+}
 
 /** Standarddiameter for armering [mm]. */
 export const BAR_DIAMETERS = [6, 8, 10, 12, 16, 20, 25, 32];

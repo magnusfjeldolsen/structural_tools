@@ -61,11 +61,13 @@ test('hvert inndatafelt i skjemaet er bundet til tilstanden', () => {
   // kvalitetsnedtrekkene og `#i-exposure` er `<select>` og bindes for hånd,
   // ikke med `bindField` — de står derfor oppført her.
   //
-  // `#i-wmax` er et vanlig `<input>` og likevel håndbundet, av én grunn:
-  // det er det ENESTE feltet der TOMT er et ekte valg («bruk klassens
-  // verdi»). `bindField` legger tilbake den gjeldende verdien når uttrykket
-  // ikke lar seg lese, og ville dermed gjort feltet umulig å tømme.
-  const BOUND_BY_HAND = ['i-law-c', 'i-law-s', 'i-fck', 'i-steel-grade', 'i-exposure', 'i-wmax'];
+  // `#i-wmax`, `#i-phi-ef` og `#i-h0` er vanlige `<input>` og likevel
+  // håndbundet, av én grunn: hos alle tre er TOMT et ekte valg — «bruk den
+  // avledede verdien». `bindField` legger tilbake den gjeldende verdien når
+  // uttrykket ikke lar seg lese, og ville dermed gjort dem umulige å tømme.
+  // De deler én liten binder (`optional` i `setupFields`), ikke tre lyttere.
+  const BOUND_BY_HAND = ['i-law-c', 'i-law-s', 'i-fck', 'i-steel-grade', 'i-exposure',
+    'i-cement', 'i-wmax', 'i-phi-ef', 'i-h0'];
   const fields = Array.from(HTML.matchAll(/<input id="(i-[\w-]+)"/g), (m) => m[1]);
   assert.ok(fields.length >= 15, `fant bare ${fields.length} i-felt — regexen har råtnet`);
   for (const id of fields) {
@@ -77,7 +79,12 @@ test('hvert inndatafelt i skjemaet er bundet til tilstanden', () => {
   }
   for (const id of BOUND_BY_HAND) {
     assert.ok(htmlIds.has(id), `#${id} mangler i index.html`);
-    assert.ok(UI.includes(`$('#${id}')`), `#${id} slås ikke opp i ui.js`);
+    // `'#id'` og ikke `$('#id')`: de tre valgfrie feltene deler én binder
+    // (`optional`), så oppslaget skjer inne i den og med selektoren som
+    // ARGUMENT. Påstanden er fortsatt den samme — at ui.js i det hele tatt
+    // nevner feltet — men den tvinger ikke lenger fram tre kopier av samme
+    // lytter bare for å bli oppfylt.
+    assert.ok(UI.includes(`'#${id}'`), `#${id} nevnes ikke i ui.js`);
   }
 });
 
@@ -129,6 +136,7 @@ test('hver sammenfoldbar boks trykker verdiene sine i summary', () => {
   // verdisammendrag er en boks man må åpne for å vite om man må åpne den.
   const SUMMARY_OF = {
     'adv-material': 'fac-summary',
+    'adv-creep': 'creep-summary',
     'adv-shear': 'shear-summary',
     'adv-spacing': 'spacing-summary',
   };
@@ -141,7 +149,11 @@ test('hver sammenfoldbar boks trykker verdiene sine i summary', () => {
     const boxHtml = HTML.slice(HTML.indexOf(`<details id="${box.id}"`));
     const summary = boxHtml.slice(0, boxHtml.indexOf('</summary>'));
     assert.ok(summary.includes(`id="${id}"`), `#${id} står ikke i <summary> til ${box.id}`);
-    assert.ok(UI.includes(`$('#${id}')`), `ui.js fyller ikke #${id}`);
+    // `'#id'` og ikke `$('#id')`: flere av sammendragene settes gjennom en
+    // liten lokal `text(sel, verdi)`-hjelper, altså med selektoren som
+    // ARGUMENT. Påstanden er den samme — at ui.js i det hele tatt fyller
+    // sammendraget — men den tvinger ikke fram et bestemt kallmønster.
+    assert.ok(UI.includes(`'#${id}'`), `ui.js fyller ikke #${id}`);
   }
 });
 

@@ -88,6 +88,24 @@ export function fromDocument(doc) {
   const notes = [];
   const merged = { ...base };
 
+  // `doc_schema` BLE SKREVET, MEN ALDRI LEST — et latent hull som traff både
+  // fil og lenke: en fil (eller en delt lenke) fra en NYERE versjon ble lest
+  // som om den var samtidig, og felt den nyere versjonen hadde lagt til falt
+  // stille ut gjennom `document_field_ignored` som om de var søppel.
+  //
+  // Vi LESER VIDERE likevel, og det er med vilje: flettinga er allerede
+  // felt-for-felt mot standarden, så alt en nyere versjon har lagt til er enten
+  // gjenkjent eller droppet, og resultatet er en gyldig tilstand uansett. Å
+  // nekte ville vært å kaste en fil brukeren nesten helt sikkert kan bruke.
+  // Noten er derfor `warning`, ikke `error`: «noe kan mangle», ikke «dette gikk
+  // galt».
+  //
+  // ELDRE `doc_schema` gir INGEN note: 1 er den eneste versjonen som har
+  // eksistert, og det finnes ingen migreringskode å varsle om (se hodet).
+  if (Number(doc.doc_schema) > DOCUMENT_SCHEMA) {
+    notes.push({ code: 'document_schema_newer', severity: 'warning' });
+  }
+
   // Toppnivå: kjente nøkler beholdes (nøstede grupper felt for felt), ukjente
   // droppes, manglende fylles fra standarden. `result` holdes UTENFOR denne
   // runden — dokumentet bærer den aldri med vilje, så et fravær der er ikke

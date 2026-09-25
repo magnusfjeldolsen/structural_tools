@@ -1389,14 +1389,20 @@ def test_r12_no_uls_row_at_all_gives_a_different_error_than_axial_out_of_range()
 @pytest.mark.parametrize('payload_name,result_name', [
     ('payload-beam-300x600.json', 'result-bending-beam-300x600.json'),
     ('payload-slab-1000x200.json', 'result-bending-slab-1000x200.json'),
-    ('payload-beam-300x600-combos.json', 'result-bending-beam-300x600.json'),
-    ('payload-slab-1000x200-combos.json', 'result-bending-slab-1000x200.json'),
 ])
 def test_r13_a_payload_with_no_type_field_at_all_gives_unchanged_numbers(payload_name, result_name):
-    """R13 — RENT ADDITIVITETSKRAV. De FIRE committede payload-fixturene har
+    """R13 — RENT ADDITIVITETSKRAV. De to `loads`-formede payload-fixturene har
     ALDRI hatt et `type`-felt (de er fra før STEG 2). `checks`, `M_Rd` og HELE
     skjærdikten på hver rad skal fortsatt matche `result-*.json` EKSAKT — bare
     med `type: 'uls'`/`checked: True` lagt til additivt.
+
+    KOMBINASJONSFORMA uten `type` sto her før, mot de samme to resultatfilene.
+    Den sammenlikningen holdt bare så lenge `-combos`-payloadene beskrev nøyaktig
+    samme lasttilfelle som de typeløse; siden har de fått både `section.shear` og
+    to bruksgrenserader for å gi skjær og SLS et MÅLT regresjonsgrunnlag, og da
+    er `result-bending-*.json` ikke lenger fasiten for dem. Selve additiviteten
+    for den forma er derfor flyttet til `test_r13b` under, som ikke trenger noen
+    fixtur å hvile på; tallene deres er bundet av `test_fixtures.py`.
     """
     payload = load(payload_name)
     expected = load(result_name)
@@ -1428,6 +1434,47 @@ def test_r13_a_payload_with_no_type_field_at_all_gives_unchanged_numbers(payload
                 assert close(got_val, value), f'{cid}.{key}: {got_val} != {value}'
             else:
                 assert got_val == value, f'{cid}.{key}: {got_val} != {value}'
+
+
+@pytest.mark.parametrize('payload_name', [
+    'payload-beam-300x600-combos.json',
+    'payload-slab-1000x200-combos.json',
+])
+def test_r13b_an_absent_type_is_the_same_as_an_explicit_uls(payload_name):
+    """R13b — ADDITIVITETEN FOR KOMBINASJONSFORMA, uttrykt som en LIKHET i stedet
+    for mot en fixtur.
+
+    Kravet er at et manglende `type` betyr nøyaktig `type: 'uls'` — ikke «omtrent»
+    og ikke «for de feltene noen husket å sammenlikne». Da er den ærligste testen
+    å kjøre den samme payloaden to ganger, én gang uten feltet og én gang med det
+    skrevet ut, og kreve at HELE svaret er identisk. Den kan ikke råtne slik en
+    fixtursammenlikning kan: vokser motorens svar med et nytt felt, er det med i
+    likheten fra første stund.
+
+    Bruksgrenseradene tas ut først — det er den TYPELØSE formen som er saken her,
+    og en rad med `type` i er per definisjon ikke den.
+    """
+    bare = load(payload_name)
+    bare['loads']['combinations'] = [
+        c for c in bare['loads']['combinations'] if 'type' not in c
+    ]
+    assert bare['loads']['combinations'], 'fixturen har ingen typeløs rad igjen'
+    assert bare['loads']['active'] == bare['loads']['combinations'][0]['id']
+
+    explicit = json.loads(json.dumps(bare))
+    for combo in explicit['loads']['combinations']:
+        combo['type'] = 'uls'
+
+    engine.reset_cache()
+    without = engine.run(json.loads(json.dumps(bare)))
+    engine.reset_cache()        # ellers kunne svar nummer to kommet fra hylla
+    with_uls = engine.run(explicit)
+
+    assert without['ok'] is True
+    for result in (without, with_uls):
+        # `meta` bærer veggklokka, som aldri er lik to ganger.
+        result.pop('meta', None)
+    assert without == with_uls
 
 
 def test_r14_the_old_loads_shape_gives_type_uls_and_checked_true():
@@ -2032,3 +2079,264 @@ def test_brittle_check_does_not_reject_a_slab_armed_exactly_to_as_min():
     hogging = engine.run(_beam(theta=_math.pi, m_ed=5000000.0))
     assert hogging['checks']['brittle_ok'] is False
     assert hogging['bending']['failure_mode'] == 'unreinforced_tension_zone'
+
+# ------------------------------------------------------------------ #
+# Kapasiteten kan peke MOTSATT VEI av lasten (runde 11)
+# ------------------------------------------------------------------ #
+
+def _hogging_with_tension(n_ed, m_ed=70e6):
+    """Referansebjelken med 3O20 i UNDERKANT, stoettemoment og aksialstrekk.
+
+    Stoettemoment vil si strekk i OVERKANT -- der det ikke staar ett eneste jern. Med
+    nok aksialstrekk gir `calculate_bending_strength(theta=pi, n)` da et NEGATIVT
+    moment, altsaa kapasiteten den andre veien.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['options']['theta'] = math.pi
+    payload['loads'] = {
+        'combinations': [{'id': 'C1', 'name': 'ULS', 'N_Ed': n_ed, 'M_Ed': m_ed,
+                          'theta': math.pi}],
+        'active': 'C1',
+    }
+    return engine.run(payload)
+
+
+def test_capacity_pointing_the_other_way_is_a_failure_not_a_low_utilisation():
+    """MAALT foer denne vakten:
+
+        M_Ed = +70 kNm (stoette),  N = +300 kN strekk
+        ->  M_Rd = -70,51 kNm,  eta = 0,993,  bending_ok TRUE,  all_ok TRUE,
+            advarsler: INGEN
+
+    En groenn rapport for et snitt som ikke baerer lasten i det hele tatt. `_utilisation`
+    regner `abs(M_Ed)/abs(M_Rd)`, og absoluttverdiene skjulte at de to pekte hver sin vei.
+
+    Uavhengig bevis for at kapasiteten ER null i lastens retning: M-N-omhyllingen har
+    ikke ett eneste positivt moment ved N = +300 kN.
+    """
+    result = _hogging_with_tension(300e3)
+    assert result['ok'] is True
+    row = result['bending']['combinations'][0]
+
+    assert row['M_Rd'] < 0, 'forutsetningen for testen: kapasiteten kommer ut negativ'
+    assert row['capacity_opposes_load'] is True
+    assert result['checks']['bending_ok'] is False, \
+        'et snitt uten kapasitet i lastens retning er et BRUDD, ikke en lav utnyttelse'
+    assert result['checks']['all_ok'] is False
+
+    codes = [w['code'] for w in result['warnings']]
+    assert 'capacity_opposite_direction' in codes
+    warning = next(w for w in result['warnings'] if w['code'] == 'capacity_opposite_direction')
+    assert warning['severity'] == 'error'
+    # Advarselen skal baere BEGGE tallene, ellers kan ingen etterproeve paastanden.
+    assert '70.0' in warning['message'] and '-70.5' in warning['message']
+
+
+def test_capacity_direction_is_measured_against_theta_not_the_sign_of_m_ed():
+    """REGRESJON paa selve rettelsen. Foerste forsoek sammenliknet fortegnet paa `M_Ed`
+    med fortegnet paa `M_Rd`, og gav FALSKE POSITIVER paa den gamle payload-formen, der
+    `M_Ed` er en STOERRELSE og retningen staar i `theta` -- formen fixturene og
+    `test_three_combinations_one_out_of_range_does_not_upset_the_others` bruker.
+
+    `M_Ed: +150e6` med `theta: 0.0` er FELTMOMENT, og `M_Rd = -215 kNm` er da riktig vei.
+    """
+    payload = load('payload-beam-300x600.json')
+    payload['loads'] = {
+        'combinations': [{'id': 'C1', 'name': 'ULS', 'N_Ed': 0.0, 'M_Ed': 150e6,
+                          'theta': 0.0}],
+        'active': 'C1',
+    }
+    result = engine.run(payload)
+    row = result['bending']['combinations'][0]
+    assert row['M_Rd'] < 0
+    assert row['capacity_opposes_load'] is False, \
+        'gammel payload-form: fortegnet paa M_Ed er en stoerrelse, ikke en retning'
+    assert result['checks']['bending_ok'] is True
+
+
+def test_capacity_direction_leaves_the_ordinary_cases_alone():
+    """Vakten skal ikke kunne slaa inn paa noe som virket. Uten dette ville «sett alltid
+    True» vaert en bestaatt rettelse."""
+    # Stoettemoment UTEN aksialkraft: kapasiteten er liten (6,4 kNm) men RIKTIG vei.
+    small = _hogging_with_tension(0.0)
+    row = small['bending']['combinations'][0]
+    assert row['M_Rd'] > 0
+    assert row['capacity_opposes_load'] is False
+    # Den er overutnyttet, og det er den advarselen som skal komme -- ikke den nye.
+    codes = [w['code'] for w in small['warnings']]
+    assert 'bending_capacity_exceeded' in codes
+    assert 'capacity_opposite_direction' not in codes
+
+    # Feltmoment med trykk: helt ordinaert, og uroert.
+    payload = load('payload-beam-300x600.json')
+    payload['loads'] = {
+        'combinations': [{'id': 'C1', 'name': 'ULS', 'N_Ed': -500e3, 'M_Ed': -250e6,
+                          'theta': 0.0}],
+        'active': 'C1',
+    }
+    ordinary = engine.run(payload)
+    assert ordinary['bending']['combinations'][0]['capacity_opposes_load'] is False
+    assert ordinary['checks']['all_ok'] is True
+
+
+def test_capacity_direction_terskelen_ligger_der_kapasiteten_skifter_fortegn():
+    """Vakten skal foelge FYSIKKEN, ikke en terskel noen har skrevet inn. Maalt paa
+    referansebjelken ligger fortegnsskiftet mellom N = +20 og +40 kN aksialstrekk."""
+    below = _hogging_with_tension(20e3)['bending']['combinations'][0]
+    above = _hogging_with_tension(40e3)['bending']['combinations'][0]
+    assert below['M_Rd'] > 0 and below['capacity_opposes_load'] is False
+    assert above['M_Rd'] < 0 and above['capacity_opposes_load'] is True
+
+# ------------------------------------------------------------------ #
+# Skjaerkontroller som svarte BESTAATT uten aa ha regnet noe (runde 11)
+# ------------------------------------------------------------------ #
+
+def _shear_case(v_ed, theta=0.0, stirrups=None, section_type='beam'):
+    payload = load('payload-beam-300x600.json')
+    payload['section']['type'] = section_type
+    payload['section']['shear'] = {'strut_angle_deg': 45.0, 'z_factor': 0.9,
+                                   'stirrups': stirrups or []}
+    payload['options']['theta'] = theta
+    m_ed = 150e6 if theta else -150e6
+    payload['loads'] = {
+        'combinations': [{'id': 'C1', 'name': 'ULS', 'N_Ed': 0.0, 'M_Ed': m_ed,
+                          'V_Ed': v_ed, 'theta': theta}],
+        'active': 'C1',
+    }
+    return engine.run(payload)
+
+
+def test_shear_that_could_not_be_evaluated_is_unanswered_not_passed():
+    """MAALT foer denne: referansebjelken med stoettemoment (ingen toppjern, altsaa ingen
+    strekkside aa maale `d` fra) og `V_Ed = 900 kN` gav
+
+        shear: evaluated=False, V_Rd=None, d=None
+        checks.shear_ok = TRUE,  og ingen skjaeradvarsel i det hele tatt
+
+    Samme feilform runde 6 lukket for `as_min_ok` og `ductility_ok`: en kontroll som
+    svarer BESTAATT uten aa ha regnet noe.
+    """
+    result = _shear_case(900e3, theta=math.pi)
+    row = result['bending']['combinations'][0]
+    assert row['shear']['evaluated'] is False
+    assert result['checks']['shear_ok'] is None, 'ubesvart, ikke bestaatt -- og ikke brudd'
+    assert result['checks']['all_ok'] is False
+
+    incomplete = next(w for w in result['warnings'] if w['code'] == 'assessment_incomplete')
+    assert 'shear_ok' in incomplete['detail']
+    assert 'effective depth' in incomplete['detail']
+
+
+def test_shear_without_any_load_is_passed_not_unanswered():
+    """Motstykket: ingen skjaerkraft er ingenting aa kontrollere, og da er `True`
+    riktig. `None` her ville gjort hver eneste rene boeyeberegning «ubesvart»."""
+    result = _shear_case(0.0)
+    assert result['checks']['shear_ok'] is True
+    assert result['checks']['all_ok'] is True
+
+
+def test_a_beam_without_stirrups_fails_minimum_shear_reinforcement():
+    """EC2 6.2.1(4) unntar deler der skjaerarmering ikke er noedvendig -- plater og deler
+    av mindre betydning. Unntaket gjelder IKKE bjelker: 9.2.2(5) krever rho_w >=
+    rho_w,min uansett.
+
+    MAALT foer denne: 300x600 bjelke, tom boeyleliste, V_Ed = 60 kN gav
+    `asw_min_ok = True`. `payload.section.type` ble sendt av `payload.js` og lest av
+    INGEN -- null treff i hele motoren.
+    """
+    result = _shear_case(60e3, section_type='beam')
+    assert result['checks']['asw_min_ok'] is False
+    assert result['checks']['all_ok'] is False
+
+
+def test_a_slab_without_stirrups_is_still_exempt():
+    """Plata er nettopp tilfellet EC2 6.2.1(4) unntar, og skal ikke feile av aa mangle
+    boeyler. Uten denne ville rettelsen over gjort hver eneste plate ikke-bestaatt."""
+    payload = load('payload-slab-1000x200.json')
+    payload['section']['type'] = 'slab'
+    payload['section']['shear'] = {'strut_angle_deg': 45.0, 'z_factor': 0.9, 'stirrups': []}
+    payload['loads'] = {
+        'combinations': [{'id': 'C1', 'name': 'ULS', 'N_Ed': 0.0, 'M_Ed': -40e6,
+                          'V_Ed': 60e3, 'theta': 0.0}],
+        'active': 'C1',
+    }
+    result = engine.run(payload)
+    assert result['checks']['asw_min_ok'] is True
+
+
+def test_a_beam_without_stirrups_and_without_shear_is_not_penalised():
+    """Og en bjelke uten skjaerkraft trenger ingen minimumsboeyler heller."""
+    result = _shear_case(0.0, section_type='beam')
+    assert result['checks']['asw_min_ok'] is True
+
+
+# ------------------------------------------------------------------ #
+# Per-rad-verdikt (runde 12) — seksjon 6 kan vise ÉN kombinasjon
+# ------------------------------------------------------------------ #
+
+def _combo_verdict_payload(m_ed_c1):
+    payload = load('payload-beam-300x600-combos.json')
+    payload['loads']['combinations'][0]['M_Ed'] = m_ed_c1
+    return payload
+
+
+@pytest.mark.parametrize('m_ed_c1,forventet', [
+    (-100e6, True),    # godt innenfor
+    (-300e6, False),   # over kapasitet
+])
+def test_per_row_bending_ok_agrees_with_the_envelope_verdict(m_ed_c1, forventet):
+    """Radens egen dom og snittets dom kan ikke si hver sin ting.
+
+    `checks.bending_ok` er en ENVELOPE-dom: den gjelder snittet mot ALLE
+    lastkombinasjonene. Nå som seksjon 6 kan vise én valgt rad, trengs også et
+    svar per rad — og da er faren at de to begynner å drive fra hverandre, slik
+    at en rad står med ✓ under en samlet vurdering som sier ✕, eller verre:
+    motsatt.
+
+    Per-rad-verdiktet er derfor en MERKELAPP på de samme mengdene
+    (`bending_rows`, `over_utilised`, `opposed`), ikke en ny regel. Testen låser
+    den ene retningen som virkelig kan gjøre skade.
+    """
+    result = engine.run(_combo_verdict_payload(m_ed_c1))
+    assert result['ok'] is True
+    rows = result['bending']['combinations']
+    assert result['checks']['bending_ok'] is forventet
+
+    # HVER rad har et svar, og det er treverdig.
+    for c in rows:
+        assert c['bending_ok'] in (True, False, None), f"{c['id']}: {c['bending_ok']}"
+        assert c['shear_ok'] in (True, False, None), f"{c['id']}: {c['shear_ok']}"
+
+    # DEN FARLIGE RETNINGEN: en rad som IKKE holder, under en samlet vurdering
+    # som sier at alt er i orden.
+    if result['checks']['bending_ok'] is True:
+        assert not any(c['bending_ok'] is False for c in rows), \
+            'en rad er underkjent mens envelopen sier OK'
+    # …og motsatt: sier envelopen brudd, må minst én rad kunne peke på hvorfor.
+    if result['checks']['bending_ok'] is False:
+        assert any(c['bending_ok'] is False for c in rows), \
+            'envelopen sier brudd, men ingen enkeltrad gjør det'
+
+
+def test_per_row_shear_ok_agrees_with_the_envelope_verdict():
+    """Samme krav for skjær, og med samme begrunnelse.
+
+    Predikatet er skrevet ut ÉN gang (`_row_shear_ok`) og brukes både til radens
+    dom og — gjennom `evaluated_shear` — til envelopens, slik at de ikke KAN
+    komme i utakt.
+    """
+    payload = load('payload-beam-300x600-combos.json')
+    payload['loads']['combinations'][0]['V_Ed'] = 900e3   # langt over V_Rd
+    result = engine.run(payload)
+
+    assert result['ok'] is True
+    rows = result['bending']['combinations']
+    assert result['checks']['shear_ok'] is False
+    assert any(c['shear_ok'] is False for c in rows)
+
+    # En SLS-rad kontrolleres ikke for bruddgrense og skal ikke stå som
+    # «bestått» på bøyning — det ville vært den samme «bestått uten å ha regnet
+    # noe» som `as_min_ok` og `ductility_ok` ble lukket for i runde 6.
+    for c in rows:
+        if not c['checked']:
+            assert c['bending_ok'] is None, f"{c['id']} er ikke kontrollert, men står som {c['bending_ok']}"

@@ -40,6 +40,10 @@ function engineResult(analysis, { chiPlan, chi, warnings = [] } = {}) {
     materials: { fck: 30, fyk: 500 },
     section_props: { Ag: 180000, As_min: 1 },
     checks: { all_ok: true, as_min_ok: true },
+    // Bruksgrensen er IKKE en analyse: motoren regner den av lastkombinasjonene
+    // og legger den ved uansett hvilken analyse som kjørte. Den falske motoren
+    // gjør det samme, slik at flettetesten under kan se om den overlever.
+    sls: { all_ok: true, rows: [{ id: 'K1', type: 'quasi_permanent' }], checks: {} },
     warnings,
   };
   if (analysis === 'bending') {
@@ -208,11 +212,41 @@ test('runAll: fletter alle tre blokkene til ett resultat med primary-peker', asy
     // `mc_active_combo` overlever fra M–κ-kjøringen.
     assert.equal(res.meta.mc_active_combo, 'K1');
 
+    // BRUKSGRENSEN OVERLEVER OGSÅ. `merged` bygges nøkkel for nøkkel, og
+    // MÅLT før denne påstanden falt `sls` ut: «Run all» ga 0 SLS-rader der
+    // «Bending resistance» ga 2, uten en eneste feilmelding. Et felt som blir
+    // borte i et lag som bygger et objekt for hånd er samme form som resten av
+    // dobbeltkildene — bare at her forsvinner tallet i stedet for å avvike.
+    assert.ok(res.sls, '«Run all» mistet hele SLS-kapittelet');
+    assert.equal(res.sls.rows.length, 1);
+    assert.equal(res.sls.all_ok, true);
+
     // Hvert delkall gikk ut med motorens EGET analysenavn, aldri 'all'.
     const analyses = fake.sent.filter((s) => s.type === 'run').map((s) => s.payload.analysis);
     assert.ok(analyses.length > 0);
     assert.ok(!analyses.includes('all'), `motoren fikk «all»: ${analyses.join(',')}`);
     assert.deepEqual([...new Set(analyses)], ['bending', 'nm_domain', 'moment_curvature']);
+  } finally {
+    fake.restore();
+  }
+});
+
+test('runAll: uten SLS-rader finnes nøkkelen ikke — svaret er BIT FOR BIT som før SLS', async () => {
+  // Motstykket, og like viktig (spec §4/AC9): et snitt uten bruksgrenserader
+  // skal gi nøyaktig det samme svaret som det gjorde før SLS fantes. En
+  // `sls: undefined` som blir med i objektet ville brutt den påstanden, og
+  // `'sls' in result` er den eneste måten å se forskjell på.
+  const fake = installFakeWorker({
+    script: () => {
+      const r = engineResult('bending');
+      delete r.sls;
+      return r;
+    },
+  });
+  try {
+    const client = createSolverClient();
+    const res = await client.runAll(NO_AXIAL);
+    assert.ok(!('sls' in res), 'sls-nøkkelen skal ikke finnes i det hele tatt');
   } finally {
     fake.restore();
   }

@@ -13,9 +13,9 @@
 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Ultimate limit state capacity for reinforced concrete cross-sections to Eurocode 2, computed by fib structuralcodes in the browser. Beam b×h or slab per metre width, sagging and hogging moment, several reinforcement layers and load combinations. Gives M_Rd at a given N_Ed, neutral axis, strain and stress per layer, failure mode, A_s,min and A_s,max, moment–curvature curve and the full M–N capacity envelope with every load point plotted. Shear capacity to EC2 6.2 with and without stirrups, V_Rd,c, V_Rd,s and V_Rd,max per load combination, including the effect of axial force. Print-ready A4 report.">
-  <meta name="keywords" content="concrete, concrete section, reinforced concrete, ultimate limit state, ULS, Eurocode 2, EC2, moment capacity, M_Rd, bending resistance, neutral axis, strain, moment-curvature, M-N diagram, interaction domain, minimum reinforcement, As_min, reinforcement layers, beam, slab, load combinations, sagging, hogging, shear, shear capacity, shear reinforcement, stirrups, links, V_Rd, VRdc, VRds, EC2 6.2, axial force, structuralcodes, pyodide, concrete design">
-  <title>Concrete section ULS — bending, shear, M–κ and N–M to EC2</title>
+  <meta name="description" content="Ultimate limit state capacity for reinforced concrete cross-sections to Eurocode 2, computed by fib structuralcodes in the browser. Beam b×h or slab per metre width, sagging and hogging moment, several reinforcement layers and load combinations. Gives M_Rd at a given N_Ed, neutral axis, strain and stress per layer, failure mode, A_s,min and A_s,max, moment–curvature curve and the full M–N capacity envelope with every load point plotted. Shear capacity to EC2 6.2 with and without stirrups, V_Rd,c, V_Rd,s and V_Rd,max per load combination, including the effect of axial force. Serviceability to EC2 7.2 and 7.3.4 for characteristic and quasi-permanent combinations: crack width w_k against the limit for the exposure class, concrete and reinforcement stress limits, creep through the effective modulus, and the full derivation of s_r,max and the mean strain. Print-ready A4 report.">
+  <meta name="keywords" content="concrete, concrete section, reinforced concrete, ultimate limit state, ULS, Eurocode 2, EC2, moment capacity, M_Rd, bending resistance, neutral axis, strain, moment-curvature, M-N diagram, interaction domain, minimum reinforcement, As_min, reinforcement layers, beam, slab, load combinations, sagging, hogging, shear, shear capacity, shear reinforcement, stirrups, links, V_Rd, VRdc, VRds, EC2 6.2, axial force, serviceability, SLS, crack width, wk, w_k, crack control, EC2 7.3.4, EC2 7.2, stress limitation, exposure class, XC3, XD, XS, quasi-permanent, characteristic combination, creep, effective modulus, sr,max, tension stiffening, structuralcodes, pyodide, concrete design">
+  <title>Concrete section ULS and SLS — bending, shear, crack width and M–κ to EC2</title>
 
   <!-- Open Graph -->
   <meta property="og:title" content="Concrete section ULS — bending resistance, M–κ and N–M to EC2">
@@ -56,6 +56,14 @@
     input:focus, select:focus, textarea:focus {
       outline: none; border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56,189,248,.22);
     }
+    /* TRYKKFLATE PÅ ET <select> (WCAG 2.2 AA, 2.5.8). Kombinasjonsradens
+       `!text-[11px]`-select måler 128 × 19 — fem piksler for lav. Den kan ikke
+       få overlegget `.tap24` bruker lenger nede: et `<select>` er en
+       nettleserkontroll som ikke tegner pseudoelementer, så flata må komme fra
+       boksen selv. Regelen rører derfor BARE den ene — skjemaets øvrige
+       selecter er 31 px fra før — og raden rundt er uendret, fordi
+       tekstfeltene ved siden av allerede setter høyden til 31 px. */
+    select { min-height: 24px; }
     .field-label { font-size: .6875rem; color: #94a3b8; margin-bottom: .15rem; display: block; }
     .seg { display: inline-flex; background: #1e293b; border: 1px solid #475569; border-radius: .5rem; overflow: hidden; }
     .seg > button { padding: .4rem .9rem; font-size: .8125rem; color: #cbd5e1; transition: background .12s; }
@@ -65,6 +73,39 @@
             background: #1e293b; color: #cbd5e1; transition: all .12s; }
     .chip:hover { background: #334155; }
     .chip[data-on="true"] { background: #0369a1; border-color: #0ea5e9; color: #fff; }
+    /* TRYKKFLATE PÅ 24 px (WCAG 2.2 AA, suksesskriterium 2.5.8).
+       Målt ved 390 px før dette: `?`-merket er 16,8 × 16,8 (sju stykker),
+       BOT/TOP- og «● C1»-chipene 37,9 × 22,5 og 40,4 × 22,5, `#btn-help`
+       23,4 × 26, «← Tools» 47,6 × 20 og `#bar-issues` 42 × 21. Tretten flater,
+       og hver eneste av dem er for liten i ÉN akse — ingen er for smal OG for
+       lav. Det er derfor én regel holder.
+
+       ET OVERLEGG, IKKE ET STØRRE MERKE. Alle tre grunnene til at flatene er
+       små er gode: ringen rundt «?» må stå inne i en `<summary>` uten å skyve
+       linjehøyden (`1.05rem`, valgt nettopp slik i `.hint` under), chipen står
+       i en rad der tekstfeltene på 31 px setter høyden, og «← Tools» er tekst i
+       en topplinje som er låst til 48 px. Å blåse dem opp ville flyttet oppsett
+       i alle bredder for å rette noe som bare er et problem for en finger. Et
+       usynlig felt oppå koster null piksler, og skrivebordsutgaven blir
+       BOKSTAVELIG talt uendret — ikke «omtrent som før».
+
+       `::before` OG IKKE `::after`: `[data-key]::after` rett under eier
+       hurtigtastmerket som dukker opp når `Alt` holdes, og `#btn-help` og
+       analyse-chipene er blant dem som får det. To regler med lik vekt på
+       samme pseudoelement ville latt kilderekkefølgen avgjøre om tastetipset
+       i det hele tatt vistes — en kobling ingen ville lett etter.
+
+       `width/height: 100%` med `min-*: 24px`, sentrert: flata blir like stor
+       som elementet, og aldri mindre enn 24 i noen akse. Derfor ÉN regel og
+       ikke en håndplukket `inset` per element. Ingen `@media (pointer: coarse)`
+       heller: 2.5.8 har intet unntak for mus, overlegget er usynlig, og en
+       berøringsskjerm på en bærbar melder seg som `fine`. */
+    .hint, .chip, .tap24 { position: relative; }
+    .hint::before, .chip::before, .tap24::before {
+      content: ''; position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%; height: 100%; min-width: 24px; min-height: 24px;
+    }
     kbd { font-family: ui-monospace, monospace; font-size: .6875rem; background: #1e293b;
           border: 1px solid #475569; border-bottom-width: 2px; border-radius: .3rem;
           padding: .05rem .35rem; color: #e2e8f0; }
@@ -180,6 +221,31 @@
        rekkefølgen min egen, og dermed forutsigbar. */
     @media (max-width: 1279.98px) { .bar-cell-xl { display: none; } }
     @media (max-width: 1023.98px) { .bar-cell-lg { display: none; } }
+    /* KONTRAST. Målt: 87 tekstnoder under WCAG AA, og verst av dem ENHETENE
+       ved siden av tallene — `text-slate-600` på `bg-slate-900` gir 2,36:1 der
+       kravet er 4,5:1. Det er ikke pynt som er utydelig, det er «MPa», «mm» og
+       «kNm»: opplysningen som avgjør om tallet foran betyr det du tror.
+
+       Rettet på KLASSEN og ikke på 87 steder, fordi det er ÉN beslutning —
+       «hvor svak får sekundærtekst være» — og den skal stå ett sted. Bare
+       tekstfargen flyttes; `border-slate-600` og `bg-slate-800` er urørt, så
+       rammene og flatene ser ut nøyaktig som før.
+
+       `body` foran velgeren er ikke pynt heller: Play-CDN-en injiserer sitt
+       <style> ETTER dette dokumentet, så en naken `.text-slate-500` ville tapt.
+       Samme grunn som `.bar-cell`-reglene over. */
+    body .text-slate-500, body .text-slate-600 { color: #94a3b8; }
+    /* ET OVERSTYRT FELT SER OVERSTYRT UT.
+       `φ_ef`, `w_max` og `h₀` har alle en AVLEDET verdi ved siden av seg, og et
+       tall i feltet betyr at den avledede ikke brukes. Uten et merke må man
+       lese to celler og sammenligne for å vite hvilken som gjelder — og den
+       som ikke gjør det, tror han ser utledningen. Rammen sier det på ett blikk;
+       merkelappen ved siden av tallet sier hva som gjelder. */
+    input.is-override {
+      border-color: #f59e0b;
+      background-color: rgba(245, 158, 11, .08);
+    }
+    input.is-override:focus { outline-color: #f59e0b; }
   </style>
 </head>
 
@@ -187,17 +253,88 @@
 
 <!-- ═══════════════════ topplinje og seksjonsnavigasjon ═══════════════════ -->
 <header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-700">
-  <div class="max-w-5xl mx-auto px-5 flex items-center gap-4 h-12">
-    <a href="../index.html" class="text-sky-400 hover:text-sky-300 text-sm shrink-0">← Tools</a>
-    <h1 class="text-base font-semibold text-white whitespace-nowrap">Concrete section · ULS</h1>
-    <span class="text-xs text-slate-500 hidden md:inline truncate">Bending resistance, moment–curvature and N–M to EC2</span>
+  <!-- TOPPLINJA VAR EN EGEN ÅRSAK, IKKE BARE ET UTSLAG. Da bunnlinja var rettet
+       sto `document.scrollWidth` fortsatt på 387 mot 320 og 415 mot 390 —
+       nøyaktig de samme tallene som før — og denne rada sin egen `scrollWidth`
+       var de samme 415 ved 390 px. Altså: to uavhengige årsaker, like brede,
+       og bare den ene var synlig så lenge den andre sto i veien.
+       `px-3` under 640 px gir overskrifta 16 px mer å leve på; over 640 er
+       linja uendret. Samme skifte i `<nav>` under, så de står på linje. -->
+  <div class="max-w-5xl mx-auto px-3 sm:px-5 flex items-center gap-4 h-12">
+    <!-- `tap24`: lenka er 47,6 × 20 — bred nok, 4 px for lav. Klassen legger
+         en usynlig 24 px flate oppå (se `.tap24` i arket); teksten står der den
+         står, og topplinja er fortsatt 48 px. -->
+    <a href="../index.html" class="tap24 text-sky-400 hover:text-sky-300 text-sm shrink-0">← Tools</a>
+    <!-- `truncate` og IKKE `whitespace-nowrap` på overskrifta, og `shrink-0`
+         BORTE fra klyngen til høyre. Målt før: 244 px vannrett overflyt ved
+         390 px bredde — hele sida kunne dras sidelengs, og bunnlinjas tall
+         havnet utenfor skjermen. Årsaken var at BEGGE endene av topplinja
+         nektet å krympe, så det eneste elastiske leddet var luften mellom dem,
+         og den var allerede null. Nå gir overskrifta etter først; motorpilla og
+         knappene er det siste som ryker. -->
+    <h1 class="text-base font-semibold text-white truncate min-w-0">Concrete section · ULS</h1>
+    <span class="text-xs text-slate-500 hidden md:inline truncate">Bending, shear, crack width and N–M to EC2</span>
+    <!-- `shrink-0` TILBAKE, OG `min-w-0` BORT. `min-w-0` lot BOKSEN krympe,
+         men ingen av de fire inni kan krympe: pilla og «Report» har
+         `min-width: auto` og tekst uten `truncate`, og `?` og «Share» står
+         `shrink-0`. Målt ved 390 px: en klynge på 161,4 px med 206,8 px
+         innhold, som rant ut til x = 415 i stedet for å gi etter. Den ga
+         altså aldri etter — den bare sluttet å si fra. Nå tar overskrifta
+         hele krympingen, som var meningen hele tida (den har `truncate`
+         og `min-w-0`), og klyngen står på sin målte bredde. -->
     <div class="ml-auto flex items-center gap-2 shrink-0">
+      <!-- Pilla er dot + ord. ORDET ER BORTE UNDER 640 px, og det er regnet:
+           ved 320 px har klyngen 132,8 px gulv (`?` 23,4 + «Share» 28 +
+           «Report» 57,4 + 24 px luft), og det som er igjen til pilla etter
+           «← Tools», polstringa og et lesbart spor av overskrifta er under
+           40 px. «Downloading the runtime · ≈ 4.2 / 10.2 MB» er 190. Ingen
+           `truncate` kan redde det — «Downloadi…» er verdiløst — så ordet
+           ryker helt, og prikken bærer tilstanden: grå, pulserende gul,
+           pulserende blå, grønn, rød. `ui.js` legger hele teksten i `title`,
+           og en havarert oppvarming forklarer seg uansett i `#engine-banner`
+           med «Retry»-knappen. -->
       <div id="engine-pill" class="flex items-center gap-2 text-xs px-2.5 py-1 rounded-full border border-slate-600 bg-slate-800"></div>
-      <button type="button" id="btn-help" class="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded border border-slate-600" title="Keyboard shortcuts">?</button>
+      <!-- `tap24` og ikke mer luft i `px-2`: knappen er 23,4 × 26 — 0,6 px for
+           smal. Ekstra polstring ville skjøvet klyngen til høyre og dermed
+           `truncate`-et overskrifta et hakk tidligere; overlegget flytter
+           ingenting. Den er også en av dem som får `data-key` under `Alt`, og
+           `.tap24` bruker `::before` nettopp derfor. -->
+      <button type="button" id="btn-help" class="tap24 px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded border border-slate-600" title="Keyboard shortcuts">?</button>
+      <!-- «Share» hører hjemme HER, ved siden av «Report», og ikke i skjemaet:
+           begge er handlinger på HELE dokumentet, ikke innstillinger på et
+           snitt.
+
+           ORDET «Share» ER BORTE UNDER 640 px, OG DET ER MÅLT, IKKE ANTATT.
+           Med teksten synlig ved 390 px ble topplinja 20 px for bred — hele
+           sida kunne dras sidelengs igjen, nøyaktig den feilen `truncate` på
+           overskrifta ble innført for å rette (244 px den gangen). Overskrifta
+           var allerede krympet så langt den kom (73 px), så det siste leddet
+           måtte gi etter her. Ikonet står igjen, med `title` og `aria-label`.
+           Ikonet ALENE holdt ikke helt: 3 px sto igjen, og de siste tas av
+           `px-1.5` under 640 px. Målt etterpå: 0 px overflyt ved 390 px.
+
+           KVITTERINGEN BYTTER IKON, IKKE BARE TEKST: ved 390 px er teksten
+           skjult, og en «Copied» ingen ser er ingen kvittering. Haken er
+           derfor det som skifter, og den er synlig i alle bredder. Å vise
+           teksten under kvitteringen ville gitt 20 px overflyt i 1,8 sekunder.
+
+           `shrink-0`: knappen skal ikke klemmes smalere enn ikonet sitt. -->
+      <button type="button" id="btn-share" class="shrink-0 flex items-center gap-1 px-1.5 sm:px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded border border-slate-600" title="Copy a link that carries this whole setup" aria-label="Share a link to this setup">
+        <svg id="share-icon-link" viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M10.2 13.8a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4l-1.8 1.8"/>
+          <path d="M13.8 10.2a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.8-1.8"/>
+        </svg>
+        <!-- `class="hidden"` og IKKE `hidden`-attributtet på disse to: Tailwinds
+             preflight setter `svg { display: block }`, som er en forfatterregel
+             og slår nettleserens egen `[hidden] { display: none }`. Haken ville
+             blitt skjult riktig, men lenkeikonet ville aldri forsvunnet. -->
+        <span id="share-icon-ok" class="hidden text-emerald-400" aria-hidden="true">✓</span>
+        <span id="btn-share-label" class="hidden sm:inline">Share</span>
+      </button>
       <button type="button" id="btn-report" class="px-2.5 py-1 text-xs bg-sky-700 hover:bg-sky-600 rounded border border-sky-600">Report</button>
     </div>
   </div>
-  <nav class="max-w-5xl mx-auto px-5 flex gap-1 text-[13px] overflow-x-auto">
+  <nav class="max-w-5xl mx-auto px-3 sm:px-5 flex gap-1 text-[13px] overflow-x-auto">
     <a href="#s-mat"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">1 Material</a>
     <a href="#s-geo"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">2 Geometry</a>
     <a href="#s-arm"  class="navlink px-3 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200">3 Reinforcement</a>
@@ -264,6 +401,52 @@
               <label><span class="field-label">Concrete stress–strain law</span><select id="i-law-c"></select></label>
               <label class="md:col-span-2"><span class="field-label">Steel stress–strain law</span><select id="i-law-s"></select></label>
             </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- KRYPET STAAR HER, IKKE I SLS-BOKSEN.
+           Det er en BETONGEGENSKAP over tid: den avhenger av fastheten, av
+           tverrsnittets tykkelse og av miljoeet — ikke av hvilke lastkombina-
+           sjoner du har skrevet inn. La den ligge bak bruksgrenseboksen, maatte
+           man foerst lage en tilnaermet permanent rad, saa aapne to folder, og
+           saa tilbake igjen for aa se hva den gjorde med rissvidden. Nå staar
+           parameterne der de hoerer hjemme, og de er satt foer du trenger dem.
+
+           Standardene daekker det vanlige tilfellet: RH 50 % (innendoers),
+           50 aars levetid (EN 1990 tabell 2.1 for bygninger) og paafoering ved
+           28 doegn. Den som ikke aapner boksen, faar altsaa et forsvarlig
+           kryptall uten aa ha valgt noe. -->
+      <details id="adv-creep" class="rounded-lg border border-slate-700 bg-slate-900/40">
+        <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
+          <span class="text-slate-500">&#9656;</span>
+          <span class="text-slate-300">Creep &mdash; EC2 Annex B</span>
+          <span id="creep-summary" class="text-[11px] text-slate-500 num ml-auto"></span>
+        </summary>
+        <div class="px-3 pb-3 pt-1">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <label><span class="field-label">RH &mdash; relative humidity [%]</span><input id="i-rh" type="text" inputmode="decimal"></label>
+            <label><span class="field-label">t<sub>0</sub> &mdash; age at loading [days]</span><input id="i-t0" type="text" inputmode="decimal"></label>
+            <!-- DOEGN, ikke aar. Hele EC2 tillegg B regner i doegn, og en omregning
+                 paa veien inn er et sted aa ta feil: MAALT gav «1,5 aar» et lagret
+                 t = 547,5 d og et brukt phi = 1,911, mens feltet og rapporten
+                 trykte «2 yr». Naa staar tallet i den enheten det REGNES i.
+                 Feltet tar et REGNESTYKKE — «50*365» er lettere aa skrive og
+                 lettere aa lese enn 18250 — og aarene staar avledet under. -->
+            <label><span class="field-label">t &mdash; service life [days]</span>
+              <input id="i-tlife" type="text" inputmode="text" placeholder="50*365">
+              <span id="tlife-years" class="block text-[11px] text-slate-500 num pt-0.5"></span></label>
+            <label><span class="field-label">Cement class</span><select id="i-cement"></select></label>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+            <div><span class="field-label">Notional size, 2A<sub>c</sub>/u</span>
+              <div class="pt-1.5 text-[13px] leading-tight"><span id="sls-h0" class="num text-slate-200"></span>
+                <span id="sls-h0-src" class="text-[11px] text-slate-500"></span></div></div>
+            <label><span class="field-label">h<sub>0</sub> override [mm]</span><input id="i-h0" type="text" inputmode="decimal" placeholder="from geometry"></label>
+            <div><span class="field-label">Creep coefficient <button type="button" class="hint" data-hint="creep" aria-expanded="false" aria-label="About the creep coefficient">?</button></span>
+              <div class="pt-1.5 text-[13px] leading-tight"><span id="sls-phi" class="num text-slate-200"></span>
+                <span id="sls-phi-src" class="text-[11px] text-slate-500"></span></div></div>
+            <label><span class="field-label">&#966;<sub>ef</sub> override</span><input id="i-phi-ef" type="text" inputmode="decimal" placeholder="derived"></label>
           </div>
         </div>
       </details>
@@ -462,17 +645,43 @@
             <div class="pt-1.5 text-[13px] leading-tight"><span id="sls-wmax" class="num text-slate-200"></span>
               <span id="sls-wmax-src" class="text-[11px] text-slate-500"></span></div></div>
         </div>
+        <!-- STADIUM II: SYNLIG, IKKE BAK «ADVANCED».
+             Man leter etter denne haken nøyaktig i det øyeblikket rissvidden
+             mangler og man lurer på hvorfor — altså når man er forvirret. Å
+             legge svaret bak en fold ville gjentatt akkurat det problemet.
+
+             Den står under w_max og ikke ved siden av, fordi den ikke er en
+             VERDI som de to over: den er en forutsetning for hele beregningen,
+             og en avkrysning i en kolonne med to tallfelt leses som et tredje
+             tall. -->
+        <div class="px-3 pb-3 -mt-1">
+          <label class="flex items-start gap-2 text-[12px] text-slate-300 cursor-pointer">
+            <input type="checkbox" id="i-assume-cracked" class="mt-0.5 shrink-0">
+            <span>Assume cracked (state II)
+              <button type="button" class="hint" data-hint="sls-assume-cracked" aria-expanded="false"
+                      aria-label="About assuming a cracked section">?</button>
+              <span class="block text-[11px] text-slate-500">Compute w<sub>k</sub> even when the quasi-permanent load stays below the cracking moment.</span>
+            </span>
+          </label>
+        </div>
+        <!-- KRYPET LIGGER I DEN FOLDEN SOM ALLEREDE FANTES, ikke i en ny.
+             Fire felt til på førstesida ville vært fire spørsmål før man har
+             stilt det første. Her koster de ett klikk, og bare for den som
+             faktisk har en bruksgrenserad å regne. φ og h₀ står som AVLEDEDE
+             tall over feltene som lager dem, slik w_max står over sine. -->
         <details id="adv-sls" class="border-t border-slate-700/70">
           <summary class="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-2">
-            <span class="text-slate-500">&#9656;</span><span>Advanced &mdash; creep and stress limits</span>
+            <span class="text-slate-500">&#9656;</span><span>Advanced &mdash; limits and overrides</span>
             <span id="adv-sls-summary" class="text-[11px] text-slate-500 num ml-auto"></span>
           </summary>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 px-3 pb-3">
-            <label><span class="field-label">&#966;<sub>ef</sub> &mdash; effective creep</span><input id="i-phi-ef" type="text" inputmode="decimal"></label>
-            <label><span class="field-label">w<sub>max</sub> override [mm]</span><input id="i-wmax" type="text" inputmode="decimal" placeholder="from class"></label>
-            <label><span class="field-label">k<sub>1</sub> &#963;<sub>c</sub>/f<sub>ck</sub> char</span><input id="i-sls-k1" type="text" inputmode="decimal"></label>
-            <label><span class="field-label">k<sub>3</sub> &#963;<sub>s</sub>/f<sub>yk</sub> char</span><input id="i-sls-k3" type="text" inputmode="decimal"></label>
-            <label><span class="field-label">k<sub>2</sub> &#963;<sub>c</sub>/f<sub>ck</sub> qp</span><input id="i-sls-k2" type="text" inputmode="decimal"></label>
+
+          <div class="px-3 pb-3 pt-2">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <label><span class="field-label">w<sub>max</sub> override [mm]</span><input id="i-wmax" type="text" inputmode="decimal" placeholder="from class"></label>
+              <label><span class="field-label">k<sub>1</sub> &#963;<sub>c</sub>/f<sub>ck</sub> char</span><input id="i-sls-k1" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">k<sub>3</sub> &#963;<sub>s</sub>/f<sub>yk</sub> char</span><input id="i-sls-k3" type="text" inputmode="decimal"></label>
+              <label><span class="field-label">k<sub>2</sub> &#963;<sub>c</sub>/f<sub>ck</sub> qp</span><input id="i-sls-k2" type="text" inputmode="decimal"></label>
+            </div>
           </div>
         </details>
       </div>
@@ -531,7 +740,19 @@
         <button type="button" id="doc-save-json" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">⬇ Save JSON</button>
         <button type="button" id="doc-load-json" class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">⬆ Load JSON</button>
         <input type="file" id="doc-load-input" accept=".json" class="hidden">
-        <span class="text-slate-500">Save or load the whole setup — geometry, materials, reinforcement and load combinations — as a file.</span>
+        <span class="text-slate-500">Save or load the whole setup — geometry, materials, reinforcement and load combinations — as a file. «Share» in the top bar puts the same setup in a link.</span>
+      </div>
+      <!-- RESERVEVEIEN FOR «Share», og INGEN annen vei.
+           `navigator.clipboard` finnes ikke uten https (og ikke i en iframe uten
+           tillatelse), og et avvist løfte der ville ellers betydd at brukeren
+           trykte en knapp og INGENTING skjedde. Da vises lenka her i stedet, i
+           et felt som allerede er markert, så Ctrl+C er nok.
+           Den bor HER og ikke i topplinja med vilje: en inputboks i en sticky
+           topplinje er nøyaktig det som ga 244 px vannrett overflyt ved 390 px
+           sist. Feltet er tomt og `hidden` til det trengs. -->
+      <div id="share-row" class="px-3 pb-3 space-y-1.5" hidden>
+        <p id="share-status" class="text-[12px] text-slate-400"></p>
+        <input type="text" id="share-url" readonly class="num" hidden>
       </div>
       <div id="doc-load-notes" class="px-3 pb-3 space-y-1.5"></div>
     </details>
@@ -540,8 +761,32 @@
 
 <!-- ═══════ fast handlingslinje: «Beregn» i rekkevidde, og inspeksjonsstripa ═══════ -->
 <div class="fixed bottom-0 inset-x-0 z-30 border-t border-slate-700 bg-slate-900/95 backdrop-blur">
-  <div class="max-w-5xl mx-auto px-5 h-16 flex items-center gap-4">
-    <div id="bar-thumb" class="w-12 h-12 shrink-0 rounded border border-slate-700 bg-slate-800 p-1 overflow-hidden svg-fit"></div>
+  <!-- SMALERE LUFT UNDER 640 px, OG DET ER MÅLT.
+       Bunnlinja var HELE den vannrette overflyten på telefon: ved 320 px målte
+       `document.scrollWidth` 382 mot 320, og linjas eget innhold var nøyaktig
+       de samme 382. Topplinjas «Report», som også stakk ut, var en FØLGE av at
+       dokumentet allerede var for bredt — den ble smal igjen av seg selv.
+
+       Regnestykket ved 320 px var: 40 px `px-5` + 3 × 16 px `gap-4` + 48 px
+       miniatyr + 42 px varselmerke + 199 px «Calculate» = 377, og tekstblokka
+       i midten var klemt ned til 5,2 px. Fire grep tar de 62 pikslene, og
+       alle fire slås av igjen på `sm` — over 640 px er linja uendret:
+         `px-3`  −16 px   (samme polstring som seksjonene i skjemaet har)
+         `gap-2` −24 px
+         skjult `<kbd>` −64 px  (se knappen under)
+         skjult miniatyr −56 px (se `#bar-thumb` under)
+       Overskuddet er med vilje: «Cancel» dukker opp MIDT i en beregning og
+       koster 82 px til. Uten margin ville linja vært smal nok i ro og for bred
+       akkurat mens noe kjørte — den verste av de to feilene å oppdage. -->
+  <div class="max-w-5xl mx-auto px-3 sm:px-5 h-16 flex items-center gap-2 sm:gap-4">
+    <!-- MINIATYREN ER BORTE UNDER 640 px. Den kostet 48 px av 320 — 15 % av
+         skjermen — for en 48 px gjengivelse av en figur som står i full
+         størrelse i seksjon 2. Prisen var tekstblokka ved siden av: «b×h
+         300×600» var krympet til 5,2 px, altså ingenting. Etter byttet får
+         teksten ~103 px og kan faktisk leses. `class="hidden"` og ikke
+         attributtet, fordi boksen inneholder en SVG og Tailwinds preflight
+         setter `svg { display: block }`. -->
+    <div id="bar-thumb" class="hidden sm:block w-12 h-12 shrink-0 rounded border border-slate-700 bg-slate-800 p-1 overflow-hidden svg-fit"></div>
     <div class="text-[12px] num leading-tight min-w-0 shrink">
       <div id="bar-geo" class="text-slate-300 truncate"></div>
       <div id="bar-arm" class="text-slate-500 truncate"></div>
@@ -549,8 +794,12 @@
     <!-- Valideringsmerket. Det ER hele arven etter den slettede seksjon 6 sin
          plassering av `#validation`: teller feil og advarsler, og ruller til
          boksen som forklarer dem. Skjult (`hidden`) når det ikke er noe å si. -->
+    <!-- `tap24`: merket er 42 × 21 — tre piksler for lavt. Overlegget og ikke
+         mer `py-`, fordi ramma rundt tallet ville blitt synlig høyere i alle
+         bredder. Ingen `inline-flex`-klasse her heller: merket skjules med
+         `hidden`-ATTRIBUTTET, og en display-klasse ville slått det. -->
     <button type="button" id="bar-issues" hidden
-            class="shrink-0 px-2 py-1 rounded border text-[11px] leading-none num"></button>
+            class="tap24 shrink-0 px-2 py-1 rounded border text-[11px] leading-none num"></button>
     <!-- Inspeksjonsstripa (hentet fra mockup B): η, η_V, M_Rd, x/d og bruddform.
          FEM celler, alltid de samme fem — også før første beregning, der de står
          med «–». Gikk stripa fra én celle til sju ved første svar, hoppet den
@@ -566,7 +815,14 @@
               class="px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 font-semibold text-sm border border-sky-400/50 whitespace-nowrap">
         <!-- Teksten fylles av `ui.js` fra `SHORTCUTS` (runde 6 §2.3). Skrevet
              her, ville den vært en andre kilde til hvilken tast som kjører. -->
-        <span id="btn-run-bar-label">Calculate</span> <kbd id="kbd-calc" class="!bg-sky-900 !border-sky-500 ml-1"></kbd>
+        <!-- TASTEMERKET ER BORTE UNDER 640 px. `⌃Space` måler 59,7 px pluss
+             `ml-1` — 64 av knappens 199, altså en tredel av den bredeste
+             tingen i linja, brukt på å opplyse om en tast på et apparat uten
+             tastatur. Knappen blir 135 px og er fortsatt den klart største
+             flata i bunnlinja (135 × 43 mot varselmerkets 42 × 24); den
+             krympes IKKE til et ikon. Snarveien står uansett i hjelpelista,
+             som bygges av `SHORTCUTS`. -->
+        <span id="btn-run-bar-label">Calculate</span> <kbd id="kbd-calc" class="!bg-sky-900 !border-sky-500 ml-1 hidden sm:inline"></kbd>
       </button>
     </div>
   </div>
@@ -593,7 +849,7 @@
 </div>
 
 <!-- ═══════════════ rapportoverlegg (formet av print.css, fylt av report.js) ═══════════════ -->
-<div id="report-overlay" hidden>
+<div id="report-overlay" role="dialog" aria-modal="true" aria-label="Calculation report" hidden>
   <div class="report-toolbar">
     <b>Report</b>
     <button type="button" id="report-print" class="px-2.5 py-1 rounded bg-sky-700 hover:bg-sky-600 border border-sky-600">Print / PDF</button>

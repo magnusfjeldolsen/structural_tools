@@ -294,14 +294,20 @@ test('rundtur gjennom fil: bjelken overlever lagring mens PLATA er den aktive', 
  * ===========================================================================
  */
 
-test('fil uten sls: standardverdien (§5) — ingen klasse, phi_ef 2,0, de tre 7.2-faktorene', () => {
+test('fil uten sls: standardverdien (§5) — ingen klasse, phi_ef utledet, de tre 7.2-faktorene', () => {
   const doc = toDocument(defaultState());
   delete doc.state.sls;
   const { state, notes } = fromDocument(doc);
   assert.deepEqual(state.sls, {
     exposure_class: null,
     w_max_override: null,
-    phi_ef: 2.0,
+    phi_ef: null,
+    h0_override: null,
+    RH: 50,
+    t0: 28,
+    t_life: 50 * 365,
+    cement: 'N',
+    assume_cracked: false,
     sigma_c_char_factor: 0.6,
     sigma_c_qp_factor: 0.45,
     sigma_s_char_factor: 0.8,
@@ -314,8 +320,15 @@ test('fil med DELVIS sls-objekt: manglende felt fylles fra standarden, IKKE unde
   doc.state.sls = { exposure_class: 'XC3' };
   const { state } = fromDocument(doc);
   assert.equal(state.sls.exposure_class, 'XC3', 'den lagrede verdien overlever');
-  assert.equal(state.sls.phi_ef, 2.0, 'manglende phi_ef fylles fra standarden, IKKE undefined');
+  // MIGRERINGEN: en fil LAGRET DA `phi_ef` VAR ET FAST TALL bærer `phi_ef: 2.0`,
+  // og den skal fortsatt gi nøyaktig samme svar. Den leses derfor som en
+  // OVERSTYRING på 2,0 — ikke som en verdi som skal erstattes av utledningen.
+  // En fil UTEN `sls` i det hele tatt har aldri hatt et kryptall, og får
+  // utledningen.
+  assert.equal(state.sls.phi_ef, null, 'uten et lagret phi_ef skal det utledes');
   assert.ok(state.sls.phi_ef !== undefined);
+  assert.equal(state.sls.RH, 50, 'krypinndataene fylles fra standarden');
+  assert.equal(state.sls.cement, 'N');
 });
 
 // MERK: `fromDocument` selv validerer IKKE `exposure_class` — den bare
@@ -325,3 +338,51 @@ test('fil med DELVIS sls-objekt: manglende felt fylles fra standarden, IKKE unde
 // akkurat som en ugyldig `combo.type` normaliseres av `createCombo` her,
 // men en ULOVLIG `activeCombo`-plassering først rettes av `enforceActiveCombo`
 // i store.js, ikke i denne fila.
+
+/* ================================================================== *
+ * `doc_schema` — skrevet siden dag én, LEST først nå (oppgave C2)
+ * ================================================================== */
+
+test('doc_schema STØRRE enn DOCUMENT_SCHEMA: `document_schema_newer` (warning), og fila leses videre', () => {
+  const doc = { ...toDocument(defaultState()), doc_schema: DOCUMENT_SCHEMA + 1 };
+  doc.state.geometry = { b: 425, h: 875 };
+  const { state, notes } = fromDocument(doc);
+  const note = notes.find((n) => n.code === 'document_schema_newer');
+  assert.ok(note, 'noten skal finnes');
+  assert.equal(note.severity, 'warning');
+  // «Les videre» er ikke en detalj, det er hele beslutningen: flettinga er
+  // felt-for-felt mot standarden, så en nyere fil gir en GYLDIG tilstand
+  // uansett. Å nekte ville vært å kaste en fil brukeren kan bruke.
+  assert.ok(state, 'tilstanden skal være lastet, ikke forkastet');
+  assert.equal(state.geometry.b, 425);
+  assert.equal(state.geometry.h, 875);
+});
+
+test('doc_schema LIK eller LAVERE gir INGEN note — 1 er den eneste versjonen som har eksistert', () => {
+  for (const schema of [DOCUMENT_SCHEMA, 0, -3, undefined, null, 'tull', NaN]) {
+    const doc = { ...toDocument(defaultState()), doc_schema: schema };
+    const { state, notes } = fromDocument(doc);
+    assert.ok(state);
+    assert.equal(
+      notes.some((n) => n.code === 'document_schema_newer'), false,
+      `doc_schema=${String(schema)} skal ikke gi noten`
+    );
+  }
+});
+
+test('resultView deles med lenka, men en rad som ikke finnes faller til envelope', () => {
+  // Visningen er med i dokumentet fordi en delt lenke skal vise mottakeren det
+  // samme som avsenderen så på. Men id-en kan være foreldet: avsenderen slettet
+  // raden, eller lenka er eldre enn den. Da er envelopen det riktige svaret —
+  // ikke en tom seksjon 6, og ikke en velger låst til et navn ingen kan se.
+  const st = createStore();
+  st.addCombo();
+  st.setResultView('C2');
+  const doc = JSON.parse(JSON.stringify(toDocument(st.getState())));
+  assert.equal(doc.state.resultView, 'C2', 'visningen skal følge med dokumentet');
+
+  doc.state.resultView = 'C9';
+  const mottaker = createStore();
+  mottaker.replaceState(fromDocument(doc).state);
+  assert.equal(mottaker.getState().resultView, 'envelope');
+});

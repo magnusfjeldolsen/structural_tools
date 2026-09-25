@@ -84,6 +84,28 @@ export function fmtNumber(value, decimals = 2) {
   return s;
 }
 
+/**
+ * Tallet slik det skal stå I ET INNDATAFELT: uten desimaler som ikke betyr noe.
+ *
+ * `fmtNumber(300, 1)` gir «300.0», og det er riktig for et REGNET tall — der sier
+ * desimalen hvor nøyaktig svaret er. Men i et felt brukeren selv har skrevet er
+ * den bare støy: ingen taster «Ø 12,0» eller «c/c 150,0», og en bredde på 300 er
+ * 300, ikke 300,0.
+ *
+ * FLYTTALL AKSEPTERES FORTSATT — `maxDecimals` er et tak, ikke et krav. Skriver
+ * noen 12,5, står det 12,5. Det som forsvinner er nullene ingen skrev.
+ *
+ * Skilt ut som egen funksjon og ikke løst med `Number.isInteger` på hvert
+ * kallsted: regelen «slik ser et inndatafelt ut» skal stå ett sted, ellers
+ * driver de fjorten feltene fra hverandre ved første rettelse.
+ */
+export function fmtInput(value, maxDecimals = 2) {
+  const x = toNum(value);
+  if (x === null) return '';
+  const s = x.toFixed(maxDecimals);
+  return s.includes('.') ? s.replace(/\.?0+$/, '') : s;
+}
+
 /** Lengde [mm] slik motoren gir den. */
 export function fmtLength(mm, decimals = 1) {
   return fmtNumber(mm, decimals);
@@ -263,6 +285,14 @@ export const ENGINE_CODES = Object.freeze([
    * §1.7): «klausulen gjelder ikke denne tilstanden» er ikke et avvik, og en
    * gul trekant på den ville lært brukeren å overse gule trekanter. */
   'bending_capacity_exceeded',
+  // Bjelke med skjaerkraft og ingen boeyler (EC2 9.2.2(5)). EGEN kode og ikke
+  // `asw_below_minimum`, som gjelder en boeylerad som ER der men er for liten:
+  // «for lite» og «ingenting i det hele tatt» er to ulike paastander.
+  'asw_min_not_met',
+  // Kapasiteten peker motsatt vei av lasten (runde 11). Egen kode og ikke en variant
+  // av `bending_capacity_exceeded`, fordi det er en ANNEN påstand: der sier vi «for
+  // lite», her sier vi «ingenting i det hele tatt, i den retningen».
+  'capacity_opposite_direction',
   'm_rd_below_m_cr',
   // MÅLT, IKKE ANTATT: motoren i denne grenen sender sprøbruddet under navnet
   // `brittle_failure_risk` (`engine.py:1379`), ikke `m_rd_below_m_cr` som
@@ -285,6 +315,7 @@ export const ENGINE_CODES = Object.freeze([
    * seksjonens hodekommentar for hvorfor de to ikke skal blandes. */
   'sls_incomplete',
   'sls_crack_width_exceeded',
+  'crack_state_assumed',
   'sls_stress_limit_exceeded',
 ]);
 
@@ -304,6 +335,7 @@ export const VALIDATION_CODES = Object.freeze([
   'insufficient_layer_spacing',
   // Skjærvalidering, endringsrunde 4 §4.4 — samme tabell, ett oppslag.
   'stirrup_spacing_exceeds_max',
+  'stirrup_spacing_not_positive',
   'asw_below_minimum',
   'stirrup_legs_spacing_exceeds_max',
   'invalid_strut_angle',
@@ -324,6 +356,14 @@ export const RUNTIME_CODES = Object.freeze([
   'document_not_recognised',
   'document_field_ignored',
   'document_field_defaulted',
+  // DELBAR LENKE (oppgave C). Begge gjelder BÅDE fil og lenke, og vises i
+  // SAMME `#doc-load-notes`-liste — en lenke er et dokument som kom en annen
+  // vei, ikke en egen visningsvei.
+  //   `document_schema_newer`: `doc_schema` er STØRRE enn `DOCUMENT_SCHEMA`.
+  //   `link_format_unsupported`: ukjent prefiks eller ødelagt base64 — ingen
+  //   tilstand lastes i det hele tatt.
+  'document_schema_newer',
+  'link_format_unsupported',
   // Serialisering, endringsrunde 4 §2 — en lagret fil med `analysis: 'bending'`
   // og `N_Ed ≠ 0` normaliseres til `nm_domain` ved lasting.
   'analysis_forced_to_nm_domain',
@@ -401,6 +441,13 @@ export const CODE_MESSAGES = Object.freeze({
     'The design moment exceeds the bending resistance for at least one load ' +
     'combination: M_Ed > M_Rd(N_Ed). The section does not carry the applied moment. ' +
     'Everything else in this report describes a section that would already have failed.',
+  capacity_opposite_direction:
+    'The load acts in one direction while the computed resistance acts in the other: a ' +
+    'sagging moment against a hogging resistance, or the reverse. The section has no ' +
+    'bending resistance in the direction of this load — the tension face has no ' +
+    'reinforcement. This happens with axial tension on a section reinforced on one face ' +
+    'only. The utilisation shown for that combination compares two numbers that point ' +
+    'opposite ways and does not mean what it looks like.',
   m_rd_below_m_cr: M_RD_BELOW_M_CR_MESSAGE,
   /**
    * PROVISORISK ALIAS. Motoren i denne grenen sender koden som
@@ -482,6 +529,19 @@ export const CODE_MESSAGES = Object.freeze({
   stirrup_spacing_exceeds_max:
     'Stirrup spacing s exceeds s_l,max = 0.75·d (EC2 9.2.2(6)). Add stirrups or reduce ' +
     'the spacing.',
+  crack_state_assumed:
+    'The crack width is computed for an ASSUMED cracked section (state II). Under the ' +
+    'quasi-permanent load the section does not reach its cracking moment, so this is ' +
+    'what the crack width would be if it cracked anyway — from shrinkage or restraint, ' +
+    'which M_Ed does not carry. Untick "assume cracked" for the computed state.',
+  stirrup_spacing_not_positive:
+    'Stirrup spacing must be greater than zero. A row with s = 0 is not a row of ' +
+    'stirrups: the engine skips it, so the section would be analysed as if it had no ' +
+    'shear reinforcement at all.',
+  asw_min_not_met:
+    'A beam with a shear force has no shear reinforcement at all. EC2 9.2.2(5) requires ' +
+    'at least the minimum ratio rho_w,min in beams — the exemption in 6.2.1(4) covers ' +
+    'slabs and members of minor importance, not beams.',
   asw_below_minimum:
     'The shear reinforcement ratio A_sw/s is below the EC2 9.2.2(5) minimum ' +
     'ρ_w,min·b_w. This applies only where stirrups are present at all — a section ' +
@@ -520,6 +580,14 @@ export const CODE_MESSAGES = Object.freeze({
   document_not_recognised: 'This is not a concrete section calculator file.',
   document_field_ignored: 'An unknown field in the file was ignored.',
   document_field_defaulted: 'A missing field in the file was filled with its default.',
+  document_schema_newer:
+    'This was saved by a newer version of the calculator. Everything this version ' +
+    'recognises has been loaded, but any field the newer version added is missing — ' +
+    'check the input before you trust a number.',
+  link_format_unsupported:
+    'This link could not be read. It is either truncated — links break when an email ' +
+    'client wraps them across two lines — or it was made by a different version of the ' +
+    'link format. Nothing was loaded; ask for the link again, or for the saved file.',
   run_all_partial:
     'One of the analyses in "Run all" did not complete. The results shown are from the ' +
     'analyses that did — the technical detail says which one is missing and why. ' +
@@ -880,6 +948,109 @@ export function analysisBlock(result) {
   return result[result.analysis] || null;
 }
 
+/** Verdien av `state.resultView` som betyr «verste av alle kombinasjoner». */
+export const RESULT_VIEW_ENVELOPE = 'envelope';
+
+/**
+ * SEKSJON 6 SETT GJENNOM ÉN LASTKOMBINASJON I STEDET FOR GJENNOM ENVELOPEN.
+ *
+ * Seksjonen har alltid vært en envelope, og per grensetilstand hver for seg:
+ * MÅLT med tre rader der den aktive var den minste (C1 η 0,29) kom bøyningen
+ * fra C2 (η 0,92) og skjæret fra C3 (η 0,87). Det er riktig som standardsvar —
+ * det er slik man ser med én gang om snittet holder — men man må også kunne gå
+ * inn i én rad og se den alene.
+ *
+ * INGEN NY BEREGNING. Hvert toppnivåfelt i analyseblokka finnes allerede per
+ * rad: `M_Rd`, `x`, `x_over_d`, `failure_mode`, `eps_a`, `eps_c_top`,
+ * `eps_s_max`, `chi_y`, `utilisation`, `layers` og `shear`. Toppnivået ER en
+ * kopi av den dimensjonerende raden. Å bytte visning er derfor et OPPSLAG i et
+ * svar vi allerede har, ikke en ny kjøring — og derfor skal det heller aldri gå
+ * gjennom `invalidate()`: ingenting resultatet ble regnet for har endret seg.
+ *
+ * DOMMEN KOMMER FRA MOTOREN, OGSÅ PER RAD. `bending_ok`/`shear_ok` ligger på
+ * raden fordi terskelen (η ≤ 1,0 uten toleranse) og definisjonsmengden er valg
+ * med en historie i `engine.py`. Å gjenta dem her ville vært to kilder til den
+ * samme dommen.
+ *
+ * Returnerer resultatet UENDRET når visningen er envelopen, eller når raden
+ * ikke finnes — en slettet rad skal gi envelopen, ikke en tom seksjon.
+ *
+ * @param {object} result motorens svar
+ * @param {string} view `RESULT_VIEW_ENVELOPE` eller en kombinasjons-id
+ */
+export function withResultView(result, view) {
+  if (!result || !view || view === RESULT_VIEW_ENVELOPE) return result;
+  const block = analysisBlock(result);
+  if (!block || !Array.isArray(block.combinations)) return result;
+  const row = block.combinations.find((c) => c.id === view);
+  if (!row) return result;
+
+  // Feltene toppnivået har som en kopi av den dimensjonerende raden. Listet
+  // eksplisitt og ikke spredt med `...row`: raden har også felt som IKKE hører
+  // hjemme på toppnivå (`id`, `name`, `type`, `checked`, `theta`), og et
+  // toppnivå som plutselig bærer en `id` ville sett ut som noe annet enn det er.
+  const projected = { ...block, governing: row.id, shear_governing: row.id };
+  for (const key of [
+    'M_Ed', 'M_Rd', 'N_Ed', 'x', 'x_over_d', 'failure_mode',
+    'eps_a', 'eps_c_top', 'eps_s_max', 'chi_y', 'utilisation', 'layers',
+  ]) {
+    if (row[key] !== undefined) projected[key] = row[key];
+  }
+
+  const out = { ...result, [analysisKey(result)]: projected };
+  if (result.bending && result.bending === block) out.bending = projected;
+
+  // Dommen: radens egen, fra motoren. `undefined` (en eldre fixtur uten
+  // per-rad-verdikt) lar envelopens stå — bedre en dom som gjelder for mye enn
+  // ingen dom i det hele tatt.
+  out.checks = { ...(result.checks || {}) };
+  if (row.bending_ok !== undefined) out.checks.bending_ok = row.bending_ok;
+  if (row.shear_ok !== undefined) out.checks.shear_ok = row.shear_ok;
+
+  // BRUKSGRENSEN: bare raden selv, og bare hvis den ER en bruksgrenserad. En
+  // ULS-rad har ingen rissvidde, og da skal rissviddelinja være borte — ikke
+  // stå igjen med envelopens tall under et radnavn den ikke gjelder for.
+  if (result.sls && Array.isArray(result.sls.rows)) {
+    const slsRow = result.sls.rows.find((r) => r.id === view);
+    out.sls = {
+      ...result.sls,
+      rows: slsRow ? [slsRow] : [],
+      checks: slsRow ? slsRowChecks(slsRow) : {},
+    };
+  }
+  return out;
+}
+
+/** Nøkkelen analysens blokk ligger under (`bending`, `moment_curvature`, …). */
+function analysisKey(result) {
+  if (result.analysis === RUN_ALL_ANALYSIS) {
+    for (const key of [result.primary, ...RUN_ALL_BLOCK_ORDER]) {
+      if (key && result[key]) return key;
+    }
+  }
+  return result.analysis;
+}
+
+/**
+ * `sls.checks` for ÉN rad, bygget av radens EGNE `ok`-felt.
+ *
+ * Ikke utledet av tall: `crack.ok`, `stress.sigma_c_ok` og `stress.sigma_s_ok`
+ * er motorens egne treverdige svar for nettopp denne raden. Her flyttes de bare
+ * dit `slsCheckRows()` leter.
+ */
+function slsRowChecks(row) {
+  const st = row.stress || {};
+  const out = {};
+  if (st.sigma_c_ok !== undefined) {
+    out[row.type === 'quasi_permanent' ? 'sigma_c_qp_ok' : 'sigma_c_char_ok'] = st.sigma_c_ok;
+  }
+  if (st.sigma_s_ok !== undefined && row.type !== 'quasi_permanent') {
+    out.sigma_s_char_ok = st.sigma_s_ok;
+  }
+  if (row.crack && row.crack.ok !== undefined) out.crack_width_ok = row.crack.ok;
+  return out;
+}
+
 /**
  * Hovedtallet: den VERTIKALE utnyttelsen, `M_Ed / M_Rd(N_Ed)`. Identisk i alle
  * tre analysene (plan §5.2), og derfor hentet fra analysens egen blokk uten
@@ -941,16 +1112,6 @@ export function momentCapacity(result) {
 /** Dimensjonerende moment slik analysen så det (Nmm, størrelse). */
 export function designMoment(result) {
   return toNum(analysisBlock(result)?.M_Ed);
-}
-
-/** Dimensjonerende normalkraft (N, fortegnsatt — trykk negativ). */
-export function designAxial(result) {
-  return toNum(analysisBlock(result)?.N_Ed);
-}
-
-/** Status for hovedtallet, klar til pille og rapportboks. */
-export function resultStatus(result) {
-  return utilisationStatus(headlineUtilisation(result));
 }
 
 /**
@@ -1116,6 +1277,136 @@ export function slsCheckRows(sls = {}) {
 }
 
 /**
+ * ÉN LINJE PER GRENSETILSTAND SOM FAKTISK BLE KONTROLLERT.
+ *
+ * Toppkortet viste før alt om hverandre i én brytende rad — η, M_Rd, bruddform,
+ * skjærmerke, status — og rissvidden lå 1 285 px lenger ned i et eget kapittel.
+ * Et snitt har flere grenser, og de er sidestilte: bøyning, skjær, rissvidde,
+ * spenning. Hver av dem er ETT spørsmål med ETT svar, og da skal de stå som
+ * like linjer under hverandre.
+ *
+ * DEN SOM IKKE GJELDER, VISES IKKE. Ingen skjærkraft ⇒ ingen skjærlinje; ingen
+ * bruksgrenserad ⇒ ingen rissviddelinje. En tom rad med tankestreker er støy
+ * som ser ut som et svar som mangler.
+ *
+ * Bygget HER og ikke i `ui.js`, fordi rapporten trenger nøyaktig den samme
+ * lista. Skjærtabellen i denne modulen er allerede bygget to steder med 16 mot
+ * 17 rader og ulike desimaler — den feilen skal ikke gjentas for denne.
+ *
+ * @returns {{key, label, left, right, unit, eta, ok}[]}
+ */
+export function limitStateRows(result = {}) {
+  const block = analysisBlock(result) || {};
+  const bending = result.bending || block;
+  const rows = [];
+
+  /**
+   * HVILKEN RAD GAV DETTE TALLET.
+   *
+   * Linjene ER en envelope, og per grensetilstand hver for seg. MÅLT med tre
+   * rader der den aktive var den minste (C1 η 0,29): bøyningslinja kom fra C2
+   * (η 0,92) og skjærlinja fra C3 (η 0,87) — to ulike rader, ingen av dem den
+   * aktive. Uten navnet kan leseren verken se at det er en envelope, eller
+   * hvilken kombinasjon hen skal gå tilbake til for å se nærmere på det verste.
+   */
+  const comboRef = (id) => {
+    if (id === null || id === undefined) return null;
+    const c = allCombinations(result).find((x) => x.id === id);
+    return { id, name: c?.name || id };
+  };
+
+  const mRd = toNum(bending.M_Rd);
+  if (mRd !== null) {
+    // `M_Ed` fra den DIMENSJONERENDE raden, ikke fra blokka: blokkas eget felt er
+    // 0 i et M–N-svar, og et «M_Ed = 0» ved siden av en kapasitet er et tall som
+    // ikke svarer på noe.
+    const govRow = allCombinations(result).find((c) => c.id === bending.governing);
+    rows.push({
+      key: 'bending',
+      label: 'Bending',
+      left: 'M_Ed', leftValue: toNum(govRow?.M_Ed ?? bending.M_Ed),
+      right: 'M_Rd', rightValue: mRd,
+      unit: 'kNm', scale: 1e6, decimals: 1,
+      eta: toNum(bending.utilisation),
+      ok: result.checks ? result.checks.bending_ok : null,
+      combo: comboRef(bending.governing ?? null),
+    });
+  }
+
+  // `V_Ed > 0` og ikke bare «det finnes en V_Rd»: kapasiteten regnes uansett, men
+  // uten en skjærkraft er det ingenting å kontrollere, og en linje med η = 0 ser
+  // ut som et svar på et spørsmål ingen stilte.
+  const shear = shearGoverningCombo(result)?.shear;
+  if (shear && toNum(shear.V_Rd) !== null && toNum(shear.V_Ed) > 0) {
+    rows.push({
+      key: 'shear',
+      label: 'Shear',
+      left: 'V_Ed', leftValue: toNum(shear.V_Ed),
+      right: 'V_Rd', rightValue: toNum(shear.V_Rd),
+      unit: 'kN', scale: 1e3, decimals: 1,
+      eta: toNum(shear.utilisation),
+      ok: result.checks ? result.checks.shear_ok : null,
+      combo: comboRef(shearGoverningCombo(result)?.id ?? null),
+    });
+  }
+
+  // GATER PAA `w_k`, IKKE PAA `w_max`. En eksponeringsklasse uten anbefalt grense
+  // (XD3 i tabellen modulen bruker) ga `w_max = null`, og da forsvant hele linja
+  // -- samtidig som «Overall assessment» sto paa `null` fordi `crack_width_ok`
+  // var ubesvart. MAALT paa XD3-plata: `w_k = 0,13886 mm` regnet og vist
+  // ingensteds, med fire groenne linjer over en samlet vurdering uten grunn.
+  //
+  // «Den som ikke gjelder, vises ikke» var kravet, og en REGNET rissvidde
+  // gjelder. Det er grensa som mangler, og da staar det en tankestrek der
+  // grensa skulle vaert -- samme sprak som `slsSummarySuffix` allerede bruker.
+  const worst = slsHeadlineCrack(result);
+  if (worst && toNum(worst.w_k) !== null) {
+    rows.push({
+      key: 'crack',
+      label: 'Crack width',
+      left: 'w_k', leftValue: toNum(worst.w_k),
+      right: 'w_max', rightValue: toNum(worst.w_max),
+      unit: 'mm', scale: 1, decimals: 3, rightDecimals: 2,
+      eta: toNum(worst.utilisation),
+      ok: result.sls ? result.sls.checks?.crack_width_ok ?? null : null,
+      combo: worst.id === null ? null : { id: worst.id, name: worst.name },
+    });
+  }
+
+  const stress = worstStressRow(result);
+  if (stress) rows.push(stress);
+  return rows;
+}
+
+/** Den SLS-raden som har den største spenningsutnyttelsen, eller `null`. */
+function worstStressRow(result) {
+  const sls = result.sls;
+  if (!sls || !Array.isArray(sls.rows)) return null;
+  let best = null;
+  for (const row of sls.rows) {
+    const st = row.stress;
+    if (!st) continue;
+    for (const [which, util, val, lim, ok] of [
+      ['σ_c', st.sigma_c_util, st.sigma_c, st.sigma_c_limit, st.sigma_c_ok],
+      ['σ_s', st.sigma_s_util, st.sigma_s, st.sigma_s_limit, st.sigma_s_ok],
+    ]) {
+      const u = toNum(util);
+      if (u === null || typeof ok !== 'boolean') continue;
+      if (!best || u > best.eta) {
+        best = {
+          key: 'stress', label: 'Stress (EC2 7.2)',
+          combo: { id: row.id ?? null, name: row.name || row.id || '' },
+          left: which, leftValue: Math.abs(toNum(val)),
+          right: 'limit', rightValue: Math.abs(toNum(lim)),
+          unit: 'MPa', scale: 1, decimals: 1, eta: u, ok,
+        };
+      }
+    }
+  }
+  return best;
+}
+
+/**
  * Grunnkodene motoren kan sette på ETT SLS-felt (spec §3.5, §11) — IKKE
  * varselkoder. To kilder samlet i én tabell: `state_reason`/`crack_reason`
  * (spec §1.2/§3.5, ni koder) og `w_max_reason`/`crack.ok_reason` (spec §2.1/
@@ -1139,6 +1430,17 @@ export const SLS_REASON_CODES = Object.freeze([
   'no_crack_width_limit',
   'sigma_c_char_not_required',
   'sigma_s_limit_characteristic_only',
+  // Kryp-avvisningene (materials.js:creepCoefficient). De er FOEDT I JS, ikke i
+  // motoren, men de havner i nøyaktig de samme feltene og leses av den samme
+  // `slsReasonText()` — så de hører hjemme i den samme tabellen. Uten dem skrev
+  // skjermen «Unspecified reason from the calculation engine (code: …)», som er
+  // galt to ganger: koden kom ikke fra motoren, og den ga ingen grunn.
+  'creep_invalid_fck',
+  'creep_invalid_h0',
+  'creep_invalid_rh',
+  'creep_invalid_t0',
+  'creep_invalid_cement',
+  'creep_life_not_after_loading',
 ]);
 
 export const SLS_REASON_TEXT = Object.freeze({
@@ -1185,6 +1487,25 @@ export const SLS_REASON_TEXT = Object.freeze({
     'EC2 7.2(5) limits the reinforcement stress under the characteristic combination, ' +
     'not the quasi-permanent one. The stress is reported here because it is what drives ' +
     'the crack width in EC2 eq. 7.9 — but no limit is imposed on it for this row.',
+  creep_invalid_fck:
+    'The creep coefficient needs a concrete strength to start from, and f_ck is not a ' +
+    'positive number.',
+  creep_invalid_h0:
+    'The notional size h0 = 2·Ac/u could not be derived from the geometry, and no ' +
+    'manual value was entered. Check the width and height of the section.',
+  creep_invalid_rh:
+    'The relative humidity must lie strictly between 0 and 100 %. At 100 % the ' +
+    'humidity term of EC2 Annex B vanishes, and concrete under water creeps by a ' +
+    'different model than the one in that annex.',
+  creep_invalid_t0:
+    'The age of the concrete at loading must be a positive number of days.',
+  creep_invalid_cement:
+    'The cement class must be S, N or R — EC2 (B.9) has an exponent for each of them ' +
+    'and for nothing else.',
+  creep_life_not_after_loading:
+    'The service life must be LATER than the age at loading. At t = t0 the creep ' +
+    'development factor is zero, so the answer would be a quasi-permanent check with ' +
+    'no creep at all — almost always a typo rather than an intention.',
 });
 
 /**
@@ -1240,7 +1561,21 @@ export function slsHeadlineCrack(result) {
   for (const row of rows) {
     const wk = toNum(row?.crack?.w_k);
     if (wk === null) continue;
-    if (worst === null || wk > worst.w_k) worst = { w_k: wk, w_max: toNum(row.crack.w_max) };
+    // `utilisation` er med fordi grensetilstandslinja trenger den, og fordi den
+    // er MOTORENS egen -- ikke `w_k/w_max` regnet om igjen her. To steder som
+    // deler samme brøk er én for mye.
+    if (worst === null || wk > worst.w_k) {
+      // `id`/`name` er med fordi grensetilstandslinja skal kunne si HVILKEN rad
+      // som gav den verste rissvidden. Uten det er envelopen usynlig: leseren
+      // ser ett tall og kan ikke vite at det kom fra en annen rad enn den over.
+      worst = {
+        id: row.id ?? null,
+        name: row.name || row.id || '',
+        w_k: wk,
+        w_max: toNum(row.crack.w_max),
+        utilisation: toNum(row.crack.utilisation),
+      };
+    }
   }
   return worst;
 }

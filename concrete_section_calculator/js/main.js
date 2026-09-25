@@ -4,7 +4,7 @@
  * HVA DENNE FILA GJØR, OG HVA DEN IKKE GJØR
  * Den kobler sammen de fire delene — tilstand (`store.js`), motorhåndtak
  * (`solver-client.js`), skjerm (`ui.js`) og rapport (`report.js`) — og eier de
- * tre beslutningene ingen av dem kan ta alene:
+ * fire beslutningene ingen av dem kan ta alene:
  *
  * 1. **Når motoren varmes opp.** Ved sidelast, parallelt med at brukeren fyller
  *    ut skjemaet (plan §3.9). Det er verdt mer enn alle byte-optimaliseringene
@@ -17,6 +17,15 @@
  * 3. **At `{ok: false}` er et RESULTAT.** En modellfeil som `axial_out_of_range`
  *    legges i `state.result` og tegnes i resultatseksjonen. Bare worker- og
  *    kjøretidssvikt blir en feilboks.
+ * 4. **At adressefeltet kan bære en hel tilstand — og hvor lenge.** En `#d1.…`
+ *    leses ved oppstart og lastes gjennom NØYAKTIG samme dør som «Load JSON»
+ *    (`ui.applyDocument`, med `revealNonDefaults()`). Hashen blir så STÅENDE —
+ *    en delt lenke skal tåle F5 — og fjernes av ÉN lytter ved FØRSTE endring
+ *    brukeren gjør (`ui.armHashClear()`), fordi adressefeltet aldri skal
+ *    beskrive noe annet enn skjermen.
+ *    `store.js` kan ikke ta denne beslutningen (den kjenner ikke `location`),
+ *    og `ui.js` kan ikke ta den alene (den vet ikke at en oppstart er noe annet
+ *    enn et knappetrykk). Derfor står den her, hos den som eier oppstarten.
  *
  * Den regner INGENTING selv. Skulle det dukke opp et tall her, er det en feil:
  * da finnes det to steder å regne det samme, og det ene kommer til å sakke
@@ -30,6 +39,7 @@ import { buildPayload } from './payload.js';
 import { validate } from './section.js';
 import { createSolverClient, shouldDeferWarmup } from './solver-client.js';
 import { createUI } from './ui.js';
+import { LINK_PREFIX, fromLink } from './share-link.js';
 import { buildReportHtml, clearPrintStage, OVERLAY_SELECTOR, stageReportForPrint } from './report.js';
 
 /**
@@ -209,11 +219,49 @@ export function startApp() {
     host.innerHTML = buildReportHtml(state, state.result);
   }
 
+  /**
+   * FOKUS SKAL INN I RAPPORTEN, OG BLI DER.
+   *
+   * MAALT foer dette: overlegget legger seg over hele sida, men fokus blir
+   * liggende igjen bak det. Seks tab-trykk gikk gjennom skjemaet UNDER
+   * overlegget foer «Print / PDF» kom -- og fortsetter man, vandrer man ut av
+   * overlegget igjen og videre gjennom resten av sida, som man verken ser eller
+   * kan bruke. (`Escape` lukket derimot allerede; den virket.)
+   *
+   * Dette er ikke bare et tastaturhensyn. `aria-modal` i markupen er det som
+   * faar en skjermleser til aa slutte aa lese sida bak -- uten den finnes hele
+   * skjemaet fortsatt, usynlig og uklikkbart, men fullt lesbart.
+   *
+   * INGEN `tabindex` (forbudt i modulen, `tests/form-structure.test.mjs`):
+   * fella er en lytter som SNUR ved endene, ikke en omskriving av tab-ringen.
+   * Lytteren henges paa ÉN gang, ved oppstart, og overlever at innholdet
+   * bygges paa nytt -- den sitter paa overlegget, ikke paa knappene i det.
+   */
+  function focusableInReport(overlay) {
+    return [...overlay.querySelectorAll('button, [href], input, select, textarea, summary')]
+      .filter((el) => !el.disabled && el.offsetParent !== null);
+  }
+
+  function trapReportFocus(overlay) {
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab' || overlay.hidden) return;
+      const items = focusableInReport(overlay);
+      if (!items.length) return;
+      const edge = e.shiftKey ? items[0] : items[items.length - 1];
+      if (document.activeElement !== edge) return;
+      e.preventDefault();
+      (e.shiftKey ? items[items.length - 1] : items[0]).focus();
+    });
+  }
+
   function openReport() {
     const overlay = document.getElementById('report-overlay');
     if (!overlay) return;
     fillReport();
     overlay.hidden = false;
+    // Foerst NAA finnes innholdet, og da kan fokus settes i det.
+    const first = focusableInReport(overlay)[0];
+    if (first) first.focus();
   }
 
   function closeReport() {
@@ -222,6 +270,8 @@ export function startApp() {
   }
 
   function setupReport() {
+    const overlayEl = document.getElementById('report-overlay');
+    if (overlayEl) trapReportFocus(overlayEl);
     const close = document.getElementById('report-close');
     if (close) close.onclick = closeReport;
     const print = document.getElementById('report-print');
@@ -249,11 +299,46 @@ export function startApp() {
   }
 
   /* ---------------------------------------------------------------- *
+   * Delbar lenke — oppstart (beslutning 4 i filhodet)
+   * ---------------------------------------------------------------- */
+
+  /**
+   * En `#d1.…` i adressa → tilstanden, gjennom `ui.applyDocument`.
+   *
+   * LESES FØR `ui.mount()`, MEN BRUKES ETTER. Fragmentet plukkes ut med én
+   * gang, mens vi vet at ingenting annet har rørt adressa; selve utpakkingen
+   * er asynkron (`DecompressionStream`), og å gjøre `startApp()` asynkron for
+   * den skyld ville tvunget `index.html` til å `await`-e før `MODULE_CONFIG` og
+   * `window.ModuleAPI` fantes — hele arbeidsflyt-API-et hadde vært borte i det
+   * vinduet. Prisen er at standardsnittet kan stå på skjermen i én ramme før
+   * det delte snittet tar over. MÅLT: utpakkingen tar under et millisekund.
+   *
+   * BARE med riktig prefiks. `#s-geo` fra seksjonsnavigasjonen er ikke en
+   * lenke, og skal verken laste noe eller varsle om noe — derfor spørres det om
+   * prefikset HER, og ikke inne i `fromLink`, som svarer
+   * `link_format_unsupported` på alt den ikke kjenner igjen.
+   */
+  const linkFragment = window.location.hash.slice(1);
+  const hasSharedLink = linkFragment.startsWith(LINK_PREFIX);
+
+  async function loadSharedLink() {
+    // `fromLink` kaster aldri: en lenke som ble kappet i et e-postfelt kommer
+    // tilbake som en note i `#doc-load-notes`, i samme liste som en feilvalgt
+    // fil — ikke som et unntak i konsollen.
+    ui.applyDocument(await fromLink(linkFragment));
+    // Hashen BLIR STÅENDE. Mottakeren skal kunne trykke F5, eller bokmerke
+    // lenka, og få det samme snittet tilbake. Den forsvinner først når han
+    // endrer noe — da beskriver den ikke lenger skjermen.
+    ui.armHashClear();
+  }
+
+  /* ---------------------------------------------------------------- *
    * Oppstart
    * ---------------------------------------------------------------- */
 
   ui.mount();
   setupReport();
+  if (hasSharedLink) loadSharedLink();
 
   if (shouldDeferWarmup()) {
     // §3.9 krav 2. Motoren lastes først ved første «Beregn» — `client.run()`

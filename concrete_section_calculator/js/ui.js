@@ -64,8 +64,9 @@
  * går derfor gjennom `invalidate()`, uten unntak.
  */
 
-import { BAR_DIAMETERS, CONCRETE_GRADES, CONCRETE_LAWS, EXPOSURE_CLASSES, STEEL_GRADES, STEEL_LAWS,
-  derivedMaterials, matchConcreteGrade, matchSteelGrade, slsLimits } from './materials.js';
+import { BAR_DIAMETERS, CEMENT_CLASSES, CONCRETE_GRADES, CONCRETE_LAWS, EXPOSURE_CLASSES,
+  STEEL_GRADES, STEEL_LAWS, derivedMaterials, matchConcreteGrade, matchSteelGrade,
+  notionalSize, resolveCreep, slsLimits } from './materials.js';
 import { bindNumericInput, evaluate } from './numeric-input.js';
 import { aswPerSpacing, hasSlsCombo, layerArea, layerBarCount, layerDepth, recomputeAutoDc,
   stackedDc, suggestedDc, totalArea, totalAswPerSpacing } from './rebar.js';
@@ -78,8 +79,9 @@ import { attachHints } from './hints.js';
 import { isCancellable, phaseLabel, TOTAL_DOWNLOAD_BYTES } from './solver-client.js';
 import { RUN_ALL, defaultState } from './store.js';
 import { fromDocument, toDocument } from './serialize.js';
+import { toLink } from './share-link.js';
 import {
-  DASH, analysisBlock, analysisLabel, checkRows, checkText, comboLabel, compressionEdgeLabel, describeWarnings,
+  DASH, analysisBlock, analysisLabel, checkRows, checkText, comboLabel, compressionEdgeLabel, describeWarnings, fmtInput, limitStateRows,
   designMoment, directionFromTheta, directionLabel, failureModeLabel, failureModeNote, failureState,
   fmtArea,
   fmtCurvature, fmtForceKN, fmtLength, fmtMomentKNm, fmtNumber, fmtPercent, fmtRatio,
@@ -88,6 +90,9 @@ import {
   shearHeadlineUtilisation, toNum, utilisationStatus, HEADLINE_UTILISATION_LABEL,
   RADIAL_UTILISATION_LABEL, SHEAR_UTILISATION_LABEL,
   slsCheckRows, slsHeadlineCrack, slsReasonText, slsRowTypeLabel, slsRowUtilisation,
+  allCombinations,
+  withResultView,
+  RESULT_VIEW_ENVELOPE,
 } from './results.js';
 
 /* ================================================================== *
@@ -187,6 +192,18 @@ export const HINTS = {
     + 'derived. With several rows the largest diameter governs the cover — the conservative '
     + 'reading, since the bar nearest the surface is the one that decides.',
 
+  // Kryptallet er den ene SLS-inndataen som ikke er et VALG, men en
+  // beregning — med fire inndata ingen husker utenat. Teksten sier hvilken vei
+  // hver av dem drar, for det er det man trenger når man justerer.
+  creep:
+    'The creep coefficient is derived from EC2 Annex B: relative humidity, the age of the '
+    + 'concrete when the load is applied, the service life, the cement class, and the notional '
+    + 'size h<sub>0</sub> = 2A<sub>c</sub>/u from the geometry. Drier air, earlier loading and a '
+    + 'thinner member all increase it. Creep enters the quasi-permanent rows only, through '
+    + 'E<sub>c,eff</sub> = E<sub>cm</sub>/(1 + φ<sub>ef</sub>): it lowers the neutral axis, '
+    + 'raises the steel stress and widens the crack. Enter your own φ<sub>ef</sub> to override '
+    + 'the derivation — a project specification often fixes it.',
+
   // Bruksgrenseboksen har ingen brødtekst i det hele tatt — hele forklaringen
   // av hva klassen gjør, og hva den IKKE gjør, står her. Poenget den må bære:
   // klassen setter én ting, rissviddegrensen, og et tomt valg er et ærlig
@@ -197,6 +214,16 @@ export const HINTS = {
     + 'XD, XF and XS classes. With no class selected both are left unanswered rather than assumed. '
     + 'Serviceability is only assessed for load combinations marked characteristic or '
     + 'quasi-permanent: stresses for the first, stresses and crack width for the second.',
+
+  // Haken er den ENE inngangen brukeren har til en forutsetning i stedet for en
+  // verdi, og teksten må derfor si både hva den gjør OG når man vil ha den.
+  'sls-assume-cracked':
+    'Normally the crack width is only computed when the quasi-permanent load takes the '
+    + 'section past its cracking moment. Tick this to compute w<sub>k</sub> as if the '
+    + 'section were cracked (state II) even when it is not — the case for cracking from '
+    + 'shrinkage, restraint or temperature, none of which M<sub>Ed</sub> carries. The '
+    + 'assumption is conservative, and the result is labelled as assumed so it is never '
+    + 'read as the computed state.',
 
   // De tre siste sto som `<p>` nederst i hver sin avdekkingsboks, altså bak et
   // klikk allerede — men de gjorde boksen lengre hver eneste gang den var åpen.
@@ -492,6 +519,101 @@ function crackPair(crack, wkDecimals = 2, wmaxDecimals = 2) {
   return crack.w_max === null || crack.w_max === undefined
     ? wk
     : `${wk}/${fmtNumber(crack.w_max, wmaxDecimals)}`;
+}
+
+/**
+ * VELGEREN FOR HVA SEKSJON 6 VISER: envelopen, eller én lastkombinasjon.
+ *
+ * Envelopen er standardsvaret fordi den svarer på spørsmålet man har FØRST —
+ * holder snittet i det hele tatt — og fordi den ser på alle radene samtidig, én
+ * for hver grensetilstand. MÅLT med tre kombinasjoner: bøyningen kom fra C2
+ * (η 0,92) og skjæret fra C3 (η 0,87), mens den aktive raden var C1 (η 0,29).
+ * Uten en envelope måtte man klikket seg gjennom hver rad for å finne det ut.
+ *
+ * Så kommer det andre spørsmålet — hva skjer i AKKURAT denne lasten — og det er
+ * det knappene er til for.
+ *
+ * VISES BARE MED MER ENN ÉN RAD. Med én kombinasjon er envelopen den raden, og
+ * to knapper som gir nøyaktig samme skjermbilde er en beslutning brukeren ikke
+ * har.
+ *
+ * Merkene er de SAMME `.chip`-knappene som lastkombinasjonstabellen bruker, med
+ * samme `data-on`. En ny knappestil her ville sagt at dette er en annen slags
+ * valg enn det i seksjon 4, og det er det ikke.
+ */
+function resultViewChips(result, view) {
+  const combos = allCombinations(result);
+  if (combos.length <= 1) return '';
+  const chip = (id, label, title) => `<button type="button" class="chip !py-0.5 !px-2 !text-[11px] shrink-0"
+      data-result-view="${esc(id)}" data-on="${String(view === id)}" title="${esc(title)}">${esc(label)}</button>`;
+  return `<div class="flex flex-wrap items-center gap-1.5 mb-3 text-[11px]">
+    <span class="opacity-60 pr-1">Showing</span>
+    ${chip(RESULT_VIEW_ENVELOPE, 'Envelope', `Worst of ${combos.length} load combinations, one per limit state`)}
+    ${combos.map((c) => chip(c.id, c.id, c.name || c.id)).join('')}
+  </div>`;
+}
+
+/**
+ * Grensetilstandene som ble kontrollert, én linje hver.
+ *
+ * Toppkortet viste før alt om hverandre i én brytende rad — η, M_Rd, bruddform,
+ * skjærmerke, status — mens rissvidden lå 1 285 px lenger ned i et eget
+ * kapittel. Et snitt har flere grenser, og de er SIDESTILTE: bøyning, skjær,
+ * rissvidde, spenning. Hver er ett spørsmål med ett svar, og da skal de stå som
+ * like linjer under hverandre, ikke som fire ulike ting.
+ *
+ * DEN SOM IKKE GJELDER, VISES IKKE — `limitStateRows()` tar det valget, og den
+ * er ÉN kilde: rapporten skal kunne lese den samme lista.
+ */
+function limitStateHtml(result, view) {
+  const rows = limitStateRows(result);
+  if (!rows.length) return '';
+  // Radnavnet bak linja opplyser bare i ENVELOPE-visning, der linjene kan komme
+  // fra ulike rader. Har man valgt én kombinasjon, står den allerede uthevet i
+  // velgeren over, og «C2» bak hver linje gjentar et valg brukeren nettopp tok.
+  //
+  // Kriteriet er VISNINGEN, ikke om `governing` og `shear_governing` er like:
+  // i envelopen kan én rad godt styre begge, og da skal navnet fortsatt stå —
+  // det er nettopp da det er verdt å vite at det er samme last.
+  const flere = view === RESULT_VIEW_ENVELOPE && allCombinations(result).length > 1;
+  return `<div class="mt-3 border-t border-slate-100/10 pt-2 space-y-1">${rows.map((r) => {
+    const st = utilisationStatus(r.eta);
+    // DELER IKKE FØR NULLSJEKKEN. `null / 1` er `0`, og `fmtNumber(0)` gir
+    // «0.000» — en manglende grense ville stått som en grense på null, altså et
+    // krav ingen kan oppfylle. `fmtNumber(null)` gir tankestreken.
+    //
+    // Det er ikke en teoretisk sak: XD3 har ingen anbefalt rissviddegrense i
+    // tabellen modulen bruker, så `w_max` ER null der samtidig som `w_k` er
+    // regnet. MÅLT på XD3-plata: w_k = 0,13886 mm.
+    const side = (label, value, decimals) => {
+      const n = value === null || value === undefined ? null : value / r.scale;
+      return `${esc(label)} ${fmtNumber(n, decimals)}`;
+    };
+    const left = side(r.left, r.leftValue, r.decimals);
+    // Grensa har sin EGEN presisjon: `w_max` er 0,30 og ikke 0,300 — den er en
+    // gitt verdi, ikke et regnet tall.
+    const right = `${side(r.right, r.rightValue, r.rightDecimals ?? r.decimals)} ${esc(r.unit)}`;
+    const mark = r.ok === true ? '✓' : r.ok === false ? '✕' : '–';
+    // HVILKEN RAD GAV TALLET. Linjene er en envelope, og per grensetilstand hver
+    // for seg: målt med tre kombinasjoner kom bøyningslinja fra C2 og
+    // skjærlinja fra C3, mens den aktive var C1. Uten navnet ser leseren fire
+    // tall uten å vite at de kommer fra ulike laster — og vet heller ikke
+    // hvilken rad hen skal gå tilbake til for å se nærmere på det verste.
+    //
+    // Vises BARE når det finnes mer enn én rad å velge mellom. Med én
+    // kombinasjon er «C1» bak hver linje ren støy: det finnes ikke noe annet
+    // sted tallet kunne kommet fra.
+    const tag = flere && r.combo
+      ? `<span class="shrink-0 pl-1 text-[11px] opacity-50" title="${esc(r.combo.name)}">${esc(r.combo.id)}</span>`
+      : '';
+    return `<div class="flex items-baseline gap-x-3 text-[12px] num">
+      <span class="w-[9rem] shrink-0 opacity-80">${esc(r.label)}</span>
+      <span class="opacity-70">${left} / ${right}</span>
+      <span class="ml-auto pl-2 shrink-0 font-semibold ${esc(st.text || '')}">η ${fmtRatio(r.eta, 2)}</span>
+      <span class="w-[1.2rem] shrink-0 text-right">${mark}</span>
+      ${tag}
+    </div>`;
+  }).join('')}</div>`;
 }
 
 /**
@@ -868,6 +990,14 @@ export const DISCLOSURE_BOXES = [
     derived: ['steel.k', 'steel.epsuk'],
   },
   // Hele `shear`: bøylerader, trykkstavvinkel og z-faktor ligger i samme boks.
+  // Krypet er en BETONGEGENSKAP over tid, ikke en bruksgrenseinnstilling, og
+  // står derfor i seksjon 1 — tilgjengelig FØR det finnes en tilnærmet
+  // permanent lastkombinasjon. `phi_ef`/`h0_override` er med i stiene, men som
+  // `derived`: de er tomme som standard og skal ikke regnes som «endret» før
+  // noen faktisk har skrevet et tall. Uten det ville boksen åpnet seg av at
+  // brukeren tømte et felt.
+  { id: 'adv-creep', paths: ['sls.RH', 'sls.t0', 'sls.t_life', 'sls.cement',
+    'sls.phi_ef', 'sls.h0_override'] },
   { id: 'adv-shear', paths: ['shear'] },
   { id: 'adv-spacing', paths: ['cover_side', 'spacing'] },
 ];
@@ -1435,24 +1565,50 @@ export function createUI(deps) {
        verdi som ikke gir mening (negativ `φ_ef`, en klasse som ikke finnes).
        Feltene KASTER resultatet som alle andre — en endret rissviddegrense er
        like mye en ny beregning som en endret `f_ck`. */
-    bindField('#i-phi-ef', (s) => s.sls.phi_ef, (v) => store.patch('sls', { phi_ef: v }), { min: 0 });
-    // `w_max`-overstyringen er det ENESTE SLS-feltet som kan stå TOMT, og det
-    // tomme er et ekte valg: «bruk klassens verdi». `bindField` legger tilbake
-    // den gjeldende verdien når uttrykket ikke kan leses — derfor kan ikke det
-    // tomme feltet gå gjennom den, og lytteren er skrevet ut her.
-    const wmaxEl = $('#i-wmax');
-    if (wmaxEl) {
-      wmaxEl.addEventListener('input', () => {
-        const raw = wmaxEl.value.trim();
+    // Krypinndataene (EC2 tillegg B). Levetiden SKRIVES i år og LAGRES i døgn:
+    // tillegg B regner i døgn, brukeren tenker i år. Omregningen står to steder
+    // og bare to — her inn, og i `syncSlsBox` ut.
+    bindField('#i-rh', (s) => s.sls.RH, (v) => store.patch('sls', { RH: v }), { min: 1, max: 99 });
+    bindField('#i-t0', (s) => s.sls.t0, (v) => store.patch('sls', { t0: v }), { min: 0.5 });
+    // INGEN OMREGNING. Feltet er i doegn, som tillegg B, og `bindNumericInput`
+    // tar regnestykket: «50*365» blir 18250. Omregningen som sto her gjorde at
+    // det TRYKTE tallet ikke var det som ble REGNET — 1,5 år ble vist som «2 yr»
+    // mens phi ble regnet av 547,5 døgn.
+    bindField('#i-tlife', (s) => s.sls.t_life,
+      (v) => store.patch('sls', { t_life: v }), { min: 1 });
+
+    // TRE felt kan stå TOMME, og det tomme er et ekte valg hos alle tre:
+    // «bruk den avledede verdien». `bindField` legger tilbake den gjeldende
+    // verdien når uttrykket ikke kan leses, og ville dermed gjort dem umulige
+    // å tømme. Derfor én egen liten binder, og ikke tre håndskrevne lyttere:
+    // regelen er den samme, og da skal den stå ett sted.
+    const optional = (sel, key) => {
+      const el = $(sel);
+      if (!el) return;
+      el.addEventListener('input', () => {
+        const raw = el.value.trim();
         if (raw === '') {
-          store.patch('sls', { w_max_override: null });
-          invalidate();
-          render();
-          return;
+          store.patch('sls', { [key]: null });
+        } else {
+          const v = evaluate(raw);
+          if (v === null || !(v > 0)) return;
+          store.patch('sls', { [key]: v });
         }
-        const v = evaluate(raw);
-        if (v === null || !(v > 0)) return;
-        store.patch('sls', { w_max_override: v });
+        invalidate();
+        render();
+      });
+    };
+    optional('#i-phi-ef', 'phi_ef');
+    optional('#i-h0', 'h0_override');
+    optional('#i-wmax', 'w_max_override');
+
+    const cemSel = $('#i-cement');
+    if (cemSel) {
+      // `<option>`-ene fylles ÉN gang — samme felle som de andre nedtrekkene.
+      cemSel.innerHTML = CEMENT_CLASSES
+        .map((c) => `<option value="${esc(c.value)}">${esc(c.label)}</option>`).join('');
+      cemSel.addEventListener('change', () => {
+        store.patch('sls', { cement: cemSel.value });
         invalidate();
         render();
       });
@@ -1463,6 +1619,18 @@ export function createUI(deps) {
       (v) => store.patch('sls', { sigma_c_qp_factor: v }), { min: 0.0001 });
     bindField('#i-sls-k3', (s) => s.sls.sigma_s_char_factor,
       (v) => store.patch('sls', { sigma_s_char_factor: v }), { min: 0.0001 });
+
+    const assume = $('#i-assume-cracked');
+    if (assume) {
+      // KASTER resultatet, i motsetning til `setResultView`. Dette er en
+      // FORUTSETNING for beregningen, ikke en visning av den: motoren må løse
+      // snittet i stadium II på nytt. Se `invalidate()` for doktrinen.
+      assume.addEventListener('change', () => {
+        store.patch('sls', { assume_cracked: assume.checked });
+        invalidate();
+        render();
+      });
+    }
 
     const expSel = $('#i-exposure');
     if (expSel) {
@@ -1549,10 +1717,12 @@ export function createUI(deps) {
   /** Feltverdiene skrives bare når feltet IKKE har fokus — ellers hopper markøren. */
   function syncFields() {
     const s = store.getState();
+    // `fmtInput` og ikke `fmtNumber`: et felt brukeren selv skriver i skal ikke
+    // vise desimaler ingen har tastet. Argumentet er et TAK — 12,5 blir stående.
     const put = (sel, value, decimals = 3) => {
       const el = $(sel);
       if (!el || el === document.activeElement) return;
-      el.value = fmtNumber(value, decimals);
+      el.value = fmtInput(value, decimals);
     };
     put('#i-b', sectionWidth(s), 1);
     put('#i-h', s.geometry.h, 1);
@@ -1610,12 +1780,82 @@ export function createUI(deps) {
     const side = $('#w-cover-side');
     if (side) side.style.display = isSlab ? 'none' : '';
 
+    syncCreepBox(s);
     syncSlsBox(s);
 
     const lawC = $('#i-law-c');
     if (lawC) lawC.value = s.concrete.law;
     const lawS = $('#i-law-s');
     if (lawS) lawS.value = s.steel.law;
+  }
+
+  /** Merker et overstyringsfelt som overstyrt. ÉN regel, tre felt. */
+  function markOverride(sel, value) {
+    const el = $(sel);
+    if (el) el.classList.toggle('is-override', value !== null && value !== undefined && value !== '');
+  }
+
+  /**
+   * Krypboksen i materialseksjonen.
+   *
+   * KJØRES UBETINGET, i motsetning til `syncSlsBox`. Krypet avhenger av
+   * betongen, av tverrsnittets tykkelse og av miljøet — ikke av hvilke
+   * lastkombinasjoner som er skrevet inn. Lå den bak bruksgrenseboksen, måtte
+   * man først lage en tilnærmet permanent rad for å kunne sette den, og så
+   * tilbake igjen for å se hva den gjorde. Nå står den der den hører hjemme,
+   * og verdiene er satt før de trengs.
+   *
+   * `resolveCreep` er den SAMME funksjonen `payload.js` sender tallet fra, så
+   * skjermen kan ikke vise ett kryptall mens motoren regner med et annet.
+   * Kilden står ved siden av tallet, slik `w_max` gjør: et avledet tall uten
+   * opphav er et tall man ikke tør stole på.
+   */
+  function syncCreepBox(s) {
+    const put = (sel, value, decimals) => {
+      const el = $(sel);
+      if (!el || el === document.activeElement) return;
+      el.value = value === null || value === undefined ? '' : fmtInput(value, decimals);
+    };
+    put('#i-rh', s.sls.RH, 0);
+    put('#i-t0', s.sls.t0, 0);
+    // Et felt med et tall i er en OVERSTYRING av den avledede verdien ved siden
+    // av. Rammen sier det på ett blikk; uten den må man lese to celler og
+    // sammenligne for å vite hvilken som gjelder.
+    markOverride('#i-h0', s.sls.h0_override);
+    markOverride('#i-phi-ef', s.sls.phi_ef);
+    // DESIMALEN BARE NAAR DEN FINNES. «365/2» gir 182,5 døgn, og `fmtNumber(…, 0)`
+    // trykte 183 — altså igjen et vist tall som ikke var det regnede, bare med en
+    // mindre feil enn årsomregningen som sto her før. Et helt antall døgn skal
+    // fortsatt stå uten «,0».
+    put('#i-tlife', s.sls.t_life, Number.isInteger(s.sls.t_life) ? 0 : 1);
+    put('#i-h0', s.sls.h0_override, 0);
+    put('#i-phi-ef', s.sls.phi_ef, 2);
+    const cemSel = $('#i-cement');
+    if (cemSel && cemSel !== document.activeElement) cemSel.value = s.sls.cement;
+
+    const text = (sel, value) => {
+      const el = $(sel);
+      if (el) el.textContent = value;
+    };
+    const creep = resolveCreep(s);
+    const h0 = s.sls.h0_override || notionalSize(s);
+    // «h₀ = 200», ikke bare «200». Et avledet tall som står alene under en
+    // etikett tvinger leseren til å knytte de to sammen selv — og i en rad med
+    // fire felt ved siden av hverandre er det ett ledd for mye. Størrelsen og
+    // verdien hører sammen, og da skal de stå sammen.
+    text('#sls-h0', Number.isFinite(h0) ? `h₀ = ${fmtNumber(h0, 0)} mm` : DASH);
+    text('#sls-h0-src', s.sls.h0_override ? 'manual override'
+      : s.sectionType === 'slab' ? 'drying top and bottom' : 'all four faces');
+    text('#sls-phi', creep.phi === null ? DASH : `φ = ${fmtNumber(creep.phi, 2)}`);
+    text('#sls-phi-src', creep.source === 'manual' ? 'manual override'
+      : creep.source === 'derived' ? 'EC2 Annex B'
+      : slsReasonText(creep.reason));
+    // Aarene er AVLEDET av doegnene og staar rett under feltet — samme moenster
+    // som h_0 og phi: tallet du skriver, og tallet det betyr.
+    text('#tlife-years', `= ${fmtNumber(s.sls.t_life / 365, 1)} years`);
+    text('#creep-summary', `φ = ${creep.phi === null ? DASH : fmtNumber(creep.phi, 2)}`
+      + `${creep.source === 'manual' ? ' (manual)' : ''} · RH ${fmtNumber(s.sls.RH, 0)} % · `
+      + `t₀ ${fmtNumber(s.sls.t0, 0)} d · t ${fmtNumber(s.sls.t_life, 0)} d`);
   }
 
   /**
@@ -1647,10 +1887,14 @@ export function createUI(deps) {
     const put = (sel, value, decimals) => {
       const el = $(sel);
       if (!el || el === document.activeElement) return;
-      el.value = value === null || value === undefined ? '' : fmtNumber(value, decimals);
+      el.value = value === null || value === undefined ? '' : fmtInput(value, decimals);
     };
-    put('#i-phi-ef', s.sls.phi_ef, 2);
+    const assumeBox = $('#i-assume-cracked');
+    if (assumeBox && assumeBox !== document.activeElement) {
+      assumeBox.checked = Boolean(s.sls.assume_cracked);
+    }
     put('#i-wmax', s.sls.w_max_override, 2);
+    markOverride('#i-wmax', s.sls.w_max_override);
     put('#i-sls-k1', s.sls.sigma_c_char_factor, 2);
     put('#i-sls-k2', s.sls.sigma_c_qp_factor, 2);
     put('#i-sls-k3', s.sls.sigma_s_char_factor, 2);
@@ -1676,7 +1920,9 @@ export function createUI(deps) {
       : 'select a class, or set a value below');
     text('#sls-summary', `${s.sls.exposure_class || 'no class'} · w_max `
       + `${limits.w_max === null ? DASH : fmtNumber(limits.w_max, 2)} mm`);
-    text('#adv-sls-summary', `φef ${fmtNumber(s.sls.phi_ef, 2)} · `
+    // Folden inneholder nå bare grenser og overstyringer — krypet har sin egen
+    // boks i seksjon 1. Sammendraget sier derfor det som står i DENNE folden.
+    text('#adv-sls-summary', `${limits.w_max_source === 'manual' ? 'w_max manual · ' : ''}`
       + `${fmtNumber(s.sls.sigma_c_char_factor, 2)}/`
       + `${fmtNumber(s.sls.sigma_c_qp_factor, 2)}/`
       + `${fmtNumber(s.sls.sigma_s_char_factor, 2)}`);
@@ -1784,13 +2030,13 @@ export function createUI(deps) {
           <span class="field-label">Diameter Ø [mm]</span>
           <div class="flex flex-wrap items-center gap-1.5">
             ${BAR_DIAMETERS.map((d) => `<button type="button" class="chip !text-[11px]" data-dia="${esc(layer.id)}" data-v="${d}" data-on="${String(Number(layer.dia) === d)}">${d}</button>`).join('')}
-            <input type="text" class="!w-20 ml-1" data-f="dia" data-l="${esc(layer.id)}" value="${fmtNumber(layer.dia, 2)}" aria-label="Diameter">
+            <input type="text" inputmode="text" class="!w-20 ml-1" data-f="dia" data-l="${esc(layer.id)}" value="${fmtInput(layer.dia, 2)}" aria-label="Diameter">
           </div>
         </div>
         <div class="grid grid-cols-2 gap-3 max-w-md">
           ${isSpacing
-            ? `<label><span class="field-label">Spacing c/c [mm]</span><input type="text" data-f="spacing" data-l="${esc(layer.id)}" value="${fmtNumber(layer.spacing, 1)}"></label>`
-            : `<label><span class="field-label">Number of bars</span><input type="text" data-f="count" data-l="${esc(layer.id)}" value="${fmtNumber(layer.count, 0)}"></label>`}
+            ? `<label><span class="field-label">Spacing c/c [mm]</span><input type="text" inputmode="text" data-f="spacing" data-l="${esc(layer.id)}" value="${fmtInput(layer.spacing, 1)}"></label>`
+            : `<label><span class="field-label">Number of bars</span><input type="text" inputmode="numeric" data-f="count" data-l="${esc(layer.id)}" value="${fmtInput(layer.count, 0)}"></label>`}
           <div>
             <span class="field-label">Edge d<sub>c</sub> is measured from</span>
             <div class="seg w-full" data-edgeseg="${esc(layer.id)}">
@@ -1804,7 +2050,7 @@ export function createUI(deps) {
           <div class="flex items-center gap-2">
             <button type="button" class="chip shrink-0" data-lock="${esc(layer.id)}"
                     title="${locked ? 'Unlock to type d_c yourself' : 'Lock to the EC2 8.2 derived value'}">${locked ? '🔒 derived' : '🔓 custom value'}</button>
-            <input type="text" data-f="dc" data-l="${esc(layer.id)}" value="${fmtNumber(layer.dc, 2)}"
+            <input type="text" inputmode="text" data-f="dc" data-l="${esc(layer.id)}" value="${fmtInput(layer.dc, 2)}"
                    ${locked ? 'readonly class="opacity-60"' : ''} aria-label="d_c">
           </div>
           <p class="text-[11px] text-slate-500 mt-1 num">
@@ -2000,23 +2246,23 @@ export function createUI(deps) {
           <label class="min-w-0">
             <span class="field-label">Ø</span>
             <span class="relative flex items-center">
-              <input type="text" class="!w-full min-w-0 !pr-5" data-sf="dia" data-s="${esc(st.id)}" value="${fmtNumber(st.dia, 1)}" aria-label="Stirrup diameter [mm]">
+              <input type="text" inputmode="text" class="!w-full min-w-0 !pr-5" data-sf="dia" data-s="${esc(st.id)}" value="${fmtInput(st.dia, 1)}" aria-label="Stirrup diameter [mm]">
               <button type="button" class="hint absolute right-0.5 top-1/2 -translate-y-1/2" data-hint="stirrup-dia" aria-expanded="false"
                       aria-label="About the stirrup diameter">?</button>
             </span>
           </label>
           <label class="min-w-0">
             <span class="field-label">c/c</span>
-            <input type="text" class="!w-full min-w-0" data-sf="spacing" data-s="${esc(st.id)}" value="${fmtNumber(st.spacing, 1)}" aria-label="Stirrup spacing s [mm]">
+            <input type="text" inputmode="text" class="!w-full min-w-0" data-sf="spacing" data-s="${esc(st.id)}" value="${fmtInput(st.spacing, 1)}" aria-label="Stirrup spacing s [mm]">
           </label>
           <label class="min-w-0"
                  title="Number of legs crossing the shear plane — all of them count in A_sw (EC2 6.2.3).">
             <span class="field-label">legs</span>
-            <input type="text" class="!w-full min-w-0" data-sf="legs" data-s="${esc(st.id)}" value="${fmtNumber(st.legs, 0)}" aria-label="Number of legs">
+            <input type="text" inputmode="numeric" class="!w-full min-w-0" data-sf="legs" data-s="${esc(st.id)}" value="${fmtInput(st.legs, 0)}" aria-label="Number of legs">
           </label>
           <label class="min-w-0">
             <span class="field-label">f<sub>ywk</sub></span>
-            <input type="text" class="!w-full min-w-0" data-sf="fywk" data-s="${esc(st.id)}" value="${fmtNumber(st.fywk, 0)}" aria-label="f_ywk [MPa]">
+            <input type="text" inputmode="text" class="!w-full min-w-0" data-sf="fywk" data-s="${esc(st.id)}" value="${fmtInput(st.fywk, 0)}" aria-label="f_ywk [MPa]">
           </label>
         </div>
       </div>
@@ -2099,6 +2345,57 @@ export function createUI(deps) {
     invalidate();
     render();
     field.focus();
+  }
+
+  /**
+   * MARKER TEKSTEN I RADFELTENE OGSÅ.
+   *
+   * `bindNumericInput` gjør det for de faste feltene i skjemaet, men radene —
+   * armering, bøyler, lastkombinasjoner — bygges med `innerHTML` ved hver
+   * opptegning, og en lytter hengt på selve feltet ville dødd ved neste
+   * omtegning. Derfor ÉN delegert lytter på `document`, som overlever alt
+   * under seg. Samme grep som `hints.js` bruker, og av samme grunn.
+   *
+   * `focusin` og ikke `focus`: bare `focusin` bobler, og en delegert lytter
+   * trenger nettopp det.
+   */
+  /**
+   * Velgeren for hva seksjon 6 viser.
+   *
+   * DELEGERT PÅ `document`, som radfeltene og hintene: `#res-body` bygges med
+   * `innerHTML` ved hver opptegning, så en lytter hengt på selve knappen ville
+   * dødd i det den ble trykket.
+   *
+   * `render()` ALENE, uten `invalidate()`. Dette er det eneste stedet i modulen
+   * der en knapp endrer tilstanden UTEN å kaste resultatet, og det er med vilje:
+   * hvert toppnivåfelt finnes allerede per rad i svaret vi har, så å bytte
+   * visning er et oppslag. `invalidate()` er forbeholdt endringer i det
+   * resultatet ble REGNET for.
+   */
+  function setupResultView() {
+    document.addEventListener('click', (e) => {
+      const btn = e.target?.closest?.('[data-result-view]');
+      if (!btn) return;
+      store.setResultView(btn.dataset.resultView);
+      render();
+    });
+  }
+
+  function setupRowFieldSelect() {
+    document.addEventListener('focusin', (e) => {
+      const el = e.target;
+      if (!el || el.tagName !== 'INPUT') return;
+      if (!(el.dataset?.sf || el.dataset?.f || el.dataset?.cf)) return;
+      if (el.type !== 'text') return;
+      requestAnimationFrame(() => {
+        if (document.activeElement !== el) return;
+        try {
+          el.select();
+        } catch {
+          // Se `selectOnFocus` i numeric-input.js: fokuset er satt uansett.
+        }
+      });
+    });
   }
 
   function setupShorthand() {
@@ -2209,12 +2506,27 @@ export function createUI(deps) {
     const s = store.getState();
     host.innerHTML = s.combos.map((combo) => {
       const active = combo.id === s.activeCombo;
-      // En ikke-ULS-rad er ikke KAPASITETS-kontrollert, og tones ned for å si
-      // det visuelt og ikke bare i teksten. Nedtoningen betyr «ikke med i
-      // bruddgrensen», ikke «ikke regnet»: raden har sine egne tall i
-      // SLS-seksjonen, og notatlinja under sier hvor de står.
+      // `opacity-60` ER BORTE. Den skulle si «ikke med i bruddgrensen», men
+      // 60 % dekkevne betyr noe annet i nøyaktig denne fila: de tre andre
+      // stedene den brukes er et LÅST `d_c`-felt, en knapp som ikke gjelder
+      // for plate, og «Beregn» mens den kjører — alle sammen DEAKTIVERT.
+      // En SLS-rad er det motsatte av deaktivert: den er den eneste raden som
+      // gir σ_c, σ_s og w_k. Målt på en tilnærmet permanent rad med
+      // M_Ed = −110 kNm: w_k 0,288 mot w_max 0,30 mm, η 0,96 — det er ikke en
+      // rad man skal måtte myse for å lese.
+      //
+      // Kanten til venstre sier det samme uten å svekke noe: teal er IKKE
+      // brukt til status noe annet sted i modulen (grønn/gul/rød eies av
+      // `utilisationStatus()`), så den kan bety «annen grensetilstand» uten å
+      // bli forvekslet med «nesten for høy».
+      //
+      // `!border-l-*` med utropstegn, og det er MÅLT: verten `#combos` har
+      // `divide-slate-700/70`, og den regelen treffer som
+      // `.divide-slate-700\/70 > :not([hidden]) ~ :not([hidden])` — to klasser
+      // og to pseudoklasser mot vår ene. Uten `!` ble kanten `rgba(51,65,85,.7)`,
+      // altså skillelinjas egen grå, og merket fantes ikke i det hele tatt.
       const isUls = combo.type === 'uls';
-      return `<div class="px-3 py-2 text-[13px] ${active ? 'bg-sky-950/30' : ''} ${isUls ? '' : 'opacity-60'}">
+      return `<div class="px-3 py-2 text-[13px] border-l-2 ${isUls ? '!border-l-transparent' : '!border-l-teal-400'} ${active ? 'bg-sky-950/30' : ''}">
         <div class="flex flex-wrap items-center gap-2">
           <button type="button" class="chip !py-0.5 !px-2 !text-[11px] shrink-0" data-active-combo="${esc(combo.id)}"
                   data-on="${String(active)}" title="${active ? 'Active — used for moment–curvature' : 'Set active for moment–curvature'}">
@@ -2228,18 +2540,18 @@ export function createUI(deps) {
           <input type="text" class="!w-28" data-cf="name" data-c="${esc(combo.id)}" value="${esc(combo.name)}" placeholder="name" aria-label="Combination name">
           <label class="flex items-center gap-1 text-[11px] text-slate-500"
                  title="Axial force [kN] — compression is negative.">N<sub>Ed</sub>
-            <input type="text" class="!w-24" data-cf="N_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.N_Ed, 2)}" aria-label="N_Ed [kN], compression negative"></label>
+            <input type="text" inputmode="text" class="!w-24" data-cf="N_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.N_Ed, 2)}" aria-label="N_Ed [kN], compression negative"></label>
           <label class="flex items-center gap-1 text-[11px] text-slate-500" title="Sign convention follows fib structuralcodes: sagging (compression at the top face) is negative.">M<sub>Ed</sub> [kNm] — sagging negative
-            <input type="text" class="!w-24" data-cf="M_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.M_Ed, 2)}" aria-label="M_Ed [kNm], sagging negative"></label>
+            <input type="text" inputmode="text" class="!w-24" data-cf="M_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.M_Ed, 2)}" aria-label="M_Ed [kNm], sagging negative"></label>
           <label class="flex items-center gap-1 text-[11px] text-slate-500"
                  title="Shear force [kN] — a magnitude; its sign does not affect the shear capacity.">V<sub>Ed</sub>
-            <input type="text" class="!w-24" data-cf="V_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.V_Ed, 2)}" aria-label="V_Ed [kN], magnitude — the sign does not matter"></label>
+            <input type="text" inputmode="text" class="!w-24" data-cf="V_Ed" data-c="${esc(combo.id)}" value="${fmtNumber(combo.V_Ed, 2)}" aria-label="V_Ed [kN], magnitude — the sign does not matter"></label>
           <button type="button" class="ml-auto px-2 py-1 rounded hover:bg-rose-900/50 text-slate-400 hover:text-rose-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
                   data-remove-combo="${esc(combo.id)}" ${s.combos.length <= 1 ? 'disabled' : ''}
                   title="${s.combos.length <= 1 ? 'The last combination cannot be removed' : 'Remove combination'}">✕</button>
         </div>
         <div class="mt-1 text-[11px] text-slate-500 num" data-m-interp="${esc(combo.id)}">${esc(momentInterpretation(combo.M_Ed))}</div>
-        ${isUls ? '' : `<div class="mt-0.5 text-[11px] text-amber-500/80" data-combo-sls-note="${esc(combo.id)}">Not checked for resistance — used in the serviceability section</div>`}
+        ${isUls ? '' : `<div class="mt-0.5 text-[11px] text-teal-300/90" data-combo-sls-note="${esc(combo.id)}">Serviceability row — gives σ<sub>c</sub>, σ<sub>s</sub> and w<sub>k</sub> in section 6. Not checked for resistance.</div>`}
       </div>`;
     }).join('');
     bindComboRows(host);
@@ -2382,11 +2694,26 @@ export function createUI(deps) {
   }
 
   /** Notene fra `fromDocument` vises som andre advarsler (§5.2) — samme
-   *  `describeWarning`/`CODE_MESSAGES`-vei som resultatets `warnings`. */
+   *  `describeWarning`/`CODE_MESSAGES`-vei som resultatets `warnings`.
+   *
+   *  ÉN LISTE FOR BÅDE FIL OG LENKE (oppgave C). En delbar lenke er et dokument
+   *  som kom en annen vei, ikke en egen visningsvei — `link_format_unsupported`
+   *  og `document_schema_newer` havner derfor her, ved siden av
+   *  `document_field_ignored`, og ingen ny boks ble funnet opp for dem. */
   function renderDocNotes(notes) {
     const host = $('#doc-load-notes');
     if (!host) return;
     if (!notes || !notes.length) { host.innerHTML = ''; return; }
+    // Boksen er LUKKET ved sidelast, og en lenke som ikke lot seg lese blir
+    // lastet FØR brukeren har åpnet noe som helst. Uten dette ville den
+    // eneste forklaringen på et tomt skjema ligget gjemt bak en `<summary>`.
+    // Bare `error`/`warning` åpner den: `info`-notene («et felt ble fylt fra
+    // standarden») er en fotnote, ikke noe som skal slå opp en boks.
+    if (notes.some((n) => n.severity === 'error' || n.severity === 'warning')) {
+      const box = host.closest('details');
+      if (box) box.open = true;
+      host.scrollIntoView({ block: 'center' });
+    }
     const described = describeWarnings(notes.map((n) => ({
       code: n.code,
       severity: n.severity,
@@ -2396,6 +2723,33 @@ export function createUI(deps) {
       w.severity === 'error' ? 'border-rose-600/50 bg-rose-950/30 text-rose-200' : 'border-sky-600/50 bg-sky-950/20 text-sky-200'
     }"><span>${w.severity === 'error' ? '✕' : 'ℹ'}</span><span><b>${esc(w.severityLabel)}:</b> ${esc(w.message)}${
       w.hasDetail ? ` <span class="opacity-70">(${esc(w.detail)})</span>` : ''}</span></div>`).join('');
+  }
+
+  /**
+   * ÉN VEI INN I STATEN FOR ET DOKUMENT, uansett om det kom fra en fil eller
+   * fra en delt lenke.
+   *
+   * Dette var før kroppen av `loadJsonFile`. Den er løftet ut fordi
+   * lenkelastingen i `main.js` skal gå NØYAKTIG samme vei — `replaceState`,
+   * notene, den nullstilte `steelGradeCustom` og `revealNonDefaults()` FØR
+   * `render()`. En andre, nesten-lik kopi av de fem linjene ville sakket etter
+   * første gang noen la til et sjette trinn her.
+   *
+   * @param {{state: object|null, notes: Array<object>}} doc svaret fra
+   *        `fromDocument` eller `fromLink` — begge har samme form, og begge
+   *        kaster aldri
+   */
+  function applyDocument({ state, notes }) {
+    if (state) store.replaceState(state);
+    renderDocNotes(notes);
+    // §2.6: en innlastet fil med θ = 30° skal ikke skjule nettopp det som gjør
+    // den fila spesiell. Kalles FØR `render()`, så den første opptegningen
+    // allerede har boksene i riktig stilling — ellers ville de blinket opp
+    // etterpå. Den låste `k`/`ε_uk`-tilstanden nullstilles samtidig: en fil
+    // bærer tall, ikke en beslutning om å redigere dem.
+    steelGradeCustom = false;
+    if (state) revealNonDefaults();
+    render();
   }
 
   async function loadJsonFile(file) {
@@ -2409,17 +2763,7 @@ export function createUI(deps) {
       renderDocNotes([{ code: 'document_not_recognised', severity: 'error' }]);
       return;
     }
-    const { state, notes } = fromDocument(parsed);
-    if (state) store.replaceState(state);
-    renderDocNotes(notes);
-    // §2.6: en innlastet fil med θ = 30° skal ikke skjule nettopp det som gjør
-    // den fila spesiell. Kalles FØR `render()`, så den første opptegningen
-    // allerede har boksene i riktig stilling — ellers ville de blinket opp
-    // etterpå. Den låste `k`/`ε_uk`-tilstanden nullstilles samtidig: en fil
-    // bærer tall, ikke en beslutning om å redigere dem.
-    steelGradeCustom = false;
-    if (state) revealNonDefaults();
-    render();
+    applyDocument(fromDocument(parsed));
   }
 
   function setupDocIO() {
@@ -2434,6 +2778,152 @@ export function createUI(deps) {
         loadJsonFile(file).finally(() => { input.value = ''; });
       });
     }
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Delbar lenke (oppgave C)
+   * ---------------------------------------------------------------- */
+
+  /**
+   * ADRESSEFELTET SKAL ALDRI BESKRIVE NOE ANNET ENN SKJERMEN — og det skrives
+   * likevel BARE på to tidspunkt: når brukeren trykker «Share», og ÉN gang
+   * etter det, for å rydde.
+   *
+   * HVORFOR IKKE ÉN `replaceState` PER TASTETRYKK, som ville holdt adressa
+   * alltid oppdatert: Safari struper `history.replaceState` til ~100 kall per
+   * 30 sekunder og kaster `SecurityError` over det. Ett kall per tegn i et
+   * `M_Ed`-felt passerer den grensa etter en halv brukerøkt — altså hos
+   * brukeren, aldri i en test, og med et unntak fra en funksjon som bare
+   * pusset på adressefeltet.
+   *
+   * KONSEKVENSEN ER AKSEPTERT: man kan ikke bokmerke gjeldende tilstand fra
+   * adressefeltet. Man må trykke «Share». Til gjengjeld lyver adressefeltet
+   * aldri.
+   */
+  let disarmHashClear = null;
+
+  /**
+   * Armerer ÉN opprydding: ved FØRSTE tilstandsendring etter dette fjernes
+   * hashen, og lytteren melder seg AV.
+   *
+   * AVMELDINGEN ER EKSPLISITT, ikke en `if (alreadyCleared) return` inni
+   * lytteren. En slik vakt ville latt lytteren bli liggende og kjøre ved hver
+   * eneste endring resten av økta, og da hadde struping-regelen over vært et
+   * spørsmål om når, ikke om.
+   */
+  function armHashClear() {
+    // Armeres på nytt ved hvert «Share». Den forrige meldes AV først, slik at
+    // det aldri finnes to lyttere som vil rydde samme hash.
+    if (disarmHashClear) disarmHashClear();
+    const off = store.subscribe(() => {
+      off();
+      disarmHashClear = null;
+      // Ingen hash igjen: `pathname + search` er adressa uten fragmentet, og
+      // `replaceState` bytter den uten en navigering (og uten en ny oppføring
+      // i historikken, som ville gjort «tilbake» til en meningsløs knapp).
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    });
+    disarmHashClear = off;
+  }
+
+  /** `#share-row`: reserveveien når utklippstavla ikke finnes, og klartekst
+   *  når nettleseren er for gammel for `CompressionStream`. */
+  function showShareRow(message, url) {
+    const row = $('#share-row');
+    const status = $('#share-status');
+    const field = $('#share-url');
+    if (!row || !status || !field) return;
+    row.hidden = false;
+    status.textContent = message;
+    field.hidden = !url;
+    field.value = url || '';
+    // Boksen ÅPNES ALLTID når det står noe her. Raden bor inne i en lukket
+    // `<details>`, og en beskjed om at knappen ikke virket er verdiløs hvis den
+    // legger seg bak en `<summary>` brukeren aldri klikker.
+    const box = row.closest('details');
+    if (box) box.open = true;
+    row.scrollIntoView({ block: 'center' });
+    if (url) {
+      field.focus();
+      field.select();
+    }
+  }
+
+  function hideShareRow() {
+    const row = $('#share-row');
+    if (row) { row.hidden = true; }
+    const field = $('#share-url');
+    if (field) { field.hidden = true; field.value = ''; }
+  }
+
+  /**
+   * Kortvarig kvittering PÅ knappen.
+   *
+   * IKONET BYTTES, IKKE BARE TEKSTEN: ordet «Share» er skjult under 640 px
+   * (målt — med det synlig ble topplinja 20 px for bred ved 390 px), og en
+   * «Copied» ingen ser er ingen kvittering. Haken står i alle bredder.
+   *
+   * Teksten skrives i `#btn-share-label`, ALDRI i `btn.textContent`: det siste
+   * ville slettet begge ikonene ut av knappen for godt.
+   *
+   * Én timer, som nullstilles: to raske trykk skal ikke gi en knapp som blir
+   * stående på «Copied».
+   */
+  let shareFlashTimer = null;
+  function flashShareButton(text, ok) {
+    const label = $('#btn-share-label');
+    const link = $('#share-icon-link');
+    const check = $('#share-icon-ok');
+    if (!label) return;
+    if (shareFlashTimer) clearTimeout(shareFlashTimer);
+    label.textContent = text;
+    // `classList`, ikke `hidden`-attributtet — se kommentaren i `index.html`.
+    if (link) link.classList.toggle('hidden', Boolean(ok));
+    if (check) check.classList.toggle('hidden', !ok);
+    shareFlashTimer = setTimeout(() => {
+      label.textContent = 'Share';
+      if (link) link.classList.remove('hidden');
+      if (check) check.classList.add('hidden');
+      shareFlashTimer = null;
+    }, 1800);
+  }
+
+  async function shareCurrentState() {
+    const fragment = await toLink(store.getState());
+    if (!fragment) {
+      // `toLink` gir `null` bare når `CompressionStream` mangler (under Safari
+      // 16.4 / Chrome 103 / Firefox 113). Det sies i KLARTEKST; en stille
+      // ukomprimert reservelenke ville vært lesbar i NØYAKTIG denne
+      // nettleseren og ingen andre — se hodet i `share-link.js`.
+      flashShareButton('Not supported');
+      showShareRow(
+        'This browser is too old to build a share link — it lacks CompressionStream '
+        + '(added in Chrome 103, Firefox 113 and Safari 16.4). Use "Save JSON" instead, '
+        + 'or open the page in a newer browser.',
+        ''
+      );
+      return;
+    }
+    const url = `${window.location.origin}${window.location.pathname}`
+      + `${window.location.search}#${fragment}`;
+    history.replaceState(null, '', `#${fragment}`);
+    armHashClear();
+    try {
+      await navigator.clipboard.writeText(url);
+      hideShareRow();
+      flashShareButton('Copied', true);
+    } catch {
+      // `navigator.clipboard` finnes ikke uten https, og løftet avvises når
+      // fanen ikke er i fokus. Uten denne grenen ville brukeren trykt en knapp
+      // og fått ingenting — lenka er bygget, den må bare hentes for hånd.
+      flashShareButton('Copy it');
+      showShareRow('Could not reach the clipboard. The link is selected below — copy it with Ctrl+C.', url);
+    }
+  }
+
+  function setupShare() {
+    const btn = $('#btn-share');
+    if (btn) btn.onclick = () => { shareCurrentState(); };
   }
 
   /* ---------------------------------------------------------------- *
@@ -2477,7 +2967,16 @@ export function createUI(deps) {
       : '';
 
     if (pill) {
-      pill.innerHTML = `<span class="w-2 h-2 rounded-full ${dot}"></span><span class="text-slate-300 num">${esc(short)}</span>`;
+      // `hidden sm:inline` PÅ ORDET, ikke på pilla: prikken skal stå i alle
+      // bredder — den er det eneste som sier at motoren lever. Under 640 px er
+      // det bare 40 px igjen til pilla i topplinja (regnestykket står ved
+      // `#engine-pill` i `index.html`), og den lengste teksten her er
+      // «Downloading the runtime · ≈ 4.2 / 10.2 MB» på 190 px.
+      // `title` er derfor ikke pynt: den er stedet ordet fortsatt finnes når
+      // det er skjult, og den tar med punkttelleren som ordet ikke har plass
+      // til i noen bredde.
+      pill.innerHTML = `<span class="w-2 h-2 shrink-0 rounded-full ${dot}"></span><span class="text-slate-300 num hidden sm:inline">${esc(short)}</span>`;
+      pill.title = short + counter;
     }
     if (barEng) {
       barEng.innerHTML = st.state === 'ready'
@@ -2550,7 +3049,15 @@ export function createUI(deps) {
     const summary = $('#res-summary');
     if (!body) return;
     const s = store.getState();
-    const result = s.result;
+    // ÉN LINJE, OG ALT UNDER FØLGER DEN. Seksjon 6 leser ikke motorens svar
+    // direkte, men svaret sett gjennom `s.resultView`: enten envelopen (verste
+    // rad per grensetilstand, som før) eller én valgt lastkombinasjon.
+    //
+    // Projeksjonen ligger i `results.js` og ikke her, fordi den er en regel om
+    // HVA et tall betyr, ikke om hvordan det tegnes — og fordi den da kan testes
+    // uten en DOM. `s.result` står urørt ved siden av: rapporten bygges av den,
+    // og skal alltid være envelopen uansett hvilken knapp som sist ble trykket.
+    const result = withResultView(s.result, s.resultView);
 
     if (!result) {
       if (summary) summary.textContent = '';
@@ -2607,8 +3114,17 @@ export function createUI(deps) {
     const warnings = describeWarnings(result.warnings);
 
     body.innerHTML = `
-      <div class="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+      <!-- ÉN SPALTE. Sidespalta på 320 px sto med «Failure state», «Section fra
+           motoren», skjærtabellen, kontrollista og materialverdiene — fem
+           paneler som alle er OPPSLAG, ikke svar. De møtte brukeren samtidig
+           med selve svaret og konkurrerte med det om oppmerksomheten.
+
+           Nå ligger de nederst, etter figuren, plottene og lagtabellen: den som
+           vil slå opp, ruller ned og finner dem samlet; den som bare vil vite om
+           snittet holder, ser fire linjer og er ferdig. -->
+      <div class="space-y-5 items-start">
         <div class="space-y-4">
+          ${resultViewChips(result, s.resultView)}
           <div class="rounded-xl border p-4 ${esc(status.classes)}">
             <div class="flex flex-wrap items-end gap-x-8 gap-y-3">
               <div>
@@ -2626,12 +3142,12 @@ export function createUI(deps) {
                 <div class="text-lg font-medium text-sky-300">${esc(failureModeLabel(bending.failure_mode))}</div>
                 <div class="text-[11px] text-slate-400 num">x/d = ${fmtRatio(bending.x_over_d)}</div>
               </div>
-              ${shearBadge(result)}
               <div class="ml-auto text-right text-slate-100">
                 <div class="text-[11px] text-slate-400 uppercase tracking-wide">Status</div>
                 <div class="text-lg">${esc(status.label)}</div>
               </div>
             </div>
+            ${limitStateHtml(result, s.resultView)}
             <p class="text-[11px] mt-2 opacity-70">${esc(failureModeNote(bending.failure_mode))}</p>
           </div>
 
@@ -2662,7 +3178,7 @@ export function createUI(deps) {
             </div>`).join('')}</div>` : ''}
         </div>
 
-        <div class="space-y-3 text-[12px]">
+        <div class="grid md:grid-cols-2 gap-3 text-[12px] items-start">
           ${panel('Failure state', [
             ['Neutral axis x', fmtLength(bending.x), 'mm'],
             ['x / d', fmtRatio(bending.x_over_d), ''],
@@ -2904,7 +3420,11 @@ export function createUI(deps) {
       issuesBtn.hidden = issues.length === 0;
       if (issues.length) {
         const bad = errors > 0;
-        issuesBtn.className = 'shrink-0 px-2 py-1 rounded border text-[11px] leading-none num ' +
+        // `tap24` MÅ stå her OG i `index.html`. Denne linja setter `className`,
+        // altså HELE lista, så klassen fra markupen er borte fra første
+        // opptegning. Målingen viste nøyaktig det: merket ble stående igjen som
+        // eneste flate under 24 px (42 × 21) etter at de tolv andre var rettet.
+        issuesBtn.className = 'tap24 shrink-0 px-2 py-1 rounded border text-[11px] leading-none num ' +
           (bad ? 'border-rose-600/50 bg-rose-950/40 text-rose-200 hover:bg-rose-900/50'
                : 'border-amber-600/50 bg-amber-950/40 text-amber-200 hover:bg-amber-900/50');
         issuesBtn.textContent = `${bad ? '✕' : '⚠'} ${errors || warnings}`;
@@ -2965,7 +3485,87 @@ export function createUI(deps) {
    * Full opptegning
    * ---------------------------------------------------------------- */
 
+  /**
+   * ADRESSEN til et felt, uavhengig av DOM-noden det bor i akkurat nå.
+   *
+   * `render()` bygger `#layers`, `#stirrups` og `#combos` på nytt med
+   * `innerHTML`. Noden som hadde fokus finnes da ikke lenger — den er erstattet
+   * av en helt lik node — og nettleseren flytter fokus til `<body>`. En `id`
+   * eller et `data-cf`/`data-sf`-par peker derimot på det SAMME feltet i den
+   * nye oppbyggingen, og det er det denne strengen er.
+   *
+   * `null` betyr «ikke verdt å hente tilbake»: kroppen, eller et felt uten
+   * adresse. Da skal vi ikke gjette.
+   */
+  function focusAddress(el) {
+    if (!el || el === document.body) return null;
+    if (el.id) return `#${el.id}`;
+    // Radfeltene bærer BEGGE delene av adressen selv: hvilket felt (`data-cf`
+    // for en kombinasjon, `data-sf` for en bøyle, `data-f` for et armeringslag)
+    // og hvilken rad (`data-c`/`data-s`/`data-l`). De tre parene er de eneste
+    // stedene `render()` bygger om med `innerHTML`, og derfor de eneste som
+    // trenger en adresse i det hele tatt.
+    for (const [field, row] of [['cf', 'c'], ['sf', 's'], ['f', 'l']]) {
+      const name = el.dataset?.[field];
+      const id = el.dataset?.[row];
+      if (name && id) return `[data-${field}="${name}"][data-${row}="${id}"]`;
+    }
+    return null;
+  }
+
+  /** Finner feltet en `focusAddress()` peker på, i den NYE DOM-en. */
+  function elementAt(address) {
+    return address ? $(address) : null;
+  }
+
+  /**
+   * ⚠ FOKUS SKAL OVERLEVE EN OPPTEGNING.
+   *
+   * MÅLT FØR DENNE: `Ctrl+Mellomrom` i `M_Ed`-feltet kastet fokus til `<body>`,
+   * og veien tilbake kostet **46 tab-trykk**. Selve regnestykket tar 9 ms. Det
+   * er altså navigasjonen, ikke matematikken, som er dyr i ekspertsløyfa — og
+   * den sløyfa er hele poenget med at verktøyet skal kunne styres fra
+   * tastaturet.
+   *
+   * Fikset her og ikke i `calculate()`, fordi `render()` er stedet fokus
+   * FAKTISK forsvinner: den bygger radlistene på nytt med `innerHTML`. Hver
+   * eneste kaller — beregning, typebytte, en ny kombinasjon — arver dermed
+   * rettelsen, og den neste som legger til en radliste trenger ikke vite om
+   * dette i det hele tatt.
+   *
+   * VI TAR BARE TILBAKE FOKUS SOM FALT TIL `<body>`. Flyttet noe annet fokus
+   * med vilje — `refocusRow` når editoren åpnes, `f.focus()` når `F` hopper til
+   * et felt — skal det valget stå. Vi reparerer et tap, vi overstyrer ikke en
+   * beslutning.
+   *
+   * Markørposisjonen følger med: å komme tilbake til feltet med markøren
+   * plutselig i posisjon 0 er en halv rettelse.
+   */
   function render() {
+    const before = document.activeElement;
+    const address = focusAddress(before);
+    const caret = before && typeof before.selectionStart === 'number'
+      ? [before.selectionStart, before.selectionEnd] : null;
+
+    renderAll();
+
+    if (!address) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const el = elementAt(address);
+    if (!el || el.disabled) return;
+    el.focus();
+    if (caret && typeof el.setSelectionRange === 'function') {
+      try {
+        el.setSelectionRange(caret[0], caret[1]);
+      } catch {
+        // `setSelectionRange` kaster på inndatatyper som ikke har markør
+        // (f.eks. `number`). Fokuset er hentet tilbake uansett, og det er
+        // hovedsaken — markøren er bonusen.
+      }
+    }
+  }
+
+  function renderAll() {
     const s = store.getState();
     syncFields();
 
@@ -3063,10 +3663,24 @@ export function createUI(deps) {
     const matDer = $('#mat-derived');
     if (matDer) {
       const cell = (k, v, u) => `<div><span class="text-slate-500">${k}</span> <span class="text-slate-200">${v}</span> <span class="text-slate-600">${u}</span></div>`;
+      // KRYPTALLET STÅR HER, blant de andre AVLEDEDE materialverdiene — ikke
+      // bare inne i folden som lager det. φ er et resultat på linje med f_cd og
+      // E_cm: noe som FØLGER av det du har valgt, og som du må kunne lese uten
+      // å åpne noe. `E_c,eff` står ved siden av, fordi det er den størrelsen
+      // som faktisk går inn i beregningen — φ alene sier ikke hvor mye
+      // stivheten falt.
+      //
+      // SAMME `resolveCreep` som skjemaet og `payload.js` bruker. Tre steder
+      // viser tallet; alle tre leser det fra én funksjon.
+      const creep = resolveCreep(s);
+      const ecEff = creep.phi === null ? null : mats.Ecm / (1 + creep.phi);
       matDer.innerHTML =
         cell('f<sub>cd</sub>', fmtStress(mats.fcd), 'MPa') +
         cell('f<sub>ctm</sub>', fmtStress(mats.fctm, 2), 'MPa') +
         cell('E<sub>cm</sub>', fmtStress(mats.Ecm, 0), 'MPa') +
+        cell('φ(t,t<sub>0</sub>)', creep.phi === null ? DASH : fmtNumber(creep.phi, 2),
+          creep.source === 'manual' ? 'manual' : '') +
+        cell('E<sub>c,eff</sub>', ecEff === null ? DASH : fmtStress(ecEff, 0), 'MPa') +
         cell('f<sub>yd</sub>', fmtStress(mats.fyd), 'MPa') +
         cell('ε<sub>ud</sub>', fmtStrainPermille(mats.eps_ud, 1), '‰');
     }
@@ -3143,9 +3757,19 @@ export function createUI(deps) {
     }
     const armWarn = $('#arm-warn');
     if (armWarn) {
-      armWarn.innerHTML = est.As_total < est.As_min
-        ? `⚠ below A<sub>s,min</sub> ≈ ${fmtArea(est.As_min)} mm²`
-        : '';
+      // ⚠ `NaN` GLIR GJENNOM `<` OG LANDER I «ALT ER I ORDEN».
+      //
+      // `A_s,min` er `NaN` når ingen armering står på strekksiden — et
+      // støttemoment på en bjelke med bare underkantjern. Det er det ærlige
+      // svaret fra `derived()`, men `NaN < NaN` er `false`, så hintet forsvant
+      // STILLE og så ut som en bestått kontroll. Samme feilform som resten av
+      // runden: et manglende svar som leses som et godkjent.
+      armWarn.innerHTML = !Number.isFinite(est.As_min)
+        ? '<span class="text-amber-200/80">A<sub>s,min</sub> can\'t be checked — '
+          + 'no layer is on the tension side for this moment direction</span>'
+        : est.As_total < est.As_min
+          ? `⚠ below A<sub>s,min</sub> ≈ ${fmtArea(est.As_min)} mm²`
+          : '';
     }
 
     const shInput = $('#sh-input');
@@ -3322,6 +3946,7 @@ export function createUI(deps) {
    *  tilstandsovergangen, og den ville sluttet å følge med den dagen lukkingen
    *  fikk noe mer å gjøre. */
   const closeReport = () => $('#report-close')?.click();
+
 
   /** Overlegget som ligger øverst nå, eller `null`. `Escape` lukker ETT om
    *  gangen: rapporten kan stå åpen bak hjelpelista. */
@@ -3526,6 +4151,35 @@ export function createUI(deps) {
   }
 
   function setupNav() {
+    /**
+     * SEKSJONSANKRENE MÅ IKKE FÅ OVERSKRIVE EN DELT LENKE.
+     *
+     * Navigasjonen er `<a href="#s-mat">` … `#s-res`, og ett klikk ville skrevet
+     * `#s-geo` over `#d1.…` — trykk F5 etterpå, og snittet er borte. Det er en
+     * lenke som slutter å virke fordi man BRUKTE sida den peker på.
+     *
+     * Løsningen er ÉN DELEGERT LYTTER, ikke seks: `render()` bygger radlister
+     * med `innerHTML`, og selv om navlenkene er statiske i dag, er «én lytter
+     * i oppsettet» regelen i denne fila.
+     *
+     * OG DEN ER NOK, fordi lysmerket settes av IntersectionObserver-en under —
+     * ikke av hashen. Ruller vi selv med `scrollIntoView`, gjør observatøren
+     * nøyaktig det den ellers ville gjort.
+     *
+     * BARE VENSTREKLIKK UTEN MODIFIKATORTASTER. Ctrl/⌘-klikk og midtklikk
+     * åpner i ny fane, og et `preventDefault()` der ville drept en helt vanlig
+     * nettleserhandling for å beskytte en hash som uansett følger med over.
+     */
+    document.querySelector('nav')?.addEventListener('click', (e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const link = e.target.closest?.('a.navlink');
+      if (!link) return;
+      const target = document.getElementById(link.getAttribute('href').slice(1));
+      if (!target) return;
+      e.preventDefault();
+      target.scrollIntoView({ block: 'start' });
+    });
+
     if (!('IntersectionObserver' in window)) return;
     // `s-calc` er borte (seksjon 6 slettet). Lista må følge navigasjonen i
     // `index.html`: en id som ikke finnes gir ingen feil, bare en lenke som
@@ -3590,6 +4244,7 @@ export function createUI(deps) {
       setupShear();
       setupCombos();
       setupDocIO();
+      setupShare();
       setupButtons();
       setupKeyboard();
       setupNav();
@@ -3604,11 +4259,23 @@ export function createUI(deps) {
       // markup i dag, men et merke inne i en radliste ville dødd ved neste
       // `innerHTML` hvis lytteren satt lenger inn — og «klikk utenfor lukker»
       // krever uansett at klikk hvor som helst på sida når fram hit.
+      setupRowFieldSelect();
+      setupResultView();
       hints = attachHints(document.body, HINTS);
       render();
     },
     render,
     renderEngine,
+    /**
+     * Et dokument inn i staten — fra en fil eller fra en delt lenke. `main.js`
+     * bruker den for `#d1.…` i adressa ved oppstart, slik at en lenke går
+     * NØYAKTIG samme vei som «Load JSON», `revealNonDefaults()` inkludert.
+     */
+    applyDocument,
+    /** Armerer den ENE oppryddingen av hashen — se `armHashClear`. `main.js`
+     *  kaller den etter at en delt lenke er lastet: hashen skal STÅ til
+     *  brukeren endrer noe (en delt lenke skal tåle F5), og forsvinne da. */
+    armHashClear,
     /** Ruller til valideringsboksen. `main.js` bruker den når `validate()`
      *  stoppet kjøringen — boksen flyttet med seksjon 6, og et hardkodet
      *  `#s-calc` i `main.js` ville bare rullet til ingenting. */

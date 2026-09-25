@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 
 import { drawSection, sectionViewBox, layerLabel, stirrupGeometry } from '../js/section-draw.js';
 import { barPositions, stirrupCoverDia, suggestedDc } from '../js/rebar.js';
+import { sectionHeight, sectionWidth } from '../js/section.js';
 
 /** Referansebjelkens bøyle: Ø8 c/c 150, 2 ben — «S1»-eksempelet i planen. */
 const STIRRUP_S1 = { id: 'S1', dia: 8, spacing: 150, legs: 2, fywk: 500, alpha: 90 };
@@ -154,16 +155,30 @@ test('sectionViewBox: tverrsnittet sentreres når det blir bredde til overs', ()
   assert.ok(Math.abs((right - left) - 3.64) < 1e-9, `venstre ${left}, høyre ${right}`);
 });
 
-test('sectionViewBox: modellutsnittet er uavhengig av enheten', () => {
-  // 600 px og 174 mm skal dekke NØYAKTIG samme del av tverrsnittet; bare
-  // målestokken (papirenheter per mm) skiller. Det er dette som gjør at
-  // skjermfiguren og rapportfiguren ser like ut.
+test('sectionViewBox: utsnittets STØRRELSE og målestokk er uavhengig av enheten', () => {
+  // 600 px og 174 mm skal dekke like MYE av tverrsnittet og forstørre det like
+  // mye; det er dette som gjør at skjermfiguren og rapportfiguren ser like ut.
   const mm = sectionViewBox(BEAM, { width: 174, unit: 'mm' });
   const px = sectionViewBox(BEAM, { width: 600, unit: 'px' });
-  for (const key of ['minY', 'minZ', 'w', 'h']) {
+  for (const key of ['minZ', 'w', 'h']) {
     assert.ok(Math.abs(mm[key] - px[key]) < 1e-9, `${key}: ${mm[key]} mot ${px[key]}`);
   }
   assert.ok(Math.abs(px.scale / mm.scale - 600 / 174) < 1e-12);
+
+  // `minY` — den VANNRETTE plasseringen — får derimot avvike, og skal det.
+  // Skjermen har et GULV på merkelappskriften (`MIN_LABEL_PX`, 11 px mot 6,0
+  // px før): 2,6 rapport-mm er lesbart på et A4-ark man holder i hånda, men
+  // ikke i en 476 px boks på en skjerm. En større skrift trenger en bredere
+  // merkelappsone, og da flytter tverrsnittet seg til venstre INNI det samme
+  // utsnittet.
+  //
+  // Det er nettopp derfor `labelZone()` får skriftfaktoren som argument: sonen
+  // som RESERVERES og skriften som SETTES må komme fra samme tall, ellers
+  // stikker merkelappen ut over figurkanten.
+  assert.ok(px.minY > mm.minY,
+    'skjermen skal gi merkelappene MER plass enn papiret, ikke mindre');
+  assert.ok(Math.abs(px.minY - mm.minY) < 0.05 * mm.w,
+    'men forskjellen skal være en marg, ikke et annet utsnitt');
 });
 
 /* ------------------------------------------------------------------ *
@@ -993,4 +1008,57 @@ test('stirrupGeometry: med to underkantlag bøyes benet rundt det YTRE jernet', 
     assert.ok(Math.abs(bends[0].z - zOuter) < 1e-9,
       `buen skal ligge om det ytre jernet (z = ${zOuter}), ikke om det indre (${bends[0].z})`);
   }
+});
+
+/* ------------------------------------------------------------------ *
+ * Jernene i figuren står der motoren regner dem (runde 11)
+ * ------------------------------------------------------------------ */
+
+test('drawSection: jernene plasseres gjennom sectionWidth, ikke av rå geometry.b', () => {
+  // DEN EKSISTERENDE TESTEN («plata tegnes 1000 mm bred selv med en bjelkebredde
+  // i geometry.b») slapp denne feilen forbi, og grunnen er verdt å skrive ned:
+  // fixturen der er `mode: 'spacing'`, altså en UTSMURT STRIPE, som ikke har
+  // y-koordinater i det hele tatt. Testen sjekket ramma, målsettingen og at
+  // teksten «b = 300 mm» ikke sto der — alle tre sanne — og så aldri på jernene.
+  //
+  // MÅLT på `mode: 'bars'` med en utdatert `geometry.b = 300`:
+  //     TEGNET  -105,0   0,0  +105,0
+  //     REGNET  -455,0   0,0  +455,0
+  //
+  // `sectionViewBox()` brukte `sectionWidth()` hele tiden, så RAMMA ble 1000 mm
+  // mens jernene ikke ble det. Kallene i `allBars()` og tegneløkka sendte
+  // `state.geometry` rått, mens `payload.js` sender `{b: sectionWidth(state)}`.
+  // Å kalle samme funksjon var ikke nok — argumentene må komme fra samme sted.
+  const stale = {
+    sectionType: 'slab',
+    geometry: { b: 300, h: 200 },   // ← en bjelkebredde som har blitt liggende
+    cover: 25,
+    cover_side: 25,
+    layers: [{ id: 'L1', kind: 'bars', mode: 'bars', dia: 20, count: 3, dc: 45, dc_auto: true }],
+    shear: { stirrups: [] },
+  };
+  const opts = { width: 300, unit: 'px' };
+
+  const vb = sectionViewBox(stale, opts);
+  const expected = barPositions(
+    stale.layers[0],
+    { b: sectionWidth(stale), h: sectionHeight(stale) },
+    { ...stale, stirrup_dia: stirrupCoverDia(stale) }
+  ).map((bar) => (bar.y - vb.minY) * vb.scale);
+
+  const svg = drawSection(stale, opts);
+  const drawn = [...svg.matchAll(/<circle cx="([-\d.]+)"/g)].map((m) => Number(m[1]));
+
+  assert.equal(drawn.length, expected.length, `${drawn.length} tegnede jern mot ${expected.length}`);
+  drawn.sort((a, b) => a - b);
+  expected.sort((a, b) => a - b);
+  for (let i = 0; i < drawn.length; i += 1) {
+    assert.ok(Math.abs(drawn[i] - expected[i]) < 0.6,
+      `jern ${i}: tegnet ${drawn[i]} mot nyttelastens ${expected[i].toFixed(1)}`);
+  }
+
+  // Og det YTTERSTE jernet skal ligge nær platekanten, ikke inne på 300 mm.
+  const halfWidth = (sectionWidth(stale) / 2 - vb.minY) * vb.scale;
+  assert.ok(drawn.at(-1) > 0.6 * halfWidth,
+    'ytterste jern ligger klemt mot midten — geometrien er ikke gått gjennom porten');
 });
