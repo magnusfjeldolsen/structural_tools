@@ -37,6 +37,57 @@ Test at: https://magnusfjeldolsen.github.io/structural_tools/
 
 ---
 
+## Issues and branch names
+
+Work is tracked in GitHub issues. **Create the issue first** — the branch is
+named after it, so the number has to exist before the branch does.
+
+### Branch name
+
+```
+<module>-<issue-number>-<logical-name>
+```
+
+Lowercase, hyphen-separated, no spaces. Examples:
+
+```
+clustering-54-nd-clustering
+csc-46-as-min-rissbegrensning
+docs-51-issue-og-branch-konvensjon
+```
+
+The `<logical-name>` says what the branch *does*, not what it touches:
+`csc-47-rissgrunn-med-tall`, not `csc-47-fix-results-js`. A reader scanning
+`git branch -a` in six months should be able to tell what each one was for.
+
+### Module prefixes
+
+Use the module's own folder name, except where the codebase has already
+settled on a shorter form for itself:
+
+| module | prefix | why |
+|---|---|---|
+| `concrete_section_calculator` | `csc` | the module already calls itself this — `csc_sls.py`, `csc_common.py`, `/csc`, `CSC_PORT` |
+| `2dfea` | `2dfea` | |
+| anything else | folder name | |
+
+Cross-cutting work that belongs to no single module (CI, docs, the registry)
+uses `docs`, `ci` or `repo`.
+
+### Labels
+
+Every issue gets a module label (`csc`, `2dfea`, …) plus `bug`,
+`enhancement` or `documentation` where it fits. The module label is what makes
+`gh issue list --label csc` useful; without it the list stops being worth
+reading once there are more than a handful.
+
+### Closing
+
+Put `Closes #<nr>` in the PR body, not in the commit messages — a rebase-merge
+rewrites commit SHAs, and the PR body is the one place the link survives.
+
+---
+
 ## Deployment Workflow
 
 **⚠️ ALWAYS READ [DEPLOYMENT.md](DEPLOYMENT.md) FOR FULL DETAILS** before modifying deployment workflows, build processes, or module structure.
