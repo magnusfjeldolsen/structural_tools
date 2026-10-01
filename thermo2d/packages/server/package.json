@@ -1,0 +1,29 @@
+{
+  "name": "@thermo2d/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "thermo2d MCP server (stdio) and CLI, bundled to single-file ESM for Node on Windows.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "node build.mjs",
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "mcp": "tsx src/mcp.ts",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@resvg/resvg-wasm": "^2.6.2",
+    "@thermo2d/core": "*",
+    "@thermo2d/figures": "*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.24.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
+  }
+}

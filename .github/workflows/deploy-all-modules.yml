@@ -26,6 +26,7 @@ on:
       - 'rockbolts/**'
       - 'geometry_workspace/**'
       - 'ec5-knutepunkt/**'
+      - 'thermo2d/**'
       - 'index.html'
       - 'module-registry/**'
       - '.github/workflows/deploy-all-modules.yml'
@@ -76,6 +77,24 @@ jobs:
         env:
           NODE_ENV: production
 
+      - name: Install thermo2d dependencies
+        working-directory: thermo2d
+        run: npm ci
+        env:
+          CI: true
+
+      - name: Type-check and test thermo2d
+        working-directory: thermo2d
+        run: |
+          npm run type-check
+          npm test
+
+      - name: Build thermo2d (web app + MCP server bundle)
+        working-directory: thermo2d
+        run: npm run build
+        env:
+          NODE_ENV: production
+
       - name: Regenerate module registry
         run: npm run update-registry
 
@@ -88,6 +107,11 @@ jobs:
           echo "=== Copying 2dfea built files to staging/2dfea/ ==="
           mkdir -p ./deploy-staging/2dfea
           cp -r ./2dfea/dist/* ./deploy-staging/2dfea/
+
+          echo ""
+          echo "=== Copying thermo2d built files to staging/thermo2d/ ==="
+          mkdir -p ./deploy-staging/thermo2d
+          cp -r ./thermo2d/dist/* ./deploy-staging/thermo2d/
 
           echo ""
           echo "=== Copying all plain HTML modules to staging ==="
