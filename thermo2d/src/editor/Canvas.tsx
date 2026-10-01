@@ -272,6 +272,12 @@ export function Canvas(props: { svgRef: (el: SVGSVGElement | null) => void }) {
       }
       case 'edge': {
         const er = hitEdge(raw);
+        if (er && ui.paintBcId) {
+          // Paint mode: the clicked edge gets the selected boundary condition at once (shift removes).
+          dispatch([{ type: 'bc.assignEdges', id: ui.paintBcId, edgeRefs: [er], mode: additive ? 'remove' : 'add' }]);
+          selectEdges([er]);
+          return;
+        }
         if (er) selectEdges([er], additive);
         else if (!additive) selectEdges([]);
         return;

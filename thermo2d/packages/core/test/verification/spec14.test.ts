@@ -70,17 +70,18 @@ describe('case 5 — 300×500 beam, three-sided ISO 834, 90 min (EN 1992-1-2 Ann
   });
 
   it('is monotonic with depth, symmetric left/right and puts the 500 °C isotherm 30–40 mm in at 90 min', () => {
-    const prof = lineProfile(result.mesh, at90, [150, 0], [150, 250], 50);
-    for (let i = 1; i < prof.values.length; i++) expect(prof.values[i]).toBeLessThanOrEqual(prof.values[i - 1] + 0.5);
+    const prof = lineProfile(result.mesh, at90, [150, 0], [150, 250], 50)!;
+    const vals = prof.values.map((v) => (v == null ? NaN : v));
+    for (let i = 1; i < vals.length; i++) expect(vals[i]).toBeLessThanOrEqual(vals[i - 1] + 0.5);
     for (const y of [45, 100, 250]) {
       const l = interpolateField(result.mesh, at90, [60, y])!;
       const r = interpolateField(result.mesh, at90, [240, y])!;
       expect(Math.abs(l - r)).toBeLessThan(0.1);
     }
     let d500 = NaN;
-    for (let i = 1; i < prof.values.length; i++) {
-      if (prof.values[i - 1] >= 500 && prof.values[i] < 500) {
-        const f = (prof.values[i - 1] - 500) / (prof.values[i - 1] - prof.values[i]);
+    for (let i = 1; i < vals.length; i++) {
+      if (vals[i - 1] >= 500 && vals[i] < 500) {
+        const f = (vals[i - 1] - 500) / (vals[i - 1] - vals[i]);
         d500 = prof.s[i - 1] + f * (prof.s[i] - prof.s[i - 1]);
         break;
       }

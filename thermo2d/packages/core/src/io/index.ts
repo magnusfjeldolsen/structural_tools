@@ -125,6 +125,7 @@ export const projectSchema = z.object({
       materialId: z.string(),
       strengthClassId: z.string().optional(),
       cover: z.number().nonnegative(),
+      transverseDiameter: z.number().nonnegative().optional(),
       count: z.number().int().positive().optional(),
       spacing: z.number().positive().optional(),
       spacingX: z.number().positive().optional(),

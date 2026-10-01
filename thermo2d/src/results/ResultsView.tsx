@@ -41,7 +41,7 @@ export function ResultsView(props: ResultsViewProps) {
   const [time, setTimeState] = useState(tEnd);
   const [tab, setTab] = useState<Tab>('probes');
   const [bands, setBands] = useState<BandScale>(DEFAULT_BANDS);
-  const [smooth, setSmooth] = useState(false);
+  const [fill, setFill] = useState<'isobands' | 'element'>('isobands');
   const [showIso, setShowIso] = useState(true);
   const [showMesh, setShowMesh] = useState(false);
   const [show500, setShow500] = useState(project.rebars.length > 0);
@@ -121,9 +121,14 @@ export function ResultsView(props: ResultsViewProps) {
             {tr('step')} <input type="number" value={bands.step} min={0.01} onChange={(e) => setBands(sanitizeBands(bands.min, bands.max, parseFloat(e.target.value)))} />
           </label>
           <button onClick={() => setBands(DEFAULT_BANDS)}>{tr('reset')}</button>
-          <label>
-            <input type="checkbox" checked={smooth} onChange={(e) => setSmooth(e.target.checked)} /> {tr('smooth')}
-          </label>
+          <span className="t2d-seg" role="group" aria-label={tr('fillMode')}>
+            <button className={fill === 'isobands' ? 'active' : undefined} onClick={() => setFill('isobands')} title={tr('isobandsHint')}>
+              {tr('isobands')}
+            </button>
+            <button className={fill === 'element' ? 'active' : undefined} onClick={() => setFill('element')} title={tr('perElementHint')}>
+              {tr('perElement')}
+            </button>
+          </span>
           <label>
             <input type="checkbox" checked={showIso} onChange={(e) => setShowIso(e.target.checked)} /> {tr('isolines')}
           </label>
@@ -146,7 +151,7 @@ export function ResultsView(props: ResultsViewProps) {
             mode={diff ? 'difference' : 'temperature'}
             bands={bands}
             diffLimit={diff?.limit}
-            smooth={smooth}
+            fill={fill}
             showIsolines={showIso && !diff}
             showMesh={showMesh}
             show500={show500 && !diff}

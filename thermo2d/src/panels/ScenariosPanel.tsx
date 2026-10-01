@@ -3,6 +3,7 @@ import type { Override, Scenario } from '@thermo2d/core';
 import { useStore } from '../state/store.js';
 import { useT } from '../i18n/useT.js';
 import { Button, Checkbox, Empty, NumberField, Section, SelectField, TextField } from '../components/ui.js';
+import { Help } from '../components/ui.js';
 import { resultKey } from '../worker/protocol.js';
 
 type OverrideKind = 'material' | 'series' | 'cover' | 'template' | 'field';
@@ -120,6 +121,7 @@ function ScenarioEditor(props: { scenario: Scenario; onRun: () => void; onDelete
     <Section title={scenario.name}>
       <TextField label={t('name')} value={scenario.name} onCommit={(name) => dispatch([{ type: 'scenario.update', id: scenario.id, patch: { name } }])} />
       <h3>{t('overrides')}</h3>
+      <Help text={t('scenarioHelp')} />
       {scenario.overrides.length === 0 && <Empty>–</Empty>}
       <ul className="tree">
         {scenario.overrides.map((o, i) => (

@@ -3,7 +3,7 @@ import { BUILTIN_LIBRARY, searchLibrary } from '@thermo2d/core';
 import type { RebarSet, RebarSetKind } from '@thermo2d/core';
 import { useStore, selectedIds } from '../state/store.js';
 import { useT } from '../i18n/useT.js';
-import { Button, Checkbox, Empty, NumberField, Section, SelectField, TextField } from '../components/ui.js';
+import { Button, Checkbox, Empty, Help, NumberField, Section, SelectField, TextField } from '../components/ui.js';
 import { kindKey } from './ModelPanel.js';
 
 const KINDS: RebarSetKind[] = ['edge', 'corner', 'stirrup', 'grid', 'ring'];
@@ -33,6 +33,7 @@ export function ReinforcementPanel() {
   const [count, setCount] = useState(4);
   const [spacing, setSpacing] = useState(0);
   const [cover, setCover] = useState(35);
+  const [transverse, setTransverse] = useState(0);
   const [gridX, setGridX] = useState(150);
   const [gridY, setGridY] = useState(150);
   const [corners, setCorners] = useState('');
@@ -53,6 +54,7 @@ export function ReinforcementPanel() {
       diameter: dia,
       materialId,
       cover,
+      transverseDiameter: transverse > 0 ? transverse : undefined,
       ...(kind === 'edge' ? { edgeRef: edgeRef && edgeRef.regionId === regionId ? edgeRef : { regionId, ring: 0, edgeIndex: 0 }, ...(spacing > 0 ? { spacing } : { count }) } : {}),
       ...(kind === 'corner' ? { corners: corners.trim() ? corners.split(/[,\s;]+/).map(Number).filter(Number.isFinite) : (hostRegion?.polygon.outer.map((_, i) => i) ?? []) } : {}),
       ...(kind === 'grid' ? { spacingX: gridX, spacingY: gridY } : {}),
@@ -81,6 +83,9 @@ export function ReinforcementPanel() {
         )}
         <NumberField label={t('diameter')} unit="mm" value={dia} min={4} onCommit={setDia} />
         <NumberField label={t('cover')} unit="mm" value={cover} min={0} onCommit={setCover} />
+        <Help text={t('coverHelp')} />
+        <NumberField label={t('transverseDiameter')} unit="mm" value={transverse} min={0} onCommit={setTransverse} />
+        <Help text={t('transverseHelp')} />
         {(kind === 'edge' || kind === 'ring') && <NumberField label={t('count')} value={count} min={1} step={1} onCommit={setCount} />}
         {kind === 'edge' && <NumberField label={`${t('spacing')} (0 = ${t('count').toLowerCase()})`} unit="mm" value={spacing} min={0} onCommit={setSpacing} />}
         {kind === 'grid' && (
@@ -146,6 +151,9 @@ function SetEditor(props: { set: RebarSet; steelOpts: { value: string; label: st
       <TextField label={t('name')} value={set.name} onCommit={(name) => patch({ name })} />
       <NumberField label={t('diameter')} unit="mm" value={set.diameter} min={4} onCommit={(v) => patch({ diameter: v })} />
       <NumberField label={t('cover')} unit="mm" value={set.cover} min={0} onCommit={(v) => patch({ cover: v })} />
+      <Help text={t('coverHelp')} />
+      <NumberField label={t('transverseDiameter')} unit="mm" value={set.transverseDiameter ?? 0} min={0} onCommit={(v) => patch({ transverseDiameter: v > 0 ? v : undefined })} />
+      <Help text={t('transverseHelp')} />
       {(set.kind === 'edge' || set.kind === 'ring') && <NumberField label={t('count')} value={set.count} min={1} step={1} onCommit={(v) => patch({ count: v, spacing: undefined })} />}
       {set.kind === 'edge' && (
         <>

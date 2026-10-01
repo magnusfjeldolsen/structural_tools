@@ -24,6 +24,9 @@ import { downloadBlob, fileNameFor, readAutosave, clearAutosave } from './state/
 import { resultKey } from './worker/protocol.js';
 import { ResultsView } from './results/index.js';
 import type { StringKey } from './i18n/index.js';
+import { HelpDrawer } from './help/HelpDrawer.js'; // [C]
+import { Tour } from './help/Tour.js'; // [C]
+import { AgentIndicator } from './agent/AgentIndicator.js'; // [C]
 
 const PANELS: { id: Panel; key: StringKey }[] = [
   { id: 'model', key: 'panelModel' },
@@ -131,6 +134,9 @@ export function App() {
         </>
       )}
       <MessageStrip />
+      <HelpDrawer /> {/* [C] */}
+      <Tour /> {/* [C] */}
+      <AgentIndicator /> {/* [C] */}
       {showStart && <StartDialog />}
       {dialog?.kind === 'library' && <LibraryDialog forRegionIds={dialog.forRegionIds} onClose={() => setUi({ dialog: null })} />}
       {dialog?.kind === 'importSeries' && <ImportSeriesDialog onClose={() => setUi({ dialog: null })} />}

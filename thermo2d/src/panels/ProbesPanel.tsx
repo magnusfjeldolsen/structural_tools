@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore, isSelected } from '../state/store.js';
 import { useT } from '../i18n/useT.js';
 import { Button, Empty, NumberField, Section, SelectField, TextField, fmtNum } from '../components/ui.js';
+import { Help } from '../components/ui.js';
 
 export function ProbesPanel() {
   const t = useT();
@@ -91,6 +92,7 @@ export function ProbesPanel() {
       <Section title={t('addAtDepth')} collapsible>
         <p className="hint">{edgeRef ? `${t('hostEdge')}: ${project.regions.find((r) => r.id === edgeRef.regionId)?.name} #${edgeRef.edgeIndex}` : t('pickEdgeHint')}</p>
         <NumberField label={t('depth')} unit="mm" value={depth} min={0} onCommit={setDepth} />
+        <Help text={t('probeDepthHelp')} />
         <NumberField label="0–1" value={along} min={0} max={1} step={0.1} onCommit={setAlong} />
         <div className="row right">
           <Button small disabled={!edgeRef} onClick={() => dispatch([{ type: 'probe.addAtDepth', edgeRef: edgeRef!, depth, along, name: `${fmtNum(depth, 0)} mm` }])}>

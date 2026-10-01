@@ -232,3 +232,16 @@ export function fmtNum(v: number | null | undefined, decimals = 1): string {
   if (v === null || v === undefined || Number.isNaN(v)) return '–';
   return v.toFixed(decimals);
 }
+
+/** A small "(?)" button that toggles an inline explanation. Keyboard accessible; no external library. */
+export function Help(props: { text: string; label?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="help">
+      <button type="button" className="help-btn" aria-expanded={open} aria-label={props.label ?? 'Forklaring'} title={props.label ?? 'Forklaring'} onClick={() => setOpen((o) => !o)}>
+        ?
+      </button>
+      {open && <span className="help-text" role="note">{props.text}</span>}
+    </span>
+  );
+}

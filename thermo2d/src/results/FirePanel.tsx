@@ -3,6 +3,7 @@ import type { Project, RunResult } from '@thermo2d/core';
 import { rebarTable, reducedSection } from '@thermo2d/core';
 import { defaultReportTimes, formatTemp, formatTime } from './format.js';
 import type { TFn } from './i18n.js';
+import { barsAreConcrete, compareKey, useCompareStore } from './compareStore.js';
 
 export interface FirePanelProps {
   project: Project;
@@ -45,6 +46,30 @@ export function FirePanel({ project, result, field, t, tr, show500, onShow500, t
     }
   }, [project, result, reportTimes]);
 
+  // Thermal model per bar from its material category.
+  const categories = useMemo(() => new Map(project.materials.map((m) => [m.id, m.category])), [project.materials]);
+  const modelOf = (rebarId: string) => {
+    const bar = project.rebars.find((b) => b.id === rebarId);
+    const cat = bar ? categories.get(bar.materialId) : undefined;
+    return cat === 'metal' ? tr('steelMeshed') : cat === 'concrete' ? tr('concreteRead') : (cat ?? '–');
+  };
+
+  // Concrete comparison (bars read as concrete), run in a separate worker and cached per project hash.
+  const cmp = useCompareStore();
+  const key = compareKey(project, result.analysisId, result.scenarioId);
+  const cmpFresh = cmp.key === key;
+  const allConcrete = barsAreConcrete(project);
+  const cmpRows = useMemo<Map<string, RebarRow>>(() => {
+    if (!cmpFresh || cmp.status !== 'done' || !cmp.result || !cmp.project) return new Map();
+    try {
+      const rows = rebarTable(cmp.project, cmp.result, reportTimes) as RebarRow[];
+      return new Map(rows.map((r) => [r.rebarId, r]));
+    } catch {
+      return new Map();
+    }
+  }, [cmpFresh, cmp.status, cmp.result, cmp.project, reportTimes]);
+  const showCmp = cmpRows.size > 0;
+
   const full = useMemo(() => project.regions.reduce((a, r) => a + Math.abs(ringArea(r.polygon.outer)) - r.polygon.holes.reduce((h, ring) => h + Math.abs(ringArea(ring)), 0), 0), [project.regions]);
 
   return (
@@ -80,17 +105,44 @@ export function FirePanel({ project, result, field, t, tr, show500, onShow500, t
             <label>
               {tr('fyk')} <input type="number" value={fyk} min={100} max={2000} step={10} onChange={(e) => setFyk(parseFloat(e.target.value) || 500)} />
             </label>
+            <button
+              disabled={allConcrete || (cmpFresh && cmp.status === 'running')}
+              title={allConcrete ? tr('alreadyConcrete') : undefined}
+              onClick={() => cmp.start(project, result.analysisId, result.scenarioId)}
+            >
+              {cmpFresh && cmp.status === 'running' ? `${tr('comparing')} ${Math.round(cmp.progress * 100)} %` : tr('compareConcrete')}
+            </button>
           </div>
+          {cmp.key && !cmpFresh && cmp.status === 'done' && <p className="t2d-hint">{tr('compareStale')}</p>}
+          {cmpFresh && cmp.status === 'error' && (
+            <p className="t2d-hint">
+              {tr('compareFailed')}: {cmp.error}
+            </p>
+          )}
+          {showCmp && <p className="t2d-compare-note">{tr('compareExplain')}</p>}
           <table className="t2d-table">
             <thead>
               <tr>
                 <th>{tr('bar')}</th>
                 <th>{tr('diameter')}</th>
+                <th>{tr('thermalModel')}</th>
                 {reportTimes.map((tt) => (
                   <th key={`t${tt}`}>
                     {tr('temp')} {Math.round(tt / 60)}′
                   </th>
                 ))}
+                {showCmp &&
+                  reportTimes.map((tt) => (
+                    <th key={`c${tt}`}>
+                      {tr('concreteTemp')} {Math.round(tt / 60)}′
+                    </th>
+                  ))}
+                {showCmp &&
+                  reportTimes.map((tt) => (
+                    <th key={`d${tt}`}>
+                      {tr('delta')} {Math.round(tt / 60)}′
+                    </th>
+                  ))}
                 {reportTimes.map((tt) => (
                   <th key={`k${tt}`}>
                     {tr('ks')} {Math.round(tt / 60)}′
@@ -108,9 +160,27 @@ export function FirePanel({ project, result, field, t, tr, show500, onShow500, t
                   <tr key={r.rebarId} className={r.temps.some((v) => v >= 500) ? 'hot' : undefined}>
                     <td>{r.name}</td>
                     <td>{r.diameter}</td>
+                    <td>{modelOf(r.rebarId)}</td>
                     {r.temps.map((v, i) => (
                       <td key={`t${i}`}>{formatTemp(v, 0)}</td>
                     ))}
+                    {showCmp &&
+                      r.temps.map((_, i) => {
+                        const c = cmpRows.get(r.rebarId)?.temps[i];
+                        return <td key={`c${i}`}>{c === undefined ? '–' : formatTemp(c, 0)}</td>;
+                      })}
+                    {showCmp &&
+                      r.temps.map((v, i) => {
+                        const c = cmpRows.get(r.rebarId)?.temps[i];
+                        if (c === undefined) return <td key={`d${i}`}>–</td>;
+                        const d = c - v;
+                        return (
+                          <td key={`d${i}`} className={d > 5 ? 'delta-warm' : d < -5 ? 'delta-cold' : undefined}>
+                            {d >= 0 ? '+' : ''}
+                            {d.toFixed(0)} K
+                          </td>
+                        );
+                      })}
                     {r.ks.map((k, i) => (
                       <td key={`k${i}`} title={k === null ? tr('noStrengthTable') : undefined}>
                         {k === null ? '–' : k.toFixed(2)}

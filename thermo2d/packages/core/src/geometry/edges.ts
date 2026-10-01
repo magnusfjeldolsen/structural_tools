@@ -68,18 +68,20 @@ export function resolveEdgeRef(project: Pick<Project, 'regions'>, ref: EdgeRef):
   const region = project.regions.find((x) => x.id === ref.regionId);
   if (!region) return null;
   const ring = ringOfPolygon(region.polygon, ref.ring);
-  if (ring && ref.edgeIndex >= 0 && ref.edgeIndex < ring.length) {
-    if (!ref.fingerprint || edgeFingerprint(ring, ref.edgeIndex) === ref.fingerprint) {
-      return { region, points: ring, ring: ref.ring, index: ref.edgeIndex };
+  // A matching fingerprint anywhere wins (the edge may have been renumbered by a vertex insert/delete).
+  if (ref.fingerprint) {
+    const rings = [region.polygon.outer, ...region.polygon.holes];
+    for (let ri = 0; ri < rings.length; ri++) {
+      const r = rings[ri];
+      for (let i = 0; i < r.length; i++) {
+        if (edgeFingerprint(r, i) === ref.fingerprint) return { region, points: r, ring: ri, index: i };
+      }
     }
   }
-  if (!ref.fingerprint) return null;
-  const rings = [region.polygon.outer, ...region.polygon.holes];
-  for (let ri = 0; ri < rings.length; ri++) {
-    const r = rings[ri];
-    for (let i = 0; i < r.length; i++) {
-      if (edgeFingerprint(r, i) === ref.fingerprint) return { region, points: r, ring: ri, index: i };
-    }
+  // Otherwise the edge index still addresses a real edge whose geometry changed (a vertex was moved):
+  // the condition stays on that edge; the command layer refreshes the fingerprint afterwards.
+  if (ring && ref.edgeIndex >= 0 && ref.edgeIndex < ring.length) {
+    return { region, points: ring, ring: ref.ring, index: ref.edgeIndex };
   }
   return null;
 }
