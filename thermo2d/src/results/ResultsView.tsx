@@ -41,7 +41,21 @@ export function ResultsView(props: ResultsViewProps) {
   const [time, setTimeState] = useState(tEnd);
   const [tab, setTab] = useState<Tab>('probes');
   const [bands, setBands] = useState<BandScale>(DEFAULT_BANDS);
-  const [fill, setFill] = useState<'isobands' | 'element'>('isobands');
+  const [fill, setFillState] = useState<'isobands' | 'element'>(() => {
+    try {
+      return localStorage.getItem('thermo2d.results.fill') === 'element' ? 'element' : 'isobands';
+    } catch {
+      return 'isobands';
+    }
+  });
+  const setFill = (f: 'isobands' | 'element') => {
+    setFillState(f);
+    try {
+      localStorage.setItem('thermo2d.results.fill', f);
+    } catch {
+      /* private mode */
+    }
+  };
   const [showIso, setShowIso] = useState(true);
   const [showMesh, setShowMesh] = useState(false);
   const [show500, setShow500] = useState(project.rebars.length > 0);
