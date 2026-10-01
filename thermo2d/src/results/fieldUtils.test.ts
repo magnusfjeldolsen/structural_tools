@@ -75,3 +75,39 @@ describe('field utilities', () => {
     expect(d.limit).toBe(0.1);
   });
 });
+
+import { withProjectProbes } from './fieldUtils.js';
+import type { Project } from '@thermo2d/core';
+
+describe('withProjectProbes', () => {
+  // One right triangle (0,0)-(100,0)-(0,100) with θ = x at every snapshot; two snapshots at t = 0 and 60.
+  const mesh = {
+    nodes: new Float64Array([0, 0, 100, 0, 0, 100]),
+    triangles: new Uint32Array([0, 1, 2]),
+    elementRegion: new Int32Array([0]),
+    regions: [{ id: 'r', materialId: 'm', kind: 'region' as const, elementCount: 1, area: 5000 }],
+    boundary: [],
+    stats: { nodeCount: 3, elementCount: 1, minAngleDeg: 45, minEdge: 100, maxEdge: 141, poorElements: 0 },
+    warnings: [],
+  };
+  const result = {
+    analysisId: 'a', scenarioId: null, mode: 'transient', mesh,
+    times: [0, 60], fields: [new Float32Array([0, 100, 0]), new Float32Array([0, 100, 0])],
+    probes: [{ id: 'p', position: [10, 10], found: true, element: 0 }],
+    probeTimes: new Float64Array([0, 30, 60]), probeValues: [new Float64Array([10, 10, 10])],
+    energy: { storedChange: 0, boundaryIn: 0, sourceIn: 0, relativeImbalance: 0 },
+    stats: { steps: 2, rejectedSteps: 0, newtonIterations: 2, wallTimeMs: 1, linearSolver: 'x', nodeCount: 3, elementCount: 1 },
+    warnings: [],
+  } as unknown as RunResult;
+  it('re-samples a probe that was moved after the run', () => {
+    const project = { probes: [{ id: 'p', name: 'P', position: [50, 10], kind: 'manual' }] } as unknown as Project;
+    const out = withProjectProbes(result, project);
+    expect(out.probes[0].position).toEqual([50, 10]);
+    expect(Array.from(out.probeValues[0])).toEqual([50, 50, 50]);
+    expect(result.probeValues[0][0]).toBe(10); // input untouched
+  });
+  it('returns the same object when nothing changed', () => {
+    const project = { probes: [{ id: 'p', name: 'P', position: [10, 10], kind: 'manual' }] } as unknown as Project;
+    expect(withProjectProbes(result, project)).toBe(result);
+  });
+});

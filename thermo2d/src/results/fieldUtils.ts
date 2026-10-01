@@ -246,26 +246,41 @@ export function seriesColor(i: number): string {
  * probe time grid by linear interpolation between snapshots.
  */
 export function withProjectProbes(result: RunResult, project: Project): RunResult {
-  const have = new Set(result.probes.map((p) => p.id));
-  const missing = project.probes.filter((p) => p.enabled !== false && !have.has(p.id));
-  if (missing.length === 0 || result.times.length === 0) return result;
+  if (result.times.length === 0) return result;
+  const byId = new Map(result.probes.map((p, i) => [p.id, i]));
+  // New probes, and probes whose position changed since the run (dragged or edited), are sampled from the snapshots.
+  const pending = project.probes.filter((p) => {
+    if (p.enabled === false) return false;
+    const i = byId.get(p.id);
+    if (i === undefined) return true;
+    const q = result.probes[i].position;
+    return Math.abs(q[0] - p.position[0]) > 1e-6 || Math.abs(q[1] - p.position[1]) > 1e-6;
+  });
+  if (pending.length === 0) return result;
   const locator = makeLocator(result);
   const probes = result.probes.slice();
   const probeValues = result.probeValues.slice();
   const times = result.probeTimes.length ? Array.from(result.probeTimes) : result.times;
   const probeTimes = result.probeTimes.length ? result.probeTimes : Float64Array.from(result.times);
-  let added = false;
-  for (const p of missing) {
+  let changed = false;
+  for (const p of pending) {
     const hist = pointHistory(result, locator, p.position);
     if (!hist) continue;
     const vals = new Float64Array(times.length);
     for (let k = 0; k < times.length; k++) vals[k] = interpSeries(hist.t, hist.v, times[k]);
     const hit = locator.locate(p.position[0], p.position[1]);
-    probes.push({ id: p.id, position: [p.position[0], p.position[1]], found: true, element: hit?.element ?? -1 });
-    probeValues.push(vals);
-    added = true;
+    const entry = { id: p.id, position: [p.position[0], p.position[1]] as Vec2, found: true, element: hit?.element ?? -1 };
+    const i = byId.get(p.id);
+    if (i === undefined) {
+      probes.push(entry);
+      probeValues.push(vals);
+    } else {
+      probes[i] = entry;
+      probeValues[i] = vals;
+    }
+    changed = true;
   }
-  return added ? { ...result, probes, probeValues, probeTimes } : result;
+  return changed ? { ...result, probes, probeValues, probeTimes } : result;
 }
 
 function interpSeries(ts: number[], vs: number[], t: number): number {
