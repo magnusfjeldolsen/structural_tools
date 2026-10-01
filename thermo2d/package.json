@@ -1,0 +1,42 @@
+{
+  "name": "thermo2d",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "2D transient heat analysis for arbitrary cross-sections: web app, MCP server and CLI around one TypeScript core",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:server && vite build",
+    "build:server": "npm run build --workspace=@thermo2d/server",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit -p tsconfig.json && npm run type-check --workspaces --if-present",
+    "test": "vitest run --project core --project figures --project server --project app",
+    "test:core": "vitest run --project core",
+    "test:watch": "vitest",
+    "bench": "tsx packages/core/bench/bench.ts",
+    "mcp": "node packages/server/dist/mcp.mjs",
+    "thermo": "node packages/server/dist/cli.mjs"
+  },
+  "dependencies": {
+    "@thermo2d/core": "*",
+    "@thermo2d/figures": "*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "^0.24.2",
+    "jsdom": "^25.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vitest": "^3.0.5"
+  }
+}

@@ -21,6 +21,12 @@ The project uses a **hybrid deployment model** that combines:
   - Build output: `2dfea/dist/`
   - Dependencies: npm packages
 
+- **thermo2d**: 2D transient heat analysis (web app + MCP server + CLI)
+  - Source: `thermo2d/` (npm workspaces: `packages/core`, `packages/figures`, `packages/server`, app in `src/`)
+  - Config: `thermo2d/vite.config.ts` (relative `base: './'`)
+  - Build output: `thermo2d/dist/` (copied to `<gh-pages>/thermo2d/`), server bundle in `thermo2d/packages/server/dist/`
+  - CI: `npm run type-check && npm test && npm run build` inside `thermo2d/` (deploy workflow and the `check-thermo2d` PR job)
+
 ### Plain HTML Modules (No Build Required)
 - `concrete_plate_CFRP/`
 - `concrete_beam_design/`
