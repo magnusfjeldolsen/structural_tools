@@ -317,3 +317,39 @@ valid ids.
 - **R7. Inner-surface proxy.** The condensation check uses the lowest boundary
   node temperature at the current time as the inner-surface temperature until
   the user defines a `min-surface-temperature` metric on the inside edges.
+
+## Follow-up round (2026-10-01)
+
+Decisions taken with the user in a structured interview after the one-shot
+(see also CONTEXT.md for the vocabulary): bars meshed as steel by default with a
+one-click concrete-reading comparison; unexposed face 4 W/m²K default, 9 W/m²K
+preset, custom allowed; cover to the longitudinal bar surface plus an explicit
+«Ø tverrarmering» distance; «randbetingelse» kept as the user term with paint
+mode and edge splitting; exact isobands as the default rendering (linear inside
+elements); interior mesh size scaled by section area; custom materials saved to
+the project, a personal browser library and the Git company library; agents use
+`window.thermo2d` (MCP-shaped `describe()`), the MCP server is kept as
+experimental, the WebSocket bridge is dropped; FEM-Design data stays local;
+building physics beyond the dew-point check becomes a separate module later.
+Two fixes from browser testing: edge references survive vertex moves
+(`resolveEdgeRef` keeps a valid index when the fingerprint changed) and the
+material range warning has 2 K slack so 20 °C ambient does not trigger it.
+
+### Results view (agent B)
+- **R8. Exact isobands.** The field is drawn by clipping every triangle against
+  the band boundaries in value space (Sutherland–Hodgman on the linear field),
+  one `Path2D` per band, built once per (field, scale) in model coordinates and
+  drawn through the canvas transform. This is exact for linear elements and
+  replaces the subdivision approximation («Glatt»). «Per element» remains as an
+  option. The difference field uses the same routine with a symmetric scale.
+- **R9. Concrete comparison for bars.** «Vis betongtemperatur ved stangsenter»
+  runs a copy of the project where each bar takes its host region's material,
+  in a second solver worker owned by the results view, and shows concrete θ and
+  Δ beside the steel values. Cached per project hash + analysis + scenario and
+  marked stale when the project changes. The table states the thermal model per
+  bar from its material category (metal → «Stål (meshet)», concrete → «Betong (avlest)»).
+- **R10.** The `ResultsViewProps` contract is unchanged.
+
+- **C1. Help as a drawer, not a wiki site.** Help lives in the app (`src/help`): seven short pages in nb/en (getting started, climate, boundary conditions, reinforcement, probes, glossary, agents), rendered from a tiny block markup in `strings.ts` so content stays reviewable as text. The glossary is a copy of CONTEXT.md and must be kept in sync by hand.
+- **C2. Tour by detection, not by data attributes.** The 8-step tour finds its targets by button/tab text (nb and en) and advances when the model shows the step was done (region exists → has material → fire BC → rebars → probes → result → clicked probe). It auto-starts once after the first template-based project and remembers completion in localStorage. `[data-tour="run"]` is honoured if present.
+- **C3. Agent API shaped like MCP, always on.** `window.thermo2d` (`src/agent/api.ts`) exposes tools as `{ name, description, inputSchema }` and `call(name, input)`; errors are JSON with field/options/suggestion. It goes through `useStore.dispatch`/`run`, so undo, autosave and validation apply exactly as for the user. A badge shows each call for 4 s. `public/agent.md` documents it with a worked example; the help drawer links to it. No WebSocket bridge.

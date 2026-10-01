@@ -1,0 +1,19 @@
+{
+  "id": "example-constant-material",
+  "category": "material",
+  "name": "Example material (replace with a datasheet)",
+  "nameNb": "Eksempelmateriale (erstatt med datablad)",
+  "tags": ["eksempel", "example"],
+  "quality": "typical",
+  "source": { "text": "Eksempel – erstatt med produsentens datablad (dokumentnavn og dato)" },
+  "material": {
+    "name": "Eksempelmateriale (erstatt med datablad)",
+    "category": "insulation",
+    "model": { "kind": "constant", "lambda": 0.04, "cp": 1000, "rho": 50 },
+    "emissivity": 0.9,
+    "validRange": [-30, 200],
+    "source": { "text": "Eksempel – erstatt med produsentens datablad (dokumentnavn og dato)" },
+    "quality": "typical",
+    "tags": ["eksempel", "example"]
+  }
+}

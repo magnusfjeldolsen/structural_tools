@@ -1,7 +1,8 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { Project, RunResult, Vec2 } from '@thermo2d/core';
 import { isotherm } from '@thermo2d/core';
-import { bandColors, bandEdges, bandIndex, divergingBandColors, divergingBandIndex, type BandScale } from './colorScale.js';
+import { bandColors, bandEdges, divergingBandColors, type BandScale } from './colorScale.js';
+import { buildBandPaths, divergingEdges, temperatureEdges } from './isobands.js';
 import { boundsOfNodes, fitViewport, hitMarker, niceGridSpacing, pan, toModel, toScreen, zoomAt, type Viewport } from './viewport.js';
 import type { ElementLocator } from './fieldUtils.js';
 import type { TFn } from './i18n.js';
@@ -25,7 +26,8 @@ export interface ContourCanvasProps {
   bands: BandScale;
   /** Symmetric limit for the difference mode. */
   diffLimit?: number;
-  smooth: boolean;
+  /** 'isobands' = exact linear variation inside each element (default); 'element' = one colour per triangle. */
+  fill: 'isobands' | 'element';
   showIsolines: boolean;
   showMesh: boolean;
   show500: boolean;
@@ -56,7 +58,7 @@ interface DragState {
 
 /** Canvas-2D temperature field with pan/zoom, hover readout, click probes, draggable probes and line-probe drawing. */
 export const ContourCanvas = forwardRef<ContourCanvasHandle, ContourCanvasProps>(function ContourCanvas(props, ref) {
-  const { project, result, field, mode, bands, diffLimit = 1, smooth, showIsolines, showMesh, show500, locator, probes, t, lineMode, onLineDone, onLineCancel, onPin, onProbeMove, lines } = props;
+  const { project, result, field, mode, bands, diffLimit = 1, fill, showIsolines, showMesh, show500, locator, probes, t, lineMode, onLineDone, onLineCancel, onPin, onProbeMove, lines } = props;
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 600, h: 400 });
@@ -100,6 +102,11 @@ export const ContourCanvas = forwardRef<ContourCanvasHandle, ContourCanvasProps>
 
   // Band membership per triangle (or sub-triangle) is what makes drawing fast: one path per band.
   const colors = useMemo(() => (mode === 'difference' ? divergingBandColors(10) : bandColors(bands)), [mode, bands]);
+  // Band geometry is built once per (field, scale) in model coordinates; pan/zoom only changes the canvas transform.
+  const bandPaths = useMemo(() => {
+    const edges = mode === 'difference' ? divergingEdges(diffLimit, 10) : temperatureEdges(bands.min, bands.max, bands.step);
+    return buildBandPaths(result.mesh.nodes, result.mesh.triangles, field, edges, fill);
+  }, [result.mesh, field, mode, bands, diffLimit, fill]);
   const isoSegments = useMemo(() => {
     if (mode !== 'temperature') return [] as { theta: number; segs: [Vec2, Vec2][] }[];
     const out: { theta: number; segs: [Vec2, Vec2][] }[] = [];
@@ -131,7 +138,7 @@ export const ContourCanvas = forwardRef<ContourCanvasHandle, ContourCanvasProps>
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size.w, size.h);
     drawGrid(ctx, vp, size.w, size.h);
-    drawField(ctx, vp, result, field, mode, bands, diffLimit, colors, smooth, showMesh);
+    drawField(ctx, vp, result, bandPaths, colors, showMesh, dpr);
     drawOutlines(ctx, vp, project);
     for (const iso of isoSegments) drawIso(ctx, vp, iso.theta, iso.segs, iso.theta === 500 && show500);
     for (const ln of lines) drawLine(ctx, vp, ln.from, ln.to, '#7c3aed');
@@ -145,7 +152,7 @@ export const ContourCanvas = forwardRef<ContourCanvasHandle, ContourCanvasProps>
       ctx.arc(sx, sy, 6, 0, Math.PI * 2);
       ctx.stroke();
     }
-  }, [vp, size, result, field, mode, bands, diffLimit, colors, smooth, showMesh, isoSegments, show500, project, probes, lines, lineStart, hover, tempProbe, dragPos]);
+  }, [vp, size, result, field, mode, bands, diffLimit, colors, bandPaths, showMesh, isoSegments, show500, project, probes, lines, lineStart, hover, tempProbe, dragPos]);
 
   const modelAt = (e: React.PointerEvent): Vec2 | null => {
     if (!vp) return null;
@@ -330,89 +337,36 @@ function drawGrid(ctx: CanvasRenderingContext2D, vp: Viewport, w: number, h: num
   ctx.stroke();
 }
 
-function drawField(
-  ctx: CanvasRenderingContext2D,
-  vp: Viewport,
-  result: RunResult,
-  field: Float32Array,
-  mode: 'temperature' | 'difference',
-  bands: BandScale,
-  diffLimit: number,
-  colors: string[],
-  smooth: boolean,
-  showMesh: boolean,
-): void {
+function drawField(ctx: CanvasRenderingContext2D, vp: Viewport, result: RunResult, bandPaths: Path2D[], colors: string[], showMesh: boolean, dpr: number): void {
   const { nodes, triangles } = result.mesh;
-  const m = triangles.length / 3;
-  const paths = colors.map(() => new Path2D());
-  const band = (v: number) => (mode === 'difference' ? divergingBandIndex(v, diffLimit, colors.length) : bandIndex(v, bands));
-  const sx = new Float64Array(nodes.length / 2);
-  const sy = new Float64Array(nodes.length / 2);
-  for (let i = 0; i < sx.length; i++) {
-    sx[i] = vp.ox + nodes[2 * i] * vp.scale;
-    sy[i] = vp.oy - nodes[2 * i + 1] * vp.scale;
-  }
-  const px = (v: number) => Math.round(v * 2) / 2;
-  const add = (b: number, ax: number, ay: number, bx: number, by: number, cx: number, cy: number) => {
-    const p = paths[b];
-    p.moveTo(px(ax), px(ay));
-    p.lineTo(px(bx), px(by));
-    p.lineTo(px(cx), px(cy));
-    p.closePath();
-  };
-  const sub = (ax: number, ay: number, av: number, bx: number, by: number, bv: number, cx: number, cy: number, cv: number, depth: number) => {
-    const ba = band(av);
-    const bb = band(bv);
-    const bc = band(cv);
-    if ((ba === bb && bb === bc) || depth === 0 || Math.abs(ax - bx) + Math.abs(ay - by) + Math.abs(bx - cx) + Math.abs(by - cy) < 6) {
-      add(band((av + bv + cv) / 3), ax, ay, bx, by, cx, cy);
-      return;
-    }
-    const mabx = (ax + bx) / 2;
-    const maby = (ay + by) / 2;
-    const mabv = (av + bv) / 2;
-    const mbcx = (bx + cx) / 2;
-    const mbcy = (by + cy) / 2;
-    const mbcv = (bv + cv) / 2;
-    const mcax = (cx + ax) / 2;
-    const mcay = (cy + ay) / 2;
-    const mcav = (cv + av) / 2;
-    sub(ax, ay, av, mabx, maby, mabv, mcax, mcay, mcav, depth - 1);
-    sub(mabx, maby, mabv, bx, by, bv, mbcx, mbcy, mbcv, depth - 1);
-    sub(mcax, mcay, mcav, mbcx, mbcy, mbcv, cx, cy, cv, depth - 1);
-    sub(mabx, maby, mabv, mbcx, mbcy, mbcv, mcax, mcay, mcav, depth - 1);
-  };
-  const depth = smooth ? (m > 60000 ? 1 : 2) : 0;
-  for (let e = 0; e < m; e++) {
-    const a = triangles[3 * e];
-    const b = triangles[3 * e + 1];
-    const c = triangles[3 * e + 2];
-    if (depth === 0) add(band((field[a] + field[b] + field[c]) / 3), sx[a], sy[a], sx[b], sy[b], sx[c], sy[c]);
-    else sub(sx[a], sy[a], field[a], sx[b], sy[b], field[b], sx[c], sy[c], field[c], depth);
-  }
-  for (let i = 0; i < paths.length; i++) {
+  // Model → screen: x' = ox + x·s, y' = oy − y·s (y up in the model, down on the canvas).
+  ctx.save();
+  ctx.setTransform(dpr * vp.scale, 0, 0, -dpr * vp.scale, dpr * vp.ox, dpr * vp.oy);
+  for (let i = 0; i < bandPaths.length; i++) {
     ctx.fillStyle = colors[i];
-    ctx.fill(paths[i]);
-    // Hairline stroke in the same colour hides anti-aliasing seams between triangles.
+    ctx.fill(bandPaths[i]);
+    // Hairline stroke in the same colour hides anti-aliasing seams between pieces.
     ctx.strokeStyle = colors[i];
-    ctx.lineWidth = 0.6;
-    ctx.stroke(paths[i]);
+    ctx.lineWidth = 0.6 / vp.scale;
+    ctx.stroke(bandPaths[i]);
   }
   if (showMesh) {
     ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-    ctx.lineWidth = 0.5;
+    ctx.lineWidth = 0.5 / vp.scale;
     const p = new Path2D();
+    const m = triangles.length / 3;
     for (let e = 0; e < m; e++) {
       const a = triangles[3 * e];
       const b = triangles[3 * e + 1];
       const c = triangles[3 * e + 2];
-      p.moveTo(sx[a], sy[a]);
-      p.lineTo(sx[b], sy[b]);
-      p.lineTo(sx[c], sy[c]);
+      p.moveTo(nodes[2 * a], nodes[2 * a + 1]);
+      p.lineTo(nodes[2 * b], nodes[2 * b + 1]);
+      p.lineTo(nodes[2 * c], nodes[2 * c + 1]);
       p.closePath();
     }
     ctx.stroke(p);
   }
+  ctx.restore();
 }
 
 function drawOutlines(ctx: CanvasRenderingContext2D, vp: Viewport, project: Project): void {

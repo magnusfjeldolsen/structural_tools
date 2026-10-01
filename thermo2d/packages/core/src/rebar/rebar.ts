@@ -10,8 +10,9 @@ import { edgeEndpoints, edgeOutwardNormal, resolveEdgeRef } from '../geometry/ed
 import type { Polygon, Project, Rebar, RebarSet, Region, Ring, Vec2 } from '../model/types.js';
 
 /** Distance from the host surface to the bar CENTRE for a set, per the project's cover reference. */
-export function centreOffset(set: Pick<RebarSet, 'cover' | 'diameter'>, project: Pick<Project, 'settings'>): number {
-  return project.settings.coverReference === 'surface' ? set.cover + set.diameter / 2 : set.cover;
+export function centreOffset(set: Pick<RebarSet, 'cover' | 'diameter' | 'transverseDiameter'>, project: Pick<Project, 'settings'>): number {
+  const transverse = set.transverseDiameter ?? 0;
+  return project.settings.coverReference === 'surface' ? set.cover + transverse + set.diameter / 2 : set.cover + transverse;
 }
 
 /** Circle polygon of a bar; segments default from the size rule in geometry/primitives. */

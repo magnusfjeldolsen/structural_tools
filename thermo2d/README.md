@@ -7,7 +7,7 @@ stål- og trekonstruksjoner, brannmotstand for lettvegger, U-verdi, kuldebroer
 | Skall | Hva | Hvor |
 |---|---|---|
 | Web-app | Tegn snittet, velg materialer, velg brann- eller klimakurve, kjør, les temperaturer | https://magnusfjeldolsen.github.io/structural_tools/thermo2d/ |
-| MCP-server | Claude bygger, kjører og forklarer modeller på prompt | `packages/server/dist/mcp.mjs` |
+| MCP-server (eksperimentell) | Claude Desktop/Code bygger, kjører og forklarer modeller på prompt. Beholdt for batch og regresjonstest; i appen bruker agenter heller `window.thermo2d`. | `packages/server/dist/mcp.mjs` |
 | CLI | Batchkjøring og regresjonstester | `packages/server/dist/cli.mjs` |
 
 Alt kjører lokalt og offline etter installasjon. Ingen kontoer, ingen nettverk.
@@ -80,6 +80,27 @@ Avvik fra spesifikasjonen og begrunnelser står i [DECISIONS.md](DECISIONS.md).
 Testene i `packages/core/test/validation` dekker tilfellene i spec §14 med de
 oppgitte toleransene (analytiske løsninger, EN ISO 6946/10211, EN 1992-1-2
 Annex A). `npm test` kjører alt; CI kjører det samme på hver PR og hver deploy.
+
+## Bibliotek
+
+Tre kilder slås sammen ved oppstart: innebygd (kjernen, med siteringer),
+**firmabibliotek** (`thermo2d/library/*.json|csv`, bundles inn i appen og leses
+av serveren; se `library/README.md` for format og PR-regel) og **mitt bibliotek**
+(lagret i nettleseren). Et egendefinert materiale kan lagres i mitt bibliotek
+eller eksporteres som JSON-fil til firmabiblioteket.
+
+## Armering og mesh
+
+- Overdekning måles til lengdearmeringens overflate (eller senter, prosjektvalg).
+  Bøyler og fordelingsarmering oppgis som «Ø tverrarmering» og legges til som
+  avstand; de regnes ikke termisk.
+- Stenger meshes som stål. Settes stangmaterialet til betong, leses
+  betongtemperaturen ved stangsenter slik EN 1992-1-2 tillegg A gjør.
+- Ueksponert side: 4 W/m²K som standard (EN 1991-1-2 §3.1(5)), 9 W/m²K med ett
+  klikk (§3.1(6)), eller egen verdi.
+- Store snitt får automatisk grovere *indre* mesh (√(areal/0,15 m²), maks 4×);
+  kanter med brann/klima og stenger beholder fin oppløsning. Sett indre
+  elementstørrelse manuelt for å skru det av.
 
 ## Filformater
 

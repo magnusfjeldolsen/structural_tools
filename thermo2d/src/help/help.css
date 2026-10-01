@@ -1,0 +1,117 @@
+/* Help drawer, tour and agent indicator. Uses the app's CSS variables. */
+.help-fab {
+  position: fixed;
+  right: 14px;
+  bottom: 44px;
+  z-index: 60;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: 500 12px var(--font);
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.help-fab:hover { border-color: var(--accent); color: var(--accent); }
+
+.help-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.25); z-index: 70; }
+.help-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(520px, 95vw);
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  z-index: 71;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.25);
+  font: 13px/1.5 var(--font);
+  color: var(--text);
+}
+.help-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.help-head h2 { margin: 0; font-size: 15px; flex: 1; }
+.help-nav { display: flex; gap: 4px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+.help-nav button {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.help-nav button.active { background: var(--accent-2); border-color: var(--accent); color: var(--accent); }
+.help-body { padding: 10px 16px 16px; overflow-y: auto; flex: 1; }
+.help-body h3 { font-size: 13px; margin: 14px 0 4px; }
+.help-body p { margin: 6px 0; }
+.help-body ul { margin: 4px 0 8px 18px; padding: 0; }
+.help-body blockquote { margin: 8px 0; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--accent-2); border-radius: 4px; }
+.help-body code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); padding: 0 4px; border-radius: 3px; }
+.help-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.help-table th, .help-table td { text-align: left; vertical-align: top; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.help-table th { color: var(--text-2); font-weight: 600; }
+.help-foot { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); align-items: center; }
+.help-foot .spacer { flex: 1; }
+.help-btn {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  font: 12px var(--font);
+  cursor: pointer;
+}
+.help-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.help-btn:disabled { opacity: 0.5; cursor: default; }
+.help-muted { color: var(--text-2); font-size: 11.5px; }
+
+/* Tour */
+.tour-spot {
+  position: fixed;
+  z-index: 80;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  transition: all 0.15s ease-out;
+}
+.tour-card {
+  position: fixed;
+  z-index: 81;
+  width: 320px;
+  max-width: 92vw;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.35);
+  font: 13px/1.45 var(--font);
+}
+.tour-card h3 { margin: 0 0 4px; font-size: 14px; }
+.tour-card .tour-step { color: var(--text-2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.tour-card .tour-wait { color: var(--text-2); font-size: 11.5px; margin-top: 6px; font-style: italic; }
+.tour-card .tour-actions { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+.tour-card .tour-actions .spacer { flex: 1; }
+
+/* Agent indicator */
+.agent-badge {
+  position: fixed;
+  left: 14px;
+  bottom: 44px;
+  z-index: 60;
+  background: var(--info);
+  color: #fff;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font: 500 12px var(--font);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.agent-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: agent-pulse 1s infinite alternate; }
+@keyframes agent-pulse { from { opacity: 0.3; } to { opacity: 1; } }

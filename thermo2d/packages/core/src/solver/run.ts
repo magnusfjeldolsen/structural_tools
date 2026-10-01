@@ -379,7 +379,8 @@ class RunImpl implements Run {
     }
     sys.materials.forEach((mt, r) => {
       const [lo, hi] = mt.validRange;
-      if (regionMin[r] < lo - 1e-6 || regionMax[r] > hi + 1e-6)
+      // 2 K slack: the initial/ambient temperature often sits exactly on the lower bound (20 °C) and undershoots numerically.
+      if (regionMin[r] < lo - 2 || regionMax[r] > hi + 2)
         warnings.push(`Material "${mt.name}" (region "${mesh.regions[r].id}") was used outside its valid range ${lo}–${hi} °C (reached ${regionMin[r].toFixed(0)}–${regionMax[r].toFixed(0)} °C).`);
     });
     return {

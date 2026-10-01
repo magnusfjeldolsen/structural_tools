@@ -39,6 +39,8 @@ export interface UiState {
   /** Selected vertex (region id, ring, index) for the properties panel. */
   vertexSelection: { regionId: string; ring: number; index: number } | null;
   edgeSelection: EdgeRef[];
+  /** Boundary condition being painted onto edges by clicking (null = off). */
+  paintBcId: string | null;
   snap: SnapOptions;
   showMesh: boolean;
   meshPreviewOn: boolean;
@@ -134,6 +136,7 @@ function initialUi(): UiState {
     selection: [],
     vertexSelection: null,
     edgeSelection: [],
+    paintBcId: null,
     snap: { ...DEFAULT_SNAP },
     showMesh: false,
     meshPreviewOn: false,
@@ -184,6 +187,7 @@ export const useStore = create<AppState>()((set, get) => {
       const exists = (sel: Selection) => (project[sel.collection] as { id: string }[]).some((x) => x.id === sel.id);
       const selection = s.ui.selection.filter(exists);
       const edgeSelection = s.ui.edgeSelection.filter((e) => project.regions.some((r) => r.id === e.regionId));
+      const paintBcId = s.ui.paintBcId && project.boundaryConditions.some((b) => b.id === s.ui.paintBcId) ? s.ui.paintBcId : null;
       set({
         project,
         past,
@@ -191,7 +195,7 @@ export const useStore = create<AppState>()((set, get) => {
         dirty: true,
         resultsStale: Object.keys(s.results).length > 0 ? true : s.resultsStale,
         messages: [...safeValidate(project), ...res.warnings, ...s.messages.filter((m) => m.code.startsWith('runtime:') && m.code !== 'runtime:command')],
-        ui: { ...s.ui, selection, edgeSelection, vertexSelection: selection.length ? s.ui.vertexSelection : null },
+        ui: { ...s.ui, selection, edgeSelection, paintBcId, vertexSelection: selection.length ? s.ui.vertexSelection : null },
         meshPreview: geometryChanged ? null : s.meshPreview,
       });
       if (geometryChanged && s.ui.meshPreviewOn) scheduleMeshPreview();

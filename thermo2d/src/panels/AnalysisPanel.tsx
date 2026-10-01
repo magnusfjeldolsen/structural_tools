@@ -2,7 +2,7 @@ import { MESH_PRESETS, resolveMeshSettings } from '@thermo2d/core';
 import type { Analysis, MeshSettings } from '@thermo2d/core';
 import { useStore } from '../state/store.js';
 import { useT } from '../i18n/useT.js';
-import { Button, Checkbox, NumberField, Section, SelectField, TextField } from '../components/ui.js';
+import { Button, Checkbox, Help, NumberField, Section, SelectField, TextField } from '../components/ui.js';
 
 export function AnalysisPanel() {
   const t = useT();
@@ -34,7 +34,9 @@ export function AnalysisPanel() {
         {analysis.mode !== 'steady' && (
           <>
             <NumberField label={`${t('duration')}`} unit="min" value={analysis.duration / 60} min={0.1} onCommit={(v) => patch({ duration: v * 60 })} />
+            <Help text={t('durationHelp')} />
             <NumberField label={t('timeStep')} unit="s" value={analysis.dt} min={0.01} onCommit={(v) => patch({ dt: v })} />
+            <Help text={t('timeStepHelp')} />
             <NumberField label={t('outputInterval')} unit="s" value={analysis.outputInterval} min={1} onCommit={(v) => patch({ outputInterval: v })} />
           </>
         )}
@@ -72,6 +74,7 @@ export function AnalysisPanel() {
             {t('checkMesh')}
           </Button>
         </div>
+        <Help text={t('meshPresetHelp')} />
         <Section title={t('advanced')} collapsible defaultOpen={project.mesh.preset === 'custom'}>
           <NumberField label={t('boundarySize')} unit="mm" value={size.boundarySize} min={0.2} onCommit={(v) => meshPatch({ preset: 'custom', boundarySize: v })} />
           <NumberField label={t('interiorSize')} unit="mm" value={size.interiorSize} min={0.5} onCommit={(v) => meshPatch({ preset: 'custom', interiorSize: v })} />
