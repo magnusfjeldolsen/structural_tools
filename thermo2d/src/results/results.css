@@ -204,3 +204,12 @@
 .t2d-chart-hover rect { fill: var(--r-bg); stroke: var(--r-border); }
 .t2d-chart-hover text { fill: var(--r-fg); }
 .t2d-chart-legend text { fill: var(--r-fg); }
+
+/* Segmented toggle (field fill mode) */
+.t2d-seg { display: inline-flex; border: 1px solid var(--border, #cbd5e1); border-radius: 6px; overflow: hidden; }
+.t2d-seg button { border: 0; border-radius: 0; padding: 2px 8px; background: transparent; cursor: pointer; }
+.t2d-seg button + button { border-left: 1px solid var(--border, #cbd5e1); }
+.t2d-seg button.active { background: var(--accent-2, #fde8d7); color: var(--accent, #c2410c); font-weight: 600; }
+.t2d-compare-note { font-size: 12px; color: var(--text-2, #64748b); margin: 4px 0 8px; }
+.t2d-table td.delta-warm { color: #b45309; }
+.t2d-table td.delta-cold { color: #1d4ed8; }

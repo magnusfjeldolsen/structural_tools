@@ -2,8 +2,9 @@ import { useState } from 'react';
 import type { Material, MaterialTableRow } from '@thermo2d/core';
 import { useStore, selectedIds } from '../state/store.js';
 import { useT } from '../i18n/useT.js';
-import { Button, Empty, NumberField, Section, SelectField, TextField, Checkbox } from '../components/ui.js';
+import { Button, Empty, Help, NumberField, Section, SelectField, TextField, Checkbox } from '../components/ui.js';
 import { qualityKey } from './LibraryDialog.js';
+import { downloadLibraryItem, materialToLibraryItem, saveToMyLibrary } from '../state/library.js';
 
 function parseTable(text: string): MaterialTableRow[] {
   const rows: MaterialTableRow[] = [];
@@ -25,6 +26,7 @@ export function MaterialsPanel() {
   const { dispatch, setUi } = useStore.getState();
   const [editing, setEditing] = useState<string | null>(null);
   const [pasted, setPasted] = useState('');
+  const [savedNote, setSavedNote] = useState<string | null>(null);
   const regionIds = selectedIds(ui, 'regions');
   const usedBy = (m: Material) => project.regions.filter((r) => r.materialId === m.id).map((r) => r.name).concat(project.rebars.filter((b) => b.materialId === m.id).length ? [t('rebars')] : []);
   const edit = project.materials.find((m) => m.id === editing) ?? null;
@@ -42,11 +44,29 @@ export function MaterialsPanel() {
       <Section
         title={t('panelMaterials')}
         actions={
-          <Button small onClick={() => setUi({ dialog: { kind: 'library', forRegionIds: regionIds.length ? regionIds : undefined } })}>
-            + {t('addFromLibrary')}
-          </Button>
+          <>
+            <Button small onClick={() => setUi({ dialog: { kind: 'library', forRegionIds: regionIds.length ? regionIds : undefined } })}>
+              + {t('addFromLibrary')}
+            </Button>
+            <Button
+              small
+              onClick={() => {
+                const res = dispatch([
+                  {
+                    type: 'material.add',
+                    material: { name: t('newMaterial'), category: 'custom', model: { kind: 'constant', lambda: 1, cp: 1000, rho: 1000 }, emissivity: 0.9, validRange: [-50, 1200], source: { text: '' }, quality: 'user', tags: [], origin: 'user' },
+                  },
+                ]);
+                const id = res?.createdIds[0]?.[0];
+                if (id) setEditing(id);
+              }}
+            >
+              + {t('newMaterial')}
+            </Button>
+          </>
         }
       >
+        <Help text={t('libraryHelp')} />
         {project.materials.length === 0 && <Empty>{t('addFromLibrary')}</Empty>}
         <ul className="tree">
           {project.materials.map((m) => (
@@ -71,10 +91,21 @@ export function MaterialsPanel() {
             <Button small onClick={() => clone(edit)}>
               {t('clone')}
             </Button>
+            {edit.origin === 'user' && (
+              <>
+                <Button small onClick={() => (saveToMyLibrary(materialToLibraryItem(edit)), setSavedNote(edit.id))}>
+                  {t('saveToMyLibrary')}
+                </Button>
+                <Button small onClick={() => downloadLibraryItem(materialToLibraryItem(edit))}>
+                  {t('exportToCompanyLibrary')}
+                </Button>
+              </>
+            )}
             <Button small danger disabled={usedBy(edit).length > 0} onClick={() => (setEditing(null), dispatch([{ type: 'material.delete', id: edit.id }]))}>
               {t('delete')}
             </Button>
           </div>
+          {savedNote === edit.id && <p className="hint">{t('savedToMyLibrary')}</p>}
           <p className="hint">
             {t('source')}: {edit.source.text} · {t('validRange')}: {edit.validRange[0]}–{edit.validRange[1]} °C
           </p>

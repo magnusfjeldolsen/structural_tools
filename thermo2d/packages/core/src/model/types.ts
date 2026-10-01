@@ -84,8 +84,10 @@ export interface RebarSet {
   materialId: EntityId;
   /** Steel strength-class id for k_s(θ) (a ReductionTable id on the material); optional. */
   strengthClassId?: string;
-  /** Cover in mm; measured to bar surface or centre according to project.settings.coverReference. */
+  /** Cover in mm to the LONGITUDINAL bar (surface or centre per project.settings.coverReference). */
   cover: number;
+  /** Diameter of transverse reinforcement (stirrups, distribution bars) between the surface and this set, mm. Added as distance only; never meshed. Default 0. */
+  transverseDiameter?: number;
   count?: number;
   /** Centre-to-centre spacing in mm (alternative to count). */
   spacing?: number;

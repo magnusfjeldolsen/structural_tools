@@ -5,3 +5,6 @@ packages/*/dist/
 .vite/
 workspace/
 *.thermo.results
+
+# private verification data (FEM-Design outputs etc.), never committed
+local/

@@ -174,7 +174,9 @@ describe('edges', () => {
     const edited: Region = { ...region, polygon: { outer: [[0, 0], [50, 0], [100, 0], [100, 50], [0, 50]], holes: [] } };
     const res = resolveEdgeRef({ regions: [edited] }, { regionId: 'r', ring: 0, edgeIndex: 2, fingerprint: fp });
     expect(res?.index).toBe(3);
-    expect(resolveEdgeRef({ regions: [edited] }, { regionId: 'r', ring: 0, edgeIndex: 2, fingerprint: 'nope' })).toBeNull();
+    // An unmatched fingerprint with a still-valid index means the edge geometry changed (vertex moved): keep the index.
+    expect(resolveEdgeRef({ regions: [edited] }, { regionId: 'r', ring: 0, edgeIndex: 2, fingerprint: 'nope' })?.index).toBe(2);
+    expect(resolveEdgeRef({ regions: [edited] }, { regionId: 'r', ring: 0, edgeIndex: 9, fingerprint: 'nope' })).toBeNull();
   });
 });
 
