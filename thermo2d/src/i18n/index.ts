@@ -5,6 +5,8 @@
 export const nb = {
   appName: 'thermo2d',
   tagline: '2D varmeanalyse av tverrsnitt',
+  devBadge: 'Under utvikling',
+  devBadgeHint: 'Verktøyet er under utvikling. Kontroller resultatene mot egne beregninger før bruk i prosjekt.',
   // top bar
   new: 'Ny',
   open: 'Åpne',
@@ -390,6 +392,8 @@ export type StringKey = keyof typeof nb;
 export const en: Record<StringKey, string> = {
   appName: 'thermo2d',
   tagline: '2D thermal analysis of cross-sections',
+  devBadge: 'In development',
+  devBadgeHint: 'This tool is under development. Check results against your own calculations before using them in a project.',
   new: 'New',
   open: 'Open',
   save: 'Save',

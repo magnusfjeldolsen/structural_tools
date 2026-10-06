@@ -43,6 +43,9 @@ export function TopBar(props: { onExportPng: () => void }) {
       <span className="brand" title={t('tagline')}>
         {t('appName')}
       </span>
+      <span className="badge dev" title={t('devBadgeHint')}>
+        {t('devBadge')}
+      </span>
       <TextField className="name" value={project.name} onCommit={(name) => dispatch([{ type: 'project.rename', name }])} placeholder={t('projectName')} />
       {dirty && <span className="pill" title={t('unsavedWarning')}>●</span>}
       <div className="group">
