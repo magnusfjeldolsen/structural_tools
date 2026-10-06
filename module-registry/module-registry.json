@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-10-06T10:59:42.413Z",
-    "total_modules": 30,
+    "generated": "2026-10-06T11:18:57.439Z",
+    "total_modules": 31,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
@@ -342,7 +342,7 @@
     },
     {
       "id": "ec5-knutepunkt",
-      "title": "Knutepunkt – forbindelser i tre etter Eurokode 5",
+      "title": "Knutepunkt – forbindelser i tre etter Eurokode 5 – under utvikling",
       "description": "Beregning av mekaniske forbindelser i trekonstruksjoner etter NS-EN 1995-1-1 med norsk nasjonalt tillegg. Skruer, spiker, bolter og dybler.",
       "keywords": [
         "knutepunkt",
@@ -441,6 +441,28 @@
       ],
       "url": "./steel_beam_relative_deisgn/index.html",
       "category": "steel"
+    },
+    {
+      "id": "thermo2d",
+      "title": "thermo2d – 2D varmeanalyse av tverrsnitt (brann og klima) – under utvikling",
+      "description": "Tegn et 2D-tverrsnitt, velg materialer og brannkurve eller klima, og få temperaturen i tid i ethvert punkt. Transient varmeledning med FEM for betong, stål, tre, gips og isolasjon. Kjører i nettleseren.",
+      "keywords": [
+        "varmeanalyse",
+        "brann",
+        "tverrsnitt",
+        "betong",
+        "armering",
+        "temperatur",
+        "iso 834",
+        "u-verdi",
+        "kuldebro",
+        "thermal analysis",
+        "fire",
+        "concrete",
+        "fem"
+      ],
+      "url": "./thermo2d/index.html",
+      "category": "structural-analysis"
     },
     {
       "id": "transversal_forces_stiffened_web",
