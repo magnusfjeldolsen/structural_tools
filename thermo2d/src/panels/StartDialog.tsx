@@ -20,7 +20,8 @@ export function findLibraryId(text: string, category: 'material' | 'fire-curve' 
 /** Commands that turn a fresh project into a ready-to-run fire case (concrete + ISO 834 + three-sided fire). */
 export function fireDefaultCommands(regionIds: string[]): Command[] {
   const cmds: Command[] = [];
-  const concrete = findLibraryId('C30/37', 'material') ?? findLibraryId('concrete', 'material');
+  // Normal-weight siliceous concrete per EN 1992-1-2 is the fire default; a free-text search could land on AAC or screed.
+  const concrete = BUILTIN_LIBRARY.some((i) => i.id === 'concrete-siliceous') ? 'concrete-siliceous' : findLibraryId('concrete', 'material');
   if (concrete) {
     cmds.push({ type: 'material.addFromLibrary', libraryId: concrete, id: 'mat_concrete' });
     cmds.push({ type: 'region.setMaterial', ids: regionIds, materialId: 'mat_concrete' });

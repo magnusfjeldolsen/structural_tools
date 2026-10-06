@@ -50,7 +50,16 @@ export function App() {
   // Autosave restore prompt (once)
   useEffect(() => {
     const a = readAutosave();
-    if (a) setRestore(a);
+    if (!a) return;
+    // Skip the prompt when the autosave is the project already open (e.g. after a hot reload during development).
+    try {
+      const current = useStore.getState().project;
+      const saved = JSON.parse(a.json) as { id?: string };
+      if (saved.id === current.id && current.regions.length > 0) return;
+    } catch {
+      /* fall through to the prompt */
+    }
+    setRestore(a);
   }, []);
 
   // Global shortcuts
