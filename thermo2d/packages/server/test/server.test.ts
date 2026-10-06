@@ -52,7 +52,8 @@ describe('workspace safety', () => {
   it('rejects paths that escape the workspace', () => {
     const ws = state.workspace;
     expect(() => ws.resolve('../outside.txt')).toThrow(WorkspaceError);
-    expect(() => ws.resolve('C:\\Windows\\system32\\x')).toThrow(/outside the workspace/);
+    // An absolute path outside the workspace on this platform (Windows: C:\outside\x, Linux: /outside/x).
+    expect(() => ws.resolve(path.resolve(path.sep, 'outside', 'x'))).toThrow(/outside the workspace/);
     expect(ws.resolve('sub/inside.json').toLowerCase().startsWith(ws.root.toLowerCase())).toBe(true);
     expect(ws.projectPath('beam').toLowerCase()).toBe(path.join(ws.root, 'beam.thermo.json').toLowerCase());
     expect(ws.projectPath('beam.thermo.json')).toBe(ws.projectPath('beam'));
