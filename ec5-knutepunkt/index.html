@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-BFVZQQ2LYN');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knutepunkt – forbindelser i tre etter Eurokode 5</title>
+<meta name="description" content="Beregning av mekaniske forbindelser i trekonstruksjoner etter NS-EN 1995-1-1 med norsk nasjonalt tillegg. Skruer, spiker, bolter og dybler.">
+<meta name="keywords" content="knutepunkt, forbindelser, tre, trekonstruksjoner, Eurokode 5, EC5, NS-EN 1995-1-1, skrue, spiker, bolt, dybel, Johansen, timber connections, fasteners">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="src/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="./" data-testid="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="2" y="9" width="22" height="8" rx="1" fill="currentColor" opacity=".18"/><rect x="9" y="2" width="8" height="22" rx="1" fill="currentColor" opacity=".18"/><circle cx="8" cy="13" r="1.8" fill="currentColor"/><circle cx="18" cy="13" r="1.8" fill="currentColor"/><circle cx="13" cy="7" r="1.8" fill="currentColor"/><circle cx="13" cy="19" r="1.8" fill="currentColor"/></svg>
+    <span>Knutepunkt</span>
+  </a>
+  <span class="topbar-sub">NS-EN 1995-1-1:2004+A1:2008+NA:2010 · NS-EN 1990 NA</span>
+  <div class="topbar-actions">
+    <button class="btn-help" id="btn-modes-help" data-testid="modes-help" type="button" aria-haspopup="dialog" title="Bruddformer – forklaring">?</button>
+    <button class="btn ghost" id="btn-example" data-testid="load-example" type="button">Last eksempel</button>
+    <button class="btn ghost" id="btn-reset" data-testid="reset" type="button">Nullstill</button>
+  </div>
+</header>
+
+<div id="modes-modal" class="modes-modal" hidden>
+  <div class="modes-modal-inner" role="dialog" aria-modal="true" aria-label="Bruddformer">
+    <div class="modes-modal-head">
+      <h2>Bruddformer</h2>
+      <button type="button" class="btn quiet sm" id="btn-modes-close" data-testid="modes-close">Lukk ✕</button>
+    </div>
+    <div id="modes-modal-body" class="modes-modal-body"></div>
+  </div>
+</div>
+
+<main class="shell" id="app">
+  <nav class="steps" aria-label="Steg" data-testid="stepper">
+    <ol id="stepper"></ol>
+    <p class="steps-hint">Alt lagres i adresselinjen. Del lenken for å dele beregningen.</p>
+  </nav>
+
+  <section class="pane" id="pane" aria-live="polite"></section>
+
+  <aside class="side" data-testid="side">
+    <div class="verdict" id="verdict" data-testid="verdict"></div>
+    <div class="drawing" id="drawing" data-testid="drawing"></div>
+    <div class="side-notes" id="side-notes"></div>
+  </aside>
+</main>
+
+<div id="report" class="report" hidden></div>
+
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
