@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-09-25T12:21:13.926Z",
-    "total_modules": 29,
+    "generated": "2026-10-06T10:59:42.413Z",
+    "total_modules": 30,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
@@ -339,6 +339,29 @@
       ],
       "url": "./geometry_workspace/index.html",
       "category": "structural-analysis"
+    },
+    {
+      "id": "ec5-knutepunkt",
+      "title": "Knutepunkt – forbindelser i tre etter Eurokode 5",
+      "description": "Beregning av mekaniske forbindelser i trekonstruksjoner etter NS-EN 1995-1-1 med norsk nasjonalt tillegg. Skruer, spiker, bolter og dybler.",
+      "keywords": [
+        "knutepunkt",
+        "forbindelser",
+        "tre",
+        "trekonstruksjoner",
+        "eurokode 5",
+        "ec5",
+        "ns-en 1995-1-1",
+        "skrue",
+        "spiker",
+        "bolt",
+        "dybel",
+        "johansen",
+        "timber connections",
+        "fasteners"
+      ],
+      "url": "./ec5-knutepunkt/index.html",
+      "category": "timber"
     },
     {
       "id": "piling",

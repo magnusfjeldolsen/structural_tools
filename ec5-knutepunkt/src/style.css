@@ -1,0 +1,247 @@
+/* Knutepunkt – kompakt ingeniørverktøy. En skriftfamilie, tabulære tall, rolige flater. */
+:root {
+  --paper: #f6f7f5;
+  --card: #ffffff;
+  --ink: #1c2622;
+  --ink-2: #4a5852;
+  --ink-3: #7b877f;
+  --line: #d9ded9;
+  --line-2: #eef0ec;
+  --steel: #2f5d8a;      /* handling */
+  --steel-soft: #e4edf6;
+  --spruce: #2e6b4e;     /* ok */
+  --spruce-soft: #e2efe7;
+  --amber: #b9821a;
+  --amber-soft: #f6ecd6;
+  --signal: #b5372e;     /* brudd / feil */
+  --signal-soft: #f6e2df;
+  --r: 6px;
+  --fs-0: 13px;
+  --fs-1: 14.5px;
+  --fs-2: 17px;
+  --fs-3: 22px;
+  --fs-4: 30px;
+}
+* { box-sizing: border-box; }
+html { font-size: var(--fs-1); }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums; line-height: 1.45;
+}
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: var(--fs-3); }
+h2 { font-size: var(--fs-2); }
+h3 { font-size: var(--fs-1); color: var(--ink-2); }
+p { margin: 0.35rem 0; }
+a { color: var(--steel); }
+:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+button, input, select { font: inherit; color: inherit; }
+
+/* Topp */
+.topbar { display: flex; align-items: center; gap: 1rem; padding: 0.55rem 1.25rem; background: var(--card); border-bottom: 1px solid var(--line); }
+.brand { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--ink); text-decoration: none; font-weight: 700; font-size: var(--fs-2); }
+.topbar-sub { color: var(--ink-3); font-size: var(--fs-0); }
+.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 0.4rem; }
+.btn-help {
+  width: 1.9rem; height: 1.9rem; border-radius: 50%; border: 1px solid var(--line); background: transparent;
+  color: var(--ink-2); font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.btn-help:hover { border-color: var(--steel); color: var(--steel); }
+
+/* Bruddform-hjelpevindu */
+/* display:flex må kun gjelde når [hidden] IKKE er satt – ellers overstyrer denne regelen
+   nettleserens standard "[hidden]{display:none}" (lik spesifisitet, author-CSS vinner), og
+   vinduet blir alltid synlig og umulig å lukke uansett hidden-attributtet. */
+.modes-modal { position: fixed; inset: 0; z-index: 60; background: rgba(28,38,34,.45); padding: 4vh 1rem; overflow-y: auto; }
+.modes-modal:not([hidden]) { display: flex; align-items: flex-start; justify-content: center; }
+.modes-modal-inner { background: var(--card); border-radius: var(--r); max-width: 960px; width: 100%; padding: 1.25rem 1.5rem 1.5rem; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.modes-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+.modes-modal-head h2 { margin: 0; }
+.modes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; margin-top: 0.75rem; }
+.mode-card { border: 1px solid var(--line); border-radius: var(--r); padding: 0.5rem 0.6rem 0.6rem; text-align: center; background: var(--paper); }
+.mode-card.gov { border-color: var(--steel); background: var(--steel-soft); }
+.mode-card svg { width: 100%; height: auto; display: block; }
+.mode-card-label { font-size: var(--fs-0); font-weight: 600; color: var(--ink); margin-top: 0.2rem; }
+.mode-card-tag { display: inline-block; font-size: 10.5px; font-weight: 700; color: #fff; background: var(--steel); border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+.mode-card-value { font-size: 11px; color: var(--ink-3); margin-top: 0.15rem; }
+
+/* Skall: stegliste | skjema | sidepanel */
+.shell { display: grid; grid-template-columns: 200px minmax(420px, 600px) minmax(480px, 900px); gap: 1.5rem; padding: 1.25rem; max-width: 1680px; margin: 0 auto; align-items: start; }
+@media (max-width: 1240px) { .shell { grid-template-columns: 1fr; } .side { order: -1; } }
+
+.steps ol { list-style: none; margin: 0; padding: 0; }
+.steps li { display: grid; grid-template-columns: 1.6rem 1fr; gap: 0.5rem; align-items: baseline; padding: 0.45rem 0.5rem; border-radius: var(--r); cursor: pointer; color: var(--ink-2); }
+.steps li .num { font-weight: 600; color: var(--ink-3); }
+.steps li:hover { background: var(--line-2); }
+.steps li.active { background: var(--card); color: var(--ink); box-shadow: inset 3px 0 0 var(--steel); }
+.steps li.active .num { color: var(--steel); }
+.steps li.done .num::after { content: " ✓"; color: var(--spruce); font-size: 0.85em; }
+.steps li .sub { grid-column: 2; font-size: var(--fs-0); color: var(--ink-3); }
+.steps-hint { font-size: var(--fs-0); color: var(--ink-3); padding: 0.75rem 0.5rem 0; }
+
+/* Skjema */
+.pane { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 1.25rem 1.5rem 1.5rem; }
+.pane header { margin-bottom: 1rem; }
+.pane header p { color: var(--ink-2); }
+fieldset { border: 0; padding: 0; margin: 0 0 1.1rem; }
+legend { font-weight: 600; padding: 0; margin-bottom: 0.4rem; color: var(--ink); }
+.grid { display: grid; gap: 0.6rem 1rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.grid.two { grid-template-columns: 1fr 1fr; }
+.grid.three { grid-template-columns: 1fr 1fr 1fr; }
+label.f { display: flex; flex-direction: column; gap: 0.2rem; font-size: var(--fs-0); color: var(--ink-2); }
+label.f > span:first-child { display: flex; justify-content: space-between; gap: 0.5rem; }
+label.f.chk { flex-direction: row; align-items: center; justify-content: flex-start; gap: 0.5rem; }
+label.f .ref { color: var(--ink-3); font-size: 11.5px; }
+.f input, .f select { padding: 0.4rem 0.5rem; border: 1px solid var(--line); border-radius: 4px; background: #fff; color: var(--ink); font-size: var(--fs-1); width: 100%; }
+/* Checkboxen skal IKKE arve width:100% fra regelen over – det ga den en usynlig, full bredde
+   flex-basis, som skjøv teksten langt til høyre for den lille, faktiske avmerkingsboksen. */
+.f.chk input[type="checkbox"] { width: auto; flex: 0 0 auto; margin: 0; }
+.f input:invalid, .f input.bad { border-color: var(--signal); background: var(--signal-soft); }
+.f .unit { position: relative; }
+.f .unit input { padding-right: 3.2rem; }
+.f .unit::after { content: attr(data-unit); position: absolute; right: 0.55rem; top: 50%; transform: translateY(-50%); color: var(--ink-3); font-size: var(--fs-0); }
+.hint { font-size: var(--fs-0); color: var(--ink-3); }
+.rule { height: 1px; background: var(--line-2); margin: 1rem 0; }
+
+/* Valgkort for forbindelsestype */
+.choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.5rem; }
+.choice { border: 1px solid var(--line); border-radius: var(--r); padding: 0.6rem; cursor: pointer; background: #fff; text-align: left; display: grid; gap: 0.35rem; }
+.choice:hover { border-color: var(--steel); }
+.choice.on { border-color: var(--steel); box-shadow: inset 0 0 0 1px var(--steel); background: var(--steel-soft); }
+.choice svg { width: 100%; height: 56px; display: block; }
+.choice .t { font-weight: 600; font-size: var(--fs-0); }
+.choice .d { font-size: 11.5px; color: var(--ink-3); }
+.choice[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* Tabeller */
+table { border-collapse: collapse; width: 100%; font-size: var(--fs-0); }
+th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+th { color: var(--ink-2); font-weight: 600; }
+td.num, th.num { text-align: right; }
+tr.gov td { font-weight: 600; background: var(--steel-soft); }
+tr.info td { color: var(--ink-3); }
+.pill { display: inline-block; padding: 0.05rem 0.45rem; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+.pill.ok { background: var(--spruce-soft); color: var(--spruce); }
+.pill.bad { background: var(--signal-soft); color: var(--signal); }
+.pill.warn { background: var(--amber-soft); color: var(--amber); }
+
+/* Knapper */
+.btn { padding: 0.45rem 0.9rem; border-radius: 4px; border: 1px solid var(--steel); background: var(--steel); color: #fff; cursor: pointer; font-weight: 600; }
+.btn:hover { filter: brightness(1.08); }
+.btn.ghost { background: transparent; color: var(--steel); }
+.btn.quiet { background: transparent; color: var(--ink-2); border-color: var(--line); }
+.btn.sm { padding: 0.25rem 0.6rem; font-size: var(--fs-0); font-weight: 500; }
+.btn.danger { color: var(--signal); border-color: var(--signal); background: transparent; }
+.actions { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--line-2); }
+
+/* Laster */
+.loads-table input, .loads-table select { padding: 0.3rem 0.4rem; border: 1px solid var(--line); border-radius: 4px; width: 100%; }
+.loads-table td { padding: 0.25rem 0.3rem; }
+.loads-table .name { width: 22%; }
+
+/* Sidepanel */
+.side { position: sticky; top: 1rem; display: grid; gap: 0.75rem; }
+.verdict { border-radius: var(--r); padding: 0.9rem 1rem; background: var(--card); border: 1px solid var(--line); display: grid; gap: 0.15rem; }
+.verdict.ok { border-color: var(--spruce); background: var(--spruce-soft); }
+.verdict.bad { border-color: var(--signal); background: var(--signal-soft); }
+.verdict.warn { border-color: var(--amber); background: var(--amber-soft); }
+.verdict .big { font-size: var(--fs-4); font-weight: 700; line-height: 1.1; }
+.verdict .lbl { color: var(--ink-2); font-size: var(--fs-0); }
+.verdict .row { display: flex; justify-content: space-between; gap: 1rem; font-size: var(--fs-0); color: var(--ink-2); }
+.drawing { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 0.5rem; }
+.drawing svg { width: 100%; height: auto; display: block; }
+.drawing-3d-wrap { display: grid; gap: 0.4rem; }
+.drawing-3d { position: relative; width: 100%; height: 460px; border-radius: var(--r); overflow: hidden; background: #f3f1e9; touch-action: none; }
+.drawing-3d canvas { display: block; }
+.drawing-3d-hint { font-size: var(--fs-0); color: var(--ink-3); text-align: center; }
+.drawing-3d-error { font-size: var(--fs-0); color: var(--signal); padding: 1rem; text-align: center; }
+/* Struktur: CSS2D-anker (posisjon/sentrering satt av Three.js sin inline transform) >
+   .label-offset (transform satt av anti-overlapp-logikken i drawing.js, hvert bilde) > innhold.
+   Verken .dim-label/.force-label/.fiber-label/.dim-input-chip eller .label-offset skal ha egen
+   transform i CSS – da ville de kollidert med disse to inline-styrte lagene. */
+.dim-label, .force-label, .fiber-label {
+  font-size: 11.5px; font-weight: 600; color: var(--ink); background: rgba(255,255,255,.86);
+  border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; white-space: nowrap;
+  pointer-events: none; display: inline-block;
+}
+.force-label { color: var(--signal); border-color: var(--signal); background: var(--signal-soft); }
+.fiber-label { color: var(--steel); border-color: var(--steel); background: var(--steel-soft); font-weight: 500; font-style: italic; }
+.drawing-3d-toolbar { position: absolute; top: 0.6rem; right: 0.6rem; z-index: 4; display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-end; }
+.btn-recenter-3d {
+  pointer-events: auto; padding: 0.3rem 0.65rem; border-radius: 4px; border: 1px solid var(--line);
+  background: rgba(255,255,255,.9); color: var(--ink-2); font-size: var(--fs-0); font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.btn-recenter-3d:hover { background: #fff; color: var(--ink); }
+.btn-recenter-3d.active { background: var(--steel); color: #fff; border-color: var(--steel); }
+.dim-input-chip {
+  display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; font-weight: 600;
+  color: var(--ink); background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 4px 1px 6px; white-space: nowrap; pointer-events: auto; cursor: text;
+}
+.dim-input-chip.bad { border-color: var(--signal); background: var(--signal-soft); color: var(--signal); }
+.dim-input-name { color: var(--ink-3); }
+.dim-input-chip.bad .dim-input-name { color: var(--signal); }
+.dim-input-chip input {
+  width: 3.4em; border: none; background: transparent; color: inherit; font: inherit; font-weight: 700;
+  text-align: right; padding: 1px 0; appearance: textfield; -moz-appearance: textfield;
+}
+.dim-input-chip input:focus { outline: 2px solid var(--steel); outline-offset: 1px; border-radius: 2px; }
+.dim-input-chip input::-webkit-outer-spin-button, .dim-input-chip input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.dim-input-unit { color: var(--ink-3); font-weight: 500; }
+@media (max-width: 1240px) { .drawing-3d { height: 380px; } }
+.side-notes { display: grid; gap: 0.35rem; }
+.note { font-size: var(--fs-0); padding: 0.45rem 0.6rem; border-radius: 4px; border-left: 3px solid var(--amber); background: var(--amber-soft); color: var(--ink); }
+.note.err { border-left-color: var(--signal); background: var(--signal-soft); }
+.note .ref { color: var(--ink-3); }
+
+/* Beregningsgang */
+details.trace { margin-top: 0.75rem; }
+details.trace summary { cursor: pointer; font-weight: 600; color: var(--steel); }
+.trace table td:nth-child(2) { font-family: "Source Sans 3", sans-serif; }
+
+/* Rapport (A4) – skjules på skjerm inntil forhåndsvisning */
+.report { display: none; }
+.report.preview { display: block; position: fixed; inset: 0; overflow: auto; background: #6d7370; z-index: 50; padding: 2rem 0; }
+.report.preview .page { margin: 0 auto 1rem; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+.report-toolbar { position: sticky; top: 0; z-index: 51; display: flex; gap: .5rem; justify-content: center; padding: 0 0 1rem; }
+.page { width: 210mm; min-height: 297mm; padding: 18mm 18mm 16mm; background: #fff; color: #111; font-size: 10.5pt; line-height: 1.35; page-break-after: always; position: relative; }
+.page:last-child { page-break-after: auto; }
+.page h1 { font-size: 20pt; }
+.page h2 { font-size: 13pt; margin: 8mm 0 2mm; padding-bottom: 1mm; border-bottom: 1px solid #333; }
+.page h3 { font-size: 11pt; margin: 4mm 0 1mm; color: #111; }
+.page table { font-size: 9pt; table-layout: fixed; }
+.page table.trace-t td:nth-child(1) { width: 21%; } .page table.trace-t td:nth-child(2) { width: 27%; } .page table.trace-t td:nth-child(3) { width: 24%; } .page table.trace-t td:nth-child(4) { width: 12%; } .page table.trace-t td:nth-child(5) { width: 16%; }
+.page table.trace-t { font-size: 8.3pt; } .page td { overflow-wrap: anywhere; }
+.page th, .page td { padding: 1.2mm 2mm; border-bottom: 1px solid #ddd; }
+.page .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 8mm; margin-top: 4mm; font-size: 10pt; }
+.page .meta b { color: #444; font-weight: 600; }
+.print-foot { display: none; }
+.page .foot { position: absolute; left: 18mm; right: 18mm; bottom: 8mm; font-size: 8.5pt; color: #666; display: flex; justify-content: space-between; border-top: 1px solid #ccc; padding-top: 1.5mm; }
+.page .refs li { margin-bottom: 1mm; }
+.page .sum { font-size: 12pt; font-weight: 600; padding: 3mm; border: 1.5px solid #111; margin: 3mm 0; }
+.page .sum.bad { border-color: var(--signal); color: var(--signal); }
+.page .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; margin-top: 12mm; }
+.page .sign div { border-top: 1px solid #111; padding-top: 1mm; font-size: 9pt; }
+.page svg { max-width: 100%; }
+.page .gov-mode { display: flex; align-items: center; gap: 4mm; margin: 2mm 0 4mm; padding: 2mm 3mm; border: 1px solid var(--steel); background: var(--steel-soft); border-radius: 2mm; break-inside: avoid; }
+.page .gov-mode-sketch { width: 32mm; flex: none; }
+.page .gov-mode-sketch svg { width: 100%; height: auto; display: block; }
+.page .gov-mode-text { margin: 0; font-size: 9.5pt; }
+
+@page { size: A4; margin: 16mm 16mm 18mm; }
+@media print {
+  body { background: #fff; }
+  .topbar, .shell, .report-toolbar { display: none !important; }
+  html, body { height: auto; overflow: visible; }
+  .report, .report.preview { display: block !important; position: static; inset: auto; overflow: visible; height: auto; padding: 0; background: #fff; z-index: auto; }
+  .page { break-after: auto; min-height: 0; width: auto; padding: 0; }
+  .page + .page { margin-top: 6mm; }
+  .page .foot { display: none; }
+  .print-foot { position: fixed; bottom: -9mm; left: 0; right: 0; font-size: 8.5pt; color: #666; display: flex; justify-content: space-between; border-top: 1px solid #ccc; padding-top: 1.5mm; }
+  .page table, .page .sum, .page .meta, .page svg { break-inside: avoid; }
+  .page h2, .page h3 { break-after: avoid; }
+  thead { display: table-header-group; }
+  .page { box-shadow: none; margin: 0; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
