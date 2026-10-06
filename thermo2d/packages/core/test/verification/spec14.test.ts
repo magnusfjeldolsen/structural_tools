@@ -105,11 +105,14 @@ describe('case 5 — 300×500 beam, three-sided ISO 834, 90 min (EN 1992-1-2 Ann
 });
 
 describe('case 7 — convergence', () => {
-  it('rebar temperatures change < 2 K between normal/Δt 5 s and fine/Δt 2.5 s', () => {
-    const a = runProject(beam('normal', 5));
-    const b = runProject(beam('fine', 2.5));
-    const ra = rebarTable(beam('normal', 5), a, [5400]);
-    const rb = rebarTable(beam('fine', 2.5), b, [5400]);
+  // Coarse/Δt 10 s against normal/Δt 5 s halves both the element size and the step. The fine preset
+  // (~100 s on a CI runner) blocks vitest's worker long enough to trip its RPC timeout, so it is left
+  // to the bench (`npm run bench`).
+  it('rebar temperatures change < 2 K between coarse/Δt 10 s and normal/Δt 5 s', () => {
+    const a = runProject(beam('coarse', 10));
+    const b = runProject(beam('normal', 5));
+    const ra = rebarTable(beam('coarse', 10), a, [5400]);
+    const rb = rebarTable(beam('normal', 5), b, [5400]);
     for (let i = 0; i < ra.length; i++) {
       expect(Math.abs(ra[i].temps[0] - rb[i].temps[0]), `bar ${ra[i].name}: ${ra[i].temps[0].toFixed(1)} vs ${rb[i].temps[0].toFixed(1)}`).toBeLessThan(2);
     }
