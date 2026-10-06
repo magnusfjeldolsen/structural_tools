@@ -25,6 +25,7 @@ on:
       - 'piling/**'
       - 'rockbolts/**'
       - 'geometry_workspace/**'
+      - 'ec5-knutepunkt/**'
       - 'index.html'
       - 'module-registry/**'
       - '.github/workflows/deploy-all-modules.yml'
@@ -119,7 +120,8 @@ jobs:
                      cable_designer \
                      piling \
                      rockbolts \
-                     geometry_workspace; do
+                     geometry_workspace \
+                     ec5-knutepunkt; do
             if [ -d "$dir" ]; then
               echo "  Copying $dir/"
               cp -r "$dir" ./deploy-staging/
