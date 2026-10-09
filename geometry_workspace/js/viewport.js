@@ -14,9 +14,7 @@ import { openRing, centroidOfPoints } from './geometry.js';
 import { findSnap } from './snapping.js';
 import { buildGraph, jointGroup } from './joints.js';
 import { JOINT_COLOR } from './store.js';
-
-/** Fargestikket former merket «ny» får i lerretet (kontur under den stiplede). Ren tegneparameter — hører ikke til datamodellen, derfor ikke i store.js. */
-const NEW_STAGE_COLOR = '#34d399';
+import { shapeFill, contourStyle } from './shape-style.js';
 
 const Z = {
   underlay: -0.5,
@@ -213,6 +211,8 @@ export class Viewport {
     this.showNet = true;
     this.showPrincipal = true;
     this.showOverlap = true;
+    /** Fyll etter tilstand (ny/eksisterende) i stedet for formens egen farge — se `shape-style.js`. */
+    this.colorByStage = true;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#0f172a');
@@ -479,7 +479,8 @@ export class Viewport {
     this.refresh();
   }
 
-  setOverlays({ showNet, showPrincipal, showOverlap }) {
+  setOverlays({ showNet, showPrincipal, showOverlap, colorByStage }) {
+    if (colorByStage !== undefined) this.colorByStage = colorByStage;
     if (showNet !== undefined) this.showNet = showNet;
     if (showPrincipal !== undefined) this.showPrincipal = showPrincipal;
     if (showOverlap !== undefined) this.showOverlap = showOverlap;
@@ -595,43 +596,24 @@ export class Viewport {
       const isVoid = s.role === 'void';
       const off = s.include === false;
 
-      const color = off ? '#64748b' : s.color;
-      const fillOpacity = off ? 0.05 : isVoid ? 0.1 : isSel ? 0.32 : 0.2;
+      const color = off ? '#64748b' : shapeFill(s, this.colorByStage);
+      // Oransje med lav dekkevne blir brunt mot den mørke bakgrunnen; den nye
+      // delen får derfor litt mer, så den faktisk leses som oransje.
+      const boost = this.colorByStage && s.stage === 'new' ? 0.14 : 0;
+      const fillOpacity = off ? 0.05 : isVoid ? 0.1 : (isSel ? 0.32 : 0.2) + boost;
       fills.add(buildFillMesh(openRing(s.points), color, fillOpacity, Z.fill + i * 1e-4));
 
-      const widthPx = isSel ? 2.6 : isHover ? 2.0 : 1.4;
+      // Konturen sier materialfamilien (heltrukken stål, tykk betong, stiplet
+      // tre, prikket annet); fyllingen over sier tilstanden.
+      const style = contourStyle(s);
+      const widthPx = (isSel ? 2.6 : isHover ? 2.0 : 1.4) * style.weight;
       const ring = openRing(s.points);
       const z = Z.outline + i * 1e-4;
-
-      if (s.stage === 'new') {
-        // Ny del: stiplet kontur i formens egen farge, med et dempet
-        // fargestikk under. Skillet skal være tydelig selv når to former
-        // tilfeldigvis har liknende farge, uten at fargen forsvinner.
-        const dash = 10 * upp;
-        const gap = 6 * upp;
-        outlines.add(
-          buildLineMesh(
-            dashedPolylinePositions(ring, true, ((widthPx + 2.6) * upp) / 2, z - 5e-5, dash, gap),
-            NEW_STAGE_COLOR,
-            off ? 0.2 : 0.45
-          )
-        );
-        outlines.add(
-          buildLineMesh(
-            dashedPolylinePositions(ring, true, (widthPx * upp) / 2, z, dash, gap),
-            isSel ? '#ffffff' : color,
-            off ? 0.4 : 1
-          )
-        );
-      } else {
-        outlines.add(
-          buildLineMesh(
-            thickPolylinePositions(ring, true, (widthPx * upp) / 2, z),
-            isSel ? '#ffffff' : color,
-            off ? 0.4 : 1
-          )
-        );
-      }
+      const halfW = (widthPx * upp) / 2;
+      const positions = style.dash > 0
+        ? dashedPolylinePositions(ring, true, halfW, z, style.dash * upp, style.gap * upp)
+        : thickPolylinePositions(ring, true, halfW, z);
+      outlines.add(buildLineMesh(positions, isSel ? '#ffffff' : color, off ? 0.4 : 1));
 
       if (isSel) {
         const hw = 4 * upp;

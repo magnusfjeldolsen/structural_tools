@@ -287,7 +287,14 @@
         <div class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span> Tyngdepunkt</div>
         <div class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-full border border-amber-500"></span> Referansepunkt</div>
         <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5 bg-violet-400"></span> Hovedakser</div>
-        <div class="flex items-center gap-2"><span class="inline-block w-3 h-0 border-t-2 border-dashed border-emerald-400"></span> Ny del (stiplet kontur)</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-2.5 border border-slate-400" style="background:#93c5fd66"></span> Eksisterende del</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-2.5 border border-slate-400" style="background:#fb923c99"></span> Ny del</div>
+        <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-slate-300">
+          <div class="flex items-center gap-2"><span class="inline-block w-4 border-t border-slate-300"></span> Stål</div>
+          <div class="flex items-center gap-2"><span class="inline-block w-4 border-t-[3px] border-slate-300"></span> Betong</div>
+          <div class="flex items-center gap-2"><span class="inline-block w-4 border-t-2 border-dashed border-slate-300"></span> Tre</div>
+          <div class="flex items-center gap-2"><span class="inline-block w-4 border-t-2 border-dotted border-slate-300"></span> Annet</div>
+        </div>
         <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5" style="background:#2dd4bf"></span> Skjøt — ingen side å velge</div>
       </div>
 
@@ -322,6 +329,7 @@
             </div>
             <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-300 pt-1 border-t border-slate-700">
               <label class="flex items-center gap-1.5"><input id="chk-grid" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Rutenett</label>
+              <label class="flex items-center gap-1.5" title="Av: hver form i sin egen farge"><input id="chk-stage-color" type="checkbox" class="w-3.5 h-3.5 accent-orange-500" checked /> Farg etter tilstand</label>
               <label class="flex items-center gap-1.5"><input id="chk-overlap" type="checkbox" class="w-3.5 h-3.5 accent-amber-500" checked /> Overlapp</label>
               <label class="flex items-center gap-1.5"><input id="chk-net" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Omriss</label>
               <label class="flex items-center gap-1.5"><input id="chk-principal" type="checkbox" class="w-3.5 h-3.5 accent-sky-500" checked /> Hovedakser</label>
@@ -584,8 +592,9 @@
       </p>
       <ul class="list-disc list-inside space-y-1">
         <li>Merk hver form som <strong>Eksisterende</strong> eller <strong>Ny</strong> i egenskapspanelet
-          (bare relevant når du faktisk forsterker). Nye former tegnes med stiplet kontur og et grønt
-          fargestikk.</li>
+          (bare relevant når du faktisk forsterker). Eksisterende former fylles blått og
+          nye oransje. Konturen viser materialet: stål heltrukken, betong tykk, tre stiplet og annet
+          prikket. «Farg etter tilstand» i tannhjulet slår tilbake til en farge per form.</li>
         <li>Velg <strong>materiale</strong> per form, eller skriv E fritt. E brukes bare her;
           vektfaktoren i tyngdepunktsfanen er noe annet — de to er uavhengige.</li>
         <li><strong>Skjøt</strong> (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) — klikk to punkt langs
