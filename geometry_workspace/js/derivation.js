@@ -135,7 +135,6 @@ const NtokN = (v) => v / 1000;
  *   'es'       arealmoment om nøytralaksen for halvplanet (ES*)
  *   'force'    skjærstrømskjeden — og BARE den, se §5.3 øverst
  *   'axial'    aksialkraften som rutes gjennom skjøten (ΔN_i)
- *   'check'    kapasitetskontrollen for forbindelsestypen
  *   'volkersen' shear lag
  *   'anchor'   forankring i enden
  *
@@ -320,65 +319,6 @@ function flowSteps(jt, res) {
 }
 
 /* ================================================================== *
- * Kapasitetskontroll per forbindelsestype
- * ================================================================== */
-
-function checkSteps(jt) {
-  const c = jt.connector;
-
-  if (c.kind === 'weld') {
-    const explicitQrd = Number(c.qRd) > 0;
-    return [
-      step('check', {
-        sym: 'q_Rd',
-        formula: 'q_Rd = n_sveiser · a · f_vw,d     (f_vw,d hentes fra modulen weld_capacity/, regnes ikke ut her)',
-        subst: explicitQrd ? `satt direkte = ${n(c.qRd)} N/mm` : `${n(c.nWelds, 0)} · ${n(c.a_weld)} · ${n(c.fvwd)}`,
-        result: jt.check.qRd == null ? '–' : q(jt.check.qRd, 'N/mm'),
-      }),
-      step('check', {
-        sym: 'utnyttelse',
-        formula: 'util = q_tot / q_Rd',
-        subst: `${n(jt.qTot)} / ${jt.check.qRd == null ? '–' : n(jt.check.qRd)}`,
-        result: jt.check.util == null ? '–' : pct(jt.check.util * 100),
-      }),
-    ];
-  }
-
-  if (c.kind === 'glue') {
-    return [
-      step('check', {
-        sym: 'τ',
-        formula: 'τ = q_tot / b',
-        subst: `${n(jt.qTot)} N/mm / ${n(jt.b, 1)} mm`,
-        result: jt.tau == null ? '–' : q(jt.tau, 'N/mm²'),
-      }),
-      step('check', {
-        sym: 'utnyttelse',
-        formula: 'util = τ / τ_Rd',
-        subst: `${n(jt.tau)} / ${n(c.tauRd)}`,
-        result: jt.check.util == null ? '–' : pct(jt.check.util * 100),
-      }),
-    ];
-  }
-
-  return [
-    step('check', {
-      sym: 's_req',
-      formula: 's_req = rader · F_Rd · 1000 / q_tot     (F_Rd i kN, q i N/mm)',
-      subst: `${n(c.rows, 0)} · ${n(c.FRd)} · 1000 / ${n(jt.qTot)}`,
-      result:
-        jt.check.sReq === Infinity ? 'ingen krav (q_tot = 0)' : jt.check.sReq == null ? '–' : q(jt.check.sReq, 'mm', 1),
-    }),
-    step('check', {
-      sym: 'utnyttelse',
-      formula: 'util = q_tot · s / (rader · F_Rd · 1000)',
-      subst: `${n(jt.qTot)} · ${n(c.spacing, 0)} / (${n(c.rows, 0)} · ${n(c.FRd)} · 1000)`,
-      result: jt.check.util == null ? '–' : pct(jt.check.util * 100),
-    }),
-  ];
-}
-
-/* ================================================================== *
  * Shear lag (Volkersen) og forankring i enden
  * ================================================================== */
 
@@ -390,19 +330,12 @@ function volkersenSteps(jt, res) {
   return [
     step('volkersen', {
       sym: 'k',
-      formula:
-        c.kind === 'glue'
-          ? 'k = G_a · b / t_a     [(N/mm²)·mm/mm = N/mm²]'
-          : 'k = K_ser · rader / s     [(N/mm)·(1/mm) = N/mm²]',
-      subst:
-        c.kind === 'glue'
-          ? `${n(c.Ga, 0)} · ${n(jt.b, 1)} / ${n(c.ta)}`
-          : `${n(jt.slip && jt.slip.valid ? jt.slip.K : c.Kser, 0)} · ${n(c.rows, 0)} / ${n(c.spacing, 0)}`,
+      formula: 'k = K_ser · rader / s     [(N/mm)·(1/mm) = N/mm²]',
+      subst: `${n(jt.slip && jt.slip.valid ? jt.slip.K : c.Kser, 0)} · ${n(c.rows, 0)} / ${n(c.spacing, 0)}`,
       result: q(jt.kConn, 'N/mm²'),
-      note:
-        c.kind !== 'glue' && jt.slip
-          ? `K_ser fra ${jt.slip.source === 'ec5' ? 'EC5 tabell 7.1' : 'fritt innlagt (ETA)'} — samme stivhet som γ-metoden bruker.`
-          : '',
+      note: jt.slip
+        ? `K_ser fra ${jt.slip.source === 'ec5' ? 'EC5 tabell 7.1' : 'fritt innlagt (ETA)'} — samme stivhet som γ-metoden bruker.`
+        : '',
     }),
     step('volkersen', {
       sym: 'λ',
@@ -448,20 +381,6 @@ function anchorSteps(jt) {
       result: q(a.qGoverning, 'N/mm'),
     }),
   ];
-  if (a.n != null) {
-    out.push(
-      step('anchor', {
-        sym: 'F_Ed',
-        formula: 'F_Ed = q_gov · L / n',
-        subst: `${n(a.qGoverning)} N/mm · ${n(a.L, 0)} mm / ${n(a.n, 0)}`,
-        result: q(a.FEd, 'kN'),
-        note:
-          a.FRdCap != null
-            ? `Utnyttelse mot F_Rd = ${n(a.FRdCap)} kN: ${a.util == null ? '–' : pct(a.util * 100)}.`
-            : 'Nødvendig kapasitet — ingen F_Rd oppgitt.',
-      })
-    );
-  }
   return out;
 }
 
@@ -524,7 +443,7 @@ export function derivationModel(res) {
     groups.push({
       key: jt.id,
       title: jt.name,
-      steps: [...flowSteps(jt, res), ...checkSteps(jt), ...volkersenSteps(jt, res), ...anchorSteps(jt)],
+      steps: [...flowSteps(jt, res), ...volkersenSteps(jt, res), ...anchorSteps(jt)],
     });
   }
   return groups;
