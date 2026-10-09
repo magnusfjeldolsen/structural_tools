@@ -76,6 +76,7 @@ import {
   jointContactLength,
 } from './joints.js';
 import { JOINT_COLOR } from './store.js';
+import { jointForceFigureSvg } from './joint-force-figure.js';
 
 /* ------------------------------------------------------------------ *
  * Tallformatering
@@ -866,6 +867,8 @@ export class ReinforcementPanel {
     this.openCalc = new Set(['section']);
     /** Om «Detaljer» står åpen — overlever at panelet tegnes på nytt. */
     this.detailsOpen = false;
+    /** Om forklaringsfiguren (?) står åpen. */
+    this.figureOpen = false;
     /** Musepekeren over en rad lyser opp skjøten i lerretet. */
     this.onHoverJoint = deps.onHoverJoint || (() => {});
   }
@@ -901,7 +904,10 @@ export class ReinforcementPanel {
 
     host.innerHTML = [
       H(
-        'Krefter i skjøtene',
+        `<span class="inline-flex items-center gap-1.5">Krefter i skjøtene
+           <button data-rf-help title="Hva tallene betyr — figur"
+                   class="w-4 h-4 inline-flex items-center justify-center rounded-full border border-sky-500 text-sky-300 hover:bg-sky-900/60 text-[10px] font-bold leading-none normal-case">?</button>
+         </span>`,
         this._warnings(res) + this._forcesTable(res),
         `<button data-rf-act="copy"
                  class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0">
@@ -922,6 +928,9 @@ export class ReinforcementPanel {
 
     const input = document.getElementById(this.inputHostId);
     if (input) input.innerHTML = H('Last', this._loadsBody(res));
+
+    // Står figuren åpen, skal den vise de nye tallene.
+    if (this.figureOpen) this._fillFigure();
 
     this._bind();
   }
@@ -1079,6 +1088,88 @@ export class ReinforcementPanel {
       })
       .join('');
     return H('Delvis samvirke', `<div class="space-y-1.5">${cards}</div>`);
+  }
+
+  /**
+   * Forklaringsfiguren bak (?) ved «Krefter i skjøtene»: bjelken fra siden i
+   * tre situasjoner, og hva hver kolonne betyr. Tallene er fra skjøten med
+   * størst Σq blant skjøtene mot en ny del (ellers blant alle).
+   */
+  _figureValues() {
+    const res = this.result;
+    if (!res || !res.joints.length) return {};
+    // Figuren forklarer forsterkningen, så en skjøt mot en ny del foretrekkes.
+    const pool = res.joints.filter((jt) => !jt.existingOnly);
+    const jt = (pool.length ? pool : res.joints).reduce((a, b) => ((b.qTot || 0) > (a.qTot || 0) ? b : a));
+    const a = jt.anchorReq;
+    return {
+      name: jt.name,
+      q: res.allExisting ? jt.qBefore : jt.qVtot,
+      NG: a ? a.NG_kN : NaN,
+      qReq: a ? a.qReq : NaN,
+      L: res.loads.L,
+    };
+  }
+
+  _figurePopover() {
+    let el = document.getElementById('rf-figure-pop');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'rf-figure-pop';
+    el.className =
+      'hidden fixed z-40 w-[560px] max-h-[85vh] overflow-y-auto panel-scroll bg-slate-900 border border-slate-600 rounded-lg shadow-xl shadow-black/50 p-3 space-y-2';
+    document.body.appendChild(el);
+    // Klikk utenfor lukker; klikk på (?) håndteres av knappen selv.
+    document.addEventListener('pointerdown', (e) => {
+      if (!this.figureOpen) return;
+      if (e.target.closest('#rf-figure-pop') || e.target.closest('[data-rf-help]')) return;
+      this.closeFigure();
+    });
+    return el;
+  }
+
+  _fillFigure() {
+    const el = this._figurePopover();
+    const row = (sym, color, text) => `<tr class="border-t border-slate-700/60">
+        <td class="py-1 pr-3 num whitespace-nowrap font-semibold" style="color:${color}">${sym}</td>
+        <td class="py-1 text-slate-300">${text}</td>
+      </tr>`;
+    el.innerHTML = `
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-white">Hva tallene betyr</h3>
+        <button data-rf-figclose class="text-slate-400 hover:text-white text-xl leading-none px-1" title="Lukk (Esc)">×</button>
+      </div>
+      ${jointForceFigureSvg(this._figureValues())}
+      <table class="w-full text-[11px]">
+        <tbody>
+          ${row('q_før', '#60a5fa', 'Skjærstrøm fra V <em>før</em>, på det eksisterende tverrsnittet. Bare der skjøten ligger i eksisterende materiale — den nye delen fantes ikke da.')}
+          ${row('q_etter', '#60a5fa', 'Skjærstrøm fra V <em>etter</em>, på det sammensatte tverrsnittet.')}
+          ${row('q_N', '#60a5fa', 'ΔN/L — andelen av aksialkraften N som må inn i den nye delen, fordelt over L.')}
+          ${row('Σq', '#f8fafc', 'Summen langs skjøten, i kN/m (= N/mm). Det festemidlene må ta per meter bjelke.')}
+          ${row('N_G', '#f8fafc', 'Kraften i den nye delen fra M <em>etter</em> [kN]. Ingen egen skjærstrøm — den ER summen av q fra enden og fram til snittet (figur 1).')}
+          ${row('N_G/L', '#e879f9', 'Bare der forsterkningen slutter og M ≠ 0 (figur 2): hele N_G må inn over L. Slutter den i et momentnullpunkt, er N_G = 0 der (figur 3).')}
+        </tbody>
+      </table>
+      <p class="text-[11px] text-slate-400">Å forlenge forsterkningen til et momentnullpunkt fjerner forankringskraften.</p>`;
+    el.querySelector('[data-rf-figclose]').addEventListener('click', () => this.closeFigure());
+  }
+
+  openFigure(anchorEl) {
+    this.figureOpen = true;
+    this._fillFigure();
+    const el = this._figurePopover();
+    const panel = document.getElementById(this.hostId);
+    const pr = panel ? panel.getBoundingClientRect() : { left: window.innerWidth };
+    const ar = anchorEl ? anchorEl.getBoundingClientRect() : { top: 80 };
+    el.style.right = `${Math.max(8, window.innerWidth - pr.left + 8)}px`;
+    el.style.top = `${Math.max(8, Math.min(ar.top - 8, window.innerHeight - 200))}px`;
+    el.classList.remove('hidden');
+  }
+
+  closeFigure() {
+    this.figureOpen = false;
+    const el = document.getElementById('rf-figure-pop');
+    if (el) el.classList.add('hidden');
   }
 
   /**
@@ -1297,6 +1388,15 @@ export class ReinforcementPanel {
         }
       });
     });
+
+    const help = host.querySelector('[data-rf-help]');
+    if (help) {
+      help.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.figureOpen) this.closeFigure();
+        else this.openFigure(help);
+      });
+    }
 
     const det = host.querySelector('[data-rf-details]');
     if (det) det.addEventListener('toggle', () => (this.detailsOpen = det.open));

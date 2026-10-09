@@ -218,6 +218,7 @@ window.addEventListener('keydown', (e) => {
     document.getElementById('import-menu').classList.add('hidden');
     document.getElementById('canvas-settings').classList.add('hidden');
     ui.closePopover();
+    ui.reinforcement.closeFigure();
     if (typing) e.target.blur();
     // Hva som var i gang må avgjøres FØR tools.keydown rydder det bort
     const busy = !!(tools.draft || tools.drag);
