@@ -38,6 +38,7 @@
  */
 
 import { unitInfo } from './units.js';
+import { shapeFill, contourStyle } from './shape-style.js';
 
 /* ================================================================== *
  * Papir og romfordeling — alle mål i mm, målt i figurens eget viewBox
@@ -86,6 +87,17 @@ const INK = '#334155'; // konturstrek
 const INK_SOFT = '#64748b'; // hjelpelinjer, skravur
 const INK_FAINT = '#94a3b8'; // ramme
 const JOINT_INK = '#0d9488'; // JOINT_COLOR (#2dd4bf) mørknet til trykk
+
+/**
+ * Konturen på papir, etter materialfamilien (`shape-style.js`): bredden i mm
+ * og en `stroke-dasharray` i mm. Lerretets piksler oversettes ikke direkte —
+ * papiret er mye tettere, så strek og mellomrom er satt for trykk.
+ */
+function paperContour(shape, baseWidth) {
+  const c = contourStyle(shape);
+  const dash = c.kind === 'dashed' ? ' stroke-dasharray="1.5 1"' : c.kind === 'dotted' ? ' stroke-dasharray="0.3 0.8" stroke-linecap="round"' : '';
+  return `stroke-width="${n3(baseWidth * c.weight)}"${dash}`;
+}
 const TEXT = '#0f172a';
 const FONT = "'Segoe UI', 'Helvetica Neue', Arial, sans-serif";
 
@@ -423,7 +435,7 @@ function legend(solids, x, bottomY, width) {
   rows.forEach((e, i) => {
     const ry = y + headH + i * rowH;
     out.push(
-      `<rect x="${n3(x + 1.6)}" y="${n3(ry + 0.4)}" width="3.2" height="2.4" fill="${tint(e.shape.color)}" stroke="${INK}" stroke-width="0.2"${e.isNew ? ' stroke-dasharray="0.8 0.6"' : ''} />`
+      `<rect x="${n3(x + 1.6)}" y="${n3(ry + 0.4)}" width="3.2" height="2.4" fill="${tint(shapeFill(e.shape))}" stroke="${INK}" ${paperContour(e.shape, 0.2)} />`
     );
     out.push(textEl(x + 6, ry + 2.5, trunc(e.shape.name || 'Form', 24), { size: 2.3 }));
     const E = Number.isFinite(e.E) ? `E = ${fmt(e.E, 0)} N/mm²` : 'E ukjent';
@@ -519,10 +531,11 @@ export function buildFigureSvg(model) {
   p.solids.forEach((e, i) => {
     const d = multiPath(multiWithVoids(e, p.voids), toPaper);
     if (!d) return;
-    const base = tint(e.shape.color);
+    const base = tint(shapeFill(e.shape));
     let fill = base;
     if (e.isNew) {
-      // Nye deler: skravur OG stiplet kontur. Skravuren ligger i et
+      // Nye deler: skravur i tillegg til den oransje fyllingen, så skillet
+      // overlever en svart-hvitt-utskrift. Skravuren ligger i et
       // <pattern> med den lyse fargen som bunn, slik at formen fortsatt blir
       // ÉN <path> — hullet i den er fortsatt et hull.
       const pid = `${idp}-hatch-${i}`;
@@ -534,9 +547,8 @@ export function buildFigureSvg(model) {
       );
       fill = `url(#${pid})`;
     }
-    const dash = e.isNew ? ' stroke-dasharray="1.5 1"' : '';
     parts.push(
-      `<path d="${d}" fill="${fill}" fill-rule="evenodd" stroke="${INK}" stroke-width="0.25"${dash} />`
+      `<path d="${d}" fill="${fill}" fill-rule="evenodd" stroke="${INK}" ${paperContour(e.shape, 0.25)} />`
     );
   });
   body.push(`<g id="fig-parts">${parts.join('')}</g>`);

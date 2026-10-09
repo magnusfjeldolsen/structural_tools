@@ -415,25 +415,30 @@ test('har analysen alt trukket hullet fra, legges det ikke til én gang til', ()
  * 7. Nye deler skilles visuelt fra eksisterende (§7.4, punkt 2)
  * ================================================================== */
 
-test('nye deler får stiplet kontur og skravur, eksisterende ikke', () => {
+test('nye deler får skravur, eksisterende ikke; konturen følger materialet', () => {
   const svg = buildFigureSvg(
     model({
       shapes: [
         shape(rect(0, 0, 200, 100), { id: 'old', name: 'Bjelke' }),
-        shape(rect(0, 100, 200, 40), { id: 'new', name: 'Påstøp', stage: 'new', color: '#f472b6' }),
+        shape(rect(0, 100, 200, 40), { id: 'new', name: 'Påstøp', stage: 'new', color: '#f472b6', matName: 'GL30c', E: 13000 }),
       ],
     })
   );
   const paths = pathTags(partsGroup(svg));
   eq('to former tegnet', paths.length, 2);
-  ok('den eksisterende har hel strek', !paths[0].includes('stroke-dasharray'));
-  ok('den nye er stiplet', paths[1].includes('stroke-dasharray="1.5 1"'));
+  ok('stålet har hel strek', !paths[0].includes('stroke-dasharray'));
+  ok('treet er stiplet — stipling betyr tre, ikke «ny»', paths[1].includes('stroke-dasharray="1.5 1"'));
   ok('den nye er skravert med et <pattern>', /fill="url\(#fig-hatch-1\)"/.test(paths[1]));
   ok('mønsteret er definert', svg.includes('<pattern id="fig-hatch-1"'));
   ok('id-prefikset kan byttes for to figurer på samme side', buildFigureSvg(
     model({ idPrefix: 'f2', shapes: [shape(rect(0, 0, 10, 10), { stage: 'new' })] })
   ).includes('<pattern id="f2-hatch-0"'));
   ok('tegnforklaringen nevner både ny og eksisterende', svg.includes('eksisterende') && svg.includes('· ny'));
+  // tint(c) = c + (255 − c)·0,76 per kanal:
+  //   oransje #fb923c → fb: 251+4·0,76 = 254 (fe), 92: 146+109·0,76 = 229 (e5), 3c: 60+195·0,76 = 208 (d0) → #fee5d0
+  //   rosa    #f472b6 → f4: 244+11·0,76 = 252 (fc), 72: 114+141·0,76 = 221 (dd), b6: 182+73·0,76 = 237 (ed) → #fcdded
+  ok('den nye fylles oransje etter tilstand', svg.includes('#fee5d0'));
+  ok('formens egen rosa farge brukes ikke', !svg.includes('#fcdded'));
 });
 
 /* ================================================================== *

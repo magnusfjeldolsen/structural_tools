@@ -27,6 +27,7 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/tools.js` | Tegne- og redigeringsverktøy; oversetter pekerhendelser til CRUD |
 | `js/ui.js` | Panelrendering: geometriliste, formredigering, plassering, resultater |
 | `js/materials.js` | Materialpresets med E [N/mm²]. Ingen DOM. |
+| `js/shape-style.js` | Hvordan en form ser ut: fylling etter tilstand (eksisterende/ny) og kontur etter materialfamilie. Delt av lerretet, geometrilista og rapportfiguren. Ingen DOM. |
 | `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, biaksiell bøyning og skjærstrøm, aksialfordeling, forankring (§8.2), hovedakser/skjevbøyning (§1), γ-metoden og kraft per festemiddel (§4), Volkersen, forbinderkontroll (skrue/lim/sveis). Rene funksjoner, N og mm. Ingen DOM. |
 | `js/connection-stiffness.js` | Festemiddelstivheten K_ser: EC5 tabell 7.1 (§3.1) og fritt innlagt (ETA/produktgodkjenning, §3.2) som likestilte kilder, pluss limstivhet og smøring til fugestivhet (§3.3) — det `volkersen()` og γ-metoden begge bruker. Rene funksjoner. Ingen DOM, ingen importer (se filhodet). |
 | `js/joints.js` | Skjøtelinjer: naboskap (`shapesTouch`), en kraftig nedskalert graf (kun til ΔN-ruting og advarsler), og halvplan-avskjæring for ES* (`halfPlaneParts`/`fullSectionParts`). Erstatter det slettede `interfaces.js`. Ingen DOM. |
@@ -35,6 +36,7 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/main.js` | Bootstrap, hurtigtaster og ruting av tastetrykk til tallinntastingen |
 | `tests/reinforcement.test.mjs` | Fasit for grunnmekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
 | `tests/joints.test.mjs` | Fasit for naboskap, grafen og halvplan-ES*. `node geometry_workspace/tests/joints.test.mjs` |
+| `tests/shape-style.test.mjs` | Fasit for fylling etter tilstand og kontur etter materialfamilie. `node geometry_workspace/tests/shape-style.test.mjs` |
 | `tests/composite.test.mjs` | Fasit for festemiddelstivhet (EC5/ETA), γ-metoden, biaksiell skjærstrøm/hovedakser og forankringskontroll. `node geometry_workspace/tests/composite.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
@@ -390,7 +392,11 @@ stedet.
 Arbeidsflyten:
 
 1. (Bare ved forsterkning) Merk hver form som **eksisterende** eller **ny**,
-   og velg materiale. Nye former får stiplet kontur i lerretet.
+   og velg materiale. Eksisterende former fylles blått og nye oransje; konturen
+   viser materialfamilien (stål heltrukken, betong tykk, tre stiplet, annet
+   prikket). «Farg etter tilstand» i tannhjulet slår tilbake til én farge per
+   form. Rapportfiguren skraverer i tillegg nye deler, så skillet overlever
+   en svart-hvitt-utskrift.
 2. Tegn **skjøten** (`G`): to klikk langs linja. Autonavnes etter delene den
    skiller. Rediger forbindelsestype, felter og heftbredde i skjøtelista.
 3. Legg inn lastene i fanen «Forsterkning» — `before` og (hvis relevant)
