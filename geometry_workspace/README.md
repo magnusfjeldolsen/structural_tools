@@ -32,11 +32,13 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/connection-stiffness.js` | Festemiddelstivheten K_ser: EC5 tabell 7.1 (§3.1) og fritt innlagt (ETA/produktgodkjenning, §3.2) som likestilte kilder, pluss limstivhet og smøring til fugestivhet (§3.3) — det `volkersen()` og γ-metoden begge bruker. Rene funksjoner. Ingen DOM, ingen importer (se filhodet). |
 | `js/joints.js` | Skjøtelinjer: naboskap (`shapesTouch`), en kraftig nedskalert graf (kun til ΔN-ruting og advarsler), og halvplan-avskjæring for ES* (`halfPlaneParts`/`fullSectionParts`). Erstatter det slettede `interfaces.js`. Ingen DOM. |
 | `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen: lastfeltene (biaksielle) i venstre panel, og i høyre krafttabellen (én rad per skjøt), tverrsnittstabellen før/etter og «Detaljer», samt den sammenleggbare akse-/fortegnskonvensjonsfiguren (`axisConventionHtml`, delt med hjelpedialogen). |
+| `js/joint-force-figure.js` | Forklaringsfiguren bak (?) ved «Krefter i skjøtene»: bjelken fra siden i tre situasjoner (snitt i felt, forsterkningsende der M ≠ 0, forsterkningsende i momentnullpunkt), med brukerens tall i etikettene. Ren funksjon → SVG. Ingen DOM. |
 | `js/numeric-input.js` | CAD-aktig tallinntasting i lerretet: tilstandsmaskin + tolkning av `300 200` / `D 300 200` / `10,5 0`. Uavhengig av verktøyene. |
 | `js/main.js` | Bootstrap, hurtigtaster og ruting av tastetrykk til tallinntastingen |
 | `tests/reinforcement.test.mjs` | Fasit for grunnmekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
 | `tests/joints.test.mjs` | Fasit for naboskap, grafen og halvplan-ES*. `node geometry_workspace/tests/joints.test.mjs` |
 | `tests/shape-style.test.mjs` | Fasit for fylling etter tilstand og kontur etter materialfamilie. `node geometry_workspace/tests/shape-style.test.mjs` |
+| `tests/joint-force-figure.test.mjs` | Fasit for forklaringsfiguren: tre paneler, tall i etikettene, «…» når de mangler. `node geometry_workspace/tests/joint-force-figure.test.mjs` |
 | `tests/composite.test.mjs` | Fasit for festemiddelstivhet (EC5/ETA), γ-metoden, biaksiell skjærstrøm/hovedakser og forankringskontroll. `node geometry_workspace/tests/composite.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
@@ -300,7 +302,10 @@ Høyre panel er **tabeller, ikke tekst**. Øverst «Krefter i skjøtene»: én
 rad per skjøt — `q_før`, `q_etter`, `q_N`, `Σq`, `N_G` og `N_G/L` (og `γ`
 når delvis samvirke er satt opp) — så alle skjøtene leses på én gang; det
 finnes ingen skjøt å «velge». Musa over en rad lyser opp skjøten i lerretet,
-og omvendt. Advarslene står på én linje hver over tabellen, med full tekst i
+og omvendt. (?) rett etter overskriften åpner en forklaringsfigur:
+bjelken fra siden i tre situasjoner — snitt i felt, forsterkningsende der
+M ≠ 0, og forsterkningsende i et momentnullpunkt — med tallene fra skjøten
+mot ny del med størst Σq, og hva hver kolonne betyr. Advarslene står på én linje hver over tabellen, med full tekst i
 verktøytipset. Under følger «Tverrsnitt før → etter» (EA, EI_x, EI_y, y_c,
 x_c, θ). Aksialfordeling, Volkersen, delvis samvirke (med ρ-kildene),
 utregningen og merknadene ligger sammenlagt under «Detaljer».
