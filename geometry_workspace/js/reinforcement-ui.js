@@ -520,6 +520,7 @@ export function computeReinforcement(state) {
   if (axes.introducedSkew) {
     warnings.push({
       level: 'warn',
+      short: 'Skjev bøyning innført — kontroller lasten i begge plan.',
       text:
         'Forsterkningen har innført SKJEV BØYNING som ikke fantes før (EI_xy ≈ 0 før, tydelig ' +
         'forskjellig fra null etter) — se «Effekt av forsterkningen». Et rent M_x gir nå også ' +
@@ -535,9 +536,6 @@ export function computeReinforcement(state) {
     } else if (!jt.valid) {
       warnings.push({ level: 'warn', text: `${escapeHtml(jt.name)}: skjærstrømmen kunne ikke regnes ut (EI ≈ 0).` });
     }
-    if (jt.b <= 0) {
-      warnings.push({ level: 'warn', text: `${escapeHtml(jt.name)}: heftbredden er null, så τ = q/b kan ikke regnes ut.` });
-    }
     // En skjøt mot ny del har ingen «før»-tilstand: før forsterkningen ble
     // montert fantes ikke den nye delen, og ingen skjærstrøm krysset fugen.
     // Det er riktig å se bort fra V_før her — men brukeren har tastet inn en
@@ -547,6 +545,7 @@ export function computeReinforcement(state) {
     if (!jt.existingOnly && (Math.abs(loads.before.Vy) > 0 || Math.abs(loads.before.Vx) > 0)) {
       warnings.push({
         level: 'warn',
+        short: `${escapeHtml(jt.name)}: V_før gir ingen skjærstrøm mot en ny del.`,
         text:
           `${escapeHtml(jt.name)}: V_y,før = ${q(NtokN(loads.before.Vy), 'kN')}, V_x,før = ` +
           `${q(NtokN(loads.before.Vx), 'kN')} gir ingen skjærstrøm her, fordi den nye delen ikke ` +
@@ -578,6 +577,7 @@ export function computeReinforcement(state) {
       .join(', ');
     warnings.push({
       level: 'warn',
+      short: `«${escapeHtml(names)}» er festet med flere skjøter — statisk ubestemt, lik fordeling.`,
       text:
         `«${escapeHtml(names)}» er festet med flere skjøter samtidig (${escapeHtml(jn)}) — statisk ubestemt. ` +
         'Fordelingen er satt lik mellom dem som utgangspunkt; overstyr med «Andel» på hver skjøt i skjøtelista om nødvendig.',
@@ -586,6 +586,7 @@ export function computeReinforcement(state) {
   if (!allExisting && loads.L <= 0 && (Math.abs(loads.after.N) > 0 || joints.length)) {
     warnings.push({
       level: 'warn',
+      short: 'L ≤ 0 — q_N settes til null.',
       text: 'Forankringslengden L er null eller negativ. q_N = ΔN/L er da udefinert og settes til null.',
     });
   }
@@ -641,6 +642,11 @@ const H = (title, body, extra = '') => `
     </div>
     ${body}
   </div>`;
+
+/** Ren tekst til `title`-attributtet: advarslene kan inneholde <strong> o.l. */
+function stripTags(html) {
+  return String(html).replace(/<[^>]*>/g, '');
+}
 
 function row(label, value, cls = 'text-slate-200') {
   return `<div class="flex justify-between gap-2">
@@ -858,6 +864,10 @@ export class ReinforcementPanel {
     this.result = null;
     /** Åpne «Utregning»-grupper, nøkkel = skjøt-id eller 'section'. */
     this.openCalc = new Set(['section']);
+    /** Om «Detaljer» står åpen — overlever at panelet tegnes på nytt. */
+    this.detailsOpen = false;
+    /** Musepekeren over en rad lyser opp skjøten i lerretet. */
+    this.onHoverJoint = deps.onHoverJoint || (() => {});
   }
 
   render(analysis) {
@@ -876,33 +886,39 @@ export class ReinforcementPanel {
       return;
     }
 
-    // Kreftene i skjøtene først — det er dem brukeren kom for. Hvordan
-    // tverrsnittet endret seg kommer etterpå.
-    const sections = [
-      { title: 'Kraftsammendrag', body: this._forceSummaryBody(res) },
-      { title: 'Per skjøt', body: this._jointsBody(res) },
-      !res.allExisting && { title: 'Effekt av forsterkningen', body: this._effectBody(res) },
-      !res.allExisting && { title: 'Aksialfordeling', body: this._axialBody(res) },
-      !res.allExisting && { title: 'Shear lag (Volkersen)', body: this._shearLagBody(res) },
-      { title: 'Utregning', body: this._derivationBody(res) },
-    ].filter(Boolean);
-
-    const intro = res.allExisting
-      ? 'Kontroll av eksisterende konstruksjon: skjærstrøm per skjøt i dagens tverrsnitt — «hvor mye går ' +
-        'det i sveisen mellom flens og steg».'
-      : 'Kreftene skjøtene mellom eksisterende og ny del må ta.';
+    // Ingen løpende tekst her: tabeller med tall, advarsler på én linje
+    // (full forklaring i `title`), og alt som er bakgrunn sammenlagt under
+    // «Detaljer». Forklaringene står i hjelpedialogen.
+    const details = [
+      !res.allExisting && H('Aksialfordeling', this._axialBody(res)),
+      !res.allExisting && H('Shear lag (Volkersen)', this._shearLagBody(res)),
+      this._slipBody(res),
+      H('Utregning', this._derivationBody(res)),
+      this._notes(res),
+    ]
+      .filter(Boolean)
+      .join('');
 
     host.innerHTML = [
-      `<div class="flex items-center justify-between gap-2">
-         <span class="text-[11px] text-slate-500 leading-snug">${intro}</span>
-         <button data-rf-act="copy"
-                 class="px-2 py-1 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0">
-           Kopier resultat
-         </button>
-       </div>`,
-      this._warnings(res),
-      ...sections.map((s, i) => H(`${i + 1}. ${s.title}`, s.body)),
-    ].join('');
+      H(
+        'Krefter i skjøtene',
+        this._warnings(res) + this._forcesTable(res),
+        `<button data-rf-act="copy"
+                 class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0">
+           Kopier
+         </button>`
+      ),
+      !res.allExisting && H('Tverrsnitt før → etter', this._sectionTable(res)),
+      `<details class="rounded border border-slate-700 bg-slate-900/60" data-rf-details ${this.detailsOpen ? 'open' : ''}>
+         <summary class="px-2.5 py-1.5 text-xs text-slate-300 hover:text-white flex items-center gap-1.5">
+           <span class="chev text-slate-500" style="display:inline-block">›</span>
+           Detaljer: ${res.allExisting ? '' : 'aksialfordeling · Volkersen · '}utregning
+         </summary>
+         <div class="px-2.5 pb-2.5 pt-1 space-y-3">${details}</div>
+       </details>`,
+    ]
+      .filter(Boolean)
+      .join('');
 
     const input = document.getElementById(this.inputHostId);
     if (input) input.innerHTML = H('Last', this._loadsBody(res));
@@ -913,15 +929,168 @@ export class ReinforcementPanel {
   /* ---------------- seksjonene ---------------- */
 
   _warnings(res) {
-    if (!res || !res.warnings.length) return '';
-    const box = (w) => {
-      const cls =
-        w.level === 'warn'
-          ? 'border-amber-600/60 bg-amber-950/40 text-amber-200'
-          : 'border-slate-600 bg-slate-900 text-slate-400';
-      return `<div class="rounded border ${cls} px-2 py-1.5 text-[11px] leading-snug">${w.text}</div>`;
+    const list = (res && res.warnings ? res.warnings : []).filter((w) => w.level === 'warn');
+    if (!list.length) return '';
+    return `<div class="space-y-1 mb-2">${list
+      .map(
+        (w) => `<div class="flex items-start gap-1.5 text-[11px] text-amber-200 leading-snug" title="${escapeHtml(stripTags(w.text))}">
+            <span class="shrink-0">⚠</span><span>${w.short || w.text}</span>
+          </div>`
+      )
+      .join('')}</div>`;
+  }
+
+  /** Merknadene (nivå «info») — bakgrunn, ikke advarsler, så de står under «Detaljer». */
+  _notes(res) {
+    const list = res.warnings.filter((w) => w.level !== 'warn');
+    if (!list.length) return '';
+    return H(
+      'Merknader',
+      `<ul class="list-disc list-inside space-y-1 text-[11px] text-slate-400 leading-snug">${list
+        .map((w) => `<li>${w.text}</li>`)
+        .join('')}</ul>`
+    );
+  }
+
+  /**
+   * Alle skjøtene i én tabell — én rad per skjøt, ingen å velge mellom.
+   * q i N/mm, som er det samme tallet som kN/m. Raden lyser opp skjøten i
+   * lerretet når musa står over den.
+   */
+  _forcesTable(res) {
+    const list = res.joints;
+    if (!list.length) {
+      return `<p class="text-[11px] text-slate-500 italic">Ingen skjøter — tegn dem i «Geometri» (<kbd class="px-1 bg-slate-700 rounded">G</kbd>).</p>`;
+    }
+    const v = (x, dec = 1) => (x == null || !Number.isFinite(x) ? '–' : n(x, dec));
+    const anyGamma = list.some((jt) => jt.gamma && jt.gamma.applicable);
+    const th = (t, title = '') =>
+      `<th class="text-right font-normal py-1 pl-2 whitespace-nowrap" ${title ? `title="${title}"` : ''}>${t}</th>`;
+
+    const head = res.allExisting
+      ? `${th('q', 'q = V·ES*/EI')}`
+      : `${th('q_før', 'Fra V før, på det eksisterende tverrsnittet. – = mot ny del (fantes ikke da)')}
+         ${th('q_etter', 'Fra V etter, på det sammensatte tverrsnittet')}
+         ${th('q_N', 'ΔN/L — aksialandelen inn i ny del, middel over L')}
+         ${th('Σq', 'q_før + q_etter + q_N')}
+         ${th('N_G', 'Kraft i ny del fra M etter [kN] — må forankres over L')}
+         ${th('N_G/L', 'Middel over forankringslengden L')}
+         ${anyGamma ? th('γ', 'Samvirkegrad, γ-metoden') : ''}`;
+
+    const rows = list
+      .map((jt) => {
+        const a = jt.anchorReq;
+        const cells = res.allExisting
+          ? `<td class="py-1 pl-2 text-right num text-white font-semibold">${v(jt.qBefore)}</td>`
+          : `<td class="py-1 pl-2 text-right num text-slate-300">${jt.flowBefore ? v(jt.qBefore) : '–'}</td>
+             <td class="py-1 pl-2 text-right num text-slate-300">${v(jt.qAfter)}</td>
+             <td class="py-1 pl-2 text-right num text-slate-300">${v(jt.qN)}</td>
+             <td class="py-1 pl-2 text-right num text-white font-semibold">${v(jt.qTot)}</td>
+             <td class="py-1 pl-2 text-right num text-slate-300">${a ? v(a.NG_kN) : '–'}</td>
+             <td class="py-1 pl-2 text-right num text-slate-300">${a ? v(a.qReq) : '–'}</td>
+             ${anyGamma ? `<td class="py-1 pl-2 text-right num text-slate-300">${jt.gamma && jt.gamma.applicable ? n(jt.gamma.gammaEff, 2) : '–'}</td>` : ''}`;
+        return `<tr class="border-t border-slate-700/60 hover:bg-slate-700/40" data-rf-joint="${jt.id}">
+            <td class="py-1 pr-1 max-w-0 w-full">
+              <span class="flex items-center gap-1.5 min-w-0">
+                <span class="w-2 h-2 rounded-sm shrink-0" style="background:${JOINT_COLOR}"></span>
+                <span class="truncate text-slate-200">${escapeHtml(jt.name)}</span>
+              </span>
+            </td>
+            ${cells}
+          </tr>`;
+      })
+      .join('');
+
+    return `<table class="w-full text-[11px]">
+        <thead><tr class="text-slate-500">
+          <th class="text-left font-normal py-1">Skjøt</th>
+          ${head}
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p class="text-[10px] text-slate-500 mt-1">q i kN/m (= N/mm) · N_G i kN · hold musa over en kolonne for forklaring</p>`;
+  }
+
+  /** Tverrsnittsegenskapene før og etter — tall, ingen tekst. */
+  _sectionTable(res) {
+    const c = res.comparison;
+    const ax = res.axes;
+    const v = (x, dec) => n(x, dec);
+    const ratio = (r) => {
+      if (r == null || !Number.isFinite(r)) return '<span class="text-slate-500">–</span>';
+      const inc = (r - 1) * 100;
+      return `<span class="${inc >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${inc >= 0 ? '+' : ''}${pct(inc)}</span>`;
     };
-    return `<div class="space-y-1.5">${res.warnings.map(box).join('')}</div>`;
+    const delta = (d, unit) =>
+      `<span class="text-amber-300">${d >= 0 ? '+' : ''}${n(d, 1)} ${unit}</span>`;
+    const r = (label, before, after, change) => `<tr class="border-t border-slate-700/60">
+        <td class="py-1 pr-2 text-slate-400 whitespace-nowrap">${label}</td>
+        <td class="py-1 pl-2 text-right num text-slate-300">${before}</td>
+        <td class="py-1 pl-2 text-right num text-white">${after}</td>
+        <td class="py-1 pl-2 text-right num">${change}</td>
+      </tr>`;
+    return `<table class="w-full text-[11px]">
+        <thead><tr class="text-slate-500">
+          <th class="text-left font-normal py-1"></th>
+          <th class="text-right font-normal py-1 pl-2">før</th>
+          <th class="text-right font-normal py-1 pl-2">etter</th>
+          <th class="text-right font-normal py-1 pl-2">endring</th>
+        </tr></thead>
+        <tbody>
+          ${r('EA [N]', v(c.EA0, 0), v(c.EA1, 0), ratio(c.ratios.EA))}
+          ${r('EI_x [Nmm²]', v(c.EIx0, 0), v(c.EIx1, 0), ratio(c.ratios.EIx))}
+          ${r('EI_y [Nmm²]', v(c.EIy0, 0), v(c.EIy1, 0), ratio(c.ratios.EIy))}
+          ${r('y_c [mm]', v(c.yc0, 1), v(c.yc1, 1), delta(c.dyc, 'mm'))}
+          ${r('x_c [mm]', v(ax.before.xc, 1), v(ax.after.xc, 1), delta(ax.dxc, 'mm'))}
+          ${r('θ [°]', v(ax.before.thetaDeg, 1), v(ax.after.thetaDeg, 1), delta(ax.dThetaDeg, '°'))}
+        </tbody>
+      </table>`;
+  }
+
+  /**
+   * Delvis samvirke per skjøt: hvor K_ser kom fra (og ρ_m, §14.1 — en verdi
+   * verktøyet fant selv må kunne spores til delen den kom fra), og
+   * γ-metodens resultat. Bare skjøter der noe er satt opp.
+   */
+  _slipBody(res) {
+    const list = res.joints.filter((jt) => jt.slip || (jt.gamma && jt.gamma.applicable));
+    if (!list.length) return '';
+    const cards = list
+      .map((jt) => {
+        const g = jt.gamma && jt.gamma.applicable ? jt.gamma : null;
+        const sl = jt.slip;
+        return `<div class="rounded border border-slate-700 bg-slate-900 p-2 space-y-0.5 text-[11px]">
+            <div class="text-slate-300">${escapeHtml(jt.name)}</div>
+            ${
+              sl
+                ? row(
+                    `K (${sl.state}) — ${sl.source === 'ec5' ? `EC5 tabell 7.1, ${escapeHtml(sl.label)}` : 'fritt innlagt (ETA)'}`,
+                    sl.valid ? q(sl.K, 'N/mm', 0) : '–'
+                  ) + (sl.source === 'ec5' ? rhoSourceHtml(jt.rhoSource) : '')
+                : ''
+            }
+            ${
+              g
+                ? row('γ_eff', n(g.gammaEff, 3)) +
+                  row(`(EI)_ef / EI_full, L_ef = ${n(g.Lef, 0)} mm`, `${n(g.EI_ef, 0)} / ${n(g.EI_full, 0)}`)
+                : ''
+            }
+          </div>`;
+      })
+      .join('');
+    return H('Delvis samvirke', `<div class="space-y-1.5">${cards}</div>`);
+  }
+
+  /**
+   * Lyser opp raden for skjøten musepekeren står over i lerretet — uten å
+   * tegne panelet på nytt.
+   */
+  highlightJoint(id) {
+    const host = document.getElementById(this.hostId);
+    if (!host) return;
+    host.querySelectorAll('[data-rf-joint]').forEach((tr) => {
+      tr.classList.toggle('bg-slate-700/60', tr.dataset.rfJoint === id);
+    });
   }
 
   /**
@@ -988,156 +1157,6 @@ export class ReinforcementPanel {
        ${this._conventionDetails()}`;
   }
 
-  /** §2 — kraftsammendrag rett under lastene: det tallet brukeren kom for. */
-  _forceSummaryBody(res) {
-    if (!res.joints.length) {
-      return `<p class="text-[11px] text-slate-500 italic leading-snug">
-          Ingen skjøter ennå — sammendraget vises her så snart du har tegnet minst én
-          (<kbd class="px-1 bg-slate-700 rounded">G</kbd>).
-        </p>`;
-    }
-    return res.joints
-      .map((jt) => {
-        const rows = res.allExisting
-          ? row('fra V_før', q(jt.qBefore, 'N/mm'))
-          : `${row('fra V_før', jt.flowBefore ? q(jt.qBefore, 'N/mm') : 'ingen «før»-tilstand')}
-             ${row('fra V_etter', q(jt.qAfter, 'N/mm'))}
-             ${row('fra ΔN', q(jt.qN, 'N/mm'))}`;
-        return `
-          <div class="rounded border border-slate-700 bg-slate-900 p-2.5 mb-2">
-            <div class="text-xs text-slate-300 mb-1 truncate">${escapeHtml(jt.name)}</div>
-            <div class="space-y-0.5 text-[11px]">${rows}</div>
-            <div class="flex items-center justify-between mt-1.5 pt-1.5 border-t border-slate-700">
-              <span class="text-xs font-medium text-slate-300">Totalt |q|</span>
-              <span class="text-sm font-semibold text-white num">${q(jt.qTot, 'N/mm')}</span>
-            </div>
-          </div>`;
-      })
-      .join('');
-  }
-
-  /**
-   * §1/§2 i tilbakemeldingen — «Effekt av forsterkningen» skal grupperes etter
-   * hva som HØRER SAMMEN, med tekst som binder gruppene, i stedet for
-   * løsrevne rader: (1) stivheten EA/EI_x/EI_y, (2) nøytralaksens forskyvning
-   * y_c OG x_c sammen, med én forklaring av hva forskyvningen betyr, (3)
-   * hovedaksene θ/EI_1/EI_2 sammen, med skjevbøyningsadvarselen til slutt.
-   * Bygd på `axesComparison` (§1), som er det ene kallet som gir hele
-   * sammenligningen — dxc/dyc, θ før/etter, EI_1/EI_2, tan β.
-   */
-  _effectBody(res) {
-    const c = res.comparison;
-    const ax = res.axes;
-    const line = (label, before, after, ratio, unit, dec = 2) => {
-      const inc = ratio == null ? null : (ratio - 1) * 100;
-      return `<tr class="border-t border-slate-700/60">
-        <td class="py-1 pr-2 text-slate-400">${label}</td>
-        <td class="py-1 pr-2 text-right num text-slate-300">${q(before, unit, dec)}</td>
-        <td class="py-1 pr-2 text-right num text-white">${q(after, unit, dec)}</td>
-        <td class="py-1 text-right num ${inc == null ? 'text-slate-500' : inc >= 0 ? 'text-emerald-300' : 'text-rose-300'}">
-          ${inc == null ? '–' : `${inc >= 0 ? '+' : ''}${pct(inc)}`}
-        </td>
-      </tr>`;
-    };
-    const posLine = (label, before, after, delta) => `<tr class="border-t border-slate-700/60">
-        <td class="py-1 pr-2 text-slate-400">${label}</td>
-        <td class="py-1 pr-2 text-right num text-slate-300">${q(before, 'mm')}</td>
-        <td class="py-1 pr-2 text-right num text-white">${q(after, 'mm')}</td>
-        <td class="py-1 text-right num text-amber-300">${delta >= 0 ? '+' : ''}${q(delta, 'mm')}</td>
-      </tr>`;
-
-    const beta = ax.after.tanBeta;
-    const lat = ax.lateralPercent;
-    const skewWarn = ax.introducedSkew
-      ? `<div class="rounded border border-amber-600/60 bg-amber-950/40 text-amber-200 px-2 py-1.5 text-[11px] leading-snug mt-1.5">
-           <strong>ADVARSEL — skjev bøyning innført:</strong> tverrsnittet var praktisk talt
-           dobbeltsymmetrisk (EI_xy ≈ 0) før forsterkningen, og er det tydelig IKKE lenger. Nøytral-
-           aksens helning for et rent M_x er tan β = EI_xy/EI_y = ${n(beta ?? 0, 4)} — bjelken bøyer seg
-           altså sidevegs, med en sidevegs andel av nedbøyningen på ${pct(lat ?? 0)} av den loddrette.
-           En last som før virket rent i ett hovedplan må nå kontrolleres <strong>i begge plan</strong>.
-         </div>`
-      : ax.after.coupled
-      ? `<p class="text-[11px] text-amber-300 mt-1.5 leading-snug">
-           Tverrsnittet var skjevt (EI_xy ≠ 0) allerede før forsterkningen, og er det fortsatt — det er
-           altså ikke forsterkningen som har innført dette. Sidevegs andel av nedbøyningen for et rent
-           M_x: tan β = ${n(beta ?? 0, 4)}, dvs. ${pct(lat ?? 0)} av den loddrette nedbøyningen.
-         </p>`
-      : `<p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
-           Tverrsnittet er (tilnærmet) dobbeltsymmetrisk både før og etter — ingen skjev bøyning.
-         </p>`;
-
-    return `
-       <div>
-         <table class="w-full text-[11px]">
-           <thead><tr class="text-slate-500">
-             <th class="text-left font-normal py-1">Stivhet</th>
-             <th class="text-right font-normal py-1">Eksisterende</th>
-             <th class="text-right font-normal py-1">Sammensatt</th>
-             <th class="text-right font-normal py-1">Økning</th>
-           </tr></thead>
-           <tbody>
-             ${line('EA', c.EA0, c.EA1, c.ratios.EA, 'N', 0)}
-             ${line('EI_x', c.EIx0, c.EIx1, c.ratios.EIx, 'Nmm²', 0)}
-             ${line('EI_y', c.EIy0, c.EIy1, c.ratios.EIy, 'Nmm²', 0)}
-           </tbody>
-         </table>
-         <p class="text-[11px] text-slate-500 mt-1 leading-snug">
-           Begge stivhetene er regnet om <em>sin egen</em> nøytralakse: før forsterkningen bøyer den
-           eksisterende delen seg om sin akse, etterpå om den felles aksen.
-         </p>
-       </div>
-       <div class="mt-3">
-         <table class="w-full text-[11px]">
-           <thead><tr class="text-slate-500">
-             <th class="text-left font-normal py-1">Nøytralakse</th>
-             <th class="text-right font-normal py-1">Eksisterende</th>
-             <th class="text-right font-normal py-1">Sammensatt</th>
-             <th class="text-right font-normal py-1">Forskyvning</th>
-           </tr></thead>
-           <tbody>
-             ${posLine('y_c', c.yc0, c.yc1, c.dyc)}
-             ${posLine('x_c', ax.before.xc, ax.after.xc, ax.dxc)}
-           </tbody>
-         </table>
-         <p class="text-[11px] text-slate-500 mt-1 leading-snug">
-           (Δy_c, Δx_c) er hvor mye tyngdepunktet har flyttet seg i det globale koordinatsystemet når den
-           nye delen legges til — ikke fra underkant. Det er denne forskyvningen som kan innføre skjev
-           bøyning, se hovedaksene under.
-         </p>
-       </div>
-       <div class="mt-3">
-         <table class="w-full text-[11px]">
-           <thead><tr class="text-slate-500">
-             <th class="text-left font-normal py-1">Hovedakser</th>
-             <th class="text-right font-normal py-1">Eksisterende</th>
-             <th class="text-right font-normal py-1">Sammensatt</th>
-           </tr></thead>
-           <tbody>
-             <tr class="border-t border-slate-700/60">
-               <td class="py-1 pr-2 text-slate-400">Vinkel θ</td>
-               <td class="py-1 pr-2 text-right num text-slate-300">${q(ax.before.thetaDeg, '°')}</td>
-               <td class="py-1 text-right num text-white">${q(ax.after.thetaDeg, '°')}</td>
-             </tr>
-             <tr class="border-t border-slate-700/60">
-               <td class="py-1 pr-2 text-slate-400">EI_1 (størst)</td>
-               <td class="py-1 pr-2 text-right num text-slate-300">${q(ax.before.EI1, 'Nmm²', 0)}</td>
-               <td class="py-1 text-right num text-white">${q(ax.after.EI1, 'Nmm²', 0)}</td>
-             </tr>
-             <tr class="border-t border-slate-700/60">
-               <td class="py-1 pr-2 text-slate-400">EI_2 (minst)</td>
-               <td class="py-1 pr-2 text-right num text-slate-300">${q(ax.before.EI2, 'Nmm²', 0)}</td>
-               <td class="py-1 text-right num text-white">${q(ax.after.EI2, 'Nmm²', 0)}</td>
-             </tr>
-           </tbody>
-         </table>
-         <p class="text-[11px] text-slate-500 mt-1 leading-snug num">
-           θ er hovedaksenes retning (mot klokka fra x-aksen), EI_1/EI_2 stivheten i sterk/svak retning —
-           sammen sier de om forsterkningen har dreid tverrsnittet: Δθ = ${q(ax.dThetaDeg, '°')}.
-         </p>
-         ${skewWarn}
-       </div>`;
-  }
-
   _axialBody(res) {
     const shareById = res.split ? new Map(res.split.shares.map((s) => [s.id, s])) : new Map();
     const rows = res.parts
@@ -1180,142 +1199,6 @@ export class ReinforcementPanel {
          snittet ligger utenfor forankringssonen. ΔN er kraften som må gjennom fugene for å få det til —
          per skjøt, se punkt under. q_N = ΔN/L er en <strong>middelverdi</strong>, se Volkersen-avsnittet.
        </p>`;
-  }
-
-  _jointsBody(res) {
-    const list = res.joints;
-    if (!list.length) {
-      return `<p class="text-[11px] text-slate-500 italic leading-snug">
-           Ingen skjøter ennå. Velg skjøteverktøyet (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) og
-           klikk to punkt i lerretet i fanen «Geometri» — typisk der to deler møtes, eller langs et snitt
-           du vil kontrollere (verktøyet trenger ikke at geometrien er delt opp der).
-         </p>`;
-    }
-    return list.map((jt) => this._jointCard(jt, res)).join('');
-  }
-
-  _jointCard(jt, res) {
-    const sidesText = `${jt.aNames.join(' + ') || '—'} ↔ ${jt.bNames.join(' + ') || '—'}`;
-
-    return `
-      <div class="rounded border border-slate-700 bg-slate-900 p-2.5 space-y-2 mb-2">
-        <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${JOINT_COLOR}"></span>
-          <span class="flex-1 text-xs text-slate-200 truncate">${escapeHtml(jt.name)}</span>
-        </div>
-        <div class="text-[11px] text-slate-400 leading-snug">${sidesText}</div>
-        ${
-          !jt.determinate
-            ? `<div class="rounded border border-amber-600/60 bg-amber-950/40 text-amber-200 px-2 py-1 text-[10px] leading-snug">
-                 Statisk ubestemt${jt.shareApplied != null ? ` — andel satt til ${pct(jt.shareApplied * 100)}` : ''}.
-                 Rediger «Andel» i skjøtelista til venstre for å overstyre den automatiske like fordelingen.
-               </div>`
-            : ''
-        }
-        <div class="space-y-1 text-[11px]">
-          ${
-            res.allExisting
-              ? row('q_før (biaksiell skjærstrøm)', q(jt.qBefore, 'N/mm'), 'text-sky-300')
-              : `${jt.flowBefore ? row('q_før', q(jt.qBefore, 'N/mm')) : row('q_før', 'ingen «før»-tilstand (mot ny del)', 'text-slate-500')}
-                 ${row('q_etter', q(jt.qAfter, 'N/mm'))}
-                 ${row('q_V,tot = |q_før| + |q_etter|', q(jt.qVtot, 'N/mm'), 'text-sky-300')}
-                 ${row('q_N = ΔN/L', q(jt.qN, 'N/mm'))}
-                 ${row('q_tot = q_V,tot + q_N', q(jt.qTot, 'N/mm'), 'text-white')}`
-          }
-          ${jt.flowBefore && jt.flowBefore.coupled ? `<p class="text-[10px] text-amber-300 leading-snug">q_før er koblet (EI_xy ≠ 0) — se «Effekt av forsterkningen».</p>` : ''}
-          ${jt.flowAfter && jt.flowAfter.coupled ? `<p class="text-[10px] text-amber-300 leading-snug">q_etter er koblet (EI_xy ≠ 0) — se «Effekt av forsterkningen».</p>` : ''}
-        </div>
-        ${this._gammaBlock(jt)}
-        ${!res.allExisting ? this._anchorBlock(jt) : ''}
-      </div>`;
-  }
-
-  /** §3/§4.1 — festemiddelstivhet (EC5/ETA) og samvirkegrad, per skjøt. */
-  _gammaBlock(jt) {
-    const slipRow = jt.slip
-      ? `<div class="pt-1 mt-1 border-t border-slate-700/60 space-y-0.5">
-           <div class="text-[10px] text-slate-500">
-             K_ser — ${jt.slip.source === 'ec5' ? `EC5 tabell 7.1 (${escapeHtml(jt.slip.label)})` : 'fritt innlagt (ETA / produktgodkjenning)'}
-           </div>
-           ${jt.slip.source === 'ec5' ? rhoSourceHtml(jt.rhoSource) : ''}
-           ${row(`K (${jt.slip.state})`, jt.slip.valid ? q(jt.slip.K, 'N/mm') : '–')}
-           ${jt.slip.notes.map((t) => `<p class="text-[10px] text-slate-500 leading-snug">${escapeHtml(t)}</p>`).join('')}
-         </div>`
-      : '';
-
-    if (!jt.gamma) {
-      // Ingen ny gruppe over denne skjøten (ren eksisterende↔eksisterende-skjøt
-      // i et ellers forsterket tverrsnitt), eller fugestivheten mangler helt.
-      return jt.ifStiff && jt.ifStiff.k > 0
-        ? `<div class="rounded border border-slate-700 bg-slate-900 p-2.5">
-             ${row('Fugestivhet k', jt.ifStiff.k === Infinity ? '∞ (sveis, stiv)' : q(jt.ifStiff.k, 'N/mm²'))}
-             ${slipRow}
-           </div>`
-        : '';
-    }
-
-    if (!jt.gamma.applicable) {
-      return `<div class="rounded border border-slate-700 bg-slate-900 p-2.5 text-[11px] text-slate-400 leading-snug">
-          <span class="text-slate-300">Samvirkegrad (γ-metoden):</span> ikke anvendelig — ${escapeHtml(jt.gamma.reason || '')}
-        </div>`;
-    }
-
-    const g = jt.gamma;
-    return `
-      <div class="rounded border border-slate-700 bg-slate-900 p-2.5 space-y-1">
-        <div class="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-          Samvirkegrad — γ-metoden (EC5 tillegg B)
-        </div>
-        ${row('Fugestivhet k', g.k === Infinity ? '∞ (sveis, stiv)' : q(g.k, 'N/mm²'))}
-        ${row(`L_ef (${g.system})`, q(g.Lef, 'mm', 0))}
-        ${row('γ_eff — samvirkegrad', n(g.gammaEff, 4), 'text-white font-semibold')}
-        ${row('(EI)_ef — delvis samvirkning', q(g.EI_ef, 'Nmm²', 0))}
-        ${row('EI_full — full samvirkning', q(g.EI_full, 'Nmm²', 0), 'text-slate-400')}
-        <p class="text-[10px] text-slate-500 leading-snug">
-          Enakslet (om y-aksen / V_y) — dekker ikke skjev bøyning. Full samvirkning er fortsatt
-          standard og vist ved siden av; γ-resultatet er et tillegg, ikke en erstatning.
-        </p>
-        ${slipRow}
-      </div>`;
-  }
-
-  /**
-   * §8.2, snudd (§3/§4 i tilbakemeldingen) — forankring i enden gir NØDVENDIG
-   * kapasitet, ikke en kontroll mot en antatt kapasitet. To uavhengige
-   * kriterier vises side om side, aldri lagt sammen: q_tot (den lokale
-   * skjærstrømmen) og q_req = N_G/L (middelverdien momentets N_G krever
-   * innført over hele forankringslengden). Det største styrer F_Ed = q·L/n.
-   * Dimensjonerende kapasitet F_Rd er valgfri — utfylt gir utnyttelse, tom
-   * viser bare F_Ed, som er den NORMALE tilstanden her, ikke et unntak.
-   */
-  _anchorBlock(jt) {
-    const a = jt.anchorReq;
-    if (!a) return '';
-    const governLabel = a.governedByMoment ? 'q_req (moment)' : 'q_tot (lokal)';
-    return `
-      <div class="rounded border border-slate-700 bg-slate-900 p-2.5 space-y-1.5">
-        <div class="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-          Forankring i enden
-        </div>
-        <div class="space-y-0.5">
-          ${row('q_tot — lokal skjærstrøm (over)', q(a.qTot, 'N/mm'))}
-          ${row('q_req = N_G/L — fra momentet', a.qReq == null ? '– (N_G = 0 eller L ≤ 0)' : q(a.qReq, 'N/mm'))}
-        </div>
-        <p class="text-[10px] text-slate-500 leading-snug">
-          To UAVHENGIGE kriterier, aldri en sum: momentet gir ingen egen skjærstrøm — q_tot ER allerede
-          momentets virkning gjennom V. q_req er en separat middelverdibetraktning for kraften N_G som
-          bøyningen legger på DENNE gruppa, og som må være ført helt inn over lengden L.
-        </p>
-        <div class="flex items-center justify-between pt-1 border-t border-slate-700/60">
-          <span class="text-slate-300 text-xs font-medium">Styrende q — ${governLabel}</span>
-          <span class="text-sm font-semibold num text-white">${q(a.qGoverning, 'N/mm')}</span>
-        </div>
-        <p class="text-[10px] text-slate-500 leading-snug">
-          Middelverdibetraktning over L. Volkersen-toppen i skjøteenden (se «Shear lag») kommer i
-          tillegg — for et limt skjøteende er det toppen som utløser avskalling. Verktøyet sier hvor
-          mye kraft forbindelsen må ta; festemiddelvalg og kapasitet hører hjemme i andre verktøy.
-        </p>
-      </div>`;
   }
 
   _shearLagBody(res) {
@@ -1413,6 +1296,14 @@ export class ReinforcementPanel {
           store.setLoads({ [parts[1]]: { [parts[2]]: val } });
         }
       });
+    });
+
+    const det = host.querySelector('[data-rf-details]');
+    if (det) det.addEventListener('toggle', () => (this.detailsOpen = det.open));
+
+    host.querySelectorAll('[data-rf-joint]').forEach((tr) => {
+      tr.addEventListener('mouseenter', () => this.onHoverJoint(tr.dataset.rfJoint));
+      tr.addEventListener('mouseleave', () => this.onHoverJoint(null));
     });
 
     host.querySelectorAll('[data-rf-act]').forEach((el) => {

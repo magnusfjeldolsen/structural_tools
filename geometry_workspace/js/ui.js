@@ -158,6 +158,11 @@ export class UI {
     this.reinforcement = new ReinforcementPanel(store, {
       toast: (m) => this.toast(m),
       onCopy: () => this._copyResult(),
+      // Musa over en rad i krafttabellen lyser opp skjøten i lerretet.
+      onHoverJoint: (id) => {
+        this.viewport.setHoverJoint(id);
+        this.reinforcement.highlightJoint(id);
+      },
     });
     /** Pågående to-punkts kalibrering av bildeunderlaget. */
     this.calibration = null;
@@ -200,6 +205,7 @@ export class UI {
     this.tools.onJointHover = (id) => {
       if (this._canvasHoverJoint === id) return;
       this._canvasHoverJoint = id;
+      this.reinforcement.highlightJoint(id);
       this._renderJointList();
     };
 
