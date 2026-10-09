@@ -100,6 +100,14 @@ _Avoid_: overføringslengde (uten tall)
 Randbetingelsen for den nye delen i hver ende: løs ende har `N₂ = 0` (bare skrudd langs gurten), festet ende har `N₂ = N₂∞` (koblet inn i knutepunktet).
 _Avoid_: fri ende (forveksles med at gurten er ubelastet)
 
+**Sideveis fri / fastholdt**:
+Om den forsterkede delen kan bøye ut om svak akse når N angriper eksentrisk (fri), eller holdes rett av omgivelsene (fastholdt). Avgjør både λ og N₂∞, og har ingen standardverdi.
+_Avoid_: avstivet (forveksles med midlertidig avstiving)
+
+**Fri tøyningsforskjell** (`Δε`):
+Tøyning den ene delen får uten last (fukt, kryp under N_før), som skjøten må holde igjen; virker som en last `EA*·Δε` på den nye delen.
+_Avoid_: svinn (bare én av årsakene)
+
 **Resultant**:
 `√(Σq_L² + q_T²)`; veiledende, vises alltid sammen med de to komponentene, aldri alene.
 _Avoid_: q_tot, total skjærstrøm
