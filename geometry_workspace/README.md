@@ -31,7 +31,7 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, biaksiell bøyning og skjærstrøm, aksialfordeling, forankring (§8.2), hovedakser/skjevbøyning (§1), γ-metoden og kraft per festemiddel (§4), Volkersen, forbinderkontroll (skrue/lim/sveis). Rene funksjoner, N og mm. Ingen DOM. |
 | `js/connection-stiffness.js` | Festemiddelstivheten K_ser: EC5 tabell 7.1 (§3.1) og fritt innlagt (ETA/produktgodkjenning, §3.2) som likestilte kilder, pluss limstivhet og smøring til fugestivhet (§3.3) — det `volkersen()` og γ-metoden begge bruker. Rene funksjoner. Ingen DOM, ingen importer (se filhodet). |
 | `js/joints.js` | Skjøtelinjer: naboskap (`shapesTouch`), en kraftig nedskalert graf (kun til ΔN-ruting og advarsler), og halvplan-avskjæring for ES* (`halfPlaneParts`/`fullSectionParts`). Erstatter det slettede `interfaces.js`. Ingen DOM. |
-| `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen: lastfeltene (biaksielle) i venstre panel, og i høyre kraftsammendraget, per-skjøt-kortene (samvirkegrad, forankring i enden), hovedakse-/skjevbøyningsvisningen og den sammenleggbare akse-/fortegnskonvensjonsfiguren (`axisConventionHtml`, delt med hjelpedialogen). |
+| `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen: lastfeltene (biaksielle) i venstre panel, og i høyre krafttabellen (én rad per skjøt), tverrsnittstabellen før/etter og «Detaljer», samt den sammenleggbare akse-/fortegnskonvensjonsfiguren (`axisConventionHtml`, delt med hjelpedialogen). |
 | `js/numeric-input.js` | CAD-aktig tallinntasting i lerretet: tilstandsmaskin + tolkning av `300 200` / `D 300 200` / `10,5 0`. Uavhengig av verktøyene. |
 | `js/main.js` | Bootstrap, hurtigtaster og ruting av tastetrykk til tallinntastingen |
 | `tests/reinforcement.test.mjs` | Fasit for grunnmekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
@@ -296,10 +296,14 @@ holdes tett sammen i hver sin ramme. Etikettene er korte (den fulle
 fortegnsforklaringen ligger i den sammenleggbare konvensjonsseksjonen rett
 under).
 
-Et kompakt **kraftsammendrag** (bidrag fra V_før, V_etter og ΔN, pluss en
-uthevet sum) står rett under lastfeltene i fanen, før «Effekt av
-forsterkningen» — det er tallet brukeren kom for, og skal ikke være noe man
-må lete etter eller scrolle til «Per skjøt» for å finne.
+Høyre panel er **tabeller, ikke tekst**. Øverst «Krefter i skjøtene»: én
+rad per skjøt — `q_før`, `q_etter`, `q_N`, `Σq`, `N_G` og `N_G/L` (og `γ`
+når delvis samvirke er satt opp) — så alle skjøtene leses på én gang; det
+finnes ingen skjøt å «velge». Musa over en rad lyser opp skjøten i lerretet,
+og omvendt. Advarslene står på én linje hver over tabellen, med full tekst i
+verktøytipset. Under følger «Tverrsnitt før → etter» (EA, EI_x, EI_y, y_c,
+x_c, θ). Aksialfordeling, Volkersen, delvis samvirke (med ρ-kildene),
+utregningen og merknadene ligger sammenlagt under «Detaljer».
 
 En skjøt mot en ny del har ingen «før»-tilstand. Er **alle** former merket
 `existing` (ingen forsterkning i det hele tatt), skjuler fanen automatisk
