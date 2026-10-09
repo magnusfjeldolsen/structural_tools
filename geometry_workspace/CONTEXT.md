@@ -22,6 +22,18 @@ _Avoid_: forsterkningsdel, tillegg
 En linje i tverrsnittsplanet som markerer en fuge mellom deler, der kraft må overføres med festemidler, lim eller sveis.
 _Avoid_: interface, grensesnitt, kobling
 
+**Automatisk skjøt**:
+En skjøt langs en felles kant mellom en eksisterende og en ny del, utledet fra geometrien og aldri tegnet. Finnes så lenge kanten finnes.
+_Avoid_: autoskjøt, kontaktflate
+
+**Tegnet skjøt**:
+En skjøt brukeren selv har lagt inn, typisk mellom to eksisterende deler for å finne kraften i en fuge som ellers regnes som stiv.
+_Avoid_: manuell skjøt
+
+**Stivt forbundet**:
+Deler som berører hverandre uten en skjøt mellom seg; de virker sammen uten glidning, og ingen kraft rapporteres mellom dem.
+_Avoid_: implisitt skjøt
+
 **Forsterkningsende**:
 Stedet langs bjelken der en ny del fysisk slutter; momentet akkurat der bestemmer forankringskraften, uavhengig av hvor forsterkningen teoretisk ikke lenger trengs.
 _Avoid_: bjelkeende, opplegg
