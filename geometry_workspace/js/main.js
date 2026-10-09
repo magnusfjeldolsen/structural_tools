@@ -17,11 +17,36 @@ import { buildReportHtml, stageReportForPrint, clearPrintStage, audit } from './
 
 const host = document.getElementById('canvas-host');
 
+/**
+ * I «Forsterkning» er lerretet låst: et klikk velger en skjøt (eller tømmer
+ * utvalget), og ingenting kan dras, tegnes eller redigeres. Panorering og
+ * zoom ligger i viewport.js og virker som før.
+ */
+const locked = () => ui && ui.mode === 'reinforcement';
+
+function pickJoint(e) {
+  const hit = tools.hitJoint(e.world);
+  if (!hit) {
+    store.select([]);
+    return;
+  }
+  if (e.shift) store.toggleSelect(hit.id);
+  else store.select([hit.id]);
+  tools.onJointPicked?.(hit.id);
+}
+
+function hoverJoint(e) {
+  const hit = tools.hitJoint(e.world);
+  const id = hit ? hit.id : null;
+  viewport.setHoverJoint(id);
+  tools.onJointHover?.(id);
+}
+
 const viewport = new Viewport(host, {
-  pointerdown: (e) => tools.pointerdown(e),
-  pointermove: (e) => tools.pointermove(e),
-  pointerup: (e) => tools.pointerup(e),
-  dblclick: (e) => tools.dblclick(e),
+  pointerdown: (e) => (locked() ? pickJoint(e) : tools.pointerdown(e)),
+  pointermove: (e) => (locked() ? hoverJoint(e) : tools.pointermove(e)),
+  pointerup: (e) => (locked() ? null : tools.pointerup(e)),
+  dblclick: (e) => (locked() ? null : tools.dblclick(e)),
 });
 
 const tools = new ToolController(store, viewport, {
@@ -204,6 +229,20 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (typing) return;
+
+  // Låst lerret: bare zoom og angre/gjør om virker. Ingen verktøy, ingen
+  // sletting, ingen tallinntasting — geometrien endres i «Geometri».
+  if (locked()) {
+    const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'y')) {
+      e.preventDefault();
+      if (k === 'y' || e.shiftKey) store.redo();
+      else store.undo();
+    } else if (!e.ctrlKey && !e.metaKey && k === 'f') {
+      viewport.zoomToFit(store.bounds());
+    }
+    return;
+  }
 
   if (e.ctrlKey || e.metaKey) {
     const k = e.key.toLowerCase();

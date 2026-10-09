@@ -13,7 +13,7 @@
 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Geometri-workspace for sammensatte tverrsnitt: tyngdepunkt, nøytralakse og arealmomenter — og skjøtekrefter ved forsterkning eller kontroll av eksisterende profiler. Tegn skjøtelinjer (skruer, lim eller sveis) og få skjærstrømmen q = V·ES*/EI fra to lasttilstander før/etter forsterkning, forankringskraften ΔN/L, nødvendig skrueavstand, limspenning eller sveiseutnyttelse, og Volkersen-toppen i skjøteendene.">
+  <meta name="description" content="Geometri-workspace for sammensatte tverrsnitt: tyngdepunkt, nøytralakse og arealmomenter — og skjøtekrefter ved forsterkning eller kontroll av eksisterende profiler. Tegn skjøtelinjer og få kraften skjøten må ta i kN/m: skjærstrømmen q = V·ES*/EI fra to lasttilstander før/etter forsterkning, forankringskraften ΔN/L, og Volkersen-toppen i skjøteendene.">
   <meta name="keywords" content="tyngdepunkt, nøytralakse, arealsenter, sammensatt tverrsnitt, arealmoment, treghetsmoment, hovedakser, FEM-Design, virtual bar, skallelement, geometri, forsterkning, skjøt, skjøtekrefter, skjærstrøm, VQ/I, skjærflyt, samvirke, limt forbindelse, skruavstand, sveis, sveisekapasitet, Volkersen, forankringslengde, CFRP, påforing, eksisterende konstruksjon">
   <title>Geometri-workspace — Tverrsnitt og forsterkning</title>
 
@@ -53,8 +53,8 @@
     input[type="number"] { -moz-appearance: textfield; }
     .tool-btn { transition: all .12s ease; }
     .tool-btn[data-active="true"] { background: #0284c7; color: #fff; border-color: #0ea5e9; }
-    .tab-btn { transition: color .12s ease, border-color .12s ease; }
-    .tab-btn[data-active="true"] { color: #f8fafc; border-bottom-color: #0ea5e9; background: #1e293b; }
+    .ws-tab { transition: color .12s ease, background-color .12s ease, border-color .12s ease; }
+    .ws-tab[data-active="true"] { color: #f8fafc; background: #0f172a; border-color: #334155; border-bottom-color: #0f172a; }
     .num { font-variant-numeric: tabular-nums; }
     details > summary { cursor: pointer; list-style: none; }
     details > summary::-webkit-details-marker { display: none; }
@@ -79,8 +79,19 @@
     <a href="../index.html" class="text-sky-400 hover:text-sky-300 text-sm whitespace-nowrap shrink-0">← Verktøy</a>
     <div class="flex items-baseline gap-3 min-w-0">
       <h1 class="text-base font-semibold text-white whitespace-nowrap">Geometri-workspace</h1>
-      <span class="text-xs text-slate-400 truncate hidden md:inline">Tyngdepunkt og nøytralakse for sammensatte tverrsnitt</span>
+      <span class="text-xs text-slate-400 truncate hidden 2xl:inline">Tyngdepunkt og nøytralakse for sammensatte tverrsnitt</span>
     </div>
+    <!-- Hovedfanene: tegn i «Geometri», les kreftene i «Forsterkning» -->
+    <nav id="workspace-tabs" class="flex items-end self-stretch -mb-2 gap-1 shrink-0" role="tablist">
+      <button data-mode="geometry" data-active="true" role="tab"
+              class="ws-tab px-4 pt-1.5 pb-2 text-sm font-medium text-slate-400 hover:text-white rounded-t-md border border-transparent">
+        Geometri
+      </button>
+      <button data-mode="reinforcement" role="tab"
+              class="ws-tab px-4 pt-1.5 pb-2 text-sm font-medium text-slate-400 hover:text-white rounded-t-md border border-transparent">
+        Forsterkning
+      </button>
+    </nav>
     <input id="model-title" type="text" placeholder="Navn på modell (valgfritt)"
            class="max-w-xs min-w-0 ml-auto hidden lg:block" />
     <div class="flex items-center gap-1 ml-auto lg:ml-0 shrink-0">
@@ -113,7 +124,7 @@
 
     <!-- Venstre panel: verktøy og geometri -->
     <aside class="w-80 shrink-0 bg-slate-800 border-r border-slate-700 flex flex-col min-h-0">
-      <div class="panel-scroll overflow-y-auto flex-1 p-3 space-y-3">
+      <div id="left-geometry" class="panel-scroll overflow-y-auto flex-1 p-3 space-y-3">
 
         <!-- Verktøy: symboler som viser hva som lages -->
         <div class="relative">
@@ -260,12 +271,27 @@
             </h2>
           </div>
           <p class="text-[11px] text-slate-500 mb-2 leading-snug">
-            Klikk en skjøt for å fremheve den i lerretet og redigere navn, forbindelse og heftbredde.
-            Skjærstrøm og utnyttelse per skjøt vises i fanen «Forsterkning».
+            Klikk en skjøt for å fremheve den i lerretet og gi den navn.
+            Kreftene legges inn og leses av i fanen «Forsterkning».
           </p>
           <div id="joint-list" class="space-y-1"></div>
         </div>
 
+      </div>
+
+      <!-- Forsterkning: kraftinput. Output står i høyre panel. -->
+      <div id="left-reinforcement" class="hidden panel-scroll overflow-y-auto flex-1 p-3 space-y-3">
+        <div id="rf-inputs" class="space-y-3"></div>
+        <div>
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">
+            Skjøter <span id="rf-joint-count" class="text-slate-500"></span>
+          </h2>
+          <p class="text-[11px] text-slate-500 mb-2 leading-snug">
+            Klikk en skjøt — her eller i lerretet — for å se kreftene i den.
+            Skjøter tegnes i fanen «Geometri».
+          </p>
+          <div id="rf-joint-list" class="space-y-1"></div>
+        </div>
       </div>
     </aside>
 
@@ -346,20 +372,8 @@
       </div>
     </main>
 
-    <!-- Høyre panel: resultater, delt i to faner -->
-    <aside class="w-80 xl:w-96 shrink-0 bg-slate-800 border-l border-slate-700 flex flex-col min-h-0">
-
-      <!-- Faner: tyngdepunkt/tverrsnitt kontra forsterkning -->
-      <div id="result-tabs" class="flex shrink-0 border-b border-slate-700">
-        <button data-tab="section" data-active="true"
-                class="tab-btn flex-1 px-3 py-2 text-xs font-medium text-slate-400 border-b-2 border-transparent hover:text-white">
-          Tverrsnitt
-        </button>
-        <button data-tab="reinforcement"
-                class="tab-btn flex-1 px-3 py-2 text-xs font-medium text-slate-400 border-b-2 border-transparent hover:text-white">
-          Forsterkning
-        </button>
-      </div>
+    <!-- Høyre panel: tverrsnittsresultater i «Geometri», kreftene i «Forsterkning» -->
+    <aside id="right-panel" class="w-80 xl:w-96 shrink-0 bg-slate-800 border-l border-slate-700 flex flex-col min-h-0">
 
       <div id="tab-section" class="panel-scroll overflow-y-auto flex-1 p-3 space-y-3">
 
@@ -590,6 +604,13 @@
         spørsmålene: «hvor mye må sveisen mellom flens og steg i en gammel bjelke tåle?» og «hvor mye
         må den nye lamellen festes med?» får samme formel.
       </p>
+      <p>
+        <strong>To faner øverst.</strong> I <strong>«Geometri»</strong> tegner du alt: formene, om de
+        er eksisterende eller nye, materialet, og skjøtene. I <strong>«Forsterkning»</strong> legger du
+        inn lastene til venstre og leser kreftene i skjøtene til høyre — kreftene langs skjøten først,
+        deretter hvordan tverrsnittet endret seg. Lerretet er låst i «Forsterkning»: et klikk velger en
+        skjøt, men ingenting kan flyttes eller tegnes.
+      </p>
       <ul class="list-disc list-inside space-y-1">
         <li>Merk hver form som <strong>Eksisterende</strong> eller <strong>Ny</strong> i egenskapspanelet
           (bare relevant når du faktisk forsterker). Eksisterende former fylles blått og
@@ -600,8 +621,8 @@
         <li><strong>Skjøt</strong> (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) — klikk to punkt langs
           skjøtelinja. Det finnes ingen side å velge: |q| er identisk fra begge sider av et snitt, så
           verktøyet tegner bare en linje med endemarkører, uten piler. Navnes automatisk etter delene
-          den skiller. Skjøtelista i venstre panel, under geometrilista, lar deg redigere navn,
-          forbindelsestype og heftbredde — klikk en rad for å fremheve skjøten i lerretet.</li>
+          den skiller. Skjøtelista i venstre panel, under geometrilista, lar deg gi den navn — klikk en
+          rad for å fremheve skjøten i lerretet.</li>
         <li><strong>Den implisitte naboskapsregelen</strong>: former som berører eller overlapper
           hverandre og som det <em>ikke</em> ligger en skjøt mellom, regnes automatisk som stivt
           forbundet. Tegner du en I-profil som tre rektangler og bare sveiser flensen mot steget, vet
@@ -640,10 +661,9 @@
         ligger. Hver størrelse står som formel, innsatte tall og resultat med enhet under «Utregning».
       </p>
       <p class="text-slate-400">
-        <strong>Sveis</strong> som forbindelsestype tar antall strenger, a-mål og dimensjonerende
-        skjærfasthet f_vw,d (regnet ut i modulen <code>weld_capacity/</code> — skriv resultatet inn her,
-        eller sett kapasiteten q_Rd direkte): q_Rd = n·a·f_vw,d [N/mm], og utnyttelsen er q_tot/q_Rd. En
-        sveiseskjøt har ingen senteravstand å løse for, slik en skrueskjøt har.
+        <strong>Kraft, ikke kapasitet.</strong> Verktøyet sier hvor mye kraft skjøten må ta, i N/mm
+        (= kN/m) — samme tall enten den skal skrus, limes eller sveises. Kapasiteten til festemiddelet,
+        limet eller sveisen regner du i verktøyet som hører til det (sveis: <code>weld_capacity/</code>).
       </p>
       <p class="text-slate-400">
         Beregningen forutsetter full samvirkning og lineær elastisitet, og er <strong>iterativ i
@@ -654,11 +674,12 @@
         middeldensitet, diameter, kontaktflate og tilstand SLS/ULS) eller legges inn fritt fra en ETA
         eller produktgodkjenning — de to er likestilte valg i skjøtelista. <strong>Samvirkegraden</strong>
         (γ-metoden, EC5 tillegg B) viser hvor mye lavere (EI)_ef er enn ved full samvirkning når fugen
-        ikke er uendelig stiv; full samvirkning vises alltid ved siden av, som standard. γ-metoden er
+        ikke er uendelig stiv; full samvirkning vises alltid ved siden av, som standard. Begge ligger
+        under «Avansert: delvis samvirke» i skjøtelista i «Forsterkning». γ-metoden er
         enakslet (om y-aksen) og gjelder bare topartstilfellet (eksisterende + ny) — flere grupper i én
         skjøt gir en tydelig begrunnelse i stedet for et gjettet tall. <strong>Forankringskontrollen</strong>
         i skjøtekortet viser aksialkraften N_G som skal forankres fra lamellenden (fra M_etter, biaksielt),
-        nødvendig forankringslengde og utnyttelsen mot den innlagte lengden.
+        og skjærstrømmen det gir over forankringslengden L.
       </p>
 
       <h3 class="text-base font-semibold text-sky-400 pt-2">Akse- og fortegnskonvensjoner</h3>

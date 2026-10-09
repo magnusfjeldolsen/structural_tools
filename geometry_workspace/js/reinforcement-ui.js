@@ -1,5 +1,6 @@
 /**
- * reinforcement-ui.js — «Forsterkning»-fanen i høyre panel.
+ * reinforcement-ui.js — «Forsterkning»-fanen: lastene i venstre panel,
+ * kreftene i skjøtene og effekten på tverrsnittet i høyre.
  *
  * To ansvar, holdt fra hverandre:
  *   1. `computeReinforcement()` — broen fra modellen (store) til den rene
@@ -144,7 +145,6 @@ function num(v, fallback = 0) {
   return Number.isFinite(x) ? x : fallback;
 }
 
-export const CONNECTOR_LABELS = { screw: 'Skruer / mekaniske forbindere', glue: 'Lim', weld: 'Sveis' };
 
 /* ------------------------------------------------------------------ *
  * 1. Broen: modell → mekanikk
@@ -852,6 +852,8 @@ export class ReinforcementPanel {
     this.toast = deps.toast || (() => {});
     this.onCopy = deps.onCopy || (() => {});
     this.hostId = deps.hostId || 'tab-reinforcement';
+    /** Lastene står i venstre panel — input til venstre, output til høyre. */
+    this.inputHostId = deps.inputHostId || 'rf-inputs';
     /** Siste utregning — også nyttig for feilsøking via `window.__gw`. */
     this.result = null;
     /** Åpne «Utregning»-grupper, nøkkel = skjøt-id eller 'section'. */
@@ -869,15 +871,18 @@ export class ReinforcementPanel {
     this.result = res;
     if (!res) {
       host.innerHTML = '';
+      const input = document.getElementById(this.inputHostId);
+      if (input) input.innerHTML = '';
       return;
     }
 
+    // Kreftene i skjøtene først — det er dem brukeren kom for. Hvordan
+    // tverrsnittet endret seg kommer etterpå.
     const sections = [
-      { title: 'Last', body: this._loadsBody(res) },
       { title: 'Kraftsammendrag', body: this._forceSummaryBody(res) },
+      { title: 'Per skjøt', body: this._jointsBody(res) },
       !res.allExisting && { title: 'Effekt av forsterkningen', body: this._effectBody(res) },
       !res.allExisting && { title: 'Aksialfordeling', body: this._axialBody(res) },
-      { title: 'Per skjøt', body: this._jointsBody(res) },
       !res.allExisting && { title: 'Shear lag (Volkersen)', body: this._shearLagBody(res) },
       { title: 'Utregning', body: this._derivationBody(res) },
     ].filter(Boolean);
@@ -885,7 +890,7 @@ export class ReinforcementPanel {
     const intro = res.allExisting
       ? 'Kontroll av eksisterende konstruksjon: skjærstrøm per skjøt i dagens tverrsnitt — «hvor mye går ' +
         'det i sveisen mellom flens og steg».'
-      : 'Skjærstrøm og aksialoverføring i skjøtene mellom eksisterende og ny del.';
+      : 'Kreftene skjøtene mellom eksisterende og ny del må ta.';
 
     host.innerHTML = [
       `<div class="flex items-center justify-between gap-2">
@@ -898,6 +903,9 @@ export class ReinforcementPanel {
       this._warnings(res),
       ...sections.map((s, i) => H(`${i + 1}. ${s.title}`, s.body)),
     ].join('');
+
+    const input = document.getElementById(this.inputHostId);
+    if (input) input.innerHTML = H('Last', this._loadsBody(res));
 
     this._bind();
   }
@@ -1179,51 +1187,21 @@ export class ReinforcementPanel {
     if (!list.length) {
       return `<p class="text-[11px] text-slate-500 italic leading-snug">
            Ingen skjøter ennå. Velg skjøteverktøyet (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) og
-           klikk to punkt i lerretet — typisk der to deler møtes, eller langs et snitt du vil kontrollere
-           (verktøyet trenger ikke at geometrien er delt opp der). Skjøtelista i venstre panel lar deg
-           redigere navn, forbindelsestype, heftbredde og andel.
+           klikk to punkt i lerretet i fanen «Geometri» — typisk der to deler møtes, eller langs et snitt
+           du vil kontrollere (verktøyet trenger ikke at geometrien er delt opp der).
          </p>`;
     }
     return list.map((jt) => this._jointCard(jt, res)).join('');
   }
 
   _jointCard(jt, res) {
-    const c = jt.connector;
-    const kindLabel = CONNECTOR_LABELS[c.kind] || CONNECTOR_LABELS.screw;
     const sidesText = `${jt.aNames.join(' + ') || '—'} ↔ ${jt.bNames.join(' + ') || '—'}`;
-
-    const checkLine =
-      c.kind === 'weld'
-        ? row('q_Rd (sveis)', jt.check.qRd == null ? '–' : q(jt.check.qRd, 'N/mm'), 'text-white') +
-          row(
-            'Utnyttelse',
-            jt.check.util == null ? '–' : pct(jt.check.util * 100),
-            jt.check.util != null && jt.check.util > 1 ? 'text-rose-300' : 'text-emerald-300'
-          )
-        : c.kind === 'glue'
-        ? row('τ = q_tot/b', q(jt.check.tau, 'N/mm²'), 'text-white') +
-          row(
-            `Utnyttelse mot τ_Rd = ${q(c.tauRd, 'N/mm²')}`,
-            jt.check.util == null ? '–' : pct(jt.check.util * 100),
-            jt.check.util != null && jt.check.util > 1 ? 'text-rose-300' : 'text-emerald-300'
-          )
-        : row(
-            'Nødvendig senteravstand s_req',
-            jt.check.sReq === Infinity ? 'ingen krav (q = 0)' : jt.check.sReq == null ? '–' : q(jt.check.sReq, 'mm', 1),
-            'text-white'
-          ) +
-          row(
-            `Utnyttelse ved s = ${q(c.spacing, 'mm', 0)}`,
-            jt.check.util == null ? '–' : pct(jt.check.util * 100),
-            jt.check.util != null && jt.check.util > 1 ? 'text-rose-300' : 'text-emerald-300'
-          );
 
     return `
       <div class="rounded border border-slate-700 bg-slate-900 p-2.5 space-y-2 mb-2">
         <div class="flex items-center gap-2">
           <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${JOINT_COLOR}"></span>
           <span class="flex-1 text-xs text-slate-200 truncate">${escapeHtml(jt.name)}</span>
-          <span class="text-[10px] px-1.5 py-0.5 rounded border border-slate-600 bg-slate-800 text-slate-300 shrink-0">${kindLabel}</span>
         </div>
         <div class="text-[11px] text-slate-400 leading-snug">${sidesText}</div>
         ${
@@ -1244,11 +1222,8 @@ export class ReinforcementPanel {
                  ${row('q_N = ΔN/L', q(jt.qN, 'N/mm'))}
                  ${row('q_tot = q_V,tot + q_N', q(jt.qTot, 'N/mm'), 'text-white')}`
           }
-          ${row('Heftbredde b', q(jt.b, 'mm', 1))}
-          ${jt.tau != null ? row('τ = q_tot/b', q(jt.tau, 'N/mm²')) : ''}
           ${jt.flowBefore && jt.flowBefore.coupled ? `<p class="text-[10px] text-amber-300 leading-snug">q_før er koblet (EI_xy ≠ 0) — se «Effekt av forsterkningen».</p>` : ''}
           ${jt.flowAfter && jt.flowAfter.coupled ? `<p class="text-[10px] text-amber-300 leading-snug">q_etter er koblet (EI_xy ≠ 0) — se «Effekt av forsterkningen».</p>` : ''}
-          ${checkLine}
         </div>
         ${this._gammaBlock(jt)}
         ${!res.allExisting ? this._anchorBlock(jt) : ''}
@@ -1301,15 +1276,6 @@ export class ReinforcementPanel {
           standard og vist ved siden av; γ-resultatet er et tillegg, ikke en erstatning.
         </p>
         ${slipRow}
-        ${
-          jt.fastenerFull
-            ? `<div class="pt-1 mt-1 border-t border-slate-700/60 space-y-0.5">
-                 ${row('F per festemiddel, full samvirkning', q(jt.fastenerFull.F_kN, 'kN'), 'text-white')}
-                 ${jt.fastenerGamma ? row('F per festemiddel, ved γ', q(jt.fastenerGamma.F_kN, 'kN'), 'text-amber-300') : ''}
-                 ${jt.fastenerFull.util != null ? row('Utnyttelse (full samvirkning)', pct(jt.fastenerFull.util * 100), jt.fastenerFull.ok ? 'text-emerald-300' : 'text-rose-300') : ''}
-               </div>`
-            : ''
-        }
       </div>`;
   }
 
@@ -1325,14 +1291,11 @@ export class ReinforcementPanel {
   _anchorBlock(jt) {
     const a = jt.anchorReq;
     if (!a) return '';
-    const nId = `rf-anchorN-${jt.id}`;
-    const capId = `rf-anchorFRd-${jt.id}`;
-    const overCap = a.util != null && a.util > 1;
     const governLabel = a.governedByMoment ? 'q_req (moment)' : 'q_tot (lokal)';
     return `
-      <div class="rounded border ${overCap ? 'border-amber-600/60 bg-amber-950/40' : 'border-slate-700 bg-slate-900'} p-2.5 space-y-1.5">
+      <div class="rounded border border-slate-700 bg-slate-900 p-2.5 space-y-1.5">
         <div class="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-          Forankring i enden — nødvendig kapasitet
+          Forankring i enden
         </div>
         <div class="space-y-0.5">
           ${row('q_tot — lokal skjærstrøm (over)', q(a.qTot, 'N/mm'))}
@@ -1347,38 +1310,10 @@ export class ReinforcementPanel {
           <span class="text-slate-300 text-xs font-medium">Styrende q — ${governLabel}</span>
           <span class="text-sm font-semibold num text-white">${q(a.qGoverning, 'N/mm')}</span>
         </div>
-        <div class="grid grid-cols-2 gap-1.5 pt-1">
-          <div>
-            <label class="field-label" for="${nId}">Antall forbindere n over skjøten</label>
-            <input id="${nId}" data-rf-anchor="${jt.id}:n" data-focus-key="${nId}" type="number" step="1" min="1"
-                   value="${a.n == null ? '' : a.n}" />
-          </div>
-          <div>
-            <label class="field-label" for="${capId}">F_Rd [kN] per forbinder — valgfri</label>
-            <input id="${capId}" data-rf-anchor="${jt.id}:FRd" data-focus-key="${capId}" type="number" step="0.5" min="0"
-                   value="${a.FRdCap == null ? '' : a.FRdCap}" />
-          </div>
-        </div>
-        ${
-          a.n == null
-            ? `<p class="text-[11px] text-slate-500 leading-snug">Oppgi antall forbindere for å få kraften per forbinder.</p>`
-            : `<div class="flex items-center justify-between">
-                 <span class="text-slate-300 text-xs font-medium">F_Ed = q·L/n per forbinder</span>
-                 <span class="text-sm font-semibold num text-white">${q(a.FEd, 'kN')}</span>
-               </div>` +
-              (a.FRdCap != null
-                ? row('Utnyttelse mot F_Rd', a.util == null ? '–' : pct(a.util * 100), overCap ? 'text-rose-300' : 'text-emerald-300')
-                : `<p class="text-[11px] text-slate-500 leading-snug">
-                     Ingen dimensjonerende kapasitet oppgitt — F_Ed er den nødvendige kraften per forbinder,
-                     ikke en kontroll. Fyll ut F_Rd for å få utnyttelsen.
-                   </p>`)
-        }
-        ${overCap ? `<p class="text-[11px] text-amber-200 leading-snug"><strong>ADVARSEL:</strong> F_Ed &gt; F_Rd.</p>` : ''}
         <p class="text-[10px] text-slate-500 leading-snug">
-          Middelverdibetraktning. Volkersen-toppen i skjøteenden (se «Shear lag») kommer i tillegg —
-          for et limt skjøteende er det toppen som utløser avskalling. Verktøyet sier hvor sterk
-          forbindelsen må være — festemiddelvalg, kantavstander og materialspesifikke kontroller hører
-          hjemme i andre verktøy.
+          Middelverdibetraktning over L. Volkersen-toppen i skjøteenden (se «Shear lag») kommer i
+          tillegg — for et limt skjøteende er det toppen som utløser avskalling. Verktøyet sier hvor
+          mye kraft forbindelsen må ta; festemiddelvalg og kapasitet hører hjemme i andre verktøy.
         </p>
       </div>`;
   }
@@ -1397,8 +1332,7 @@ export class ReinforcementPanel {
         `<p class="text-[11px] text-slate-500 italic leading-snug">
              Ingen fordeling å vise: det kreves aksialkraft å forankre (ΔN ≠ 0, altså former på begge sider
              av skjøten der minst én er ny), en forankringslengde L &gt; 0, og en forbindelsesstivhet k &gt; 0
-             (K_ser og senteravstand for skruer, G_a og t_a for lim — sveis har ingen kontinuerlig stivhet i
-             denne modellen).
+             (K_ser, rader og senteravstand under «Avansert: delvis samvirke» i skjøtelista).
            </p>`
       );
     }
@@ -1464,8 +1398,9 @@ export class ReinforcementPanel {
     const host = document.getElementById(this.hostId);
     if (!host) return;
     const store = this.store;
+    const input = document.getElementById(this.inputHostId);
 
-    host.querySelectorAll('[data-rf]').forEach((el) => {
+    (input || host).querySelectorAll('[data-rf]').forEach((el) => {
       const path = el.dataset.rf;
       el.addEventListener('change', () => {
         const parts = path.split('.');
@@ -1477,26 +1412,6 @@ export class ReinforcementPanel {
         } else if (parts[1] === 'before' || parts[1] === 'after') {
           store.setLoads({ [parts[1]]: { [parts[2]]: val } });
         }
-      });
-    });
-
-    // §3 — «antall forbindere n» og valgfri F_Rd for forankringen i enden,
-    // lagret på skjøtens `connector` (spres gjennom av `migrateJoint` i
-    // store.js, i motsetning til nye topp-nivå-felter — se reinforcement-ui.js).
-    host.querySelectorAll('[data-rf-anchor]').forEach((el) => {
-      el.addEventListener('change', () => {
-        const [jointId, key] = el.dataset.rfAnchor.split(':');
-        const j = store.getJoint(jointId);
-        if (!j) return;
-        const raw = el.value;
-        const field = key === 'n' ? 'anchorN' : 'anchorFRd';
-        if (raw === '') {
-          store.updateJoint(jointId, { connector: { ...j.connector, [field]: null } });
-          return;
-        }
-        const v = Number(raw);
-        if (!Number.isFinite(v)) return;
-        store.updateJoint(jointId, { connector: { ...j.connector, [field]: v } });
       });
     });
 
@@ -1555,15 +1470,6 @@ export class ReinforcementPanel {
         lines.push(`  q_foer = ${n(jt.qBefore)} N/mm   q_etter = ${n(jt.qAfter)} N/mm   q_V,tot = ${n(jt.qVtot)} N/mm`);
         lines.push(`  q_N = ${n(jt.qN)} N/mm   q_tot = ${n(jt.qTot)} N/mm`);
       }
-      lines.push(`  b = ${n(jt.b, 1)} mm    tau = ${jt.tau == null ? '-' : n(jt.tau)} N/mm2   forbindelse: ${jt.connector.kind}`);
-      if (jt.check.kind === 'screw') {
-        lines.push(
-          `  s_req = ${jt.check.sReq === Infinity ? 'ingen krav' : n(jt.check.sReq, 1) + ' mm'}` +
-            `   utnyttelse ved s = ${n(jt.connector.spacing, 0)} mm: ${jt.check.util == null ? '-' : pct(jt.check.util * 100)}`
-        );
-      } else {
-        lines.push(`  utnyttelse: ${jt.check.util == null ? '-' : pct(jt.check.util * 100)}`);
-      }
       if (jt.volkersen && jt.volkersen.valid) {
         lines.push(
           `  Volkersen: lambda = ${n(jt.volkersen.lambda, 6)} 1/mm, q_max = ${n(jt.volkersen.qMax)} N/mm, toppfaktor ${n(jt.volkersen.peakFactor, 3)}`
@@ -1575,11 +1481,7 @@ export class ReinforcementPanel {
       if (jt.anchorReq) {
         const a = jt.anchorReq;
         lines.push(
-          `  Forankring (noedvendig kapasitet): N_G = ${n(a.NG_kN)} kN   q_tot = ${n(a.qTot)} N/mm   q_req = ${a.qReq == null ? '-' : n(a.qReq) + ' N/mm'}   q_gov = ${n(a.qGoverning)} N/mm`
-        );
-        lines.push(
-          `    n = ${a.n == null ? '-' : n(a.n, 0)}   F_Ed = ${a.FEd == null ? '-' : n(a.FEd) + ' kN'}` +
-            `${a.FRdCap != null ? `   F_Rd = ${n(a.FRdCap)} kN   util = ${a.util == null ? '-' : pct(a.util * 100)}` : ''}`
+          `  Forankring i enden: N_G = ${n(a.NG_kN)} kN   q_tot = ${n(a.qTot)} N/mm   q_req = ${a.qReq == null ? '-' : n(a.qReq) + ' N/mm'}   q_gov = ${n(a.qGoverning)} N/mm`
         );
       }
     }
