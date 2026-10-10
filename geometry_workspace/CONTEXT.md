@@ -104,9 +104,9 @@ _Avoid_: fri ende (forveksles med at gurten er ubelastet)
 Om den forsterkede delen kan bøye ut om svak akse når N angriper eksentrisk (fri), eller holdes rett av omgivelsene (fastholdt). Avgjør både λ og N₂∞, og har ingen standardverdi.
 _Avoid_: avstivet (forveksles med midlertidig avstiving)
 
-**Fri tøyningsforskjell** (`Δε`):
-Tøyning den ene delen får uten last (fukt, kryp under N_før), som skjøten må holde igjen; virker som en last `EA*·Δε` på den nye delen.
-_Avoid_: svinn (bare én av årsakene)
+**Fri tøyning** (`ε_eks`, `ε_ny`):
+Tøyningen hver del ville fått uten last og uten skjøt (fukt, kryp under N_før, temperatur), oppgitt per del. Skjøten holder igjen forskjellen `ε_eks − ε_ny`, som virker som en last `EA*·(ε_eks − ε_ny)` på den nye delen.
+_Avoid_: svinn (bare én av årsakene), Δε som eget inndatafelt
 
 **Resultant**:
 `√(Σq_L² + q_T²)`; veiledende, vises alltid sammen med de to komponentene, aldri alene.
