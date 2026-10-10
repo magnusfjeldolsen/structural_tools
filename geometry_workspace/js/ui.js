@@ -2004,6 +2004,21 @@ export class UI {
         </p>
       </div>`;
 
+    // Linjeberegningen: skjøtedata er obligatorisk og står fremme, sammen med
+    // q_T (last som henges opp gjennom skjøten). Andel og γ hører til snittet.
+    if (this.store.state.analysis === 'line') {
+      return `
+      <div class="px-2 pb-2 pt-1 space-y-2 border-t border-slate-600">
+        ${layoutFields}
+        ${stiffnessBlock}
+        <div title="Last som henges opp gjennom skjøten, vinkelrett på skjøteflaten (strekk positiv). Gir uttrekk F_ax i skruene.">
+          <label class="field-label" for="j-qT-${j.id}">q_T, last vinkelrett på skjøten [kN/m]</label>
+          <input id="j-qT-${j.id}" data-jf="qT" data-id="${j.id}" data-focus-key="j-qT-${j.id}"
+                 type="number" step="0.5" value="${Number(j.qT) || 0}" />
+        </div>
+      </div>`;
+    }
+
     return `
       <div class="px-2 pb-2 pt-1 space-y-2 border-t border-slate-600">
         ${
@@ -2054,6 +2069,11 @@ export class UI {
       if (key === 'name') {
         el.addEventListener('input', (e) => this.store.updateJoint(id, { name: e.target.value }, { transient: true }));
         el.addEventListener('change', () => this.store.commit('joint-rename'));
+      } else if (key === 'qT') {
+        el.addEventListener('change', (e) => {
+          const v = Number(e.target.value);
+          this.store.updateJoint(id, { qT: Number.isFinite(v) ? v : 0 });
+        });
       } else if (key === 'share') {
         el.addEventListener('change', (e) => {
           const raw = e.target.value;

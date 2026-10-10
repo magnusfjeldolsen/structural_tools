@@ -148,6 +148,43 @@ function num(v, fallback = 0) {
  *  - v3, enakslet `{V, N, M}` — gammel `V` blir `Vy`, gammel `M` blir `Mx`,
  *    og `Vx`/`My` settes til 0 (ingen skjev bøyning fantes i den modellen).
  */
+/**
+ * Linjeberegningen (#63). Lastetabellen lagres som teksten brukeren limte
+ * inn, så den kan redigeres og limes på nytt; `za`/`zb` er i METER, som
+ * tabellen, og regnes ikke om ved enhetsbytte. `nAt` og `restraint` har
+ * bevisst ingen standard — valget kan endre resultatet med en faktor 2.
+ */
+export function defaultLine() {
+  return {
+    table: '',
+    za: null,
+    zb: null,
+    endA: 'loose',
+    endB: 'loose',
+    nAt: null, // 'existing' | 'composite'
+    restraint: null, // 'free' | 'x' | 'y' | 'xy' — aksene som er fastholdt
+    epsExisting: 0, // fri tøyning, ‰
+    epsNew: 0,
+  };
+}
+
+function migrateLine(l) {
+  const d = defaultLine();
+  const src = l && typeof l === 'object' ? l : {};
+  const numOrNull = (v) => (v === null || v === undefined || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+  return {
+    table: typeof src.table === 'string' ? src.table : d.table,
+    za: numOrNull(src.za),
+    zb: numOrNull(src.zb),
+    endA: src.endA === 'fixed' ? 'fixed' : 'loose',
+    endB: src.endB === 'fixed' ? 'fixed' : 'loose',
+    nAt: src.nAt === 'existing' || src.nAt === 'composite' ? src.nAt : null,
+    restraint: ['free', 'x', 'y', 'xy'].includes(src.restraint) ? src.restraint : null,
+    epsExisting: Number.isFinite(Number(src.epsExisting)) ? Number(src.epsExisting) : 0,
+    epsNew: Number.isFinite(Number(src.epsNew)) ? Number(src.epsNew) : 0,
+  };
+}
+
 function migrateLoadState(s) {
   const src = s || {};
   const isBiaxial = src.Vy !== undefined || src.Vx !== undefined || src.Mx !== undefined || src.My !== undefined;
@@ -197,6 +234,7 @@ function migrateJoint(f, i) {
     a,
     b,
     share: Number.isFinite(share) && share >= 0 && share <= 1 ? share : null,
+    qT: Number.isFinite(Number(f && f.qT)) ? Number(f.qT) : 0,
     connector: connectorFrom(f && f.connector),
   };
 }
@@ -311,6 +349,8 @@ function migrate(data) {
   delete out.interfaces;
 
   out.loads = migrateLoads(out.loads);
+  out.line = migrateLine(out.line);
+  out.analysis = out.analysis === 'line' ? 'line' : 'section';
   out.version = 4;
   return out;
 }
@@ -331,6 +371,9 @@ function defaultState() {
     // Skjøtelinjer mellom deler av tverrsnittet (v3, §4 i joints-planen).
     joints: [],
     loads: defaultLoads(),
+    // «Snitt» (ett snitt, full samvirkning) eller «Linje» (langs hele delen, #63)
+    analysis: 'section',
+    line: defaultLine(),
   };
 }
 
@@ -369,6 +412,8 @@ export class Store {
       title: this.state.title,
       joints: this.state.joints,
       loads: this.state.loads,
+      analysis: this.state.analysis,
+      line: this.state.line,
     });
   }
 
@@ -735,6 +780,7 @@ export class Store {
       a: [a[0], a[1]],
       b: [b[0], b[1]],
       share: null,
+      qT: 0,
       connector: defaultConnector(),
     };
     this.mutate((st) => {
@@ -935,6 +981,20 @@ export class Store {
    * inn i den eksisterende lasttilstanden `{Vy,Vx,N,Mx,My}`, slik at
    * `setLoads({ after: { Vy: 100 } })` ikke nullstiller `after.N`/`after.Mx`.
    */
+  /** «Snitt» eller «Linje» i Forsterkning-fanen. */
+  setAnalysis(mode) {
+    this.mutate((st) => {
+      st.analysis = mode === 'line' ? 'line' : 'section';
+    }, { reason: 'analysis' });
+  }
+
+  /** Flettes inn i `state.line`, som `setLoads`. */
+  setLine(patch) {
+    this.mutate((st) => {
+      st.line = migrateLine({ ...(st.line || defaultLine()), ...(patch || {}) });
+    }, { reason: 'line' });
+  }
+
   setLoads(patch) {
     this.mutate((st) => {
       if (patch && patch.before) Object.assign(st.loads.before, patch.before);
@@ -995,6 +1055,8 @@ export class Store {
         shapes: this.state.shapes,
         joints: this.state.joints,
         loads: this.state.loads,
+        analysis: this.state.analysis,
+        line: this.state.line,
       },
       null,
       2
@@ -1032,6 +1094,8 @@ export class Store {
       st.underlay = m.underlay || null;
       st.joints = m.joints;
       st.loads = m.loads;
+      st.analysis = m.analysis;
+      st.line = m.line;
     }, { reason: 'import' });
     this.syncUid();
   }

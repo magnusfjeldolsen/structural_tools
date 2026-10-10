@@ -33,6 +33,7 @@
 import { computeReinforcement, n, q, sci } from './reinforcement-ui.js';
 import { buildFigureSvg } from './report-figure.js';
 import { materialByName } from './materials.js';
+import { computeLine, lineRows, linePlots } from './line-ui.js';
 
 /* ------------------------------------------------------------------ *
  * Formatering
@@ -414,6 +415,49 @@ function jointsBlock(res) {
  * forbindelse. Rapporten skal si hva den ikke svarer på, ikke bare la være å
  * svare på det.
  */
+/**
+ * Linjeberegningen (#63) — kreftene langs hele den nye delen. Samme tall og
+ * plott som panelet, i rapportens lyse palett, slik at de kan overføres til
+ * EC5-knutepunkt og etterprøves.
+ */
+function lineBlock(state, res) {
+  const lr = computeLine(state, res);
+  if (!lr.ok) {
+    return `<section class="atomic"><h3>Linjeberegning</h3>
+      <p class="muted">Ikke regnet: ${lr.blocked.map(esc).join(' ')}</p></section>`;
+  }
+  const line = state.line || {};
+  const restr = { free: 'fri om begge akser', x: 'fastholdt om x-aksen', y: 'fastholdt om y-aksen', xy: 'fastholdt om begge akser' }[line.restraint];
+  const ends = (e) => (e === 'fixed' ? 'festet i knutepunkt' : 'løs');
+  const rows = lineRows(lr)
+    .map(([label, ser, u, gov]) => `<tr>
+        <td>${label.replace(/<br>/g, ' · ').replace(/<[^>]+>/g, '')}</td>
+        <td class="num">${gov === 'ser' ? `<b>${ser}</b>` : ser}</td>
+        <td class="num">${gov === 'u' ? `<b>${u}</b>` : u}</td>
+      </tr>`)
+    .join('');
+  const ink = { text: '#475569', grid: '#cbd5e1', title: '#1e293b' };
+  const colors = { existing: '#1d4ed8', fresh: '#c2410c', q: '#1d4ed8', anchor: '#a21caf', inf: '#64748b' };
+  const { forces, flow } = linePlots(lr, ink, colors);
+  const warns = lr.warnings.length
+    ? `<p class="muted">${lr.warnings.map((w) => `⚠ ${esc(w.short.replace(/<[^>]+>/g, ''))}`).join('<br>')}</p>`
+    : '';
+  return `<section class="keep-with-next">
+    <h3>Linjeberegning — krefter langs skjøten</h3>
+    <p class="muted">Skjøt: ${esc(lr.summary.joint)} · z = ${n(lr.za, 2)}–${n(lr.zb, 2)} m · ender: ${ends(line.endA)} / ${ends(line.endB)} ·
+      N i ${line.nAt === 'existing' ? 'eksisterende' : 'sammensatt'} tyngdepunkt · ${esc(restr || '')} ·
+      fri tøyning ε_eks = ${n(Number(line.epsExisting) || 0, 2)} ‰, ε_ny = ${n(Number(line.epsNew) || 0, 2)} ‰</p>
+    <table>
+      <thead><tr><th></th><th class="num">K_ser</th><th class="num">K_u = ⅔·K_ser</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="muted">Uthevet = styrende. K_ser styrer skruetopp og N₂, K_u styrer η og N₁. K_ser i bruddgrense er en
+      øvre grense for toppen, ikke EC5-praksis. Modell: N₂″ = λ²(N₂ − N₂∞), delvis samvirke (Volkersen/Newmark).</p>
+    ${warns}
+    <div class="atomic">${forces}${flow}</div>
+  </section>`;
+}
+
 function scopeBlock() {
   return `<section class="atomic scope-note">
     <p><b>Verktøyet sier hvor sterk forbindelsen må være, ikke hvordan den skal
@@ -464,8 +508,9 @@ export function buildReportHtml(state, analysis) {
     headBlock(state),
     figureBlock(state, analysis, res),
     partsBlock(state, res),
-    twoCol(loadsBlock(res), effectBlock(res)),
-    jointsBlock(res),
+    // Linjeberegningen har sin egen last (diagrammet), oppsummert i blokka.
+    state.analysis === 'line' ? effectBlock(res) : twoCol(loadsBlock(res), effectBlock(res)),
+    state.analysis === 'line' ? lineBlock(state, res) : jointsBlock(res),
     scopeBlock(),
   ].join('\n');
 
