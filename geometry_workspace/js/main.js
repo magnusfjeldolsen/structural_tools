@@ -25,7 +25,7 @@ const host = document.getElementById('canvas-host');
 const locked = () => ui && ui.mode === 'reinforcement';
 
 function pickJoint(e) {
-  const hit = tools.hitJoint(e.world);
+  const hit = tools.hitJoint(e.world, 8, true);
   if (!hit) {
     store.select([]);
     return;
@@ -36,7 +36,7 @@ function pickJoint(e) {
 }
 
 function hoverJoint(e) {
-  const hit = tools.hitJoint(e.world);
+  const hit = tools.hitJoint(e.world, 8, true);
   const id = hit ? hit.id : null;
   viewport.setHoverJoint(id);
   tools.onJointHover?.(id);
@@ -153,7 +153,7 @@ function update() {
     reference: st.reference,
     grid: st.grid,
     underlay: st.underlay,
-    joints: st.joints,
+    joints: store.allJoints(),
   });
   try {
     ui.render(analysis);
@@ -439,7 +439,7 @@ window.__gw = {
         unit: st.unit,
         mode: st.mode,
         shapes: st.shapes,
-        joints: st.joints,
+        joints: store.allJoints(),
         reference: st.reference,
         analysis: analyze(st.shapes, st.mode),
         res: ui.reinforcement ? ui.reinforcement.result : null,

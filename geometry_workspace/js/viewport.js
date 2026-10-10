@@ -726,9 +726,12 @@ export class Viewport {
       const color = isSel || isHover ? '#ffffff' : JOINT_COLOR;
       const widthPx = isSel ? 5.0 : isHover ? 4.4 : 3.2;
 
+      // Automatiske skjøter (#61) stiplet: de er utledet, ikke tegnet.
       g.add(
         buildLineMesh(
-          thickPolylinePositions([a, b], false, (widthPx * upp) / 2, Z.joint),
+          f.auto
+            ? dashedPolylinePositions([a, b], false, (widthPx * upp) / 2, Z.joint, 9 * upp, 5 * upp)
+            : thickPolylinePositions([a, b], false, (widthPx * upp) / 2, Z.joint),
           color,
           0.95
         )

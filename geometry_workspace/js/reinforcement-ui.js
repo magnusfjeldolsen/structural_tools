@@ -72,7 +72,7 @@ import {
   halfPlaneParts,
   jointContactLength,
 } from './joints.js';
-import { JOINT_COLOR } from './store.js';
+import { JOINT_COLOR, effectiveJoints, autoJointOverlaps } from './store.js';
 import { jointForceFigureSvg } from './joint-force-figure.js';
 import { computeLine, lineInputsHtml, bindLineInputs, lineOutputHtml, lineDetailsHtml } from './line-ui.js';
 
@@ -163,7 +163,9 @@ export function computeReinforcement(state) {
   const shapesRaw = (state.shapes || []).filter(
     (s) => s && s.include !== false && Array.isArray(s.points) && s.points.length >= 3
   );
-  const jointsRaw = state.joints || [];
+  // Tegnede og automatiske skjøter (#61) — de automatiske ligger langs
+  // felles kanter mellom eksisterende og ny del.
+  const jointsRaw = effectiveJoints(state);
 
   const scalePts = (pts) => pts.map(([x, y]) => [x * k, y * k]);
   const shapesMm = shapesRaw.map((s) => ({ ...s, points: scalePts(s.points) }));
@@ -482,6 +484,7 @@ export function computeReinforcement(state) {
       bNames,
       hasNeighbor,
       existingOnly,
+      auto: !!raw.auto,
       determinate: jg.determinate,
       groupIds: jg.groupIds,
       slipSer: (stiffById.get(raw.id) || {}).slipSer || null,
@@ -575,7 +578,18 @@ export function computeReinforcement(state) {
       text: 'Ingen skjærkraft er lagt inn, så skjøtene får bare aksialbidraget q_N = ΔN/L.',
     });
   }
-  for (const name of dangling) {
+  for (const o of autoJointOverlaps(state)) {
+    const en = (shapeByIdRaw.get(o.existingId) || {}).name || o.existingId;
+    const nn = (shapeByIdRaw.get(o.newId) || {}).name || o.newId;
+    warnings.push({
+      level: 'warn',
+      short: `«${escapeHtml(nn)}» overlapper «${escapeHtml(en)}» — ingen automatisk skjøt.`,
+      text: `Den nye delen «${escapeHtml(nn)}» er tegnet inn i den eksisterende «${escapeHtml(en)}», ikke inntil den. Det er nesten alltid en tegnefeil, så verktøyet lager ingen skjøt der. Flytt delen slik at kantene møtes, eller tegn skjøten selv.`,
+    });
+  }
+  // En del som overlapper (over) har allerede fått sitt varsel.
+  const overlapNames = new Set(autoJointOverlaps(state).map((o) => (shapeByIdRaw.get(o.newId) || {}).name || o.newId));
+  for (const name of dangling.filter((nm) => !overlapNames.has(nm))) {
     warnings.push({ level: 'warn', text: `«${escapeHtml(name)}» henger i løse lufta — tegn skjøten som fester den.` });
   }
   for (const entry of overC) {
