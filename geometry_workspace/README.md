@@ -31,12 +31,14 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, biaksiell bøyning og skjærstrøm, aksialfordeling, forankring (§8.2), hovedakser/skjevbøyning (§1), γ-metoden og kraft per festemiddel (§4), Volkersen, forbinderkontroll (skrue/lim/sveis). Rene funksjoner, N og mm. Ingen DOM. |
 | `js/connection-stiffness.js` | Festemiddelstivheten K_ser: EC5 tabell 7.1 (§3.1) og fritt innlagt (ETA/produktgodkjenning, §3.2) som likestilte kilder, pluss limstivhet og smøring til fugestivhet (§3.3) — det `volkersen()` og γ-metoden begge bruker. Rene funksjoner. Ingen DOM, ingen importer (se filhodet). |
 | `js/joints.js` | Skjøtelinjer: naboskap (`shapesTouch`), en kraftig nedskalert graf (kun til ΔN-ruting og advarsler), og halvplan-avskjæring for ES* (`halfPlaneParts`/`fullSectionParts`). Erstatter det slettede `interfaces.js`. Ingen DOM. |
-| `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen: lastfeltene (biaksielle), kraftsammendraget, hovedakse-/skjevbøyningsvisningen, per-skjøt-kortene (samvirkegrad, nødvendig forankringskapasitet) og den sammenleggbare akse-/fortegnskonvensjonsfiguren (`axisConventionHtml`, delt med hjelpedialogen). |
+| `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen: lastfeltene (biaksielle) i venstre panel, og i høyre krafttabellen (én rad per skjøt), tverrsnittstabellen før/etter og «Detaljer», samt den sammenleggbare akse-/fortegnskonvensjonsfiguren (`axisConventionHtml`, delt med hjelpedialogen). |
+| `js/joint-force-figure.js` | Forklaringsfiguren bak (?) ved «Krefter i skjøtene»: bjelken fra siden i tre situasjoner (snitt i felt, forsterkningsende der M ≠ 0, forsterkningsende i momentnullpunkt), med brukerens tall i etikettene. Ren funksjon → SVG. Ingen DOM. |
 | `js/numeric-input.js` | CAD-aktig tallinntasting i lerretet: tilstandsmaskin + tolkning av `300 200` / `D 300 200` / `10,5 0`. Uavhengig av verktøyene. |
 | `js/main.js` | Bootstrap, hurtigtaster og ruting av tastetrykk til tallinntastingen |
 | `tests/reinforcement.test.mjs` | Fasit for grunnmekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
 | `tests/joints.test.mjs` | Fasit for naboskap, grafen og halvplan-ES*. `node geometry_workspace/tests/joints.test.mjs` |
 | `tests/shape-style.test.mjs` | Fasit for fylling etter tilstand og kontur etter materialfamilie. `node geometry_workspace/tests/shape-style.test.mjs` |
+| `tests/joint-force-figure.test.mjs` | Fasit for forklaringsfiguren: tre paneler, tall i etikettene, «…» når de mangler. `node geometry_workspace/tests/joint-force-figure.test.mjs` |
 | `tests/composite.test.mjs` | Fasit for festemiddelstivhet (EC5/ETA), γ-metoden, biaksiell skjærstrøm/hovedakser og forankringskontroll. `node geometry_workspace/tests/composite.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
@@ -151,7 +153,16 @@ tegneverktøyene har flyttet seg etter det. Speiling har bevisst ingen tast.
 
 ## Panelene
 
-Venstre panel viser **tilstand og egenskaper** — det er ikke et kommandosenter.
+Topplinja har to faner. **«Geometri»** er der alt tegnes: formene, om de er
+eksisterende eller nye, materialet og skjøtene. **«Forsterkning»** er bare
+krefter: lastene i venstre panel, kreftene i skjøtene og effekten på
+tverrsnittet i høyre (bredere) panel. Lerretet er **låst** i «Forsterkning» —
+et klikk velger en skjøt, panorering og zoom virker, men ingenting kan
+flyttes, tegnes eller slettes, og hurtigtastene for verktøy er slått av
+(`main.js`, `locked()`). Skal geometrien endres, går man tilbake til
+«Geometri».
+
+Venstre panel i «Geometri» viser **tilstand og egenskaper** — det er ikke et kommandosenter.
 Der ligger verktøyraden, «Plassering» (de to sentreringsknappene),
 geometrilista, skjøtelista, og bildeunderlagets egenskaper når det finnes et
 bilde. Resten bor der man faktisk arbeider:
@@ -216,8 +227,8 @@ faktorer ulik 1 er «tyngdepunktet» nøytralaksen til det transformerte tverrsn
 
 ## Skjøter og forsterkning — skjærstrøm i skjøten
 
-Høyre panel har to faner. **«Tverrsnitt»** er tyngdepunktet og arealmomentene
-som før. **«Forsterkning»** svarer på hvor mye kraft en **skjøt** må ta opp —
+I fanen «Geometri» viser høyre panel tyngdepunktet og arealmomentene.
+Fanen **«Forsterkning»** svarer på hvor mye kraft en **skjøt** må ta opp —
 enten det er en ny del som festes til et eksisterende profil, eller en ren
 kontroll av en eksisterende sveis («hvor mye går det i sveisen mellom flens og
 steg i denne gamle bjelken»). Det er samme fysiske spørsmål og samme formel;
@@ -287,10 +298,17 @@ holdes tett sammen i hver sin ramme. Etikettene er korte (den fulle
 fortegnsforklaringen ligger i den sammenleggbare konvensjonsseksjonen rett
 under).
 
-Et kompakt **kraftsammendrag** (bidrag fra V_før, V_etter og ΔN, pluss en
-uthevet sum) står rett under lastfeltene i fanen, før «Effekt av
-forsterkningen» — det er tallet brukeren kom for, og skal ikke være noe man
-må lete etter eller scrolle til «Per skjøt» for å finne.
+Høyre panel er **tabeller, ikke tekst**. Øverst «Krefter i skjøtene»: én
+rad per skjøt — `q_før`, `q_etter`, `q_N`, `Σq`, `N_G` og `N_G/L` (og `γ`
+når delvis samvirke er satt opp) — så alle skjøtene leses på én gang; det
+finnes ingen skjøt å «velge». Musa over en rad lyser opp skjøten i lerretet,
+og omvendt. (?) rett etter overskriften åpner en forklaringsfigur:
+bjelken fra siden i tre situasjoner — snitt i felt, forsterkningsende der
+M ≠ 0, og forsterkningsende i et momentnullpunkt — med tallene fra skjøten
+mot ny del med størst Σq, og hva hver kolonne betyr. Advarslene står på én linje hver over tabellen, med full tekst i
+verktøytipset. Under følger «Tverrsnitt før → etter» (EA, EI_x, EI_y, y_c,
+x_c, θ). Aksialfordeling, Volkersen, delvis samvirke (med ρ-kildene),
+utregningen og merknadene ligger sammenlagt under «Detaljer».
 
 En skjøt mot en ny del har ingen «før»-tilstand. Er **alle** former merket
 `existing` (ingen forsterkning i det hele tatt), skjuler fanen automatisk
@@ -299,27 +317,27 @@ skjærstrømmen per skjøt — dette er ren-eksisterende-modus, og er det som gj
 verktøyet nyttig for kontroll av en gammel konstruksjon uten noen ny del.
 
 `q_N = ΔN/L` er en middelverdi. Volkersen-modellen (`λ² = k(1/α + 1/β)`) viser
-hvor mye høyere toppene i skjøteendene ligger, med `k = G_a·b/t_a` for lim og
-`k = K_ser·rader/s` for skruer.
+hvor mye høyere toppene i skjøteendene ligger, med fugestivheten
+`k = K_ser·rader/s`.
 
-### Forbindelsestyper
+### Kraft, ikke kapasitet
 
-Skjøtelista i venstre panel (under geometrilista) er der en skjøt redigeres:
-navn, forbindelsestype, heftbredde og — når oppsettet er statisk ubestemt —
-andelen av `ΔN` som går gjennom nettopp den skjøten. Tre typer:
+Verktøyet sier hvor mye kraft skjøten må ta, i N/mm (= kN/m) — samme tall
+enten den skal skrus, limes eller sveises. Det finnes derfor ingen
+forbindelsestype, heftbredde eller kapasitet å fylle inn; utnyttelsen regner
+brukeren i verktøyet som hører til festemiddelet (sveis: `weld_capacity/`).
 
-- **Skruer/mekaniske forbindere** — `F_Rd` [kN] per forbinder, rader, senter-
-  avstand `s`, `K_ser`. `s_req = rader·F_Rd·1000/q_tot`.
-- **Lim** — `τ_Rd`, `G_a`, `t_a`. `τ = q_tot/b`, `util = τ/τ_Rd`.
-- **Sveis** — `q_Rd = n_sveiser · a · f_vw,d` [N/mm], eller en direkte `q_Rd`.
-  `f_vw,d` (dimensjonerende skjærfasthet i sveisesnittet) regnes **ikke** ut
-  her — den hentes fra modulen `weld_capacity/`. `util = q_tot/q_Rd`. En
-  sveiseskjøt har ingen senteravstand å løse for (`sReq` er `null`).
+Skjøten redigeres to steder, etter hva som hører til hva:
+
+- **«Geometri»**, skjøtelista under geometrilista: navn og sletting.
+- **«Forsterkning»**, skjøtelista under lastene: andelen av `ΔN` når
+  oppsettet er statisk ubestemt, og — sammenlagt under «Avansert: delvis
+  samvirke» — rader, senteravstand, `K_ser` og γ-metodens spennvidde/system.
 
 ### Festemiddelstivhet (K_ser) og samvirkegrad (γ-metoden)
 
-For skruer/mekaniske forbindere velges kilden til `K_ser` i skjøtelista, som
-**likestilte** valg:
+Kilden til `K_ser` velges under «Avansert: delvis samvirke» i skjøtelista i
+«Forsterkning», som **likestilte** valg:
 
 - **EC5 tabell 7.1** (`js/connection-stiffness.js`) — festemiddeltype,
   middeldensitet (ett eller to treslag, geometrisk middel), diameter, kontakt-
@@ -461,7 +479,6 @@ default-system»:
   id: 'j1',
   name: 'Steg ↔ Overflens',       // autogenereres av delene den skiller
   a: [x, y], b: [x, y],
-  bondWidth: null,                 // null ⟹ linjas lengde
   share: null,                     // null ⟹ automatisk lik fordeling ved statisk ubestemt oppsett
   connector: {
     kind: 'screw' | 'glue' | 'weld',
@@ -469,8 +486,8 @@ default-system»:
     stiffSource: 'eta' | 'ec5',              // K_ser-kilde (§3.2) — udefinert ⟹ 'eta' (ingen atferdsendring)
     ec5Fastener, ec5Rho1, ec5Rho2, ec5D, ec5Dc, ec5Contact, state,  // EC5 tabell 7.1-inndata (§3.1)
     span, system,                            // γ-metoden: L_ef-grunnlag (§4)
-    tauRd, Ga, ta,                 // lim
-    qRd, a_weld, fvwd, nWelds,     // sveis — qRd overstyrer utledningen om satt
+    // kind, FRd, shearPlanes og lim-/sveisefeltene finnes fortsatt i datamodellen,
+    // men kan ikke lenger redigeres; de ryddes bort sammen med mekanikken i #59.
   },
 }
 ```

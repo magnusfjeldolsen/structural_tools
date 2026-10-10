@@ -251,9 +251,7 @@ test('3. Tom/manglende inndata gir en tom modell, ikke et unntak', () => {
 
 test('4. Hver post har ikke-tomme {sym, formula, subst, result}', () => {
   const models = [
-    ['forsterket, skruer', derivationModel(makeRes({}))],
-    ['forsterket, lim', derivationModel(makeRes({ joints: [{ connector: { kind: 'glue' } }] }))],
-    ['forsterket, sveis', derivationModel(makeRes({ joints: [{ connector: { kind: 'weld' } }] }))],
+    ['forsterket', derivationModel(makeRes({}))],
     ['alt eksisterende', derivationModel(makeRes({ allExisting: true }))],
   ];
   for (const [label, model] of models) {
@@ -334,7 +332,7 @@ test('10. §5.3: ingen post noe sted heter q_M, «fra M» eller lignende', () =>
   const models = [
     derivationModel(makeRes({})),
     derivationModel(makeRes({ allExisting: true })),
-    derivationModel(makeRes({ joints: [{ noBefore: true }, { connector: { kind: 'glue' } }, { connector: { kind: 'weld' } }] })),
+    derivationModel(makeRes({ joints: [{ noBefore: true }, {}] })),
   ];
   const forbidden = /q[_ ]?M\b|fra\s+M\b|moment.*bidrag|bidrag.*moment/i;
   let hits = 0;
@@ -370,26 +368,13 @@ test('11. Skjøtegruppa er delt i navngitte deler, i fast rekkefølge', () => {
   const g = derivationModel(makeRes({}))[1];
   const order = [];
   for (const s of g.steps) if (order[order.length - 1] !== s.part) order.push(s.part);
-  eq('delene i rekkefølge', order.join(' → '), 'es → force → es → force → axial → force → check → volkersen → anchor');
+  eq('delene i rekkefølge', order.join(' → '), 'es → force → es → force → axial → force → volkersen → anchor');
 });
 
-test('12. Kapasitetskontrollen følger forbindelsestypen', () => {
-  const screw = derivationModel(makeRes({}))[1];
-  sameSet('skruer', symsOf(screw, 'check'), ['s_req', 'utnyttelse']);
-
-  const glue = derivationModel(makeRes({ joints: [{ connector: { kind: 'glue' } }] }))[1];
-  sameSet('lim', symsOf(glue, 'check'), ['τ', 'utnyttelse']);
-  eq('lim: τ-formelen', partsOf(glue, 'check')[0].formula, 'τ = q_tot / b');
-
-  const weld = derivationModel(makeRes({ joints: [{ connector: { kind: 'weld' } }] }))[1];
-  sameSet('sveis', symsOf(weld, 'check'), ['q_Rd', 'utnyttelse']);
-  // HÅNDREGNING, sveis uten satt q_Rd: n_sveiser · a · f_vw,d = 2 · 4 · 207
-  eq('sveis: innsatte tall', partsOf(weld, 'check')[0].subst, '2 · 4,00 · 207,00');
-
-  // Satt q_Rd overstyrer utledningen, og det skal STÅ at den er satt — ellers
-  // kan ikke en kontrollør se hvor tallet kom fra.
-  const weldSet = derivationModel(makeRes({ joints: [{ connector: { kind: 'weld', qRd: 900 } }] }))[1];
-  eq('sveis: satt q_Rd', partsOf(weldSet, 'check')[0].subst, 'satt direkte = 900,00 N/mm');
+test('12. Ingen kapasitetskontroll — verktøyet gir kraften, ikke utnyttelsen', () => {
+  const g = derivationModel(makeRes({}))[1];
+  eq('ingen «check»-del', partsOf(g, 'check').length, 0);
+  ok('ingen utnyttelse noe sted', !g.steps.some((s) => /utnyttelse|util/i.test(`${s.sym} ${s.formula}`)));
 });
 
 test('13. Volkersen og forankring faller bort når de ikke er anvendelige', () => {
@@ -403,20 +388,9 @@ test('13. Volkersen og forankring faller bort når de ikke er anvendelige', () =
   ok('ugyldig Volkersen gir ingen poster', partsOf(ugyldigVol, 'volkersen').length === 0);
 });
 
-test('14. F_Ed står bare når brukeren har oppgitt antall forbindere', () => {
-  const medN = derivationModel(makeRes({}))[1];
-  sameSet('med n', symsOf(medN, 'anchor'), ['N_G', 'q_req', 'q_gov', 'F_Ed']);
-  // HÅNDREGNING: F_Ed = q_gov · L / n = 50 N/mm · 1200 mm / 8 = 7500 N = 7,50 kN
-  const fEd = medN.steps.find((s) => s.sym === 'F_Ed');
-  eq('F_Ed.formula', fEd.formula, 'F_Ed = q_gov · L / n');
-  eq('F_Ed.result', fEd.result, '7,50 kN');
-  // Utnyttelse mot F_Rd = 9 kN: 7,5/9 = 0,8333 ⟹ 83,3 %
-  ok('utnyttelsen står i merknaden', /83,3 %/.test(fEd.note), fEd.note);
-
-  const utenN = derivationModel(makeRes({
-    joints: [{ anchorReq: { NG: 32000, NG_kN: 32, qTot: 50, qReq: 26.6667, qGoverning: 50, L: 1200, n: null, FEd: null, FRdCap: null, util: null, valid: true } }],
-  }))[1];
-  sameSet('uten n', symsOf(utenN, 'anchor'), ['N_G', 'q_req', 'q_gov']);
+test('14. Forankringen gir krefter, ikke kraft per forbinder', () => {
+  const g = derivationModel(makeRes({}))[1];
+  sameSet('forankringsdelen', symsOf(g, 'anchor'), ['N_G', 'q_req', 'q_gov']);
 });
 
 test('15. Andel («share») står i ΔN_i når skjøten er statisk ubestemt', () => {

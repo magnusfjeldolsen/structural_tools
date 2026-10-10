@@ -34,7 +34,7 @@ import { MATERIALS, materialByName, materialE, materialRho } from './materials.j
 import { JOINT_COLOR } from './store.js';
 import { shapeFill, materialFamily } from './shape-style.js';
 import { sidesOfJoint, buildGraph, jointGroup, overConstrained } from './joints.js';
-import { ReinforcementPanel, CONNECTOR_LABELS, axisConventionHtml } from './reinforcement-ui.js';
+import { ReinforcementPanel, axisConventionHtml } from './reinforcement-ui.js';
 import { SYSTEM_FACTORS } from './reinforcement.js';
 import { EC5_FASTENERS, EC5_CONTACTS, STATES, ec5Fastener } from './connection-stiffness.js';
 
@@ -149,12 +149,20 @@ export class UI {
     this.tools = tools;
     this.underlayManager = opts.underlayManager || null;
     this.analysis = null;
-    /** Aktiv fane i høyre panel: 'section' (tyngdepunkt) eller 'reinforcement'. */
-    this.tab = 'section';
+    /**
+     * Hovedfanen: 'geometry' (tegn og les tverrsnittet) eller 'reinforcement'
+     * (legg inn laster og les kreftene i skjøtene — lerretet er låst).
+     */
+    this.mode = 'geometry';
     /** Forsterkningsfanen bor i sin egen modul; ui.js er stor nok fra før. */
     this.reinforcement = new ReinforcementPanel(store, {
       toast: (m) => this.toast(m),
       onCopy: () => this._copyResult(),
+      // Musa over en rad i krafttabellen lyser opp skjøten i lerretet.
+      onHoverJoint: (id) => {
+        this.viewport.setHoverJoint(id);
+        this.reinforcement.highlightJoint(id);
+      },
     });
     /** Pågående to-punkts kalibrering av bildeunderlaget. */
     this.calibration = null;
@@ -163,6 +171,8 @@ export class UI {
     this.expanded = new Set();
     /** Åpne elementer i skjøtelista (§5 i interaksjonsplanen). */
     this.jointExpanded = new Set();
+    /** Skjøter der «Avansert: delvis samvirke» står åpen i Forsterkning-fanen. */
+    this.jointAdvancedOpen = new Set();
     /** Skjøten musepekeren hviler over i lerretet — for å fremheve raden i lista (§6.2 «omvendt»). */
     this._canvasHoverJoint = null;
     /** Åpne underseksjoner, nøkler som `${id}:coords`. */
@@ -195,6 +205,7 @@ export class UI {
     this.tools.onJointHover = (id) => {
       if (this._canvasHoverJoint === id) return;
       this._canvasHoverJoint = id;
+      this.reinforcement.highlightJoint(id);
       this._renderJointList();
     };
 
@@ -371,9 +382,9 @@ export class UI {
     $('model-title').addEventListener('input', (e) => st.setTitle(e.target.value));
     $('btn-copy').addEventListener('click', () => this._copyResult());
 
-    $('result-tabs').addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-tab]');
-      if (btn) this.setTab(btn.dataset.tab);
+    $('workspace-tabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-mode]');
+      if (btn) this.setMode(btn.dataset.mode);
     });
 
     $('btn-export').addEventListener('click', () => this._export());
@@ -547,19 +558,48 @@ export class UI {
     return null;
   }
 
-  /** Bytter fane i høyre panel. */
-  setTab(tab) {
-    this.tab = tab === 'reinforcement' ? 'reinforcement' : 'section';
+  /**
+   * Bytter hovedfane. «Forsterkning» låser lerretet: bare skjøter kan
+   * velges, og ingen geometri kan endres — alt som tegnes, tegnes i
+   * «Geometri». Derfor velges «velg»-verktøyet, en halvferdig kommando
+   * avbrytes, og former tas ut av utvalget.
+   */
+  setMode(mode) {
+    const next = mode === 'reinforcement' ? 'reinforcement' : 'geometry';
+    if (next === this.mode) return;
+    this.mode = next;
+    if (next === 'reinforcement') {
+      if (this.tools.tool !== 'select') this.tools.setTool('select');
+      else this.tools.cancel();
+      const st = this.store.state;
+      const jointIds = new Set((st.joints || []).map((j) => j.id));
+      const keep = st.selection.filter((id) => jointIds.has(id));
+      if (keep.length !== st.selection.length) this.store.select(keep);
+      this.status('Forsterkning: klikk en skjøt for å se kreftene i den. Geometrien er låst — den endres i «Geometri».');
+    } else {
+      this.status(this.tools.hint());
+    }
     this._renderTabs();
+    this.render(this.analysis);
   }
 
   _renderTabs() {
-    const active = this.tab;
-    document.querySelectorAll('#result-tabs [data-tab]').forEach((btn) => {
-      btn.dataset.active = String(btn.dataset.tab === active);
+    const rf = this.mode === 'reinforcement';
+    document.querySelectorAll('#workspace-tabs [data-mode]').forEach((btn) => {
+      btn.dataset.active = String(btn.dataset.mode === this.mode);
+      btn.setAttribute('aria-selected', String(btn.dataset.mode === this.mode));
     });
-    $('tab-section').classList.toggle('hidden', active !== 'section');
-    $('tab-reinforcement').classList.toggle('hidden', active !== 'reinforcement');
+    document.body.dataset.mode = this.mode;
+    $('left-geometry').classList.toggle('hidden', rf);
+    $('left-reinforcement').classList.toggle('hidden', !rf);
+    $('tab-section').classList.toggle('hidden', rf);
+    $('tab-reinforcement').classList.toggle('hidden', !rf);
+    // Kreftene trenger plass til tabeller; tverrsnittsresultatene gjør ikke det.
+    const right = $('right-panel');
+    right.classList.toggle('w-80', !rf);
+    right.classList.toggle('xl:w-96', !rf);
+    right.classList.toggle('w-[26rem]', rf);
+    right.classList.toggle('xl:w-[32rem]', rf);
   }
 
   /* ---------------- verktøyalternativer i lerretet (§4.2) ---------------- */
@@ -826,7 +866,7 @@ export class UI {
   _copyResult() {
     // Er forsterkningsfanen aktiv, er det de tallene brukeren ser på — og da
     // er det de som skal på utklippstavla.
-    if (this.tab === 'reinforcement') {
+    if (this.mode === 'reinforcement') {
       const text = this.reinforcement.clipboardText();
       if (!text) return this.toast('Ingen forsterkningstall å kopiere.');
       return navigator.clipboard
@@ -1733,16 +1773,28 @@ export class UI {
    * geometri og skriver, ikke går til et kommandosenter.
    */
   _renderJointList() {
-    const host = $('joint-list');
+    this._renderJointListInto('joint-list', 'joint-count', 'geometry');
+    this._renderJointListInto('rf-joint-list', 'rf-joint-count', 'reinforcement');
+  }
+
+  /**
+   * Én skjøteliste per fane, fra samme data. I «Geometri» er en skjøt noe
+   * som er tegnet — navn, sider, sletting. I «Forsterkning» er den noe
+   * kraft går gjennom — andel av ΔN og fugestivheten for delvis samvirke.
+   */
+  _renderJointListInto(hostId, countId, mode) {
+    const host = $(hostId);
     if (!host) return;
     const st = this.store.state;
     const joints = st.joints || [];
-    const countEl = $('joint-count');
+    const countEl = $(countId);
     if (countEl) countEl.textContent = joints.length ? `(${joints.length})` : '';
 
     if (!joints.length) {
       host.innerHTML =
-        '<p class="text-xs text-slate-500 italic py-2">Ingen skjøter ennå. Velg skjøteverktøyet (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) og klikk to punkt i lerretet.</p>';
+        mode === 'geometry'
+          ? '<p class="text-xs text-slate-500 italic py-2">Ingen skjøter ennå. Velg skjøteverktøyet (<kbd class="px-1 bg-slate-700 rounded">G</kbd>) og klikk to punkt i lerretet.</p>'
+          : '<p class="text-xs text-slate-500 italic py-2">Ingen skjøter ennå. Tegn dem i fanen «Geometri» med skjøteverktøyet (<kbd class="px-1 bg-slate-700 rounded">G</kbd>).</p>';
       return;
     }
 
@@ -1762,7 +1814,6 @@ export class UI {
           this._activeJointId === j.id ||
           st.selection.includes(j.id);
         const len = Math.hypot(j.b[0] - j.a[0], j.b[1] - j.a[1]);
-        const kindLabel = CONNECTOR_LABELS[j.connector.kind] || CONNECTOR_LABELS.screw;
         return `
       <div class="rounded border ${isHover ? 'border-sky-500' : 'border-slate-700'} ${open ? 'bg-slate-700' : 'bg-slate-750'}"
            data-joint-row="${j.id}">
@@ -1774,11 +1825,14 @@ export class UI {
             <span class="truncate">${escapeHtml(j.name)}</span>
           </button>
           <span class="text-[10px] text-slate-500 num shrink-0">${fmtLen(len)} ${unit}</span>
-          <span class="text-[10px] px-1 rounded bg-slate-800 text-slate-300 shrink-0">${kindLabel}</span>
-          <button data-jact="delete" data-id="${j.id}"
-                  class="px-1 text-slate-400 hover:text-red-400 shrink-0" title="Slett skjøten">×</button>
+          ${
+            mode === 'geometry'
+              ? `<button data-jact="delete" data-id="${j.id}"
+                  class="px-1 text-slate-400 hover:text-red-400 shrink-0" title="Slett skjøten">×</button>`
+              : ''
+          }
         </div>
-        ${open ? this._jointEditorHtml(j, graph, overC) : ''}
+        ${open ? (mode === 'geometry' ? this._jointGeometryHtml(j) : this._jointForceHtml(j, graph, overC)) : ''}
       </div>`;
       })
       .join('');
@@ -1804,11 +1858,11 @@ export class UI {
       }
     };
 
-    this._bindJointEditors();
+    this._bindJointEditors(host);
   }
 
-  /** Egenskapspanelet for én åpnet skjøt. */
-  _jointEditorHtml(j, graph, overC) {
+  /** «Geometri»: det som er tegnet — navn og hvilke deler skjøten skiller. */
+  _jointGeometryHtml(j) {
     const st = this.store.state;
     const unit = lengthLabel(st.unit);
     const tol = neighborTolerance(st.shapes);
@@ -1819,7 +1873,31 @@ export class UI {
     };
     const aNames = sides.aSide.map(nameOf).join(', ') || '—';
     const bNames = sides.bSide.map(nameOf).join(', ') || '—';
+    return `
+      <div class="px-2 pb-2 pt-1 space-y-2 border-t border-slate-600">
+        <div>
+          <label class="field-label" for="j-name-${j.id}">Navn</label>
+          <input id="j-name-${j.id}" data-jf="name" data-id="${j.id}" data-focus-key="j-name-${j.id}"
+                 type="text" value="${escapeHtml(j.name)}" />
+        </div>
+        <div class="text-[11px] text-slate-400 leading-snug">
+          <div>Side A: <span class="text-slate-200">${aNames}</span></div>
+          <div>Side B: <span class="text-slate-200">${bNames}</span></div>
+          <div class="text-slate-500 mt-0.5 num">
+            Linje (${fmtLen(j.a[0])}, ${fmtLen(j.a[1])}) → (${fmtLen(j.b[0])}, ${fmtLen(j.b[1])}) ${unit}
+          </div>
+        </div>
+      </div>`;
+  }
 
+  /**
+   * «Forsterkning»: det som styrer kreftene gjennom skjøten. Andelen av ΔN
+   * når oppsettet er statisk ubestemt, og — sammenlagt — fugestivheten som
+   * delvis samvirke (γ-metoden, Volkersen) trenger. Kapasitet hører ikke
+   * hjemme her: verktøyet sier hvor mye kraft skjøten må ta, ikke om et
+   * bestemt festemiddel holder.
+   */
+  _jointForceHtml(j, graph, overC) {
     const ocEntry = overC.find((e) => e.jointIds.includes(j.id));
     const jg = jointGroup(j, graph);
     const showShare = !jg.determinate;
@@ -1834,40 +1912,19 @@ export class UI {
     };
 
     const c = j.connector;
-    const connectorFields =
-      c.kind === 'glue'
-        ? `<div class="grid grid-cols-3 gap-1.5">
-             ${cfield('tauRd', 'τ_Rd [N/mm²]', c.tauRd, 'step="0.1"')}
-             ${cfield('Ga', 'G_a [N/mm²]', c.Ga, 'step="10"')}
-             ${cfield('ta', 't_a [mm]', c.ta, 'step="0.1"')}
-           </div>`
-        : c.kind === 'weld'
-        ? `<div class="grid grid-cols-2 gap-1.5">
-             ${cfield('nWelds', 'Antall strenger', c.nWelds, 'step="1" min="1"')}
-             ${cfield('a_weld', 'a-mål [mm]', c.a_weld, 'step="0.5"')}
-             ${cfield('fvwd', 'f_vw,d [N/mm²]', c.fvwd, 'step="1"')}
-             ${cfield('qRd', 'eller q_Rd direkte [N/mm]', c.qRd, 'step="1" min="0"')}
-           </div>
-           <p class="text-[10px] text-slate-500 leading-snug">
-             f_vw,d (dimensjonerende skjærfasthet i sveisesnittet) regnes ut i modulen
-             <code>weld_capacity/</code> — skriv resultatet inn her, eller sett q_Rd direkte og la
-             de tre andre stå ubrukt.
-           </p>`
-        : `<div class="grid grid-cols-2 gap-1.5">
-             ${cfield('FRd', 'F_Rd per forbinder [kN]', c.FRd, 'step="0.5"')}
-             ${cfield('rows', 'Rader på tvers', c.rows, 'step="1" min="1"')}
-             ${cfield('spacing', 'Senteravstand s [mm]', c.spacing, 'step="10"')}
-             ${cfield('shearPlanes', 'Skjærplan', c.shearPlanes == null ? 1 : c.shearPlanes, 'step="1" min="1"')}
-           </div>`;
+    // Rader og senteravstand gir fugestivheten per lengde, k = K_ser·rader/s,
+    // som γ-metoden og Volkersen bruker — ikke en kapasitetskontroll.
+    const layoutFields = `<div class="grid grid-cols-2 gap-1.5">
+         ${cfield('rows', 'Rader på tvers', c.rows, 'step="1" min="1"')}
+         ${cfield('spacing', 'Senteravstand s [mm]', c.spacing, 'step="10"')}
+       </div>`;
 
     // §3/§4 — festemiddelstivheten K_ser: EC5 tabell 7.1 og «fritt innlagt»
     // (ETA/produktgodkjenning) er LIKESTILTE kilder, ikke den ene gjemt bak
     // den andre (§3.2 i samvirkeplanen). Bare relevant for skruer/mekaniske
     // forbindere — lim har sin egen formel (Ga/ta over), og sveis regnes som
     // uendelig stiv (γ → 1) uansett.
-    const stiffnessBlock =
-      c.kind === 'screw'
-        ? (() => {
+    const stiffnessBlock = (() => {
             const src = c.stiffSource === 'ec5' ? 'ec5' : 'eta';
             const fastenerKey = c.ec5Fastener || 'dowel';
             const fastener = ec5Fastener(fastenerKey) || EC5_FASTENERS[0];
@@ -1926,8 +1983,7 @@ export class UI {
                        </p>`
                 }
               </div>`;
-          })()
-        : '';
+          })();
 
     // §4 — samvirkegrad (γ-metoden, EC5 tillegg B). Krever effektiv lengde,
     // derfor spennvidde + systemtype uansett forbindelsestype (sveis gir k = ∞
@@ -1956,36 +2012,6 @@ export class UI {
 
     return `
       <div class="px-2 pb-2 pt-1 space-y-2 border-t border-slate-600">
-        <div>
-          <label class="field-label" for="j-name-${j.id}">Navn</label>
-          <input id="j-name-${j.id}" data-jf="name" data-id="${j.id}" data-focus-key="j-name-${j.id}"
-                 type="text" value="${escapeHtml(j.name)}" />
-        </div>
-        <div class="text-[11px] text-slate-400 leading-snug">
-          <div>Side A: <span class="text-slate-200">${aNames}</span></div>
-          <div>Side B: <span class="text-slate-200">${bNames}</span></div>
-          <div class="text-slate-500 mt-0.5 num">
-            Linje (${fmtLen(j.a[0])}, ${fmtLen(j.a[1])}) → (${fmtLen(j.b[0])}, ${fmtLen(j.b[1])}) ${unit}
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-1.5">
-          <div>
-            <label class="field-label" for="j-kind-${j.id}">Forbindelse</label>
-            <select id="j-kind-${j.id}" data-jkind data-id="${j.id}" data-focus-key="j-kind-${j.id}">
-              <option value="screw" ${c.kind !== 'glue' && c.kind !== 'weld' ? 'selected' : ''}>Skruer / mekaniske forbindere</option>
-              <option value="glue" ${c.kind === 'glue' ? 'selected' : ''}>Lim</option>
-              <option value="weld" ${c.kind === 'weld' ? 'selected' : ''}>Sveis</option>
-            </select>
-          </div>
-          <div>
-            <label class="field-label" for="j-bw-${j.id}">Heftbredde b [mm], tom = linjelengden</label>
-            <input id="j-bw-${j.id}" data-jf="bondWidth" data-id="${j.id}" data-focus-key="j-bw-${j.id}"
-                   type="number" step="1" min="0" value="${j.bondWidth == null ? '' : j.bondWidth}" />
-          </div>
-        </div>
-        ${connectorFields}
-        ${stiffnessBlock}
-        ${gammaFields}
         ${
           showShare
             ? `<div>
@@ -1998,14 +2024,35 @@ export class UI {
                         type="number" step="1" min="0" max="100" placeholder="auto (lik fordeling)"
                         value="${j.share == null ? '' : Math.round(j.share * 100)}" />
                </div>`
-            : ''
+            : `<p class="text-[11px] text-slate-500 leading-snug">Statisk bestemt — hele ΔN går gjennom denne skjøten.</p>`
         }
+        <details class="rounded border border-slate-700 bg-slate-800/60" ${this.jointAdvancedOpen.has(j.id) ? 'open' : ''} data-jadv="${j.id}">
+          <summary class="px-2 py-1.5 text-[11px] text-slate-300 hover:text-white flex items-center gap-1.5">
+            <span class="chev text-slate-500" style="display:inline-block">›</span>
+            Avansert: delvis samvirke
+          </summary>
+          <div class="px-2 pb-2 pt-1 space-y-2">
+            <p class="text-[10px] text-slate-500 leading-snug">
+              Bare når fugen er ettergivende nok til å bety noe. Uten dette regnes full samvirkning.
+            </p>
+            ${layoutFields}
+            ${stiffnessBlock}
+            ${gammaFields}
+          </div>
+        </details>
       </div>`;
   }
 
-  _bindJointEditors() {
-    const host = $('joint-list');
+  _bindJointEditors(host) {
     if (!host) return;
+
+    // Husk om «Avansert» står åpen, så den ikke klapper sammen ved neste tegning.
+    host.querySelectorAll('[data-jadv]').forEach((el) => {
+      el.addEventListener('toggle', () => {
+        if (el.open) this.jointAdvancedOpen.add(el.dataset.jadv);
+        else this.jointAdvancedOpen.delete(el.dataset.jadv);
+      });
+    });
 
     host.querySelectorAll('[data-jf]').forEach((el) => {
       const id = el.dataset.id;
@@ -2013,11 +2060,6 @@ export class UI {
       if (key === 'name') {
         el.addEventListener('input', (e) => this.store.updateJoint(id, { name: e.target.value }, { transient: true }));
         el.addEventListener('change', () => this.store.commit('joint-rename'));
-      } else if (key === 'bondWidth') {
-        el.addEventListener('change', (e) => {
-          const v = Number(e.target.value);
-          this.store.updateJoint(id, { bondWidth: Number.isFinite(v) && v > 0 ? v : null });
-        });
       } else if (key === 'share') {
         el.addEventListener('change', (e) => {
           const raw = e.target.value;
@@ -2029,28 +2071,13 @@ export class UI {
       }
     });
 
-    host.querySelectorAll('[data-jkind]').forEach((sel) => {
-      sel.addEventListener('change', (e) => {
-        const id = e.target.dataset.id;
-        const j = this.store.getJoint(id);
-        if (!j) return;
-        const kind = e.target.value === 'glue' ? 'glue' : e.target.value === 'weld' ? 'weld' : 'screw';
-        this.store.updateJoint(id, { connector: { ...j.connector, kind } });
-      });
-    });
-
     host.querySelectorAll('[data-jc]').forEach((el) => {
       el.addEventListener('change', (e) => {
         const id = e.target.dataset.id;
         const key = e.target.dataset.jc;
         const j = this.store.getJoint(id);
         if (!j) return;
-        const raw = e.target.value;
-        if (raw === '' && key === 'qRd') {
-          this.store.updateJoint(id, { connector: { ...j.connector, qRd: null } });
-          return;
-        }
-        const v = Number(raw);
+        const v = Number(e.target.value);
         this.store.updateJoint(id, { connector: { ...j.connector, [key]: Number.isFinite(v) ? v : 0 } });
       });
     });

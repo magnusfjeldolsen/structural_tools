@@ -128,7 +128,6 @@ function jointType(jt) {
   return { text: 'mot ny del', cls: '' };
 }
 
-const CONNECTOR_SHORT = { screw: 'Skruer', glue: 'Lim', weld: 'Sveis' };
 
 /* ------------------------------------------------------------------ *
  * Side 1
@@ -366,23 +365,19 @@ function jointsBlock(res) {
   const body = rows
     .map((jt) => {
       const t = jointType(jt);
-      const conn = CONNECTOR_SHORT[(jt.connector || {}).kind] || '–';
       const sides = `${jt.aNames.join(', ') || '–'} ↔ ${jt.bNames.join(', ') || '–'}`;
       return `<tr>
         <td class="font-mono"><b>${labels.get(jt.id)}</b></td>
         <td>${esc(jt.name)}<br><span class="muted">${esc(sides)}</span></td>
         <td class="${t.cls}">${t.text}</td>
-        <td>${conn}</td>
-        <td class="num">${cell(jt.b, 0)}</td>
         <td class="num">${cell(jt.qBefore)}</td>
         ${ae ? '' : `<td class="num">${cell(jt.qAfter)}</td><td class="num">${cell(jt.qN)}</td>`}
         <td class="num"><b>${cell(jt.qTot)}</b></td>
-        <td class="num">${cell(jt.tau, 3)}</td>
       </tr>`;
     })
     .join('');
 
-  const cols = ae ? 8 : 10;
+  const cols = ae ? 5 : 7;
   const more = hidden
     ? `<tr><td colspan="${cols}" class="muted">… og ${hidden} flere skjøter — se «Per skjøt», side 2</td></tr>`
     : '';
@@ -399,12 +394,10 @@ function jointsBlock(res) {
     <h3>Skjøtekrefter</h3>
     <table>
       <thead><tr>
-        <th>#</th><th>Skjøt</th><th>Type</th><th>Forbindelse</th>
-        <th class="num">b [mm]</th>
+        <th>#</th><th>Skjøt</th><th>Type</th>
         <th class="num">q_før</th>
         ${ae ? '' : '<th class="num">q_etter</th><th class="num">q_N</th>'}
         <th class="num">q_tot [N/mm]</th>
-        <th class="num">τ [N/mm²]</th>
       </tr></thead>
       <tbody>${body}${more}</tbody>
     </table>

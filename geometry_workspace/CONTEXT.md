@@ -66,6 +66,48 @@ _Avoid_: forankringskraft, N fra bøyning
 Skjærstrømmen som trengs for å føre `N_G` og aksialandelen `ΔN` inn over en lengde `L`, når snittet ligger i en forsterkningsende. Er M = 0 der, er `N_G = 0` og bare `ΔN` gjenstår.
 _Avoid_: q_req, q_N
 
+### Beregningsmåter
+
+**Bjelkeakse z**:
+Aksen langs bjelken, vinkelrett på tverrsnittsplanet (x, y). Diagrammer langs bjelken har z som abscisse.
+_Avoid_: x-akse langs bjelken
+
+**Snittberegning**:
+Kreftene i skjøten i ett snitt, fra V, M og N der, med full samvirkning; forankring og innføring vises som middelverdier over L.
+_Avoid_: punktforsterkning, punktmodus
+
+**Linjeberegning**:
+Kreftene i skjøten langs hele den nye delen, fra diagrammer N(z), M_x(z), M_y(z), med delvis samvirke (Volkersen/Newmark). Gir q(z) overalt, med topper i endene og ved sprang i N.
+_Avoid_: linjeforsterkning, linjemodus
+
+**Delvis samvirke**:
+Skjøten gir etter (`q = k·δ`), så delene glir litt mot hverandre og kraften bygges opp over en lengde i stedet for momentant.
+_Avoid_: ettergivende samvirke
+
+**Skjøtestivhet** (`k`):
+Fjærstivheten per lengde skjøt, `k = n_rader·K/a` [N/mm²]; K er K_ser eller K_u = ⅔·K_ser.
+_Avoid_: fugestivhet, forbindelsesstivhet
+
+**Kraft ved full samvirkning** (`N₂∞`):
+Kraften den nye delen ville hatt uten glidning, `r·N + M·ES*/EI`; den delvis samvirkende løsningen søker mot den.
+_Avoid_: F.ny.inf (arkets navn)
+
+**Karakteristisk lengde** (`1/λ`):
+Lengden kraften i den nye delen bruker på å bygge seg 63 % opp mot `N₂∞`; 95 % over `3/λ`.
+_Avoid_: overføringslengde (uten tall)
+
+**Løs ende / festet ende**:
+Randbetingelsen for den nye delen i hver ende: løs ende har `N₂ = 0` (bare skrudd langs gurten), festet ende har `N₂ = N₂∞` (koblet inn i knutepunktet).
+_Avoid_: fri ende (forveksles med at gurten er ubelastet)
+
+**Sideveis fri / fastholdt**:
+Om den forsterkede delen kan bøye ut om svak akse når N angriper eksentrisk (fri), eller holdes rett av omgivelsene (fastholdt). Avgjør både λ og N₂∞, og har ingen standardverdi.
+_Avoid_: avstivet (forveksles med midlertidig avstiving)
+
+**Fri tøyning** (`ε_eks`, `ε_ny`):
+Tøyningen hver del ville fått uten last og uten skjøt (fukt, kryp under N_før, temperatur), oppgitt per del. Skjøten holder igjen forskjellen `ε_eks − ε_ny`, som virker som en last `EA*·(ε_eks − ε_ny)` på den nye delen.
+_Avoid_: svinn (bare én av årsakene), Δε som eget inndatafelt
+
 **Resultant**:
 `√(Σq_L² + q_T²)`; veiledende, vises alltid sammen med de to komponentene, aldri alene.
 _Avoid_: q_tot, total skjærstrøm
