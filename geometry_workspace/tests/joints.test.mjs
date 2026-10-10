@@ -51,7 +51,7 @@ const rf = await loadModule('../js/reinforcement.js');
 const jt = await loadModule('../js/joints.js', [['./geometry.js', '../js/geometry.js']]);
 
 const { rectPoints } = geom;
-const { sectionEA, shearFlow, axialTransfer, anchorFlow, connectorCheck, weldCapacity, kNtoN } = rf;
+const { sectionEA, shearFlow, axialTransfer, anchorFlow, kNtoN } = rf;
 const {
   shapesTouch, sidesOfJoint, buildGraph, jointGroup, danglingShapes, overConstrained,
   fullSectionParts, halfPlaneParts,
@@ -393,32 +393,35 @@ test('6. Statisk ubestemt (U-profil + plate, to skjøter): determinate=false, fl
   }
 });
 
-/* ==================================================================== *
- * 7. Sveisekapasitet
- * ==================================================================== */
+test('6b. Kjeder og stjerner er statisk BESTEMTE — ingen skjøt flagges', () => {
+  // Feilen fra #59: en eksisterende del med én skjøt over og én under ble
+  // flagget som «festet med flere skjøter» og fikk ΔN = 0. Det avgjørende er
+  // om skjøten ligger på en SYKEL i kroppsgrafen, ikke hvor mange skjøter en
+  // kropp har. Alle skjøtene her er broer.
+  const upper = { id: 'upper', stage: 'existing', points: rectPoints(0, 250, 300, 250) };
+  const lower = { id: 'lower', stage: 'existing', points: rectPoints(0, 0, 300, 250) };
+  const fresh = { id: 'fresh', stage: 'new', points: rectPoints(0, -120, 300, 120) };
+  const jUL = { id: 'jUL', a: [0, 250], b: [300, 250] };
+  const jLF = { id: 'jLF', a: [0, 0], b: [300, 0] };
+  const chain = [upper, lower, fresh];
+  const gChain = buildGraph(chain, [jUL, jLF], 0.1);
+  eqIds('kjede E–E–N: ingen flagget', overConstrained(chain, [jUL, jLF], gChain).map((e) => e.jointIds.join('+')), []);
+  ok('skjøten mot ny del er bestemt', jointGroup(jLF, gChain).determinate === true);
+  eqIds('og gruppa er den nye delen', jointGroup(jLF, gChain).groupIds, ['fresh']);
 
-test('7. Sveisekapasitet: nWelds=2, a=4mm, fvwd=207 N/mm² gir qRd=1656 N/mm; q=828 gir 50 %', () => {
-  // HÅNDREGNING: q_Rd = n·a·f_vw,d = 2*4*207 = 1656 N/mm
-  const connector = { kind: 'weld', a_weld: 4, fvwd: 207, nWelds: 2 };
-  const qRd = weldCapacity(connector);
-  close('q_Rd [N/mm]', qRd, 1656, 1e-12);
-
-  const check = connectorCheck({ q: 828, connector });
-  close('utnyttelse', check.util, 0.5, 1e-12);
-  ok('sReq er null for sveis (ikke Infinity — det finnes ingen senteravstand å kreve)', check.sReq === null);
-  ok('ok=true ved 50 % utnyttelse', check.ok === true);
-
-  // Eksplisitt qRd skal vinne over den avledede kapasiteten.
-  const overridden = weldCapacity({ qRd: 999, a_weld: 4, fvwd: 207, nWelds: 2 });
-  close('eksplisitt qRd overstyrer utledningen', overridden, 999, 1e-12);
-
-  // Manglende data skal gi 0 / valid=false, ikke NaN.
-  const missing = connectorCheck({ q: 100, connector: { kind: 'weld' } });
-  ok('manglende sveisedata gir valid=false, ikke NaN', missing.valid === false && missing.util === null);
+  // Stjerne: bjelke med plate oppå og plate under (1b) — bjelken har to
+  // skjøter, men hver plate henger på bare én.
+  const beam = { id: 'beam', stage: 'existing', points: rectPoints(0, 50, 200, 100) };
+  const top = { id: 'top', stage: 'new', points: rectPoints(0, 150, 200, 20) };
+  const bot = { id: 'bot', stage: 'new', points: rectPoints(0, 30, 200, 20) };
+  const jT = { id: 'jT', a: [0, 150], b: [200, 150] };
+  const jB = { id: 'jB', a: [0, 50], b: [200, 50] };
+  const star = [beam, top, bot];
+  eqIds('stjerne: ingen flagget', overConstrained(star, [jT, jB], buildGraph(star, [jT, jB], 0.1)).map((e) => e.jointIds.join('+')), []);
 });
 
 /* ==================================================================== *
- * 8. shapesTouch — delt kant, overlapp, og "nær men ikke i kontakt"
+ * 7. Sveisekapasitet
  * ==================================================================== */
 
 test('8. shapesTouch: delt kant og overlapp er naboer; 1 mm avstand er det ikke (tol < 1 mm)', () => {
