@@ -56,7 +56,12 @@ console.log('Sperrer');
   ok('uten valg av angrepspunkt', run(model(base, [joint('j', [50, 0], [50, 130])], { nAt: null })).blocked.some((b) => /angriper/.test(b)));
   ok('uten valg av fastholding', run(model(base, [joint('j', [50, 0], [50, 130])], { restraint: null })).blocked.some((b) => /fastholding/.test(b)));
   ok('uten tabell', run(model(base, [joint('j', [50, 0], [50, 130])], { table: '' })).blocked.some((b) => /Lim inn/.test(b)));
-  ok('uten skjøt', run(model(base, [], {})).blocked.some((b) => /Tegn skjøten/.test(b)));
+  // Uten tegnet skjøt finner verktøyet den felles kanten selv (#61) …
+  const auto = run(model(base, [], {}));
+  ok('automatisk skjøt brukes når ingen er tegnet', auto.ok && auto.pick.joints[0].auto === true, auto.blocked.join(' | '));
+  // … men delene må berøre hverandre.
+  const apart = [base[0], shape('ny', R(51, 0, 48, 198), 'new', 11000)];
+  ok('uten kontakt: ingen skjøt', run(model(apart, [], {})).blocked.some((b) => /Tegn skjøten/.test(b)));
   const gap = joint('j', [50, 0], [50, 130]);
   gap.connector = { rows: 2, spacing: 100, stiffSource: 'ec5', ec5Fastener: 'screw', ec5D: 8, ec5Contact: 'gap' };
   ok('glippe sperrer', run(model(base, [gap], {})).blocked.some((b) => /ingen kontakt/.test(b)));

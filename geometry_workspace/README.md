@@ -44,6 +44,7 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `tests/line-analysis.test.mjs` | Fasit for linjeberegningen: lukkede løsninger løs–løs, festet–løs og festet–festet ved λL = 0,5, 1 og 10 (begge ender og ∫q), hopp i N, SMath-tallene, samsvar med full samvirkning (`axialInGroup`), fri tøyning, invarianter og lastetabellen. `node geometry_workspace/tests/line-analysis.test.mjs` |
 | `tests/line-ui.test.mjs` | Linjeberegningen hele veien fra tegnet modell: SMath-tallene, sperrene (valg, tabell, skjøt, glippe) og to like, speilede nye deler. `node geometry_workspace/tests/line-ui.test.mjs` |
 | `tests/routing.test.mjs` | ΔN-rutingen gjennom hele broen (`computeReinforcement`): kjede eksisterende–eksisterende–ny er bestemt, og i en ekte sløyfe fordeles ΔN etter skjøtestivhet bare på skjøtene som berører den nye delen. `node geometry_workspace/tests/routing.test.mjs` |
+| `tests/auto-joints.test.mjs` | Automatiske skjøter: felles kant, ikke mellom to eksisterende, overlapp gir varsel, glippe er ikke kontakt, rotert, kjede, tegnet skjøt vinner, og innstillingene følger delparet når delene flyttes. `node geometry_workspace/tests/auto-joints.test.mjs` |
 | `tests/composite.test.mjs` | Fasit for festemiddelstivhet (EC5/ETA), γ-metoden, biaksiell skjærstrøm/hovedakser og forankringskontroll. `node geometry_workspace/tests/composite.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
@@ -238,6 +239,26 @@ enten det er en ny del som festes til et eksisterende profil, eller en ren
 kontroll av en eksisterende sveis («hvor mye går det i sveisen mellom flens og
 steg i denne gamle bjelken»). Det er samme fysiske spørsmål og samme formel;
 verktøyet skiller ikke mellom dem.
+
+### Automatiske skjøter (#61)
+
+Langs hver felles kant mellom en **eksisterende** og en **ny** del lager
+verktøyet skjøten selv (`autoJoints` i `joints.js`). Den lagres ikke som et
+objekt, men utledes på nytt fra geometrien (`effectiveJoints` i `store.js`),
+så den kan aldri bli liggende igjen når delene flyttes: flyttes begge
+sammen, følger den med; forsvinner kanten, forsvinner skjøten. Det brukeren
+legger inn på den (navn, q_T, andel, skjøtedata) lagres i
+`state.autoJointData` under skjøtens id, som er bygd av delparet
+(`auto:<eksisterende>|<ny>|<n>`) — og følger dermed delene, ikke
+koordinatene.
+
+- Mellom to eksisterende deler: ingen. De regnes som stivt forbundet; vil man
+  se kraften i fugen, tegner man en skjøt (`G`).
+- En ny del tegnet *inn i* en eksisterende (overlapp med areal): ingen skjøt,
+  og et varsel — det er nesten alltid en tegnefeil.
+- En tegnet skjøt som dekker minst halve kanten, vinner over den automatiske.
+- Automatiske skjøter tegnes stiplet, merkes «auto» i lista, kan velges og
+  redigeres, men ikke flyttes eller slettes.
 
 ### Ett primitiv: skjøten
 
