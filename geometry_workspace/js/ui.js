@@ -32,6 +32,7 @@ import { SNAP_TYPES, SNAP_ALL, ORTHO } from './snapping.js';
 import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel } from './units.js';
 import { MATERIALS, materialByName, materialE, materialRho } from './materials.js';
 import { JOINT_COLOR } from './store.js';
+import { shapeFill, materialFamily } from './shape-style.js';
 import { sidesOfJoint, buildGraph, jointGroup, overConstrained } from './joints.js';
 import { ReinforcementPanel, CONNECTOR_LABELS, axisConventionHtml } from './reinforcement-ui.js';
 import { SYSTEM_FACTORS } from './reinforcement.js';
@@ -342,6 +343,11 @@ export class UI {
     });
     $('chk-net').addEventListener('change', (e) => this.viewport.setOverlays({ showNet: e.target.checked }));
     $('chk-overlap').addEventListener('change', (e) => this.viewport.setOverlays({ showOverlap: e.target.checked }));
+    $('chk-stage-color').addEventListener('change', (e) => {
+      this.viewport.setOverlays({ colorByStage: e.target.checked });
+      this._renderList();
+      if (this.analysis) this._renderResults(this.analysis);
+    });
     $('chk-principal').addEventListener('change', (e) =>
       this.viewport.setOverlays({ showPrincipal: e.target.checked })
     );
@@ -1145,13 +1151,13 @@ export class UI {
         <div class="flex items-center gap-1.5 px-2 py-1.5">
           <input type="checkbox" data-act="include" data-id="${sh.id}" ${sh.include !== false ? 'checked' : ''}
                  class="w-3.5 h-3.5 accent-sky-500 shrink-0" title="Ta med i beregningen" />
-          <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${sh.color}"></span>
+          <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${shapeFill(sh, this.viewport.colorByStage)}" title="${materialFamily(sh)}"></span>
           <button data-act="toggle" data-id="${sh.id}"
                   class="flex-1 flex items-center gap-1.5 text-left text-xs truncate ${active ? 'text-white' : 'text-slate-300'} hover:text-white">
             <span class="chev shrink-0 text-slate-500 ${open ? 'rotate-90' : ''}" style="display:inline-block">›</span>
             <span class="truncate">${escapeHtml(sh.name)}</span>
           </button>
-          ${sh.stage === 'new' ? '<span class="text-[10px] px-1 rounded bg-emerald-900 text-emerald-300 shrink-0" title="Ny del — tegnes med stiplet kontur">ny</span>' : ''}
+          ${sh.stage === 'new' ? '<span class="text-[10px] px-1 rounded bg-orange-900 text-orange-300 shrink-0" title="Ny del — fylles oransje">ny</span>' : ''}
           ${sh.role === 'void' ? '<span class="text-[10px] px-1 rounded bg-rose-900 text-rose-300 shrink-0">hull</span>' : ''}
           ${Math.abs(sh.factor - 1) > 1e-9 ? `<span class="text-[10px] px-1 rounded bg-amber-900 text-amber-300 shrink-0">×${sh.factor}</span>` : ''}
           <button data-act="up" data-id="${sh.id}" ${i === 0 ? 'disabled' : ''}
@@ -1313,7 +1319,7 @@ export class UI {
    * Stadium og materiale — de to feltene forsterkningsberegningen lever av.
    *
    * `stage` skiller det eksisterende tverrsnittet fra den nye delen (som får
-   * stiplet kontur i lerretet), og `material.E` er E-modulen mekanikken bruker.
+   * oransje fylling i lerretet), og `material.E` er E-modulen mekanikken bruker.
    * Vektfaktoren over i panelet er noe helt annet, og det står det uttrykkelig
    * i hjelpeteksten her — det er en forveksling som ville gitt gale tall.
    *
@@ -2171,7 +2177,7 @@ export class UI {
               const share = r.A !== 0 ? (p.props.A / r.A) * 100 : 0;
               const label = `${escapeHtml(p.shape.name)}${p.isVoid ? ' (hull)' : ''}`;
               return `<div class="flex items-center gap-2">
-                  <span class="w-2 h-2 rounded-sm shrink-0" style="background:${p.shape.color}"></span>
+                  <span class="w-2 h-2 rounded-sm shrink-0" style="background:${shapeFill(p.shape, this.viewport.colorByStage)}"></span>
                   <span class="flex-1 truncate text-slate-300">${label}</span>
                   <span class="text-slate-400">${fmtArea(p.props.A)}</span>
                   <span class="text-slate-500 w-12 text-right">${nf(1)(share)} %</span>
