@@ -13,7 +13,7 @@
 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Geometri-workspace for sammensatte tverrsnitt: tyngdepunkt, nøytralakse og arealmomenter — og skjøtekrefter ved forsterkning eller kontroll av eksisterende profiler. Tegn skjøtelinjer og få kraften skjøten må ta i kN/m: skjærstrømmen q = V·ES*/EI fra to lasttilstander før/etter forsterkning, forankringskraften ΔN/L, og Volkersen-toppen i skjøteendene.">
+  <meta name="description" content="Geometri-workspace for sammensatte tverrsnitt: tyngdepunkt, nøytralakse og arealmomenter — og skjøtekrefter ved forsterkning eller kontroll av eksisterende profiler. Tegn skjøtelinjer og få kraften skjøten må ta i kN/m: skjærstrømmen q = V·ES*/EI fra to lasttilstander før/etter forsterkning, og forankringskraften N_G i forsterkningsenden.">
   <meta name="keywords" content="tyngdepunkt, nøytralakse, arealsenter, sammensatt tverrsnitt, arealmoment, treghetsmoment, hovedakser, FEM-Design, virtual bar, skallelement, geometri, forsterkning, skjøt, skjøtekrefter, skjærstrøm, VQ/I, skjærflyt, samvirke, limt forbindelse, skruavstand, sveis, sveisekapasitet, Volkersen, forankringslengde, CFRP, påforing, eksisterende konstruksjon">
   <title>Geometri-workspace — Tverrsnitt og forsterkning</title>
 
@@ -647,7 +647,7 @@
       <p class="text-slate-400">
         <strong>Ren kontroll av en eksisterende konstruksjon.</strong> Er ALLE former merket
         «eksisterende» — altså ingen forsterkning i det hele tatt — skjuler fanen automatisk
-        «etter»-tilstanden, aksialfordelingen og Volkersen, og viser bare «før» og skjærstrømmen per
+        «etter»-tilstanden og aksialfordelingen, og viser bare «før» og skjærstrømmen per
         skjøt. Det er dette som gjør verktøyet nyttig for et spørsmål som «hvor mye går det i sveisen
         mellom flens og steg i denne gamle bjelken» — tegn tverrsnittet (gjerne som ett sammenhengende
         polygon, eller som flere rektangler), tegn en skjøt der du vil vite skjærstrømmen, og les av q.
@@ -657,8 +657,8 @@
         (forlenget uendelig) deler planet i, om den sammensatte nøytralaksen — ikke ved å slå sammen
         former langs en graf. Med samme E overalt forkorter E bort og det blir den klassiske q = VQ/I.
         Aksialkraften N_etter fordeles etter aksialstivhet, og andelen ΔN som må inn i de nye delene gir
-        q_N = ΔN/L — en middelverdi; Volkersen-avsnittet viser hvor mye høyere toppene i skjøteendene
-        ligger. Hver størrelse står som formel, innsatte tall og resultat med enhet under «Utregning».
+        q_N = ΔN/L — en middelverdi over L, ikke dimensjonerende for skruer. Toppen i enden av den nye
+        delen er høyere; den regnes i linjeberegningen. Hver størrelse står som formel, innsatte tall og resultat med enhet under «Utregning».
       </p>
       <p class="text-slate-400">
         <strong>Kraft, ikke kapasitet.</strong> Verktøyet sier hvor mye kraft skjøten må ta, i N/mm

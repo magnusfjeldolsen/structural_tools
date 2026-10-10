@@ -135,7 +135,6 @@ const NtokN = (v) => v / 1000;
  *   'es'       arealmoment om nøytralaksen for halvplanet (ES*)
  *   'force'    skjærstrømskjeden — og BARE den, se §5.3 øverst
  *   'axial'    aksialkraften som rutes gjennom skjøten (ΔN_i)
- *   'volkersen' shear lag
  *   'anchor'   forankring i enden
  *
  * @typedef {{sym: string, formula: string, subst: string, result: string,
@@ -319,39 +318,8 @@ function flowSteps(jt, res) {
 }
 
 /* ================================================================== *
- * Shear lag (Volkersen) og forankring i enden
+ * Forankring i enden
  * ================================================================== */
-
-function volkersenSteps(jt, res) {
-  if (!jt.volkersen || !jt.volkersen.valid) return [];
-  const c = jt.connector;
-  const v = jt.volkersen;
-  const l = res.loads;
-  return [
-    step('volkersen', {
-      sym: 'k',
-      formula: 'k = K_ser · rader / s     [(N/mm)·(1/mm) = N/mm²]',
-      subst: `${n(jt.slip && jt.slip.valid ? jt.slip.K : c.Kser, 0)} · ${n(c.rows, 0)} / ${n(c.spacing, 0)}`,
-      result: q(jt.kConn, 'N/mm²'),
-      note: jt.slip
-        ? `K_ser fra ${jt.slip.source === 'ec5' ? 'EC5 tabell 7.1' : 'fritt innlagt (ETA)'} — samme stivhet som γ-metoden bruker.`
-        : '',
-    }),
-    step('volkersen', {
-      sym: 'λ',
-      formula: 'λ = √( k · (1/α + 1/β) ),  α = (EA)_øvrig, β = (EA)_gruppe',
-      subst: `√(${n(jt.kConn)} · (1/${n(jt.EA_other, 0)} + 1/${n(jt.EA_group, 0)}))`,
-      result: q(v.lambda, '1/mm', 6),
-    }),
-    step('volkersen', {
-      sym: 'q_max',
-      formula: 'q(x) = (P·λ/2)·[cosh(λx′)/sinh(λL/2) + ((α−β)/(α+β))·sinh(λx′)/cosh(λL/2)],  x′ = x − L/2',
-      subst: `maks |q| over x ∈ [0, ${n(l.L, 0)} mm], med P = ${n(Math.abs(jt.dN), 0)} N`,
-      result: q(v.qMax, 'N/mm'),
-      note: `Toppfaktor q_max/q_avg = ${n(v.peakFactor, 3)}. Integralet av q over skjøten er per konstruksjon lik P.`,
-    }),
-  ];
-}
 
 function anchorSteps(jt) {
   const a = jt.anchorReq;
@@ -443,7 +411,7 @@ export function derivationModel(res) {
     groups.push({
       key: jt.id,
       title: jt.name,
-      steps: [...flowSteps(jt, res), ...volkersenSteps(jt, res), ...anchorSteps(jt)],
+      steps: [...flowSteps(jt, res), ...anchorSteps(jt)],
     });
   }
   return groups;

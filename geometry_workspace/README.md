@@ -28,7 +28,7 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/ui.js` | Panelrendering: geometriliste, formredigering, plassering, resultater |
 | `js/materials.js` | Materialpresets med E [N/mm²]. Ingen DOM. |
 | `js/shape-style.js` | Hvordan en form ser ut: fylling etter tilstand (eksisterende/ny) og kontur etter materialfamilie. Delt av lerretet, geometrilista og rapportfiguren. Ingen DOM. |
-| `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, biaksiell bøyning og skjærstrøm, aksialfordeling, forankring (§8.2), hovedakser/skjevbøyning (§1), γ-metoden og kraft per festemiddel (§4), Volkersen, forbinderkontroll (skrue/lim/sveis). Rene funksjoner, N og mm. Ingen DOM. |
+| `js/reinforcement.js` | Mekanikken: E-vektet tverrsnitt, biaksiell bøyning og skjærstrøm, aksialfordeling, forankring (§8.2), hovedakser/skjevbøyning (§1), γ-metoden (§4), skjøtestivhet k, og Volkersen for overlappsskjøter (ikke brukt i panelet — se #59). Ingen kapasitet. Rene funksjoner, N og mm. Ingen DOM. |
 | `js/connection-stiffness.js` | Festemiddelstivheten K_ser: EC5 tabell 7.1 (§3.1) og fritt innlagt (ETA/produktgodkjenning, §3.2) som likestilte kilder, pluss limstivhet og smøring til fugestivhet (§3.3) — det `volkersen()` og γ-metoden begge bruker. Rene funksjoner. Ingen DOM, ingen importer (se filhodet). |
 | `js/joints.js` | Skjøtelinjer: naboskap (`shapesTouch`), en kraftig nedskalert graf (kun til ΔN-ruting og advarsler), og halvplan-avskjæring for ES* (`halfPlaneParts`/`fullSectionParts`). Erstatter det slettede `interfaces.js`. Ingen DOM. |
 | `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen: lastfeltene (biaksielle) i venstre panel, og i høyre krafttabellen (én rad per skjøt), tverrsnittstabellen før/etter og «Detaljer», samt den sammenleggbare akse-/fortegnskonvensjonsfiguren (`axisConventionHtml`, delt med hjelpedialogen). |
@@ -39,6 +39,7 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `tests/joints.test.mjs` | Fasit for naboskap, grafen og halvplan-ES*. `node geometry_workspace/tests/joints.test.mjs` |
 | `tests/shape-style.test.mjs` | Fasit for fylling etter tilstand og kontur etter materialfamilie. `node geometry_workspace/tests/shape-style.test.mjs` |
 | `tests/joint-force-figure.test.mjs` | Fasit for forklaringsfiguren: tre paneler, tall i etikettene, «…» når de mangler. `node geometry_workspace/tests/joint-force-figure.test.mjs` |
+| `tests/routing.test.mjs` | ΔN-rutingen gjennom hele broen (`computeReinforcement`): kjede eksisterende–eksisterende–ny er bestemt, og i en ekte sløyfe fordeles ΔN etter skjøtestivhet bare på skjøtene som berører den nye delen. `node geometry_workspace/tests/routing.test.mjs` |
 | `tests/composite.test.mjs` | Fasit for festemiddelstivhet (EC5/ETA), γ-metoden, biaksiell skjærstrøm/hovedakser og forankringskontroll. `node geometry_workspace/tests/composite.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
@@ -260,8 +261,18 @@ gir tilsvarende for hele tverrsnittet. Fordelen: det virker uendret på en
 **udelt, importert profil** — du trenger ikke splitte geometrien for å kunne
 snitte i den. En liten graf (`buildGraph`/`jointGroup`) er beholdt, men bare
 til to ting: å rute aksialleddet `ΔN` til riktig skjøt, og advarsler (en ny
-form uten noen skjøt, eller en del festet med flere skjøter samtidig —
-statisk ubestemt, se `share`-feltet).
+form uten noen skjøt, eller skjøter i en lukket sløyfe — statisk ubestemt).
+
+**Statisk ubestemt** betyr at skjøten ligger på en **sykel** i kroppsgrafen
+(kroppene er former bundet sammen uten skjøt, skjøtene er kantene mellom
+dem). En skjøt som er en **bro** — kuttes den, faller grafen i to — er
+bestemt, uansett hvor mange skjøter kroppene ellers har. En kjede
+eksisterende–eksisterende–ny, eller en bjelke med plate oppå og under, er
+derfor bestemt (`overConstrained` i `joints.js`; å telle skjøter per kropp
+flagget nettopp disse og satte ΔN = 0, #59). I en ekte sløyfe fordeles ΔN
+etter brukerens `share`, ellers etter skjøtestivheten `k = rader·K/s`, og
+bare uten stivhet likt — det som er brukt, står i advarselen som en
+antakelse.
 
 ### To lasttilstander, biaksielle — superposisjon
 
@@ -307,18 +318,22 @@ bjelken fra siden i tre situasjoner — snitt i felt, forsterkningsende der
 M ≠ 0, og forsterkningsende i et momentnullpunkt — med tallene fra skjøten
 mot ny del med størst Σq, og hva hver kolonne betyr. Advarslene står på én linje hver over tabellen, med full tekst i
 verktøytipset. Under følger «Tverrsnitt før → etter» (EA, EI_x, EI_y, y_c,
-x_c, θ). Aksialfordeling, Volkersen, delvis samvirke (med ρ-kildene),
+x_c, θ). Aksialfordeling, delvis samvirke (med ρ-kildene),
 utregningen og merknadene ligger sammenlagt under «Detaljer».
 
 En skjøt mot en ny del har ingen «før»-tilstand. Er **alle** former merket
 `existing` (ingen forsterkning i det hele tatt), skjuler fanen automatisk
-«etter»-tilstanden, aksialfordelingen og Volkersen, og viser bare «før» og
+«etter»-tilstanden og aksialfordelingen, og viser bare «før» og
 skjærstrømmen per skjøt — dette er ren-eksisterende-modus, og er det som gjør
 verktøyet nyttig for kontroll av en gammel konstruksjon uten noen ny del.
 
-`q_N = ΔN/L` er en middelverdi. Volkersen-modellen (`λ² = k(1/α + 1/β)`) viser
-hvor mye høyere toppene i skjøteendene ligger, med fugestivheten
-`k = K_ser·rader/s`.
+`q_N = ΔN/L` og `N_G/L` er **middelverdier** over L, og merket slik i
+tabellen: de er ikke dimensjonerende for skruer. Toppen i enden av den nye
+delen er høyere — for SMath-referansen ca. 3,6 ganger `q_N` med L = 3 m.
+Volkersen-avsnittet som sto her, er fjernet: `volkersen()` modellerer en
+overlappsskjøt (P → 0 / 0 → P) og gir max(r, 1−r)·ΔN·λ, mens riktig topp
+ved løs ende av en forsterkning er ΔN·λ — 41–50 % for lavt. Toppene langs
+skjøten regnes i linjeberegningen (#63).
 
 ### Kraft, ikke kapasitet
 
@@ -347,8 +362,9 @@ Kilden til `K_ser` velges under «Avansert: delvis samvirke» i skjøtelista i
   det samme feltet forbindelsen alltid har hatt. Eneste ærlige vei for
   stål-mot-stål og proprietære festemidler.
 
-Den avledede `K_ser` (uansett kilde) mater BÅDE Volkersen og γ-metoden — én
-stivhet, ikke to som kan gli fra hverandre.
+Den avledede `K_ser` (uansett kilde) mater BÅDE γ-metoden og vektingen av
+ΔN i et statisk ubestemt oppsett — én stivhet, ikke to som kan gli fra
+hverandre.
 
 **γ-metoden** (EC5 tillegg B, topartstilfellet: eksisterende + ny) gir
 samvirkegraden `γ_eff ∈ [0,1]` — hvor mye lavere `(EI)_ef` er enn ved full
@@ -373,34 +389,18 @@ forsterkningen har innført skjev bøyning som ikke fantes før, og lasten må
 kontrolleres i begge plan. Var tverrsnittet skjevt fra før, sier panelet det
 i stedet — det er ikke forsterkningens skyld.
 
-### Forankring i enden — nødvendig kapasitet, ikke en kontroll (§8.2, snudd)
+### Forankring i enden — middelverdi (§8.2)
 
 `N` fra bøyning gir INGEN egen skjærstrøm — `q = dN_G/dz = V·ES*/EI`, samme
 kraft sett fra to sider, og `q_V` ER forankringen av bøyekraften; momentet
 gir derfor ikke et eget ledd i `q_tot` ved siden av `q_V` — det ville telt
 samme kraft to ganger.
 
-Panelet regnet tidligere `L_req = N_G/q_Rd`, som forutsetter at brukeren
-allerede kjenner skjøtens kapasitet — men det er nettopp den man er her for å
-**finne**. Snudd: brukeren oppgir tilgjengelig forankringslengde `L` (samme
-`L` som resten av fanen) og et **antall** forbindere `n` over skjøten — bare
-et tall, ikke rader × senteravstand eller kantavstander; det er for spesifikt
-for dette verktøyet, og brukeren regner selv ut hvordan de plasseres. To
-UAVHENGIGE kriterier styrer, aldri lagt sammen:
-
-```
-q_tot = q_V,tot + q_N          (den lokale skjærstrømmen, se over — momentets virkning ligger allerede her)
-q_req = N_G / L                (middelverdien N_G — fra biaksiell bøyning, `axialInGroup` — krever innført over HELE L)
-q_gov = max(q_tot, q_req)      (det største styrer)
-F_Ed  = q_gov · L / n          (nødvendig kraft per forbinder)
-```
-
-Dimensjonerende kapasitet `F_Rd` per forbinder er **valgfri**: fylt ut vises
-utnyttelsen `F_Ed/F_Rd`, tom vises bare `F_Ed` — det er den NORMALE
-tilstanden her, ikke et unntak, siden verktøyets jobb er å si hvor sterk
-forbindelsen må være. Kontrollen er fortsatt en middelverdibetraktning —
-Volkersen-toppen i skjøteenden kommer i tillegg, og er det som faktisk
-utløser avskalling i et limt skjøteende.
+I en forsterkningsende må hele `N_G` (fra biaksiell bøyning, `axialInGroup`)
+inn over lengden `L`. Tabellen viser `N_G` og middelverdien `N_G/L`, som et
+uavhengig kriterium ved siden av `q_tot`, aldri lagt sammen. Kraft per
+forbinder regnes ikke her: middelverdien over L ville vært ikke-konservativ,
+og toppen i enden avhenger av skjøtestivheten (linjeberegningen, #63).
 
 Verktøyet sier **hvor sterk** forbindelsen må være, ikke **hvordan** den
 utføres: festemiddelvalg, kantavstander og materialspesifikke kontroller
@@ -416,13 +416,12 @@ Arbeidsflyten:
    form. Rapportfiguren skraverer i tillegg nye deler, så skillet overlever
    en svart-hvitt-utskrift.
 2. Tegn **skjøten** (`G`): to klikk langs linja. Autonavnes etter delene den
-   skiller. Rediger forbindelsestype, felter og heftbredde i skjøtelista.
-3. Legg inn lastene i fanen «Forsterkning» — `before` og (hvis relevant)
-   `after`, samt forankringslengden `L`.
-4. Les av `q_før`, `q_etter`, `q_N`, `q_tot`, `τ`, forbinderkontrollen og
-   samvirkegraden i skjøtekortet, og — i «Forankring i enden» — oppgi antall
-   forbindere `n` for å få nødvendig kraft `F_Ed` per forbinder, med valgfri
-   `F_Rd` for utnyttelse. Kraftsammendraget rett under lastene gir deg
+   skiller.
+3. Bytt til fanen «Forsterkning» og legg inn lastene — `before` og (hvis
+   relevant) `after`, samt forankringslengden `L`. Rader, senteravstand og
+   K_ser per skjøt ligger under «Avansert: delvis samvirke».
+4. Les av `q_før`, `q_etter`, `q_N`, `Σq`, `N_G` og `N_G/L` i krafttabellen,
+   én rad per skjøt. Tabellen gir deg
    totalen først.
 
 Hver størrelse vises som **formel → innsatte tall → resultat med enhet**.
@@ -452,10 +451,9 @@ Mekanikken regnes i **N og mm**, uavhengig av arbeidsenheten. Omregningen
 skjer ett sted, i `reinforcement-ui.js`: former OG skjøter skaleres til mm
 (`shapesMm`/`jointsMm`, punktene ganget med `k` = mm per arbeidsenhet) FØR de
 mates inn i `halfPlaneParts`/`fullSectionParts`/`buildGraph`, lastene går
-gjennom `kNtoN`/`kNmToNmm`, og `L` ganges med `k`. Forbinderdataene er derimot
-alltid absolutte — `F_Rd` [kN], `s` [mm], `K_ser` [N/mm], `τ_Rd`/`G_a` [N/mm²],
-`t_a` [mm], `a_weld`/`fvwd`/`qRd` og heftbredde-overstyringen [mm] — slik at
-et bytte fra mm til m ikke endrer skrue- eller sveisekapasiteten.
+gjennom `kNtoN`/`kNmToNmm`, og `L` ganges med `k`. Skjøtedataene er derimot
+alltid absolutte — `s` [mm], `K_ser` [N/mm] — slik at et bytte fra mm til m
+ikke endrer skjøtestivheten.
 
 ## Datamodell (v4)
 
@@ -479,15 +477,14 @@ default-system»:
   id: 'j1',
   name: 'Steg ↔ Overflens',       // autogenereres av delene den skiller
   a: [x, y], b: [x, y],
-  share: null,                     // null ⟹ automatisk lik fordeling ved statisk ubestemt oppsett
+  share: null,                     // null ⟹ etter skjøtestivhet k ved statisk ubestemt oppsett
   connector: {
-    kind: 'screw' | 'glue' | 'weld',
-    FRd, rows, spacing, Kser, shearPlanes,   // skrue — Kser er ETA-verdien når stiffSource ≠ 'ec5'
+    rows, spacing, Kser,                     // skjøtestivhet k = rader·K/s — Kser er ETA-verdien når stiffSource ≠ 'ec5'
     stiffSource: 'eta' | 'ec5',              // K_ser-kilde (§3.2) — udefinert ⟹ 'eta' (ingen atferdsendring)
     ec5Fastener, ec5Rho1, ec5Rho2, ec5D, ec5Dc, ec5Contact, state,  // EC5 tabell 7.1-inndata (§3.1)
     span, system,                            // γ-metoden: L_ef-grunnlag (§4)
-    // kind, FRd, shearPlanes og lim-/sveisefeltene finnes fortsatt i datamodellen,
-    // men kan ikke lenger redigeres; de ryddes bort sammen med mekanikken i #59.
+    // Forbindelsestype, kapasitet og heftbredde er fjernet (#58, #59); gamle
+    // felt leses og forkastes ved innlasting (`connectorFrom` i store.js).
   },
 }
 ```

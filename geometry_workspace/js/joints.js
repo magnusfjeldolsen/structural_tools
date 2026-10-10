@@ -446,12 +446,22 @@ export function danglingShapes(shapes, joints, graph) {
 }
 
 /**
- * Deler festet med to eller flere skjøter samtidig — statisk ubestemt (§2:
- * «en U-profil skrudd til begge flenser»). Vi finner først de RIGIDE
- * kroppene (former bundet sammen bare av IMPLISITTE kanter, altså uten at
- * noen skjøt er involvert), og teller så hvor mange skjøter som binder hver
- * kropp til en ANNEN kropp. To eller flere ⟹ redundant — verktøyet kan ikke
- * gjette fordelingen (bruk `share`-feltet på skjøten til å overstyre, §2).
+ * Skjøter som er statisk UBESTEMTE (§2: «en U-profil skrudd til begge
+ * flenser»), samlet i klynger.
+ *
+ * Kriteriet er om skjøten ligger på en SYKEL i kroppsgrafen — der kroppene
+ * er former bundet sammen bare av implisitte kanter (ingen skjøt involvert),
+ * og skjøtene er kantene mellom dem. En skjøt som er en BRO (kuttes den,
+ * faller grafen i to) er bestemt: kraften gjennom den følger av likevekt
+ * alene, uansett hvor mange andre skjøter kroppene på hver side har. Det er
+ * derfor en kjede eksisterende–eksisterende–ny eller en bjelke med plate
+ * oppå og under IKKE er ubestemt, selv om den midtre kroppen har to skjøter.
+ * (Å telle skjøter per kropp, som her ble gjort før, flagget nettopp disse
+ * og satte ΔN = 0 — #59.)
+ *
+ * Skjøtene på samme sykel hører sammen: fordelingen mellom dem kan ikke
+ * avgjøres av geometrien, og `share` på skjøten — eller en vekting etter
+ * stivhet — bestemmer den.
  *
  * @param {Array} shapes
  * @param {Array} joints
@@ -463,7 +473,8 @@ export function overConstrained(shapes, joints, graph) {
   const rigidOf = componentOf(graph.nodes, graph.implicitEdges);
   const bodies = groupByRoot(graph.nodes, rigidOf);
 
-  const incident = new Map(); // rot -> Set(jointId)
+  // Kroppsgrafen: én kant per (skjøt, kroppspar).
+  const edges = [];
   for (const joint of joints || []) {
     const sides = graph.jointSides[joint.id];
     if (!sides) continue;
@@ -472,23 +483,38 @@ export function overConstrained(shapes, joints, graph) {
     for (const ra of rootsA) {
       for (const rb of rootsB) {
         if (ra === rb || ra === undefined || rb === undefined) continue;
-        if (!incident.has(ra)) incident.set(ra, new Set());
-        if (!incident.has(rb)) incident.set(rb, new Set());
-        incident.get(ra).add(joint.id);
-        incident.get(rb).add(joint.id);
+        edges.push({ a: ra, b: rb, jointId: joint.id });
       }
     }
   }
+  const roots = [...bodies.keys()];
 
-  const result = [];
-  for (const [root, jointIdSet] of incident) {
-    if (jointIdSet.size >= 2) {
-      result.push({
-        shapeIds: (bodies.get(root) || []).slice().sort(),
-        jointIds: [...jointIdSet].sort(),
-      });
-    }
+  // En skjøt er på en sykel når endepunktene fortsatt henger sammen uten den.
+  const onCycle = new Set();
+  for (const e of edges) {
+    const others = edges.filter((o) => o.jointId !== e.jointId).map((o) => ({ a: o.a, b: o.b }));
+    const comp = componentOf(roots, others);
+    if (comp.get(e.a) === comp.get(e.b)) onCycle.add(e.jointId);
   }
+  if (!onCycle.size) return [];
+
+  // Klynger: sammenhengende deler av kroppsgrafen, bare med sykelskjøtene.
+  const cycleEdges = edges.filter((e) => onCycle.has(e.jointId));
+  const clusterOf = componentOf(roots, cycleEdges.map((e) => ({ a: e.a, b: e.b })));
+  const clusters = new Map(); // klyngerot -> { roots:Set, joints:Set }
+  for (const e of cycleEdges) {
+    const key = clusterOf.get(e.a);
+    if (!clusters.has(key)) clusters.set(key, { roots: new Set(), joints: new Set() });
+    const c = clusters.get(key);
+    c.roots.add(e.a);
+    c.roots.add(e.b);
+    c.joints.add(e.jointId);
+  }
+
+  const result = [...clusters.values()].map((c) => ({
+    shapeIds: [...c.roots].flatMap((r) => bodies.get(r) || []).sort(),
+    jointIds: [...c.joints].sort(),
+  }));
   result.sort((x, y) => (x.shapeIds.join(',') < y.shapeIds.join(',') ? -1 : 1));
   return result;
 }

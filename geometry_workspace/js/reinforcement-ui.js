@@ -53,11 +53,8 @@ import {
   shearFlowBiaxial,
   axesComparison,
   gammaMethod,
-  fastenerForce,
   anchorFlow,
-  volkersen,
   connectorStiffness,
-  connectorCheck,
   kNtoN,
   kNmToNmm,
   NtokN,
@@ -245,6 +242,89 @@ export function computeReinforcement(state) {
   });
   const overC = overConstrained(shapesMm, jointsMm, graph);
 
+
+  /**
+   * Skjøtestivheten per skjøt — K_ser (EC5 tabell 7.1 eller fritt innlagt),
+   * ρ_m-kildene og k = rader·K/s. Regnes FØR ΔN fordeles, fordi et statisk
+   * ubestemt oppsett fordeles etter stivheten til skjøtene som deler kraften.
+   */
+  function jointStiffness(raw, jm, sides) {
+    const lenMm = Math.hypot(jm.b[0] - jm.a[0], jm.b[1] - jm.a[1]);
+    // Standard heftbredde er lengden av linjas SNITT med tverrsnittet, ikke
+    // lengden av den tegnede linja — se `jointContactLength`. Et overheng
+    // gjorde ellers τ = q/b for lav, alltid til gunst for konstruksjonen.
+    const contactMm = jointContactLength(jm, shapesMm);
+    const bMm = contactMm > 0 ? contactMm : lenMm;
+    const connector = raw.connector || {};
+
+    // §3 — festemiddelstivheten K_ser: EC5 tabell 7.1 og «fritt innlagt»
+    // (ETA/produktgodkjenning) er likestilte kilder (kun aktuelt for skruer/
+    // mekaniske forbindere — lim har sin egen formel, sveis regnes stiv).
+    // `stiffSource` mangler på gamle/nye skjøter ⟹ 'eta', som er nøyaktig det
+    // det rå `Kser`-feltet alltid har betydd — ingen stille atferdsendring.
+    const stiffState = connector.state === 'ULS' ? 'ULS' : 'SLS';
+
+    // §14.1 — ρ_m hentes fra delene skjøten faktisk treffer, men BARE inn i
+    // felt brukeren har latt stå tomme. `sides.aSide`/`sides.bSide` er samme
+    // kilde som `aNames`/`bNames`, så det som står i «fra materialet X i Y» er
+    // nøyaktig den formen skjøten ligger inntil.
+    let rhoSource = null;
+    let rho1 = givenNumber(connector.ec5Rho1);
+    let rho2 = givenNumber(connector.ec5Rho2);
+    {
+      const derA = rho1 == null ? sideRho(sides.aSide, shapeByIdMm) : null;
+      const derB = rho2 == null ? sideRho(sides.bSide, shapeByIdMm) : null;
+      const a = { kind: rho1 != null ? 'input' : derA ? 'material' : 'none', value: rho1 != null ? rho1 : derA ? derA.rho : null,
+        label: derA ? derA.label : '', shape: derA ? derA.shape : '', multi: !!(derA && derA.multi) };
+      const b = { kind: rho2 != null ? 'input' : derB ? 'material' : 'none', value: rho2 != null ? rho2 : derB ? derB.rho : null,
+        label: derB ? derB.label : '', shape: derB ? derB.shape : '', multi: !!(derB && derB.multi) };
+      rho1 = a.value;
+      rho2 = b.value;
+      // `meanDensity()` krever at ρ₁ finnes: den regner √(ρ₁·ρ₂) og gir NaN
+      // uten den første. Har bare B-siden en densitet (A er stål, eller linja
+      // stikker ut i lufta), er det riktige ett treslag med B sin verdi — ikke
+      // et ugyldig geometrisk middel av «ingenting» og 350.
+      if (rho1 == null && rho2 != null) {
+        rhoSource = { a: b.kind, aValue: b.value, aLabel: b.label, aShape: b.shape, aMulti: b.multi,
+          b: 'none', bValue: null, bLabel: '', bShape: '', bMulti: false, swapped: true };
+        rho1 = rho2;
+        rho2 = null;
+      } else {
+        rhoSource = { a: a.kind, aValue: a.value, aLabel: a.label, aShape: a.shape, aMulti: a.multi,
+          b: b.kind, bValue: b.value, bLabel: b.label, bShape: b.shape, bMulti: b.multi, swapped: false };
+      }
+    }
+
+    const slip = slipModulus(
+          connector.stiffSource === 'ec5'
+            ? {
+                source: 'ec5',
+                fastener: connector.ec5Fastener || 'dowel',
+                rho1: rho1 == null ? undefined : rho1,
+                rho2: rho2 == null ? undefined : rho2,
+                d: connector.ec5D,
+                dc: connector.ec5Dc,
+                contact: connector.ec5Contact || 'timber-timber',
+                state: stiffState,
+              }
+            : { source: 'eta', Kser: connector.Kser, state: stiffState }
+        );
+    // Én stivhet inn i BÅDE ΔN-vektingen og γ-metoden (§3.3) — ikke to ulike K.
+    const ifStiff = interfaceStiffness({ connector, bondWidth: bMm, slip });
+    const kConn = slip && slip.valid
+      ? connectorStiffness({ ...connector, Kser: slip.K }, bMm)
+      : connectorStiffness(connector, bMm);
+    return { bMm, connector, slip, rhoSource, ifStiff, kConn };
+
+  }
+  const stiffById = new Map(
+    jointsRaw.map((raw, i) => {
+      const sides = sidesOfJoint(jointsMm[i], shapesMm, tol);
+      const touchesNew = [...sides.aSide, ...sides.bSide].some((id) => newIds.has(id));
+      return [raw.id, { ...jointStiffness(raw, jointsMm[i], sides), touchesNew }];
+    })
+  );
+
   const joints = jointsRaw.map((raw, i) => {
     const jm = jointsMm[i];
     const lineLenUnit = Math.hypot(raw.b[0] - raw.a[0], raw.b[1] - raw.a[1]);
@@ -286,15 +366,34 @@ export function computeReinforcement(state) {
 
     let dN = 0;
     let shareApplied = null;
+    let shareBasis = null;
     if (!allExisting) {
       if (ocEntry) {
         const bodyNewIds = ocEntry.shapeIds.filter((id) => newIds.has(id));
-        if (bodyNewIds.length) {
+        // ΔN inn i de nye delene går gjennom skjøtene som BERØRER en ny del.
+        // En skjøt i samme sløyfe mellom to eksisterende deler fører ikke
+        // denne kraften inn (antakelse: omfordelingen mellom de eksisterende
+        // delene ses bort fra).
+        const peers = ocEntry.jointIds.filter((id) => (stiffById.get(id) || {}).touchesNew);
+        if (bodyNewIds.length && peers.includes(raw.id)) {
           const totalT = axialTransfer({ N: loads.after.N, parts: sectionParts, groupIds: bodyNewIds });
-          shareApplied =
-            Number.isFinite(raw.share) && raw.share >= 0 && raw.share <= 1
-              ? raw.share
-              : 1 / ocEntry.jointIds.length;
+          // Brukerens andel vinner. Ellers etter skjøtestivheten k — den
+          // stiveste skjøten tar mest, slik den gjør i virkeligheten — og
+          // bare uten stivhet på alle (lik fordeling) som siste utvei. Hva som
+          // ble brukt, står i resultatet som en antakelse (`shareBasis`).
+          const ks = peers.map((id) => (stiffById.get(id) || {}).kConn);
+          const own = (stiffById.get(raw.id) || {}).kConn;
+          const allK = ks.every((v) => Number.isFinite(v) && v > 0);
+          if (Number.isFinite(raw.share) && raw.share >= 0 && raw.share <= 1) {
+            shareApplied = raw.share;
+            shareBasis = 'bruker';
+          } else if (allK) {
+            shareApplied = own / ks.reduce((a, b) => a + b, 0);
+            shareBasis = 'stivhet';
+          } else {
+            shareApplied = 1 / peers.length;
+            shareBasis = 'lik';
+          }
           dN = totalT.dN * shareApplied;
         }
       } else if (groupNewIds.length) {
@@ -304,87 +403,12 @@ export function computeReinforcement(state) {
     const anchor = anchorFlow({ dN, L: loads.L });
     const qN = allExisting ? 0 : anchor.valid ? Math.abs(anchor.q) : 0;
     const qTot = qVtot + qN;
-
-    // Standard heftbredde er lengden av linjas SNITT med tverrsnittet, ikke
-    // lengden av den tegnede linja — se `jointContactLength`. Et overheng
-    // gjorde ellers τ = q/b for lav, alltid til gunst for konstruksjonen.
-    const contactMm = jointContactLength(jm, shapesMm);
-    const bMm = Number.isFinite(raw.bondWidth) && raw.bondWidth > 0
-      ? raw.bondWidth
-      : (contactMm > 0 ? contactMm : lenMm);
-    const connector = raw.connector || {};
-    const check = connectorCheck({ q: qTot, bondWidth: bMm, connector });
-
-    // §3 — festemiddelstivheten K_ser: EC5 tabell 7.1 og «fritt innlagt»
-    // (ETA/produktgodkjenning) er likestilte kilder (kun aktuelt for skruer/
-    // mekaniske forbindere — lim har sin egen formel, sveis regnes stiv).
-    // `stiffSource` mangler på gamle/nye skjøter ⟹ 'eta', som er nøyaktig det
-    // det rå `Kser`-feltet alltid har betydd — ingen stille atferdsendring.
-    const stiffState = connector.state === 'ULS' ? 'ULS' : 'SLS';
-
-    // §14.1 — ρ_m hentes fra delene skjøten faktisk treffer, men BARE inn i
-    // felt brukeren har latt stå tomme. `sides.aSide`/`sides.bSide` er samme
-    // kilde som `aNames`/`bNames`, så det som står i «fra materialet X i Y» er
-    // nøyaktig den formen skjøten ligger inntil.
-    let rhoSource = null;
-    let rho1 = givenNumber(connector.ec5Rho1);
-    let rho2 = givenNumber(connector.ec5Rho2);
-    if (connector.kind === 'screw') {
-      const derA = rho1 == null ? sideRho(sides.aSide, shapeByIdMm) : null;
-      const derB = rho2 == null ? sideRho(sides.bSide, shapeByIdMm) : null;
-      const a = { kind: rho1 != null ? 'input' : derA ? 'material' : 'none', value: rho1 != null ? rho1 : derA ? derA.rho : null,
-        label: derA ? derA.label : '', shape: derA ? derA.shape : '', multi: !!(derA && derA.multi) };
-      const b = { kind: rho2 != null ? 'input' : derB ? 'material' : 'none', value: rho2 != null ? rho2 : derB ? derB.rho : null,
-        label: derB ? derB.label : '', shape: derB ? derB.shape : '', multi: !!(derB && derB.multi) };
-      rho1 = a.value;
-      rho2 = b.value;
-      // `meanDensity()` krever at ρ₁ finnes: den regner √(ρ₁·ρ₂) og gir NaN
-      // uten den første. Har bare B-siden en densitet (A er stål, eller linja
-      // stikker ut i lufta), er det riktige ett treslag med B sin verdi — ikke
-      // et ugyldig geometrisk middel av «ingenting» og 350.
-      if (rho1 == null && rho2 != null) {
-        rhoSource = { a: b.kind, aValue: b.value, aLabel: b.label, aShape: b.shape, aMulti: b.multi,
-          b: 'none', bValue: null, bLabel: '', bShape: '', bMulti: false, swapped: true };
-        rho1 = rho2;
-        rho2 = null;
-      } else {
-        rhoSource = { a: a.kind, aValue: a.value, aLabel: a.label, aShape: a.shape, aMulti: a.multi,
-          b: b.kind, bValue: b.value, bLabel: b.label, bShape: b.shape, bMulti: b.multi, swapped: false };
-      }
-    }
-
-    const slip = connector.kind === 'screw'
-      ? slipModulus(
-          connector.stiffSource === 'ec5'
-            ? {
-                source: 'ec5',
-                fastener: connector.ec5Fastener || 'dowel',
-                rho1: rho1 == null ? undefined : rho1,
-                rho2: rho2 == null ? undefined : rho2,
-                d: connector.ec5D,
-                dc: connector.ec5Dc,
-                contact: connector.ec5Contact || 'timber-timber',
-                state: stiffState,
-              }
-            : { source: 'eta', Kser: connector.Kser, state: stiffState }
-        )
-      : null;
-    // Én stivhet inn i BÅDE Volkersen og γ-metoden (§3.3) — ikke to ulike K.
-    const ifStiff = interfaceStiffness({ connector, bondWidth: bMm, slip });
-    const kConn =
-      connector.kind === 'screw' && slip && slip.valid
-        ? connectorStiffness({ ...connector, Kser: slip.K }, bMm)
-        : connectorStiffness(connector, bMm);
-    const tau = bMm > 0 ? qTot / bMm : null;
+    const { bMm, connector, slip, rhoSource, ifStiff, kConn } = stiffById.get(raw.id);
 
     const groupNewParts = sectionParts.filter((p) => groupNewIds.includes(p.id));
     const groupSection = sectionEA(groupNewParts);
     const EA_group = groupSection.EA;
     const EA_other = section.EA - EA_group;
-    const vol =
-      !allExisting && Math.abs(dN) > 0 && loads.L > 0 && EA_group > 0 && EA_other > 0 && kConn > 0
-        ? volkersen({ P: Math.abs(dN), L: loads.L, k: kConn, EA1: EA_other, EA2: EA_group, samples: 201 })
-        : null;
 
     // §4 — samvirkegrad, γ-metoden, topartstilfellet: [resten av tverrsnittet,
     // den nye gruppa akkurat denne skjøten fører kraft til]. Enakslet (y):
@@ -403,18 +427,6 @@ export function computeReinforcement(state) {
         V: loads.after.Vy,
       });
     }
-
-    // §4.1 — kraft per festemiddel: full samvirkning (standard) VED SIDEN AV
-    // γ-resultatet, aldri en stille erstatning. Bare meningsfullt for
-    // diskrete festemidler (skruer) — lim/sveis har sine egne q_Rd-kontroller.
-    const fastenerFull =
-      connector.kind === 'screw'
-        ? fastenerForce({ q: qTot, spacing: connector.spacing, rows: connector.rows, shearPlanes: connector.shearPlanes, FRd: connector.FRd })
-        : null;
-    const fastenerGamma =
-      fastenerFull && gamma && gamma.applicable && gamma.valid
-        ? fastenerForce({ q: gamma.q, spacing: connector.spacing, rows: connector.rows, shearPlanes: connector.shearPlanes, FRd: connector.FRd })
-        : null;
 
     // §8.2, snudd — forankring i enden gir NØDVENDIG kapasitet, ikke en
     // kontroll mot en antatt kapasitet: verktøyets jobb er å si hvor sterk
@@ -438,12 +450,6 @@ export function computeReinforcement(state) {
       const qReq = reqFlow && reqFlow.valid ? Math.abs(reqFlow.q) : null;
       const qGoverning = Math.max(qTot, qReq || 0);
       const governedByMoment = qReq != null && qReq > qTot;
-      const nRaw = Number(connector.anchorN);
-      const n_ = Number.isFinite(nRaw) && nRaw > 0 ? nRaw : null;
-      const FEd = n_ && loads.L > 0 ? NtokN((qGoverning * loads.L) / n_) : null;
-      const capRaw = Number(connector.anchorFRd);
-      const FRdCap = Number.isFinite(capRaw) && capRaw > 0 ? capRaw : null;
-      const util = FEd != null && FRdCap ? FEd / FRdCap : null;
       anchorReq = {
         NG: ng.valid ? ng.NG : 0,
         NG_kN: ng.valid ? ng.NG / 1000 : 0,
@@ -452,10 +458,6 @@ export function computeReinforcement(state) {
         qGoverning,
         governedByMoment,
         L: loads.L,
-        n: n_,
-        FEd,
-        FRdCap,
-        util,
         valid: ng.valid,
       };
     }
@@ -474,6 +476,7 @@ export function computeReinforcement(state) {
       overConstrained: !!ocEntry,
       ocJointIds: ocEntry ? ocEntry.jointIds : null,
       shareApplied,
+      shareBasis,
       flowBefore,
       flowAfter,
       qBefore,
@@ -484,19 +487,14 @@ export function computeReinforcement(state) {
       dN,
       anchor,
       b: bMm,
-      tau,
-      check,
       kConn,
       slip,
       rhoSource,
       ifStiff,
       gamma,
-      fastenerFull,
-      fastenerGamma,
       anchorReq,
       EA_group,
       EA_other,
-      volkersen: vol,
       connector,
       valid: allExisting ? !!(flowBefore && flowBefore.valid) : !!(flowAfter && flowAfter.valid),
     };
@@ -576,12 +574,20 @@ export function computeReinforcement(state) {
         return j ? j.name : id;
       })
       .join(', ');
+    const basis = joints.filter((j) => entry.jointIds.includes(j.id)).map((j) => j.shareBasis).filter(Boolean);
+    const how = !basis.length
+      ? 'ingen av dem (ingen berører en ny del)'
+      : basis.every((b) => b === 'bruker')
+      ? 'andelene du har satt'
+      : basis.includes('stivhet') && !basis.includes('lik')
+      ? 'skjøtestivheten k (antakelse)'
+      : 'lik fordeling (antakelse — stivhet mangler)';
     warnings.push({
       level: 'warn',
-      short: `«${escapeHtml(names)}» er festet med flere skjøter — statisk ubestemt, lik fordeling.`,
+      short: `${escapeHtml(jn)}: statisk ubestemt — ΔN fordelt etter ${how}.`,
       text:
-        `«${escapeHtml(names)}» er festet med flere skjøter samtidig (${escapeHtml(jn)}) — statisk ubestemt. ` +
-        'Fordelingen er satt lik mellom dem som utgangspunkt; overstyr med «Andel» på hver skjøt i skjøtelista om nødvendig.',
+        `«${escapeHtml(names)}» er festet med flere skjøter i en lukket sløyfe (${escapeHtml(jn)}) — statisk ubestemt. ` +
+        `ΔN er fordelt mellom dem etter ${how}. Overstyr med «Andel» på hver skjøt i skjøtelista i Forsterkning-fanen.`,
     });
   }
   if (!allExisting && loads.L <= 0 && (Math.abs(loads.after.N) > 0 || joints.length)) {
@@ -702,37 +708,6 @@ function calc({ sym, formula, subst, result, note = '' }) {
     </div>`;
 }
 
-/** Liten inline-SVG av skjærfordelingen langs skjøten. */
-function volkersenSvg(vol) {
-  const prof = vol.profile;
-  if (!prof || prof.length < 2) return '';
-  const W = 252;
-  const Hh = 64;
-  const pad = 6;
-  const L = prof[prof.length - 1].x || 1;
-  const qMax = Math.max(...prof.map((p) => Math.abs(p.q))) || 1;
-  const step = Math.max(1, Math.floor(prof.length / 80));
-  const pts = [];
-  for (let i = 0; i < prof.length; i += step) {
-    const x = pad + (prof[i].x / L) * (W - 2 * pad);
-    const y = Hh - pad - (Math.abs(prof[i].q) / qMax) * (Hh - 2 * pad - 8);
-    pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
-  }
-  const yAvg = Hh - pad - (Math.abs(vol.qAvg) / qMax) * (Hh - 2 * pad - 8);
-  return `
-    <svg viewBox="0 0 ${W} ${Hh}" class="w-full h-16" role="img"
-         aria-label="Skjærstrøm langs skjøten, med topper i endene">
-      <rect x="0" y="0" width="${W}" height="${Hh}" fill="#0f172a" rx="4" />
-      <line x1="${pad}" y1="${yAvg.toFixed(1)}" x2="${W - pad}" y2="${yAvg.toFixed(1)}"
-            stroke="#64748b" stroke-width="1" stroke-dasharray="3 3" />
-      <polyline points="${pts.join(' ')}" fill="none" stroke="${JOINT_COLOR}" stroke-width="1.6" />
-      <text x="${pad + 1}" y="${Hh - 1}" fill="#64748b" font-size="8">x = 0</text>
-      <text x="${W - pad - 24}" y="${Hh - 1}" fill="#64748b" font-size="8">x = L</text>
-    </svg>
-    <p class="text-[10px] text-slate-500 leading-snug">
-      Heltrukket: |q(x)| langs skjøten. Stiplet: middelverdien ΔN/L.
-    </p>`;
-}
 
 /** Et tallfelt i fanen. `path` er nøkkelen hendelsesbindingen ser etter. */
 function numField(path, label, value, attrs = '') {
@@ -894,7 +869,6 @@ export class ReinforcementPanel {
     // «Detaljer». Forklaringene står i hjelpedialogen.
     const details = [
       !res.allExisting && H('Aksialfordeling', this._axialBody(res)),
-      !res.allExisting && H('Shear lag (Volkersen)', this._shearLagBody(res)),
       this._slipBody(res),
       H('Utregning', this._derivationBody(res)),
       this._notes(res),
@@ -918,7 +892,7 @@ export class ReinforcementPanel {
       `<details class="rounded border border-slate-700 bg-slate-900/60" data-rf-details ${this.detailsOpen ? 'open' : ''}>
          <summary class="px-2.5 py-1.5 text-xs text-slate-300 hover:text-white flex items-center gap-1.5">
            <span class="chev text-slate-500" style="display:inline-block">›</span>
-           Detaljer: ${res.allExisting ? '' : 'aksialfordeling · Volkersen · '}utregning
+           Detaljer: ${res.allExisting ? '' : 'aksialfordeling · '}utregning
          </summary>
          <div class="px-2.5 pb-2.5 pt-1 space-y-3">${details}</div>
        </details>`,
@@ -980,10 +954,10 @@ export class ReinforcementPanel {
       ? `${th('q', 'q = V·ES*/EI')}`
       : `${th('q_før', 'Fra V før, på det eksisterende tverrsnittet. – = mot ny del (fantes ikke da)')}
          ${th('q_etter', 'Fra V etter, på det sammensatte tverrsnittet')}
-         ${th('q_N', 'ΔN/L — aksialandelen inn i ny del, middel over L')}
+         ${th('q_N', 'ΔN/L — aksialandelen inn i ny del, MIDDELVERDI over L. Toppen i enden er høyere — ikke dimensjonerende for skruer.')}
          ${th('Σq', 'q_før + q_etter + q_N')}
          ${th('N_G', 'Kraft i ny del fra M etter [kN] — må forankres over L')}
-         ${th('N_G/L', 'Middel over forankringslengden L')}
+         ${th('N_G/L', 'Forankring, MIDDELVERDI over L. Toppen i enden er høyere — ikke dimensjonerende for skruer.')}
          ${anyGamma ? th('γ', 'Samvirkegrad, γ-metoden') : ''}`;
 
     const rows = list
@@ -1017,7 +991,8 @@ export class ReinforcementPanel {
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <p class="text-[10px] text-slate-500 mt-1">q i kN/m (= N/mm) · N_G i kN · hold musa over en kolonne for forklaring</p>`;
+      <p class="text-[10px] text-slate-500 mt-1">q i kN/m (= N/mm) · N_G i kN · hold musa over en kolonne for forklaring</p>
+      ${res.allExisting ? '' : `<p class="text-[10px] text-amber-300/90 mt-0.5">q_N og N_G/L er middelverdier over L — ikke dimensjonerende for skruer. Toppen i enden kommer i linjeberegningen.</p>`}`;
   }
 
   /** Tverrsnittsegenskapene før og etter — tall, ingen tekst. */
@@ -1144,10 +1119,10 @@ export class ReinforcementPanel {
         <tbody>
           ${row('q_før', '#60a5fa', 'Skjærstrøm fra V <em>før</em>, på det eksisterende tverrsnittet. Bare der skjøten ligger i eksisterende materiale — den nye delen fantes ikke da.')}
           ${row('q_etter', '#60a5fa', 'Skjærstrøm fra V <em>etter</em>, på det sammensatte tverrsnittet.')}
-          ${row('q_N', '#60a5fa', 'ΔN/L — andelen av aksialkraften N som må inn i den nye delen, fordelt over L.')}
+          ${row('q_N', '#60a5fa', 'ΔN/L — andelen av aksialkraften N som må inn i den nye delen, som <strong>middelverdi</strong> over L. Toppen i enden er høyere.')}
           ${row('Σq', '#f8fafc', 'Summen langs skjøten, i kN/m (= N/mm). Det festemidlene må ta per meter bjelke.')}
           ${row('N_G', '#f8fafc', 'Kraften i den nye delen fra M <em>etter</em> [kN]. Ingen egen skjærstrøm — den ER summen av q fra enden og fram til snittet (figur 1).')}
-          ${row('N_G/L', '#e879f9', 'Bare der forsterkningen slutter og M ≠ 0 (figur 2): hele N_G må inn over L. Slutter den i et momentnullpunkt, er N_G = 0 der (figur 3).')}
+          ${row('N_G/L', '#e879f9', 'Bare der forsterkningen slutter og M ≠ 0 (figur 2): hele N_G må inn over L — <strong>middelverdi</strong>, toppen i enden er høyere. Slutter den i et momentnullpunkt, er N_G = 0 der (figur 3).')}
         </tbody>
       </table>
       <p class="text-[11px] text-slate-400">Å forlenge forsterkningen til et momentnullpunkt fjerner forankringskraften.</p>`;
@@ -1288,47 +1263,8 @@ export class ReinforcementPanel {
        <p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
          Fordelingen forutsetter at aksialkraften N_etter allerede er innført i begge deler, altså at
          snittet ligger utenfor forankringssonen. ΔN er kraften som må gjennom fugene for å få det til —
-         per skjøt, se punkt under. q_N = ΔN/L er en <strong>middelverdi</strong>, se Volkersen-avsnittet.
+         per skjøt, se tabellen. q_N = ΔN/L er en <strong>middelverdi</strong> over L — toppen i enden av den nye delen er høyere og kommer i linjeberegningen.
        </p>`;
-  }
-
-  _shearLagBody(res) {
-    const withVol = res.joints.filter((jt) => jt.volkersen && jt.volkersen.valid);
-    const intro = `
-      <p class="text-[11px] text-slate-500 leading-snug mb-2">
-        q_N = ΔN/L er en <strong>middelverdi</strong>. Virkeligheten har topper i skjøteendene, fordi
-        tøyningsforskjellen mellom de to delene er størst der. Volkersen-modellen kobler dem med et
-        kontinuerlig skjærlag med stivhet k og gir fordelingen under.
-      </p>`;
-    if (!withVol.length) {
-      return (
-        intro +
-        `<p class="text-[11px] text-slate-500 italic leading-snug">
-             Ingen fordeling å vise: det kreves aksialkraft å forankre (ΔN ≠ 0, altså former på begge sider
-             av skjøten der minst én er ny), en forankringslengde L &gt; 0, og en forbindelsesstivhet k &gt; 0
-             (K_ser, rader og senteravstand under «Avansert: delvis samvirke» i skjøtelista).
-           </p>`
-      );
-    }
-    const cards = withVol
-      .map((jt) => {
-        const v = jt.volkersen;
-        return `
-        <div class="rounded border border-slate-700 bg-slate-900 p-2.5 space-y-1 mb-2">
-          <div class="text-xs text-slate-300">${escapeHtml(jt.name)}</div>
-          <div class="space-y-1 text-[11px]">
-            ${row('Forbindelsesstivhet k', q(jt.kConn, 'N/mm²'))}
-            ${row('λ = √(k(1/α + 1/β))', q(v.lambda, '1/mm', 6))}
-            ${row('λ·L', n(v.lambdaL, 3))}
-            ${row('q_avg = ΔN/L', q(v.qAvg, 'N/mm'))}
-            ${row('q_max', q(v.qMax, 'N/mm'), 'text-amber-300')}
-            ${row('Toppfaktor q_max/q_avg', n(v.peakFactor, 3), 'text-amber-300')}
-          </div>
-          ${volkersenSvg(v)}
-        </div>`;
-      })
-      .join('');
-    return intro + cards;
   }
 
   /**
@@ -1460,11 +1396,6 @@ export class ReinforcementPanel {
       } else {
         lines.push(`  q_foer = ${n(jt.qBefore)} N/mm   q_etter = ${n(jt.qAfter)} N/mm   q_V,tot = ${n(jt.qVtot)} N/mm`);
         lines.push(`  q_N = ${n(jt.qN)} N/mm   q_tot = ${n(jt.qTot)} N/mm`);
-      }
-      if (jt.volkersen && jt.volkersen.valid) {
-        lines.push(
-          `  Volkersen: lambda = ${n(jt.volkersen.lambda, 6)} 1/mm, q_max = ${n(jt.volkersen.qMax)} N/mm, toppfaktor ${n(jt.volkersen.peakFactor, 3)}`
-        );
       }
       if (jt.gamma && jt.gamma.applicable) {
         lines.push(`  gamma_eff = ${n(jt.gamma.gammaEff, 4)}   EI_ef = ${n(jt.gamma.EI_ef, 0)} Nmm2   EI_full = ${n(jt.gamma.EI_full, 0)} Nmm2`);

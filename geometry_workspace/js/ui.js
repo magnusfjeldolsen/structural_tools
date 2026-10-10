@@ -539,7 +539,7 @@ export class UI {
         </p>
         <p class="text-[11px] text-slate-500 mt-2 leading-snug">
           ${jn ? `${jn} skjøt${jn === 1 ? '' : 'er'} lagt inn.` : 'Ingen skjøter ennå.'}
-          Rediger navn, forbindelsestype og heftbredde i skjøtelista under geometrilista.
+          Gi skjøten navn i skjøtelista under geometrilista; skjøtedata og krefter ligger i fanen «Forsterkning».
         </p>`;
     }
     if (tool === 'splitline') {
@@ -1763,14 +1763,8 @@ export class UI {
   /* ---------------- skjøtelista (interaksjonsplanen §5) ---------------- */
 
   /**
-   * Skjøtelista i venstre panel, under geometrilista, bygget som den: en rad
-   * per skjøt med navn, lengde, forbindelsestype og en slette-knapp. Åpnet
-   * viser delene på hver side (`sidesOfJoint`), heftbredde, forbindelsesfelter
-   * (inkl. sveis) og `share` når oppsettet er statisk ubestemt.
-   *
-   * Redigeringen av en skjøt lever HER, ikke i «Forsterkning»-fanen — det
-   * panelet er lese/resultat-visning, jf. prinsippet om at man velger
-   * geometri og skriver, ikke går til et kommandosenter.
+   * Skjøtelistene i venstre panel — én i hver fane, fra samme data (se
+   * `_renderJointListInto`).
    */
   _renderJointList() {
     this._renderJointListInto('joint-list', 'joint-count', 'geometry');
@@ -1893,7 +1887,7 @@ export class UI {
   /**
    * «Forsterkning»: det som styrer kreftene gjennom skjøten. Andelen av ΔN
    * når oppsettet er statisk ubestemt, og — sammenlagt — fugestivheten som
-   * delvis samvirke (γ-metoden, Volkersen) trenger. Kapasitet hører ikke
+   * delvis samvirke (γ-metoden) og vektingen av ΔN trenger. Kapasitet hører ikke
    * hjemme her: verktøyet sier hvor mye kraft skjøten må ta, ikke om et
    * bestemt festemiddel holder.
    */
@@ -1913,7 +1907,7 @@ export class UI {
 
     const c = j.connector;
     // Rader og senteravstand gir fugestivheten per lengde, k = K_ser·rader/s,
-    // som γ-metoden og Volkersen bruker — ikke en kapasitetskontroll.
+    // som γ-metoden og ΔN-vektingen bruker — ikke en kapasitetskontroll.
     const layoutFields = `<div class="grid grid-cols-2 gap-1.5">
          ${cfield('rows', 'Rader på tvers', c.rows, 'step="1" min="1"')}
          ${cfield('spacing', 'Senteravstand s [mm]', c.spacing, 'step="10"')}
@@ -2021,7 +2015,7 @@ export class UI {
                    }
                  </label>
                  <input id="j-share-${j.id}" data-jf="share" data-id="${j.id}" data-focus-key="j-share-${j.id}"
-                        type="number" step="1" min="0" max="100" placeholder="auto (lik fordeling)"
+                        type="number" step="1" min="0" max="100" placeholder="auto (etter stivhet k)"
                         value="${j.share == null ? '' : Math.round(j.share * 100)}" />
                </div>`
             : `<p class="text-[11px] text-slate-500 leading-snug">Statisk bestemt — hele ΔN går gjennom denne skjøten.</p>`

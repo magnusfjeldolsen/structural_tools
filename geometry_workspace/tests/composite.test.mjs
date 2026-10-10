@@ -40,8 +40,8 @@ const { ringProps, rectPoints } = geom;
 const {
   sectionEA, shearFlow, shearFlowBiaxial, stiffnessMatrix, curvatures,
   groupFirstMoments, axialInGroup, principalEI, axesComparison,
-  gammaMethod, effectiveLength, fastenerForce, jointCapacityFlow, anchorageCheck,
-  connectorCheck, kNtoN, kNmToNmm, SKEW_THRESHOLD,
+  gammaMethod, effectiveLength,
+  kNtoN, kNmToNmm, SKEW_THRESHOLD,
 } = rf;
 const {
   ec5Kser, etaKser, slipModulus, meanDensity, glueStiffness, jointStiffness,
@@ -360,7 +360,7 @@ test('6. (EI)_ef ligger STRENGT mellom ingen og full samvirkning — den viktigs
   ok('fortegnene er motsatte', Math.sign(r.parts[0].ESgamma) === -Math.sign(r.parts[1].ESgamma));
 });
 
-test('7. F per festemiddel: ved γ → 1 nærmer den seg q_full·s/(rader·skjærplan)', () => {
+test('7. γ → 1 gir full samvirkning; delvis samvirkning gir lavere q og lavere EI', () => {
   // HÅNDREGNING av full samvirkning, samme tverrsnitt:
   //   ES* for stålplata om det sammensatte tyngdepunktet (y_c = 152.5 mm):
   //      ES* = EA₂·(y₂ − y_c) = 2e8·(205 − 152.5) = 2e8·52.5 = 1.05e10 Nmm
@@ -390,29 +390,11 @@ test('7. F per festemiddel: ved γ → 1 nærmer den seg q_full·s/(rader·skjæ
     `γ = ${nearRigid.gammaEff.toFixed(12)}`);
   close('q nærmer seg q_full [N/mm]', nearRigid.q, flowFull.qAbs, 1e-6);
 
-  // §4.1 — kraft per festemiddel.
-  // HÅNDREGNING: s = 150 mm, 2 rader, 1 skjærplan:
-  //   F = q·s/(rader·skjærplan) = 355.7647059·150/2 = 26682.35294 N = 26.68235 kN
-  //   Utnyttelse mot F_Rd = 30 kN: 26682.35294/30000 = 0.8894118
-  //   s_max ved util = 1:  s = rader·skjærplan·F_Rd/q = 2·30000/355.7647059 = 168.6473 mm
-  //   Antall per løpemeter: q·1000/F_Rd = 355.7647059·1000/30000 = 11.85882 stk/m
-  const f = fastenerForce({ q: flowFull.qAbs, spacing: 150, rows: 2, shearPlanes: 1, FRd: 30 });
-  close('F per festemiddel [N]', f.F, 26682.352941176472, 1e-12);
-  close('F per festemiddel [kN]', f.F_kN, 26.682352941176472, 1e-12);
-  close('utnyttelse mot F_Rd = 30 kN', f.util, 0.8894117647058824, 1e-12);
-  close('s_max [mm]', f.sMax, 168.65079365079364, 1e-8);
-  close('antall per løpemeter [1/m]', f.nPerMetre, 11.858823529411764, 1e-12);
-  ok('utnyttelse ≤ 1 gir ok', f.ok === true);
-
-  // Ved DELVIS samvirkning er q lavere, og dermed også kraften per festemiddel.
-  // Det er et forventet (og litt kontraintuitivt) resultat: en mykere fuge
-  // overfører mindre kraft, men gir større nedbøyning.
+  // Ved DELVIS samvirkning er q lavere — en mykere fuge overfører mindre
+  // kraft, men gir større nedbøyning.
   const partial = gammaMethod({ groups: [G_EXISTING, G_NEW], k: 40, span: G_SPAN, V });
-  const fPartial = fastenerForce({ q: partial.q, spacing: 150, rows: 2, shearPlanes: 1, FRd: 30 });
   ok('q ved delvis samvirkning er mindre enn ved full',
     partial.q < partial.q_full, `${fmt(partial.q)} < ${fmt(partial.q_full)}`);
-  ok('F ved delvis samvirkning er mindre enn ved full',
-    fPartial.F < f.F, `${fmt(fPartial.F)} < ${fmt(f.F)}`);
   // …men EI er også mindre, så nedbøyningen er større. Begge skal vises.
   close('EI_full er fortsatt tilgjengelig ved siden av EI_ef [Nmm²]', partial.EI_full, EI_FULL, 1e-12);
   ok('og EI_ef er den lavere av de to',
@@ -687,64 +669,6 @@ test('11. Nøytralaksens helning for rent M_x, og N_G som integralet av q', () =
   // Tom gruppe skal fortsatt si fra (uendret oppførsel fra før omskrivingen).
   ok('tom gruppe gir valid=false',
     shearFlowBiaxial({ Vy: 1000, groupParts: [], section: sec }).valid === false);
-});
-
-test('12. §8.2 forankringskontroll: L_req = N_G/q_Rd for lim, skruer og sveis', () => {
-  // HÅNDREGNING av q_Rd for de tre forbindelsestypene, og L_req med
-  // N_G = 120 kN = 120 000 N:
-  //
-  //   LIM:    q_Rd = τ_Rd·b = 4.0·150 = 600 N/mm
-  //           L_req = 120000/600 = 200 mm
-  //   SKRUE:  q_Rd = rader·F_Rd/s = 2·8000/200 = 80 N/mm   (F_Rd er lagret i kN)
-  //           L_req = 120000/80 = 1500 mm
-  //   SVEIS:  q_Rd = n·a·f_vw,d = 2·4·207 = 1656 N/mm
-  //           L_req = 120000/1656 = 72.46376811594203 mm
-  const NG = kNtoN(120);
-
-  const glue = { kind: 'glue', tauRd: 4.0, Ga: 700, ta: 2 };
-  close('q_Rd lim [N/mm]', jointCapacityFlow(glue, 150), 600, 1e-12);
-  const aGlue = anchorageCheck({ NG, L: 150, connector: glue, bondWidth: 150 });
-  close('L_req lim [mm]', aGlue.Lreq, 200, 1e-12);
-  close('utnyttelse L_req/L ved L = 150 mm', aGlue.util, 4 / 3, 1e-12);
-  ok('for kort forankring flagges', aGlue.ok === false);
-  ok('advarselen står først i notatene', /ADVARSEL/.test(aGlue.notes[0]), aGlue.notes[0]);
-  ok('middelverdiforbeholdet er med', aGlue.notes.some((t) => /middelverdi/.test(t)));
-  ok('Volkersen-forbeholdet er med', aGlue.notes.some((t) => /Volkersen/.test(t)));
-
-  const screw = { kind: 'screw', FRd: 8, rows: 2, spacing: 200 };
-  close('q_Rd skrue [N/mm]', jointCapacityFlow(screw), 80, 1e-12);
-  const aScrew = anchorageCheck({ NG, L: 2000, connector: screw });
-  close('L_req skrue [mm]', aScrew.Lreq, 1500, 1e-12);
-  close('utnyttelse ved L = 2000 mm', aScrew.util, 0.75, 1e-12);
-  ok('lang nok forankring er ok', aScrew.ok === true);
-
-  const weld = { kind: 'weld', a_weld: 4, fvwd: 207, nWelds: 2 };
-  close('q_Rd sveis [N/mm]', jointCapacityFlow(weld), 1656, 1e-12);
-  close('L_req sveis [mm]', anchorageCheck({ NG, L: 100, connector: weld }).Lreq,
-    72.46376811594203, 1e-12);
-
-  // q_Rd hentes fra `connectorCheck` og skal være IDENTISK med den kapasiteten
-  // forbinderkontrollen selv bruker — ellers ville de to sagt ulike ting.
-  close('q_Rd stemmer med connectorCheck (lim)',
-    jointCapacityFlow(glue, 150),
-    connectorCheck({ q: 600, bondWidth: 150, connector: glue }).qRd, 0);
-  close('q_Rd stemmer med connectorCheck (skrue)',
-    jointCapacityFlow(screw), connectorCheck({ q: 80, connector: screw }).qRd, 0);
-
-  // N_G regnet ut av momentene i stedet for lagt inn direkte.
-  const sec = sectionEA(SKEW_ALL);
-  const fromM = anchorageCheck({
-    Mx: kNmToNmm(100), My: 0, groupParts: SKEW_NEW, section: sec,
-    L: 1000, connector: glue, bondWidth: 100,
-  });
-  close('N_G fra M_x [kN]', fromM.NG_kN, 69.55446501023996, 1e-12);
-  // q_Rd = 4.0·100 = 400 N/mm ⟹ L_req = 69554.465/400 = 173.886 mm
-  close('L_req fra M_x [mm]', fromM.Lreq, 69554.46501023996 / 400, 1e-12);
-  close('utnyttelse ved L = 1000 mm', fromM.util, 0.17388616252559989, 1e-12);
-
-  // Manglende kapasitet skal gi valid=false, ikke Infinity.
-  const noCap = anchorageCheck({ NG, L: 1000, connector: { kind: 'glue' }, bondWidth: 150 });
-  ok('manglende τ_Rd gir valid=false og L_req = null', noCap.valid === false && noCap.Lreq === null);
 });
 
 test('13. γ-metoden sier tydelig fra når den IKKE er anvendelig', () => {
