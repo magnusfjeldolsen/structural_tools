@@ -143,6 +143,10 @@ export const EC5_CONTACTS = Object.freeze([
   Object.freeze({ key: 'timber-timber', label: 'Tre mot tre (eller trebasert plate)', factor: 1 }),
   Object.freeze({ key: 'steel-timber', label: 'Stål mot tre', factor: 2 }),
   Object.freeze({ key: 'concrete-timber', label: 'Betong mot tre', factor: 2 }),
+  // Glippe eller utforing (spikerplater på sideflaten o.l.): tabell 7.1
+  // forutsetter kontakt, så K er ukjent. Gir ugyldig K_ser — brukeren må
+  // legge inn en egen verdi (fritt innlagt), ellers sperres resultatet.
+  Object.freeze({ key: 'gap', label: 'Ingen kontakt (glippe / utforing)', factor: 1, gap: true }),
 ]);
 
 /** Faktoren for en kontaktflate; ukjent nøkkel gir 1 (ingen stille dobling). */
@@ -223,7 +227,9 @@ export function ec5Kser({
   if (kf !== 1) notes.push(EC5_HELP.doubling);
 
   const needed = type ? (type.needs === 'dc' ? ddc : dd) : NaN;
-  const okInput = !!type && rhoMean > 0 && needed > 0;
+  const gap = contact === 'gap';
+  if (gap) notes.push('Ingen kontakt mellom delene: tabell 7.1 gjelder ikke. Legg inn K fra ETA eller forsøk (fritt innlagt).');
+  const okInput = !!type && rhoMean > 0 && needed > 0 && !gap;
 
   if (!okInput) {
     return {
