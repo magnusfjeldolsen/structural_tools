@@ -572,7 +572,7 @@ export class UI {
       if (this.tools.tool !== 'select') this.tools.setTool('select');
       else this.tools.cancel();
       const st = this.store.state;
-      const jointIds = new Set((st.joints || []).map((j) => j.id));
+      const jointIds = new Set(this.store.allJoints().map((j) => j.id));
       const keep = st.selection.filter((id) => jointIds.has(id));
       if (keep.length !== st.selection.length) this.store.select(keep);
       this.status('Forsterkning: klikk en skjøt for å se kreftene i den. Geometrien er låst — den endres i «Geometri».');
@@ -1780,7 +1780,7 @@ export class UI {
     const host = $(hostId);
     if (!host) return;
     const st = this.store.state;
-    const joints = st.joints || [];
+    const joints = this.store.allJoints();
     const countEl = $(countId);
     if (countEl) countEl.textContent = joints.length ? `(${joints.length})` : '';
 
@@ -1820,7 +1820,9 @@ export class UI {
           </button>
           <span class="text-[10px] text-slate-500 num shrink-0">${fmtLen(len)} ${unit}</span>
           ${
-            mode === 'geometry'
+            j.auto
+              ? '<span class="text-[10px] px-1 rounded bg-slate-800 text-teal-300 shrink-0" title="Automatisk: langs den felles kanten mellom eksisterende og ny del. Følger geometrien og kan ikke slettes.">auto</span>'
+              : mode === 'geometry'
               ? `<button data-jact="delete" data-id="${j.id}"
                   class="px-1 text-slate-400 hover:text-red-400 shrink-0" title="Slett skjøten">×</button>`
               : ''

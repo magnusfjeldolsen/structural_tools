@@ -322,6 +322,7 @@
           <div class="flex items-center gap-2"><span class="inline-block w-4 border-t-2 border-dotted border-slate-300"></span> Annet</div>
         </div>
         <div class="flex items-center gap-2"><span class="inline-block w-3 h-0.5" style="background:#2dd4bf"></span> Skjøt — ingen side å velge</div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-0 border-t-2 border-dashed" style="border-color:#2dd4bf"></span> Automatisk skjøt (ny mot eksisterende)</div>
       </div>
 
       <!-- Verktøyalternativer nederst til venstre — bare når verktøyet har noen (§4.2) -->
@@ -623,6 +624,11 @@
           verktøyet tegner bare en linje med endemarkører, uten piler. Navnes automatisk etter delene
           den skiller. Skjøtelista i venstre panel, under geometrilista, lar deg gi den navn — klikk en
           rad for å fremheve skjøten i lerretet.</li>
+        <li><strong>Automatiske skjøter</strong>: der en <em>ny</em> del ligger inntil en <em>eksisterende</em>,
+          lager verktøyet skjøten selv, langs den felles kanten (stiplet i lerretet, merket «auto» i lista).
+          Den følger geometrien: flyttes delene sammen, følger den med — med navn og skjøtedata — og forsvinner
+          kanten, forsvinner skjøten. Er den nye delen tegnet <em>inn i</em> den eksisterende, lages ingen skjøt,
+          og du får et varsel. Mellom to eksisterende deler lages ingen; tegn en skjøt der hvis du vil se kraften.</li>
         <li><strong>Den implisitte naboskapsregelen</strong>: former som berører eller overlapper
           hverandre og som det <em>ikke</em> ligger en skjøt mellom, regnes automatisk som stivt
           forbundet. Tegner du en I-profil som tre rektangler og bare sveiser flensen mot steget, vet

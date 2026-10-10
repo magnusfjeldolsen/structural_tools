@@ -31,6 +31,7 @@
  */
 
 import { computeReinforcement, n, q, sci } from './reinforcement-ui.js';
+import { effectiveJoints } from './store.js';
 import { buildFigureSvg } from './report-figure.js';
 import { materialByName } from './materials.js';
 import { computeLine, lineRows, linePlots } from './line-ui.js';
@@ -148,7 +149,7 @@ function figureBlock(state, analysis, res) {
     unit: state.unit || 'mm',
     mode: state.mode,
     shapes: state.shapes || [],
-    joints: state.joints || [],
+    joints: effectiveJoints(state),
     reference: state.reference || null,
     analysis,
     res,

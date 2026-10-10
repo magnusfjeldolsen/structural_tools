@@ -8,7 +8,7 @@
 import { boundsOfShapes, translatePoints, multiProps, pointsToMulti, splitPointsByLine, openRing, neighborTolerance, EPS as GEOM_EPS } from './geometry.js';
 import { conversionFactor, unitInfo } from './units.js';
 import { SNAP_KEYS } from './snapping.js';
-import { sidesOfJoint } from './joints.js';
+import { sidesOfJoint, autoJoints } from './joints.js';
 import { materialByName } from './materials.js';
 
 const STORAGE_KEY = 'geometry_workspace_v1';
@@ -185,6 +185,21 @@ function migrateLine(l) {
   };
 }
 
+function migrateAutoJointData(d) {
+  const out = {};
+  if (!d || typeof d !== 'object') return out;
+  for (const [id, v] of Object.entries(d)) {
+    if (!String(id).startsWith('auto:') || !v || typeof v !== 'object') continue;
+    out[id] = {
+      ...(typeof v.name === 'string' && v.name ? { name: v.name } : {}),
+      ...(Number.isFinite(v.share) ? { share: v.share } : {}),
+      ...(Number.isFinite(v.qT) ? { qT: v.qT } : {}),
+      connector: connectorFrom(v.connector),
+    };
+  }
+  return out;
+}
+
 function migrateLoadState(s) {
   const src = s || {};
   const isBiaxial = src.Vy !== undefined || src.Vx !== undefined || src.Mx !== undefined || src.My !== undefined;
@@ -243,6 +258,48 @@ function connectorFrom(raw) {
   const c = { ...defaultConnector(), ...(raw || {}) };
   for (const key of DROPPED_CONNECTOR_FIELDS) delete c[key];
   return c;
+}
+
+/**
+ * Alle skjøtene modellen regner med: de tegnede, og de automatiske langs
+ * felles kanter mellom eksisterende og ny del (#61, `autoJoints`). En
+ * automatisk skjøt lagres ikke som objekt — den utledes fra geometrien — men
+ * det brukeren har lagt inn på den (navn, q_T, andel, skjøtedata) lagres i
+ * `state.autoJointData` under skjøtens id, som er bygd av delparet. Da følger
+ * innstillingene med når delene flyttes sammen.
+ *
+ * Geometridelen huskes mellom kall med samme geometri: den kalles ofte
+ * (hver tegning, hver musebevegelse i lerretet).
+ */
+let autoCache = { key: null, result: null };
+export function effectiveJoints(state) {
+  const shapes = (state && state.shapes) || [];
+  const drawn = (state && state.joints) || [];
+  const key = JSON.stringify([
+    shapes.map((x) => [x.id, x.stage, x.include, x.role, x.points]),
+    drawn.map((j) => [j.a, j.b]),
+  ]);
+  if (autoCache.key !== key) {
+    autoCache = { key, result: autoJoints(shapes, drawn, neighborTolerance(shapes)) };
+  }
+  const data = (state && state.autoJointData) || {};
+  const autos = autoCache.result.joints.map((j) => {
+    const d = data[j.id] || {};
+    return {
+      ...j,
+      name: d.name || autoJointName(j.a, j.b, shapes),
+      share: Number.isFinite(d.share) ? d.share : null,
+      qT: Number.isFinite(d.qT) ? d.qT : 0,
+      connector: connectorFrom(d.connector),
+    };
+  });
+  return [...drawn, ...autos];
+}
+
+/** Overlappene `autoJoints` fant (ny del tegnet inn i eksisterende). */
+export function autoJointOverlaps(state) {
+  effectiveJoints(state);
+  return autoCache.result ? autoCache.result.overlaps : [];
 }
 
 /**
@@ -350,6 +407,7 @@ function migrate(data) {
 
   out.loads = migrateLoads(out.loads);
   out.line = migrateLine(out.line);
+  out.autoJointData = migrateAutoJointData(out.autoJointData);
   out.analysis = out.analysis === 'line' ? 'line' : 'section';
   out.version = 4;
   return out;
@@ -374,6 +432,8 @@ function defaultState() {
     // «Snitt» (ett snitt, full samvirkning) eller «Linje» (langs hele delen, #63)
     analysis: 'section',
     line: defaultLine(),
+    // Det brukeren har lagt inn på automatiske skjøter, under skjøtens id (#61).
+    autoJointData: {},
   };
 }
 
@@ -414,6 +474,7 @@ export class Store {
       loads: this.state.loads,
       analysis: this.state.analysis,
       line: this.state.line,
+      autoJointData: this.state.autoJointData,
     });
   }
 
@@ -474,8 +535,9 @@ export class Store {
     // Utvalget kan holde BÅDE former og skjøter (§1 i interaksjonsplanen), så
     // filtreringen må se etter id-en i begge listene — ellers ville en angring
     // stille tømt utvalget hver gang en skjøt var markert.
+    const jointIds = new Set(this.allJoints().map((j) => j.id));
     this.state.selection = this.state.selection.filter(
-      (id) => this.state.shapes.some((s) => s.id === id) || this.state.joints.some((j) => j.id === id)
+      (id) => this.state.shapes.some((s) => s.id === id) || jointIds.has(id)
     );
     this.syncUid();
   }
@@ -569,7 +631,16 @@ export class Store {
     if (s) return { kind: 'shape', obj: s };
     const j = this.state.joints.find((x) => x.id === id);
     if (j) return { kind: 'joint', obj: j };
+    // En automatisk skjøt kan velges og redigeres, men ikke flyttes eller
+    // slettes — den følger geometrien. `auto: true` sier fra til kommandoene.
+    const a = this.allJoints().find((x) => x.id === id && x.auto);
+    if (a) return { kind: 'joint', obj: a, auto: true };
     return null;
+  }
+
+  /** Tegnede og automatiske skjøter (#61). */
+  allJoints() {
+    return effectiveJoints(this.state);
   }
 
   /** Hele utvalget, i utvalgsrekkefølge, som `{kind, obj}`. */
@@ -763,7 +834,7 @@ export class Store {
   /* ---------------- skjøter (§4, §6.2) ---------------- */
 
   getJoint(id) {
-    return this.state.joints.find((j) => j.id === id) || null;
+    return this.allJoints().find((j) => j.id === id) || null;
   }
 
   /**
@@ -792,11 +863,23 @@ export class Store {
   updateJoint(id, patch, opts = {}) {
     this.mutate((st) => {
       const j = st.joints.find((x) => x.id === id);
-      if (j) Object.assign(j, patch);
+      if (j) {
+        Object.assign(j, patch);
+        return;
+      }
+      // Automatisk skjøt: bare det brukeren kan endre, lagret under id-en.
+      if (String(id).startsWith('auto:')) {
+        if (!st.autoJointData) st.autoJointData = {};
+        const cur = st.autoJointData[id] || {};
+        const keep = {};
+        for (const k of ['name', 'share', 'qT', 'connector']) if (k in patch) keep[k] = patch[k];
+        st.autoJointData[id] = { ...cur, ...keep };
+      }
     }, opts);
   }
 
   removeJoint(id) {
+    if (String(id).startsWith('auto:')) return; // følger geometrien, kan ikke slettes
     this.mutate((st) => {
       st.joints = st.joints.filter((j) => j.id !== id);
     }, { reason: 'joint' });
@@ -1057,6 +1140,7 @@ export class Store {
         loads: this.state.loads,
         analysis: this.state.analysis,
         line: this.state.line,
+        autoJointData: this.state.autoJointData,
       },
       null,
       2
@@ -1096,6 +1180,7 @@ export class Store {
       st.loads = m.loads;
       st.analysis = m.analysis;
       st.line = m.line;
+      st.autoJointData = m.autoJointData;
     }, { reason: 'import' });
     this.syncUid();
   }

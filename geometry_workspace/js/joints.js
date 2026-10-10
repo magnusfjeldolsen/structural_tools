@@ -520,6 +520,125 @@ export function overConstrained(shapes, joints, graph) {
 }
 
 /* ==================================================================== *
+ * #61 — automatiske skjøter mellom eksisterende og ny del
+ * ==================================================================== */
+
+/**
+ * Skjøtene verktøyet finner selv: langs hver felles kant mellom en
+ * EKSISTERENDE og en NY del (CONTEXT.md: «Automatisk skjøt»). Mellom to
+ * eksisterende deler lages ingen — de regnes som stivt forbundet, og vil man
+ * se kraften der, tegner man en skjøt. Utledes på nytt fra geometrien hver
+ * gang, så en skjøt kan aldri bli liggende igjen når delene flyttes; den
+ * forsvinner når kanten gjør det.
+ *
+ * To kanter er felles når de ligger på samme linje (innen `tol`) og
+ * overlapper over mer enn `tol`. Overlapper den nye delen den eksisterende
+ * med areal (tegnet inn i den), lages ingen skjøt — det er nesten alltid en
+ * tegnefeil, og verktøyet skal ikke gjette — men paret meldes i `overlaps`.
+ * Ligger en tegnet skjøt allerede langs kanten, vinner den.
+ *
+ * @param {Array} shapes
+ * @param {Array} drawnJoints  de tegnede skjøtene
+ * @param {number} tol  kontakttoleranse i arbeidsenheten (`neighborTolerance`)
+ * @returns {{joints: Array<{id:string, a:number[], b:number[], auto:true, pair:string[]}>, overlaps: Array<{existingId, newId}>}}
+ */
+export function autoJoints(shapes, drawnJoints, tol) {
+  const solids = (shapes || []).filter(ACTIVE_SOLID);
+  const existing = solids.filter((s) => s.stage !== 'new');
+  const fresh = solids.filter((s) => s.stage === 'new');
+  const joints = [];
+  const overlaps = [];
+  const areaOf = (pts) => Math.abs(multiProps(pointsToMulti(pts)).A || 0);
+
+  for (const E of existing) {
+    for (const N of fresh) {
+      const inter = intersectionMulti(pointsToMulti(E.points), pointsToMulti(N.points));
+      const shared = Math.abs(multiProps(inter || []).A || 0);
+      if (shared > 1e-6 * Math.min(areaOf(E.points), areaOf(N.points))) {
+        overlaps.push({ existingId: E.id, newId: N.id });
+        continue;
+      }
+      const segs = mergeCollinear(sharedEdges(openRing(E.points), openRing(N.points), tol), tol);
+      segs
+        .filter((sg) => !(drawnJoints || []).some((d) => covers(d, sg, tol)))
+        .sort((u, v) => u.a[0] - v.a[0] || u.a[1] - v.a[1])
+        .forEach((sg, k) => joints.push({ id: `auto:${E.id}|${N.id}|${k}`, a: sg.a, b: sg.b, auto: true, pair: [E.id, N.id] }));
+    }
+  }
+  return { joints, overlaps };
+}
+
+/** Avstand fra punkt til den uendelige linja gjennom p→q. */
+function lineDist(pt, p, q) {
+  const dx = q[0] - p[0];
+  const dy = q[1] - p[1];
+  const L = Math.hypot(dx, dy);
+  return L > 0 ? Math.abs((pt[0] - p[0]) * dy - (pt[1] - p[1]) * dx) / L : Math.hypot(pt[0] - p[0], pt[1] - p[1]);
+}
+
+/** Deler av kantene til A som faller sammen med en kant i B. */
+function sharedEdges(ringA, ringB, tol) {
+  const out = [];
+  for (let i = 0; i < ringA.length; i++) {
+    const p = ringA[i];
+    const q = ringA[(i + 1) % ringA.length];
+    const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    if (!(len > tol)) continue;
+    const u = [(q[0] - p[0]) / len, (q[1] - p[1]) / len];
+    for (let j = 0; j < ringB.length; j++) {
+      const r = ringB[j];
+      const s = ringB[(j + 1) % ringB.length];
+      if (lineDist(r, p, q) > tol || lineDist(s, p, q) > tol) continue;
+      const tr = (r[0] - p[0]) * u[0] + (r[1] - p[1]) * u[1];
+      const ts = (s[0] - p[0]) * u[0] + (s[1] - p[1]) * u[1];
+      const t0 = Math.max(0, Math.min(tr, ts));
+      const t1 = Math.min(len, Math.max(tr, ts));
+      if (t1 - t0 > tol) out.push({ a: [p[0] + u[0] * t0, p[1] + u[1] * t0], b: [p[0] + u[0] * t1, p[1] + u[1] * t1] });
+    }
+  }
+  return out;
+}
+
+/** Slår sammen biter på samme linje som berører eller overlapper hverandre. */
+function mergeCollinear(segs, tol) {
+  const out = [];
+  for (const sg of segs) {
+    const hit = out.find((o) => lineDist(sg.a, o.a, o.b) <= tol && lineDist(sg.b, o.a, o.b) <= tol && overlapLen(o, sg) >= -tol);
+    if (!hit) {
+      out.push({ a: sg.a.slice(), b: sg.b.slice() });
+      continue;
+    }
+    const L = Math.hypot(hit.b[0] - hit.a[0], hit.b[1] - hit.a[1]);
+    const u = [(hit.b[0] - hit.a[0]) / L, (hit.b[1] - hit.a[1]) / L];
+    const t = (pt) => (pt[0] - hit.a[0]) * u[0] + (pt[1] - hit.a[1]) * u[1];
+    const ts = [0, L, t(sg.a), t(sg.b)];
+    const lo = Math.min(...ts);
+    const hi = Math.max(...ts);
+    const a0 = hit.a.slice();
+    hit.a = [a0[0] + u[0] * lo, a0[1] + u[1] * lo];
+    hit.b = [a0[0] + u[0] * hi, a0[1] + u[1] * hi];
+  }
+  return out;
+}
+
+/** Overlappende lengde langs o for en kollinær bit sg (negativ = avstand). */
+function overlapLen(o, sg) {
+  const L = Math.hypot(o.b[0] - o.a[0], o.b[1] - o.a[1]);
+  const u = [(o.b[0] - o.a[0]) / L, (o.b[1] - o.a[1]) / L];
+  const t = (pt) => (pt[0] - o.a[0]) * u[0] + (pt[1] - o.a[1]) * u[1];
+  const s0 = Math.min(t(sg.a), t(sg.b));
+  const s1 = Math.max(t(sg.a), t(sg.b));
+  return Math.min(L, s1) - Math.max(0, s0);
+}
+
+/** Dekker den tegnede skjøten d minst halve den automatiske biten? */
+function covers(d, sg, tol) {
+  if (lineDist(d.a, sg.a, sg.b) > tol || lineDist(d.b, sg.a, sg.b) > tol) return false;
+  const L = Math.hypot(sg.b[0] - sg.a[0], sg.b[1] - sg.a[1]);
+  return overlapLen(sg, d) >= 0.5 * L;
+}
+
+/* ==================================================================== *
  * §8 — halvplanet: ES*-grunnlaget (Part[] til reinforcement.js sin sectionEA/shearFlow)
  * ==================================================================== */
 

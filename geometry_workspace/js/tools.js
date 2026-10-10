@@ -173,11 +173,13 @@ export class ToolController {
    * (§6.2: hover i lerretet skal kunne fremheve raden i skjøtelista, og
    * omvendt; se `viewport.setHoverJoint` for den andre veien).
    */
-  hitJoint(world, tolPx = 8) {
+  hitJoint(world, tolPx = 8, includeAuto = false) {
     const tol = tolPx * this.viewport.unitsPerPixel;
     let best = null;
     let bestD = tol;
-    for (const j of this.store.state.joints) {
+    // Automatiske skjøter (#61) følger geometrien og kan ikke dras; de tas
+    // bare med der et klikk bare VELGER (Forsterkning-fanen, låst lerret).
+    for (const j of includeAuto ? this.store.allJoints() : this.store.state.joints) {
       if (!j.a || !j.b) continue;
       const [x1, y1] = j.a;
       const [x2, y2] = j.b;
@@ -619,7 +621,8 @@ export class ToolController {
     const list = this.store
       .withFollowingJoints(sel)
       .map((id) => this.store.entityById(id))
-      .filter(Boolean)
+      // Automatiske skjøter (#61) følger geometrien — de flyttes aldri selv.
+      .filter((e) => e && !e.auto)
       .map(({ kind, obj }) => ({
         id: obj.id,
         kind,
