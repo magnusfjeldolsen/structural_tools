@@ -74,6 +74,7 @@ import {
 } from './joints.js';
 import { JOINT_COLOR } from './store.js';
 import { jointForceFigureSvg } from './joint-force-figure.js';
+import { computeLine, lineInputsHtml, bindLineInputs, lineOutputHtml, lineDetailsHtml } from './line-ui.js';
 
 /* ------------------------------------------------------------------ *
  * Tallformatering
@@ -314,7 +315,16 @@ export function computeReinforcement(state) {
     const kConn = slip && slip.valid
       ? connectorStiffness({ ...connector, Kser: slip.K }, bMm)
       : connectorStiffness(connector, bMm);
-    return { bMm, connector, slip, rhoSource, ifStiff, kConn };
+    // K_ser (bruksgrense) uansett hvilken tilstand som er valgt: linjeberegningen
+    // regner selv både med K_ser og K_u = ⅔·K_ser (#63).
+    const slipSer = slipModulus(
+      connector.stiffSource === 'ec5'
+        ? { source: 'ec5', fastener: connector.ec5Fastener || 'dowel', rho1: rho1 == null ? undefined : rho1,
+            rho2: rho2 == null ? undefined : rho2, d: connector.ec5D, dc: connector.ec5Dc,
+            contact: connector.ec5Contact || 'timber-timber', state: 'SLS' }
+        : { source: 'eta', Kser: connector.Kser, state: 'SLS' }
+    );
+    return { bMm, connector, slip, slipSer, rhoSource, ifStiff, kConn };
 
   }
   const stiffById = new Map(
@@ -473,6 +483,8 @@ export function computeReinforcement(state) {
       hasNeighbor,
       existingOnly,
       determinate: jg.determinate,
+      groupIds: jg.groupIds,
+      slipSer: (stiffById.get(raw.id) || {}).slipSer || null,
       overConstrained: !!ocEntry,
       ocJointIds: ocEntry ? ocEntry.jointIds : null,
       shareApplied,
@@ -620,6 +632,7 @@ export function computeReinforcement(state) {
     k,
     allExisting,
     parts,
+    sectionParts,
     newParts,
     existingParts: existingPartsDisplay,
     section,
@@ -649,6 +662,16 @@ const H = (title, body, extra = '') => `
     </div>
     ${body}
   </div>`;
+
+/** «Snitt | Linje» øverst i venstre panel i Forsterkning-fanen. */
+function analysisToggle(mode) {
+  const btn = (key, label, tip) => `<button data-rf-analysis="${key}" title="${tip}"
+      class="flex-1 px-2 py-1 text-xs ${mode === key ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-300 hover:text-white'}">${label}</button>`;
+  return `<div class="flex rounded border border-slate-600 overflow-hidden" role="group" aria-label="Beregning">
+      ${btn('section', 'Snitt', 'Kreftene i ett snitt, full samvirkning')}
+      ${btn('line', 'Linje', 'Kreftene langs hele den nye delen, delvis samvirke (Volkersen/Newmark)')}
+    </div>`;
+}
 
 /** Ren tekst til `title`-attributtet: advarslene kan inneholde <strong> o.l. */
 function stripTags(html) {
@@ -864,6 +887,12 @@ export class ReinforcementPanel {
       return;
     }
 
+    if (state.analysis === 'line') {
+      this._renderLine(host, state, res);
+      return;
+    }
+    this.lineResult = null;
+
     // Ingen løpende tekst her: tabeller med tall, advarsler på én linje
     // (full forklaring i `title`), og alt som er bakgrunn sammenlagt under
     // «Detaljer». Forklaringene står i hjelpedialogen.
@@ -901,11 +930,38 @@ export class ReinforcementPanel {
       .join('');
 
     const input = document.getElementById(this.inputHostId);
-    if (input) input.innerHTML = H('Last', this._loadsBody(res));
+    if (input) input.innerHTML = analysisToggle('section') + H('Last', this._loadsBody(res));
 
     // Står figuren åpen, skal den vise de nye tallene.
     if (this.figureOpen) this._fillFigure();
 
+    this._bind();
+  }
+
+  /** Linjeberegningen (#63): input til venstre, krefter langs skjøten til høyre. */
+  _renderLine(host, state, res) {
+    const lr = computeLine(state, res);
+    this.lineResult = lr;
+    host.innerHTML = [
+      H('Krefter langs skjøten', lineOutputHtml(lr), lr.ok
+        ? `<button data-rf-act="copy" class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0">Kopier</button>`
+        : ''),
+      lr.ok
+        ? `<details class="rounded border border-slate-700 bg-slate-900/60" data-rf-details ${this.detailsOpen ? 'open' : ''}>
+             <summary class="px-2.5 py-1.5 text-xs text-slate-300 hover:text-white flex items-center gap-1.5">
+               <span class="chev text-slate-500" style="display:inline-block">›</span>
+               Detaljer: modell og forutsetninger
+             </summary>
+             <div class="px-2.5 pb-2.5 pt-1">${lineDetailsHtml(lr, state.unit)}</div>
+           </details>`
+        : '',
+    ].join('');
+    const input = document.getElementById(this.inputHostId);
+    if (input) {
+      input.innerHTML = analysisToggle('line') + lineInputsHtml(state, lr);
+      bindLineInputs(input, this.store);
+    }
+    if (this.figureOpen) this.closeFigure();
     this._bind();
   }
 
@@ -1310,6 +1366,12 @@ export class ReinforcementPanel {
     const store = this.store;
     const input = document.getElementById(this.inputHostId);
 
+    if (input) {
+      input.querySelectorAll('[data-rf-analysis]').forEach((el) => {
+        el.addEventListener('click', () => store.setAnalysis(el.dataset.rfAnalysis));
+      });
+    }
+
     (input || host).querySelectorAll('[data-rf]').forEach((el) => {
       const path = el.dataset.rf;
       el.addEventListener('change', () => {
@@ -1363,6 +1425,22 @@ export class ReinforcementPanel {
    * Samme tall som panelet viser, men flat tekst som kan limes i en rapport.
    */
   clipboardText() {
+    const lr = this.lineResult;
+    if (lr && lr.ok) {
+      const s = lr.summary;
+      const L = [
+        `LINJEBEREGNING — ${s.joint}`,
+        `q_max = ${n(Math.abs(s.qMax.ser), 1)} kN/m (K_ser) / ${n(Math.abs(s.qMax.u), 1)} kN/m (K_u) ved z = ${n(s.qMax.z, 2)} m`,
+        `Ytterste skrue F_v = ${n(s.Fv.ser, 2)} kN (K_ser), ${s.rows} rader, a = ${n(s.a, 0)} mm`,
+      ];
+      if (s.Fax != null) L.push(`Ytterste skrue F_ax = ${n(s.Fax, 2)} kN (fra q_T)`);
+      if (s.N2a) L.push(`N2 inn i knutepunktet ved z_a = ${n(s.N2a.ser, 1)} kN`);
+      if (s.N2b) L.push(`N2 inn i knutepunktet ved z_b = ${n(s.N2b.ser, 1)} kN`);
+      L.push(`N1 maks = ${n(s.N1max.u, 1)} kN (K_u) ved z = ${n(s.N1max.z, 2)} m`);
+      L.push(`eta = ${s.eta.u == null ? '-' : n(s.eta.u, 3)} (K_u),  1/lambda = ${n(s.Lc.ser, 0)} mm (K_ser)`);
+      for (const w of lr.warnings) L.push(`ADVARSEL: ${stripTags(w.short)}`);
+      return L.join('\n');
+    }
     const res = this.result;
     if (!res) return '';
     const lines = [res.allExisting ? 'KONTROLL AV EKSISTERENDE KONSTRUKSJON' : 'FORSTERKNING — to lasttilstander'];

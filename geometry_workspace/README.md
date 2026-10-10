@@ -33,12 +33,16 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/joints.js` | Skjøtelinjer: naboskap (`shapesTouch`), en kraftig nedskalert graf (kun til ΔN-ruting og advarsler), og halvplan-avskjæring for ES* (`halfPlaneParts`/`fullSectionParts`). Erstatter det slettede `interfaces.js`. Ingen DOM. |
 | `js/reinforcement-ui.js` | Broen modell → mekanikk (all enhetsomregning ett sted) og rendering av «Forsterkning»-fanen: lastfeltene (biaksielle) i venstre panel, og i høyre krafttabellen (én rad per skjøt), tverrsnittstabellen før/etter og «Detaljer», samt den sammenleggbare akse-/fortegnskonvensjonsfiguren (`axisConventionHtml`, delt med hjelpedialogen). |
 | `js/joint-force-figure.js` | Forklaringsfiguren bak (?) ved «Krefter i skjøtene»: bjelken fra siden i tre situasjoner (snitt i felt, forsterkningsende der M ≠ 0, forsterkningsende i momentnullpunkt), med brukerens tall i etikettene. Ren funksjon → SVG. Ingen DOM. |
+| `js/line-analysis.js` | Linjeberegningen (#63): to lag med felles krumning (Volkersen/Newmark), `N₂″ = λ²(N₂ − N₂∞)`, lastetabell, `twoLayer`/`lambda2`/`nInfinity`, og en tridiagonal løser på et gradert nett. Ren matematikk, N og mm. Ingen DOM. |
+| `js/line-ui.js` | Broen modell → linjeberegning (valg av skjøt, speilet par, kontroll av input, K_ser og K_u) og visningen: input til venstre, tabell og plott til høyre, detaljer, og tabell/plott til rapporten. |
 | `js/numeric-input.js` | CAD-aktig tallinntasting i lerretet: tilstandsmaskin + tolkning av `300 200` / `D 300 200` / `10,5 0`. Uavhengig av verktøyene. |
 | `js/main.js` | Bootstrap, hurtigtaster og ruting av tastetrykk til tallinntastingen |
 | `tests/reinforcement.test.mjs` | Fasit for grunnmekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
 | `tests/joints.test.mjs` | Fasit for naboskap, grafen og halvplan-ES*. `node geometry_workspace/tests/joints.test.mjs` |
 | `tests/shape-style.test.mjs` | Fasit for fylling etter tilstand og kontur etter materialfamilie. `node geometry_workspace/tests/shape-style.test.mjs` |
 | `tests/joint-force-figure.test.mjs` | Fasit for forklaringsfiguren: tre paneler, tall i etikettene, «…» når de mangler. `node geometry_workspace/tests/joint-force-figure.test.mjs` |
+| `tests/line-analysis.test.mjs` | Fasit for linjeberegningen: lukkede løsninger løs–løs, festet–løs og festet–festet ved λL = 0,5, 1 og 10 (begge ender og ∫q), hopp i N, SMath-tallene, samsvar med full samvirkning (`axialInGroup`), fri tøyning, invarianter og lastetabellen. `node geometry_workspace/tests/line-analysis.test.mjs` |
+| `tests/line-ui.test.mjs` | Linjeberegningen hele veien fra tegnet modell: SMath-tallene, sperrene (valg, tabell, skjøt, glippe) og to like, speilede nye deler. `node geometry_workspace/tests/line-ui.test.mjs` |
 | `tests/routing.test.mjs` | ΔN-rutingen gjennom hele broen (`computeReinforcement`): kjede eksisterende–eksisterende–ny er bestemt, og i en ekte sløyfe fordeles ΔN etter skjøtestivhet bare på skjøtene som berører den nye delen. `node geometry_workspace/tests/routing.test.mjs` |
 | `tests/composite.test.mjs` | Fasit for festemiddelstivhet (EC5/ETA), γ-metoden, biaksiell skjærstrøm/hovedakser og forankringskontroll. `node geometry_workspace/tests/composite.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
@@ -334,6 +338,49 @@ Volkersen-avsnittet som sto her, er fjernet: `volkersen()` modellerer en
 overlappsskjøt (P → 0 / 0 → P) og gir max(r, 1−r)·ΔN·λ, mens riktig topp
 ved løs ende av en forsterkning er ΔN·λ — 41–50 % for lavt. Toppene langs
 skjøten regnes i linjeberegningen (#63).
+
+### Linjeberegning — kreftene langs hele den nye delen
+
+I Forsterkning-fanen velges **«Snitt»** eller **«Linje»** øverst i venstre
+panel. Snittberegningen gir kreftene i ett snitt med full samvirkning;
+middelverdiene `q_N` og `N_G/L` er ikke dimensjonerende for skruer.
+Linjeberegningen gir dem: toppen i endene, ved hopp i N og fordelingen
+langs hele skjøten.
+
+Modellen (`js/line-analysis.js`) er to lag med felles krumning — Volkersen
+for aksialkraft, Newmark (1951) for bøyning — forbundet av en jevn fjær
+`q = k·δ`, `k = rader·K/a`:
+
+```
+N₂″ = λ²·(N₂ − N₂∞(z))
+λ²  = k·(1/EA₁ + 1/EA₂ + dᵀK₀⁻¹d)
+N₂∞ = [N/EA₁ + dᵀK₀⁻¹(M − N·r₁) + ε_eks − ε_ny] / (λ²/k)
+q   = N₂′
+```
+
+`d` er avstanden mellom lagenes tyngdepunkt, `K₀` summen av lagenes egne
+bøyestivhetsmatriser, `r₁` det eksisterende tyngdepunktet relativt til det
+sammensatte. `N₂∞` er kraften ved full samvirkning (testet mot
+`axialInGroup`). Alt geometrisk hentes fra tegningen — ingen
+tverrsnittsdata tastes inn på nytt.
+
+Inndata: lastdiagram (`z N M_x M_y N_før`, lim inn fra Excel; hopp = to
+rader med samme z), utstrekning `z_a`/`z_b`, randbetingelse per ende (løs:
+`N₂ = 0`; festet i knutepunkt: `N₂ = N₂∞`), hvor N angriper (eksisterende
+eller sammensatt tyngdepunkt), sideveis fastholding (fri / om x / om y /
+begge) og fri tøyning per del. De to valgene har bevisst ingen standard: for
+en del på siden av gurten endrer de toppen med en faktor 2. Skjøtedata
+(rader, a, K_ser, q_T) står i skjøtelista.
+
+Resultatet regnes med **K_ser og K_u = ⅔·K_ser** side om side: K_ser styrer
+skruetopp og N₂, K_u styrer η og N₁ (markert ●). Ut kommer q_max og hvor,
+kraft i ytterste skrue `F_v = q·a/rader` og eventuelt `F_ax = q_T·a/rader`
+hver for seg (til EC5 8.7.3), N₂ inn i hvert festet knutepunkt, N₁ maks, η og
+1/λ, pluss plott av kreftene i delene og av q langs z. Linjeberegningen
+gjelder én skjøtelinje mellom eksisterende og ny del, eller to like, speilede
+nye deler; flere skjøter mot ny del eller en lukket sløyfe nektes eksplisitt.
+Uten tre–tre-kontakt (glippe/utforing) sperres resultatet til K legges inn
+fritt.
 
 ### Kraft, ikke kapasitet
 
