@@ -368,7 +368,7 @@ test('11. Skjøtegruppa er delt i navngitte deler, i fast rekkefølge', () => {
   const g = derivationModel(makeRes({}))[1];
   const order = [];
   for (const s of g.steps) if (order[order.length - 1] !== s.part) order.push(s.part);
-  eq('delene i rekkefølge', order.join(' → '), 'es → force → es → force → axial → force → volkersen → anchor');
+  eq('delene i rekkefølge', order.join(' → '), 'es → force → es → force → axial → force → anchor');
 });
 
 test('12. Ingen kapasitetskontroll — verktøyet gir kraften, ikke utnyttelsen', () => {
@@ -377,15 +377,18 @@ test('12. Ingen kapasitetskontroll — verktøyet gir kraften, ikke utnyttelsen'
   ok('ingen utnyttelse noe sted', !g.steps.some((s) => /utnyttelse|util/i.test(`${s.sym} ${s.formula}`)));
 });
 
-test('13. Volkersen og forankring faller bort når de ikke er anvendelige', () => {
+test('13. Ingen Volkersen-poster (for lav overlappsformel, #59), og forankring faller bort uten N_G', () => {
   const uten = derivationModel(makeRes({ joints: [{ volkersen: null, anchorReq: null }] }))[1];
   ok('ingen Volkersen-poster', partsOf(uten, 'volkersen').length === 0);
   ok('ingen forankringsposter', partsOf(uten, 'anchor').length === 0);
   // Kraftdelen er den samme uansett — den avhenger ikke av hva som kommer etter.
   sameSet('kraftdelen er uendret', symsOf(uten, 'force'), ['q_før', 'q_etter', 'q_V,tot', 'q_N', 'q_tot']);
 
-  const ugyldigVol = derivationModel(makeRes({ joints: [{ volkersen: { valid: false } }] }))[1];
-  ok('ugyldig Volkersen gir ingen poster', partsOf(ugyldigVol, 'volkersen').length === 0);
+  // Selv en gyldig Volkersen-løsning i resultatet skal ikke vises: den var en
+  // overlappsformel, 41–50 % for lav ved forsterkning (#59). Linjeberegningen
+  // (#63) erstatter den.
+  const medVol = derivationModel(makeRes({}))[1];
+  ok('ingen Volkersen-poster selv når res har en løsning', partsOf(medVol, 'volkersen').length === 0);
 });
 
 test('14. Forankringen gir krefter, ikke kraft per forbinder', () => {

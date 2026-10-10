@@ -41,7 +41,7 @@ const rf = await loadModule('../js/reinforcement.js');
 const { ringProps, rectPoints, translatePoints } = geom;
 const {
   sectionEA, compareStates, axialSplit, axialTransfer,
-  shearFlow, anchorFlow, volkersen, connectorStiffness, connectorCheck,
+  shearFlow, anchorFlow, volkersen, connectorStiffness,
   kNtoN,
 } = rf;
 
@@ -310,34 +310,6 @@ test('5. Transformert tverrsnitt, tre på stål (E-forhold 1/20): y_c = 46.6667 
  * 6. Forbinderkontroll
  * ------------------------------------------------------------------ */
 
-test('6. Forbinderkontroll: q = 100 N/mm, F_Rd = 8 kN, 1 rad gir s_req = 80 mm', () => {
-  // HÅNDREGNING: s_req = rader·F_Rd·1000/q = 1·8·1000/100 = 80 mm
-  const screw = connectorCheck({ q: 100, connector: { kind: 'screw', FRd: 8, rows: 1, spacing: 80 } });
-  close('s_req [mm]', screw.sReq, 80, 1e-12);
-  close('utnyttelse ved s = 80 mm', screw.util, 1, 1e-12);
-  close('q_Rd ved s = 80 mm [N/mm]', screw.qRd, 100, 1e-12);
-  ok('utnyttelse 1.0 regnes som ok', screw.ok === true);
-
-  // Dobbelt så tett rad: s_req halveres ikke — den dobles, fordi kapasiteten
-  // per lengde dobles. 2 rader ⟹ s_req = 160 mm.
-  const twoRows = connectorCheck({ q: 100, connector: { kind: 'screw', FRd: 8, rows: 2, spacing: 200 } });
-  close('s_req med 2 rader [mm]', twoRows.sReq, 160, 1e-12);
-  close('utnyttelse ved s = 200 mm', twoRows.util, 100 * 200 / (2 * 8000), 1e-12);
-  ok('for stor senteravstand gir ok=false', twoRows.ok === false, `util = ${fmt(twoRows.util)}`);
-
-  // q = 0 skal ikke gi NaN.
-  const noLoad = connectorCheck({ q: 0, connector: { kind: 'screw', FRd: 8, rows: 1, spacing: 200 } });
-  ok('q = 0 gir s_req = Infinity, ikke NaN', noLoad.sReq === Infinity && noLoad.util === 0);
-});
-
-/* ================================================================== *
- * Egne tilfeller — dekker det de seks over ikke gjør
- * ================================================================== */
-
-/* ------------------------------------------------------------------ *
- * 7. Grensesnitt i ytterkant
- * ------------------------------------------------------------------ */
-
 test('7. Grensesnitt i ytterkant gir q -> 0, og hele tverrsnittet gir ES* = 0', () => {
   // Fysikken: ES* = Σ E A (y − y_c) for gruppa. Legges snittet helt i
   // ytterkanten er gruppa tom, og det er ingen aksialkraft å overføre. Legges
@@ -481,7 +453,7 @@ test('10. axis = "x" gir samme svar som "y" på et tverrsnitt speilet om diagona
  * 11. Forbindelsesstivhet og limkontroll
  * ------------------------------------------------------------------ */
 
-test('11. connectorStiffness og limkontroll — enhetene går opp', () => {
+test('11. connectorStiffness — enhetene går opp', () => {
   // LIM: k = G_a·b/t_a = 700·150/2 = 52500 N/mm per mm skjøtelengde.
   //      Enhet: (N/mm²)·mm/mm = N/mm². ✓
   const kGlue = connectorStiffness({ kind: 'glue', Ga: 700, ta: 2 }, 150);
@@ -490,16 +462,6 @@ test('11. connectorStiffness og limkontroll — enhetene går opp', () => {
   // SKRUE: k = K_ser·rader/s = 5000·2/200 = 50 N/mm².  (N/mm)·(1/mm) = N/mm². ✓
   const kScrew = connectorStiffness({ kind: 'screw', Kser: 5000, rows: 2, spacing: 200 });
   close('k for skrue [N/mm²]', kScrew, 50, 1e-12);
-
-  // LIMKONTROLL: τ = q/b = 600/150 = 4.0 N/mm², τ_Rd = 4.0 ⟹ utnyttelse 1.0.
-  const glue = connectorCheck({ q: 600, bondWidth: 150, connector: { kind: 'glue', tauRd: 4.0 } });
-  close('τ [N/mm²]', glue.tau, 4, 1e-12);
-  close('utnyttelse', glue.util, 1, 1e-12);
-  close('q_Rd [N/mm]', glue.qRd, 600, 1e-12);
-
-  // Manglende heftbredde skal gi valid=false, ikke Infinity.
-  const noB = connectorCheck({ q: 600, bondWidth: 0, connector: { kind: 'glue', tauRd: 4.0 } });
-  ok('heftbredde 0 gir valid=false', noB.valid === false && noB.tau === null);
 });
 
 /* ------------------------------------------------------------------ *

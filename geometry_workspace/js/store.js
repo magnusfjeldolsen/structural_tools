@@ -43,30 +43,23 @@ function nextJointId() {
 export const JOINT_COLOR = '#2dd4bf';
 
 /**
- * Standard forbinderdata for en ny skjøt (v3, §4 i joints-planen). Sveisefeltene
- * (`qRd`, `a_weld`, `fvwd`, `nWelds`) er nye i denne versjonen — uten dem kan
- * `connector.kind` ikke settes til `'weld'` med fornuftige startverdier.
- * `f_vw,d` (`fvwd`) regnes IKKE ut her — den hentes fra modulen `weld_capacity/`.
+ * Standard skjøtedata for en ny skjøt: det som bestemmer skjøtestivheten
+ * k = rader·K/s (se CONTEXT.md). Ingen kapasitet — verktøyet gir kraften
+ * skjøten må ta, ikke om et festemiddel holder. Feltene for K_ser-kilden
+ * (EC5 tabell 7.1) og γ-metoden legges på av panelet når de brukes.
  */
 export function defaultConnector() {
   return {
-    kind: 'screw',
-    // skrue
-    FRd: 8.0, // kapasitet per forbinder [kN]
     rows: 1, // antall rader på tvers
     spacing: 200, // senteravstand langs bjelkeaksen [mm]
-    Kser: 5000, // stivhet per forbinder [N/mm]
-    // lim
-    tauRd: 4.0, // dimensjonerende heftfasthet [N/mm²]
-    Ga: 700, // limets skjærmodul [N/mm²]
-    ta: 2, // limtykkelse [mm]
-    // sveis
-    qRd: null, // kapasitet per mm skjøtelengde [N/mm] — satt direkte overstyrer utledningen
-    a_weld: 4, // a-mål [mm]
-    fvwd: 207, // dimensjonerende skjærfasthet i sveisesnittet [N/mm²]
-    nWelds: 2, // antall sveisestrenger langs skjøten
+    Kser: 5000, // glidningsmodul per forbinder [N/mm], fritt innlagt
   };
 }
+
+/** Felt som hørte til forbindelsestype og kapasitet (før #58/#59) — lest og forkastet. */
+const DROPPED_CONNECTOR_FIELDS = [
+  'kind', 'FRd', 'shearPlanes', 'tauRd', 'Ga', 'ta', 'qRd', 'a_weld', 'fvwd', 'nWelds', 'anchorN', 'anchorFRd',
+];
 
 /**
  * Standardmateriale for en form. E er i N/mm², uavhengig av arbeidsenheten,
@@ -191,12 +184,11 @@ function migrateLoads(loads) {
  * Oppgraderer én skjøt til v3 (§4). Gamle grensesnitt (v1/v2) beholder `a`,
  * `b` og `connector`; `groupIds` forkastes bevisst — gruppa utledes nå fra
  * halvplanet/grafen (§8) i stedet for å ligge lagret på skjøten. `share` er nytt
- * (null = automatisk lik fordeling ved et statisk ubestemt oppsett, §2).
+ * (null = automatisk etter skjøtestivhet k ved et statisk ubestemt oppsett, §2).
  */
 function migrateJoint(f, i) {
   const a = Array.isArray(f && f.a) ? [num(f.a[0]), num(f.a[1])] : [0, 0];
   const b = Array.isArray(f && f.b) ? [num(f.b[0]), num(f.b[1])] : [0, 0];
-  const bw = Number(f && f.bondWidth);
   const shareRaw = f && f.share;
   const share = shareRaw === null || shareRaw === undefined ? NaN : Number(shareRaw);
   return {
@@ -204,10 +196,15 @@ function migrateJoint(f, i) {
     name: (f && f.name) || `Skjøt ${i + 1}`,
     a,
     b,
-    bondWidth: Number.isFinite(bw) && bw > 0 ? bw : null,
     share: Number.isFinite(share) && share >= 0 && share <= 1 ? share : null,
-    connector: { ...defaultConnector(), ...((f && f.connector) || {}) },
+    connector: connectorFrom(f && f.connector),
   };
+}
+
+function connectorFrom(raw) {
+  const c = { ...defaultConnector(), ...(raw || {}) };
+  for (const key of DROPPED_CONNECTOR_FIELDS) delete c[key];
+  return c;
 }
 
 /**
@@ -737,7 +734,6 @@ export class Store {
       name: opts.name || autoJointName(a, b, shapes),
       a: [a[0], a[1]],
       b: [b[0], b[1]],
-      bondWidth: null,
       share: null,
       connector: defaultConnector(),
     };
@@ -891,8 +887,7 @@ export class Store {
         st.reference = [st.reference[0] * k, st.reference[1] * k];
         st.grid.step = st.grid.step * k;
         // Skjøtelinjene er geometri, og L er en lengde i arbeidsenheten.
-        // `bondWidth` er derimot en ABSOLUTT mm-verdi (samme grunn som
-        // forbinderfeltene, se defaultConnector) og skal IKKE regnes om her.
+        // Skjøtedataene (rader, s, K) er absolutte og regnes IKKE om.
         st.joints = st.joints.map((f) => ({
           ...f,
           a: [f.a[0] * k, f.a[1] * k],
