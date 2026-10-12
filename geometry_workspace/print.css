@@ -71,6 +71,10 @@
   box-sizing: content-box;
   width: 174mm;
   max-width: none;
+  /* Flex-elementet ville ellers strekkes til vinduets høyde, ikke innholdets:
+     det hvite arket sluttet ved skjermkanten, og alt under (plottene og side 2)
+     lå på mørk bakgrunn — usynlig (#69). */
+  align-self: flex-start;
   background: #fff;
   color: #111;
   padding: 8mm;
