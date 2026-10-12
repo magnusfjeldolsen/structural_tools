@@ -14,7 +14,7 @@ const vendor = await readFile(fileURLToPath(new URL('../vendor/polygon-clipping.
 await import('data:text/javascript;charset=utf-8;base64,' + Buffer.from(vendor, 'utf8').toString('base64'));
 const url = (p) => pathToFileURL(fileURLToPath(new URL(p, import.meta.url))).href;
 const { computeReinforcement } = await import(url('../js/reinforcement-ui.js'));
-const { computeLine, aiPrompt, lineConventionHtml, lineZones, qTableTsv } = await import(url('../js/line-ui.js'));
+const { computeLine, aiPrompt, lineConventionHtml, lineZones, qTableTsv, resolveZones, splitZone, deleteZone, moveBoundary, endZones, setZoneField } = await import(url('../js/line-ui.js'));
 
 let failed = 0;
 function ok(label, cond, extra = '') {
@@ -111,6 +111,45 @@ console.log('Felttabell og q(z)');
   const zsCol = tsv.slice(1).map((l) => Number(l.split('\t')[0]));
   ok('hoppene er med som egne rader', zsCol.includes(4) && zsCol.includes(8));
   ok('fra 0 til 12 m, stigende', zsCol[0] === 0 && zsCol[zsCol.length - 1] === 12 && zsCol.every((z, i) => i === 0 || z >= zsCol[i - 1]));
+}
+
+console.log('Skruesoner (#71)');
+{
+  const shapes = [shape('gurt', R(0, 0, 50, 130), 'existing', 11000), shape('ny', R(50, 0, 48, 198), 'new', 11000)];
+  const j = joint('j', [50, 0], [50, 130]); // 2 rader, a = 100, K = 2990
+  const base = { rows: 2, a: 100, K: 2990 };
+  // Uniform glissen: a = 200 overalt.
+  const sparse = run(model(shapes, [j], { zones: [{ zEnd: null, a: 200 }] }));
+  // Tette endesoner a = 60 over 1,5 m, a = 200 i midten.
+  const zoned = run(model(shapes, [j], { zones: [{ zEnd: 1.5, a: 60 }, { zEnd: 10.5, a: 200 }, { zEnd: null, a: 60 }] }));
+  ok('begge regnes', sparse.ok && zoned.ok, [...sparse.blocked, ...zoned.blocked].join(' | '));
+  if (sparse.ok && zoned.ok) {
+    ok('tre soner', zoned.zones.length === 3 && zoned.zones[1].z0 === 1.5 && zoned.zones[2].z0 === 10.5);
+    ok('tette endesoner gir lavere kraft per skrue', zoned.summary.Fv.ser < sparse.summary.Fv.ser, `${zoned.summary.Fv.ser} mot ${sparse.summary.Fv.ser}`);
+    // Kraft per skrue er kontinuerlig over grensen (samme skrue), q hopper.
+    const r = zoned.res.ser;
+    const ib = r.z.findIndex((z) => Math.abs(z - 1500) < 1e-6);
+    ok('kraft per skrue kontinuerlig ved 1,5 m', ib > 0 && Math.abs(r.F[ib - 1] - r.F[ib + 1]) < 0.02 * Math.max(r.F[ib - 1], 1), `${r.F[ib - 1]} / ${r.F[ib + 1]}`);
+    ok('q hopper ved 1,5 m (tett → glissen)', Math.abs(r.q[ib - 1]) > 2 * Math.abs(r.q[ib + 1]));
+    // Antall (tabellen går til 12 m): 1500/60·2 + 9000/200·2 + 1500/60·2 = 50 + 90 + 50 = 190
+    ok('skruer totalt', zoned.summary.count === 50 + 90 + 50, String(zoned.summary.count));
+  }
+
+  // Hjelperne: aldri hull eller overlapp.
+  const one = resolveZones({ zones: [] }, 0, 12, base);
+  const split = resolveZones({ zones: splitZone(one, 0, base) }, 0, 12, base);
+  ok('del: to soner som møtes på midten', split.length === 2 && split[0].z1 === 6 && split[1].z0 === 6 && split[1].z1 === 12);
+  const moved = resolveZones({ zones: moveBoundary(split, 0, 20, base) }, 0, 12, base);
+  ok('flytt grense: holdes innenfor naboen', moved[0].z1 < 12 && moved[1].z0 === moved[0].z1 && moved[1].z1 === 12);
+  const merged = resolveZones({ zones: deleteZone(split, 1, base) }, 0, 12, base);
+  ok('slett: naboen tar over hele lengden', merged.length === 1 && merged[0].z0 === 0 && merged[0].z1 === 12);
+  const ends = resolveZones({ zones: endZones(one, 0, 12, 1.5, 60, base) }, 0, 12, base);
+  ok('endesoner: 0–1,5 / 1,5–10,5 / 10,5–12, a = 60 i endene', ends.length === 3 && ends[0].z1 === 1.5 && ends[2].z0 === 10.5 && ends[0].a === 60 && ends[2].a === 60 && ends[1].a === 100);
+  ok('endesoner for lange nektes', endZones(one, 0, 12, 7, 60, base) === null);
+  const field = resolveZones({ zones: setZoneField(split, 1, 'rows', 3, base) }, 0, 12, base);
+  ok('rader per sone', field[1].rows === 3 && field[0].rows === 2);
+  const kz = resolveZones({ zones: setZoneField(split, 0, 'Kser', 4000, base) }, 0, 12, base);
+  ok('K_ser per sone', kz[0].K === 4000 && kz[1].K === 2990);
 }
 
 console.log('Prompten til brukerens AI');

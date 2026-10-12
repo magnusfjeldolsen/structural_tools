@@ -165,7 +165,17 @@ export function defaultLine() {
     restraint: null, // 'free' | 'x' | 'y' | 'xy' — aksene som er fastholdt
     epsExisting: 0, // fri tøyning, ‰
     epsNew: 0,
+    // Skruesoner (#71): hver sone slutter i `zEnd` [m] (den siste i z_b, `null`).
+    // Tom liste = én sone med skjøtens rader og a. Soner lagres som grenser,
+    // så de kan aldri overlappe eller la hull stå igjen.
+    zones: [],
   };
+}
+
+function migrateZone(z) {
+  const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+  const pos = (v) => { const x = num(v); return x != null && x > 0 ? x : null; };
+  return { zEnd: num(z && z.zEnd), rows: pos(z && z.rows), a: pos(z && z.a), Kser: pos(z && z.Kser), d: pos(z && z.d) };
 }
 
 function migrateLine(l) {
@@ -182,6 +192,7 @@ function migrateLine(l) {
     restraint: ['free', 'x', 'y', 'xy'].includes(src.restraint) ? src.restraint : null,
     epsExisting: Number.isFinite(Number(src.epsExisting)) ? Number(src.epsExisting) : 0,
     epsNew: Number.isFinite(Number(src.epsNew)) ? Number(src.epsNew) : 0,
+    zones: Array.isArray(src.zones) ? src.zones.map(migrateZone) : [],
   };
 }
 

@@ -393,6 +393,21 @@ begge) og fri tøyning per del. De to valgene har bevisst ingen standard: for
 en del på siden av gurten endrer de toppen med en faktor 2. Skjøtedata
 (rader, a, K_ser, q_T) står i skjøtelista.
 
+**Skruesoner (#71).** Skrueavstanden trenger ikke være lik langs delen.
+Bare skjøtestivheten `k = rader·K/a` varierer; resten er geometri, så
+ligningen blir `(N₂′/k(z))′ = c·(N₂ − N₂∞)` med `c = 1/EA₁ + 1/EA₂ + dᵀK₀⁻¹d`.
+Ved en sonegrense er glidningen δ kontinuerlig, q hopper med forholdet
+mellom k, og **kraften per skrue F = K·δ = q·a/rader er kontinuerlig** (med
+samme skrue) — den er derfor hovedplottet. Sonelisten i venstre panel starter
+med én sone fra z_a til z_b; «÷» deler en sone, «✕» slår den sammen med
+naboen, og «z til» flytter grensen til neste sone, så soner aldri overlapper
+eller lar hull stå igjen (de lagres som grenser). Per sone kan rader, a og
+skruen (K_ser, eller d når K regnes etter EC5) overstyres; tomt felt =
+skjøtens standard. «Endesoner…» lager to tettere endesoner i én operasjon,
+med forslag til lengde ≈ 2/λ. Tabellen «Per sone» gir antall skruer og
+største kraft per skrue i hver sone. Løseren er testet mot den lukkede
+løsningen for to soner.
+
 Under plottene viser **«Per felt mellom knutepunkt»** største |q| og kraft per
 skrue i hvert felt mellom hoppene i diagrammet (`lineZones`) — tallene man
 trenger for å velge skrueavstand felt for felt. **«Kopier q(z)»** kopierer
