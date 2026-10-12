@@ -34,7 +34,7 @@ import { computeReinforcement, n, q, sci } from './reinforcement-ui.js';
 import { effectiveJoints } from './store.js';
 import { buildFigureSvg } from './report-figure.js';
 import { materialByName } from './materials.js';
-import { computeLine, lineRows, linePlots } from './line-ui.js';
+import { computeLine, lineRows, linePlots, lineZonesTable } from './line-ui.js';
 
 /* ------------------------------------------------------------------ *
  * Formatering
@@ -421,15 +421,24 @@ function jointsBlock(res) {
  * plott som panelet, i rapportens lyse palett, slik at de kan overføres til
  * EC5-knutepunkt og etterprøves.
  */
-function lineBlock(state, res) {
-  const lr = computeLine(state, res);
+/**
+ * Linjeberegningen (#63) — side 1 får nøkkeltabellen, side 2 forutsetningene,
+ * plottene og felttabellen. Alt på side 1 fikk ikke plass på ett A4-ark (#69).
+ */
+function lineSetupText(lr, line) {
+  const restr = { free: 'fri om begge akser', x: 'fastholdt om x-aksen', y: 'fastholdt om y-aksen', xy: 'fastholdt om begge akser' }[line.restraint];
+  const ends = (e) => (e === 'fixed' ? 'festet i knutepunkt' : 'løs');
+  return `Skjøt: ${esc(lr.summary.joint)} · z = ${n(lr.za, 2)}–${n(lr.zb, 2)} m · ender: ${ends(line.endA)} / ${ends(line.endB)} ·
+      N i ${line.nAt === 'existing' ? 'eksisterende' : 'sammensatt'} tyngdepunkt · ${esc(restr || '')} ·
+      fri tøyning ε_eks = ${n(Number(line.epsExisting) || 0, 2)} ‰, ε_ny = ${n(Number(line.epsNew) || 0, 2)} ‰ ·
+      skjøtedata: ${lr.summary.rows} rad(er), a = ${n(lr.summary.a, 0)} mm, k = ${n(lr.kSer, 2)} N/mm² (K_ser)`;
+}
+
+function lineSummaryBlock(lr, line) {
   if (!lr.ok) {
     return `<section class="atomic"><h3>Linjeberegning</h3>
       <p class="muted">Ikke regnet: ${lr.blocked.map(esc).join(' ')}</p></section>`;
   }
-  const line = state.line || {};
-  const restr = { free: 'fri om begge akser', x: 'fastholdt om x-aksen', y: 'fastholdt om y-aksen', xy: 'fastholdt om begge akser' }[line.restraint];
-  const ends = (e) => (e === 'fixed' ? 'festet i knutepunkt' : 'løs');
   const rows = lineRows(lr)
     .map(([label, ser, u, gov]) => `<tr>
         <td>${label.replace(/<br>/g, ' · ').replace(/<[^>]+>/g, '')}</td>
@@ -437,26 +446,42 @@ function lineBlock(state, res) {
         <td class="num">${gov === 'u' ? `<b>${u}</b>` : u}</td>
       </tr>`)
     .join('');
+  return `<section class="keep-with-next">
+    <h3>Linjeberegning — krefter langs skjøten</h3>
+    <p class="muted">${lineSetupText(lr, line)}</p>
+    <table>
+      <thead><tr><th></th><th class="num">K_ser</th><th class="num">K_u = ⅔·K_ser</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="muted">Uthevet = styrende. K_ser styrer skruetopp og N₂, K_u styrer η og N₁. Plott og kraft per felt: side 2.</p>
+  </section>`;
+}
+
+function linePage2(lr) {
+  if (!lr.ok) return '';
   const ink = { text: '#475569', grid: '#cbd5e1', title: '#1e293b' };
   const colors = { existing: '#1d4ed8', fresh: '#c2410c', q: '#1d4ed8', anchor: '#a21caf', inf: '#64748b' };
   const { forces, flow } = linePlots(lr, ink, colors);
   const warns = lr.warnings.length
     ? `<p class="muted">${lr.warnings.map((w) => `⚠ ${esc(w.short.replace(/<[^>]+>/g, ''))}`).join('<br>')}</p>`
     : '';
-  return `<section class="keep-with-next">
-    <h3>Linjeberegning — krefter langs skjøten</h3>
-    <p class="muted">Skjøt: ${esc(lr.summary.joint)} · z = ${n(lr.za, 2)}–${n(lr.zb, 2)} m · ender: ${ends(line.endA)} / ${ends(line.endB)} ·
-      N i ${line.nAt === 'existing' ? 'eksisterende' : 'sammensatt'} tyngdepunkt · ${esc(restr || '')} ·
-      fri tøyning ε_eks = ${n(Number(line.epsExisting) || 0, 2)} ‰, ε_ny = ${n(Number(line.epsNew) || 0, 2)} ‰</p>
-    <table>
-      <thead><tr><th></th><th class="num">K_ser</th><th class="num">K_u = ⅔·K_ser</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <p class="muted">Uthevet = styrende. K_ser styrer skruetopp og N₂, K_u styrer η og N₁. K_ser i bruddgrense er en
-      øvre grense for toppen, ikke EC5-praksis. Modell: N₂″ = λ²(N₂ − N₂∞), delvis samvirke (Volkersen/Newmark).</p>
-    ${warns}
-    <div class="atomic">${forces}${flow}</div>
-  </section>`;
+  return `
+    <section class="atomic"><h3>Kreftene langs z</h3>${forces}${flow}</section>
+    <section class="keep-with-next">
+      <h3>Per felt mellom knutepunkt</h3>
+      ${lineZonesTable(lr, { screen: false })}
+      <p class="muted">Toppene sitter i endene og ved hoppene i lastdiagrammet. F_v per skrue er |q|·a/rader med
+        skjøtedataene over. Modellen regner med samme skrueavstand langs hele delen.</p>
+    </section>
+    <section class="atomic">
+      <h3>Modell og forutsetninger</h3>
+      <p class="muted">N₂″ = λ²·(N₂ − N₂∞), λ² = k·(1/EA₁ + 1/EA₂ + dᵀK₀⁻¹d), N₂∞ = [N/EA₁ + dᵀK₀⁻¹(M − N·r₁) + ε_eks − ε_ny]/(λ²/k):
+        to lag med felles krumning og delvis samvirke (Volkersen/Newmark), skruene smurt ut langs skjøten, lineær elastisk.
+        K_ser i bruddgrense er en øvre grense for toppkraften, ikke EC5-praksis. Langtid (k_def), fukt og midlertidig
+        avstiving er bare med som fri tøyning per del. Eksentrisitet mellom profilene gir i tillegg bøyning og aksialkraft
+        i skruene, som ikke er med.</p>
+      ${warns}
+    </section>`;
 }
 
 function scopeBlock() {
@@ -505,19 +530,26 @@ export function buildReportHtml(state, analysis) {
     return `${headBlock(state || {})}<p class="muted">Ingen modell å rapportere.</p>`;
   }
 
+  const lr = state.analysis === 'line' ? computeLine(state, res) : null;
   const page1 = [
     headBlock(state),
     figureBlock(state, analysis, res),
     partsBlock(state, res),
     // Linjeberegningen har sin egen last (diagrammet), oppsummert i blokka.
     state.analysis === 'line' ? effectBlock(res) : twoCol(loadsBlock(res), effectBlock(res)),
-    state.analysis === 'line' ? lineBlock(state, res) : jointsBlock(res),
+    state.analysis === 'line' ? lineSummaryBlock(lr, state.line || {}) : jointsBlock(res),
     scopeBlock(),
   ].join('\n');
 
-  // Side 2 fylles i bølge D. Stubben står med vilje synlig i stedet for å
-  // utelates: en rapport som stille mangler beregningsdelen ser ferdig ut.
-  const page2 = `<section class="page-2">
+  // Side 2: linjeberegningens plott og felttabell. I snittberegningen står
+  // stubben med vilje synlig i stedet for å utelates: en rapport som stille
+  // mangler beregningsdelen ser ferdig ut.
+  const page2 = lr && lr.ok
+    ? `<section class="page-2">
+    <h2>Beregning — linjeberegning</h2>
+    ${linePage2(lr)}
+  </section>`
+    : `<section class="page-2">
     <h2>Beregning</h2>
     <p class="muted">Den fullstendige utregningen kommer i neste versjon av rapporten.
       Inntil da står tallene i «Forsterkning»-fanen med full utledning.</p>
