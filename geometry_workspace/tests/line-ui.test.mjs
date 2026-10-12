@@ -14,7 +14,7 @@ const vendor = await readFile(fileURLToPath(new URL('../vendor/polygon-clipping.
 await import('data:text/javascript;charset=utf-8;base64,' + Buffer.from(vendor, 'utf8').toString('base64'));
 const url = (p) => pathToFileURL(fileURLToPath(new URL(p, import.meta.url))).href;
 const { computeReinforcement } = await import(url('../js/reinforcement-ui.js'));
-const { computeLine } = await import(url('../js/line-ui.js'));
+const { computeLine, aiPrompt, lineConventionHtml } = await import(url('../js/line-ui.js'));
 
 let failed = 0;
 function ok(label, cond, extra = '') {
@@ -92,6 +92,20 @@ console.log('To like, speilede nye deler');
     {},
   );
   ok('to ulike nye deler nektes', run(st2).blocked.some((b) => /to ulike/.test(b)));
+}
+
+console.log('Prompten til brukerens AI');
+{
+  const st = model([shape('Gurt 50x130', R(0, 0, 50, 130), 'existing', 11000), shape('Ny 48x198', R(50, 0, 48, 198), 'new', 11000)], [], { nAt: 'existing', restraint: 'y', endB: 'fixed' });
+  const p = aiPrompt(st);
+  ok('tabellformatet med kolonnene i rekkefølge', p.includes('z [m]\tN [kN]\tM_x [kNm]\tM_y [kNm]\tN_før [kN]'));
+  ok('hopp forklart som to rader med samme z', /TO rader med samme z/.test(p));
+  ok('fortegn: strekk positiv, M_y-advarsel', /Strekk positiv/.test(p) && /snu fortegnet/.test(p));
+  ok('alle innstillingene forklart', ['UTSTREKNING', 'Løs ende', 'Festet i knutepunkt', 'N ANGRIPER I', 'SIDEVEIS FASTHOLDING', 'FRI TØYNING', 'SKJØTEDATA'].every((k) => p.includes(k)));
+  ok('delene fra tegningen', p.includes('Eksisterende: Gurt 50x130') && p.includes('Ny: Ny 48x198'));
+  ok('det som er valgt så langt', /festet ved z_b/.test(p) && /eksisterende tyngdepunktet/.test(p) && /fastholdt om y-aksen/.test(p));
+  ok('ber om begrunnelse og antakelser', /begrunnelse/.test(p) && /antakelser/.test(p));
+  ok('fortegnstabellen', /Strekk positiv/.test(lineConventionHtml()) && /strekk i overkant/.test(lineConventionHtml()));
 }
 
 console.log(failed ? `\n${failed} feil` : '\nAlle tester bestått');
