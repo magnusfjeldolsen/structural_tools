@@ -981,7 +981,7 @@ export class ReinforcementPanel {
       bindLineInputs(input, this.store, {
         onHelp: (btn) => (this.figureOpen && this.popoverKind === 'convention' ? this.closeFigure() : this.openFigure(btn, 'convention')),
         onCopyPrompt: () => this._copyPrompt(),
-      });
+      }, lr);
     }
     if (this.figureOpen && this.popoverKind !== 'convention') this.closeFigure();
     this._bind();

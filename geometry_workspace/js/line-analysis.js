@@ -229,63 +229,105 @@ function buildMesh(za, zb, lambda, jumps) {
 }
 
 /**
- * Løser N₂″ = λ²(N₂ − N₂∞(z)) på [za, zb] med endelige differanser på et
- * gradert nett og Thomas-algoritmen (tridiagonal, ingen cosh — tåler stor λL).
+ * Løser (N₂′/k(z))′ = c·(N₂ − N₂∞(z)) på [za, zb] — skjøtestivheten k kan
+ * variere i soner langs delen (#71). Med én sone er det N₂″ = λ²(N₂ − N₂∞),
+ * λ² = c·k.
  *
- * Rendene: løs ende N₂ = 0; festet ende N₂ = N₂∞ (grenseverdien fra innsiden
- * av delen). Ved et hopp brukes snittet av N₂∞ på hver side i selve punktet.
+ * Fysikken ved en sonegrense: glidningen δ = N₂′/k er kontinuerlig (delene
+ * kan ikke rives fra hverandre), så q = k·δ HOPPER med forholdet mellom k, mens
+ * kraften per skrue F = K·δ er kontinuerlig så lenge skruen er den samme.
  *
- * @param {{za:number, zb:number, lambda:number, nInf:(z:number, side:number)=>number,
- *          endA:'loose'|'fixed', endB:'loose'|'fixed', jumps?: number[]}} arg  z i mm
- * @returns {{z: number[], N2: number[], Ninf: number[], q: number[]}}  q i N/mm (= kN/m)
+ * Endelige differanser i fluks-form på et gradert nett (tett ved ender, hopp
+ * og sonegrenser), løst med Thomas-algoritmen — tridiagonalt, ingen cosh,
+ * tåler stor λL. Rendene: løs ende N₂ = 0; festet ende N₂ = N₂∞.
+ *
+ * Bakoverkompatibelt: `lambda` uten `zones` er én sone med k = 1, c = λ².
+ *
+ * @param {{za:number, zb:number, nInf:(z:number, side:number)=>number,
+ *          endA:'loose'|'fixed', endB:'loose'|'fixed', jumps?: number[],
+ *          lambda?: number, c?: number, zones?: Array<{z0:number, z1:number, k:number}>}} arg  z i mm, k i N/mm²
+ * @returns {{z: number[], N2: number[], Ninf: number[], q: number[], delta: number[], kAt: number[]}}
+ *   q i N/mm (= kN/m), δ i mm; ved en sonegrense er q og k fra sonen til høyre
  */
-export function solveLine({ za, zb, lambda, nInf, endA = 'loose', endB = 'loose', jumps = [] }) {
-  const z = buildMesh(za, zb, lambda, jumps);
+export function solveLine({ za, zb, lambda, c: cIn, zones: zonesIn, nInf, endA = 'loose', endB = 'loose', jumps = [] }) {
+  const zones = zonesIn && zonesIn.length ? zonesIn : [{ z0: za, z1: zb, k: 1 }];
+  const c = zonesIn && zonesIn.length ? cIn : lambda * lambda;
+  const kMax = Math.max(...zones.map((zn) => zn.k));
+  const bounds = zones.slice(0, -1).map((zn) => zn.z1);
+  const z = buildMesh(za, zb, Math.sqrt(c * kMax), [...jumps, ...bounds]);
   const n = z.length;
+  // Stivheten i et punkt (side: −1 venstre sone, +1 høyre sone ved en grense).
+  const kOf = (zz, side = 1) => {
+    for (let i = 0; i < zones.length; i++) {
+      const zn = zones[i];
+      const last = i === zones.length - 1;
+      if (side < 0 ? zz > zn.z0 + 1e-9 && zz <= zn.z1 + 1e-9 : zz >= zn.z0 - 1e-9 && (zz < zn.z1 - 1e-9 || last)) return zn.k;
+    }
+    return zones[zones.length - 1].k;
+  };
+  const kSeg = (i) => kOf((z[i] + z[i + 1]) / 2); // stivheten mellom punkt i og i+1
   const Ninf = z.map((zz, i) => nInf(zz, i === 0 ? +1 : i === n - 1 ? -1 : 0));
 
   const N2 = new Array(n).fill(0);
   N2[0] = endA === 'fixed' ? Ninf[0] : 0;
   N2[n - 1] = endB === 'fixed' ? Ninf[n - 1] : 0;
 
-  // Indre punkter: a·N_{i−1} + b·N_i + c·N_{i+1} = −λ²·N∞_i, med
-  // a = 2/(h₋(h₋+h₊)), c = 2/(h₊(h₋+h₊)), b = −a − c − λ².
-  const l2 = lambda * lambda;
+  // Indre punkter: a·N_{i−1} + b·N_i + e·N_{i+1} = −c·N∞_i, med
+  // a = 2/((h₋+h₊)·h₋·k₋), e = 2/((h₋+h₊)·h₊·k₊), b = −a − e − c.
   const m = n - 2;
   const cp = new Array(m);
   const dp = new Array(m);
-  for (let k = 0; k < m; k++) {
-    const i = k + 1;
+  for (let t = 0; t < m; t++) {
+    const i = t + 1;
     const hm = z[i] - z[i - 1];
     const hp = z[i + 1] - z[i];
-    const a = 2 / (hm * (hm + hp));
-    const c = 2 / (hp * (hm + hp));
-    const b = -a - c - l2;
-    let rhs = -l2 * Ninf[i];
-    if (k === 0) rhs -= a * N2[0];
-    if (k === m - 1) rhs -= c * N2[n - 1];
-    const denom = k === 0 ? b : b - a * cp[k - 1];
-    cp[k] = c / denom;
-    dp[k] = (k === 0 ? rhs : rhs - a * dp[k - 1]) / denom;
+    const a = 2 / ((hm + hp) * hm * kSeg(i - 1));
+    const e = 2 / ((hm + hp) * hp * kSeg(i));
+    const b = -a - e - c;
+    let rhs = -c * Ninf[i];
+    if (t === 0) rhs -= a * N2[0];
+    if (t === m - 1) rhs -= e * N2[n - 1];
+    const denom = t === 0 ? b : b - a * cp[t - 1];
+    cp[t] = e / denom;
+    dp[t] = (t === 0 ? rhs : rhs - a * dp[t - 1]) / denom;
   }
-  for (let k = m - 1; k >= 0; k--) N2[k + 1] = k === m - 1 ? dp[k] : dp[k] - cp[k] * N2[k + 2];
+  for (let t = m - 1; t >= 0; t--) N2[t + 1] = t === m - 1 ? dp[t] : dp[t] - cp[t] * N2[t + 2];
 
-  // q = N₂′, andre ordens på ujevnt nett: sentralt inne, ensidig i endene.
+  // N₂′ andre ordens: sentralt inne i en sone, ensidig i endene og — fra hver
+  // side for seg — ved en sonegrense, der N₂′ har et knekkpunkt.
+  const back = (i) => {
+    const g0 = z[i] - z[i - 1];
+    const g1 = z[i - 1] - z[i - 2];
+    return ((2 * g0 + g1) / (g0 * (g0 + g1))) * N2[i] - ((g0 + g1) / (g0 * g1)) * N2[i - 1] + (g0 / (g1 * (g0 + g1))) * N2[i - 2];
+  };
+  const fwd = (i) => {
+    const h0 = z[i + 1] - z[i];
+    const h1 = z[i + 2] - z[i + 1];
+    return (-(2 * h0 + h1) / (h0 * (h0 + h1))) * N2[i] + ((h0 + h1) / (h0 * h1)) * N2[i + 1] - (h0 / (h1 * (h0 + h1))) * N2[i + 2];
+  };
+  const delta = new Array(n);
   const q = new Array(n);
-  for (let i = 1; i < n - 1; i++) {
-    const hm = z[i] - z[i - 1];
-    const hp = z[i + 1] - z[i];
-    q[i] = (hm * hm * N2[i + 1] - hp * hp * N2[i - 1] + (hp * hp - hm * hm) * N2[i]) / (hm * hp * (hm + hp));
+  const kAt = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const kR = kOf(z[i], +1);
+    kAt[i] = kR;
+    if (i === 0) delta[i] = fwd(0) / kR;
+    else if (i === n - 1) delta[i] = back(n - 1) / kOf(z[i], -1);
+    else {
+      const kL = kOf(z[i], -1);
+      if (kL !== kR && i >= 2 && i <= n - 3) {
+        delta[i] = (back(i) / kL + fwd(i) / kR) / 2;
+      } else {
+        const hm = z[i] - z[i - 1];
+        const hp = z[i + 1] - z[i];
+        const d1 = (hm * hm * N2[i + 1] - hp * hp * N2[i - 1] + (hp * hp - hm * hm) * N2[i]) / (hm * hp * (hm + hp));
+        delta[i] = d1 / kR;
+      }
+    }
+    q[i] = kR * delta[i];
   }
-  {
-    const h0 = z[1] - z[0];
-    const h1 = z[2] - z[1];
-    q[0] = (-(2 * h0 + h1) / (h0 * (h0 + h1))) * N2[0] + ((h0 + h1) / (h0 * h1)) * N2[1] - (h0 / (h1 * (h0 + h1))) * N2[2];
-    const g0 = z[n - 1] - z[n - 2];
-    const g1 = z[n - 2] - z[n - 3];
-    q[n - 1] = ((2 * g0 + g1) / (g0 * (g0 + g1))) * N2[n - 1] - ((g0 + g1) / (g0 * g1)) * N2[n - 2] + (g0 / (g1 * (g0 + g1))) * N2[n - 3];
-  }
-  return { z, N2, Ninf, q };
+  // Uten soner er k = 1, så q = N₂′ som før.
+  return { z, N2, Ninf, q, delta, kAt };
 }
 
 /** ∫f dz med trapesregelen. */
@@ -313,33 +355,51 @@ export function integrate(z, f) {
  *          endA: 'loose'|'fixed', endB: 'loose'|'fixed', kSer: number,
  *          epsExisting?: number, epsNew?: number}} arg  za/zb i mm, kSer i N/mm²
  */
-export function analyseLine({ layer, rows, jumps = [], za, zb, endA, endB, kSer, epsExisting = 0, epsNew = 0 }) {
+export function analyseLine({ layer, rows, jumps = [], za, zb, endA, endB, kSer, zones, epsExisting = 0, epsNew = 0 }) {
   const jumpsMm = jumps.map((z) => z * 1000).filter((z) => z > za && z < zb);
   const nInf = (z, side) => {
     const l = loadAt(rows, z, side);
     return nInfinity(layer, { N: l.N - l.Nf, Mx: l.Mx, My: l.My, epsExisting, epsNew });
   };
-  const run = (k) => {
-    const lam = Math.sqrt(lambda2(layer, k));
-    const s = solveLine({ za, zb, lambda: lam, nInf, endA, endB, jumps: jumpsMm });
+  // Skruesoner (#71): rader, a og K per sone. Uten soner: én sone med kSer.
+  const zs = zones && zones.length
+    ? zones
+    : [{ z0: za, z1: zb, rows: 1, a: 1, K: kSer }];
+  const c = lambda2(layer, 1); // λ² = c·k
+  const zoneAt = (z) => zs.find((zn, i) => z >= zn.z0 - 1e-9 && (z < zn.z1 - 1e-9 || i === zs.length - 1)) || zs[zs.length - 1];
+  const run = (scale) => {
+    const zk = zs.map((zn) => ({ z0: zn.z0, z1: zn.z1, k: (zn.rows * zn.K * scale) / zn.a }));
+    const s = solveLine({ za, zb, c, zones: zk, nInf, endA, endB, jumps: jumpsMm });
     const N1 = s.z.map((zz, i) => loadAt(rows, zz, i === 0 ? +1 : i === s.z.length - 1 ? -1 : 0).N - s.N2[i]);
-    let iq = 0;
-    for (let i = 1; i < s.q.length; i++) if (Math.abs(s.q[i]) > Math.abs(s.q[iq])) iq = i;
-    let iN1 = 0;
-    for (let i = 1; i < N1.length; i++) if (Math.abs(N1[i]) > Math.abs(N1[iN1])) iN1 = i;
+    // Kraft per skrue F = K·δ = q·a/rader [N] — kontinuerlig over en
+    // sonegrense med samme skrue, og det tallet skruene dimensjoneres for.
+    const F = s.z.map((zz, i) => {
+      const zn = zoneAt(zz);
+      return (Math.abs(s.q[i]) * zn.a) / zn.rows;
+    });
+    const argmax = (arr) => {
+      let im = 0;
+      for (let i = 1; i < arr.length; i++) if (Math.abs(arr[i]) > Math.abs(arr[im])) im = i;
+      return im;
+    };
+    const iq = argmax(s.q);
+    const iF = argmax(F);
+    const iN1 = argmax(N1);
     // η: hvor mye av kraften ved full samvirkning den nye delen faktisk får,
     // der N₂∞ er størst (endene holdes utenfor — der er N₂ bundet av randen).
     let iInf = Math.floor(s.z.length / 2);
     for (let i = 1; i < s.z.length - 1; i++) if (Math.abs(s.Ninf[i]) > Math.abs(s.Ninf[iInf])) iInf = i;
     const eta = Math.abs(s.Ninf[iInf]) > 1e-9 ? s.N2[iInf] / s.Ninf[iInf] : null;
+    const lambdas = zk.map((zn) => Math.sqrt(c * zn.k));
     return {
-      k, lambda: lam, ...s, N1,
+      scale, lambdas, lambda: Math.max(...lambdas), ...s, N1, F,
       qMax: s.q[iq], zAtQmax: s.z[iq],
+      Fmax: F[iF], zAtFmax: s.z[iF],
       N1max: N1[iN1], zAtN1max: s.z[iN1],
       N1a: N1[0], N1b: N1[N1.length - 1],
       N2a: s.N2[0], N2b: s.N2[s.N2.length - 1],
       eta, zAtEta: s.z[iInf],
     };
   };
-  return { ser: run(kSer), u: run((2 / 3) * kSer) };
+  return { ser: run(1), u: run(2 / 3), zones: zs, c };
 }

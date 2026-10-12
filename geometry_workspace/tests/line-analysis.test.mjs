@@ -161,6 +161,39 @@ head('8. Invarianter');
 }
 
 /* ------------------------------------------------------------------ */
+head('8b. Skruesoner: stivheten varierer langs delen (#71)');
+{
+  // (N₂′/k)′ = c·(N₂ − N∞). Løs ende i 0, tett sone [0, ℓ] med k₁, glissen
+  // sone videre med k₂ (lang nok til å være «uendelig»).
+  // λᵢ = √(c·kᵢ), μᵢ = λᵢ/kᵢ = √(c/kᵢ). Sone 1: N₂ = N∞(1 − cosh λ₁z) + B·sinh λ₁z.
+  // Sone 2: N₂ = N∞ + C·e^(−λ₂(z−ℓ)). Kontinuerlig N₂ og δ = N₂′/k i ℓ gir
+  //   B = N∞·(μ₁ sh + μ₂ ch)/(μ₁ ch + μ₂ sh),  sh = sinh λ₁ℓ, ch = cosh λ₁ℓ
+  //   q(0) = λ₁·B.
+  const c = 2.355e-8, k1 = 120, k2 = 30, ell = 600, Lmm = 20000, Ninf = 35000;
+  const l1 = Math.sqrt(c * k1), m1 = Math.sqrt(c / k1), m2 = Math.sqrt(c / k2);
+  const sh = Math.sinh(l1 * ell), ch = Math.cosh(l1 * ell);
+  const B = (Ninf * (m1 * sh + m2 * ch)) / (m1 * ch + m2 * sh);
+  const s = L.solveLine({
+    za: 0, zb: Lmm, c, nInf: constant(Ninf), endA: 'loose', endB: 'loose',
+    zones: [{ z0: 0, z1: ell, k: k1 }, { z0: ell, z1: Lmm - ell, k: k2 }, { z0: Lmm - ell, z1: Lmm, k: k1 }],
+  });
+  close('q(0) mot lukket løsning for to soner', s.q[0], l1 * B, 2e-3);
+  // Ved grensen: glidningen er kontinuerlig, q hopper med k₁/k₂.
+  const ib = s.z.findIndex((z) => Math.abs(z - ell) < 1e-6);
+  ok('sonegrensen er et nettpunkt', ib > 0);
+  const dl = s.delta[ib - 1], dr = s.delta[ib + 1];
+  close('glidningen er kontinuerlig over grensen', dl, dr, 2e-2);
+  close('q hopper med k₁/k₂ over grensen', s.q[ib - 1] / s.q[ib + 1], (k1 / k2) * (dl / dr), 1e-9);
+
+  // Én sone med samme k = det gamle, uniforme svaret.
+  const lam = Math.sqrt(c * 60);
+  const uni = L.solveLine({ za: 0, zb: 3000, lambda: lam, nInf: constant(Ninf), endA: 'loose', endB: 'loose' });
+  const zon = L.solveLine({ za: 0, zb: 3000, c, nInf: constant(Ninf), endA: 'loose', endB: 'loose', zones: [{ z0: 0, z1: 3000, k: 60 }] });
+  close('én sone = uniform løsning', zon.q[0], uni.q[0], 1e-9);
+  close('δ = q/k', zon.delta[0], zon.q[0] / 60, 1e-12);
+}
+
+/* ------------------------------------------------------------------ */
 head('9. Lastetabellen');
 {
   const t = L.parseLoadTable('z\tN\tMx\tMy\tN_før\n0\t10,5\t0\t0\t0\n3\t10,5\t2,25\t0\t0\n3\t30\t2,25\t0\t0\n6\t30\t0\t0\t0\n');
