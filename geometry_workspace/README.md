@@ -393,6 +393,13 @@ begge) og fri tøyning per del. De to valgene har bevisst ingen standard: for
 en del på siden av gurten endrer de toppen med en faktor 2. Skjøtedata
 (rader, a, K_ser, q_T) står i skjøtelista.
 
+Ved overskriften «Lastdiagram» åpner **(?)** fortegn og enheter for tabellen
+(sammen med aksefiguren), og **«Kopier prompt»** kopierer en instruksjon til
+brukerens egen AI (`aiPrompt` i `line-ui.js`): den gjør om et lastunderlag til
+tabellen her og foreslår og begrunner innstillingene — utstrekning, løs eller
+festet ende, hvor N angriper, sideveis fastholding og fri tøyning — med delene
+fra tegningen og det som alt er valgt.
+
 Resultatet regnes med **K_ser og K_u = ⅔·K_ser** side om side: K_ser styrer
 skruetopp og N₂, K_u styrer η og N₁ (markert ●). Ut kommer q_max og hvor,
 kraft i ytterste skrue `F_v = q·a/rader` og eventuelt `F_ax = q_T·a/rader`
