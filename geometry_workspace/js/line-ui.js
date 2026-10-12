@@ -203,9 +203,12 @@ function mirroredPair(toNew, rf) {
  * 2. Input (venstre panel)
  * ================================================================== */
 
-const H = (title, body) => `
+const H = (title, body, extra = '') => `
   <div>
-    <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5">${title}</h3>
+    <div class="flex items-center justify-between gap-2 mb-1.5">
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400">${title}</h3>
+      ${extra}
+    </div>
     ${body}
   </div>`;
 
@@ -237,12 +240,20 @@ export function lineInputsHtml(state, lr) {
     ? `<span class="text-rose-300">${escapeHtml(t.errors[0])}</span>`
     : `<span class="text-slate-400">${t.rows.length} rader · z ${n(t.rows[0].z, 2)}–${n(t.rows[t.rows.length - 1].z, 2)} m${t.jumps.length ? ` · ${t.jumps.length} hopp` : ''}</span>`;
   return [
-    H('Lastdiagram', `
+    H(
+      `<span class="inline-flex items-center gap-1.5">Lastdiagram
+         <button data-line-help title="Fortegn og enheter"
+                 class="w-4 h-4 inline-flex items-center justify-center rounded-full border border-sky-500 text-sky-300 hover:bg-sky-900/60 text-[10px] font-bold leading-none normal-case">?</button>
+       </span>`,
+      `
       <textarea id="line-table" data-line="table" data-focus-key="line-table" rows="6" spellcheck="false"
         class="w-full font-mono text-[11px] leading-snug"
         title="Lim inn fra Excel eller rammeprogrammet. Kolonner: z [m], N total [kN], M_x [kNm], M_y [kNm], N_før [kN]. Hopp i N: to rader med samme z. N_før er last som sto på før forsterkningen — den blir i den eksisterende delen."
         placeholder="z [m]   N [kN]   M_x [kNm]   M_y [kNm]   N_før [kN]&#10;0       60       0           0           0&#10;3,2     60       0           0           0&#10;3,2     85       0           0           0">${escapeHtml(line.table || '')}</textarea>
-      <p class="text-[10px] mt-1">${status}</p>`),
+      <p class="text-[10px] mt-1">${status}</p>`,
+      `<button data-line-prompt title="Kopierer en instruksjon til din egen AI: den gjør om lastunderlaget ditt til tabellen her, og foreslår og begrunner innstillingene under."
+               class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0 normal-case tracking-normal">Kopier prompt</button>`
+    ),
     H('Utstrekning', `
       <div class="grid grid-cols-2 gap-1.5">
         ${num('za', 'z_a [m] (tom = tabellens start)', line.za, 'step="0.1"')}
@@ -269,7 +280,11 @@ export function lineInputsHtml(state, lr) {
 }
 
 /** Binder input-feltene i venstre panel til store. */
-export function bindLineInputs(host, store) {
+export function bindLineInputs(host, store, { onHelp, onCopyPrompt } = {}) {
+  const help = host.querySelector('[data-line-help]');
+  if (help && onHelp) help.addEventListener('click', (e) => { e.stopPropagation(); onHelp(help); });
+  const prompt = host.querySelector('[data-line-prompt]');
+  if (prompt && onCopyPrompt) prompt.addEventListener('click', () => onCopyPrompt());
   host.querySelectorAll('[data-line]').forEach((el) => {
     const key = el.dataset.line;
     el.addEventListener('change', () => {
@@ -283,6 +298,95 @@ export function bindLineInputs(host, store) {
       }
     });
   });
+}
+
+/* ================================================================== *
+ * 2b. Fortegn og AI-prompt
+ * ================================================================== */
+
+/** Det som gjelder tabellen spesielt; aksefiguren (`axisConventionHtml`) følger under. */
+export function lineConventionHtml() {
+  const row = (k, v) => `<tr class="border-t border-slate-700/60"><td class="py-1 pr-3 align-top font-semibold text-slate-200 whitespace-nowrap">${k}</td><td class="py-1 text-slate-300">${v}</td></tr>`;
+  return `<table class="w-full text-[11px]"><tbody>
+    ${row('z [m]', 'Posisjon langs den nye delen (bjelkeaksen z), stigende. Mellom radene interpoleres lineært.')}
+    ${row('N [kN]', 'Total normalkraft i det sammensatte tverrsnittet. <strong>Strekk positiv</strong>, trykk negativ.')}
+    ${row('M_x [kNm]', 'Moment om x-aksen (vannrett i tegningen). Positiv gir <strong>strekk i overkant</strong>.')}
+    ${row('M_y [kNm]', 'Moment om y-aksen (loddrett). Positiv gir <strong>strekk på høyre side</strong> — motsatt av mange rammeprogram; snu fortegnet om nødvendig.')}
+    ${row('N_før [kN]', 'Del av N som sto på før forsterkningen ble montert. Blir i den eksisterende delen. 0 hvis ubelastet ved montering.')}
+    ${row('Hopp', 'To rader med samme z: verdien rett før, så rett etter (typisk ved et knutepunkt).')}
+    ${row('Tall', 'Komma eller punktum som desimaltegn; tab, semikolon eller mellomrom mellom kolonnene; overskriftslinjer hoppes over.')}
+  </tbody></table>`;
+}
+
+const RESTRAINT_TEXT = {
+  free: 'fri — kan bøye om begge akser',
+  y: 'fastholdt om y-aksen (sideveis)',
+  x: 'fastholdt om x-aksen',
+  xy: 'fastholdt om begge akser',
+};
+
+/**
+ * Prompten brukeren gir sin egen AI: gjør om lastunderlaget til tabellen
+ * her, og foreslå og begrunn innstillingene. Tar med delene i tegningen og
+ * det som alt er valgt, så svaret passer modellen.
+ */
+export function aiPrompt(state) {
+  const st = state || {};
+  const unit = st.unit || 'mm';
+  const shapes = (st.shapes || []).filter((x) => x && x.include !== false && x.role !== 'void');
+  const list = (stage) => shapes.filter((x) => (x.stage === 'new') === (stage === 'new'))
+    .map((x) => `${x.name || x.id}${x.material && x.material.name ? ` (${x.material.name})` : ''}`).join(', ') || '—';
+  const line = st.line || {};
+  const chosen = [
+    line.za != null || line.zb != null ? `utstrekning z_a = ${line.za ?? '(tabellens start)'} m, z_b = ${line.zb ?? '(tabellens slutt)'} m` : null,
+    `ender: ${line.endA === 'fixed' ? 'festet' : 'løs'} ved z_a, ${line.endB === 'fixed' ? 'festet' : 'løs'} ved z_b`,
+    line.nAt ? `N angriper i ${line.nAt === 'existing' ? 'det eksisterende' : 'det sammensatte'} tyngdepunktet` : null,
+    line.restraint ? `sideveis: ${RESTRAINT_TEXT[line.restraint]}` : null,
+  ].filter(Boolean);
+
+  return `Du skal hjelpe meg å gjøre om et lastunderlag til inndata for «linjeberegningen» i Geometri-workspace (structural_tools). Den regner ut kreftene i skjøten (skruer, lim, sveis) mellom en eksisterende konstruksjonsdel og en ny forsterkningsdel langs hele den nye delen, med delvis samvirke (Volkersen/Newmark).
+
+# Det jeg vil ha tilbake
+1. En TABELL, tabulatorseparert, med overskriftslinje og nøyaktig disse kolonnene i denne rekkefølgen:
+   z [m]	N [kN]	M_x [kNm]	M_y [kNm]	N_før [kN]
+2. Et forslag til INNSTILLINGENE nedenfor, med én–to setninger begrunnelse for hvert valg. Si tydelig fra der underlaget ikke gir svaret eller du må anta noe — ikke gjett i stillhet.
+3. En kort liste over antakelser du har gjort (lastkombinasjon, fortegn du har snudd, punkter du har lagt til).
+
+# Tabellen — regler
+- z: posisjon langs den nye delen i meter, regnet fra ett endepunkt, stigende. Ta med alle punkter der lasten endrer seg: knutepunkt, punktlaster, opplegg, endene av forsterkningen. Mellom radene interpoleres lineært, så en jevnt varierende last trenger nok punkter til at kurven blir riktig (moment under jevnt fordelt last: minst 5–10 punkter per felt).
+- HOPP: der N eller M endrer seg sprangvis (typisk ved et knutepunkt i et fagverk eller under en punktlast), skriv TO rader med samme z — først verdien rett før, så verdien rett etter.
+- N: total normalkraft i den ferdig forsterkede delen. Strekk positiv, trykk negativ.
+- M_x: moment om tverrsnittets x-akse (vannrett akse i tverrsnittstegningen, y peker opp). Positiv gir strekk i overkant.
+- M_y: moment om y-aksen (loddrett akse, x peker mot høyre). Positiv gir strekk på høyre side. MERK: dette er motsatt av vanlig bjelkekonvensjon i mange rammeprogram — snu fortegnet hvis underlaget bruker M_y = −∫σ·x dA, og si at du har gjort det.
+- N_før: den delen av N som allerede sto på den eksisterende delen da forsterkningen ble montert (egenvekt, permanent last som ikke avlastes). Den blir i den eksisterende delen og belaster ikke skjøten. Sett 0 hvis delen er ubelastet (avstivet/avlastet) ved montering. Moment som sto på før montering er ikke med i modellen — si fra hvis det er betydelig.
+- Lastkombinasjon: én tabell per kombinasjon. For skruekreftene: bruk den dimensjonerende kombinasjonen i bruddgrensetilstand. Lag gjerne flere tabeller hvis ulike kombinasjoner gir størst N og størst M.
+- Enheter: m, kN, kNm. Ingen tusenskiller.
+
+# Innstillingene — hva de betyr og når de velges
+- UTSTREKNING z_a og z_b [m]: hvor den nye delen starter og slutter, i samme z som tabellen. Står de tomme, brukes hele tabellen.
+- ENDE ved z_a og ved z_b, hver for seg:
+  · «Løs ende»: den nye delen er bare festet med skruer langs delen og stopper der. Kraften i den er null i enden, og hele andelen må inn gjennom skruene nær enden — dette gir de største skruekreftene.
+  · «Festet i knutepunkt»: den nye delen er koblet direkte inn i knutepunktet (plater, bolter, kontakt mot knutepunktsdel), så den tar sin andel derfra. Da må knutepunktsforbindelsen dimensjoneres for kraften i den nye delen, og verktøyet oppgir den.
+  · Er det usikkert, velg løs ende — det er på den sikre siden for skruene.
+- N ANGRIPER I:
+  · «Det eksisterende tyngdepunktet» når lasten føres inn i den eksisterende delen og den nye bare henger på langs (typisk en fagverksgurt der knutepunktet sitter på det eksisterende profilet). Det gir et moment når delene ligger eksentrisk.
+  · «Det sammensatte tyngdepunktet» når lasten fordeles på begge delene, eller når kreftene i underlaget allerede er regnet på det forsterkede tverrsnittet med lasten i dets tyngdepunkt.
+- SIDEVEIS FASTHOLDING — om delen kan bøye ut om en akse når N angriper eksentrisk:
+  · «Fri»: ingenting hindrer bøyning om noen akse.
+  · «Fastholdt om y-aksen (sideveis)»: f.eks. taktro, lekter, plater eller avstivning hindrer utbøyning sideveis.
+  · «Fastholdt om x-aksen» / «om begge akser»: tilsvarende for den andre aksen eller begge.
+  · Valget kan endre toppkraften i skruene med en faktor 2 for en forsterkning som ligger på siden av gurten. Begrunn det ut fra hva som faktisk holder delen.
+- FRI TØYNING ε_eks og ε_ny [‰]: tøyningen hver del ville fått uten last og uten skruer — svinn eller svelling fra fuktendring (negativt = krymping), kryp under N_før, temperatur. Typisk: ny trelast som tørker inn i et tørt bygg krymper mer enn den gamle (f.eks. 1 % fuktendring ≈ 0,1 ‰ langs fibrene for nåletre — oppgi kilde/antakelse). Sett 0 hvis det ikke er grunnlag, og si fra.
+- SKJØTEDATA legges inn i verktøyet per skjøt (ikke i tabellen): antall skruerader, skrueavstand a langs delen [mm] og glidningsmodul K_ser per skrue [N/mm] (EC5 tabell 7.1 eller ETA), og eventuelt q_T [kN/m] — last som henges opp gjennom skjøten vinkelrett på skjøteflaten.
+
+# Mitt tverrsnitt (fra tegningen)
+- Enhet i tegningen: ${unit}. x mot høyre, y opp; bjelkeaksen z går ut av tegningen.
+- Eksisterende: ${list('existing')}
+- Ny: ${list('new')}
+${chosen.length ? `- Valgt så langt: ${chosen.join('; ')}.\n` : ''}
+# Underlaget
+[Lim inn lastunderlaget her: snittkrefter fra rammeprogrammet, tabell, skjermbilde av diagram, eller beskrivelse av system og laster.]
+`;
 }
 
 /* ================================================================== *

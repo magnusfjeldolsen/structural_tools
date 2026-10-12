@@ -74,7 +74,7 @@ import {
 } from './joints.js';
 import { JOINT_COLOR, effectiveJoints, autoJointOverlaps } from './store.js';
 import { jointForceFigureSvg } from './joint-force-figure.js';
-import { computeLine, lineInputsHtml, bindLineInputs, lineOutputHtml, lineDetailsHtml } from './line-ui.js';
+import { computeLine, lineInputsHtml, bindLineInputs, lineOutputHtml, lineDetailsHtml, aiPrompt, lineConventionHtml } from './line-ui.js';
 
 /* ------------------------------------------------------------------ *
  * Tallformatering
@@ -973,9 +973,12 @@ export class ReinforcementPanel {
     const input = document.getElementById(this.inputHostId);
     if (input) {
       input.innerHTML = analysisToggle('line') + lineInputsHtml(state, lr);
-      bindLineInputs(input, this.store);
+      bindLineInputs(input, this.store, {
+        onHelp: (btn) => (this.figureOpen && this.popoverKind === 'convention' ? this.closeFigure() : this.openFigure(btn, 'convention')),
+        onCopyPrompt: () => this._copyPrompt(),
+      });
     }
-    if (this.figureOpen) this.closeFigure();
+    if (this.figureOpen && this.popoverKind !== 'convention') this.closeFigure();
     this._bind();
   }
 
@@ -1167,7 +1170,7 @@ export class ReinforcementPanel {
     // Klikk utenfor lukker; klikk på (?) håndteres av knappen selv.
     document.addEventListener('pointerdown', (e) => {
       if (!this.figureOpen) return;
-      if (e.target.closest('#rf-figure-pop') || e.target.closest('[data-rf-help]')) return;
+      if (e.target.closest('#rf-figure-pop') || e.target.closest('[data-rf-help]') || e.target.closest('[data-line-help]')) return;
       this.closeFigure();
     });
     return el;
@@ -1175,6 +1178,17 @@ export class ReinforcementPanel {
 
   _fillFigure() {
     const el = this._figurePopover();
+    if (this.popoverKind === 'convention') {
+      el.innerHTML = `
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-white">Fortegn og enheter i lastdiagrammet</h3>
+          <button data-rf-figclose class="text-slate-400 hover:text-white text-xl leading-none px-1" title="Lukk (Esc)">×</button>
+        </div>
+        ${lineConventionHtml()}
+        ${axisConventionHtml()}`;
+      el.querySelector('[data-rf-figclose]').addEventListener('click', () => this.closeFigure());
+      return;
+    }
     const row = (sym, color, text) => `<tr class="border-t border-slate-700/60">
         <td class="py-1 pr-3 num whitespace-nowrap font-semibold" style="color:${color}">${sym}</td>
         <td class="py-1 text-slate-300">${text}</td>
@@ -1199,16 +1213,49 @@ export class ReinforcementPanel {
     el.querySelector('[data-rf-figclose]').addEventListener('click', () => this.closeFigure());
   }
 
-  openFigure(anchorEl) {
+  /**
+   * Åpner popoveren: `figure` (kraftfiguren, ved høyre panel) eller
+   * `convention` (fortegnskonvensjonene, ved venstre panel — der lastene
+   * legges inn, så figuren og feltene kan ses samtidig).
+   */
+  openFigure(anchorEl, kind = 'figure') {
     this.figureOpen = true;
+    this.popoverKind = kind;
     this._fillFigure();
     const el = this._figurePopover();
-    const panel = document.getElementById(this.hostId);
-    const pr = panel ? panel.getBoundingClientRect() : { left: window.innerWidth };
     const ar = anchorEl ? anchorEl.getBoundingClientRect() : { top: 80 };
-    el.style.right = `${Math.max(8, window.innerWidth - pr.left + 8)}px`;
+    if (kind === 'convention') {
+      const left = document.getElementById('left-reinforcement');
+      const lr = left ? left.getBoundingClientRect() : { right: 320 };
+      el.style.left = `${lr.right + 8}px`;
+      el.style.right = '';
+    } else {
+      const panel = document.getElementById(this.hostId);
+      const pr = panel ? panel.getBoundingClientRect() : { left: window.innerWidth };
+      el.style.right = `${Math.max(8, window.innerWidth - pr.left + 8)}px`;
+      el.style.left = '';
+    }
     el.style.top = `${Math.max(8, Math.min(ar.top - 8, window.innerHeight - 200))}px`;
     el.classList.remove('hidden');
+  }
+
+  /** «Kopier prompt»: instruksjon til brukerens egen AI for å lage lastdiagrammet. */
+  _copyPrompt() {
+    const text = aiPrompt(this.store.state);
+    const done = () => this.toast('Prompten er kopiert. Lim den inn hos din AI, sammen med lastunderlaget.');
+    const fallback = () => {
+      // Utklippstavla nektet: legg teksten i et felt og marker den, så Ctrl+C virker.
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); } catch { this.toast('Kunne ikke kopiere.'); }
+      ta.remove();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
   }
 
   closeFigure() {
