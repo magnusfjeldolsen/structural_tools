@@ -393,6 +393,14 @@ begge) og fri tøyning per del. De to valgene har bevisst ingen standard: for
 en del på siden av gurten endrer de toppen med en faktor 2. Skjøtedata
 (rader, a, K_ser, q_T) står i skjøtelista.
 
+Under plottene viser **«Per felt mellom knutepunkt»** største |q| og kraft per
+skrue i hvert felt mellom hoppene i diagrammet (`lineZones`) — tallene man
+trenger for å velge skrueavstand felt for felt. **«Kopier q(z)»** kopierer
+|q| (K_ser og K_u), kraft per skrue og N₁/N₂ langs hele delen som
+tabulatorseparert tabell (`qTableTsv`, 0,05 m pluss endene og hoppene). I
+rapporten står nøkkeltabellen på side 1, og plottene, felttabellen og
+forutsetningene på side 2.
+
 Ved overskriften «Lastdiagram» åpner **(?)** fortegn og enheter for tabellen
 (sammen med aksefiguren), og **«Kopier prompt»** kopierer en instruksjon til
 brukerens egen AI (`aiPrompt` i `line-ui.js`): den gjør om et lastunderlag til

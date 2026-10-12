@@ -74,7 +74,7 @@ import {
 } from './joints.js';
 import { JOINT_COLOR, effectiveJoints, autoJointOverlaps } from './store.js';
 import { jointForceFigureSvg } from './joint-force-figure.js';
-import { computeLine, lineInputsHtml, bindLineInputs, lineOutputHtml, lineDetailsHtml, aiPrompt, lineConventionHtml } from './line-ui.js';
+import { computeLine, lineInputsHtml, bindLineInputs, lineOutputHtml, lineDetailsHtml, aiPrompt, lineConventionHtml, qTableTsv } from './line-ui.js';
 
 /* ------------------------------------------------------------------ *
  * Tallformatering
@@ -955,10 +955,15 @@ export class ReinforcementPanel {
   /** Linjeberegningen (#63): input til venstre, krefter langs skjøten til høyre. */
   _renderLine(host, state, res) {
     const lr = computeLine(state, res);
+    lr.zonesOpen = !!this.zonesOpen;
     this.lineResult = lr;
     host.innerHTML = [
       H('Krefter langs skjøten', lineOutputHtml(lr), lr.ok
-        ? `<button data-rf-act="copy" class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0">Kopier</button>`
+        ? `<span class="flex gap-1">
+             <button data-rf-act="copy-q" title="q, kraft per skrue og kreftene i delene langs hele delen, som tabell til Excel"
+                     class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0">Kopier q(z)</button>
+             <button data-rf-act="copy" class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0">Kopier</button>
+           </span>`
         : ''),
       lr.ok
         ? `<details class="rounded border border-slate-700 bg-slate-900/60" data-rf-details ${this.detailsOpen ? 'open' : ''}>
@@ -1241,8 +1246,13 @@ export class ReinforcementPanel {
 
   /** «Kopier prompt»: instruksjon til brukerens egen AI for å lage lastdiagrammet. */
   _copyPrompt() {
-    const text = aiPrompt(this.store.state);
-    const done = () => this.toast('Prompten er kopiert. Lim den inn hos din AI, sammen med lastunderlaget.');
+    this._copyText(aiPrompt(this.store.state), 'Prompten er kopiert. Lim den inn hos din AI, sammen med lastunderlaget.');
+  }
+
+  /** Til utklippstavla, med reserveløsning når den nekter. */
+  _copyText(text, message) {
+    if (!text) return;
+    const done = () => this.toast(message);
     const fallback = () => {
       // Utklippstavla nektet: legg teksten i et felt og marker den, så Ctrl+C virker.
       const ta = document.createElement('textarea');
@@ -1465,9 +1475,13 @@ export class ReinforcementPanel {
       tr.addEventListener('mouseleave', () => this.onHoverJoint(null));
     });
 
+    const zones = host.querySelector('[data-line-zones]');
+    if (zones) zones.addEventListener('toggle', () => (this.zonesOpen = zones.open));
+
     host.querySelectorAll('[data-rf-act]').forEach((el) => {
       el.addEventListener('click', () => {
         if (el.dataset.rfAct === 'copy') this.onCopy();
+        if (el.dataset.rfAct === 'copy-q') this._copyText(qTableTsv(this.lineResult), 'q(z) er kopiert som tabell — lim inn i Excel.');
       });
     });
 

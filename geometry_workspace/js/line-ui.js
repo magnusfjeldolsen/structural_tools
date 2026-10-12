@@ -498,6 +498,121 @@ export function lineRows(lr) {
   return rows;
 }
 
+/* ------------------------------------------------------------------ *
+ * Skruekraften langs skjøten
+ * ------------------------------------------------------------------ */
+
+/** Lineær interpolasjon i (xs, ys) ved x. */
+function interp(xs, ys, x) {
+  if (x <= xs[0]) return ys[0];
+  if (x >= xs[xs.length - 1]) return ys[ys.length - 1];
+  let lo = 0;
+  let hi = xs.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (xs[mid] <= x) lo = mid;
+    else hi = mid;
+  }
+  const t = (x - xs[lo]) / (xs[hi] - xs[lo] || 1);
+  return ys[lo] + (ys[hi] - ys[lo]) * t;
+}
+
+/** Feltgrensene: endene og hoppene i diagrammet [mm]. */
+function featureZ(lr) {
+  const za = lr.za * 1000;
+  const zb = lr.zb * 1000;
+  const jumps = (lr.table.jumps || []).map((z) => z * 1000).filter((z) => z > za && z < zb);
+  return [...new Set([za, ...jumps, zb])].sort((a, b) => a - b);
+}
+
+/**
+ * Største |q| og kraft per skrue i hvert felt mellom to knutepunkt i
+ * lastdiagrammet (eller endene). Det er tallene man trenger for å velge
+ * skrueavstand felt for felt: toppene sitter i endene og ved hoppene.
+ * @returns {Array<{z0:number, z1:number, qSer:number, qU:number, zAt:number, FvSer:number, FvU:number}>}  z i m, q i kN/m, F i kN
+ */
+export function lineZones(lr) {
+  if (!lr || !lr.ok) return [];
+  const f = featureZ(lr);
+  const s = lr.summary;
+  const per = (q) => (Math.abs(q) * lr.share * s.a) / s.rows / 1000;
+  const peak = (run, z0, z1) => {
+    let best = 0;
+    let at = z0;
+    for (let i = 0; i < run.z.length; i++) {
+      const z = run.z[i];
+      if (z < z0 - 1e-9 || z > z1 + 1e-9) continue;
+      if (Math.abs(run.q[i]) > Math.abs(best)) { best = run.q[i]; at = z; }
+    }
+    return { q: Math.abs(best) * lr.share, at };
+  };
+  const out = [];
+  for (let i = 0; i < f.length - 1; i++) {
+    const ser = peak(lr.res.ser, f[i], f[i + 1]);
+    const u = peak(lr.res.u, f[i], f[i + 1]);
+    out.push({ z0: f[i] / 1000, z1: f[i + 1] / 1000, qSer: ser.q, qU: u.q, zAt: ser.at / 1000, FvSer: per(ser.q / lr.share), FvU: per(u.q / lr.share) });
+  }
+  return out;
+}
+
+/**
+ * q(z) og kreftene langs hele delen som tabulatorseparert tekst, til Excel
+ * eller videre beregning. Jevn deling (standard 0,05 m) pluss endene og
+ * hoppene, så toppene alltid er med. |q| og kraft per skrue er størrelser
+ * (retningen skifter langs delen); N₁ og N₂ har fortegn (strekk positiv).
+ */
+export function qTableTsv(lr, step = 0.05) {
+  if (!lr || !lr.ok) return '';
+  const s = lr.summary;
+  const zs = new Set();
+  for (let z = lr.za; z < lr.zb - 1e-9; z += step) zs.add(Math.round(z * 1e6) / 1e6);
+  for (const zMm of featureZ(lr)) zs.add(Math.round(zMm) / 1000);
+  zs.add(lr.zb);
+  const sorted = [...zs].sort((a, b) => a - b);
+  const r = lr.res;
+  const fmt = (v, d) => (Number.isFinite(v) ? v.toFixed(d) : '');
+  const lines = [
+    `z [m]\t|q| K_ser [kN/m]\t|q| K_u [kN/m]\tF_v per skrue K_ser [kN]\tN1 eksisterende K_u [kN]\tN2 ny K_ser [kN]`,
+  ];
+  for (const z of sorted) {
+    const zm = z * 1000;
+    const qs = Math.abs(interp(r.ser.z, r.ser.q, zm)) * lr.share;
+    const qu = Math.abs(interp(r.u.z, r.u.q, zm)) * lr.share;
+    const Fv = (qs * s.a) / s.rows / 1000;
+    const N1 = interp(r.u.z, r.u.N1, zm) / 1000;
+    const N2 = interp(r.ser.z, r.ser.N2, zm) / 1000;
+    lines.push([fmt(z, 3), fmt(qs, 2), fmt(qu, 2), fmt(Fv, 3), fmt(N1, 2), fmt(N2, 2)].join('\t'));
+  }
+  return lines.join('\n');
+}
+
+/** Felttabellen som HTML (panel og rapport bruker samme rader). */
+export function lineZonesTable(lr, { screen = true } = {}) {
+  const zones = lineZones(lr);
+  if (!zones.length) return '';
+  const cls = screen ? 'py-0.5 pl-2 text-right num' : 'num';
+  const body = zones
+    .map((z) => `<tr${screen ? ' class="border-t border-slate-700/60"' : ''}>
+        <td${screen ? ' class="py-0.5 pr-2 num text-slate-300 whitespace-nowrap"' : ''}>${n(z.z0, 2)}–${n(z.z1, 2)}</td>
+        <td class="${cls}">${n(z.qSer, 1)}</td>
+        <td class="${cls}">${n(z.FvSer, 2)}</td>
+        <td class="${cls}">${n(z.qU, 1)}</td>
+        <td class="${cls}">${n(z.zAt, 2)}</td>
+      </tr>`)
+    .join('');
+  const th = (t, tip = '') => `<th${screen ? ' class="text-right font-normal py-1 pl-2"' : ' class="num"'}${tip ? ` title="${escapeHtml(tip)}"` : ''}>${t}</th>`;
+  return `<table class="${screen ? 'w-full text-[11px]' : ''}">
+      <thead><tr${screen ? ' class="text-slate-500"' : ''}>
+        <th${screen ? ' class="text-left font-normal py-1"' : ''}>Felt z [m]</th>
+        ${th('|q| maks K_ser [kN/m]', 'Største kraft gjennom skjøten i feltet — styrende for skruene')}
+        ${th(`F_v per skrue [kN]`, `|q|·a/rader med a = ${n(lr.summary.a, 0)} mm og ${lr.summary.rows} rad(er)`)}
+        ${th('|q| maks K_u [kN/m]')}
+        ${th('ved z [m]', 'Hvor i feltet toppen sitter (K_ser)')}
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table>`;
+}
+
 /** Høyre panel i linjemodus. */
 export function lineOutputHtml(lr) {
   if (!lr.ok) {
@@ -529,7 +644,17 @@ export function lineOutputHtml(lr) {
       <tbody>${body}</tbody>
     </table>
     <p class="text-[10px] text-slate-500 mt-1">● styrende · hold musa over en rad for forklaring · 1 N/mm = 1 kN/m</p>
-    <div class="mt-3 space-y-2">${forces}${flow}</div>`;
+    <div class="mt-3 space-y-2">${forces}${flow}</div>
+    <details class="mt-2 rounded border border-slate-700 bg-slate-900/60" data-line-zones ${lr.zonesOpen ? 'open' : ''}>
+      <summary class="px-2.5 py-1.5 text-xs text-slate-300 hover:text-white flex items-center gap-1.5">
+        <span class="chev text-slate-500" style="display:inline-block">›</span>
+        Per felt mellom knutepunkt (${lineZones(lr).length})
+      </summary>
+      <div class="px-2.5 pb-2.5 pt-1">
+        ${lineZonesTable(lr)}
+        <p class="text-[10px] text-slate-500 mt-1">Toppene sitter i endene og ved hoppene. Bruk tabellen til å velge skrueavstand felt for felt — men merk at modellen regner med samme a langs hele delen.</p>
+      </div>
+    </details>`;
 }
 
 /** Detaljer i linjemodus: tallene bak λ og N₂∞, og forutsetningene. */

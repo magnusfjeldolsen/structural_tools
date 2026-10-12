@@ -14,7 +14,7 @@ const vendor = await readFile(fileURLToPath(new URL('../vendor/polygon-clipping.
 await import('data:text/javascript;charset=utf-8;base64,' + Buffer.from(vendor, 'utf8').toString('base64'));
 const url = (p) => pathToFileURL(fileURLToPath(new URL(p, import.meta.url))).href;
 const { computeReinforcement } = await import(url('../js/reinforcement-ui.js'));
-const { computeLine, aiPrompt, lineConventionHtml } = await import(url('../js/line-ui.js'));
+const { computeLine, aiPrompt, lineConventionHtml, lineZones, qTableTsv } = await import(url('../js/line-ui.js'));
 
 let failed = 0;
 function ok(label, cond, extra = '') {
@@ -92,6 +92,25 @@ console.log('To like, speilede nye deler');
     {},
   );
   ok('to ulike nye deler nektes', run(st2).blocked.some((b) => /to ulike/.test(b)));
+}
+
+console.log('Felttabell og q(z)');
+{
+  // Fagverksgurt med hopp ved 4 m og 8 m.
+  const st = model([shape('gurt', R(0, 0, 50, 130), 'existing', 11000), shape('ny', R(50, 0, 48, 198), 'new', 11000)], [],
+    { table: '0 40\n4 40\n4 90\n8 90\n8 30\n12 30' });
+  const lr = run(st);
+  ok('regnes', lr.ok, lr.blocked.join(' | '));
+  const zones = lineZones(lr);
+  ok('tre felt: 0–4, 4–8, 8–12', zones.length === 3 && zones[1].z0 === 4 && zones[1].z1 === 8, JSON.stringify(zones.map((z) => [z.z0, z.z1])));
+  const qAll = Math.max(...lr.res.ser.q.map(Math.abs));
+  ok('største felttopp = største q', Math.abs(Math.max(...zones.map((z) => z.qSer)) - qAll) < 1e-9);
+  ok('F_v per felt = |q|·a/rader', zones.every((z) => Math.abs(z.FvSer - (z.qSer * lr.summary.a) / lr.summary.rows / 1000) < 1e-12));
+  const tsv = qTableTsv(lr).split('\n');
+  ok('overskrift med enheter', /^z \[m\]\t\|q\| K_ser \[kN\/m\]/.test(tsv[0]));
+  const zsCol = tsv.slice(1).map((l) => Number(l.split('\t')[0]));
+  ok('hoppene er med som egne rader', zsCol.includes(4) && zsCol.includes(8));
+  ok('fra 0 til 12 m, stigende', zsCol[0] === 0 && zsCol[zsCol.length - 1] === 12 && zsCol.every((z, i) => i === 0 || z >= zsCol[i - 1]));
 }
 
 console.log('Prompten til brukerens AI');
