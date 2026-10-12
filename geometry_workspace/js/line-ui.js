@@ -9,6 +9,7 @@
  */
 
 import { parseLoadTable, twoLayer, lambda2, analyseLine } from './line-analysis.js';
+import { slipModulus } from './connection-stiffness.js';
 import { lengthLabel } from './units.js';
 import { n } from './derivation.js';
 
@@ -82,22 +83,26 @@ export function computeLine(state, rf) {
     blocked.push('Skjøten er statisk ubestemt (lukket sløyfe). Linjeberegningen gjelder en skjøt som er en bro mellom to deler.');
   }
 
-  // Skjøtestivheten: k = rader·K_ser/a per skjøt, summert for et speilet par.
-  let kSer = 0;
+  // Skruetypen fra skjøten (K_ser, ev. EC5-data) er standard for alle soner;
+  // rader, a og skrue kan overstyres per sone (#71).
+  let base = null;
   if (pick) {
-    for (const j of pick.joints) {
-      const c = j.connector || {};
-      const gap = c.stiffSource === 'ec5' && c.ec5Contact === 'gap';
-      if (gap) blocked.push(`${escapeHtml(j.name)}: ingen kontakt mellom delene — tabell 7.1 gjelder ikke. Legg inn K fritt (ETA/forsøk).`);
-      const K = j.slipSer && j.slipSer.valid ? j.slipSer.K : NaN;
-      const rows = Number(c.rows) || 0;
-      const a = Number(c.spacing) || 0;
-      if (!(K > 0) || !(rows > 0) || !(a > 0)) {
-        if (!gap) blocked.push(`${escapeHtml(j.name)}: skjøtedata mangler — rader, skrueavstand a og K_ser må være satt.`);
-      } else kSer += (rows * K) / a;
-    }
+    const j = pick.joints[0];
+    const c = j.connector || {};
+    const gap = c.stiffSource === 'ec5' && c.ec5Contact === 'gap';
+    if (gap) blocked.push(`${escapeHtml(j.name)}: ingen kontakt mellom delene — tabell 7.1 gjelder ikke. Legg inn K fritt (ETA/forsøk).`);
+    const K = j.slipSer && j.slipSer.valid ? j.slipSer.K : NaN;
+    base = { rows: Number(c.rows) || 1, a: Number(c.spacing) || 200, K, ec5: c.stiffSource === 'ec5', d: Number(c.ec5D) || null, connector: c, rho: j.rhoSource };
+    if (!(K > 0) && !gap) blocked.push(`${escapeHtml(j.name)}: K_ser mangler — sett skruetypen i skjøtelista.`);
   }
   out.pick = pick;
+  out.base = base;
+  const zones = base && table.rows.length >= 2 && zb > za ? resolveZones(line, za, zb, base) : [];
+  out.zones = zones;
+  for (const zn of zones) {
+    if (!(zn.K > 0)) blocked.push(`Sone ${n(zn.z0, 2)}–${n(zn.z1, 2)} m: K mangler.`);
+    if (!(zn.rows > 0) || !(zn.a > 0)) blocked.push(`Sone ${n(zn.z0, 2)}–${n(zn.z1, 2)} m: rader og a må være satt.`);
+  }
   if (blocked.length) return out;
 
   const groupSet = new Set(pick.groupIds);
@@ -109,6 +114,9 @@ export function computeLine(state, rf) {
     return out;
   }
 
+  // Et speilet par: begge skjøtene har sonene, så stivheten dobles; per
+  // skjøt er q halvparten, og kraften per skrue er den samme.
+  const nJ = pick.joints.length;
   const res = analyseLine({
     layer,
     rows: table.rows,
@@ -117,39 +125,54 @@ export function computeLine(state, rf) {
     zb: zb * 1000,
     endA: line.endA,
     endB: line.endB,
-    kSer,
+    zones: zones.map((zn) => ({ z0: zn.z0 * 1000, z1: zn.z1 * 1000, rows: zn.rows * nJ, a: zn.a, K: zn.K })),
     epsExisting: (Number(line.epsExisting) || 0) / 1000,
     epsNew: (Number(line.epsNew) || 0) / 1000,
   });
 
-  // Per skjøt: et speilet par deler q likt.
   const share = pick.pair ? 0.5 : 1;
   const j0 = pick.joints[0];
-  const c0 = j0.connector || {};
-  const rows0 = Number(c0.rows);
-  const a0 = Number(c0.spacing);
-  const perScrew = (q) => (Math.abs(q) * share * a0) / rows0 / 1000; // kN
   const qT = Number(j0.raw && j0.raw.qT) || 0;
+  const zoneAtZ = (zm) => zones.find((zn, i) => zm >= zn.z0 - 1e-9 && (zm < zn.z1 - 1e-9 || i === zones.length - 1)) || zones[zones.length - 1];
+  const zFmax = res.ser.zAtFmax / 1000;
+  const zAt = zoneAtZ(zFmax);
 
   out.ok = true;
   out.layer = layer;
   out.res = res;
-  out.kSer = kSer;
+  out.kSer = Math.max(...zones.map((zn) => (zn.rows * nJ * zn.K) / zn.a));
   out.share = share;
+  out.zoneStats = zones.map((zn, i) => {
+    const pick2 = (run) => {
+      let best = 0;
+      let at = zn.z0;
+      run.z.forEach((zz, k) => {
+        const zm = zz / 1000;
+        if (zm < zn.z0 - 1e-9 || zm > zn.z1 + 1e-9) return;
+        if (run.F[k] > best) { best = run.F[k]; at = zm; }
+      });
+      return { F: best / 1000, z: at };
+    };
+    const ser = pick2(res.ser);
+    const u = pick2(res.u);
+    const len = (zn.z1 - zn.z0) * 1000;
+    return { ...zn, count: Math.max(1, Math.round(len / zn.a)) * zn.rows, Fser: ser.F, Fu: u.F, zAt: ser.z, Lc: 1 / res.ser.lambdas[i] };
+  });
   out.summary = {
     joint: pick.pair ? `${j0.name} + ${pick.joints[1].name}` : j0.name,
-    rows: rows0,
-    a: a0,
+    rows: zAt.rows,
+    a: zAt.a,
+    zones: zones.length,
+    count: out.zoneStats.reduce((t, z) => t + z.count, 0) * nJ,
     qMax: { ser: res.ser.qMax * share, u: res.u.qMax * share, z: res.ser.zAtQmax / 1000 },
-    Fv: { ser: perScrew(res.ser.qMax), u: perScrew(res.u.qMax) },
-    Fax: qT ? (Math.abs(qT) * a0) / rows0 : null, // kN/m · mm / rader / 1000 · 1000
+    Fv: { ser: res.ser.Fmax / 1000, u: res.u.Fmax / 1000, z: zFmax },
+    Fax: qT ? (Math.abs(qT) * zAt.a) / zAt.rows / 1000 : null,
     N2a: line.endA === 'fixed' ? { ser: res.ser.N2a / 1000, u: res.u.N2a / 1000 } : null,
     N2b: line.endB === 'fixed' ? { ser: res.ser.N2b / 1000, u: res.u.N2b / 1000 } : null,
     N1max: { ser: res.ser.N1max / 1000, u: res.u.N1max / 1000, z: res.u.zAtN1max / 1000 },
     eta: { ser: res.ser.eta, u: res.u.eta },
-    Lc: { ser: 1 / res.ser.lambda, u: 1 / res.u.lambda },
+    Lc: { ser: 1 / res.ser.lambda, u: 1 / res.u.lambda, serMax: 1 / Math.min(...res.ser.lambdas), uMax: 1 / Math.min(...res.u.lambdas) },
   };
-  if (out.summary.Fax != null) out.summary.Fax = (Math.abs(qT) * a0) / rows0 / 1000;
 
   if (res.u.eta != null && res.u.eta < 0.9) {
     warnings.push({
@@ -157,19 +180,135 @@ export function computeLine(state, rf) {
       text: 'Delen er for kort i forhold til den karakteristiske lengden 1/λ, eller skjøten for myk: den nye delen får mindre enn ved full samvirkning, og den eksisterende delen bærer resten. Kontroller N₁ i den eksisterende delen.',
     });
   }
-  if (a0 > 0.5 / res.ser.lambda) {
-    warnings.push({
-      short: `a = ${n(a0, 0)} mm > 1/(2λ) = ${n(0.5 / res.ser.lambda, 0)} mm: enkeltskruene betyr noe.`,
-      text: 'Modellen smører skruene ut langs skjøten. Når skrueavstanden er stor i forhold til den karakteristiske lengden, får de ytterste skruene mer enn den utsmurte toppen tilsier.',
-    });
-  }
+  out.zoneStats.forEach((zs, i) => {
+    if (zs.a > 0.5 * zs.Lc) {
+      warnings.push({
+        short: `Sone ${n(zs.z0, 2)}–${n(zs.z1, 2)} m: a = ${n(zs.a, 0)} mm > 1/(2λ) = ${n(0.5 * zs.Lc, 0)} mm — enkeltskruene betyr noe.`,
+        text: 'Modellen smører skruene ut langs skjøten. Når skrueavstanden er stor i forhold til den karakteristiske lengden, får de ytterste skruene mer enn den utsmurte toppen tilsier.',
+      });
+    }
+    // En tett endesone virker fullt først når den er minst ≈ 2/λ lang.
+    const neighbour = out.zoneStats[i === 0 ? 1 : i - 1];
+    const isEnd = (i === 0 && line.endA !== 'fixed') || (i === out.zoneStats.length - 1 && line.endB !== 'fixed');
+    if (isEnd && neighbour && zs.rows * zs.K / zs.a > neighbour.rows * neighbour.K / neighbour.a && (zs.z1 - zs.z0) * 1000 < 2 * zs.Lc) {
+      warnings.push({
+        short: `Endesonen ${n(zs.z0, 2)}–${n(zs.z1, 2)} m er kortere enn 2/λ ≈ ${n((2 * zs.Lc) / 1000, 2)} m — toppen sprer seg inn i neste sone.`,
+        text: 'Kraften fra enden bygges opp over noen karakteristiske lengder 1/λ. Er den tette sonen kortere, tar den glisnere sonen innenfor en del av toppen. Tallene er fortsatt riktige — sonen er bare mindre effektiv enn den kunne vært.',
+      });
+    }
+  });
   if (pick.pair) {
     warnings.push({
       short: 'To like, speilede nye deler: tallene gjelder hver skjøt.',
-      text: 'De to nye delene er like (EA, EI) og speilet om det eksisterende tyngdepunktet. De regnes som én del med summen av skjøtestivhetene og e = 0; q og skruekraft er halvparten per skjøt.',
+      text: 'De to nye delene er like (EA, EI) og speilet om det eksisterende tyngdepunktet. De regnes som én del med summen av skjøtestivhetene og e = 0; q og skruekraft er per skjøt.',
     });
   }
   return out;
+}
+
+/**
+ * Sonene som faktisk gjelder: fra z_a til z_b uten hull eller overlapp. Tom
+ * liste i tilstanden = én sone med skjøtens rader og a. Hver sone kan
+ * overstyre rader, a og skruen (K_ser direkte, eller d når skjøten regner K
+ * etter EC5 tabell 7.1).
+ * @returns {Array<{z0:number, z1:number, rows:number, a:number, K:number, Kser:number|null, d:number|null}>}  z i m
+ */
+export function resolveZones(line, za, zb, base) {
+  const raw = line && Array.isArray(line.zones) && line.zones.length ? line.zones : [{ zEnd: null }];
+  const out = [];
+  let start = za;
+  raw.forEach((zn, i) => {
+    const last = i === raw.length - 1;
+    const end = last ? zb : Math.min(zb, Math.max(start, Number.isFinite(zn.zEnd) ? zn.zEnd : zb));
+    if (!last && end - start < 1e-6) return;
+    const rows = zn.rows || base.rows;
+    const a = zn.a || base.a;
+    let K = base.K;
+    if (zn.Kser > 0) K = zn.Kser;
+    else if (zn.d > 0 && base.ec5) {
+      const c = base.connector || {};
+      const r = base.rho || {};
+      const sm = slipModulus({
+        source: 'ec5', fastener: c.ec5Fastener || 'dowel', rho1: r.aValue ?? undefined, rho2: r.bValue ?? undefined,
+        d: zn.d, dc: zn.d, contact: c.ec5Contact || 'timber-timber', state: 'SLS',
+      });
+      K = sm && sm.valid ? sm.K : NaN;
+    }
+    out.push({ z0: start, z1: end, rows, a, K, Kser: zn.Kser || null, d: zn.d || null });
+    start = end;
+  });
+  if (out.length) out[out.length - 1].z1 = zb;
+  return out;
+}
+
+/* ---------------- sonene: endringer (rene funksjoner) ---------------- */
+
+/** Tilstandsform av løste soner: grensen i `zEnd`, bare overstyringer lagres. */
+function toState(zones, base) {
+  return zones.map((zn, i) => ({
+    zEnd: i === zones.length - 1 ? null : Math.round(zn.z1 * 1000) / 1000, // hele mm
+    rows: zn.rows !== base.rows ? zn.rows : null,
+    a: zn.a !== base.a ? zn.a : null,
+    Kser: zn.Kser || null,
+    d: zn.d || null,
+  }));
+}
+
+/** Deler sone i på midten. */
+export function splitZone(zones, i, base) {
+  const zn = zones[i];
+  const mid = Math.round(((zn.z0 + zn.z1) / 2) * 1000) / 1000;
+  const next = [...zones.slice(0, i), { ...zn, z1: mid }, { ...zn, z0: mid }, ...zones.slice(i + 1)];
+  return toState(next, base);
+}
+
+/** Fjerner sone i; naboen (til venstre, ellers høyre) tar over lengden. */
+export function deleteZone(zones, i, base) {
+  if (zones.length < 2) return toState(zones, base);
+  const next = zones.slice();
+  if (i > 0) next[i - 1] = { ...next[i - 1], z1: zones[i].z1 };
+  else next[1] = { ...next[1], z0: zones[0].z0 };
+  next.splice(i, 1);
+  return toState(next, base);
+}
+
+/** Flytter grensen etter sone i — også starten på sone i+1. */
+export function moveBoundary(zones, i, zEnd, base) {
+  if (i >= zones.length - 1) return toState(zones, base);
+  const lo = zones[i].z0 + 0.01;
+  const hi = zones[i + 1].z1 - 0.01;
+  const z = Math.min(hi, Math.max(lo, zEnd));
+  const next = zones.slice();
+  next[i] = { ...next[i], z1: z };
+  next[i + 1] = { ...next[i + 1], z0: z };
+  return toState(next, base);
+}
+
+/** Endrer rader, a, K_ser eller d i sone i (tom verdi = skjøtens standard). */
+export function setZoneField(zones, i, key, value, base) {
+  const next = zones.slice();
+  const v = value === '' || value == null || !(Number(value) > 0) ? null : Number(value);
+  const zn = { ...next[i] };
+  if (key === 'rows') zn.rows = v ?? base.rows;
+  if (key === 'a') zn.a = v ?? base.a;
+  if (key === 'Kser') zn.Kser = v;
+  if (key === 'd') zn.d = v;
+  next[i] = zn;
+  return toState(next, base);
+}
+
+/** To symmetriske endesoner med lengde L [m] og avstand aEnd; midten beholder første sones a. */
+export function endZones(zones, za, zb, L, aEnd, base) {
+  const len = zb - za;
+  if (!(L > 0) || !(aEnd > 0) || 2 * L >= len) return null;
+  const mid = zones[Math.floor(zones.length / 2)] || zones[0];
+  const end = { rows: zones[0].rows, a: aEnd, Kser: zones[0].Kser, d: zones[0].d };
+  const next = [
+    { ...end, z0: za, z1: za + L },
+    { rows: mid.rows, a: mid.a, Kser: mid.Kser, d: mid.d, z0: za + L, z1: zb - L },
+    { ...end, z0: zb - L, z1: zb },
+  ];
+  return toState(next, base);
 }
 
 /** To nye deler som er like og speilet om det eksisterende tyngdepunktet. */
@@ -261,6 +400,10 @@ export function lineInputsHtml(state, lr) {
         <div><label class="field-label" for="line-endA">Ende ved z_a</label>${sel('endA', line.endA, ENDS)}</div>
         <div><label class="field-label" for="line-endB">Ende ved z_b</label>${sel('endB', line.endB, ENDS)}</div>
       </div>`),
+    H('Skruesoner', zonesHtml(lr), lr && lr.zones && lr.zones.length
+      ? `<button data-zact="endzones" title="To symmetriske, tettere endesoner i én operasjon"
+           class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0 normal-case tracking-normal">Endesoner…</button>`
+      : ''),
     H('Forutsetninger', `
       <div class="space-y-1.5">
         <div title="I et fagverk fører knutepunktet N inn i det eksisterende profilet. Da gir N et moment om det sammensatte tyngdepunktet, med mindre delen er fastholdt.">
@@ -280,7 +423,42 @@ export function lineInputsHtml(state, lr) {
 }
 
 /** Binder input-feltene i venstre panel til store. */
-export function bindLineInputs(host, store, { onHelp, onCopyPrompt } = {}) {
+export function bindLineInputs(host, store, { onHelp, onCopyPrompt } = {}, lr = null) {
+  if (lr && lr.zones && lr.zones.length && lr.base) {
+    const zones = lr.zones;
+    const base = lr.base;
+    host.querySelectorAll('[data-zone]').forEach((el) => {
+      el.addEventListener('change', () => {
+        const [i, key] = el.dataset.zone.split(':');
+        const idx = Number(i);
+        const next = key === 'zEnd'
+          ? moveBoundary(zones, idx, Number(String(el.value).replace(',', '.')), base)
+          : setZoneField(zones, idx, key, el.value, base);
+        store.setLine({ zones: next });
+      });
+    });
+    host.querySelectorAll('[data-zact]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const [act, i] = el.dataset.zact.split(':');
+        if (act === 'split') store.setLine({ zones: splitZone(zones, Number(i), base) });
+        if (act === 'del') store.setLine({ zones: deleteZone(zones, Number(i), base) });
+        if (act === 'endzones') {
+          const form = host.querySelector('[data-endzones-form]');
+          if (form) form.hidden = !form.hidden;
+        }
+        if (act === 'endzones-make') {
+          const L = Number(String(host.querySelector('#line-endL').value).replace(',', '.'));
+          const aEnd = Number(host.querySelector('#line-endA-a').value);
+          const next = endZones(zones, zones[0].z0, zones[zones.length - 1].z1, L, aEnd, base);
+          if (next) store.setLine({ zones: next });
+          else {
+            const msg = host.querySelector('[data-endzones-msg]');
+            if (msg) msg.textContent = 'Lengden må være > 0 og mindre enn halve delen, og a > 0.';
+          }
+        }
+      });
+    });
+  }
   const help = host.querySelector('[data-line-help]');
   if (help && onHelp) help.addEventListener('click', (e) => { e.stopPropagation(); onHelp(help); });
   const prompt = host.querySelector('[data-line-prompt]');
@@ -298,6 +476,70 @@ export function bindLineInputs(host, store, { onHelp, onCopyPrompt } = {}) {
       }
     });
   });
+}
+
+/**
+ * Sonelisten: én rad per sone. Grensene ligger mellom sonene, så å endre
+ * «til» flytter starten på neste — aldri hull eller overlapp. Tomt felt =
+ * skjøtens standard (vist som plassholder).
+ */
+function zonesHtml(lr) {
+  if (!lr || !lr.zones || !lr.zones.length || !lr.base) {
+    return '<p class="text-[11px] text-slate-500 italic">Lim inn lastdiagrammet og velg skjøt først.</p>';
+  }
+  const base = lr.base;
+  const kHead = base.ec5 ? 'd [mm]' : 'K_ser';
+  const kTip = base.ec5
+    ? 'Skruediameter i sonen — K regnes etter EC5 tabell 7.1 med skjøtens skruetype og densitet. Tom = skjøtens d.'
+    : 'Glidningsmodul per skrue i sonen [N/mm]. Tom = skjøtens K_ser.';
+  const stats = lr.ok && lr.zoneStats ? lr.zoneStats : null;
+  const inp = (i, key, value, placeholder, attrs = '') => `<input data-zone="${i}:${key}" data-focus-key="zone-${i}-${key}" id="zone-${i}-${key}" type="number" ${attrs}
+      class="w-full !px-1 !py-0.5 text-[11px] num" value="${value == null ? '' : value}" placeholder="${placeholder}" />`;
+  const rows = lr.zones
+    .map((zn, i) => {
+      const last = i === lr.zones.length - 1;
+      return `<tr class="border-t border-slate-700/60">
+        <td class="py-0.5 pr-1 num text-slate-400 whitespace-nowrap">${n(zn.z0, 2)}</td>
+        <td class="py-0.5 pr-1 w-14">${last ? `<span class="num text-slate-400 px-1">${n(zn.z1, 2)}</span>` : inp(i, 'zEnd', zn.z1, '', 'step="0.05"')}</td>
+        <td class="py-0.5 pr-1 w-10">${inp(i, 'rows', zn.rows !== base.rows ? zn.rows : '', base.rows, 'step="1" min="1"')}</td>
+        <td class="py-0.5 pr-1 w-12">${inp(i, 'a', zn.a !== base.a ? zn.a : '', base.a, 'step="5" min="1"')}</td>
+        <td class="py-0.5 pr-1 w-14">${base.ec5 ? inp(i, 'd', zn.d, base.d || '', 'step="0.5" min="1"') : inp(i, 'Kser', zn.Kser, Math.round(base.K) || '', 'step="100" min="1"')}</td>
+        <td class="py-0.5 pr-1 num text-right text-slate-400">${stats ? stats[i].count : ''}</td>
+        <td class="py-0.5 whitespace-nowrap text-right">
+          <button data-zact="split:${i}" title="Del sonen på midten" class="px-1 text-slate-400 hover:text-white">÷</button>
+          ${lr.zones.length > 1 ? `<button data-zact="del:${i}" title="Fjern sonen — naboen tar over lengden" class="px-1 text-slate-400 hover:text-red-400">✕</button>` : ''}
+        </td>
+      </tr>`;
+    })
+    .join('');
+  const total = stats ? stats.reduce((t, z) => t + z.count, 0) : null;
+  const suggest = stats ? n((2 * stats[0].Lc) / 1000, 2) : '';
+  return `<table class="w-full text-[11px]">
+      <thead><tr class="text-slate-500">
+        <th class="text-left font-normal py-1">z fra</th>
+        <th class="text-left font-normal py-1" title="Flytter også starten på neste sone">z til [m]</th>
+        <th class="text-left font-normal py-1">rader</th>
+        <th class="text-left font-normal py-1">a [mm]</th>
+        <th class="text-left font-normal py-1" title="${escapeHtml(kTip)}">${kHead}</th>
+        <th class="text-right font-normal py-1" title="lengde/a · rader">skruer</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${total != null ? `<p class="text-[10px] text-slate-400 mt-1 text-right">totalt ${total} skruer${lr.pick && lr.pick.pair ? ' per skjøt' : ''}</p>` : ''}
+    <div data-endzones-form hidden class="mt-1.5 rounded border border-slate-700 bg-slate-900/60 p-2 space-y-1.5">
+      <div class="grid grid-cols-2 gap-1.5">
+        <div><label class="field-label" for="line-endL">Lengde per ende [m]</label>
+          <input id="line-endL" type="number" step="0.1" min="0" placeholder="${suggest ? `≈ 2/λ = ${suggest}` : ''}" value="${suggest ? suggest.replace(',', '.') : ''}" /></div>
+        <div><label class="field-label" for="line-endA-a">a i endene [mm]</label>
+          <input id="line-endA-a" type="number" step="5" min="1" value="${Math.max(10, Math.round((lr.zones[0].a || base.a) / 2))}" /></div>
+      </div>
+      <div class="flex items-center justify-between gap-2">
+        <span data-endzones-msg class="text-[10px] text-amber-300"></span>
+        <button data-zact="endzones-make" class="px-2 py-0.5 text-[11px] bg-sky-700 hover:bg-sky-600 rounded">Lag endesoner</button>
+      </div>
+      <p class="text-[10px] text-slate-500">Lager tre soner: tette ender og midten med dagens avstand. 2/λ er lengden toppen bygges opp over med dagens avstand.</p>
+    </div>`;
 }
 
 /* ================================================================== *
@@ -414,7 +656,7 @@ function decimate(x, ys) {
  * Fargene kommer inn som verdier, så samme funksjon tegner både skjerm og
  * rapport (der det er lys bakgrunn).
  */
-export function plotSvg({ title, unit, x, series, palette }) {
+export function plotSvg({ title, unit, x, series, palette, marks = [] }) {
   const P = palette || { text: '#94a3b8', grid: '#334155', title: '#cbd5e1' };
   const W = 480, H = 156, Lm = 46, R = 8, T = 34, B = 20;
   const all = series.flatMap((s) => s.y);
@@ -441,6 +683,10 @@ export function plotSvg({ title, unit, x, series, palette }) {
   for (let i = 0; i <= 4; i++) {
     const v = x0 + ((x1 - x0) * i) / 4;
     out.push(`<text x="${X(v)}" y="${H - 6}" fill="${P.text}" font-size="9" text-anchor="middle">${n(v, 2)}${i === 4 ? ' m' : ''}</text>`);
+  }
+  // Sonegrensene (#71) som stiplede loddrette linjer.
+  for (const m of marks) {
+    out.push(`<line x1="${X(m).toFixed(1)}" y1="${T}" x2="${X(m).toFixed(1)}" y2="${H - B}" stroke="${P.text}" stroke-width="0.8" stroke-dasharray="2 3" />`);
   }
   for (const s of series) {
     const d = idx.map((i, k) => `${k ? 'L' : 'M'}${X(x[i]).toFixed(1)} ${Y(s.y[i]).toFixed(1)}`).join(' ');
@@ -469,17 +715,56 @@ export function linePlots(lr, palette, colors = SCREEN) {
       { y: kN(r.ser.Ninf), color: colors.inf, dash: '3 3', label: 'N₂∞ full samvirkning' },
     ],
   });
+  const marks = (lr.zones || []).slice(0, -1).map((zn) => zn.z1);
+  const perScrew = plotSvg({
+    title: 'Kraft per skrue F = q·a/rader',
+    unit: 'kN',
+    x,
+    palette,
+    marks,
+    series: [
+      { y: r.ser.F.map((v) => v / 1000), color: colors.anchor, label: 'K_ser' },
+      { y: r.u.F.map((v) => v / 1000), color: colors.anchor, dash: '4 3', label: 'K_u = ⅔·K_ser' },
+    ],
+  });
   const flow = plotSvg({
     title: `Kraft gjennom skjøten q${lr.share < 1 ? ' (per skjøt)' : ''}`,
     unit: 'kN/m',
     x,
     palette,
+    marks,
     series: [
       { y: r.ser.q.map((v) => v * lr.share), color: colors.anchor, label: 'K_ser' },
       { y: r.u.q.map((v) => v * lr.share), color: colors.anchor, dash: '4 3', label: 'K_u = ⅔·K_ser' },
     ],
   });
-  return { forces, flow };
+  return { forces, perScrew, flow };
+}
+
+/** Tabell per sone: lengde, skruer, a, K og største kraft per skrue. */
+export function zoneStatsTable(lr, { screen = true } = {}) {
+  if (!lr.ok || !lr.zoneStats) return '';
+  const td = screen ? 'py-0.5 pl-2 text-right num' : 'num';
+  const body = lr.zoneStats
+    .map((z) => `<tr${screen ? ' class="border-t border-slate-700/60"' : ''}>
+        <td${screen ? ' class="py-0.5 pr-2 num text-slate-300 whitespace-nowrap"' : ''}>${n(z.z0, 2)}–${n(z.z1, 2)}</td>
+        <td class="${td}">${z.rows}</td>
+        <td class="${td}">${n(z.a, 0)}</td>
+        <td class="${td}">${n(z.K, 0)}</td>
+        <td class="${td}">${z.count}</td>
+        <td class="${td}${screen ? ' text-white font-semibold' : ''}">${n(z.Fser, 2)}</td>
+        <td class="${td}">${n(z.zAt, 2)}</td>
+      </tr>`)
+    .join('');
+  const th = (t, tip = '') => `<th${screen ? ' class="text-right font-normal py-1 pl-2"' : ' class="num"'}${tip ? ` title="${escapeHtml(tip)}"` : ''}>${t}</th>`;
+  return `<table class="${screen ? 'w-full text-[11px]' : ''}">
+      <thead><tr${screen ? ' class="text-slate-500"' : ''}>
+        <th${screen ? ' class="text-left font-normal py-1"' : ''}>Sone z [m]</th>
+        ${th('rader')}${th('a [mm]')}${th('K_ser [N/mm]')}${th('skruer')}
+        ${th('F maks [kN]', 'Største kraft per skrue i sonen (K_ser)')}${th('ved z [m]')}
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table>`;
 }
 
 /** Rader i resultattabellen: [etikett, K_ser, K_u, hvilken som styrer, tooltip]. */
@@ -487,14 +772,21 @@ export function lineRows(lr) {
   const s = lr.summary;
   const rows = [
     [`q_max [kN/m]<br><span class="opacity-70">z = ${n(s.qMax.z, 2)} m</span>`, n(Math.abs(s.qMax.ser), 1), n(Math.abs(s.qMax.u), 1), 'ser', 'Største kraft gjennom skjøten per meter. Stivere skjøt gir høyere topp, så K_ser styrer.'],
-    [`Ytterste skrue F_v [kN]<br><span class="opacity-70">${s.rows} rad${s.rows === 1 ? '' : 'er'}, a = ${n(s.a, 0)} mm</span>`, n(s.Fv.ser, 2), n(s.Fv.u, 2), 'ser', 'q_max·a/rader — skjær i den mest belastede skruen. Til kontroll i EC5-knutepunkt.'],
+    [`Mest belastede skrue F_v [kN]<br><span class="opacity-70">z = ${n(s.Fv.z, 2)} m · ${s.rows} rad${s.rows === 1 ? '' : 'er'}, a = ${n(s.a, 0)} mm</span>`, n(s.Fv.ser, 2), n(s.Fv.u, 2), 'ser', 'Største kraft per skrue langs delen, F = K·δ = q·a/rader — skjær i den mest belastede skruen. Til kontroll i EC5-knutepunkt.'],
   ];
   if (s.Fax != null) rows.push(['Ytterste skrue F_ax [kN] (fra q_T)', n(s.Fax, 2), n(s.Fax, 2), null, 'q_T·a/rader — uttrekk når skruen står vinkelrett på skjøteflaten. Kombineres med F_v i EC5 8.7.3.']);
   if (s.N2a) rows.push(['N₂ inn i knutepunktet ved z_a [kN]', n(s.N2a.ser, 1), n(s.N2a.u, 1), 'ser', 'Festet ende: kraften i den nye delen går gjennom knutepunktsforbindelsen, ikke gjennom skruene.']);
   if (s.N2b) rows.push(['N₂ inn i knutepunktet ved z_b [kN]', n(s.N2b.ser, 1), n(s.N2b.u, 1), 'ser', 'Festet ende: kraften i den nye delen går gjennom knutepunktsforbindelsen, ikke gjennom skruene.']);
   rows.push([`N₁ maks, eksisterende [kN]<br><span class="opacity-70">z = ${n(s.N1max.z, 2)} m</span>`, n(s.N1max.ser, 1), n(s.N1max.u, 1), 'u', 'Kraften som blir igjen i den eksisterende delen. Mykere skjøt gir mer, så K_u styrer.']);
   rows.push(['η = N₂ / N₂∞', s.eta.ser == null ? '–' : n(s.eta.ser, 3), s.eta.u == null ? '–' : n(s.eta.u, 3), 'u', 'Hvor mye av andelen ved full samvirkning den nye delen faktisk får, der den er størst.']);
-  rows.push(['Karakteristisk lengde 1/λ [mm]', n(s.Lc.ser, 0), n(s.Lc.u, 0), null, 'Kraften bygges 63 % opp over 1/λ og 95 % over 3/λ.']);
+  rows.push([
+    `Karakteristisk lengde 1/λ [mm]${s.zones > 1 ? '<br><span class="opacity-70">tetteste–glisneste sone</span>' : ''}`,
+    s.zones > 1 ? `${n(s.Lc.ser, 0)}–${n(s.Lc.serMax, 0)}` : n(s.Lc.ser, 0),
+    s.zones > 1 ? `${n(s.Lc.u, 0)}–${n(s.Lc.uMax, 0)}` : n(s.Lc.u, 0),
+    null,
+    'Kraften bygges 63 % opp over 1/λ og 95 % over 3/λ. Med soner har hver sone sin egen 1/λ.',
+  ]);
+  rows.push([`Skruer totalt${s.zones > 1 ? ` (${s.zones} soner)` : ''}`, String(s.count), String(s.count), null, 'Summen av lengde/a · rader over sonene — til mengdeberegning.']);
   return rows;
 }
 
@@ -534,23 +826,24 @@ function featureZ(lr) {
 export function lineZones(lr) {
   if (!lr || !lr.ok) return [];
   const f = featureZ(lr);
-  const s = lr.summary;
-  const per = (q) => (Math.abs(q) * lr.share * s.a) / s.rows / 1000;
-  const peak = (run, z0, z1) => {
+  const peak = (run, arr, z0, z1) => {
     let best = 0;
     let at = z0;
     for (let i = 0; i < run.z.length; i++) {
       const z = run.z[i];
       if (z < z0 - 1e-9 || z > z1 + 1e-9) continue;
-      if (Math.abs(run.q[i]) > Math.abs(best)) { best = run.q[i]; at = z; }
+      if (Math.abs(arr[i]) > Math.abs(best)) { best = arr[i]; at = z; }
     }
-    return { q: Math.abs(best) * lr.share, at };
+    return { v: Math.abs(best), at };
   };
   const out = [];
   for (let i = 0; i < f.length - 1; i++) {
-    const ser = peak(lr.res.ser, f[i], f[i + 1]);
-    const u = peak(lr.res.u, f[i], f[i + 1]);
-    out.push({ z0: f[i] / 1000, z1: f[i + 1] / 1000, qSer: ser.q, qU: u.q, zAt: ser.at / 1000, FvSer: per(ser.q / lr.share), FvU: per(u.q / lr.share) });
+    const r = lr.res;
+    const qs = peak(r.ser, r.ser.q, f[i], f[i + 1]);
+    const qu = peak(r.u, r.u.q, f[i], f[i + 1]);
+    const Fs = peak(r.ser, r.ser.F, f[i], f[i + 1]);
+    const Fu = peak(r.u, r.u.F, f[i], f[i + 1]);
+    out.push({ z0: f[i] / 1000, z1: f[i + 1] / 1000, qSer: qs.v * lr.share, qU: qu.v * lr.share, zAt: Fs.at / 1000, FvSer: Fs.v / 1000, FvU: Fu.v / 1000 });
   }
   return out;
 }
@@ -563,7 +856,6 @@ export function lineZones(lr) {
  */
 export function qTableTsv(lr, step = 0.05) {
   if (!lr || !lr.ok) return '';
-  const s = lr.summary;
   const zs = new Set();
   for (let z = lr.za; z < lr.zb - 1e-9; z += step) zs.add(Math.round(z * 1e6) / 1e6);
   for (const zMm of featureZ(lr)) zs.add(Math.round(zMm) / 1000);
@@ -578,7 +870,7 @@ export function qTableTsv(lr, step = 0.05) {
     const zm = z * 1000;
     const qs = Math.abs(interp(r.ser.z, r.ser.q, zm)) * lr.share;
     const qu = Math.abs(interp(r.u.z, r.u.q, zm)) * lr.share;
-    const Fv = (qs * s.a) / s.rows / 1000;
+    const Fv = interp(r.ser.z, r.ser.F, zm) / 1000;
     const N1 = interp(r.u.z, r.u.N1, zm) / 1000;
     const N2 = interp(r.ser.z, r.ser.N2, zm) / 1000;
     lines.push([fmt(z, 3), fmt(qs, 2), fmt(qu, 2), fmt(Fv, 3), fmt(N1, 2), fmt(N2, 2)].join('\t'));
@@ -605,9 +897,9 @@ export function lineZonesTable(lr, { screen = true } = {}) {
       <thead><tr${screen ? ' class="text-slate-500"' : ''}>
         <th${screen ? ' class="text-left font-normal py-1"' : ''}>Felt z [m]</th>
         ${th('|q| maks K_ser [kN/m]', 'Største kraft gjennom skjøten i feltet — styrende for skruene')}
-        ${th(`F_v per skrue [kN]`, `|q|·a/rader med a = ${n(lr.summary.a, 0)} mm og ${lr.summary.rows} rad(er)`)}
+        ${th(`F_v per skrue [kN]`, 'Største kraft per skrue i feltet, K_ser: |q|·a/rader med sonens a og rader')}
         ${th('|q| maks K_u [kN/m]')}
-        ${th('ved z [m]', 'Hvor i feltet toppen sitter (K_ser)')}
+        ${th('ved z [m]', 'Hvor i feltet største kraft per skrue sitter (K_ser)')}
       </tr></thead>
       <tbody>${body}</tbody>
     </table>`;
@@ -632,7 +924,7 @@ export function lineOutputHtml(lr) {
         <td class="py-1 pl-2 text-right num ${gov === 'u' ? 'text-white font-semibold' : 'text-slate-400'}">${u}${gov === 'u' ? ' ●' : ''}</td>
       </tr>`)
     .join('');
-  const { forces, flow } = linePlots(lr);
+  const { forces, perScrew, flow } = linePlots(lr);
   return `${warns}
     <p class="text-[11px] text-slate-400 mb-1 truncate">Skjøt: <span class="text-slate-200">${escapeHtml(lr.summary.joint)}</span></p>
     <table class="w-full text-[11px]">
@@ -644,7 +936,11 @@ export function lineOutputHtml(lr) {
       <tbody>${body}</tbody>
     </table>
     <p class="text-[10px] text-slate-500 mt-1">● styrende · hold musa over en rad for forklaring · 1 N/mm = 1 kN/m</p>
-    <div class="mt-3 space-y-2">${forces}${flow}</div>
+    <div class="mt-3 space-y-1">${perScrew}${forces}${flow}</div>
+    <div class="mt-2">
+      <h4 class="text-[11px] text-slate-400 mb-0.5">Per sone</h4>
+      ${zoneStatsTable(lr)}
+    </div>
     <details class="mt-2 rounded border border-slate-700 bg-slate-900/60" data-line-zones ${lr.zonesOpen ? 'open' : ''}>
       <summary class="px-2.5 py-1.5 text-xs text-slate-300 hover:text-white flex items-center gap-1.5">
         <span class="chev text-slate-500" style="display:inline-block">›</span>
@@ -652,7 +948,7 @@ export function lineOutputHtml(lr) {
       </summary>
       <div class="px-2.5 pb-2.5 pt-1">
         ${lineZonesTable(lr)}
-        <p class="text-[10px] text-slate-500 mt-1">Toppene sitter i endene og ved hoppene. Bruk tabellen til å velge skrueavstand felt for felt — men merk at modellen regner med samme a langs hele delen.</p>
+        <p class="text-[10px] text-slate-500 mt-1">Toppene sitter i endene og ved hoppene. Bruk tabellen til å legge skruesonene der behovet er.</p>
       </div>
     </details>`;
 }

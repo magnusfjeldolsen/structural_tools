@@ -34,7 +34,7 @@ import { computeReinforcement, n, q, sci } from './reinforcement-ui.js';
 import { effectiveJoints } from './store.js';
 import { buildFigureSvg } from './report-figure.js';
 import { materialByName } from './materials.js';
-import { computeLine, lineRows, linePlots, lineZonesTable } from './line-ui.js';
+import { computeLine, lineRows, linePlots, lineZonesTable, zoneStatsTable } from './line-ui.js';
 
 /* ------------------------------------------------------------------ *
  * Formatering
@@ -431,7 +431,7 @@ function lineSetupText(lr, line) {
   return `Skjøt: ${esc(lr.summary.joint)} · z = ${n(lr.za, 2)}–${n(lr.zb, 2)} m · ender: ${ends(line.endA)} / ${ends(line.endB)} ·
       N i ${line.nAt === 'existing' ? 'eksisterende' : 'sammensatt'} tyngdepunkt · ${esc(restr || '')} ·
       fri tøyning ε_eks = ${n(Number(line.epsExisting) || 0, 2)} ‰, ε_ny = ${n(Number(line.epsNew) || 0, 2)} ‰ ·
-      skjøtedata: ${lr.summary.rows} rad(er), a = ${n(lr.summary.a, 0)} mm, k = ${n(lr.kSer, 2)} N/mm² (K_ser)`;
+      ${lr.summary.zones > 1 ? `${lr.summary.zones} skruesoner, ${lr.summary.count} skruer (se side 2)` : `skjøtedata: ${lr.summary.rows} rad(er), a = ${n(lr.summary.a, 0)} mm, k = ${n(lr.kSer, 2)} N/mm² (K_ser)`}`;
 }
 
 function lineSummaryBlock(lr, line) {
@@ -461,17 +461,18 @@ function linePage2(lr) {
   if (!lr.ok) return '';
   const ink = { text: '#475569', grid: '#cbd5e1', title: '#1e293b' };
   const colors = { existing: '#1d4ed8', fresh: '#c2410c', q: '#1d4ed8', anchor: '#a21caf', inf: '#64748b' };
-  const { forces, flow } = linePlots(lr, ink, colors);
+  const { forces, perScrew, flow } = linePlots(lr, ink, colors);
   const warns = lr.warnings.length
     ? `<p class="muted">${lr.warnings.map((w) => `⚠ ${esc(w.short.replace(/<[^>]+>/g, ''))}`).join('<br>')}</p>`
     : '';
   return `
-    <section class="atomic"><h3>Kreftene langs z</h3>${forces}${flow}</section>
+    <section class="atomic"><h3>Kreftene langs z</h3>${perScrew}${forces}${flow}</section>
+    <section class="atomic"><h3>Skruesoner</h3>${zoneStatsTable(lr, { screen: false })}</section>
     <section class="keep-with-next">
       <h3>Per felt mellom knutepunkt</h3>
       ${lineZonesTable(lr, { screen: false })}
       <p class="muted">Toppene sitter i endene og ved hoppene i lastdiagrammet. F_v per skrue er |q|·a/rader med
-        skjøtedataene over. Modellen regner med samme skrueavstand langs hele delen.</p>
+        sonens skrueavstand og rader.</p>
     </section>
     <section class="atomic">
       <h3>Modell og forutsetninger</h3>

@@ -2011,7 +2011,7 @@ export class UI {
     if (this.store.state.analysis === 'line') {
       return `
       <div class="px-2 pb-2 pt-1 space-y-2 border-t border-slate-600">
-        ${layoutFields}
+        <p class="text-[10px] text-slate-500 leading-snug">Skruetypen her er standard for alle soner. Rader og a settes per sone under «Skruesoner».</p>
         ${stiffnessBlock}
         <div title="Last som henges opp gjennom skjøten, vinkelrett på skjøteflaten (strekk positiv). Gir uttrekk F_ax i skruene.">
           <label class="field-label" for="j-qT-${j.id}">q_T, last vinkelrett på skjøten [kN/m]</label>
