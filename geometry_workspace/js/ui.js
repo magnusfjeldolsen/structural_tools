@@ -595,6 +595,10 @@ export class UI {
     $('tab-section').classList.toggle('hidden', rf);
     $('tab-reinforcement').classList.toggle('hidden', !rf);
     // Kreftene trenger plass til tabeller; tverrsnittsresultatene gjør ikke det.
+    // Venstre panel også: sonelisten (#71) har sju kolonner.
+    const left = $('left-panel');
+    left.classList.toggle('w-80', !rf);
+    left.classList.toggle('w-96', rf);
     const right = $('right-panel');
     right.classList.toggle('w-80', !rf);
     right.classList.toggle('xl:w-96', !rf);

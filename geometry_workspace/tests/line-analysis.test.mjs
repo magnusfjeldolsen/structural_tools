@@ -194,6 +194,37 @@ head('8b. Skruesoner: stivheten varierer langs delen (#71)');
 }
 
 /* ------------------------------------------------------------------ */
+head('8c. Automatisk soneforslag (#73)');
+{
+  const ex = [rectPart('ex', 0, 0, 50, 130, 11000)];
+  const nw = [rectPart('nw', 50, 0, 48, 198, 11000)];
+  const layer = L.twoLayer({ existingParts: ex, newParts: nw, restraint: 'xy', nAt: 'composite' });
+  const rows = L.parseLoadTable('0 60\n12 60').rows;
+  const common = { layer, rows, jumps: [], za: 0, zb: 12000, endA: 'loose', endB: 'loose', rowsPerZone: 2, K: 2990, spacings: [50, 75, 100, 150, 200], minLen: 500 };
+  // Uniform: a = 200 gir F maks ≈ 2,99 kN, a = 50 gir 1,50 kN (F ∝ √a). Målet
+  // 1,7 kN krever tette ender, men ikke tett overalt.
+  const s = L.suggestZones({ ...common, target: 1700 });
+  ok('målet nås', s.ok && s.Fmax <= 1700 + 1e-6, JSON.stringify({ ok: s.ok, Fmax: s.Fmax }));
+  ok('sonene dekker hele delen uten hull', s.zones[0].z0 === 0 && s.zones[s.zones.length - 1].z1 === 12000 && s.zones.every((z, i) => i === 0 || z.z0 === s.zones[i - 1].z1));
+  ok('naboer har ulik a (like er slått sammen)', s.zones.every((z, i) => i === 0 || z.a !== s.zones[i - 1].a));
+  ok('tettere i endene enn i midten', s.zones[0].a < s.zones[Math.floor(s.zones.length / 2)].a && s.zones[s.zones.length - 1].a < s.zones[Math.floor(s.zones.length / 2)].a, JSON.stringify(s.zones.map((z) => [z.z0, z.z1, z.a])));
+  ok('ingen sone kortere enn minste lengde', s.zones.every((z) => z.z1 - z.z0 >= 500 - 1e-6));
+  // Kontroll: løs med forslaget og se at F holder overalt.
+  const check = L.analyseLine({ ...common, zones: s.zones.map((z) => ({ z0: z.z0, z1: z.z1, rows: 2, a: z.a, K: 2990 })) });
+  ok('uavhengig kontroll: F maks ≤ mål', check.ser.Fmax <= 1700 + 1e-6, String(check.ser.Fmax));
+  // Bare så vidt mulig (a = 50 overalt gir 1,495 kN): skal også nås, ved å la den tette sonen vokse.
+  const tight = L.suggestZones({ ...common, target: 1500 });
+  ok('stramt mål nås ved at den tette sonen vokser', tight.ok && tight.Fmax <= 1500 + 1e-6, JSON.stringify({ ok: tight.ok, Fmax: tight.Fmax, z: tight.zones.map((z) => [z.z0, z.a]) }));
+
+  const easy = L.suggestZones({ ...common, target: 1e6 });
+  ok('romslig mål: én sone med glisneste avstand', easy.ok && easy.zones.length === 1 && easy.zones[0].a === 200);
+
+  const hard = L.suggestZones({ ...common, target: 100 });
+  ok('umulig mål sies tydelig, med hvor', !hard.ok && hard.worst && hard.worst.F > 100 && Number.isFinite(hard.worst.z));
+  ok('…og tetteste avstand der det ikke holder', hard.zones.some((z) => z.a === 50));
+}
+
+/* ------------------------------------------------------------------ */
 head('9. Lastetabellen');
 {
   const t = L.parseLoadTable('z\tN\tMx\tMy\tN_før\n0\t10,5\t0\t0\t0\n3\t10,5\t2,25\t0\t0\n3\t30\t2,25\t0\t0\n6\t30\t0\t0\t0\n');
