@@ -355,7 +355,7 @@ export function integrate(z, f) {
  *          endA: 'loose'|'fixed', endB: 'loose'|'fixed', kSer: number,
  *          epsExisting?: number, epsNew?: number}} arg  za/zb i mm, kSer i N/mm²
  */
-export function analyseLine({ layer, rows, jumps = [], za, zb, endA, endB, kSer, zones, epsExisting = 0, epsNew = 0 }) {
+export function analyseLine({ layer, rows, jumps = [], za, zb, endA, endB, kSer, zones, epsExisting = 0, epsNew = 0, serOnly = false }) {
   const jumpsMm = jumps.map((z) => z * 1000).filter((z) => z > za && z < zb);
   const nInf = (z, side) => {
     const l = loadAt(rows, z, side);
@@ -401,5 +401,105 @@ export function analyseLine({ layer, rows, jumps = [], za, zb, endA, endB, kSer,
       eta, zAtEta: s.z[iInf],
     };
   };
-  return { ser: run(1), u: run(2 / 3), zones: zs, c };
+  return { ser: run(1), u: serOnly ? null : run(2 / 3), zones: zs, c };
+}
+
+/**
+ * Foreslår skruesoner slik at største kraft per skrue (K_ser) holder seg under
+ * et mål — typisk R_v,d fra EC5-knutepunkt (#73). Verktøyet regner fortsatt
+ * ingen kapasitet; målet er et tall brukeren oppgir.
+ *
+ * Delen deles i like celler, minst `minLen` lange. Alle starter med den
+ * glisneste tillatte avstanden. Celler der F > mål gjøres ett trinn tettere,
+ * og det løses på nytt — en tettere celle trekker til seg mer kraft, så
+ * naboene kan måtte følge etter. Trinnene går bare én vei, så det ender
+ * alltid: enten holder alt, eller cellene som ikke holder står på tetteste
+ * avstand. Til slutt slås like naboceller sammen til soner.
+ *
+ * @param {object} arg  som `analyseLine`, pluss `rowsPerZone`, `K` [N/mm],
+ *   `spacings` [mm], `target` [N], `minLen` [mm]
+ * @returns {{zones: Array<{z0:number, z1:number, a:number}>, ok: boolean, Fmax: number,
+ *            worst: {z:number, F:number}, iterations: number}}  z i mm, F i N
+ */
+export function suggestZones({ layer, rows, jumps = [], za, zb, endA, endB, epsExisting = 0, epsNew = 0, rowsPerZone, K, spacings, target, minLen }) {
+  const sp = [...new Set((spacings || []).filter((v) => v > 0))].sort((u, v) => v - u); // glisnest først
+  const len = zb - za;
+  const nCells = Math.max(1, Math.floor(len / Math.max(minLen, 1e-9)));
+  // Cellene er nøyaktig `minLen` lange, og resten legges i midtcellen: da blir
+  // grensene runde tall regnet fra hver ende, og forslaget symmetrisk.
+  const rest = len - nCells * minLen;
+  const mid = Math.floor((nCells - 1) / 2);
+  const edges = [za];
+  for (let i = 0; i < nCells; i++) edges.push(edges[i] + minLen + (i === mid ? rest : 0));
+  edges[nCells] = zb;
+  const cellOf = (z) => {
+    let lo = 0;
+    let hi = nCells;
+    while (hi - lo > 1) {
+      const m = (lo + hi) >> 1;
+      if (edges[m] <= z) lo = m;
+      else hi = m;
+    }
+    return lo;
+  };
+  const level = new Array(nCells).fill(0);
+  const merge = () => {
+    const out = [];
+    for (let i = 0; i < nCells; i++) {
+      const z0 = edges[i];
+      const z1 = edges[i + 1];
+      const a = sp[level[i]];
+      if (out.length && out[out.length - 1].a === a) out[out.length - 1].z1 = z1;
+      else out.push({ z0, z1, a });
+    }
+    return out;
+  };
+  let res = null;
+  let iterations = 0;
+  const maxIter = sp.length * nCells + 2;
+  while (iterations < maxIter) {
+    iterations++;
+    const zones = merge();
+    res = analyseLine({
+      layer, rows, jumps, za, zb, endA, endB, epsExisting, epsNew, serOnly: true,
+      zones: zones.map((z) => ({ z0: z.z0, z1: z.z1, rows: rowsPerZone, a: z.a, K })),
+    }).ser;
+    const cellMax = new Array(nCells).fill(0);
+    res.z.forEach((z, k) => {
+      const i = Math.min(nCells - 1, cellOf(z));
+      cellMax[i] = Math.max(cellMax[i], res.F[k]);
+      // Et punkt på en cellegrense hører til begge.
+      if (i > 0 && Math.abs(z - edges[i]) < 1e-6) cellMax[i - 1] = Math.max(cellMax[i - 1], res.F[k]);
+    });
+    // Celler over målet blir ett trinn tettere. Står en allerede på tetteste
+    // avstand, er den tette sonen for kort (kortere enn ≈ 2/λ) — da blir den
+    // nærmeste naboen som ikke er tettest, tettere i stedet, så sonen vokser.
+    const top = sp.length - 1;
+    const bump = new Set();
+    for (let i = 0; i < nCells; i++) {
+      if (!(cellMax[i] > target)) continue;
+      if (level[i] < top) {
+        bump.add(i);
+        continue;
+      }
+      for (let d = 1; d < nCells; d++) {
+        const cand = [i - d, i + d].filter((j) => j >= 0 && j < nCells && level[j] < top);
+        if (cand.length) {
+          cand.forEach((j) => bump.add(j));
+          break;
+        }
+      }
+    }
+    if (!bump.size) break;
+    bump.forEach((i) => level[i]++);
+  }
+  let iw = 0;
+  for (let k = 1; k < res.F.length; k++) if (res.F[k] > res.F[iw]) iw = k;
+  return {
+    zones: merge(),
+    ok: res.F[iw] <= target + 1e-9,
+    Fmax: res.F[iw],
+    worst: { z: res.z[iw], F: res.F[iw] },
+    iterations,
+  };
 }

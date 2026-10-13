@@ -74,7 +74,7 @@ import {
 } from './joints.js';
 import { JOINT_COLOR, effectiveJoints, autoJointOverlaps } from './store.js';
 import { jointForceFigureSvg } from './joint-force-figure.js';
-import { computeLine, lineInputsHtml, bindLineInputs, lineOutputHtml, lineDetailsHtml, aiPrompt, lineConventionHtml, qTableTsv } from './line-ui.js';
+import { computeLine, lineInputsHtml, bindLineInputs, lineOutputHtml, lineDetailsHtml, aiPrompt, lineConventionHtml, qTableTsv, bindZoneStrip } from './line-ui.js';
 
 /* ------------------------------------------------------------------ *
  * Tallformatering
@@ -984,6 +984,7 @@ export class ReinforcementPanel {
       }, lr);
     }
     if (this.figureOpen && this.popoverKind !== 'convention') this.closeFigure();
+    bindZoneStrip(host, this.store, lr);
     this._bind();
   }
 

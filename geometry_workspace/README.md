@@ -408,6 +408,21 @@ med forslag til lengde ≈ 2/λ. Tabellen «Per sone» gir antall skruer og
 største kraft per skrue i hver sone. Løseren er testet mot den lukkede
 løsningen for to soner.
 
+**Foreslå soner og sonestripen (#73).** «Foreslå…» tar et mål for største
+kraft per skrue (typisk R_v,d — verktøyet regner ingen kapasitet selv),
+tillatte avstander og minste sonelengde (`suggestZones` i
+`line-analysis.js`). Delen deles i celler på minste sonelengde (resten i
+midtcellen, så grensene blir runde fra hver ende); alle starter glisnest, og
+celler over målet blir ett trinn tettere og det løses på nytt til alt holder.
+Står en celle allerede på tetteste avstand, blir naboen tettere, så den tette
+sonen vokser (en for kort tett endesone hjelper ikke). Nås ikke målet, sies
+det hvor og med hvor stor kraft. Like naboceller slås sammen til soner, og
+resultatet er en vanlig soneliste. Under plottet av kraft per skrue ligger en
+**sonestripe** med samme z-akse: dra en grense (5 cm-trinn, Shift = fritt),
+dobbeltklikk for å dele der du klikker. Sonelisten har både «z til» og
+«lengde»; en verdi utenfor det lovlige rettes til nærmeste lovlige med en
+melding, og et tomt felt eller tekst lar grensen stå.
+
 Under plottene viser **«Per felt mellom knutepunkt»** største |q| og kraft per
 skrue i hvert felt mellom hoppene i diagrammet (`lineZones`) — tallene man
 trenger for å velge skrueavstand felt for felt. **«Kopier q(z)»** kopierer
