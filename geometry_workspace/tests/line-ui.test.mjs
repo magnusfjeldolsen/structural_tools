@@ -14,7 +14,7 @@ const vendor = await readFile(fileURLToPath(new URL('../vendor/polygon-clipping.
 await import('data:text/javascript;charset=utf-8;base64,' + Buffer.from(vendor, 'utf8').toString('base64'));
 const url = (p) => pathToFileURL(fileURLToPath(new URL(p, import.meta.url))).href;
 const { computeReinforcement } = await import(url('../js/reinforcement-ui.js'));
-const { computeLine, aiPrompt, lineConventionHtml, lineZones, qTableTsv, resolveZones, splitZone, deleteZone, moveBoundary, endZones, setZoneField } = await import(url('../js/line-ui.js'));
+const { computeLine, aiPrompt, lineConventionHtml, lineZones, qTableTsv, resolveZones, splitZone, deleteZone, moveBoundary, endZones, setZoneField, suggestFor, splitZoneAt } = await import(url('../js/line-ui.js'));
 
 let failed = 0;
 function ok(label, cond, extra = '') {
@@ -150,6 +150,23 @@ console.log('Skruesoner (#71)');
   ok('rader per sone', field[1].rows === 3 && field[0].rows === 2);
   const kz = resolveZones({ zones: setZoneField(split, 0, 'Kser', 4000, base) }, 0, 12, base);
   ok('K_ser per sone', kz[0].K === 4000 && kz[1].K === 2990);
+}
+
+console.log('Foreslå soner gjennom broen (#73)');
+{
+  // Fagverksgurt med hopp — hoppene må komme fram i riktig enhet.
+  const shapes = [shape('gurt', R(0, 0, 50, 130), 'existing', 11000), shape('ny', R(50, 0, 48, 198), 'new', 11000)];
+  const st = model(shapes, [joint('j', [50, 0], [50, 130])], { table: '0 40\n4 40\n4 90\n8 90\n8 30\n12 30' });
+  const lr = run(st);
+  const r = suggestFor(lr, { target: 1300, spacings: [50, 75, 100, 150, 200], minLen: 500 });
+  ok('forslaget holder målet', r && r.ok && r.Fmax <= 1300 + 1e-6, JSON.stringify(r && { ok: r.ok, Fmax: r.Fmax, worst: r.worst }));
+  // Kontroll: legg forslaget inn og regn på nytt gjennom hele broen.
+  const lr2 = run(model(shapes, [joint('j', [50, 0], [50, 130])], { table: '0 40\n4 40\n4 90\n8 90\n8 30\n12 30', zones: r.zones }));
+  ok('uavhengig kontroll gjennom broen: F maks ≤ mål', lr2.ok && lr2.summary.Fv.ser <= 1.3 + 1e-6, String(lr2.summary && lr2.summary.Fv.ser));
+  ok('rader og skrue beholdt', lr2.zones.every((z) => z.rows === 2 && z.K === 2990));
+  const one = resolveZones({ zones: [] }, 0, 12, { rows: 2, a: 100, K: 2990 });
+  const at = resolveZones({ zones: splitZoneAt(one, 0, 3.25, { rows: 2, a: 100, K: 2990 }) }, 0, 12, { rows: 2, a: 100, K: 2990 });
+  ok('del ved z: grensen der man klikket', at.length === 2 && at[0].z1 === 3.25);
 }
 
 console.log('Prompten til brukerens AI');

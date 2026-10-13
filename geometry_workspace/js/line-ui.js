@@ -8,7 +8,7 @@
  * K i N/mm); fri tøyning i ‰. Alt regnes om til N og mm her.
  */
 
-import { parseLoadTable, twoLayer, lambda2, analyseLine } from './line-analysis.js';
+import { parseLoadTable, twoLayer, lambda2, analyseLine, suggestZones } from './line-analysis.js';
 import { slipModulus } from './connection-stiffness.js';
 import { lengthLabel } from './units.js';
 import { n } from './derivation.js';
@@ -297,6 +297,135 @@ export function setZoneField(zones, i, key, value, base) {
   return toState(next, base);
 }
 
+/** Deler sone i ved z [m] (ikke nærmere enn 1 cm fra kantene). */
+export function splitZoneAt(zones, i, z, base) {
+  const zn = zones[i];
+  const at = Math.min(zn.z1 - 0.01, Math.max(zn.z0 + 0.01, z));
+  const next = [...zones.slice(0, i), { ...zn, z1: at }, { ...zn, z0: at }, ...zones.slice(i + 1)];
+  return toState(next, base);
+}
+
+/**
+ * «Foreslå soner» (#73): kjører `suggestZones` med rader og skrue fra første
+ * sone, og gir sonene tilbake i tilstandsform. Mål og minste lengde i N og mm.
+ */
+export function suggestFor(lr, { target, spacings, minLen }) {
+  if (!lr || !lr.layer || !lr.zones || !lr.zones.length) return null;
+  const z0 = lr.zones[0];
+  const nJ = lr.pick ? lr.pick.joints.length : 1;
+  const line = lr.line || {};
+  const r = suggestZones({
+    layer: lr.layer,
+    rows: lr.table.rows,
+    jumps: lr.table.jumps, // i m — analyseLine regner om og filtrerer selv
+    za: lr.za * 1000,
+    zb: lr.zb * 1000,
+    endA: line.endA,
+    endB: line.endB,
+    epsExisting: (Number(line.epsExisting) || 0) / 1000,
+    epsNew: (Number(line.epsNew) || 0) / 1000,
+    rowsPerZone: z0.rows * nJ,
+    K: z0.K,
+    spacings,
+    target,
+    minLen,
+  });
+  const zones = r.zones.map((z) => ({ z0: z.z0 / 1000, z1: z.z1 / 1000, rows: z0.rows, a: z.a, K: z0.K, Kser: z0.Kser, d: z0.d }));
+  return { ...r, zones: toState(zones, lr.base), count: zones.length };
+}
+
+/**
+ * Sonestripen under plottet av kraft per skrue: samme z-akse som plottene
+ * (samme viewBox og marger som `plotSvg`), én bit per sone med tetthet som
+ * farge, og håndtak på grensene som kan dras.
+ */
+export function zoneStripSvg(lr) {
+  if (!lr.ok || !lr.zones || !lr.zones.length) return '';
+  const W = 480, Hh = 34, Lm = 46, R = 8;
+  const x0 = lr.zones[0].z0;
+  const x1 = lr.zones[lr.zones.length - 1].z1;
+  const X = (v) => Lm + ((v - x0) / (x1 - x0 || 1)) * (W - Lm - R);
+  const ks = lr.zones.map((z) => (z.rows * z.K) / z.a);
+  const kMin = Math.min(...ks);
+  const kMax = Math.max(...ks);
+  const segs = lr.zones.map((z, i) => {
+    const t = kMax > kMin ? (ks[i] - kMin) / (kMax - kMin) : 0.5;
+    const w = X(z.z1) - X(z.z0);
+    return `<g data-strip-seg="${i}">
+      <rect x="${X(z.z0).toFixed(1)}" y="6" width="${Math.max(0, w).toFixed(1)}" height="16" fill="#e879f9" fill-opacity="${(0.15 + 0.55 * t).toFixed(2)}" stroke="#475569" stroke-width="0.6" />
+      ${w > 34 ? `<text x="${(X(z.z0) + w / 2).toFixed(1)}" y="17.5" fill="#f1f5f9" font-size="9" text-anchor="middle" pointer-events="none">a=${n(z.a, 0)}</text>` : ''}
+    </g>`;
+  }).join('');
+  const handles = lr.zones.slice(0, -1).map((z, i) => `<g data-strip-bound="${i}" style="cursor:ew-resize">
+      <rect x="${(X(z.z1) - 5).toFixed(1)}" y="2" width="10" height="24" fill="transparent" />
+      <line x1="${X(z.z1).toFixed(1)}" y1="3" x2="${X(z.z1).toFixed(1)}" y2="25" stroke="#f8fafc" stroke-width="2" />
+    </g>`).join('');
+  return `<svg data-zone-strip viewBox="0 0 ${W} ${Hh}" width="100%" role="img" aria-label="Skruesoner langs z — dra grensene, dobbeltklikk for å dele"
+      font-family="ui-sans-serif, system-ui, sans-serif" style="touch-action:none">
+    ${segs}${handles}
+    <text data-strip-readout x="${Lm}" y="${Hh - 1}" fill="#94a3b8" font-size="8">dra en grense · dobbeltklikk for å dele · Shift = fritt (ellers 5 cm-trinn)</text>
+  </svg>`;
+}
+
+/** Gjør sonestripen interaktiv: dra grenser, dobbeltklikk for å dele. */
+export function bindZoneStrip(host, store, lr) {
+  const svg = host.querySelector('[data-zone-strip]');
+  if (!svg || !lr || !lr.ok) return;
+  const W = 480, Lm = 46, R = 8;
+  const zones = lr.zones;
+  const x0 = zones[0].z0;
+  const x1 = zones[zones.length - 1].z1;
+  const toZ = (clientX) => {
+    const r = svg.getBoundingClientRect();
+    const vx = ((clientX - r.left) / r.width) * W;
+    return x0 + ((vx - Lm) / (W - Lm - R)) * (x1 - x0);
+  };
+  const X = (v) => Lm + ((v - x0) / (x1 - x0 || 1)) * (W - Lm - R);
+  const readout = svg.querySelector('[data-strip-readout]');
+  svg.querySelectorAll('[data-strip-bound]').forEach((g) => {
+    const i = Number(g.dataset.stripBound);
+    const lo = zones[i].z0 + 0.01;
+    const hi = zones[i + 1].z1 - 0.01;
+    const line = g.querySelector('line');
+    const segL = svg.querySelector(`[data-strip-seg="${i}"] rect`);
+    const segR = svg.querySelector(`[data-strip-seg="${i + 1}"] rect`);
+    let dragging = false;
+    let z = zones[i].z1;
+    g.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      g.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    g.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      let v = toZ(e.clientX);
+      if (!e.shiftKey) v = Math.round(v / 0.05) * 0.05;
+      z = Math.min(hi, Math.max(lo, v));
+      const px = X(z);
+      line.setAttribute('x1', px); line.setAttribute('x2', px);
+      segL.setAttribute('width', Math.max(0, px - X(zones[i].z0)));
+      segR.setAttribute('x', px);
+      segR.setAttribute('width', Math.max(0, X(zones[i + 1].z1) - px));
+      if (readout) readout.textContent = `grense ved z = ${n(z, 2)} m · sone ${n(z - zones[i].z0, 2)} m / ${n(zones[i + 1].z1 - z, 2)} m`;
+    });
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      if (Math.abs(z - zones[i].z1) > 1e-9) store.setLine({ zones: moveBoundary(zones, i, z, lr.base) });
+    };
+    g.addEventListener('pointerup', end);
+    g.addEventListener('pointercancel', end);
+  });
+  svg.querySelectorAll('[data-strip-seg]').forEach((g) => {
+    g.addEventListener('dblclick', (e) => {
+      const i = Number(g.dataset.stripSeg);
+      let v = toZ(e.clientX);
+      if (!e.shiftKey) v = Math.round(v / 0.05) * 0.05;
+      store.setLine({ zones: splitZoneAt(zones, i, v, lr.base) });
+    });
+  });
+}
+
 /** To symmetriske endesoner med lengde L [m] og avstand aEnd; midten beholder første sones a. */
 export function endZones(zones, za, zb, L, aEnd, base) {
   const len = zb - za;
@@ -400,9 +529,13 @@ export function lineInputsHtml(state, lr) {
         <div><label class="field-label" for="line-endA">Ende ved z_a</label>${sel('endA', line.endA, ENDS)}</div>
         <div><label class="field-label" for="line-endB">Ende ved z_b</label>${sel('endB', line.endB, ENDS)}</div>
       </div>`),
-    H('Skruesoner', zonesHtml(lr), lr && lr.zones && lr.zones.length
-      ? `<button data-zact="endzones" title="To symmetriske, tettere endesoner i én operasjon"
-           class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0 normal-case tracking-normal">Endesoner…</button>`
+    H('Skruesoner', zonesHtml(lr, state), lr && lr.zones && lr.zones.length
+      ? `<span class="flex gap-1">
+           <button data-zact="suggest" title="Foreslå soner slik at største kraft per skrue holder seg under et mål"
+             class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0 normal-case tracking-normal">Foreslå…</button>
+           <button data-zact="endzones" title="To symmetriske, tettere endesoner i én operasjon"
+             class="px-2 py-0.5 text-[11px] bg-slate-700 hover:bg-slate-600 rounded border border-slate-600 shrink-0 normal-case tracking-normal">Endesoner…</button>
+         </span>`
       : ''),
     H('Forutsetninger', `
       <div class="space-y-1.5">
@@ -429,22 +562,68 @@ export function bindLineInputs(host, store, { onHelp, onCopyPrompt } = {}, lr = 
     const base = lr.base;
     host.querySelectorAll('[data-zone]').forEach((el) => {
       el.addEventListener('change', () => {
+        zoneMsg = null;
         const [i, key] = el.dataset.zone.split(':');
         const idx = Number(i);
-        const next = key === 'zEnd'
-          ? moveBoundary(zones, idx, Number(String(el.value).replace(',', '.')), base)
-          : setZoneField(zones, idx, key, el.value, base);
-        store.setLine({ zones: next });
+        if (key === 'zEnd' || key === 'len') {
+          const raw = String(el.value).trim();
+          const v = Number(raw.replace(',', '.'));
+          if (raw === '' || !Number.isFinite(v)) {
+            flash(raw === '' ? 'Tomt felt (eller ikke et tall) — grensen står uendret.' : `«${escapeHtml(raw)}» er ikke et tall — grensen står uendret.`, 'warn');
+            store.setLine({ zones: setZoneField(zones, 0, 'noop', null, base) });
+            return;
+          }
+          // Lengde: endrer slutten på sonen — den siste endrer starten sin.
+          const last = idx === zones.length - 1;
+          const bi = key === 'len' && last ? idx - 1 : idx;
+          const want = key === 'zEnd' ? v : last ? zones[idx].z1 - v : zones[idx].z0 + v;
+          const lo = zones[bi].z0 + 0.01;
+          const hi = zones[bi + 1].z1 - 0.01;
+          if (want < lo - 1e-9 || want > hi + 1e-9) {
+            const got = Math.min(hi, Math.max(lo, want));
+            flash(key === 'len'
+              ? `Lengden må være mellom 0,01 og ${n((last ? zones[idx].z1 - lo : hi - zones[idx].z0), 2)} m, så ingen sone forsvinner — satt til ${n(Math.abs((last ? zones[idx].z1 : zones[idx].z0) - got), 2)} m.`
+              : `Grensen må ligge mellom ${n(lo, 2)} og ${n(hi, 2)} m, så ingen sone forsvinner — satt til ${n(got, 2)} m.`, 'warn');
+          }
+          store.setLine({ zones: moveBoundary(zones, bi, want, base) });
+          return;
+        }
+        store.setLine({ zones: setZoneField(zones, idx, key, el.value, base) });
       });
     });
     host.querySelectorAll('[data-zact]').forEach((el) => {
       el.addEventListener('click', () => {
         const [act, i] = el.dataset.zact.split(':');
+        if (act !== 'suggest' && act !== 'endzones') zoneMsg = null;
         if (act === 'split') store.setLine({ zones: splitZone(zones, Number(i), base) });
         if (act === 'del') store.setLine({ zones: deleteZone(zones, Number(i), base) });
-        if (act === 'endzones') {
-          const form = host.querySelector('[data-endzones-form]');
+        if (act === 'endzones' || act === 'suggest') {
+          const form = host.querySelector(act === 'suggest' ? '[data-suggest-form]' : '[data-endzones-form]');
           if (form) form.hidden = !form.hidden;
+        }
+        if (act === 'suggest-make') {
+          const target = Number(String(host.querySelector('#line-sg-target').value).replace(',', '.'));
+          const minLen = Number(String(host.querySelector('#line-sg-min').value).replace(',', '.'));
+          const spText = host.querySelector('#line-sg-sp').value;
+          const spacings = spText.split(/[\s;,]+/).map(Number).filter((v) => v > 0);
+          const len = zones[zones.length - 1].z1 - zones[0].z0;
+          const problems = [];
+          if (!(target > 0)) problems.push('målet må være et tall større enn 0');
+          if (!spacings.length) problems.push('oppgi minst én avstand, f.eks. «50 100 200»');
+          if (!(minLen > 0) || minLen > len) problems.push(`minste sonelengde må være mellom 0 og ${n(len, 2)} m`);
+          store.setLine({ suggest: { target: target > 0 ? target : null, spacings: spText, minLen: minLen > 0 ? minLen : 0.5 } });
+          if (problems.length) {
+            flash(`Kan ikke foreslå: ${problems.join('; ')}.`, 'warn');
+            store.setLine({});
+            return;
+          }
+          const r = suggestFor(lr, { target: target * 1000, spacings, minLen: minLen * 1000 });
+          if (!r) return;
+          flash(r.ok
+            ? `Forslag: ${r.count} soner, F maks ${n(r.Fmax / 1000, 2)} kN ≤ ${n(target, 2)} kN. Juster gjerne etterpå.`
+            : `Målet nås ikke: F = ${n(r.worst.F / 1000, 2)} kN ved z = ${n(r.worst.z / 1000, 2)} m selv med a = ${Math.min(...spacings)} mm. Prøv flere rader, sterkere skrue eller tettere avstand.`,
+          r.ok ? 'info' : 'warn');
+          store.setLine({ zones: r.zones });
         }
         if (act === 'endzones-make') {
           const L = Number(String(host.querySelector('#line-endL').value).replace(',', '.'));
@@ -483,7 +662,17 @@ export function bindLineInputs(host, store, { onHelp, onCopyPrompt } = {}, lr = 
  * «til» flytter starten på neste — aldri hull eller overlapp. Tomt felt =
  * skjøtens standard (vist som plassholder).
  */
-function zonesHtml(lr) {
+/**
+ * Melding under sonelisten (rettet verdi, forslagets resultat). Står til
+ * neste endring av sonene — panelet tegnes ofte (musa over lerretet o.l.),
+ * så den kan ikke forsvinne ved første omtegning.
+ */
+let zoneMsg = null;
+function flash(text, level = 'info') {
+  zoneMsg = { text, level };
+}
+
+function zonesHtml(lr, state) {
   if (!lr || !lr.zones || !lr.zones.length || !lr.base) {
     return '<p class="text-[11px] text-slate-500 italic">Lim inn lastdiagrammet og velg skjøt først.</p>';
   }
@@ -501,9 +690,10 @@ function zonesHtml(lr) {
       return `<tr class="border-t border-slate-700/60">
         <td class="py-0.5 pr-1 num text-slate-400 whitespace-nowrap">${n(zn.z0, 2)}</td>
         <td class="py-0.5 pr-1 w-14">${last ? `<span class="num text-slate-400 px-1">${n(zn.z1, 2)}</span>` : inp(i, 'zEnd', zn.z1, '', 'step="0.05"')}</td>
+        <td class="py-0.5 pr-1 w-12">${lr.zones.length > 1 ? inp(i, 'len', Math.round((zn.z1 - zn.z0) * 1000) / 1000, '', 'step="0.05" min="0.01"') : `<span class="num text-slate-400 px-1">${n(zn.z1 - zn.z0, 2)}</span>`}</td>
         <td class="py-0.5 pr-1 w-10">${inp(i, 'rows', zn.rows !== base.rows ? zn.rows : '', base.rows, 'step="1" min="1"')}</td>
         <td class="py-0.5 pr-1 w-12">${inp(i, 'a', zn.a !== base.a ? zn.a : '', base.a, 'step="5" min="1"')}</td>
-        <td class="py-0.5 pr-1 w-14">${base.ec5 ? inp(i, 'd', zn.d, base.d || '', 'step="0.5" min="1"') : inp(i, 'Kser', zn.Kser, Math.round(base.K) || '', 'step="100" min="1"')}</td>
+        <td class="py-0.5 pr-1 w-16">${base.ec5 ? inp(i, 'd', zn.d, base.d || '', 'step="0.5" min="1"') : inp(i, 'Kser', zn.Kser, Math.round(base.K) || '', 'step="100" min="1"')}</td>
         <td class="py-0.5 pr-1 num text-right text-slate-400">${stats ? stats[i].count : ''}</td>
         <td class="py-0.5 whitespace-nowrap text-right">
           <button data-zact="split:${i}" title="Del sonen på midten" class="px-1 text-slate-400 hover:text-white">÷</button>
@@ -513,11 +703,14 @@ function zonesHtml(lr) {
     })
     .join('');
   const total = stats ? stats.reduce((t, z) => t + z.count, 0) : null;
+  const msg = zoneMsg;
+  const sg = (state && state.line && state.line.suggest) || { target: null, spacings: '50 75 100 150 200', minLen: 0.5 };
   const suggest = stats ? n((2 * stats[0].Lc) / 1000, 2) : '';
   return `<table class="w-full text-[11px]">
       <thead><tr class="text-slate-500">
         <th class="text-left font-normal py-1">z fra</th>
         <th class="text-left font-normal py-1" title="Flytter også starten på neste sone">z til [m]</th>
+        <th class="text-left font-normal py-1" title="Endrer slutten på sonen (den siste: starten), så naboen tar opp forskjellen">lengde</th>
         <th class="text-left font-normal py-1">rader</th>
         <th class="text-left font-normal py-1">a [mm]</th>
         <th class="text-left font-normal py-1" title="${escapeHtml(kTip)}">${kHead}</th>
@@ -527,6 +720,22 @@ function zonesHtml(lr) {
       <tbody>${rows}</tbody>
     </table>
     ${total != null ? `<p class="text-[10px] text-slate-400 mt-1 text-right">totalt ${total} skruer${lr.pick && lr.pick.pair ? ' per skjøt' : ''}</p>` : ''}
+    ${msg ? `<p class="text-[11px] mt-1 leading-snug ${msg.level === 'warn' ? 'text-amber-300' : 'text-sky-300'}">${msg.text}</p>` : ''}
+    <div data-suggest-form hidden class="mt-1.5 rounded border border-slate-700 bg-slate-900/60 p-2 space-y-1.5">
+      <div class="grid grid-cols-2 gap-1.5">
+        <div title="Typisk R_v,d per skrue fra EC5-knutepunkt. Verktøyet regner ingen kapasitet — dette er et tall du oppgir.">
+          <label class="field-label" for="line-sg-target">Mål: F maks per skrue [kN]</label>
+          <input id="line-sg-target" type="number" step="0.1" min="0" value="${sg.target ?? ''}" placeholder="f.eks. R_v,d" /></div>
+        <div><label class="field-label" for="line-sg-min">Minste sonelengde [m]</label>
+          <input id="line-sg-min" type="number" step="0.1" min="0.05" value="${sg.minLen}" /></div>
+      </div>
+      <div><label class="field-label" for="line-sg-sp">Tillatte avstander a [mm]</label>
+        <input id="line-sg-sp" type="text" value="${escapeHtml(sg.spacings)}" placeholder="50 75 100 150 200" /></div>
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-[10px] text-slate-500">Rader og skrue fra første sone. Regnes med K_ser.</span>
+        <button data-zact="suggest-make" class="px-2 py-0.5 text-[11px] bg-sky-700 hover:bg-sky-600 rounded">Foreslå soner</button>
+      </div>
+    </div>
     <div data-endzones-form hidden class="mt-1.5 rounded border border-slate-700 bg-slate-900/60 p-2 space-y-1.5">
       <div class="grid grid-cols-2 gap-1.5">
         <div><label class="field-label" for="line-endL">Lengde per ende [m]</label>
@@ -936,7 +1145,7 @@ export function lineOutputHtml(lr) {
       <tbody>${body}</tbody>
     </table>
     <p class="text-[10px] text-slate-500 mt-1">● styrende · hold musa over en rad for forklaring · 1 N/mm = 1 kN/m</p>
-    <div class="mt-3 space-y-1">${perScrew}${forces}${flow}</div>
+    <div class="mt-3 space-y-1">${perScrew}${zoneStripSvg(lr)}${forces}${flow}</div>
     <div class="mt-2">
       <h4 class="text-[11px] text-slate-400 mb-0.5">Per sone</h4>
       ${zoneStatsTable(lr)}
