@@ -423,6 +423,22 @@ dobbeltklikk for å dele der du klikker. Sonelisten har både «z til» og
 «lengde»; en verdi utenfor det lovlige rettes til nærmeste lovlige med en
 melding, og et tomt felt eller tekst lar grensen stå.
 
+**Redigere i stripen, endeavstand og skruetype (#75).** Klikk på en sone i
+stripen åpner et felt under den (lengde, rader, a, K_ser/d, del, fjern,
+‹ forrige · neste ›, `Esc` lukker) med samme regler og meldinger som lista,
+som nå står lukket under «Vis som tabell». **Endeavstand a₃** per ende
+(under «Utstrekning»): mellom enden og første skrue er det ingen forbindelse,
+så kraften i den nye delen er konstant der (0 ved løs ende, kraften fra
+knutepunktet ved festet ende) og q = 0. Ligningen løses fra første til siste
+skrue (`a3a`/`a3b` i `analyseLine`), strekningene uten skruer vises grått, og
+antall skruer regnes av forbundet lengde. Regnes K etter EC5, foreslås en
+veiledende minsteverdi (`a3Minimum`: belastet ende a₃,t ved strekk i den nye
+delen, ubelastet a₃,c ved trykk; d > 6 mm som bolter, tabell 8.4, ellers som
+spiker, tabell 8.2) med varsel når a₃ er mindre — kløyving kontrolleres i
+EC5-knutepunkt. Under «Skruesoner» står skruen («Skrue: K_ser = … · endre»),
+utledet K_ser og K_u står rett under EC5-feltene i skjøten, og «Tilstand» er
+skjult i linjemodus (begge regnes alltid).
+
 Under plottene viser **«Per felt mellom knutepunkt»** største |q| og kraft per
 skrue i hvert felt mellom hoppene i diagrammet (`lineZones`) — tallene man
 trenger for å velge skrueavstand felt for felt. **«Kopier q(z)»** kopierer

@@ -431,6 +431,7 @@ function lineSetupText(lr, line) {
   return `Skjøt: ${esc(lr.summary.joint)} · z = ${n(lr.za, 2)}–${n(lr.zb, 2)} m · ender: ${ends(line.endA)} / ${ends(line.endB)} ·
       N i ${line.nAt === 'existing' ? 'eksisterende' : 'sammensatt'} tyngdepunkt · ${esc(restr || '')} ·
       fri tøyning ε_eks = ${n(Number(line.epsExisting) || 0, 2)} ‰, ε_ny = ${n(Number(line.epsNew) || 0, 2)} ‰ ·
+      endeavstand a₃ = ${n(Number(line.a3a) || 0, 0)} / ${n(Number(line.a3b) || 0, 0)} mm ·
       ${lr.summary.zones > 1 ? `${lr.summary.zones} skruesoner, ${lr.summary.count} skruer (se side 2)` : `skjøtedata: ${lr.summary.rows} rad(er), a = ${n(lr.summary.a, 0)} mm, k = ${n(lr.kSer, 2)} N/mm² (K_ser)`}`;
 }
 

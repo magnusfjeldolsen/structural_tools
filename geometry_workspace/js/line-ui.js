@@ -97,6 +97,12 @@ export function computeLine(state, rf) {
   }
   out.pick = pick;
   out.base = base;
+  const a3a = Number(line.a3a) > 0 ? Number(line.a3a) : 0;
+  const a3b = Number(line.a3b) > 0 ? Number(line.a3b) : 0;
+  out.a3 = { a: a3a, b: a3b };
+  if (table.rows.length >= 2 && zb > za && a3a + a3b >= (zb - za) * 1000 - 1) {
+    blocked.push(`Endeavstandene (${n(a3a, 0)} + ${n(a3b, 0)} mm) er like lange som eller lengre enn delen (${n((zb - za) * 1000, 0)} mm) — det er ingen skruer igjen.`);
+  }
   const zones = base && table.rows.length >= 2 && zb > za ? resolveZones(line, za, zb, base) : [];
   out.zones = zones;
   for (const zn of zones) {
@@ -128,6 +134,8 @@ export function computeLine(state, rf) {
     zones: zones.map((zn) => ({ z0: zn.z0 * 1000, z1: zn.z1 * 1000, rows: zn.rows * nJ, a: zn.a, K: zn.K })),
     epsExisting: (Number(line.epsExisting) || 0) / 1000,
     epsNew: (Number(line.epsNew) || 0) / 1000,
+    a3a,
+    a3b,
   });
 
   const share = pick.pair ? 0.5 : 1;
@@ -155,8 +163,13 @@ export function computeLine(state, rf) {
     };
     const ser = pick2(res.ser);
     const u = pick2(res.u);
-    const len = (zn.z1 - zn.z0) * 1000;
-    return { ...zn, count: Math.max(1, Math.round(len / zn.a)) * zn.rows, Fser: ser.F, Fu: u.F, zAt: ser.z, Lc: 1 / res.ser.lambdas[i] };
+    // Forbundet lengde: uten strekningene fram til første og etter siste skrue (a₃).
+    const c0 = Math.max(zn.z0 * 1000, za * 1000 + a3a);
+    const c1 = Math.min(zn.z1 * 1000, zb * 1000 - a3b);
+    const len = Math.max(0, c1 - c0);
+    const lam = res.ser.lambdas[Math.min(i, res.ser.lambdas.length - 1)];
+    // Antall per rad: lengde/a, pluss skruen i første ende (gjerdestolpe).
+    return { ...zn, count: len > 0 ? (Math.round(len / zn.a) + (i === 0 ? 1 : 0)) * zn.rows : 0, Fser: ser.F, Fu: u.F, zAt: ser.z, Lc: 1 / lam };
   });
   out.summary = {
     joint: pick.pair ? `${j0.name} + ${pick.joints[1].name}` : j0.name,
@@ -197,6 +210,25 @@ export function computeLine(state, rf) {
       });
     }
   });
+  // Endeavstand: veiledende EC5-minsteverdi når skruen er kjent, og påminnelse om 0.
+  out.a3min = {
+    a: a3Minimum(base, zones[0], Math.sign(res.ser.Ninf[0] || res.ser.N2[res.ser.N2.length > 1 ? 1 : 0])),
+    b: a3Minimum(base, zones[zones.length - 1], Math.sign(res.ser.Ninf[res.ser.Ninf.length - 1])),
+  };
+  for (const [side, val, min, end] of [['z_a', a3a, out.a3min.a, line.endA], ['z_b', a3b, out.a3min.b, line.endB]]) {
+    if (min && val + 1e-9 < min.value) {
+      warnings.push({
+        short: `a₃ ved ${side} = ${n(val, 0)} mm < ${n(min.value, 0)} mm (${min.label}) — fare for kløyving.`,
+        text: `Veiledende minste endeavstand etter ${min.ref}: ${min.formula}. ${end === 'fixed' ? 'Enden er festet i knutepunktet, men skruene trenger likevel avstand til enden av den nye delen. ' : ''}Kontroller kløyving og kapasitet i EC5-knutepunkt.`,
+      });
+    }
+  }
+  if (a3a === 0 && a3b === 0) {
+    warnings.push({
+      short: 'Endeavstand a₃ = 0: skruene antas helt ut i endene. Sett a₃ under «Utstrekning».',
+      text: 'I virkeligheten sitter første skrue et stykke inn fra enden (EC5 tabell 8.2/8.4). Mellom enden og første skrue overføres ingen kraft, så toppen flytter seg innover og forbundet lengde blir kortere.',
+    });
+  }
   if (pick.pair) {
     warnings.push({
       short: 'To like, speilede nye deler: tallene gjelder hver skjøt.',
@@ -204,6 +236,35 @@ export function computeLine(state, rf) {
     });
   }
   return out;
+}
+
+/**
+ * Veiledende minste endeavstand a₃ langs fiber, fra EC5, når skruetypen er
+ * kjent (K regnes etter tabell 7.1). Strekk i den nye delen ved enden betyr at
+ * skruene skyver treet mot enden — belastet ende, a₃,t. Trykk gir ubelastet
+ * ende, a₃,c. Vinkel α = 0° (kraft langs fiber).
+ *  - Skruer/dybler/bolter med d > 6 mm: som bolter (EC5 8.7.1, tabell 8.4):
+ *    a₃,t = max(7d; 80 mm), a₃,c = 4d.
+ *  - d ≤ 6 mm og spiker: som spiker uten forboring, ρ_k ≤ 420 (tabell 8.2):
+ *    a₃,t = (10 + 5·cos α)·d = 15d, a₃,c = 10d.
+ * Andre festemidler: ingen verdi. Kløyving og kapasitet kontrolleres ikke her.
+ */
+export function a3Minimum(base, zone, sign) {
+  if (!base || !base.ec5) return null;
+  const c = base.connector || {};
+  const kind = c.ec5Fastener || 'dowel';
+  if (kind !== 'dowel' && kind !== 'nail') return null;
+  const d = (zone && zone.d) || base.d;
+  if (!(d > 0)) return null;
+  const loaded = sign >= 0;
+  if (kind === 'dowel' && d > 6) {
+    return loaded
+      ? { value: Math.max(7 * d, 80), label: 'belastet ende', ref: 'EC5 tabell 8.4 (som bolter, 8.7.1)', formula: `a₃,t = max(7d; 80 mm) = ${n(Math.max(7 * d, 80), 0)} mm` }
+      : { value: 4 * d, label: 'ubelastet ende', ref: 'EC5 tabell 8.4 (som bolter, 8.7.1)', formula: `a₃,c = 4d = ${n(4 * d, 0)} mm` };
+  }
+  return loaded
+    ? { value: 15 * d, label: 'belastet ende', ref: 'EC5 tabell 8.2 (spiker uten forboring, ρ_k ≤ 420)', formula: `a₃,t = (10 + 5·cos α)·d = 15d = ${n(15 * d, 0)} mm` }
+    : { value: 10 * d, label: 'ubelastet ende', ref: 'EC5 tabell 8.2 (spiker uten forboring, ρ_k ≤ 420)', formula: `a₃,c = 10d = ${n(10 * d, 0)} mm` };
 }
 
 /**
@@ -329,6 +390,8 @@ export function suggestFor(lr, { target, spacings, minLen }) {
     spacings,
     target,
     minLen,
+    a3a: lr.a3 ? lr.a3.a : 0,
+    a3b: lr.a3 ? lr.a3.b : 0,
   });
   const zones = r.zones.map((z) => ({ z0: z.z0 / 1000, z1: z.z1 / 1000, rows: z0.rows, a: z.a, K: z0.K, Kser: z0.Kser, d: z0.d }));
   return { ...r, zones: toState(zones, lr.base), count: zones.length };
@@ -351,26 +414,92 @@ export function zoneStripSvg(lr) {
   const segs = lr.zones.map((z, i) => {
     const t = kMax > kMin ? (ks[i] - kMin) / (kMax - kMin) : 0.5;
     const w = X(z.z1) - X(z.z0);
-    return `<g data-strip-seg="${i}">
-      <rect x="${X(z.z0).toFixed(1)}" y="6" width="${Math.max(0, w).toFixed(1)}" height="16" fill="#e879f9" fill-opacity="${(0.15 + 0.55 * t).toFixed(2)}" stroke="#475569" stroke-width="0.6" />
+    const sel = selectedZone === i;
+    return `<g data-strip-seg="${i}" style="cursor:pointer">
+      <rect x="${X(z.z0).toFixed(1)}" y="6" width="${Math.max(0, w).toFixed(1)}" height="16" fill="#e879f9" fill-opacity="${(0.15 + 0.55 * t).toFixed(2)}" stroke="${sel ? '#f8fafc' : '#475569'}" stroke-width="${sel ? 1.6 : 0.6}" />
       ${w > 34 ? `<text x="${(X(z.z0) + w / 2).toFixed(1)}" y="17.5" fill="#f1f5f9" font-size="9" text-anchor="middle" pointer-events="none">a=${n(z.a, 0)}</text>` : ''}
     </g>`;
   }).join('');
+  // Endeavstand a₃: ingen skruer — grått, skravert.
+  const a3 = lr.a3 || { a: 0, b: 0 };
+  const shade = (zz0, zz1) => `<rect x="${X(zz0).toFixed(1)}" y="6" width="${Math.max(0, X(zz1) - X(zz0)).toFixed(1)}" height="16" fill="url(#a3hatch)" stroke="#64748b" stroke-width="0.6" pointer-events="none" />`;
+  const a3svg = (a3.a > 0 ? shade(x0, x0 + a3.a / 1000) : '') + (a3.b > 0 ? shade(x1 - a3.b / 1000, x1) : '');
   const handles = lr.zones.slice(0, -1).map((z, i) => `<g data-strip-bound="${i}" style="cursor:ew-resize">
       <rect x="${(X(z.z1) - 5).toFixed(1)}" y="2" width="10" height="24" fill="transparent" />
       <line x1="${X(z.z1).toFixed(1)}" y1="3" x2="${X(z.z1).toFixed(1)}" y2="25" stroke="#f8fafc" stroke-width="2" />
     </g>`).join('');
   return `<svg data-zone-strip viewBox="0 0 ${W} ${Hh}" width="100%" role="img" aria-label="Skruesoner langs z — dra grensene, dobbeltklikk for å dele"
       font-family="ui-sans-serif, system-ui, sans-serif" style="touch-action:none">
-    ${segs}${handles}
-    <text data-strip-readout x="${Lm}" y="${Hh - 1}" fill="#94a3b8" font-size="8">dra en grense · dobbeltklikk for å dele · Shift = fritt (ellers 5 cm-trinn)</text>
+    <defs><pattern id="a3hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="4" height="4" fill="#334155" /><line x1="0" y1="0" x2="0" y2="4" stroke="#64748b" stroke-width="1" /></pattern></defs>
+    ${segs}${a3svg}${handles}
+    <text data-strip-readout x="${Lm}" y="${Hh - 1}" fill="#94a3b8" font-size="8">klikk en sone for å endre · dra en grense · dobbeltklikk for å dele · Shift = fritt</text>
   </svg>`;
 }
 
-/** Gjør sonestripen interaktiv: dra grenser, dobbeltklikk for å dele. */
-export function bindZoneStrip(host, store, lr) {
+/**
+ * Feltet under stripen for sonen som er valgt (#75): lengde, rader, a og
+ * skrue, del/fjern og forrige/neste. Samme felt og regler som lista.
+ */
+export function zoneEditorHtml(lr) {
+  if (!lr.ok || selectedZone == null || !lr.zones[selectedZone]) return '';
+  const i = selectedZone;
+  const zn = lr.zones[i];
+  const base = lr.base;
+  const st = lr.zoneStats ? lr.zoneStats[i] : null;
+  const last = i === lr.zones.length - 1;
+  const inp = (key, label, value, placeholder, attrs = '') => `<div>
+      <label class="field-label" for="zed-${key}">${label}</label>
+      <input id="zed-${key}" data-zone="${i}:${key}" data-focus-key="zed-${i}-${key}" type="number" ${attrs}
+             class="num" value="${value == null ? '' : value}" placeholder="${placeholder}" /></div>`;
+  const msg = zoneMsg;
+  return `<div data-zone-editor class="mt-1 rounded border border-slate-500 bg-slate-900 p-2 space-y-1.5">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-[11px] text-slate-200 font-semibold num">Sone ${i + 1} av ${lr.zones.length} · ${n(zn.z0, 2)} → ${n(zn.z1, 2)} m</span>
+        <span class="flex gap-1 text-[11px]">
+          <button data-zsel="prev" ${i === 0 ? 'disabled' : ''} class="px-1.5 text-slate-300 hover:text-white disabled:opacity-30" title="Forrige sone">‹</button>
+          <button data-zsel="next" ${last ? 'disabled' : ''} class="px-1.5 text-slate-300 hover:text-white disabled:opacity-30" title="Neste sone">›</button>
+          <button data-zsel="close" class="px-1.5 text-slate-400 hover:text-white" title="Lukk (Esc)">×</button>
+        </span>
+      </div>
+      <div class="grid grid-cols-4 gap-1.5">
+        ${lr.zones.length > 1 ? inp('len', 'lengde [m]', Math.round((zn.z1 - zn.z0) * 1000) / 1000, '', 'step="0.05" min="0.01"') : `<div><span class="field-label">lengde [m]</span><div class="num text-[11px] text-slate-300 py-1">${n(zn.z1 - zn.z0, 2)}</div></div>`}
+        ${inp('rows', 'rader', zn.rows !== base.rows ? zn.rows : '', base.rows, 'step="1" min="1"')}
+        ${inp('a', 'a [mm]', zn.a !== base.a ? zn.a : '', base.a, 'step="5" min="1"')}
+        ${base.ec5 ? inp('d', 'd [mm]', zn.d, base.d || '', 'step="0.5" min="1"') : inp('Kser', 'K_ser [N/mm]', zn.Kser, Math.round(base.K) || '', 'step="100" min="1"')}
+      </div>
+      <div class="flex items-center justify-between gap-2 text-[11px]">
+        <span class="text-slate-400 num">${st ? `F maks <span class="text-white">${n(st.Fser, 2)} kN</span> ved z = ${n(st.zAt, 2)} m · ${st.count} skruer · K = ${n(zn.K, 0)} N/mm` : ''}</span>
+        <span class="flex gap-1">
+          <button data-zact="split:${i}" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">÷ Del</button>
+          ${lr.zones.length > 1 ? `<button data-zact="del:${i}" class="px-2 py-0.5 bg-slate-700 hover:bg-rose-900/60 rounded border border-slate-600">✕ Fjern</button>` : ''}
+        </span>
+      </div>
+      ${msg ? `<p class="text-[11px] leading-snug ${msg.level === 'warn' ? 'text-amber-300' : 'text-sky-300'}">${msg.text}</p>` : ''}
+    </div>`;
+}
+
+/** Gjør sonestripen interaktiv: klikk velger, dra grenser, dobbeltklikk deler. */
+export function bindZoneStrip(host, store, lr, rerender = () => {}) {
   const svg = host.querySelector('[data-zone-strip]');
   if (!svg || !lr || !lr.ok) return;
+  if (selectedZone != null && selectedZone >= lr.zones.length) selectedZone = lr.zones.length - 1;
+  host.querySelectorAll('[data-zsel]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const act = b.dataset.zsel;
+      if (act === 'close') selectedZone = null;
+      if (act === 'prev') selectedZone = Math.max(0, (selectedZone ?? 0) - 1);
+      if (act === 'next') selectedZone = Math.min(lr.zones.length - 1, (selectedZone ?? 0) + 1);
+      rerender();
+    });
+  });
+  const ed = host.querySelector('[data-zone-editor]');
+  if (ed) {
+    ed.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { selectedZone = null; rerender(); }
+    });
+    bindZoneControls(ed, store, lr);
+  }
   const W = 480, Lm = 46, R = 8;
   const zones = lr.zones;
   const x0 = zones[0].z0;
@@ -417,6 +546,11 @@ export function bindZoneStrip(host, store, lr) {
     g.addEventListener('pointercancel', end);
   });
   svg.querySelectorAll('[data-strip-seg]').forEach((g) => {
+    g.addEventListener('click', () => {
+      const i = Number(g.dataset.stripSeg);
+      selectedZone = selectedZone === i ? null : i;
+      rerender();
+    });
     g.addEventListener('dblclick', (e) => {
       const i = Number(g.dataset.stripSeg);
       let v = toZ(e.clientX);
@@ -528,6 +662,10 @@ export function lineInputsHtml(state, lr) {
         ${num('zb', 'z_b [m] (tom = tabellens slutt)', line.zb, 'step="0.1"')}
         <div><label class="field-label" for="line-endA">Ende ved z_a</label>${sel('endA', line.endA, ENDS)}</div>
         <div><label class="field-label" for="line-endB">Ende ved z_b</label>${sel('endB', line.endB, ENDS)}</div>
+        <div title="Avstand fra enden av den nye delen til første skrue. Mellom enden og første skrue overføres ingen kraft.${lr && lr.a3min && lr.a3min.a ? ` Veiledende minimum: ${lr.a3min.a.formula} (${lr.a3min.a.label}).` : ''}">
+          ${num('a3a', `a₃ ved z_a [mm]${lr && lr.a3min && lr.a3min.a ? ` · min ${n(lr.a3min.a.value, 0)}` : ''}`, line.a3a || '', 'step="5" min="0" placeholder="0"')}</div>
+        <div title="Avstand fra siste skrue til enden av den nye delen.${lr && lr.a3min && lr.a3min.b ? ` Veiledende minimum: ${lr.a3min.b.formula} (${lr.a3min.b.label}).` : ''}">
+          ${num('a3b', `a₃ ved z_b [mm]${lr && lr.a3min && lr.a3min.b ? ` · min ${n(lr.a3min.b.value, 0)}` : ''}`, line.a3b || '', 'step="5" min="0" placeholder="0"')}</div>
       </div>`),
     H('Skruesoner', zonesHtml(lr, state), lr && lr.zones && lr.zones.length
       ? `<span class="flex gap-1">
@@ -556,7 +694,24 @@ export function lineInputsHtml(state, lr) {
 }
 
 /** Binder input-feltene i venstre panel til store. */
-export function bindLineInputs(host, store, { onHelp, onCopyPrompt } = {}, lr = null) {
+export function bindLineInputs(host, store, { onHelp, onCopyPrompt, onOpenJoint } = {}, lr = null) {
+  const table = host.querySelector('[data-zone-table]');
+  if (table) table.addEventListener('toggle', () => (tableOpen = table.open));
+  const open = host.querySelector('[data-zact="open-joint"]');
+  if (open && onOpenJoint && lr && lr.pick) open.addEventListener('click', () => onOpenJoint(lr.pick.joints[0].id));
+  bindZoneControls(host, store, lr);
+  const help = host.querySelector('[data-line-help]');
+  if (help && onHelp) help.addEventListener('click', (e) => { e.stopPropagation(); onHelp(help); });
+  const prompt = host.querySelector('[data-line-prompt]');
+  if (prompt && onCopyPrompt) prompt.addEventListener('click', () => onCopyPrompt());
+  bindPlainLineFields(host, store);
+}
+
+/**
+ * Felter og knapper for sonene — i lista til venstre OG i feltet under
+ * stripen til høyre (#75). Samme regler og meldinger begge steder.
+ */
+export function bindZoneControls(host, store, lr) {
   if (lr && lr.zones && lr.zones.length && lr.base) {
     const zones = lr.zones;
     const base = lr.base;
@@ -596,7 +751,10 @@ export function bindLineInputs(host, store, { onHelp, onCopyPrompt } = {}, lr = 
         const [act, i] = el.dataset.zact.split(':');
         if (act !== 'suggest' && act !== 'endzones') zoneMsg = null;
         if (act === 'split') store.setLine({ zones: splitZone(zones, Number(i), base) });
-        if (act === 'del') store.setLine({ zones: deleteZone(zones, Number(i), base) });
+        if (act === 'del') {
+          if (selectedZone != null && selectedZone >= Number(i)) selectedZone = Math.max(0, selectedZone - 1);
+          store.setLine({ zones: deleteZone(zones, Number(i), base) });
+        }
         if (act === 'endzones' || act === 'suggest') {
           const form = host.querySelector(act === 'suggest' ? '[data-suggest-form]' : '[data-endzones-form]');
           if (form) form.hidden = !form.hidden;
@@ -638,16 +796,18 @@ export function bindLineInputs(host, store, { onHelp, onCopyPrompt } = {}, lr = 
       });
     });
   }
-  const help = host.querySelector('[data-line-help]');
-  if (help && onHelp) help.addEventListener('click', (e) => { e.stopPropagation(); onHelp(help); });
-  const prompt = host.querySelector('[data-line-prompt]');
-  if (prompt && onCopyPrompt) prompt.addEventListener('click', () => onCopyPrompt());
+}
+
+function bindPlainLineFields(host, store) {
   host.querySelectorAll('[data-line]').forEach((el) => {
     const key = el.dataset.line;
     el.addEventListener('change', () => {
       const raw = el.value;
       if (key === 'table' || key === 'endA' || key === 'endB' || key === 'nAt' || key === 'restraint') {
         store.setLine({ [key]: raw });
+      } else if (key === 'a3a' || key === 'a3b') {
+        const v = Number(raw);
+        store.setLine({ [key]: Number.isFinite(v) && v > 0 ? v : 0 });
       } else if (key === 'za' || key === 'zb') {
         store.setLine({ [key]: raw === '' ? null : Number(raw) });
       } else {
@@ -671,6 +831,10 @@ let zoneMsg = null;
 function flash(text, level = 'info') {
   zoneMsg = { text, level };
 }
+
+/** Sonen som er valgt i stripen (#75), og om tabellen til venstre er åpen. */
+let selectedZone = null;
+let tableOpen = false;
 
 function zonesHtml(lr, state) {
   if (!lr || !lr.zones || !lr.zones.length || !lr.base) {
@@ -704,9 +868,18 @@ function zonesHtml(lr, state) {
     .join('');
   const total = stats ? stats.reduce((t, z) => t + z.count, 0) : null;
   const msg = zoneMsg;
+  const screw = base.ec5
+    ? `K_ser = ${n(base.K, 0)} N/mm (EC5 tabell 7.1${base.d ? `, d = ${n(base.d, 0)} mm` : ''})`
+    : `K_ser = ${n(base.K, 0)} N/mm (fritt innlagt)`;
   const sg = (state && state.line && state.line.suggest) || { target: null, spacings: '50 75 100 150 200', minLen: 0.5 };
   const suggest = stats ? n((2 * stats[0].Lc) / 1000, 2) : '';
-  return `<table class="w-full text-[11px]">
+  return `<p class="text-[11px] text-slate-300 mb-1">Skrue: <span class="num">${Number.isFinite(base.K) ? screw : 'K_ser mangler'}</span> ·
+      <button data-zact="open-joint" class="text-sky-400 hover:text-sky-300 underline-offset-2 hover:underline">endre</button></p>
+    <p class="text-[11px] text-slate-400 mb-1">${lr.zones.length} sone${lr.zones.length === 1 ? '' : 'r'}${total != null ? ` · ${total} skruer${lr.pick && lr.pick.pair ? ' per skjøt' : ''}` : ''} · klikk en sone i stripen til høyre for å endre den</p>
+    <details data-zone-table ${tableOpen ? 'open' : ''} class="rounded border border-slate-700/70">
+    <summary class="px-2 py-1 text-[11px] text-slate-300 hover:text-white cursor-pointer">Vis som tabell</summary>
+    <div class="px-1 pb-1">
+    <table class="w-full text-[11px]">
       <thead><tr class="text-slate-500">
         <th class="text-left font-normal py-1">z fra</th>
         <th class="text-left font-normal py-1" title="Flytter også starten på neste sone">z til [m]</th>
@@ -720,6 +893,8 @@ function zonesHtml(lr, state) {
       <tbody>${rows}</tbody>
     </table>
     ${total != null ? `<p class="text-[10px] text-slate-400 mt-1 text-right">totalt ${total} skruer${lr.pick && lr.pick.pair ? ' per skjøt' : ''}</p>` : ''}
+    </div>
+    </details>
     ${msg ? `<p class="text-[11px] mt-1 leading-snug ${msg.level === 'warn' ? 'text-amber-300' : 'text-sky-300'}">${msg.text}</p>` : ''}
     <div data-suggest-form hidden class="mt-1.5 rounded border border-slate-700 bg-slate-900/60 p-2 space-y-1.5">
       <div class="grid grid-cols-2 gap-1.5">
@@ -865,7 +1040,7 @@ function decimate(x, ys) {
  * Fargene kommer inn som verdier, så samme funksjon tegner både skjerm og
  * rapport (der det er lys bakgrunn).
  */
-export function plotSvg({ title, unit, x, series, palette, marks = [] }) {
+export function plotSvg({ title, unit, x, series, palette, marks = [], bands = [] }) {
   const P = palette || { text: '#94a3b8', grid: '#334155', title: '#cbd5e1' };
   const W = 480, H = 156, Lm = 46, R = 8, T = 34, B = 20;
   const all = series.flatMap((s) => s.y);
@@ -892,6 +1067,10 @@ export function plotSvg({ title, unit, x, series, palette, marks = [] }) {
   for (let i = 0; i <= 4; i++) {
     const v = x0 + ((x1 - x0) * i) / 4;
     out.push(`<text x="${X(v)}" y="${H - 6}" fill="${P.text}" font-size="9" text-anchor="middle">${n(v, 2)}${i === 4 ? ' m' : ''}</text>`);
+  }
+  // Strekninger uten skruer (a₃, #75) som grå felt.
+  for (const [b0, b1] of bands) {
+    out.push(`<rect x="${X(b0).toFixed(1)}" y="${T}" width="${Math.max(0, X(b1) - X(b0)).toFixed(1)}" height="${H - T - B}" fill="${P.grid}" fill-opacity="0.35" />`);
   }
   // Sonegrensene (#71) som stiplede loddrette linjer.
   for (const m of marks) {
@@ -925,12 +1104,17 @@ export function linePlots(lr, palette, colors = SCREEN) {
     ],
   });
   const marks = (lr.zones || []).slice(0, -1).map((zn) => zn.z1);
+  const a3 = lr.a3 || { a: 0, b: 0 };
+  const za = lr.zones && lr.zones.length ? lr.zones[0].z0 : x[0];
+  const zb = lr.zones && lr.zones.length ? lr.zones[lr.zones.length - 1].z1 : x[x.length - 1];
+  const bands = [a3.a > 0 ? [za, za + a3.a / 1000] : null, a3.b > 0 ? [zb - a3.b / 1000, zb] : null].filter(Boolean);
   const perScrew = plotSvg({
     title: 'Kraft per skrue F = q·a/rader',
     unit: 'kN',
     x,
     palette,
     marks,
+    bands,
     series: [
       { y: r.ser.F.map((v) => v / 1000), color: colors.anchor, label: 'K_ser' },
       { y: r.u.F.map((v) => v / 1000), color: colors.anchor, dash: '4 3', label: 'K_u = ⅔·K_ser' },
@@ -942,6 +1126,7 @@ export function linePlots(lr, palette, colors = SCREEN) {
     x,
     palette,
     marks,
+    bands,
     series: [
       { y: r.ser.q.map((v) => v * lr.share), color: colors.anchor, label: 'K_ser' },
       { y: r.u.q.map((v) => v * lr.share), color: colors.anchor, dash: '4 3', label: 'K_u = ⅔·K_ser' },
@@ -1145,7 +1330,7 @@ export function lineOutputHtml(lr) {
       <tbody>${body}</tbody>
     </table>
     <p class="text-[10px] text-slate-500 mt-1">● styrende · hold musa over en rad for forklaring · 1 N/mm = 1 kN/m</p>
-    <div class="mt-3 space-y-1">${perScrew}${zoneStripSvg(lr)}${forces}${flow}</div>
+    <div class="mt-3 space-y-1">${perScrew}${zoneStripSvg(lr)}${zoneEditorHtml(lr)}${forces}${flow}</div>
     <div class="mt-2">
       <h4 class="text-[11px] text-slate-400 mb-0.5">Per sone</h4>
       ${zoneStatsTable(lr)}
