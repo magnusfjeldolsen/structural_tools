@@ -883,6 +883,8 @@ export class ReinforcementPanel {
     this.figureOpen = false;
     /** Musepekeren over en rad lyser opp skjøten i lerretet. */
     this.onHoverJoint = deps.onHoverJoint || (() => {});
+    /** «Skrue: … · endre» under Skruesoner åpner skjøten i skjøtelista. */
+    this.onOpenJoint = deps.onOpenJoint || (() => {});
   }
 
   render(analysis) {
@@ -981,10 +983,11 @@ export class ReinforcementPanel {
       bindLineInputs(input, this.store, {
         onHelp: (btn) => (this.figureOpen && this.popoverKind === 'convention' ? this.closeFigure() : this.openFigure(btn, 'convention')),
         onCopyPrompt: () => this._copyPrompt(),
+        onOpenJoint: (id) => this.onOpenJoint(id),
       }, lr);
     }
     if (this.figureOpen && this.popoverKind !== 'convention') this.closeFigure();
-    bindZoneStrip(host, this.store, lr);
+    bindZoneStrip(host, this.store, lr, () => this.render(this._lastAnalysis));
     this._bind();
   }
 

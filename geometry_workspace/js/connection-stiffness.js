@@ -85,7 +85,7 @@ export function meanDensity(rho1, rho2) {
 export const EC5_FASTENERS = Object.freeze([
   Object.freeze({
     key: 'dowel',
-    label: 'Dybler, bolter (med/uten klaring), skruer, spiker med forboring',
+    label: 'Skruer, dybler, bolter (med/uten klaring), spiker med forboring',
     needs: 'd',
     formula: 'K_ser = ρ_m^1,5 · d / 23',
     fn: (rho, d) => (Math.pow(rho, 1.5) * d) / 23,
