@@ -957,8 +957,17 @@ export class ReinforcementPanel {
   /** Linjeberegningen (#63): input til venstre, krefter langs skjøten til høyre. */
   _renderLine(host, state, res) {
     const lr = computeLine(state, res);
-    lr.zonesOpen = !!this.zonesOpen;
     this.lineResult = lr;
+    this._paintLine(host, state, lr);
+  }
+
+  /**
+   * Tegner linjepanelene fra et ferdig resultat. Å velge en sone i stripen
+   * (eller bla) endrer ikke beregningen, så da tegnes det på nytt fra det
+   * hurtiglagrede resultatet i stedet for å regne alt om igjen.
+   */
+  _paintLine(host, state, lr) {
+    lr.zonesOpen = !!this.zonesOpen;
     host.innerHTML = [
       H('Krefter langs skjøten', lineOutputHtml(lr), lr.ok
         ? `<span class="flex gap-1">
@@ -987,7 +996,7 @@ export class ReinforcementPanel {
       }, lr);
     }
     if (this.figureOpen && this.popoverKind !== 'convention') this.closeFigure();
-    bindZoneStrip(host, this.store, lr, () => this.render(this._lastAnalysis));
+    bindZoneStrip(host, this.store, lr, () => this._paintLine(host, this.store.state, this.lineResult));
     this._bind();
   }
 

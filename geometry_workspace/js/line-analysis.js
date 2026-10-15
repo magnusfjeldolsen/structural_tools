@@ -372,9 +372,12 @@ export function analyseLine({ layer, rows, jumps = [], za, zb, endA, endB, kSer,
   const zsAll = zones && zones.length
     ? zones
     : [{ z0: za, z1: zb, rows: 1, a: 1, K: kSer }];
-  const zs = zsAll
-    .map((zn) => ({ ...zn, z0: Math.max(zn.z0, zc0), z1: Math.min(zn.z1, zc1) }))
-    .filter((zn) => zn.z1 - zn.z0 > 1e-9);
+  // Hver inndatasone klippes til den forbundne strekningen. Soner som ligger
+  // helt inne i a₃ har ingen skruer og tas ut av løseren — men `lambdas` og
+  // `connected` under følger inndatasonene, så indeksene stemmer for kalleren.
+  const clipped = zsAll.map((zn) => ({ ...zn, z0: Math.max(zn.z0, zc0), z1: Math.min(zn.z1, zc1) }));
+  const connected = clipped.map((zn) => Math.max(0, zn.z1 - zn.z0));
+  const zs = clipped.filter((zn) => zn.z1 - zn.z0 > 1e-9);
   const c = lambda2(layer, 1); // λ² = c·k
   const zoneAt = (z) => zs.find((zn, i) => z >= zn.z0 - 1e-9 && (z < zn.z1 - 1e-9 || i === zs.length - 1)) || zs[zs.length - 1];
   const run = (scale) => {
@@ -383,8 +386,8 @@ export function analyseLine({ layer, rows, jumps = [], za, zb, endA, endB, kSer,
       za: zc0, zb: zc1, c, zones: zk, nInf, endA, endB, jumps: jumpsMm.filter((z) => z > zc0 && z < zc1),
       nA: nInf(za, +1), nB: nInf(zb, -1),
     });
-    const s = padEnds(solved, za, zb, zc0, zc1, nInf);
-    const N1 = s.z.map((zz, i) => loadAt(rows, zz, i === 0 ? +1 : i === s.z.length - 1 ? -1 : 0).N - s.N2[i]);
+    const s = padEnds(solved, za, zb, zc0, zc1, nInf, jumpsMm);
+    const N1 = s.z.map((zz, i) => loadAt(rows, zz, i === 0 ? +1 : i === s.z.length - 1 ? -1 : s.side[i]).N - s.N2[i]);
     // Kraft per skrue F = K·δ = q·a/rader [N] — kontinuerlig over en
     // sonegrense med samme skrue, og det tallet skruene dimensjoneres for.
     const F = s.z.map((zz, i) => {
@@ -409,9 +412,11 @@ export function analyseLine({ layer, rows, jumps = [], za, zb, endA, endB, kSer,
     }
     if (iInf < 0) iInf = Math.floor(s.z.length / 2);
     const eta = Math.abs(s.Ninf[iInf]) > 1e-9 ? s.N2[iInf] / s.Ninf[iInf] : null;
-    const lambdas = zk.map((zn) => Math.sqrt(c * zn.k));
+    // λ per INNDATASONE (samme indeks som `zones` inn), og største λ blant sonene med skruer.
+    const lambdas = zsAll.map((zn) => Math.sqrt((c * zn.rows * zn.K * scale) / zn.a));
+    const lambda = Math.max(...zk.map((zn) => Math.sqrt(c * zn.k)));
     return {
-      scale, lambdas, lambda: Math.max(...lambdas), ...s, N1, F,
+      scale, lambdas, lambda, ...s, N1, F,
       qMax: s.q[iq], zAtQmax: s.z[iq],
       Fmax: F[iF], zAtFmax: s.z[iF],
       N1max: N1[iN1], zAtN1max: s.z[iN1],
@@ -420,7 +425,7 @@ export function analyseLine({ layer, rows, jumps = [], za, zb, endA, endB, kSer,
       eta, zAtEta: s.z[iInf],
     };
   };
-  return { ser: run(1), u: serOnly ? null : run(2 / 3), zones: zs, c };
+  return { ser: run(1), u: serOnly ? null : run(2 / 3), zones: zs, connected, zc0, zc1, c };
 }
 
 /**
@@ -429,27 +434,32 @@ export function analyseLine({ layer, rows, jumps = [], za, zb, endA, endB, kSer,
  * med q = 0 (siste punkt uten skruer) og én med toppen — så sprangene synes i
  * plottene.
  */
-function padEnds(s, za, zb, zc0, zc1, nInf) {
-  if (zc0 - za < 1e-9 && zb - zc1 < 1e-9) return s;
-  const out = { z: [], N2: [], Ninf: [], q: [], delta: [], kAt: [] };
-  const push = (z, N2, i = -1) => {
+function padEnds(s, za, zb, zc0, zc1, nInf, jumps = []) {
+  const side0 = s.z.map(() => 0);
+  if (zc0 - za < 1e-9 && zb - zc1 < 1e-9) return { ...s, side: side0 };
+  const out = { z: [], N2: [], Ninf: [], q: [], delta: [], kAt: [], side: [] };
+  const push = (z, N2, i = -1, side = 0) => {
     out.z.push(z);
     out.N2.push(N2);
-    out.Ninf.push(i >= 0 ? s.Ninf[i] : nInf(z, 0));
+    out.Ninf.push(i >= 0 ? s.Ninf[i] : nInf(z, side));
     out.q.push(i >= 0 ? s.q[i] : 0);
     out.delta.push(i >= 0 ? s.delta[i] : 0);
     out.kAt.push(i >= 0 ? s.kAt[i] : 0);
+    out.side.push(side);
   };
-  if (zc0 - za > 1e-9) {
-    push(za, s.N2[0]);
-    push(zc0, s.N2[0]);
-  }
-  s.z.forEach((z, i) => push(z, s.N2[i], i));
-  if (zb - zc1 > 1e-9) {
-    const last = s.N2[s.N2.length - 1];
-    push(zc1, last);
-    push(zb, last);
-  }
+  // Et hopp i lasten inne i strekningen uten skruer skal synes i N₁ og N₂∞:
+  // to punkter i hoppet, verdien rett før og rett etter.
+  const gap = (z0, z1, N2) => {
+    push(z0, N2, -1, +1);
+    for (const j of jumps.filter((zz) => zz > z0 + 1e-9 && zz < z1 - 1e-9).sort((u, v) => u - v)) {
+      push(j, N2, -1, -1);
+      push(j, N2, -1, +1);
+    }
+    push(z1, N2, -1, -1);
+  };
+  if (zc0 - za > 1e-9) gap(za, zc0, s.N2[0]);
+  s.z.forEach((z, i) => push(z, s.N2[i], i, 0));
+  if (zb - zc1 > 1e-9) gap(zc1, zb, s.N2[s.N2.length - 1]);
   return out;
 }
 
