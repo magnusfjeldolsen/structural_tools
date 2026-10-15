@@ -169,6 +169,9 @@ export function defaultLine() {
     // Tom liste = én sone med skjøtens rader og a. Soner lagres som grenser,
     // så de kan aldri overlappe eller la hull stå igjen.
     zones: [],
+    // Endeavstand fra enden til første skrue [mm] (#75). 0 = skruer helt ut.
+    a3a: 0,
+    a3b: 0,
     // Innstillingene for «Foreslå soner» (#73), så de huskes mellom forsøk.
     suggest: { target: null, spacings: '50 75 100 150 200', minLen: 0.5 },
   };
@@ -207,6 +210,8 @@ function migrateLine(l) {
     epsExisting: Number.isFinite(Number(src.epsExisting)) ? Number(src.epsExisting) : 0,
     epsNew: Number.isFinite(Number(src.epsNew)) ? Number(src.epsNew) : 0,
     zones: Array.isArray(src.zones) ? src.zones.map(migrateZone) : [],
+    a3a: Number(src.a3a) > 0 ? Number(src.a3a) : 0,
+    a3b: Number(src.a3b) > 0 ? Number(src.a3b) : 0,
     suggest: migrateSuggest(src.suggest),
   };
 }

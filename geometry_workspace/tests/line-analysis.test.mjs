@@ -194,6 +194,43 @@ head('8b. Skruesoner: stivheten varierer langs delen (#71)');
 }
 
 /* ------------------------------------------------------------------ */
+head('8d. Endeavstand a₃ (#75)');
+{
+  const ex = [rectPart('ex', 0, 0, 50, 130, 11000)];
+  const nw = [rectPart('nw', 50, 0, 48, 198, 11000)];
+  const layer = L.twoLayer({ existingParts: ex, newParts: nw, restraint: 'xy', nAt: 'composite' });
+  const rows = L.parseLoadTable('0 60\n6 60').rows;
+  const zone = (z0, z1) => [{ z0, z1, rows: 2, a: 100, K: 2990 }];
+  const Ninf = L.nInfinity(layer, { N: 60000 });
+  const lam = Math.sqrt(L.lambda2(layer, (2 * 2990) / 100));
+  // Løs–løs med a₃ = 200 i hver ende: forbundet lengde 5600 mm.
+  // Mellom enden og første skrue: N₂ = 0 og q = 0. Toppen sitter i første skrue:
+  //   q = N∞·λ·tanh(λ·5600/2).
+  const r = L.analyseLine({ layer, rows, za: 0, zb: 6000, endA: 'loose', endB: 'loose', zones: zone(0, 6000), a3a: 200, a3b: 200, serOnly: true }).ser;
+  ok('tabellene starter i z_a og slutter i z_b', r.z[0] === 0 && r.z[r.z.length - 1] === 6000);
+  const iFirst = r.z.findLastIndex((z) => Math.abs(z - 200) < 1e-6);
+  ok('første skrue er et punkt', iFirst > 0);
+  ok('ingen kraft eller skjærstrøm før første skrue', r.z.every((z, i) => z > 200 - 1e-6 || (Math.abs(r.N2[i]) < 1e-9 && r.q[i] === 0 && r.F[i] === 0)));
+  close('toppen i første skrue = N∞λ·tanh(λL_forb/2)', Math.abs(r.q[iFirst]), Ninf * lam * Math.tanh((lam * 5600) / 2), 3e-3);
+  // Festet ved z_a med a₃ = 300: kraften fra knutepunktet går uendret fram til første skrue.
+  const f = L.analyseLine({ layer, rows, za: 0, zb: 6000, endA: 'fixed', endB: 'loose', zones: zone(0, 6000), a3a: 300, a3b: 0, serOnly: true }).ser;
+  ok('festet: N₂ = N∞ fra knutepunktet til første skrue', f.z.every((z, i) => z > 300 - 1e-6 || Math.abs(f.N2[i] - Ninf) < 1e-6));
+  // a₃ = 0 gir nøyaktig det gamle svaret.
+  const a0 = L.analyseLine({ layer, rows, za: 0, zb: 6000, endA: 'loose', endB: 'loose', zones: zone(0, 6000), serOnly: true }).ser;
+  const b0 = L.analyseLine({ layer, rows, za: 0, zb: 6000, endA: 'loose', endB: 'loose', zones: zone(0, 6000), a3a: 0, a3b: 0, serOnly: true }).ser;
+  close('a₃ = 0 = uten a₃', b0.Fmax, a0.Fmax, 1e-12);
+  // Et hopp i N inne i a₃-strekningen skal synes i N₁ (der N₂ = 0, bærer
+  // den eksisterende alt): 40 kN før z = 0,1 m, 90 kN etter.
+  const jt = L.parseLoadTable('0 40\n0.1 40\n0.1 90\n6 90');
+  const j = L.analyseLine({ layer, rows: jt.rows, jumps: jt.jumps, za: 0, zb: 6000, endA: 'loose', endB: 'loose', zones: zone(0, 6000), a3a: 200, a3b: 200 }).ser;
+  const before = j.z.findIndex((z) => z > 50 - 1e-6);
+  const after = j.z.findIndex((z) => z > 150 - 1e-6);
+  close('hopp i a₃: N₁ = 40 kN før', j.N1[before], 40000, 1e-9);
+  close('hopp i a₃: N₁ = 90 kN etter', j.N1[after], 90000, 1e-9);
+  ok('hoppet er to punkter med samme z', j.z.filter((z) => Math.abs(z - 100) < 1e-9).length === 2);
+}
+
+/* ------------------------------------------------------------------ */
 head('8c. Automatisk soneforslag (#73)');
 {
   const ex = [rectPart('ex', 0, 0, 50, 130, 11000)];

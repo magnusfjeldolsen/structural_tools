@@ -163,6 +163,13 @@ export class UI {
         this.viewport.setHoverJoint(id);
         this.reinforcement.highlightJoint(id);
       },
+      // «Skrue: … · endre» under Skruesoner åpner skjøten i skjøtelista.
+      onOpenJoint: (id) => {
+        this._activeJointId = id;
+        this.jointExpanded = new Set([id]);
+        this._scrollTo = id;
+        this.render(this.analysis);
+      },
     });
     /** Pågående to-punkts kalibrering av bildeunderlaget. */
     this.calibration = null;
@@ -954,13 +961,13 @@ export class UI {
       this._renderUnderlay();
       this._renderPlacement();
       this._renderList();
+      // Forsterkningsfanen tegnes selv om den er skjult, slik at tallene er
+      // klare i det man bytter fane — og slik at fokusbevaringen over dekker
+      // også dens tallfelt. FØR skjøtelista: den viser utledet K fra resultatet.
+      this.reinforcement.render(analysis);
       this._renderJointList();
       this._renderResults(analysis);
       this._renderTabs();
-      // Forsterkningsfanen tegnes selv om den er skjult, slik at tallene er
-      // klare i det man bytter fane — og slik at fokusbevaringen over dekker
-      // også dens tallfelt.
-      this.reinforcement.render(analysis);
     });
 
     if (this._scrollTo) {
@@ -1924,6 +1931,18 @@ export class UI {
     // den andre (§3.2 i samvirkeplanen). Bare relevant for skruer/mekaniske
     // forbindere — lim har sin egen formel (Ga/ta over), og sveis regnes som
     // uendelig stiv (γ → 1) uansett.
+    // Utledet stivhet rett under feltene den kommer fra (#75): K_ser og
+    // K_u = ⅔·K_ser, fra samme beregning som resultatet bruker.
+    const rec = this.reinforcement.result && this.reinforcement.result.joints.find((x) => x.id === j.id);
+    const ss = rec && rec.slipSer;
+    const derivedK = ss && ss.valid
+      ? `<div class="rounded bg-slate-900/70 border border-slate-700 px-2 py-1 text-[11px] num text-slate-200">
+           → K_ser = <strong>${nf(0)(ss.K)}</strong> N/mm · K_u = ${nf(0)((2 / 3) * ss.K)} N/mm
+           <span class="text-slate-500">(ρ_m = ${nf(0)(ss.rhoMean || 0)} kg/m³)</span>
+         </div>`
+      : ss
+      ? `<div class="text-[11px] text-amber-300">K_ser kan ikke regnes ut — sjekk festemiddel, d og ρ_m${(c.ec5Contact === 'gap') ? ' (ingen kontakt: legg inn K fritt)' : ''}.</div>`
+      : '';
     const stiffnessBlock = (() => {
             const src = c.stiffSource === 'ec5' ? 'ec5' : 'eta';
             const fastenerKey = c.ec5Fastener || 'dowel';
@@ -1942,12 +1961,18 @@ export class UI {
                       <option value="ec5" ${src === 'ec5' ? 'selected' : ''}>EC5 tabell 7.1</option>
                     </select>
                   </div>
-                  <div>
+                  ${
+                    // Linjeberegningen regner alltid med både K_ser og K_u, så
+                    // valget gjør ingenting der — skjult for ikke å forvirre.
+                    this.store.state.analysis === 'line'
+                      ? ''
+                      : `<div>
                     <label class="field-label" for="j-state-${j.id}">Tilstand</label>
                     <select id="j-state-${j.id}" data-jstate data-id="${j.id}" data-focus-key="j-state-${j.id}">
                       ${STATES.map((s) => `<option value="${s.key}" ${state === s.key ? 'selected' : ''}>${s.label}</option>`).join('')}
                     </select>
-                  </div>
+                  </div>`
+                  }
                 </div>
                 ${
                   src === 'eta'
@@ -1977,6 +2002,7 @@ export class UI {
                          ${cfield('ec5Rho2', 'ρ_m,2 [kg/m³], valgfri', c.ec5Rho2, 'step="10"')}
                          ${fastener.needs === 'dc' ? cfield('ec5Dc', 'd_c [mm]', c.ec5Dc, 'step="1"') : cfield('ec5D', 'd [mm]', c.ec5D, 'step="0.5"')}
                        </div>
+                       ${derivedK}
                        <p class="text-[10px] text-slate-500 leading-snug">
                          Gjelder TREVIRKE. To treslag: oppgi begge ρ_m — det geometriske middelet brukes.
                          Stål-mot-tre/betong-mot-tre dobler K_ser (EC5 7.1(3)).
