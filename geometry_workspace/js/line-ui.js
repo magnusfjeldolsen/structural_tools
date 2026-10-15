@@ -150,6 +150,7 @@ export function computeLine(state, rf) {
   out.res = res;
   out.kSer = Math.max(...zones.map((zn) => (zn.rows * nJ * zn.K) / zn.a));
   out.share = share;
+  const firstConnected = res.connected.findIndex((l) => l > 0);
   out.zoneStats = zones.map((zn, i) => {
     const pick2 = (run) => {
       let best = 0;
@@ -163,13 +164,13 @@ export function computeLine(state, rf) {
     };
     const ser = pick2(res.ser);
     const u = pick2(res.u);
-    // Forbundet lengde: uten strekningene fram til første og etter siste skrue (a₃).
-    const c0 = Math.max(zn.z0 * 1000, za * 1000 + a3a);
-    const c1 = Math.min(zn.z1 * 1000, zb * 1000 - a3b);
-    const len = Math.max(0, c1 - c0);
-    const lam = res.ser.lambdas[Math.min(i, res.ser.lambdas.length - 1)];
-    // Antall per rad: lengde/a, pluss skruen i første ende (gjerdestolpe).
-    return { ...zn, count: len > 0 ? (Math.round(len / zn.a) + (i === 0 ? 1 : 0)) * zn.rows : 0, Fser: ser.F, Fu: u.F, zAt: ser.z, Lc: 1 / lam };
+    // Forbundet lengde og λ per sone kommer fra `analyseLine`, med samme indeks
+    // som sonene (også når en sone ligger helt inne i a₃).
+    const len = res.connected[i];
+    const lam = res.ser.lambdas[i];
+    // Antall per rad: lengde/a (minst 1 når sonen har skruer), pluss skruen i
+    // første ende (gjerdestolpe) — i den første sonen som har skruer.
+    return { ...zn, count: len > 0 ? (Math.max(1, Math.round(len / zn.a)) + (i === firstConnected ? 1 : 0)) * zn.rows : 0, Fser: ser.F, Fu: u.F, zAt: ser.z, Lc: 1 / lam };
   });
   out.summary = {
     joint: pick.pair ? `${j0.name} + ${pick.joints[1].name}` : j0.name,
@@ -211,11 +212,31 @@ export function computeLine(state, rf) {
     }
   });
   // Endeavstand: veiledende EC5-minsteverdi når skruen er kjent, og påminnelse om 0.
-  out.a3min = {
-    a: a3Minimum(base, zones[0], Math.sign(res.ser.Ninf[0] || res.ser.N2[res.ser.N2.length > 1 ? 1 : 0])),
-    b: a3Minimum(base, zones[zones.length - 1], Math.sign(res.ser.Ninf[res.ser.Ninf.length - 1])),
+  // Belastet eller ubelastet ende avgjøres av kraften i den nye delen like
+  // innenfor første/siste skrue (N₂ over ~2/λ), ikke av N₂∞ i selve enden —
+  // den kan være 0 der selv om delen har trykk eller strekk.
+  const lastConnected = res.connected.length - 1 - [...res.connected].reverse().findIndex((l) => l > 0);
+  const endSign = (fromStart) => {
+    const r = res.ser;
+    const reach = 2 / r.lambda;
+    let sum = 0;
+    r.z.forEach((z, k) => {
+      if (!(r.kAt[k] > 0)) return;
+      const d = fromStart ? z - res.zc0 : res.zc1 - z;
+      if (d >= 0 && d <= reach) sum += r.N2[k];
+    });
+    return Math.abs(sum) < 1e-9 ? 0 : Math.sign(sum);
   };
+  out.a3min = {
+    a: a3Minimum(base, zones[Math.max(0, firstConnected)], endSign(true)),
+    b: a3Minimum(base, zones[Math.max(0, lastConnected)], endSign(false)),
+  };
+  const zeroEnds = [];
   for (const [side, val, min, end] of [['z_a', a3a, out.a3min.a, line.endA], ['z_b', a3b, out.a3min.b, line.endB]]) {
+    if (val === 0) {
+      zeroEnds.push(min ? `${side} (min ${n(min.value, 0)} mm)` : side);
+      continue;
+    }
     if (min && val + 1e-9 < min.value) {
       warnings.push({
         short: `a₃ ved ${side} = ${n(val, 0)} mm < ${n(min.value, 0)} mm (${min.label}) — fare for kløyving.`,
@@ -223,9 +244,9 @@ export function computeLine(state, rf) {
       });
     }
   }
-  if (a3a === 0 && a3b === 0) {
+  if (zeroEnds.length) {
     warnings.push({
-      short: 'Endeavstand a₃ = 0: skruene antas helt ut i endene. Sett a₃ under «Utstrekning».',
+      short: `Endeavstand a₃ = 0 ved ${zeroEnds.join(' og ')}: skruene antas helt ut i enden. Sett a₃ under «Utstrekning».`,
       text: 'I virkeligheten sitter første skrue et stykke inn fra enden (EC5 tabell 8.2/8.4). Mellom enden og første skrue overføres ingen kraft, så toppen flytter seg innover og forbundet lengde blir kortere.',
     });
   }
@@ -255,8 +276,8 @@ export function a3Minimum(base, zone, sign) {
   const kind = c.ec5Fastener || 'dowel';
   if (kind !== 'dowel' && kind !== 'nail') return null;
   const d = (zone && zone.d) || base.d;
-  if (!(d > 0)) return null;
-  const loaded = sign >= 0;
+  if (!(d > 0) || !sign) return null; // ingen kraft i enden: ingen retning å velge minimum etter
+  const loaded = sign > 0;
   if (kind === 'dowel' && d > 6) {
     return loaded
       ? { value: Math.max(7 * d, 80), label: 'belastet ende', ref: 'EC5 tabell 8.4 (som bolter, 8.7.1)', formula: `a₃,t = max(7d; 80 mm) = ${n(Math.max(7 * d, 80), 0)} mm` }
@@ -298,6 +319,9 @@ export function resolveZones(line, za, zb, base) {
     out.push({ z0: start, z1: end, rows, a, K, Kser: zn.Kser || null, d: zn.d || null });
     start = end;
   });
+  // En siste sone uten lengde (forrige grense lagret i z_b, eller z_b flyttet
+  // innover): slås sammen med naboen i stedet for å bli en tom sone.
+  while (out.length > 1 && zb - out[out.length - 1].z0 < 1e-6) out.pop();
   if (out.length) out[out.length - 1].z1 = zb;
   return out;
 }
@@ -361,6 +385,7 @@ export function setZoneField(zones, i, key, value, base) {
 /** Deler sone i ved z [m] (ikke nærmere enn 1 cm fra kantene). */
 export function splitZoneAt(zones, i, z, base) {
   const zn = zones[i];
+  if (!zn || !Number.isFinite(z)) return toState(zones, base);
   const at = Math.min(zn.z1 - 0.01, Math.max(zn.z0 + 0.01, z));
   const next = [...zones.slice(0, i), { ...zn, z1: at }, { ...zn, z0: at }, ...zones.slice(i + 1)];
   return toState(next, base);
@@ -506,6 +531,7 @@ export function bindZoneStrip(host, store, lr, rerender = () => {}) {
   const x1 = zones[zones.length - 1].z1;
   const toZ = (clientX) => {
     const r = svg.getBoundingClientRect();
+    if (!(r.width > 0)) return NaN; // skjult strip (annen fane): ingen posisjon
     const vx = ((clientX - r.left) / r.width) * W;
     return x0 + ((vx - Lm) / (W - Lm - R)) * (x1 - x0);
   };
@@ -528,6 +554,7 @@ export function bindZoneStrip(host, store, lr, rerender = () => {}) {
     g.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       let v = toZ(e.clientX);
+      if (!Number.isFinite(v)) return;
       if (!e.shiftKey) v = Math.round(v / 0.05) * 0.05;
       z = Math.min(hi, Math.max(lo, v));
       const px = X(z);
@@ -546,15 +573,25 @@ export function bindZoneStrip(host, store, lr, rerender = () => {}) {
     g.addEventListener('pointercancel', end);
   });
   svg.querySelectorAll('[data-strip-seg]').forEach((g) => {
-    g.addEventListener('click', () => {
+    // Ett klikk velger — men venter et øyeblikk, så et dobbeltklikk (del
+    // sonen) ikke først velger, tegner panelet på nytt og mister det andre klikket.
+    let timer = null;
+    g.addEventListener('click', (e) => {
+      if (e.detail > 1) return;
       const i = Number(g.dataset.stripSeg);
-      selectedZone = selectedZone === i ? null : i;
-      rerender();
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        selectedZone = selectedZone === i ? null : i;
+        rerender();
+      }, 230);
     });
     g.addEventListener('dblclick', (e) => {
+      clearTimeout(timer);
       const i = Number(g.dataset.stripSeg);
       let v = toZ(e.clientX);
       if (!e.shiftKey) v = Math.round(v / 0.05) * 0.05;
+      if (!Number.isFinite(v)) return;
+      if (selectedZone != null && selectedZone > i) selectedZone += 1;
       store.setLine({ zones: splitZoneAt(zones, i, v, lr.base) });
     });
   });
@@ -750,7 +787,10 @@ export function bindZoneControls(host, store, lr) {
       el.addEventListener('click', () => {
         const [act, i] = el.dataset.zact.split(':');
         if (act !== 'suggest' && act !== 'endzones') zoneMsg = null;
-        if (act === 'split') store.setLine({ zones: splitZone(zones, Number(i), base) });
+        if (act === 'split') {
+          if (selectedZone != null && selectedZone > Number(i)) selectedZone += 1;
+          store.setLine({ zones: splitZone(zones, Number(i), base) });
+        }
         if (act === 'del') {
           if (selectedZone != null && selectedZone >= Number(i)) selectedZone = Math.max(0, selectedZone - 1);
           store.setLine({ zones: deleteZone(zones, Number(i), base) });
@@ -777,6 +817,7 @@ export function bindZoneControls(host, store, lr) {
           }
           const r = suggestFor(lr, { target: target * 1000, spacings, minLen: minLen * 1000 });
           if (!r) return;
+          selectedZone = null;
           flash(r.ok
             ? `Forslag: ${r.count} soner, F maks ${n(r.Fmax / 1000, 2)} kN ≤ ${n(target, 2)} kN. Juster gjerne etterpå.`
             : `Målet nås ikke: F = ${n(r.worst.F / 1000, 2)} kN ved z = ${n(r.worst.z / 1000, 2)} m selv med a = ${Math.min(...spacings)} mm. Prøv flere rader, sterkere skrue eller tettere avstand.`,
@@ -786,7 +827,15 @@ export function bindZoneControls(host, store, lr) {
         if (act === 'endzones-make') {
           const L = Number(String(host.querySelector('#line-endL').value).replace(',', '.'));
           const aEnd = Number(host.querySelector('#line-endA-a').value);
+          // Endesonen må være lengre enn a₃, ellers ligger den uten skruer.
+          const a3 = lr.a3 || { a: 0, b: 0 };
+          if (L * 1000 <= Math.max(a3.a, a3.b) + 50) {
+            flash(`Endesonene må være lengre enn endeavstanden a₃ (${n(Math.max(a3.a, a3.b), 0)} mm) — ellers har de ingen skruer.`, 'warn');
+            store.setLine({});
+            return;
+          }
           const next = endZones(zones, zones[0].z0, zones[zones.length - 1].z1, L, aEnd, base);
+          if (next) selectedZone = null;
           if (next) store.setLine({ zones: next });
           else {
             const msg = host.querySelector('[data-endzones-msg]');
@@ -1253,6 +1302,11 @@ export function qTableTsv(lr, step = 0.05) {
   const zs = new Set();
   for (let z = lr.za; z < lr.zb - 1e-9; z += step) zs.add(Math.round(z * 1e6) / 1e6);
   for (const zMm of featureZ(lr)) zs.add(Math.round(zMm) / 1000);
+  // Første og siste skrue (a₃): toppen sitter der og skal være med.
+  if (lr.a3) {
+    if (lr.a3.a > 0) zs.add(Math.round(lr.za * 1000 + lr.a3.a) / 1000);
+    if (lr.a3.b > 0) zs.add(Math.round(lr.zb * 1000 - lr.a3.b) / 1000);
+  }
   zs.add(lr.zb);
   const sorted = [...zs].sort((a, b) => a - b);
   const r = lr.res;

@@ -190,6 +190,24 @@ console.log('Endeavstand a₃ gjennom broen (#75)');
   ok('påminnelse når a₃ = 0', none.ok && none.warnings.some((w) => /a₃ = 0/.test(w.short)));
   const tooLong = run(model(shapes, [ec5], { a3a: 6000, a3b: 6000 }));
   ok('sperre når a₃ spiser hele delen', tooLong.blocked.some((b) => /ingen skruer igjen/.test(b)));
+  // Én påminnelse når bare den ene enden har a₃ = 0, med EC5-minimum i teksten.
+  const half = run(model(shapes, [ec5], { a3a: 100 }));
+  const rem = half.warnings.filter((w) => /a₃ = 0/.test(w.short));
+  ok('én påminnelse for z_b, med minimum', rem.length === 1 && /z_b \(min 80 mm\)/.test(rem[0].short), rem.map((w) => w.short).join(' | '));
+  // Trykk i den nye delen ⟹ ubelastet ende: a₃,c = 4d = 40 mm, likt i begge ender.
+  const comp = run(model(shapes, [ec5], { table: 'z N Mx My\n0 -60 0 0\n12 -60 0 0', a3a: 50, a3b: 50 }));
+  ok('trykk: ubelastet ende i begge ender', comp.ok && comp.a3min.a.value === 40 && comp.a3min.b.value === 40, JSON.stringify(comp.a3min));
+  // En sone som ligger helt inne i a₃: ingen skruer, og λ/L_c følger riktig sone.
+  const b0 = { rows: 2, a: 100, K: lr.zones[0].K };
+  const tiny = splitZoneAt(resolveZones({ zones: [] }, 0, 12, b0), 0, 0.03, b0);
+  const inA3 = run(model(shapes, [ec5], { a3a: 50, a3b: 50, zones: tiny }));
+  ok('sone inne i a₃: 0 skruer', inA3.ok && inA3.zoneStats[0].count === 0 && inA3.zoneStats[1].count > 0, inA3.zoneStats && inA3.zoneStats.map((z) => z.count).join(','));
+  ok('sone inne i a₃: L_c lik for like soner', inA3.ok && Math.abs(inA3.zoneStats[0].Lc - inA3.zoneStats[1].Lc) < 1e-6);
+  // Tabelleksporten tar med første skrue, der toppen sitter.
+  const tsv = qTableTsv(lr).split('\n').slice(1).map((l) => l.split('\t').map(Number));
+  ok('q-tabellen har en rad ved første skrue (z = 0,050)', tsv.some((r) => Math.abs(r[0] - 0.05) < 1e-9 && r[3] > 0));
+  const peak = Math.max(...tsv.map((r) => r[3]));
+  ok('toppen i tabellen = F maks', Math.abs(peak - lr.summary.Fv.ser) < 1e-3, `${peak} vs ${lr.summary.Fv.ser}`);
 }
 
 console.log('Prompten til brukerens AI');

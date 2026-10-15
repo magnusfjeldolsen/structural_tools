@@ -219,6 +219,15 @@ head('8d. Endeavstand a₃ (#75)');
   const a0 = L.analyseLine({ layer, rows, za: 0, zb: 6000, endA: 'loose', endB: 'loose', zones: zone(0, 6000), serOnly: true }).ser;
   const b0 = L.analyseLine({ layer, rows, za: 0, zb: 6000, endA: 'loose', endB: 'loose', zones: zone(0, 6000), a3a: 0, a3b: 0, serOnly: true }).ser;
   close('a₃ = 0 = uten a₃', b0.Fmax, a0.Fmax, 1e-12);
+  // Et hopp i N inne i a₃-strekningen skal synes i N₁ (der N₂ = 0, bærer
+  // den eksisterende alt): 40 kN før z = 0,1 m, 90 kN etter.
+  const jt = L.parseLoadTable('0 40\n0.1 40\n0.1 90\n6 90');
+  const j = L.analyseLine({ layer, rows: jt.rows, jumps: jt.jumps, za: 0, zb: 6000, endA: 'loose', endB: 'loose', zones: zone(0, 6000), a3a: 200, a3b: 200 }).ser;
+  const before = j.z.findIndex((z) => z > 50 - 1e-6);
+  const after = j.z.findIndex((z) => z > 150 - 1e-6);
+  close('hopp i a₃: N₁ = 40 kN før', j.N1[before], 40000, 1e-9);
+  close('hopp i a₃: N₁ = 90 kN etter', j.N1[after], 90000, 1e-9);
+  ok('hoppet er to punkter med samme z', j.z.filter((z) => Math.abs(z - 100) < 1e-9).length === 2);
 }
 
 /* ------------------------------------------------------------------ */
