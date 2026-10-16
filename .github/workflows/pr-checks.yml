@@ -134,7 +134,10 @@ jobs:
         run: |
           npm ci
           python -m pip install --upgrade pip
-          python -m pip install pytest structuralcodes==0.7.2
+          # numpy/scipy PINNED: the result fixtures are compared character for
+          # character, and an unpinned numpy (2.4.3 -> 2.4.6) moved two N-M
+          # numbers in the 12th digit and failed the suite on an unrelated PR.
+          python -m pip install pytest structuralcodes==0.7.2 numpy==2.4.3 scipy==1.17.1
 
       - name: JS suite
         if: steps.changes.outputs.csc == 'true'
