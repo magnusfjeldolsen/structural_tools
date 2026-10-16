@@ -1728,6 +1728,14 @@ export function createUI(deps) {
     put('#i-h', s.geometry.h, 1);
     put('#i-cover', s.cover, 1);
     put('#i-cover-side', s.cover_side, 1);
+    // Dokumentfeltene er tekst, ikke tall, og går derfor utenom `fmtInput`.
+    // Uten denne løkka ble de lagret, men ALDRI vist igjen etter «Load JSON»
+    // eller en delt lenke — boksene sto tomme med verdiene i tilstanden (#77).
+    for (const key of ['project', 'title', 'author', 'date', 'note']) {
+      const el = $(`#doc-${key}`);
+      if (!el || el === document.activeElement) continue;
+      el.value = (s.doc && s.doc[key]) || '';
+    }
     put('#i-strut-angle', s.shear.strut_angle_deg, 1);
     put('#i-z-factor', s.shear.z_factor, 3);
     put('#i-k1', s.spacing.k1);

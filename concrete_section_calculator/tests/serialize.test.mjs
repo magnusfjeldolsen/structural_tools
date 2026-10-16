@@ -32,6 +32,19 @@ test('rundtur: fromDocument(toDocument(s)).state er dypt lik s, uten særtilfell
   assert.deepEqual(notes, []);
 });
 
+test('rundtur med utfylte rapportfelt: prosjekt, tittel, forfatter, dato og notat overlever fila (#77)', () => {
+  const doc = {
+    project: 'HIG Frys', title: 'Fundamentbjelke akse 6', author: 'MFO',
+    date: '2026-10-16', note: 'Linje 1\nLinje 2 — æøå',
+  };
+  const s = { ...defaultState(), doc, result: null };
+  const file = JSON.parse(JSON.stringify(toDocument(s)));
+  assert.deepEqual(file.state.doc, doc);
+  const { state, notes } = fromDocument(file);
+  assert.deepEqual(state.doc, doc);
+  assert.deepEqual(notes, []);
+});
+
 test('rundtur med to lag og to kombinasjoner, signert M_Ed og V_Ed, uten aksialkraft', () => {
   const s = {
     ...defaultState(),
