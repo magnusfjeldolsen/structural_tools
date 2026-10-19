@@ -1227,7 +1227,8 @@ export class ReinforcementPanel {
           ${row('N_G/L', '#e879f9', 'Bare der forsterkningen slutter og M ≠ 0 (figur 2): hele N_G må inn over L — <strong>middelverdi</strong>, toppen i enden er høyere. Slutter den i et momentnullpunkt, er N_G = 0 der (figur 3).')}
         </tbody>
       </table>
-      <p class="text-[11px] text-slate-400">Å forlenge forsterkningen til et momentnullpunkt fjerner forankringskraften.</p>`;
+      <p class="text-[11px] text-slate-400">Å forlenge forsterkningen til et momentnullpunkt fjerner forankringskraften.</p>
+      <p class="text-[11px]"><a href="./wiki.html" target="_blank" rel="noopener" class="text-sky-400 hover:text-sky-300">Slik regnes skjøtekreftene →</a></p>`;
     el.querySelector('[data-rf-figclose]').addEventListener('click', () => this.closeFigure());
   }
 
