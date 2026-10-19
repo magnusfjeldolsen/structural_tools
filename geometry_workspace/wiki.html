@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-BFVZQQ2LYN');
+  </script>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Kort forklaring av skjøtekreftene i Geometri-workspace: skjøten som fjær, ligningen N₂″ = λ²(N₂ − N₂∞), hva hver innstilling gjør, og hvordan resultatet leses.">
+  <title>Slik regnes skjøtekreftene — Geometri-workspace</title>
+  <style>
+    :root {
+      --bg: #0f172a; --panel: #1e293b; --line: #334155; --text: #e2e8f0; --muted: #94a3b8; --head: #f8fafc;
+      --existing: #60a5fa; --fresh: #fb923c; --q: #e879f9; --inf: #94a3b8; --accent: #38bdf8;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+    a { color: var(--accent); }
+    h1 { color: var(--head); font-size: 1.6rem; line-height: 1.25; margin: 0 0 .4rem; }
+    h2 { color: var(--head); font-size: 1.1rem; margin: 2.2rem 0 .6rem; padding-top: .8rem; border-top: 1px solid var(--line); }
+    .lead { color: var(--muted); font-size: 1.02rem; margin: 0 0 1rem; }
+    .back { font-size: .85rem; color: var(--muted); text-decoration: none; }
+    .back:hover { color: var(--text); }
+    .eq { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; margin: .8rem 0;
+          font-size: 1.15rem; text-align: center; color: var(--head); font-variant-numeric: tabular-nums; }
+    .eq small { display: block; font-size: .8rem; color: var(--muted); margin-top: .2rem; }
+    ol.three { padding-left: 1.3rem; } ol.three li { margin: .35rem 0; }
+    .key { border-left: 3px solid var(--q); padding: .1rem 0 .1rem .9rem; margin: 1rem 0; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; margin: .6rem 0; }
+    th { text-align: left; color: var(--muted); font-weight: 500; padding: .35rem .5rem .35rem 0; }
+    td { border-top: 1px solid var(--line); padding: .45rem .5rem .45rem 0; vertical-align: top; }
+    td:first-child { color: var(--head); white-space: nowrap; }
+    .wrap { overflow-x: auto; }
+    code, .m { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .92em; }
+    details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .5rem .9rem; margin: 1rem 0; }
+    details summary { cursor: pointer; color: var(--head); }
+    details p, details li { font-size: .9rem; }
+    figure { margin: 1rem 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .8rem; }
+    figcaption { font-size: .82rem; color: var(--muted); margin-top: .4rem; }
+    .controls { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; align-items: center; font-size: .85rem; color: var(--muted); margin-bottom: .4rem; }
+    .controls input[type=range] { width: 140px; vertical-align: middle; accent-color: var(--accent); }
+    .controls select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: .1rem .3rem; }
+    .c-ex { color: var(--existing); } .c-new { color: var(--fresh); } .c-q { color: var(--q); }
+    svg text { font-family: ui-sans-serif, system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+<main>
+  <a class="back" href="./index.html">← Tilbake til Geometri-workspace</a>
+  <h1>Slik regnes skjøtekreftene</h1>
+  <p class="lead">Verktøyet svarer på ett spørsmål: <strong>hvor mye kraft må skruene føre fra den eksisterende delen over i den nye, og hvor langs delen?</strong> Alt følger av tre enkle setninger.</p>
+
+  <h2>1 · Tre setninger</h2>
+  <ol class="three">
+    <li><strong>Den <span class="c-new">nye delen</span> får kraft bare gjennom skruene.</strong> Kraften i den bygges opp skrue for skrue:
+      <span class="m">N₂′ = q</span>, der <span class="m">q</span> er kraft per meter skjøt [kN/m].</li>
+    <li><strong>Skruene er fjærer.</strong> De tar kraft bare når delene glir litt mot hverandre:
+      <span class="m">q = k·δ</span>, med skjøtestivheten <span class="m">k = rader·K/a</span> (K = stivheten til én skrue, a = senteravstand).</li>
+    <li><strong>Glidningen vokser der delene tøyes ulikt.</strong> <span class="m">δ′ = ε_ny − ε_eks</span>: tøyes den nye delen mer enn den <span class="c-ex">eksisterende</span>, glir de fra hverandre.</li>
+  </ol>
+  <figure>
+    <svg viewBox="0 0 640 130" width="100%" role="img" aria-label="To deler forbundet med skruer som fjærer">
+      <rect x="30" y="18" width="580" height="34" rx="3" fill="#60a5fa" fill-opacity=".25" stroke="#60a5fa"/>
+      <text x="40" y="40" fill="#93c5fd" font-size="12">eksisterende · N₁, EA₁</text>
+      <rect x="130" y="78" width="380" height="26" rx="3" fill="#fb923c" fill-opacity=".25" stroke="#fb923c"/>
+      <text x="140" y="96" fill="#fdba74" font-size="12">ny · N₂, EA₂</text>
+      <defs><path id="spring" d="M0 52 v6 l-5 3 l10 4 l-10 4 l10 4 l-5 3 v2"/></defs>
+      <g stroke="#e2e8f0" stroke-width="1.2" fill="none">
+        <use href="#spring" x="160"/><use href="#spring" x="210"/><use href="#spring" x="260"/><use href="#spring" x="310"/>
+        <use href="#spring" x="360"/><use href="#spring" x="410"/><use href="#spring" x="460"/>
+      </g>
+      <text x="520" y="70" fill="#94a3b8" font-size="11">skrue = fjær, q = k·δ</text>
+      <text x="520" y="96" fill="#94a3b8" font-size="11">N₂ = sum av q fra enden</text>
+    </svg>
+  </figure>
+
+  <h2>2 · Én ligning</h2>
+  <p>Setter man de tre sammen og uttrykker tøyningene ved kreftene, blir det én ligning (Volkersen for N, Newmark for M):</p>
+  <div class="eq">N₂″ = λ² · (N₂ − N₂∞)<small>kraften i den nye delen trekkes mot målet N₂∞, og λ sier hvor fort</small></div>
+  <ul>
+    <li><strong>N₂∞ er målet:</strong> kraften den nye delen ville hatt med <em>helt stiv</em> skjøt (full samvirkning). Den består av andelen EA₂/EA av N, bidraget fra M gjennom avstanden mellom delene, og eventuell fri tøyning.</li>
+    <li><strong>λ er farten:</strong> <span class="m">λ² = k·(1/EA₁ + 1/EA₂ + d²/EI₀)</span>, altså hvor stiv skjøten er sammenlignet med hvor lett delene tøyes. Over <span class="m">1/λ</span> når kraften 63 % av målet, og over <span class="m">3/λ</span> 95 %.</li>
+  </ul>
+  <div class="key">
+    <p><strong>Det viktigste:</strong> der N₂∞ er jevn, ligger N₂ på målet, og skruene tar bare den vanlige skjærstrømmen. Skruene får det travelt der N₂ må <em>ta igjen</em> målet: i en <strong>løs ende</strong> og ved et <strong>sprang i N</strong>.</p>
+    <p class="m" style="margin:.3rem 0">løs ende: q_max ≈ λ·N₂∞ &nbsp;&nbsp;·&nbsp;&nbsp; sprang: q_max ≈ λ·ΔN₂∞/2</p>
+    <p style="margin:0">Stivere skjøt gir kortere innføring, men høyere topp, fordi q_max øker med √k.</p>
+  </div>
+
+  <figure>
+    <div class="controls">
+      <label>Skjøtestivhet k <input id="kSlider" type="range" min="-2" max="2" step="0.05" value="0"> <span id="kVal" class="m">×1</span></label>
+      <label>Ende A <select id="endA"><option value="loose">løs</option><option value="fixed">festet</option></select></label>
+      <label>Ende B <select id="endB"><option value="loose">løs</option><option value="fixed" selected>festet</option></select></label>
+    </div>
+    <svg id="plot" viewBox="0 0 640 380" width="100%" role="img" aria-label="N₂ og q langs den nye delen"></svg>
+    <figcaption>En ny del med et sprang i N midt på, regnet med samme løser som verktøyet bruker. Øverst: <span class="c-new">N₂</span> følger <span style="color:var(--inf)">målet N₂∞ (stiplet)</span>. Nederst: <span class="c-q">q</span>, som har topper ved den løse enden og ved spranget. Dra i k: toppen blir høyere og smalere.</figcaption>
+  </figure>
+
+  <details>
+    <summary>Utledningen på fem linjer</summary>
+    <p>Med delene holdt rette (bare N), og N₁ = N − N₂:</p>
+    <p class="m">δ′ = N₂/EA₂ − (N − N₂)/EA₁ + ε_ny − ε_eks<br>
+      N₂″ = (k·δ)′ = k·δ′<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;= k·(1/EA₁ + 1/EA₂)·N₂ − k·(N/EA₁ + ε_eks − ε_ny)<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;= λ²·(N₂ − N₂∞)<br>
+      λ² = k·(1/EA₁ + 1/EA₂), &nbsp; N₂∞ = (N/EA₁ + ε_eks − ε_ny) / (1/EA₁ + 1/EA₂)</p>
+    <p>Uten fri tøyning er N₂∞ = N·EA₂/EA, altså stivhetsandelen. Får delene bøye sammen (felles krumning κ), kommer bøyeleddet <span class="m">dᵀK₀⁻¹d</span> inn i λ² og momentleddet <span class="m">dᵀK₀⁻¹(M − N·r₁)</span> inn i telleren til N₂∞. Her er d avstanden mellom delenes tyngdepunkt i begge retninger, og K₀ delenes egne bøyestivheter. Ligningen løses numerisk (endelige differanser, tett nett ved ender og sprang) og er testet mot lukkede løsninger.</p>
+    <p>Randbetingelser: løs ende har N₂ = 0, festet ende har N₂ = N₂∞. Med skruesoner varierer k. Glidningen δ er da kontinuerlig over en sonegrense, så q hopper der, mens kraften per skrue gjør det ikke.</p>
+  </details>
+
+  <h2>3 · Innstillingene: hva de skrur på</h2>
+  <p>Hver innstilling endrer enten <strong>målet N₂∞</strong>, <strong>farten λ</strong> eller <strong>randen</strong>.</p>
+  <div class="wrap"><table>
+    <thead><tr><th>Innstilling</th><th>Fysisk</th><th>Endrer</th></tr></thead>
+    <tbody>
+      <tr><td>Ende: løs</td><td>Den nye delen er bare skrudd langs gurten.</td><td>Rand N₂ = 0. Gir toppen λ·N₂∞ i enden.</td></tr>
+      <tr><td>Ende: festet</td><td>Delen er koblet inn i knutepunktet.</td><td>Rand N₂ = N₂∞. Ingen topp; N₂ går gjennom knutepunktsforbindelsen og rapporteres for seg.</td></tr>
+      <tr><td>Avstand til første skrue</td><td>Fra enden og fram til første skrue overføres ingen kraft.</td><td>Flytter toppen innover. Er avstanden for kort, varsles det om kløyving (a₃, EC5 tab. 8.2/8.4, veiledende).</td></tr>
+      <tr><td>Skruesoner (a, rader, skrue)</td><td>Tettere skruer gir stivere skjøt.</td><td>k = rader·K/a per sone, og dermed λ. En tett sone trekker kraft til seg.</td></tr>
+      <tr><td>N angriper i</td><td>I et fagverk fører knutepunktet N inn i det eksisterende profilet.</td><td>«Eksisterende» gir et ekstra moment N·r₁ om det sammensatte tyngdepunktet og endrer N₂∞, men bare om akser som ikke er fastholdt.</td></tr>
+      <tr><td>Sideveis fastholding</td><td>Kan delene bøye ut sammen når kraften virker eksentrisk?</td><td>Fri: bøyeleddet kommer inn i både λ og N₂∞. Fastholdt: ren Volkersen. Kan endre toppen med en faktor 2, og har derfor ingen standardverdi.</td></tr>
+      <tr><td>Fri tøyning ε_eks, ε_ny</td><td>Tøyning uten last (fukt, kryp, temperatur).</td><td>Skjøten holder igjen forskjellen, som virker som en last EA*·Δε. Flytter N₂∞.</td></tr>
+      <tr><td>N_før (lastetabellen)</td><td>Last som sto på før forsterkningen.</td><td>Blir i den eksisterende delen. Bare N − N_før fordeles.</td></tr>
+      <tr><td>K_ser og K_u = ⅔·K_ser</td><td>To anslag på hvor stiv skruen er.</td><td>Begge regnes. Den stive (K_ser) gir høyest topp og styrer skruene. Den myke (K_u) lar mest kraft bli igjen i den eksisterende delen og styrer N₁.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>4 · Lese resultatet</h2>
+  <div class="wrap"><table>
+    <tbody>
+      <tr><td>q_max</td><td>Største kraft per meter skjøt, og hvor den sitter.</td></tr>
+      <tr><td>F_v per skrue</td><td><span class="m">q·a/rader</span>: den mest belastede skruen. Det er dette tallet du tar med til EC5-knutepunkt. Verktøyet kontrollerer ikke kapasitet.</td></tr>
+      <tr><td>η = N₂/N₂∞</td><td>Hvor nær full samvirkning delen kommer. η ≈ 1 betyr at delen er lang nok. Er η klart under 1, er delen kort sammenlignet med 1/λ.</td></tr>
+      <tr><td>1/λ</td><td>Innføringslengden. Er delen lengre enn ca. 3/λ, påvirker ikke endene hverandre.</td></tr>
+      <tr><td>N₁ maks</td><td>Kraften som blir igjen i den eksisterende delen.</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Tommelregel:</strong> legg tette skruesoner der toppene er (i løse ender og ved sprang), og glisne soner imellom. «Foreslå soner» gjør dette for deg ut fra et mål for kraften per skrue.</p>
+
+  <h2>5 · Snitt eller linje?</h2>
+  <p><strong>Snitt</strong> er grensetilfellet med helt stiv skjøt, regnet i ett snitt:</p>
+  <ul>
+    <li>Skjærstrømmen <span class="m">q = V·ES*/EI</span> er stigningen til målet N₂∞. Midt i et felt gir linjeberegningen det samme, fordi N₂ der følger målet.</li>
+    <li>I en forsterkningsende gir snittet en <em>middelverdi</em>, N/L over en lengde L du velger. Den virkelige toppen er λ·N₂∞, altså omtrent <strong>λL ganger middelverdien</strong>.</li>
+  </ul>
+  <p>Bruk <strong>Snitt</strong> til en rask kontroll i felt. Bruk <strong>Linje</strong> når endene eller sprang i N kan styre skruene.</p>
+</main>
+
+<script type="module">
+  import { solveLine } from './js/line-analysis.js';
+
+  const svg = document.getElementById('plot');
+  const slider = document.getElementById('kSlider');
+  const kVal = document.getElementById('kVal');
+  const endA = document.getElementById('endA');
+  const endB = document.getElementById('endB');
+
+  // Dimensjonsløst: λ₀ = 1 per 100 mm, delen 12/λ₀ lang, sprang i N₂∞ midt på.
+  const L = 1200, zJump = 600, lambda0 = 1 / 100;
+  const nInf = (z, side) => (z < zJump || (z === zJump && side < 0) ? 1 : z > zJump || side > 0 ? 0.5 : 0.75);
+
+  const W = 640, x0 = 44, x1 = 624;
+  const sx = (z) => x0 + (z / L) * (x1 - x0);
+  const path = (zs, ys, sy) => zs.map((z, i) => `${i ? 'L' : 'M'}${sx(z).toFixed(1)} ${sy(ys[i]).toFixed(1)}`).join('');
+  const text = (x, y, s, fill = '#94a3b8', anchor = 'start') => `<text x="${x}" y="${y}" fill="${fill}" font-size="11" text-anchor="${anchor}">${s}</text>`;
+
+  function draw() {
+    const kMul = Math.pow(3, Number(slider.value)); // ×1/9 … ×9
+    kVal.textContent = `×${kMul < 1 ? kMul.toFixed(2) : kMul.toFixed(1)}`;
+    const lambda = lambda0 * Math.sqrt(kMul);
+    const r = solveLine({ za: 0, zb: L, lambda, nInf, endA: endA.value, endB: endB.value, jumps: [zJump] });
+    const qn = r.q.map((v) => v / lambda0); // q i enheter av λ₀·N₂∞
+
+    // Øvre panel: N₂ og N₂∞, 0…1.1
+    const t0 = 20, h0 = 120;
+    const syN = (v) => t0 + h0 - (v / 1.1) * h0;
+    // Nedre panel: q, fast skala så k-effekten synes
+    const t1 = 180, h1 = 165, qTop = 3.2, qBot = -1.6;
+    const syQ = (v) => t1 + ((qTop - Math.max(qBot, Math.min(qTop, v))) / (qTop - qBot)) * h1;
+
+    const out = [];
+    const axis = (y) => `<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="#334155"/>`;
+    out.push(axis(syN(0)), axis(syQ(0)));
+    out.push(`<line x1="${sx(zJump)}" x2="${sx(zJump)}" y1="${t0}" y2="${t1 + h1}" stroke="#334155" stroke-dasharray="2 3"/>`);
+    out.push(text(4, syN(1) + 4, 'N₂∞'), text(4, syN(0) + 4, '0'), text(4, syQ(0) + 4, 'q'));
+    out.push(`<path d="${path(r.z, r.Ninf, syN)}" fill="none" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="4 3"/>`);
+    out.push(`<path d="${path(r.z, r.N2, syN)}" fill="none" stroke="#fb923c" stroke-width="2"/>`);
+    out.push(`<path d="${path(r.z, qn, syQ)}" fill="none" stroke="#e879f9" stroke-width="2"/>`);
+
+    // 1/λ-merke ved ende A
+    const Lc = 1 / lambda;
+    out.push(`<line x1="${sx(0)}" x2="${sx(Lc)}" y1="${syN(0) + 14}" y2="${syN(0) + 14}" stroke="#38bdf8"/>`,
+      `<line x1="${sx(Lc)}" x2="${sx(Lc)}" y1="${syN(0) + 9}" y2="${syN(0) + 19}" stroke="#38bdf8"/>`,
+      text(sx(Lc) + 4, syN(0) + 18, '1/λ', '#38bdf8'));
+
+    // Etiketter på toppene
+    const peak = (from, to) => {
+      let best = -1, val = 0;
+      r.z.forEach((z, i) => { if (z >= from && z <= to && Math.abs(qn[i]) > Math.abs(val)) { best = i; val = qn[i]; } });
+      return best < 0 ? null : { z: r.z[best], v: val };
+    };
+    const lbl = (p, s, anchor) => p && Math.abs(p.v) > 0.05 && out.push(text(sx(p.z) + (anchor === 'end' ? -6 : 6), syQ(p.v) + (p.v > 0 ? -4 : 14), s, '#f5d0fe', anchor));
+    lbl(peak(0, 150), endA.value === 'loose' ? 'løs ende: λ·N₂∞' : '', 'start');
+    lbl(peak(zJump - 100, zJump + 100), 'sprang: λ·ΔN₂∞/2', 'start');
+    lbl(peak(L - 150, L), endB.value === 'loose' ? 'løs ende' : '', 'end');
+    if (endB.value === 'fixed') out.push(text(x1, syN(0.5) - 8, 'festet: N₂ går i knutepunktet', '#fdba74', 'end'));
+    if (endA.value === 'fixed') out.push(text(x0 + 4, syN(1) - 8, 'festet: N₂ går i knutepunktet', '#fdba74'));
+    out.push(text(sx(zJump), t1 + h1 + 16, 'sprang i N', '#94a3b8', 'middle'), text(x0, t1 + h1 + 16, 'A'), text(x1, t1 + h1 + 16, 'B', '#94a3b8', 'end'));
+    svg.innerHTML = out.join('');
+  }
+  [slider, endA, endB].forEach((el) => el.addEventListener('input', draw));
+  draw();
+</script>
+</body>
+</html>
