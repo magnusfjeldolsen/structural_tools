@@ -215,7 +215,7 @@ function evaluateCriteria(inputs, cls, spectrum, sd) {
 function sdCriterion(sd, fmt) {
   const c = {
     id: 5,
-    text: 'S<sub>d</sub> ≤ 0,50 m/s² med q ≤ 1,5, uten stivhetsreduksjon og med konservativ grunnstivhet',
+    text: 'S<sub>d</sub> ≤ 0,50 m/s² (med betingelsene i NA.3.2.1(5), se over)',
     value: finite(sd.Sd) ? `${fmt(sd.Sd)} m/s²` : '–',
     limit: `≤ ${fmt(LIMITS.Sd)} m/s²`
   };

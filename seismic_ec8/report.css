@@ -1,0 +1,174 @@
+/*
+ * report.css — rapportsiden (én stående A4) i forhåndsvisning og utskrift.
+ *
+ * Siden er målt i mm og har fast høyde. Det som ikke får plass klippes i
+ * utskriften i stedet for å lage side 2; forhåndsvisningen varsler før det skjer.
+ */
+
+.report-page {
+  box-sizing: border-box;
+  width: 210mm;
+  height: 297mm;
+  padding: 10mm 13mm 8mm 15mm;
+  background: #fff;
+  color: #111827;
+  font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+  font-size: 8.6pt;
+  line-height: 1.32;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.report-page sub, .report-page sup { font-size: 0.72em; line-height: 0; }
+
+/* ---------- topptekst */
+.rp-head {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 4mm;
+  border-bottom: 1.2pt solid #111827;
+  padding-bottom: 2.5mm;
+}
+.rp-title h1 { margin: 0; font-size: 14pt; line-height: 1.15; font-weight: 700; }
+.rp-sub { margin-top: 1.2mm; color: #4b5563; font-size: 8pt; }
+.rp-project {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 0.6pt solid #9ca3af;
+}
+.rp-pi {
+  display: flex;
+  gap: 2mm;
+  padding: 0.7mm 1.5mm;
+  border-bottom: 0.4pt solid #e5e7eb;
+  min-width: 0;
+}
+.rp-pi.wide { grid-column: 1 / -1; }
+.rp-pi:not(.wide):nth-child(odd) { border-right: 0.4pt solid #e5e7eb; }
+.rp-pi:nth-last-child(-n+2) { border-bottom: 0; }
+.rp-pi span { color: #6b7280; flex: 0 0 19mm; font-size: 7.4pt; }
+.rp-pi b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- innhold */
+.rp-body { flex: 1 1 auto; min-height: 0; overflow: hidden; padding-top: 1mm; }
+.rp-sec { margin-top: 2.2mm; }
+.rp-sec h2 {
+  margin: 0 0 1.2mm;
+  font-size: 9.6pt;
+  font-weight: 700;
+  color: #1e3a8a;
+  border-bottom: 0.5pt solid #c7d2fe;
+  padding-bottom: 0.5mm;
+}
+
+.rp-table { width: 100%; border-collapse: collapse; }
+.rp-table th, .rp-table td {
+  text-align: left;
+  padding: 0.45mm 1.5mm;
+  border-bottom: 0.4pt solid #e5e7eb;
+  vertical-align: top;
+}
+.rp-table thead th { font-weight: 600; color: #374151; background: #f3f4f6; border-bottom: 0.6pt solid #9ca3af; }
+.rp-num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rp-params td:first-child { width: 30%; }
+.rp-params td:nth-child(2) { width: 17%; font-weight: 600; }
+.rp-params td:nth-child(3) { color: #374151; }
+
+.rp-key td:nth-child(odd) { color: #374151; }
+.rp-key td:nth-child(even) { font-weight: 600; }
+.rp-periods { margin-top: 1.5mm; }
+.rp-periods th, .rp-periods td { text-align: center; font-variant-numeric: tabular-nums; }
+.rp-periods th:first-child { text-align: left; width: 18mm; }
+
+.rp-eqs div { display: flex; gap: 2mm; padding: 0.35mm 0; }
+.rp-eqs span:first-child { flex: 0 0 30mm; color: #374151; }
+.rp-eqs em { margin-left: auto; font-style: normal; color: #6b7280; }
+
+.rp-plot svg { display: block; width: 100%; height: auto; }
+
+.rp-crit td:first-child { width: 5mm; }
+.rp-crit .rp-status { font-weight: 700; white-space: nowrap; }
+.rp-crit .st-met .rp-status { color: #047857; }
+.rp-crit .st-not_met .rp-status { color: #b91c1c; }
+.rp-crit .st-not_evaluated .rp-status,
+.rp-crit .st-not_applicable .rp-status { color: #6b7280; }
+.rp-crit .st-met td { background: #ecfdf5; }
+
+.rp-conds { list-style: none; margin: 1.2mm 0 0; padding: 0; }
+.rp-conds li { padding: 0.2mm 0; }
+.rp-conds li.nok { color: #b91c1c; }
+
+.rp-sec h2 small { font-size: 7.6pt; font-weight: 400; color: #4b5563; }
+.rp-warn { margin: 1mm 0 0; color: #b45309; font-weight: 600; }
+.rp-error { margin-top: 6mm; color: #b91c1c; font-weight: 600; }
+
+.rp-concl {
+  margin-top: 2.5mm;
+  padding: 1.8mm 3mm;
+  border: 1pt solid;
+  border-left-width: 3pt;
+}
+.rp-concl b { display: block; font-size: 10.5pt; margin-bottom: 0.5mm; }
+.rp-concl.avoided { border-color: #047857; background: #ecfdf5; }
+.rp-concl.required { border-color: #b91c1c; background: #fef2f2; }
+
+.rp-notes { margin: 0; white-space: pre-wrap; }
+.rp-source { margin: 2.5mm 0 0; color: #6b7280; font-size: 7.4pt; }
+
+/* ---------- bunntekst */
+.rp-foot {
+  display: flex;
+  justify-content: space-between;
+  border-top: 0.6pt solid #9ca3af;
+  padding-top: 1.2mm;
+  color: #6b7280;
+  font-size: 7.2pt;
+}
+
+/* ---------- forhåndsvisning på skjerm */
+#report-root { display: none; }
+
+.report-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(3, 7, 18, 0.82);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: auto;
+  padding: 16px;
+}
+.report-preview[hidden] { display: none; }
+.report-preview-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #1f2937;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.report-preview-sheet { box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); transform-origin: top center; }
+.report-preview-warning { color: #fbbf24; font-size: 13px; font-weight: 600; }
+
+/* ---------- utskrift: bare rapporten */
+@media print {
+  @page { size: A4 portrait; margin: 0; }
+  html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+  body > *:not(#report-root) { display: none !important; }
+  #report-root { display: block !important; }
+  .report-page {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+}
