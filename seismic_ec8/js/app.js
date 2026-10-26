@@ -26,7 +26,7 @@ let lastReportKind = 'avoidance';
 
 // ---------------------------------------------------------------- input
 
-function location() {
+function readLocation() {
   if ($('country').value === 'norway') {
     const fylke = $('fylke').value;
     const kommune = $('kommune').value;
@@ -43,7 +43,7 @@ function readInputs() {
   return {
     seismicClass: $('seismic_class').value,
     gammaI: parse('gamma_I'),
-    agR: location().agR,
+    agR: readLocation().agR,
     spectrumType: $('spectrum_type').value,
     groundType: $('ground_type').value,
     q: parse('q'),
@@ -174,7 +174,7 @@ function reportContext() {
   for (const f of PROJECT_FIELDS) project[f.key] = $(`pi_${f.key}`).value.trim();
   return {
     result: lastResult,
-    location: location(),
+    location: readLocation(),
     project,
     notes: $('notes').value,
     generatedAt: new Date()
@@ -253,7 +253,7 @@ function populateKommuner() {
 }
 
 function updateNorwayDisplay() {
-  const loc = location();
+  const loc = readLocation();
   $('agr_norway_display').textContent = loc.fromTable ? loc.agR.toFixed(2) : '–';
 }
 
