@@ -15,6 +15,7 @@
     "test:concrete-section:wasm": "node concrete_section_calculator/tests/wasm-verify-run.mjs",
     "test:concrete-section:py": "python -m pytest concrete_section_calculator/tests/python -q",
     "test:concrete-section:all": "npm run test:concrete-section && npm run test:concrete-section:py && npm run test:concrete-section:wasm",
+    "test:seismic": "node --test \"seismic_ec8/tests/*.test.mjs\"",
     "help": "node scripts/show-help.js"
   },
   "devDependencies": {
