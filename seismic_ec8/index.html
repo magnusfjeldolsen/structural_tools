@@ -3,289 +3,251 @@
 <head>
 <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="EC8 Seismic Avoidance Criteria Calculator - Determine if seismic design is required">
-  <meta name="keywords" content="EC8, seismic design, avoidance criteria, response spectrum, structural engineering">
+  <meta name="description" content="EC8 Seismic Avoidance Criteria Calculator - Determine if seismic design is required, and document the design response spectrum per NS-EN 1998-1 NA:2021">
+  <meta name="keywords" content="EC8, seismic design, avoidance criteria, response spectrum, design spectrum, utelatelseskriterie, jordskjelv, NS-EN 1998-1, structural engineering">
   <title>EC8 Seismic Avoidance Criteria Calculator</title>
-  
+
   <!-- Open Graph tags -->
   <meta property="og:title" content="EC8 Seismic Avoidance Criteria Calculator">
   <meta property="og:description" content="Determine seismic design requirements according to Eurocode 8">
   <meta property="og:type" content="website">
-  
-  <!-- Centralized CSS -->
+
+  <!-- Centralized CSS (the shared print.css is deliberately not loaded: it hid every input and printed dark) -->
   <link rel="stylesheet" href="../assets/css/common.css">
   <link rel="stylesheet" href="../assets/css/forms.css">
   <link rel="stylesheet" href="../assets/css/components.css">
-  <link rel="stylesheet" href="../assets/css/print.css">
-  
+  <link rel="stylesheet" href="report.css">
+
   <!-- Tailwind CSS -->
   <script>
     tailwind.config = { darkMode: 'class' };
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- D3.js for plotting -->
-  <script src="https://d3js.org/d3.v7.min.js"></script>
-  
-  <!-- MathJax for mathematical expressions -->
-  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-  
-  <!-- Main script -->
-  <script src="seismic_script.js"></script>
+
+  <style>
+    [hidden] { display: none !important; }
+    .row { display: flex; align-items: center; gap: 1rem; }
+    .row > label { min-width: 170px; text-align: right; font-size: 0.875rem; font-weight: 500; }
+    .inp { flex: 1; min-width: 0; padding: 0.5rem 0.75rem; background: #4b5563; color: #fff; border: 1px solid #6b7280; border-radius: 0.375rem; }
+    .inp:focus { outline: none; box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.5); }
+    .inp:disabled { background: #374151; color: #d1d5db; }
+    .out { display: flex; align-items: center; gap: 1rem; background: #4b5563; border-radius: 0.375rem; padding: 0.5rem; }
+    .out > span:first-child { min-width: 170px; text-align: right; font-size: 0.875rem; color: #d1d5db; }
+    .out > b { flex: 1; color: #4ade80; font-weight: 600; }
+    .out > em { font-style: normal; font-size: 0.75rem; color: #9ca3af; }
+    .hint { font-size: 0.75rem; color: #9ca3af; margin-left: calc(170px + 1rem); }
+    .warn { font-size: 0.8rem; color: #fbbf24; margin-left: calc(170px + 1rem); }
+    @media (max-width: 640px) {
+      .row, .out { flex-direction: column; align-items: stretch; gap: 0.25rem; }
+      .row > label, .out > span:first-child { min-width: 0; text-align: left; }
+      .hint, .warn { margin-left: 0; }
+    }
+    #spectrum-plot { position: relative; }
+    #spectrum-readout { position: absolute; top: 4px; right: 8px; font-size: 0.8rem; color: #e5e7eb; background: rgba(17, 24, 39, 0.85); padding: 2px 8px; border-radius: 4px; pointer-events: none; }
+  </style>
+
+  <script type="module" src="js/app.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-4">
 
   <main class="w-full max-w-6xl bg-gray-800 shadow-lg rounded-xl p-6 space-y-6 mt-8">
-    <!-- Header -->
     <div class="flex justify-end mb-4">
-      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">
-        ← Back to Tools
-      </a>
+      <a href="../index.html" class="text-blue-400 hover:text-blue-300 text-sm transition">← Back to Tools</a>
     </div>
 
     <h2 class="text-2xl font-semibold text-center text-white">EC8 Seismic Avoidance Criteria Calculator</h2>
-    <p class="text-center text-gray-300 text-sm">Determine if seismic design is required according to Eurocode 8</p>
+    <p class="text-center text-gray-300 text-sm">Avoidance criteria (NA.3.2.1(5)) and design response spectrum per NS-EN 1998-1:2004+A1:2013+NA:2021</p>
 
-    <!-- Input Form -->
-    <form id="seismic-form" onsubmit="event.preventDefault(); calculateSeismic();" class="space-y-6">
-      
-      <!-- Location and Project Info -->
+    <form id="seismic-form" class="space-y-6" autocomplete="off">
+
+      <!-- Project information (report header) -->
+      <details id="project-panel" class="bg-gray-700 rounded-lg p-6" open>
+        <summary class="text-xl font-semibold text-purple-300 cursor-pointer">Project Information <span class="text-sm font-normal text-gray-400">(printed in the report header, remembered in this browser)</span></summary>
+        <div id="project-fields" class="grid md:grid-cols-2 gap-3 mt-4"></div>
+        <div class="mt-3">
+          <label for="notes" class="text-sm font-medium block mb-1">Assumptions / comments (printed in the report)</label>
+          <textarea id="notes" rows="3" class="inp w-full" placeholder="E.g. ground type from RIG report …, T₁ from FEM model …"></textarea>
+        </div>
+      </details>
+
+      <!-- Location -->
       <div class="bg-gray-700 rounded-lg p-6">
-        <h3 class="text-xl font-semibold text-blue-400 mb-4">Location & Project Information</h3>
-        
+        <h3 class="text-xl font-semibold text-blue-400 mb-4">Location</h3>
         <div class="space-y-4">
-          <div class="flex items-center gap-4">
-            <label for="country" class="text-sm font-medium min-w-[150px] text-right">Country:</label>
-            <select id="country" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-              <option value="custom" selected>Custom agR value</option>
-              <option value="norway">Norway</option>
+          <div class="row">
+            <label for="country">a<sub>gR</sub> source:</label>
+            <select id="country" class="inp">
+              <option value="custom">Custom agR value</option>
+              <option value="norway" selected>Norway — Tabell NA.3.2 by kommune</option>
             </select>
           </div>
-          
-          <div id="custom_place_input" class="flex items-center gap-4">
-            <label for="place" class="text-sm font-medium min-w-[150px] text-right">Place:</label>
-            <input type="text" id="place" value="Oslo" placeholder="City/Location" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-          </div>
-          
-          <!-- Norway location selection (hidden by default) -->
-          <div id="norway_location" style="display: none;" class="space-y-4">
-            <div class="flex items-center gap-4">
-              <label for="fylke" class="text-sm font-medium min-w-[150px] text-right">Fylke:</label>
-              <select id="fylke" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                <option value="">Select fylke...</option>
-              </select>
+          <div id="custom_place_input" class="space-y-4">
+            <div class="row">
+              <label for="place">Place:</label>
+              <input type="text" id="place" value="" placeholder="City / location" class="inp">
             </div>
-            
-            <div class="flex items-center gap-4">
-              <label for="kommune" class="text-sm font-medium min-w-[150px] text-right">Kommune:</label>
-              <select id="kommune" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                <option value="">Select kommune...</option>
-              </select>
+            <div class="row">
+              <label for="agr">a<sub>gR</sub> (m/s²):</label>
+              <input type="number" id="agr" value="0.7" step="0.05" min="0" class="inp">
             </div>
           </div>
-          
-          <div class="flex items-center gap-4">
-            <label for="seismic_class" class="text-sm font-medium min-w-[150px] text-right">Seismic Class:</label>
-            <select id="seismic_class" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-              <option value="I">I - Low importance</option>
-              <option value="II" selected>II - Normal importance</option>
-              <option value="IIIa">IIIa - High importance (schools, assembly halls)</option>
-              <option value="IIIb">IIIb - High importance (hospitals, fire stations)</option>
-              <option value="IV">IV - Vital importance (emergency response)</option>
-            </select>
-          </div>
-          
-          <div class="flex items-center gap-4">
-            <label for="structure_life" class="text-sm font-medium min-w-[150px] text-right">Structure Life (years):</label>
-            <input type="number" id="structure_life" value="50" step="1" min="1" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <div id="norway_location" class="space-y-4">
+            <div class="row">
+              <label for="fylke">Fylke:</label>
+              <select id="fylke" class="inp"><option value="">Select fylke…</option></select>
+            </div>
+            <div class="row">
+              <label for="kommune">Kommune:</label>
+              <select id="kommune" class="inp"><option value="">Select kommune…</option></select>
+            </div>
+            <div class="out"><span>a<sub>gR</sub>:</span><b id="agr_norway_display">–</b><em>m/s² (Tabell NA.3.2)</em></div>
           </div>
         </div>
       </div>
 
-      <!-- Seismic Parameters -->
+      <!-- Seismic parameters -->
       <div class="bg-gray-700 rounded-lg p-6">
         <h3 class="text-xl font-semibold text-yellow-400 mb-4">Seismic Parameters</h3>
-        
         <div class="space-y-4">
-          <div class="flex items-center gap-4">
-            <label for="gamma_I" class="text-sm font-medium min-w-[150px] text-right">γ<sub>I</sub> (Importance Factor):</label>
-            <input type="number" id="gamma_I" value="1.0" step="0.1" min="0.8" max="1.4" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-          </div>
-          
-          <div class="flex items-center gap-4">
-            <label for="spectrum_type" class="text-sm font-medium min-w-[150px] text-right">Response Spectrum Type:</label>
-            <select id="spectrum_type" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-              <option value="1">Type 1 - Magnitude Ms > 5.5</option>
-              <option value="2" selected>Type 2 - Magnitude Ms ≤ 5.5 (Recommended for Norway)</option>
+          <div class="row">
+            <label for="seismic_class">Seismic class:</label>
+            <select id="seismic_class" class="inp">
+              <option value="I">I — Small houses, minor storage, agricultural</option>
+              <option value="II" selected>II — Offices, shops, hotels, housing</option>
+              <option value="IIIa">IIIa — Schools, institutions, large assembly</option>
+              <option value="IIIb">IIIb — Vital infrastructure (hospitals, fire stations)</option>
+              <option value="IV">IV — Very large consequences of collapse</option>
             </select>
           </div>
-          
-          <div class="flex items-center gap-4">
-            <label for="ground_type" class="text-sm font-medium min-w-[150px] text-right">Ground Type:</label>
-            <select id="ground_type" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-              <option value="A">A - Rock or rock-like geological formation</option>
-              <option value="B" selected>B - Deposits of very dense sand, gravel</option>
-              <option value="C">C - Deep deposits of dense or medium dense sand</option>
-              <option value="D">D - Deposits of loose-to-medium cohesionless soil</option>
-              <option value="E">E - Soil profile with surface alluvium layer</option>
+          <p class="hint">Guidance: Tabell NA.4(902). Avoidance criteria apply to classes I–IIIa only.</p>
+          <div class="row">
+            <label for="gamma_I">γ<sub>I</sub> (importance factor):</label>
+            <input type="number" id="gamma_I" step="0.05" min="0.1" class="inp">
+          </div>
+          <p id="gamma_note" class="hint"></p>
+          <div class="row">
+            <label for="structure_life">Design working life (years):</label>
+            <input type="number" id="structure_life" value="50" step="1" min="0" class="inp">
+          </div>
+          <div class="row">
+            <label for="spectrum_type">Spectrum type:</label>
+            <select id="spectrum_type" class="inp">
+              <option value="1">Type 1 — Ms &gt; 5.5</option>
+              <option value="2" selected>Type 2 — Ms ≤ 5.5</option>
             </select>
           </div>
-          
-          <!-- Custom agR input (shown by default) -->
-          <div id="custom_agr_input" class="flex items-center gap-4">
-            <label for="agr" class="text-sm font-medium min-w-[150px] text-right">a<sub>gR</sub> (m/s²):</label>
-            <input type="number" id="agr" value="0.7" step="0.1" min="0" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+          <div class="row">
+            <label for="ground_type">Ground type:</label>
+            <select id="ground_type" class="inp">
+              <option value="A">A — Rock or rock-like formation</option>
+              <option value="B" selected>B — Very dense sand, gravel or very stiff clay</option>
+              <option value="C">C — Deep dense / medium dense sand, gravel or stiff clay</option>
+              <option value="D">D — Loose-to-medium cohesionless or soft-to-firm cohesive soil</option>
+              <option value="E">E — Surface alluvium layer over stiffer material</option>
+            </select>
           </div>
-          
-          <!-- Norway agR display (hidden by default) -->
-          <div id="norway_agr_display" style="display: none;" class="flex items-center gap-4 bg-gray-600 rounded p-2">
-            <label for="agr_norway_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">a<sub>gR</sub> (from CSV):</label>
-            <span id="agr_norway_display" class="flex-1 text-green-400 font-semibold">-</span>
-            <span class="text-xs text-gray-400 min-w-[120px]">m/s²</span>
+          <div class="row">
+            <label for="q">q (behaviour factor):</label>
+            <input type="number" id="q" value="1.5" step="0.1" min="1.0" max="8.0" class="inp">
           </div>
-          
-          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
-            <label for="S_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">S (Soil Factor):</label>
-            <span id="S_display" class="flex-1 text-green-400 font-semibold">1.35</span>
-            <span class="text-xs text-gray-400 min-w-[120px]">(from Table 3.3)</span>
-          </div>
-          
-          <!-- Hidden input for calculations -->
-          <input type="hidden" id="S" value="1.35">
-          
-          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
-            <label for="ag_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">a<sub>g</sub> (m/s²):</label>
-            <span id="ag_display" class="flex-1 text-green-400 font-semibold">0.70</span>
-          </div>
-          
-          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
-            <label for="ags_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">a<sub>g</sub>·S (m/s²):</label>
-            <span id="ags_display" class="flex-1 text-green-400 font-semibold">0.84</span>
-          </div>
-          
-          <div class="flex items-center gap-4">
-            <label for="q" class="text-sm font-medium min-w-[150px] text-right">q (Behaviour Factor):</label>
-            <input type="number" id="q" value="1.5" step="0.1" min="1.0" max="8.0" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-            <span class="text-xs text-gray-400 min-w-[100px]">(elastic: 1.0-1.5)</span>
-          </div>
+          <p id="q_note" class="hint">Criterion 5 (S<sub>d</sub> ≤ 0.50) requires q ≤ 1.5.</p>
+          <div class="out"><span>S, T<sub>B</sub>, T<sub>C</sub>, T<sub>D</sub>:</span><b id="sp_display">–</b><em id="sp_ref"></em></div>
+          <div class="out"><span>a<sub>g</sub> = γ<sub>I</sub>·a<sub>gR</sub>:</span><b id="ag_display">–</b><em>m/s²</em></div>
+          <div class="out"><span>a<sub>g</sub>·S:</span><b id="ags_display">–</b><em>m/s²</em></div>
         </div>
       </div>
 
-      <!-- Response Spectrum -->
+      <!-- Sd -->
       <div class="bg-gray-700 rounded-lg p-6">
-        <h3 class="text-xl font-semibold text-red-400 mb-4">Response Spectrum</h3>
-        
+        <h3 class="text-xl font-semibold text-red-400 mb-4">Design Acceleration S<sub>d</sub> (criterion 5)</h3>
         <div class="space-y-4">
-          <div class="flex items-center gap-4">
-            <label for="sd_method" class="text-sm font-medium min-w-[150px] text-right">S<sub>d</sub> Method:</label>
-            <select id="sd_method" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-              <option value="manual">Manual Input</option>
-              <option value="simplified" selected>Simplified Method (EC8)</option>
+          <div class="row">
+            <label for="sd_method">S<sub>d</sub> method:</label>
+            <select id="sd_method" class="inp">
+              <option value="none">Not evaluated</option>
+              <option value="simplified" selected>Simplified — T₁ = Ct·h^(3/4), eq. (4.6)</option>
+              <option value="modalT1">Modal analysis — enter T₁, read Sd(T₁) from spectrum</option>
+              <option value="modalSd">Modal analysis — enter max Sd directly</option>
             </select>
           </div>
-          
-          <!-- Manual Sd Input -->
-          <div id="manual_sd_input" class="flex items-center gap-4" style="display: none;">
-            <label for="sd_manual" class="text-sm font-medium min-w-[150px] text-right">S<sub>d</sub> (m/s²):</label>
-            <input type="number" id="sd_manual" value="2.0" step="0.1" min="0" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-          </div>
-          
-          <!-- Simplified Method Inputs -->
+
           <div id="simplified_inputs" class="space-y-4">
-            <div class="flex items-center gap-4">
-              <label for="h" class="text-sm font-medium min-w-[150px] text-right">Building Height h (m):</label>
-              <input type="number" id="h" value="20" step="1" min="1" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
+            <div class="row">
+              <label for="h">Building height h (m):</label>
+              <input type="number" id="h" value="20" step="0.5" min="0" class="inp">
             </div>
-            
-            <div class="flex items-center gap-4">
-              <label for="ct_method" class="text-sm font-medium min-w-[150px] text-right">C<sub>t</sub> Selection:</label>
-              <select id="ct_method" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-                <option value="steel">Steel moment-resisting frames (0.085)</option>
-                <option value="concrete" selected>Concrete moment-resisting frames (0.075)</option>
-                <option value="other">All other structures (0.05)</option>
+            <div class="row">
+              <label for="ct_method">C<sub>t</sub>:</label>
+              <select id="ct_method" class="inp">
+                <option value="steel">Steel moment frames (0.085)</option>
+                <option value="concrete" selected>Concrete moment frames / eccentric braced steel (0.075)</option>
+                <option value="other">All other structures (0.050)</option>
                 <option value="custom">Custom value</option>
               </select>
             </div>
-            
-            <div class="flex items-center gap-4">
-              <label for="ct" class="text-sm font-medium min-w-[150px] text-right">C<sub>t</sub>:</label>
-              <input type="number" id="ct" value="0.075" step="0.001" min="0" class="flex-1 px-3 py-2 bg-gray-600 text-white border border-gray-500 rounded-md focus:outline-none focus:ring focus:ring-blue-400">
-            </div>
-            
-            <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
-              <label for="t1_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">T<sub>1</sub> (s):</label>
-              <span id="t1_display" class="flex-1 text-green-400 font-semibold">0.84</span>
+            <div class="row">
+              <label for="ct">C<sub>t</sub> value:</label>
+              <input type="number" id="ct" value="0.075" step="0.001" min="0" class="inp">
             </div>
           </div>
-          
-          <div class="flex items-center gap-4 bg-gray-600 rounded p-2">
-            <label for="sd_display" class="text-sm font-medium min-w-[150px] text-right text-gray-300">S<sub>d</sub> (m/s²):</label>
-            <span id="sd_display" class="flex-1 text-green-400 font-semibold">2.10</span>
+
+          <div id="modal_t1_input" class="row">
+            <label for="t1_modal">T₁ from modal analysis (s):</label>
+            <input type="number" id="t1_modal" value="" step="0.01" min="0" class="inp">
           </div>
+          <div id="modal_sd_input" class="row">
+            <label for="sd_modal">Max S<sub>d</sub> (m/s²):</label>
+            <input type="number" id="sd_modal" value="" step="0.01" min="0" class="inp">
+          </div>
+          <div id="modal_conditions" class="space-y-2 hint" style="margin-top:0.5rem">
+            <label class="flex gap-2 items-start"><input type="checkbox" id="cond_stiffness" class="mt-1"> <span>No reduction of stiffness properties per 4.3.1(7) (uncracked stiffness used)</span></label>
+            <label class="flex gap-2 items-start"><input type="checkbox" id="cond_soil" class="mt-1"> <span>Conservative soil stiffness — both halved and doubled soil stiffness assessed</span></label>
+          </div>
+
+          <div class="out"><span>T₁:</span><b id="t1_display">–</b><em>s</em></div>
+          <div class="out"><span>S<sub>d</sub>:</span><b id="sd_display">–</b><em>m/s²</em></div>
+          <p id="sd_notes" class="warn"></p>
         </div>
       </div>
-
     </form>
 
-    <!-- Calculate Button -->
-    <div class="space-y-2 print:hidden">
-      <button onclick="calculateSeismic()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
-        Calculate Seismic Requirements
-      </button>
-    </div>
+    <!-- Results (always live) -->
+    <div id="results" class="border border-gray-600 rounded-lg p-6 bg-gray-700/50 space-y-6">
+      <div id="conclusion" class="p-4 rounded border text-lg font-bold"></div>
+      <div id="criteria" class="space-y-2 text-sm"></div>
+      <div class="p-4 bg-gray-800 rounded-lg">
+        <h3 class="text-lg font-semibold text-green-400 mb-2">Design Response Spectrum</h3>
+        <div id="spectrum-plot"><span id="spectrum-readout" hidden></span></div>
+      </div>
 
-    <!-- Results Section -->
-    <div id="results" style="display:none;" class="mt-8 border border-gray-600 rounded-lg p-6 bg-gray-700/50">
-      
-      <!-- Summary moved to top -->
-      <div id="summary" class="mb-6 p-6 bg-gray-800 rounded-lg border-l-4 border-blue-500">
-        <h3 class="text-xl font-bold text-white mb-4">Seismic Design Requirements</h3>
-        <div id="requirement-result" class="text-lg font-bold mb-4">
-          <!-- Result will be inserted here -->
+      <div class="p-4 bg-gray-800 rounded-lg">
+        <h3 class="text-lg font-semibold text-white mb-1">Report (one A4 page, PDF via the print dialog)</h3>
+        <p class="text-sm text-gray-400 mb-3">Choose what to document. The preview warns if the content does not fit on one page.</p>
+        <div class="grid md:grid-cols-2 gap-3">
+          <button type="button" data-report="spectrum" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">Design spectrum only</button>
+          <button type="button" data-report="avoidance" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-lg transition">Full avoidance criteria</button>
         </div>
-        <div id="summary-details" class="grid md:grid-cols-2 gap-6 text-sm">
-          <!-- Summary details will be inserted here -->
-        </div>
-      </div>
-
-      <!-- Parameter Summary -->
-      <div id="parameter-summary" class="mb-6 p-6 bg-gray-800 rounded-lg border border-blue-500">
-        <h3 class="text-lg font-semibold text-blue-400 mb-4">Current Parameters Summary</h3>
-        <div id="parameter-details" class="grid md:grid-cols-3 gap-4 text-sm">
-          <!-- Parameter details will be inserted here -->
-        </div>
-      </div>
-
-      <!-- Response Spectrum Plot -->
-      <div id="spectrum-plot-container" class="mb-6 p-6 bg-gray-800 rounded-lg">
-        <h3 class="text-lg font-semibold text-green-400 mb-4">Design Response Spectrum</h3>
-        <div id="spectrum-plot"></div>
-      </div>
-
-      <!-- Detailed Calculations -->
-      <div id="calc-steps" class="text-white">
-        <!-- Calculation boxes will be inserted here -->
-      </div>
-
-      <!-- Print Button -->
-      <div class="mt-8 print:hidden">
-        <button id="print-btn" style="display:none;" onclick="window.print()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition">
-          Print to PDF
-        </button>
       </div>
     </div>
 
-    <!-- Footer Info -->
     <div class="text-center text-sm text-gray-400 pt-6 border-t border-gray-600">
       <p>EC8 Seismic Avoidance Calculator by <span class="text-blue-400 font-semibold">Magnus Fjeld Olsen</span></p>
-      <p class="mt-1">Based on Eurocode 8 (EN 1998-1) standards</p>
+      <p class="mt-1">Spectral parameters S, T<sub>B</sub>, T<sub>C</sub>, T<sub>D</sub> are the recommended values of EN 1998-1 Tables 3.2/3.3 — verify against NA Tabell NA.3.3.</p>
     </div>
   </main>
 
-  <!-- Centralized JavaScript -->
-  <script src="../assets/js/common.js"></script>
-  
+  <!-- Report preview -->
+  <div id="report-preview" class="report-preview" hidden>
+    <div class="report-preview-bar">
+      <button type="button" id="report-print" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded">Print / Save as PDF</button>
+      <button type="button" id="report-close" class="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded">Close</button>
+      <span id="report-warning" class="report-preview-warning"></span>
+    </div>
+    <div id="report-sheet" class="report-preview-sheet"></div>
+  </div>
 
+  <!-- What the browser prints -->
+  <div id="report-root"></div>
 
   <!-- Persistent Cookie Settings Button -->
   <button id="cookie-settings-btn"
@@ -297,24 +259,20 @@
     <span class="sm:hidden">🍪</span>
   </button>
   <style>
-    /* Mobile-specific adjustments for cookie button */
     @media (max-width: 640px) {
       #cookie-settings-btn {
         bottom: 8px !important;
         left: 8px !important;
         padding: 5px 8px !important;
-        font-size: 16px !important; /* Larger emoji on mobile for easier tap */
+        font-size: 16px !important;
       }
     }
-
-    /* Ensure button doesn't interfere with content */
     #cookie-settings-btn {
       pointer-events: auto;
       touch-action: manipulation;
       user-select: none;
     }
   </style>
-
 
   <!-- Cookie Consent Scripts -->
   <script src="../assets/js/common.js"></script>

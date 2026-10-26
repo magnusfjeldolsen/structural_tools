@@ -70,9 +70,9 @@ export const BETA_REF = '3.2.2.5(4)';
 
 /** Ct for forenklet periodeestimat T1 = Ct·h^(3/4), lign. (4.6). Gyldig for h ≤ 40 m. */
 export const CT_VALUES = {
-  steel:    { Ct: 0.085, label: 'Momentstive stålrammer' },
-  concrete: { Ct: 0.075, label: 'Momentstive betongrammer og eksentrisk avstivede stålrammer' },
-  other:    { Ct: 0.050, label: 'Alle andre konstruksjoner' }
+  steel:    { Ct: 0.085, label: 'Momentstive stålrammer', short: 'momentstive stålrammer' },
+  concrete: { Ct: 0.075, label: 'Momentstive betongrammer og eksentrisk avstivede stålrammer', short: 'momentstive betongrammer' },
+  other:    { Ct: 0.050, label: 'Alle andre konstruksjoner', short: 'alle andre konstruksjoner' }
 };
 export const T1_MAX_HEIGHT = 40;
 
