@@ -1,31 +1,24 @@
 /**
  * ec8-core.js — beregningskjernen. Ingen DOM: inn går et input-objekt, ut går
  * et resultatobjekt som skjerm, plott og begge rapportene leser fra.
+ *
+ * Alle tallverdier fra standarden kommer inn via inputs (se ec8-data.js).
  */
-import {
-  SEISMIC_CLASSES, SPECTRUM_TABLES, BETA, CT_VALUES, T1_MAX_HEIGHT, LIMITS
-} from './ec8-data.js';
+import { SEISMIC_CLASSES, GROUND_TYPES, T1_MAX_HEIGHT } from './ec8-data.js';
 
-// Tallene sammenlignes med grenseverdier som 0,50; 0,25 · 2,0 skal ikke falle
-// på feil side på grunn av flyttall.
+// Tallene sammenlignes med grenseverdier; 0,25 · 2,0 skal ikke falle på feil
+// side av grensen på grunn av flyttall.
 const EPS = 1e-9;
 const atMost = (value, limit) => value <= limit + EPS;
-
-export function spectrumParams(spectrumType, groundType) {
-  const table = SPECTRUM_TABLES[spectrumType];
-  if (!table || !table.values[groundType]) {
-    throw new Error(`Ukjent spekter/grunntype: ${spectrumType}/${groundType}`);
-  }
-  return { ...table.values[groundType], ref: table.ref };
-}
+const finite = v => typeof v === 'number' && Number.isFinite(v);
+const fmt = (v, d = 2) => v.toFixed(d).replace('.', ',');
 
 /**
  * Dimensjonerende spekter for elastisk analyse, lign. (3.13)–(3.16).
- * sp = { ag, S, TB, TC, TD, q, beta }. Returnerer { Sd, eq }.
+ * sp = { ag, S, TB, TC, TD, q, beta }. Returnerer { Sd, eq, floored }.
  */
 export function designSd(T, sp) {
-  const { ag, S, TB, TC, TD, q } = sp;
-  const beta = sp.beta ?? BETA;
+  const { ag, S, TB, TC, TD, q, beta } = sp;
   if (T <= TB) {
     return { Sd: ag * S * (2 / 3 + (T / TB) * (2.5 / q - 2 / 3)), eq: '3.13' };
   }
@@ -55,51 +48,56 @@ export function simplifiedT1(Ct, h) {
   return Ct * Math.pow(h, 0.75);
 }
 
-const finite = v => typeof v === 'number' && Number.isFinite(v);
-
 /**
  * Hele beregningen.
  *
  * inputs = {
- *   seismicClass, gammaI (null = tabellverdi), agR, spectrumType, groundType,
- *   q, life,
+ *   seismicClass, gammaI, agR, spectrumType, groundType,
+ *   S, TB, TC, TD, q, beta, life,
+ *   limits: { agS, ag, life, Sd, qMax },          // NA.3.2.1(5), null = ikke oppgitt
  *   sdMethod: 'none' | 'simplified' | 'modalT1' | 'modalSd',
- *   ctMethod, Ct, h, T1Modal, SdModal,
- *   noStiffnessReduction, soilStiffnessBounds   // avkrysninger for modalanalyse
+ *   Ct, h, T1Modal, SdModal,
+ *   noStiffnessReduction, soilStiffnessBounds     // avkrysninger for modalanalyse
  * }
  */
 export function compute(inputs) {
   const cls = SEISMIC_CLASSES[inputs.seismicClass];
   if (!cls) throw new Error(`Ukjent seismisk klasse: ${inputs.seismicClass}`);
+  const limits = inputs.limits || {};
 
-  const tableGammaI = cls.gammaI;
-  const gammaI = finite(inputs.gammaI) ? inputs.gammaI : tableGammaI;
-  const gammaIFromTable = finite(tableGammaI) && finite(gammaI) && Math.abs(gammaI - tableGammaI) < EPS;
-
-  const params = spectrumParams(inputs.spectrumType, inputs.groundType);
   const errors = [];
-  if (!finite(inputs.agR) || inputs.agR < 0) errors.push('agR mangler eller er negativ.');
-  if (!finite(gammaI) || gammaI <= 0) {
-    errors.push(inputs.seismicClass === 'IV'
-      ? 'Klasse IV har ingen tabellverdi for γI — oppgi γI fra særskilt vurdering.'
-      : 'γI mangler.');
+  const missing = [];
+  const need = (key, label, ok = v => v > 0) => {
+    if (!finite(inputs[key])) missing.push(label);
+    else if (!ok(inputs[key])) errors.push(`${label} har ugyldig verdi.`);
+  };
+  need('agR', 'agR', v => v >= 0);
+  need('gammaI', 'γI');
+  need('S', 'S');
+  need('TB', 'TB');
+  need('TC', 'TC');
+  need('TD', 'TD');
+  need('q', 'q', v => v >= 1);
+  need('beta', 'β', v => v >= 0);
+  if (missing.length) errors.unshift(`Oppgi ${missing.join(', ')}.`);
+  if (!errors.length && !(inputs.TB < inputs.TC && inputs.TC < inputs.TD)) {
+    errors.push('Periodene må oppfylle TB < TC < TD.');
   }
-  if (!finite(inputs.q) || inputs.q < 1) errors.push('q må være ≥ 1,0.');
 
-  const ag = errors.length ? NaN : inputs.agR * gammaI;
-  const sp = { ag, S: params.S, TB: params.TB, TC: params.TC, TD: params.TD, q: inputs.q, beta: BETA };
-
+  const sp = {
+    ag: errors.length ? NaN : inputs.agR * inputs.gammaI,
+    S: inputs.S, TB: inputs.TB, TC: inputs.TC, TD: inputs.TD, q: inputs.q, beta: inputs.beta
+  };
   const spectrum = {
     ...sp,
-    ref: params.ref,
-    agS: ag * params.S,
-    Sd0: ag * params.S * 2 / 3,
-    plateau: ag * params.S * 2.5 / inputs.q,
-    floor: BETA * ag
+    agS: sp.ag * sp.S,
+    Sd0: sp.ag * sp.S * 2 / 3,
+    plateau: sp.ag * sp.S * 2.5 / sp.q,
+    floor: sp.beta * sp.ag
   };
 
-  const sd = errors.length ? { method: inputs.sdMethod, valid: false, notes: [] } : evaluateSd(inputs, sp);
-  const criteria = errors.length ? [] : evaluateCriteria(inputs, cls, spectrum, sd);
+  const sd = errors.length ? { method: inputs.sdMethod, valid: false, notes: [] } : evaluateSd(inputs, sp, limits);
+  const criteria = errors.length ? [] : evaluateCriteria(inputs, cls, spectrum, sd, limits);
 
   let conclusion;
   if (errors.length) conclusion = 'invalid';
@@ -107,14 +105,13 @@ export function compute(inputs) {
   else conclusion = criteria.some(c => c.status === 'met') ? 'avoided' : 'required';
 
   return {
-    inputs, errors,
+    inputs, errors, missing,
     seismicClass: inputs.seismicClass, classInfo: cls,
-    gammaI, tableGammaI, gammaIFromTable,
-    ag, spectrum, sd, criteria, conclusion
+    gammaI: inputs.gammaI, ag: sp.ag, spectrum, sd, criteria, conclusion
   };
 }
 
-function evaluateSd(inputs, sp) {
+function evaluateSd(inputs, sp, limits) {
   const method = inputs.sdMethod;
   const notes = [];
   const out = { method, valid: false, notes, T1: null, Sd: null, eq: null };
@@ -122,14 +119,13 @@ function evaluateSd(inputs, sp) {
   if (method === 'none') return out;
 
   if (method === 'simplified') {
-    const Ct = finite(inputs.Ct) ? inputs.Ct : CT_VALUES[inputs.ctMethod]?.Ct;
-    if (!finite(Ct) || !finite(inputs.h) || inputs.h <= 0) {
+    if (!finite(inputs.Ct) || inputs.Ct <= 0 || !finite(inputs.h) || inputs.h <= 0) {
       notes.push('Ct og h må oppgis.');
       return out;
     }
-    out.Ct = Ct;
+    out.Ct = inputs.Ct;
     out.h = inputs.h;
-    out.T1 = simplifiedT1(Ct, inputs.h);
+    out.T1 = simplifiedT1(inputs.Ct, inputs.h);
     if (inputs.h > T1_MAX_HEIGHT + EPS) {
       notes.push(`Lign. (4.6) gjelder for h ≤ ${T1_MAX_HEIGHT} m — bruk periode fra modalanalyse.`);
     }
@@ -157,8 +153,11 @@ function evaluateSd(inputs, sp) {
 
   // Betingelsene for Sd-kriteriet i NA.3.2.1(5).
   const modal = method === 'modalT1' || method === 'modalSd';
+  const qMax = limits.qMax;
   out.conditions = [
-    { key: 'q', text: `Konstruksjonsfaktor q ≤ ${LIMITS.qMax.toFixed(1).replace('.', ',')}`, ok: atMost(sp.q, LIMITS.qMax) },
+    finite(qMax)
+      ? { key: 'q', text: `Konstruksjonsfaktor q ≤ ${fmt(qMax, 1)}`, ok: atMost(sp.q, qMax) }
+      : { key: 'q', text: 'Konstruksjonsfaktor q ≤ grenseverdi (ikke oppgitt)', ok: false },
     ...(modal ? [
       { key: 'stiffness', text: 'Ingen reduksjon av stivhetsegenskapene etter 4.3.1(7)', ok: !!inputs.noStiffnessReduction },
       { key: 'soil', text: 'Konservativ antakelse av stivhet i grunn (halvert og doblet stivhet vurdert)', ok: !!inputs.soilStiffnessBounds }
@@ -169,9 +168,21 @@ function evaluateSd(inputs, sp) {
   return out;
 }
 
-function evaluateCriteria(inputs, cls, spectrum, sd) {
-  const fmt = v => v.toFixed(2).replace('.', ',');
-  const groundAE = ['A', 'B', 'C', 'D', 'E'].includes(inputs.groundType);
+/** Ett kriterium på formen «verdi ≤ grense», der grensen kan mangle. */
+function limitCriterion(id, text, value, limit, unit, precondition = true) {
+  const u = unit ? ` ${unit}` : '';
+  const c = {
+    id, text,
+    value: finite(value) ? `${fmt(value)}${u}` : '–',
+    limit: finite(limit) ? `≤ ${fmt(limit)}${u}` : 'ikke oppgitt'
+  };
+  if (!finite(limit) || !finite(value)) c.status = 'not_evaluated';
+  else c.status = precondition && atMost(value, limit) ? 'met' : 'not_met';
+  return c;
+}
+
+function evaluateCriteria(inputs, cls, spectrum, sd, limits) {
+  const groundAE = GROUND_TYPES.includes(inputs.groundType);
   const list = [
     {
       id: 1,
@@ -180,47 +191,24 @@ function evaluateCriteria(inputs, cls, spectrum, sd) {
       limit: 'Klasse I',
       status: inputs.seismicClass === 'I' ? 'met' : 'not_met'
     },
+    limitCriterion(2, 'Grunntype A–E og a<sub>g</sub>·S ≤ grenseverdi', spectrum.agS, limits.agS, 'm/s²', groundAE),
+    limitCriterion(3, 'Grunntype A–E og a<sub>g</sub> ≤ grenseverdi', spectrum.ag, limits.ag, 'm/s²', groundAE),
     {
-      id: 2,
-      text: 'Grunntype A–E og a<sub>g</sub>·S ≤ 0,50 m/s²',
-      value: `${fmt(spectrum.agS)} m/s²`,
-      limit: `≤ ${fmt(LIMITS.agS)} m/s²`,
-      status: groundAE && atMost(spectrum.agS, LIMITS.agS) ? 'met' : 'not_met'
-    },
-    {
-      id: 3,
-      text: 'Grunntype A–E og a<sub>g</sub> ≤ 0,30 m/s²',
-      value: `${fmt(spectrum.ag)} m/s²`,
-      limit: `≤ ${fmt(LIMITS.ag)} m/s²`,
-      status: groundAE && atMost(spectrum.ag, LIMITS.ag) ? 'met' : 'not_met'
-    },
-    {
-      id: 4,
-      text: 'Grunntype A–E og dimensjonerende brukstid ≤ 2 år',
+      ...limitCriterion(4, 'Grunntype A–E og dimensjonerende brukstid ≤ grenseverdi', inputs.life, limits.life, '', groundAE),
       value: finite(inputs.life) ? `${inputs.life} år` : '–',
-      limit: `≤ ${LIMITS.life} år`,
-      status: groundAE && finite(inputs.life) && atMost(inputs.life, LIMITS.life) ? 'met' : 'not_met'
+      limit: finite(limits.life) ? `≤ ${limits.life} år` : 'ikke oppgitt'
     },
-    sdCriterion(sd, fmt)
+    sdCriterion(sd, limits.Sd)
   ];
 
   if (!cls.avoidanceAllowed) {
-    for (const c of list) {
-      c.status = 'not_applicable';
-    }
+    for (const c of list) c.status = 'not_applicable';
   }
   return list;
 }
 
-function sdCriterion(sd, fmt) {
-  const c = {
-    id: 5,
-    text: 'S<sub>d</sub> ≤ 0,50 m/s² (med betingelsene i NA.3.2.1(5), se over)',
-    value: finite(sd.Sd) ? `${fmt(sd.Sd)} m/s²` : '–',
-    limit: `≤ ${fmt(LIMITS.Sd)} m/s²`
-  };
-  if (sd.method === 'none' || !finite(sd.Sd)) c.status = 'not_evaluated';
-  else if (!sd.valid) c.status = 'not_evaluated';
-  else c.status = atMost(sd.Sd, LIMITS.Sd) ? 'met' : 'not_met';
+function sdCriterion(sd, limit) {
+  const c = limitCriterion(5, 'S<sub>d</sub> ≤ grenseverdi (med betingelsene i NA.3.2.1(5), se over)', sd.Sd, limit, 'm/s²');
+  if (sd.method === 'none' || !sd.valid) c.status = 'not_evaluated';
   return c;
 }

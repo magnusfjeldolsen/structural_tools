@@ -1,87 +1,51 @@
 /**
- * ec8-data.js — tabellverdier fra NS-EN 1998-1 med kildehenvisning.
+ * ec8-data.js — henvisninger til NS-EN 1998-1 og regler, men ingen tabellverdier.
  *
- * Hver verdi som havner i en rapport bærer sin egen referanse her, slik at
- * rapporten aldri trenger å gjette hvor et tall kommer fra.
+ * Standarden er kjøpt og lisensiert; tallene i den (agR, γI, S/TB/TC/TD, β og
+ * grenseverdiene i NA.3.2.1(5)) skal ikke publiseres sammen med verktøyet.
+ * Brukeren taster dem inn fra sitt eget eksemplar, og her står bare hvor de
+ * står i standarden, slik at rapporten kan vise kilden.
  */
 
 export const STANDARD = 'NS-EN 1998-1:2004+A1:2013+NA:2021';
 
 /**
- * Seismiske klasser og seismisk faktor γI, Tabell NA.4(901).
- * Klasse IV har ingen tabellverdi (fotnote a: særskilt vurdering), og
- * NA.3.2.1(5) — utelatelseskriteriene — gjelder bare klasse I–IIIa.
+ * Seismiske klasser. NA.3.2.1(5) — utelatelseskriteriene — gjelder bare
+ * klasse I–IIIa; for IIIb og IV skal påvisning alltid utføres.
  */
 export const SEISMIC_CLASSES = {
-  I:    { gammaI: 0.70, label: 'I',    description: 'Småhus, rekkehus, mindre lagerhus, landbruksbygg', avoidanceAllowed: true },
-  II:   { gammaI: 1.00, label: 'II',   description: 'Kontorer, forretningsbygg, hotell og boligbygg',  avoidanceAllowed: true },
-  IIIa: { gammaI: 1.25, label: 'IIIa', description: 'Skoler, institusjonsbygg, store forsamlingslokaler', avoidanceAllowed: true },
-  IIIb: { gammaI: 1.70, label: 'IIIb', description: 'Viktig infrastruktur: sykehus, brannstasjoner, redningssentraler', avoidanceAllowed: false },
-  IV:   { gammaI: null, label: 'IV',   description: 'Byggverk der konsekvensene ved sammenbrudd er særlig store', avoidanceAllowed: false }
-};
-export const GAMMA_I_REF = 'Tabell NA.4(901)';
-export const CLASS_REF = 'Tabell NA.4(902)';
-
-/** Grunntyper, Tabell 3.1. S1/S2 krever særskilte undersøkelser og er ikke med. */
-export const GROUND_TYPES = {
-  A: 'Fjell eller fjell-lignende formasjon',
-  B: 'Avsetninger av svært fast sand, grus eller svært stiv leire',
-  C: 'Dype avsetninger av fast eller middels fast sand, grus eller stiv leire',
-  D: 'Avsetninger av løs til middels fast kohesjonsløs jord eller bløt til fast kohesjonsjord',
-  E: 'Overflatelag av alluvium over stivere materiale (vs > 800 m/s)'
-};
-export const GROUND_REF = 'Tabell 3.1';
-
-/**
- * Spektralparametere S, TB, TC, TD.
- *
- * Dette er de ANBEFALTE verdiene i EN 1998-1 Tabell 3.2 (type 1) og 3.3 (type 2).
- * De er ikke kontrollert mot NA:2021 Tabell NA.3.3 — kilden oppgis derfor som
- * anbefalt verdi i rapporten, ikke som NA-verdi. Bytt tabell og `ref` samtidig.
- */
-export const SPECTRUM_TABLES = {
-  '1': {
-    ref: 'EN 1998-1 Tabell 3.2 (anbefalte verdier)',
-    description: 'Type 1 (Ms > 5,5)',
-    values: {
-      A: { S: 1.00, TB: 0.15, TC: 0.4, TD: 2.0 },
-      B: { S: 1.20, TB: 0.15, TC: 0.5, TD: 2.0 },
-      C: { S: 1.15, TB: 0.20, TC: 0.6, TD: 2.0 },
-      D: { S: 1.35, TB: 0.20, TC: 0.8, TD: 2.0 },
-      E: { S: 1.40, TB: 0.15, TC: 0.5, TD: 2.0 }
-    }
-  },
-  '2': {
-    ref: 'EN 1998-1 Tabell 3.3 (anbefalte verdier)',
-    description: 'Type 2 (Ms ≤ 5,5)',
-    values: {
-      A: { S: 1.00, TB: 0.05, TC: 0.25, TD: 1.2 },
-      B: { S: 1.35, TB: 0.05, TC: 0.25, TD: 1.2 },
-      C: { S: 1.50, TB: 0.10, TC: 0.25, TD: 1.2 },
-      D: { S: 1.80, TB: 0.10, TC: 0.30, TD: 1.2 },
-      E: { S: 1.60, TB: 0.05, TC: 0.25, TD: 1.2 }
-    }
-  }
+  I:    { label: 'I',    avoidanceAllowed: true },
+  II:   { label: 'II',   avoidanceAllowed: true },
+  IIIa: { label: 'IIIa', avoidanceAllowed: true },
+  IIIb: { label: 'IIIb', avoidanceAllowed: false },
+  IV:   { label: 'IV',   avoidanceAllowed: false }
 };
 
-/** Nedre grense for dimensjonerende spekter, 3.2.2.5(4). */
-export const BETA = 0.2;
-export const BETA_REF = '3.2.2.5(4)';
+/** Grunntyper som omfattes av kriterium 2–4 (S1/S2 krever særskilte undersøkelser). */
+export const GROUND_TYPES = ['A', 'B', 'C', 'D', 'E'];
 
-/** Ct for forenklet periodeestimat T1 = Ct·h^(3/4), lign. (4.6). Gyldig for h ≤ 40 m. */
-export const CT_VALUES = {
-  steel:    { Ct: 0.085, label: 'Momentstive stålrammer', short: 'momentstive stålrammer' },
-  concrete: { Ct: 0.075, label: 'Momentstive betongrammer og eksentrisk avstivede stålrammer', short: 'momentstive betongrammer' },
-  other:    { Ct: 0.050, label: 'Alle andre konstruksjoner', short: 'alle andre konstruksjoner' }
+/** Hvor brukeren finner hver verdi. Vises i rapportens referansekolonne. */
+export const REFS = {
+  agR: 'Tabell NA.3.2',
+  gammaI: 'Tabell NA.4(901)',
+  seismicClass: 'Tabell NA.4(902)',
+  groundType: 'Tabell 3.1',
+  spectrumType: '3.2.2.2',
+  spectrum: '3.2.2.2 med NA',
+  q: '3.2.2.5(3)',
+  beta: '3.2.2.5(4)',
+  Ct: '4.3.3.2.2(3)',
+  avoidance: 'NA.3.2.1(5)'
 };
+
+/** Lign. (4.6) gjelder for bygninger med høyde opp til 40 m, 4.3.3.2.2(3). */
 export const T1_MAX_HEIGHT = 40;
 
-/** Grenseverdiene i NA.3.2.1(5). */
-export const LIMITS = {
-  agS: 0.50,
-  ag: 0.30,
-  life: 2,
-  Sd: 0.50,
-  qMax: 1.5
-};
-export const AVOIDANCE_REF = 'NA.3.2.1(5)';
+/** Grenseverdiene i NA.3.2.1(5); tastes inn av brukeren. */
+export const LIMIT_FIELDS = [
+  { key: 'agS',  label: 'a<sub>g</sub>·S', unit: 'm/s²' },
+  { key: 'ag',   label: 'a<sub>g</sub>',   unit: 'm/s²' },
+  { key: 'life', label: 'Dimensjonerende brukstid', unit: 'år' },
+  { key: 'Sd',   label: 'S<sub>d</sub>',   unit: 'm/s²' },
+  { key: 'qMax', label: 'q for S<sub>d</sub>-kriteriet', unit: '' }
+];
