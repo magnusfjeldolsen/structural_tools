@@ -6,8 +6,6 @@
  * fra visningsfeltene.
  */
 import { compute, designSd } from './ec8-core.js';
-import { SEISMIC_CLASSES, SPECTRUM_TABLES, CT_VALUES, LIMITS } from './ec8-data.js';
-import { AGR_NORWAY } from './agr-norway.js';
 import { spectrumSvg } from './spectrum-svg.js';
 import { buildReport } from './report.js';
 import { PROJECT_FIELDS, loadProjectInfo, saveProjectInfo } from './project-info.js';
@@ -20,37 +18,37 @@ const parse = id => {
 };
 
 const NOTES_KEY = 'structural_tools.seismic_ec8.notes';
+// Verdiene brukeren har tastet inn fra standarden, slik at de bare må skrives én gang.
+const INPUTS_KEY = 'structural_tools.seismic_ec8.inputs';
 
 let lastResult = null;
 let lastReportKind = 'avoidance';
 
 // ---------------------------------------------------------------- input
 
-function readLocation() {
-  if ($('country').value === 'norway') {
-    const fylke = $('fylke').value;
-    const kommune = $('kommune').value;
-    const row = AGR_NORWAY.find(r => r.fylke === fylke && r.kommune === kommune);
-    return row
-      ? { fromTable: true, kommune: row.kommune, nr: row.nr, fylke, agR: row.agR }
-      : { fromTable: false, place: '', agR: null };
-  }
-  return { fromTable: false, place: $('place').value.trim(), agR: parse('agr') };
-}
-
 function readInputs() {
-  const ctMethod = $('ct_method').value;
   return {
     seismicClass: $('seismic_class').value,
     gammaI: parse('gamma_I'),
-    agR: readLocation().agR,
+    agR: parse('agr'),
     spectrumType: $('spectrum_type').value,
     groundType: $('ground_type').value,
+    S: parse('sp_S'),
+    TB: parse('sp_TB'),
+    TC: parse('sp_TC'),
+    TD: parse('sp_TD'),
     q: parse('q'),
+    beta: parse('beta'),
     life: parse('structure_life'),
+    limits: {
+      agS: parse('lim_agS'),
+      ag: parse('lim_ag'),
+      life: parse('lim_life'),
+      Sd: parse('lim_Sd'),
+      qMax: parse('lim_qMax')
+    },
     sdMethod: $('sd_method').value,
-    ctMethod,
-    Ct: ctMethod === 'custom' ? parse('ct') : CT_VALUES[ctMethod].Ct,
+    Ct: parse('ct'),
     h: parse('h'),
     T1Modal: parse('t1_modal'),
     SdModal: parse('sd_modal'),
@@ -73,25 +71,12 @@ function update() {
   const r = compute(inputs);
   lastResult = r;
 
-  const s = r.spectrum;
-  $('sp_display').textContent = `S = ${num(s.S)},  TB = ${num(s.TB)} s,  TC = ${num(s.TC)} s,  TD = ${num(s.TD)} s`;
-  $('sp_ref').textContent = SPECTRUM_TABLES[inputs.spectrumType].ref.replace('EN 1998-1 ', '');
   $('ag_display').textContent = num(r.ag);
-  $('ags_display').textContent = num(s.agS);
+  $('ags_display').textContent = num(r.spectrum.agS);
   $('t1_display').textContent = num(r.sd.T1, 3);
   $('sd_display').textContent = num(r.sd.Sd);
 
-  const qTooHigh = Number.isFinite(inputs.q) && inputs.q > LIMITS.qMax;
-  $('q_note').className = qTooHigh ? 'warn' : 'hint';
-
-  const tableG = SEISMIC_CLASSES[inputs.seismicClass].gammaI;
-  $('gamma_note').textContent = tableG === null
-    ? 'Class IV has no table value (Tabell NA.4(901) note a) — enter γI from a separate assessment.'
-    : r.gammaIFromTable
-      ? `Tabell NA.4(901): γI = ${tableG.toFixed(2)}`
-      : `User value — Tabell NA.4(901) gives ${tableG.toFixed(2)} for class ${inputs.seismicClass}.`;
-
-  const notes = [...r.errors, ...r.sd.notes];
+  const notes = [...r.sd.notes];
   if (r.sd.method !== 'none' && !r.sd.valid && r.sd.conditions?.some(c => !c.ok)) {
     notes.push('Conditions for criterion 5 not satisfied — it is not counted.');
   }
@@ -106,8 +91,8 @@ function renderConclusion(r) {
   const el = $('conclusion');
   if (r.conclusion === 'invalid') {
     el.className = 'p-4 rounded border text-lg font-bold bg-yellow-900/30 border-yellow-600 text-yellow-300';
-    el.textContent = r.inputs.agR === null
-      ? ($('country').value === 'norway' ? 'Select fylke and kommune to get agR from Tabell NA.3.2.' : 'Enter agR.')
+    el.textContent = r.missing.length
+      ? `Enter ${r.missing.join(', ')} from NS-EN 1998-1 / NA to evaluate.`
       : r.errors.join(' ');
   } else if (r.conclusion === 'avoided') {
     el.className = 'p-4 rounded border text-lg font-bold bg-green-900/30 border-green-500 text-green-400';
@@ -137,7 +122,8 @@ function renderPlot(r) {
   if (r.conclusion === 'invalid') return;
 
   const point = Number.isFinite(r.sd.Sd) ? { T: r.sd.T1, Sd: r.sd.Sd } : null;
-  container.insertAdjacentHTML('afterbegin', spectrumSvg(r.spectrum, { width: 900, height: 340, theme: 'screen', point, limit: LIMITS.Sd }));
+  const limit = Number.isFinite(r.inputs.limits.Sd) ? r.inputs.limits.Sd : null;
+  container.insertAdjacentHTML('afterbegin', spectrumSvg(r.spectrum, { width: 900, height: 340, theme: 'screen', point, limit }));
   const svg = container.querySelector('svg');
   const d = svg.dataset;
   const hover = svg.querySelector('g.hover');
@@ -174,7 +160,7 @@ function reportContext() {
   for (const f of PROJECT_FIELDS) project[f.key] = $(`pi_${f.key}`).value.trim();
   return {
     result: lastResult,
-    location: readLocation(),
+    place: $('place').value.trim(),
     project,
     notes: $('notes').value,
     generatedAt: new Date()
@@ -238,29 +224,24 @@ function populateProjectFields() {
   });
 }
 
-function populateFylker() {
-  const fylker = [...new Set(AGR_NORWAY.map(r => r.fylke))].sort((a, b) => a.localeCompare(b, 'nb'));
-  $('fylke').innerHTML = '<option value="">Select fylke…</option>'
-    + fylker.map(f => `<option>${f}</option>`).join('');
+function restoreInputs() {
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(INPUTS_KEY) || '{}');
+  } catch { /* lagring blokkert eller ødelagt */ }
+  for (const el of document.querySelectorAll('[data-persist]')) {
+    if (!(el.id in saved)) continue;
+    if (el.type === 'checkbox') el.checked = !!saved[el.id];
+    else el.value = saved[el.id];
+  }
 }
 
-function populateKommuner() {
-  const fylke = $('fylke').value;
-  const kommuner = AGR_NORWAY.filter(r => r.fylke === fylke).sort((a, b) => a.kommune.localeCompare(b.kommune, 'nb'));
-  $('kommune').innerHTML = '<option value="">Select kommune…</option>'
-    + kommuner.map(r => `<option value="${r.kommune}">${r.kommune} (${r.nr})</option>`).join('');
-  updateNorwayDisplay();
-}
-
-function updateNorwayDisplay() {
-  const loc = readLocation();
-  $('agr_norway_display').textContent = loc.fromTable ? loc.agR.toFixed(2) : '–';
-}
-
-function toggleCountry() {
-  const norway = $('country').value === 'norway';
-  $('norway_location').hidden = !norway;
-  $('custom_place_input').hidden = norway;
+function saveInputs() {
+  const out = {};
+  for (const el of document.querySelectorAll('[data-persist]')) {
+    out[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+  }
+  try { localStorage.setItem(INPUTS_KEY, JSON.stringify(out)); } catch { /* lagring blokkert */ }
 }
 
 function toggleSdMethod() {
@@ -271,35 +252,19 @@ function toggleSdMethod() {
   $('modal_conditions').hidden = !(m === 'modalT1' || m === 'modalSd');
 }
 
-function syncCt() {
-  const m = $('ct_method').value;
-  const ct = $('ct');
-  ct.disabled = m !== 'custom';
-  if (m !== 'custom') ct.value = CT_VALUES[m].Ct;
-}
-
-function syncGammaI() {
-  const g = SEISMIC_CLASSES[$('seismic_class').value].gammaI;
-  $('gamma_I').value = g === null ? '' : g.toFixed(2);
-}
-
 document.addEventListener('DOMContentLoaded', () => {
   populateProjectFields();
-  populateFylker();
-  syncGammaI();
-  syncCt();
-  toggleCountry();
+  restoreInputs();
   toggleSdMethod();
 
-  const on = (id, ev, fn) => $(id).addEventListener(ev, () => { fn?.(); update(); });
-  on('country', 'change', toggleCountry);
-  on('fylke', 'change', populateKommuner);
-  on('kommune', 'change', updateNorwayDisplay);
-  on('seismic_class', 'change', syncGammaI);
-  on('ct_method', 'change', syncCt);
-  on('sd_method', 'change', toggleSdMethod);
-  for (const id of ['spectrum_type', 'ground_type', 'cond_stiffness', 'cond_soil']) on(id, 'change');
-  for (const id of ['place', 'agr', 'gamma_I', 'structure_life', 'q', 'h', 'ct', 't1_modal', 'sd_modal']) on(id, 'input');
+  for (const el of document.querySelectorAll('[data-persist]')) {
+    const ev = el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input';
+    el.addEventListener(ev, () => {
+      if (el.id === 'sd_method') toggleSdMethod();
+      saveInputs();
+      update();
+    });
+  }
 
   document.querySelectorAll('[data-report]').forEach(btn =>
     btn.addEventListener('click', () => openPreview(btn.dataset.report)));

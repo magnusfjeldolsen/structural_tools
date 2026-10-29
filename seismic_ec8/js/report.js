@@ -8,10 +8,7 @@
  * utover å slå opp Sd i noen faste perioder for tabellen.
  */
 import { designSd } from './ec8-core.js';
-import {
-  STANDARD, GAMMA_I_REF, CLASS_REF, GROUND_TYPES, GROUND_REF, BETA_REF,
-  CT_VALUES, AVOIDANCE_REF, SPECTRUM_TABLES, LIMITS
-} from './ec8-data.js';
+import { STANDARD, REFS } from './ec8-data.js';
 import { PROJECT_FIELDS } from './project-info.js';
 import { spectrumSvg } from './spectrum-svg.js';
 
@@ -33,7 +30,7 @@ const STATUS_TEXT = {
 };
 
 /**
- * ctx = { result, location: { place, kommune, nr, fromTable }, project, notes, generatedAt }
+ * ctx = { result, place, project, notes, generatedAt }
  */
 export function buildReport(kind, ctx) {
   if (ctx.result.conclusion === 'invalid') {
@@ -78,39 +75,27 @@ function paramTable(rows) {
   </table>`;
 }
 
-function locationText(loc) {
-  if (loc.fromTable) return `${esc(loc.kommune)} (${esc(loc.nr)})`;
-  return esc(loc.place) || '–';
-}
+// Verdiene er tastet inn fra brukerens eget eksemplar av standarden.
+const given = ref => `Oppgitt, jf. ${ref}`;
 
-function agRRef(loc) {
-  return loc.fromTable ? `Tabell NA.3.2, kommune ${esc(loc.nr)}` : 'Oppgitt av bruker';
-}
-
-function gammaIRef(r) {
-  return r.gammaIFromTable ? `${GAMMA_I_REF}, klasse ${r.seismicClass}` : `Oppgitt av bruker (tabell: ${num(r.tableGammaI)})`;
-}
-
-function spectrumTableRef(r) {
-  return SPECTRUM_TABLES[r.inputs.spectrumType].ref;
-}
+const SOURCE_LINE = `<p class="rp-source">Tabellverdier og grenseverdier er oppgitt av brukeren fra ${STANDARD}; verktøyet inneholder ingen verdier fra standarden.</p>`;
 
 function basisRows(ctx) {
   const r = ctx.result;
   const s = r.spectrum;
   const i = r.inputs;
   return [
-    ['Sted', locationText(ctx.location), ''],
-    ['a<sub>gR</sub>', `${num(i.agR)} m/s²`, agRRef(ctx.location)],
-    ['Seismisk klasse', r.seismicClass, `${CLASS_REF} — ${esc(r.classInfo.description)}`],
-    ['γ<sub>I</sub>', num(r.gammaI), gammaIRef(r)],
+    ['Sted', esc(ctx.place) || '–', ''],
+    ['a<sub>gR</sub>', `${num(i.agR)} m/s²`, given(REFS.agR)],
+    ['Seismisk klasse', r.seismicClass, given(REFS.seismicClass)],
+    ['γ<sub>I</sub>', num(r.gammaI), given(REFS.gammaI)],
     ['a<sub>g</sub> = γ<sub>I</sub>·a<sub>gR</sub>', `${num(r.ag)} m/s²`, '3.2.1(3)'],
-    ['Grunntype', i.groundType, `${GROUND_REF} — ${esc(GROUND_TYPES[i.groundType])}`],
-    ['Spektertype', `Type ${i.spectrumType}`, `3.2.2.2 — ${esc(SPECTRUM_TABLES[i.spectrumType].description)}`],
-    ['S', num(s.S), spectrumTableRef(r)],
-    ['T<sub>B</sub> / T<sub>C</sub> / T<sub>D</sub>', `${num(s.TB)} / ${num(s.TC)} / ${num(s.TD)} s`, spectrumTableRef(r)],
-    ['q', num(s.q, 2), '3.2.2.5(3) — konstruksjonsfaktor'],
-    ['β', num(s.beta), `${BETA_REF} — nedre grense`]
+    ['Grunntype', i.groundType, given(REFS.groundType)],
+    ['Spektertype', `Type ${i.spectrumType}`, given(REFS.spectrumType)],
+    ['S', num(s.S), given(REFS.spectrum)],
+    ['T<sub>B</sub> / T<sub>C</sub> / T<sub>D</sub>', `${num(s.TB)} / ${num(s.TC)} / ${num(s.TD)} s`, given(REFS.spectrum)],
+    ['q', num(s.q, 2), `${REFS.q} — konstruksjonsfaktor`],
+    ['β', num(s.beta), `${given(REFS.beta)} — nedre grense`]
   ];
 }
 
@@ -160,7 +145,7 @@ function spectrumReport(ctx) {
     section('Spekter', `<div class="rp-plot">${spectrumSvg(s, { width: 720, height: 270, theme: 'print', fontSize: 11 })}</div>`),
     section('Nøkkelverdier', keyValues),
     notesSection(ctx),
-    `<p class="rp-source">Spektralparametere: ${esc(spectrumTableRef(r))}. Øvrige tabellhenvisninger til ${STANDARD}.</p>`
+    SOURCE_LINE
   ].join('');
 
   return page(ctx, 'Dimensjonerende responsspekter', body, `${STANDARD} — horisontal komponent`);
@@ -172,8 +157,7 @@ function sdSection(r) {
   const sd = r.sd;
   const rows = [['Metode', SD_METHOD_TEXT[sd.method], '']];
   if (sd.method === 'simplified' && Number.isFinite(sd.T1)) {
-    const ct = Object.values(CT_VALUES).find(v => Math.abs(v.Ct - sd.Ct) < 1e-9);
-    rows.push(['C<sub>t</sub>', num(sd.Ct, 3), ct ? `4.3.3.2.2(3), ${esc(ct.short)}` : 'Oppgitt av bruker']);
+    rows.push(['C<sub>t</sub>', num(sd.Ct, 3), given(REFS.Ct)]);
     rows.push(['h', `${num(sd.h, 1)} m`, 'Høyde over fundament / stiv kjeller']);
     rows.push(['T<sub>1</sub> = C<sub>t</sub>·h<sup>3/4</sup>', `${num(sd.T1, 3)} s`, 'Lign. (4.6)']);
   }
@@ -212,7 +196,7 @@ function criteriaTable(r) {
 function conclusionBox(r) {
   if (!r.classInfo.avoidanceAllowed) {
     return `<div class="rp-concl required"><b>Påvisning av seismisk påvirkning kreves.</b>
-      Seismisk klasse ${r.seismicClass}: ${AVOIDANCE_REF} gjelder bare klasse I–IIIa.</div>`;
+      Seismisk klasse ${r.seismicClass}: ${REFS.avoidance} gjelder bare klasse I–IIIa.</div>`;
   }
   if (r.conclusion === 'avoided') {
     const met = r.criteria.filter(c => c.status === 'met').map(c => c.id).join(', ');
@@ -234,18 +218,19 @@ function avoidanceReport(ctx) {
   ];
 
   const plotPoint = Number.isFinite(r.sd.Sd) ? { T: r.sd.T1, Sd: r.sd.Sd } : null;
-  const plot = spectrumSvg(s, { width: 720, height: 145, theme: 'print', point: plotPoint, limit: LIMITS.Sd, fontSize: 11 });
+  const limit = Number.isFinite(i.limits?.Sd) ? i.limits.Sd : null;
+  const plot = spectrumSvg(s, { width: 720, height: 145, theme: 'print', point: plotPoint, limit, fontSize: 11 });
 
   const body = [
     section('Inngangsdata', paramTable(inputRows)),
     section('Dimensjonerende akselerasjon S<sub>d</sub>', sdSection(r)),
-    section(`Kriterier, ${AVOIDANCE_REF} <small>— påvisning kan utelates for klasse I–IIIa når minst ett er oppfylt</small>`,
+    section(`Kriterier, ${REFS.avoidance} <small>— påvisning kan utelates for klasse I–IIIa når minst ett er oppfylt</small>`,
       criteriaTable(r)),
     conclusionBox(r),
     section(`Spekter — type ${i.spectrumType}, grunntype ${i.groundType}, q = ${num(s.q, 1)}`, `<div class="rp-plot">${plot}</div>`),
     notesSection(ctx),
-    `<p class="rp-source">Spektralparametere: ${esc(spectrumTableRef(r))}. Øvrige tabellhenvisninger til ${STANDARD}.</p>`
+    SOURCE_LINE
   ].join('');
 
-  return page(ctx, 'Utelatelseskriterie for jordskjelv', body, `${STANDARD}, ${AVOIDANCE_REF}`);
+  return page(ctx, 'Utelatelseskriterie for jordskjelv', body, `${STANDARD}, ${REFS.avoidance}`);
 }

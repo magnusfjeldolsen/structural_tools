@@ -70,38 +70,24 @@
         </div>
       </details>
 
+      <p class="text-sm text-yellow-200 bg-yellow-900/30 border border-yellow-700 rounded-lg p-3">
+        All values from NS-EN 1998-1 and the Norwegian National Annex (a<sub>gR</sub>, γ<sub>I</sub>, S, T<sub>B</sub>, T<sub>C</sub>, T<sub>D</sub>, β and the limits in NA.3.2.1(5))
+        must be entered from your own licensed copy of the standard. The tool contains no values from the standard. Entered values are remembered in this browser.
+      </p>
+
       <!-- Location -->
       <div class="bg-gray-700 rounded-lg p-6">
         <h3 class="text-xl font-semibold text-blue-400 mb-4">Location</h3>
         <div class="space-y-4">
           <div class="row">
-            <label for="country">a<sub>gR</sub> source:</label>
-            <select id="country" class="inp">
-              <option value="custom">Custom agR value</option>
-              <option value="norway" selected>Norway — Tabell NA.3.2 by kommune</option>
-            </select>
+            <label for="place">Place / kommune:</label>
+            <input type="text" id="place" value="" placeholder="E.g. kommune name and number" class="inp" data-persist>
           </div>
-          <div id="custom_place_input" class="space-y-4">
-            <div class="row">
-              <label for="place">Place:</label>
-              <input type="text" id="place" value="" placeholder="City / location" class="inp">
-            </div>
-            <div class="row">
-              <label for="agr">a<sub>gR</sub> (m/s²):</label>
-              <input type="number" id="agr" value="0.7" step="0.05" min="0" class="inp">
-            </div>
+          <div class="row">
+            <label for="agr">a<sub>gR</sub> (m/s²):</label>
+            <input type="number" id="agr" step="0.01" min="0" class="inp" data-persist>
           </div>
-          <div id="norway_location" class="space-y-4">
-            <div class="row">
-              <label for="fylke">Fylke:</label>
-              <select id="fylke" class="inp"><option value="">Select fylke…</option></select>
-            </div>
-            <div class="row">
-              <label for="kommune">Kommune:</label>
-              <select id="kommune" class="inp"><option value="">Select kommune…</option></select>
-            </div>
-            <div class="out"><span>a<sub>gR</sub>:</span><b id="agr_norway_display">–</b><em>m/s² (Tabell NA.3.2)</em></div>
-          </div>
+          <p class="hint">From Tabell NA.3.2.</p>
         </div>
       </div>
 
@@ -111,49 +97,98 @@
         <div class="space-y-4">
           <div class="row">
             <label for="seismic_class">Seismic class:</label>
-            <select id="seismic_class" class="inp">
-              <option value="I">I — Small houses, minor storage, agricultural</option>
-              <option value="II" selected>II — Offices, shops, hotels, housing</option>
-              <option value="IIIa">IIIa — Schools, institutions, large assembly</option>
-              <option value="IIIb">IIIb — Vital infrastructure (hospitals, fire stations)</option>
-              <option value="IV">IV — Very large consequences of collapse</option>
+            <select id="seismic_class" class="inp" data-persist>
+              <option value="I">I</option>
+              <option value="II" selected>II</option>
+              <option value="IIIa">IIIa</option>
+              <option value="IIIb">IIIb</option>
+              <option value="IV">IV</option>
             </select>
           </div>
-          <p class="hint">Guidance: Tabell NA.4(902). Avoidance criteria apply to classes I–IIIa only.</p>
+          <p class="hint">From Tabell NA.4(902). Avoidance criteria apply to classes I–IIIa only.</p>
           <div class="row">
             <label for="gamma_I">γ<sub>I</sub> (importance factor):</label>
-            <input type="number" id="gamma_I" step="0.05" min="0.1" class="inp">
+            <input type="number" id="gamma_I" step="0.05" min="0" class="inp" data-persist>
           </div>
-          <p id="gamma_note" class="hint"></p>
+          <p class="hint">From Tabell NA.4(901) for the selected class.</p>
           <div class="row">
             <label for="structure_life">Design working life (years):</label>
-            <input type="number" id="structure_life" value="50" step="1" min="0" class="inp">
-          </div>
-          <div class="row">
-            <label for="spectrum_type">Spectrum type:</label>
-            <select id="spectrum_type" class="inp">
-              <option value="1">Type 1 — Ms &gt; 5.5</option>
-              <option value="2" selected>Type 2 — Ms ≤ 5.5</option>
-            </select>
+            <input type="number" id="structure_life" value="50" step="1" min="0" class="inp" data-persist>
           </div>
           <div class="row">
             <label for="ground_type">Ground type:</label>
-            <select id="ground_type" class="inp">
-              <option value="A">A — Rock or rock-like formation</option>
-              <option value="B" selected>B — Very dense sand, gravel or very stiff clay</option>
-              <option value="C">C — Deep dense / medium dense sand, gravel or stiff clay</option>
-              <option value="D">D — Loose-to-medium cohesionless or soft-to-firm cohesive soil</option>
-              <option value="E">E — Surface alluvium layer over stiffer material</option>
+            <select id="ground_type" class="inp" data-persist>
+              <option value="A">A</option>
+              <option value="B" selected>B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+              <option value="E">E</option>
+            </select>
+          </div>
+          <p class="hint">Per Tabell 3.1.</p>
+          <div class="row">
+            <label for="spectrum_type">Spectrum type:</label>
+            <select id="spectrum_type" class="inp" data-persist>
+              <option value="1">Type 1</option>
+              <option value="2" selected>Type 2</option>
             </select>
           </div>
           <div class="row">
-            <label for="q">q (behaviour factor):</label>
-            <input type="number" id="q" value="1.5" step="0.1" min="1.0" max="8.0" class="inp">
+            <label for="sp_S">S:</label>
+            <input type="number" id="sp_S" step="0.05" min="0" class="inp" data-persist>
           </div>
-          <p id="q_note" class="hint">Criterion 5 (S<sub>d</sub> ≤ 0.50) requires q ≤ 1.5.</p>
-          <div class="out"><span>S, T<sub>B</sub>, T<sub>C</sub>, T<sub>D</sub>:</span><b id="sp_display">–</b><em id="sp_ref"></em></div>
+          <div class="row">
+            <label for="sp_TB">T<sub>B</sub> (s):</label>
+            <input type="number" id="sp_TB" step="0.01" min="0" class="inp" data-persist>
+          </div>
+          <div class="row">
+            <label for="sp_TC">T<sub>C</sub> (s):</label>
+            <input type="number" id="sp_TC" step="0.01" min="0" class="inp" data-persist>
+          </div>
+          <div class="row">
+            <label for="sp_TD">T<sub>D</sub> (s):</label>
+            <input type="number" id="sp_TD" step="0.1" min="0" class="inp" data-persist>
+          </div>
+          <p class="hint">S, T<sub>B</sub>, T<sub>C</sub>, T<sub>D</sub> for the selected spectrum type and ground type, per 3.2.2.2 and the National Annex.</p>
+          <div class="row">
+            <label for="q">q (behaviour factor):</label>
+            <input type="number" id="q" value="1.5" step="0.1" min="1.0" max="8.0" class="inp" data-persist>
+          </div>
+          <div class="row">
+            <label for="beta">β (lower bound factor):</label>
+            <input type="number" id="beta" step="0.05" min="0" class="inp" data-persist>
+          </div>
+          <p class="hint">Per 3.2.2.5(4) and the National Annex.</p>
           <div class="out"><span>a<sub>g</sub> = γ<sub>I</sub>·a<sub>gR</sub>:</span><b id="ag_display">–</b><em>m/s²</em></div>
           <div class="out"><span>a<sub>g</sub>·S:</span><b id="ags_display">–</b><em>m/s²</em></div>
+        </div>
+      </div>
+
+      <!-- Limits NA.3.2.1(5) -->
+      <div class="bg-gray-700 rounded-lg p-6">
+        <h3 class="text-xl font-semibold text-emerald-400 mb-4">Avoidance Limits, NA.3.2.1(5)</h3>
+        <div class="space-y-4">
+          <div class="row">
+            <label for="lim_agS">Criterion 2: a<sub>g</sub>·S ≤ (m/s²):</label>
+            <input type="number" id="lim_agS" step="0.01" min="0" class="inp" data-persist>
+          </div>
+          <div class="row">
+            <label for="lim_ag">Criterion 3: a<sub>g</sub> ≤ (m/s²):</label>
+            <input type="number" id="lim_ag" step="0.01" min="0" class="inp" data-persist>
+          </div>
+          <div class="row">
+            <label for="lim_life">Criterion 4: working life ≤ (years):</label>
+            <input type="number" id="lim_life" step="1" min="0" class="inp" data-persist>
+          </div>
+          <div class="row">
+            <label for="lim_Sd">Criterion 5: S<sub>d</sub> ≤ (m/s²):</label>
+            <input type="number" id="lim_Sd" step="0.01" min="0" class="inp" data-persist>
+          </div>
+          <div class="row">
+            <label for="lim_qMax">Criterion 5 requires q ≤:</label>
+            <input type="number" id="lim_qMax" step="0.1" min="1" class="inp" data-persist>
+          </div>
+          <p class="hint">A criterion whose limit is left blank is shown as not evaluated.</p>
         </div>
       </div>
 
@@ -163,7 +198,7 @@
         <div class="space-y-4">
           <div class="row">
             <label for="sd_method">S<sub>d</sub> method:</label>
-            <select id="sd_method" class="inp">
+            <select id="sd_method" class="inp" data-persist>
               <option value="none">Not evaluated</option>
               <option value="simplified" selected>Simplified — T₁ = Ct·h^(3/4), eq. (4.6)</option>
               <option value="modalT1">Modal analysis — enter T₁, read Sd(T₁) from spectrum</option>
@@ -174,34 +209,26 @@
           <div id="simplified_inputs" class="space-y-4">
             <div class="row">
               <label for="h">Building height h (m):</label>
-              <input type="number" id="h" value="20" step="0.5" min="0" class="inp">
+              <input type="number" id="h" value="20" step="0.5" min="0" class="inp" data-persist>
             </div>
             <div class="row">
-              <label for="ct_method">C<sub>t</sub>:</label>
-              <select id="ct_method" class="inp">
-                <option value="steel">Steel moment frames (0.085)</option>
-                <option value="concrete" selected>Concrete moment frames / eccentric braced steel (0.075)</option>
-                <option value="other">All other structures (0.050)</option>
-                <option value="custom">Custom value</option>
-              </select>
+              <label for="ct">C<sub>t</sub>:</label>
+              <input type="number" id="ct" step="0.001" min="0" class="inp" data-persist>
             </div>
-            <div class="row">
-              <label for="ct">C<sub>t</sub> value:</label>
-              <input type="number" id="ct" value="0.075" step="0.001" min="0" class="inp">
-            </div>
+            <p class="hint">From 4.3.3.2.2(3) for the structural system.</p>
           </div>
 
           <div id="modal_t1_input" class="row">
             <label for="t1_modal">T₁ from modal analysis (s):</label>
-            <input type="number" id="t1_modal" value="" step="0.01" min="0" class="inp">
+            <input type="number" id="t1_modal" value="" step="0.01" min="0" class="inp" data-persist>
           </div>
           <div id="modal_sd_input" class="row">
             <label for="sd_modal">Max S<sub>d</sub> (m/s²):</label>
-            <input type="number" id="sd_modal" value="" step="0.01" min="0" class="inp">
+            <input type="number" id="sd_modal" value="" step="0.01" min="0" class="inp" data-persist>
           </div>
           <div id="modal_conditions" class="space-y-2 hint" style="margin-top:0.5rem">
-            <label class="flex gap-2 items-start"><input type="checkbox" id="cond_stiffness" class="mt-1"> <span>No reduction of stiffness properties per 4.3.1(7) (uncracked stiffness used)</span></label>
-            <label class="flex gap-2 items-start"><input type="checkbox" id="cond_soil" class="mt-1"> <span>Conservative soil stiffness — both halved and doubled soil stiffness assessed</span></label>
+            <label class="flex gap-2 items-start"><input type="checkbox" id="cond_stiffness" class="mt-1" data-persist> <span>No reduction of stiffness properties per 4.3.1(7) (uncracked stiffness used)</span></label>
+            <label class="flex gap-2 items-start"><input type="checkbox" id="cond_soil" class="mt-1" data-persist> <span>Conservative soil stiffness — both halved and doubled soil stiffness assessed</span></label>
           </div>
 
           <div class="out"><span>T₁:</span><b id="t1_display">–</b><em>s</em></div>
@@ -232,7 +259,7 @@
 
     <div class="text-center text-sm text-gray-400 pt-6 border-t border-gray-600">
       <p>EC8 Seismic Avoidance Calculator by <span class="text-blue-400 font-semibold">Magnus Fjeld Olsen</span></p>
-      <p class="mt-1">Spectral parameters S, T<sub>B</sub>, T<sub>C</sub>, T<sub>D</sub> are the recommended values of EN 1998-1 Tables 3.2/3.3 — verify against NA Tabell NA.3.3.</p>
+      <p class="mt-1">No values from NS-EN 1998-1 or its National Annex are included — enter them from your own licensed copy.</p>
     </div>
   </main>
 
