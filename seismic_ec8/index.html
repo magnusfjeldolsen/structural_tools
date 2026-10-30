@@ -71,8 +71,8 @@
       </details>
 
       <p class="text-sm text-yellow-200 bg-yellow-900/30 border border-yellow-700 rounded-lg p-3">
-        All values from NS-EN 1998-1 and the Norwegian National Annex (a<sub>gR</sub>, γ<sub>I</sub>, S, T<sub>B</sub>, T<sub>C</sub>, T<sub>D</sub>, β and the limits in NA.3.2.1(5))
-        must be entered from your own licensed copy of the standard. The tool contains no values from the standard. Entered values are remembered in this browser.
+        Values from the Norwegian National Annex (a<sub>gR</sub>, γ<sub>I</sub> and the limits in NA.3.2.1(5)) must be entered from your own licensed copy of NS-EN 1998-1.
+        Spectral parameters, β and C<sub>t</sub> default to the recommended values of EN 1998-1 and can be overridden. Entered values are remembered in this browser.
       </p>
 
       <!-- Location -->
@@ -134,6 +134,13 @@
             </select>
           </div>
           <div class="row">
+            <label for="spectrum_source">S, T<sub>B</sub>, T<sub>C</sub>, T<sub>D</sub>:</label>
+            <select id="spectrum_source" class="inp" data-persist>
+              <option value="en" selected>EN 1998-1 recommended values (Tables 3.2/3.3)</option>
+              <option value="user">User-defined (e.g. from the National Annex)</option>
+            </select>
+          </div>
+          <div class="row">
             <label for="sp_S">S:</label>
             <input type="number" id="sp_S" step="0.05" min="0" class="inp" data-persist>
           </div>
@@ -149,16 +156,16 @@
             <label for="sp_TD">T<sub>D</sub> (s):</label>
             <input type="number" id="sp_TD" step="0.1" min="0" class="inp" data-persist>
           </div>
-          <p class="hint">S, T<sub>B</sub>, T<sub>C</sub>, T<sub>D</sub> for the selected spectrum type and ground type, per 3.2.2.2 and the National Annex.</p>
+          <p class="hint">Check the recommended values against the National Annex; choose user-defined to override.</p>
           <div class="row">
             <label for="q">q (behaviour factor):</label>
             <input type="number" id="q" value="1.5" step="0.1" min="1.0" max="8.0" class="inp" data-persist>
           </div>
           <div class="row">
             <label for="beta">β (lower bound factor):</label>
-            <input type="number" id="beta" step="0.05" min="0" class="inp" data-persist>
+            <input type="number" id="beta" value="0.2" step="0.05" min="0" class="inp" data-persist>
           </div>
-          <p class="hint">Per 3.2.2.5(4) and the National Annex.</p>
+          <p class="hint">0.2 is the recommended value in 3.2.2.5(4); check the National Annex.</p>
           <div class="out"><span>a<sub>g</sub> = γ<sub>I</sub>·a<sub>gR</sub>:</span><b id="ag_display">–</b><em>m/s²</em></div>
           <div class="out"><span>a<sub>g</sub>·S:</span><b id="ags_display">–</b><em>m/s²</em></div>
         </div>
@@ -212,10 +219,18 @@
               <input type="number" id="h" value="20" step="0.5" min="0" class="inp" data-persist>
             </div>
             <div class="row">
-              <label for="ct">C<sub>t</sub>:</label>
-              <input type="number" id="ct" step="0.001" min="0" class="inp" data-persist>
+              <label for="ct_method">C<sub>t</sub>:</label>
+              <select id="ct_method" class="inp" data-persist>
+                <option value="steel">Steel moment frames (0.085)</option>
+                <option value="concrete" selected>Concrete moment frames / eccentric braced steel (0.075)</option>
+                <option value="other">All other structures (0.050)</option>
+                <option value="custom">Custom value</option>
+              </select>
             </div>
-            <p class="hint">From 4.3.3.2.2(3) for the structural system.</p>
+            <div class="row">
+              <label for="ct">C<sub>t</sub> value:</label>
+              <input type="number" id="ct" value="0.075" step="0.001" min="0" class="inp" data-persist>
+            </div>
           </div>
 
           <div id="modal_t1_input" class="row">
@@ -259,7 +274,7 @@
 
     <div class="text-center text-sm text-gray-400 pt-6 border-t border-gray-600">
       <p>EC8 Seismic Avoidance Calculator by <span class="text-blue-400 font-semibold">Magnus Fjeld Olsen</span></p>
-      <p class="mt-1">No values from NS-EN 1998-1 or its National Annex are included — enter them from your own licensed copy.</p>
+      <p class="mt-1">Recommended values from EN 1998-1 only. National Annex values are not included — enter them from your own licensed copy.</p>
     </div>
   </main>
 
