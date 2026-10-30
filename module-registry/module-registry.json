@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "generated": "2026-10-16T13:00:08.626Z",
+    "generated": "2026-10-30T13:20:44.718Z",
     "total_modules": 31,
     "version": "1.0.0",
     "duplicates_removed": 0,
@@ -278,12 +278,16 @@
     {
       "id": "seismic_ec8",
       "title": "EC8 Seismic Avoidance Criteria Calculator",
-      "description": "EC8 Seismic Avoidance Criteria Calculator - Determine if seismic design is required",
+      "description": "EC8 Seismic Avoidance Criteria Calculator - Determine if seismic design is required, and document the design response spectrum per NS-EN 1998-1 NA:2021",
       "keywords": [
         "ec8",
         "seismic design",
         "avoidance criteria",
         "response spectrum",
+        "design spectrum",
+        "utelatelseskriterie",
+        "jordskjelv",
+        "ns-en 1998-1",
         "structural engineering"
       ],
       "url": "./seismic_ec8/index.html",
