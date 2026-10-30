@@ -8,7 +8,7 @@
  * utover å slå opp Sd i noen faste perioder for tabellen.
  */
 import { designSd } from './ec8-core.js';
-import { STANDARD, REFS } from './ec8-data.js';
+import { STANDARD, REFS, EN_SPECTRUM, EN_BETA, EN_CT } from './ec8-data.js';
 import { PROJECT_FIELDS } from './project-info.js';
 import { spectrumSvg } from './spectrum-svg.js';
 
@@ -78,7 +78,15 @@ function paramTable(rows) {
 // Verdiene er tastet inn fra brukerens eget eksemplar av standarden.
 const given = ref => `Oppgitt, jf. ${ref}`;
 
-const SOURCE_LINE = `<p class="rp-source">Tabellverdier og grenseverdier er oppgitt av brukeren fra ${STANDARD}; verktøyet inneholder ingen verdier fra standarden.</p>`;
+const SOURCE_LINE = `<p class="rp-source">Verdier fra det nasjonale tillegget (NA) er oppgitt av brukeren fra ${STANDARD}. Anbefalte verdier er fra EN 1998-1.</p>`;
+
+function spectrumRef(i) {
+  return i.spectrumSource === 'en' ? EN_SPECTRUM[i.spectrumType].ref : given(REFS.spectrum);
+}
+
+function betaRef(beta) {
+  return Math.abs(beta - EN_BETA) < 1e-9 ? `${REFS.beta}, anbefalt verdi` : given(REFS.beta);
+}
 
 function basisRows(ctx) {
   const r = ctx.result;
@@ -92,10 +100,10 @@ function basisRows(ctx) {
     ['a<sub>g</sub> = γ<sub>I</sub>·a<sub>gR</sub>', `${num(r.ag)} m/s²`, '3.2.1(3)'],
     ['Grunntype', i.groundType, given(REFS.groundType)],
     ['Spektertype', `Type ${i.spectrumType}`, given(REFS.spectrumType)],
-    ['S', num(s.S), given(REFS.spectrum)],
-    ['T<sub>B</sub> / T<sub>C</sub> / T<sub>D</sub>', `${num(s.TB)} / ${num(s.TC)} / ${num(s.TD)} s`, given(REFS.spectrum)],
+    ['S', num(s.S), spectrumRef(i)],
+    ['T<sub>B</sub> / T<sub>C</sub> / T<sub>D</sub>', `${num(s.TB)} / ${num(s.TC)} / ${num(s.TD)} s`, spectrumRef(i)],
     ['q', num(s.q, 2), `${REFS.q} — konstruksjonsfaktor`],
-    ['β', num(s.beta), `${given(REFS.beta)} — nedre grense`]
+    ['β', num(s.beta), `${betaRef(s.beta)} — nedre grense`]
   ];
 }
 
@@ -157,7 +165,8 @@ function sdSection(r) {
   const sd = r.sd;
   const rows = [['Metode', SD_METHOD_TEXT[sd.method], '']];
   if (sd.method === 'simplified' && Number.isFinite(sd.T1)) {
-    rows.push(['C<sub>t</sub>', num(sd.Ct, 3), given(REFS.Ct)]);
+    const ct = EN_CT[r.inputs.ctMethod];
+    rows.push(['C<sub>t</sub>', num(sd.Ct, 3), ct ? `${REFS.Ct}, ${ct.label}` : given(REFS.Ct)]);
     rows.push(['h', `${num(sd.h, 1)} m`, 'Høyde over fundament / stiv kjeller']);
     rows.push(['T<sub>1</sub> = C<sub>t</sub>·h<sup>3/4</sup>', `${num(sd.T1, 3)} s`, 'Lign. (4.6)']);
   }

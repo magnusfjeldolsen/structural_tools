@@ -44,7 +44,7 @@ for (const [name, over] of Object.entries(cases)) {
       assert.match(html, /NS-EN 1998-1:2004\+A1:2013\+NA:2021/);
       assert.match(html, /Oppgitt, jf\. Tabell NA\.4\(901\)/);
       assert.match(html, /Oppgitt, jf\. Tabell NA\.3\.2/);
-      assert.match(html, /verktøyet inneholder ingen verdier fra standarden/);
+      assert.match(html, /Verdier fra det nasjonale tillegget \(NA\) er oppgitt av brukeren/);
       assert.match(html, /Testprosjekt &lt;&amp;&gt;/, 'brukertekst skal escapes');
       assert.match(html, /Testby &lt;1234&gt;/);
       assert.equal((html.match(/class="report-page"/g) || []).length, 1);
@@ -70,4 +70,15 @@ test('manglende verdier gir en feilside, ikke tall', () => {
   assert.match(html, /Rapport kan ikke lages/);
   assert.match(html, /Oppgi γI/);
   assert.doesNotMatch(html, /NaN/);
+});
+
+test('kildene i rapporten følger hvor verdiene kom fra', () => {
+  const en = buildReport('spectrum', ctx({ spectrumSource: 'en', S: 1.0, TB: 0.05, TC: 0.25, TD: 1.2, beta: 0.2 }));
+  assert.match(en, /EN 1998-1 Tabell 3\.3 \(anbefalte verdier\)/);
+  assert.match(en, /3\.2\.2\.5\(4\), anbefalt verdi/);
+
+  const ct = buildReport('avoidance', ctx({ sdMethod: 'simplified', ctMethod: 'concrete', Ct: 0.075 }));
+  assert.match(ct, /4\.3\.3\.2\.2\(3\), momentstive betongrammer/);
+  const custom = buildReport('avoidance', ctx({ sdMethod: 'simplified', ctMethod: 'custom', Ct: 0.06 }));
+  assert.match(custom, /Oppgitt, jf\. 4\.3\.3\.2\.2\(3\)/);
 });

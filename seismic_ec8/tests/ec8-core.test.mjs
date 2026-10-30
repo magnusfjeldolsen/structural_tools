@@ -6,7 +6,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compute, designSd, spectrumCurve, simplifiedT1 } from '../js/ec8-core.js';
+import { compute, designSd, spectrumCurve, simplifiedT1, enSpectrum } from '../js/ec8-core.js';
 
 const SPECTRUM = { S: 1.2, TB: 0.1, TC: 0.3, TD: 1.5 };
 const LIMITS = { agS: 0.6, ag: 0.4, life: 3, Sd: 0.7, qMax: 1.6 };
@@ -152,4 +152,10 @@ test('brukstid innenfor grensen oppfyller kriterium 4', () => {
   const r = run({ life: 3, agR: 2.0 });
   assert.equal(status(r, 4), 'met');
   assert.equal(r.conclusion, 'avoided');
+});
+
+test('enSpectrum gir anbefalte verdier fra EN 1998-1 Tabell 3.2/3.3', () => {
+  assert.deepEqual(enSpectrum('1', 'C'), { S: 1.15, TB: 0.20, TC: 0.6, TD: 2.0, ref: 'EN 1998-1 Tabell 3.2 (anbefalte verdier)' });
+  assert.deepEqual(enSpectrum('2', 'D'), { S: 1.80, TB: 0.10, TC: 0.30, TD: 1.2, ref: 'EN 1998-1 Tabell 3.3 (anbefalte verdier)' });
+  assert.throws(() => enSpectrum('2', 'S1'));
 });

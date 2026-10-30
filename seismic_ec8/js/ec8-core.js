@@ -2,9 +2,10 @@
  * ec8-core.js — beregningskjernen. Ingen DOM: inn går et input-objekt, ut går
  * et resultatobjekt som skjerm, plott og begge rapportene leser fra.
  *
- * Alle tallverdier fra standarden kommer inn via inputs (se ec8-data.js).
+ * Alle tallverdier kommer inn via inputs. enSpectrum() gir de anbefalte
+ * EN-verdiene som utgangspunkt; NA-verdiene taster brukeren selv (se ec8-data.js).
  */
-import { SEISMIC_CLASSES, GROUND_TYPES, T1_MAX_HEIGHT } from './ec8-data.js';
+import { SEISMIC_CLASSES, GROUND_TYPES, T1_MAX_HEIGHT, EN_SPECTRUM } from './ec8-data.js';
 
 // Tallene sammenlignes med grenseverdier; 0,25 · 2,0 skal ikke falle på feil
 // side av grensen på grunn av flyttall.
@@ -12,6 +13,15 @@ const EPS = 1e-9;
 const atMost = (value, limit) => value <= limit + EPS;
 const finite = v => typeof v === 'number' && Number.isFinite(v);
 const fmt = (v, d = 2) => v.toFixed(d).replace('.', ',');
+
+/** Anbefalte S, TB, TC, TD fra EN 1998-1 Tabell 3.2/3.3. */
+export function enSpectrum(spectrumType, groundType) {
+  const table = EN_SPECTRUM[spectrumType];
+  if (!table || !table.values[groundType]) {
+    throw new Error(`Ukjent spekter/grunntype: ${spectrumType}/${groundType}`);
+  }
+  return { ...table.values[groundType], ref: table.ref };
+}
 
 /**
  * Dimensjonerende spekter for elastisk analyse, lign. (3.13)–(3.16).
@@ -53,10 +63,11 @@ export function simplifiedT1(Ct, h) {
  *
  * inputs = {
  *   seismicClass, gammaI, agR, spectrumType, groundType,
+ *   spectrumSource: 'en' | 'user',               // hvor S, TB, TC, TD kommer fra
  *   S, TB, TC, TD, q, beta, life,
  *   limits: { agS, ag, life, Sd, qMax },          // NA.3.2.1(5), null = ikke oppgitt
  *   sdMethod: 'none' | 'simplified' | 'modalT1' | 'modalSd',
- *   Ct, h, T1Modal, SdModal,
+ *   ctMethod: 'steel' | 'concrete' | 'other' | 'custom', Ct, h, T1Modal, SdModal,
  *   noStiffnessReduction, soilStiffnessBounds     // avkrysninger for modalanalyse
  * }
  */

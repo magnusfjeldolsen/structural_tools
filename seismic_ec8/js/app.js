@@ -5,7 +5,8 @@
  * også rapporten, tegnes fra det siste resultatet; ingenting leses tilbake
  * fra visningsfeltene.
  */
-import { compute, designSd } from './ec8-core.js';
+import { compute, designSd, enSpectrum } from './ec8-core.js';
+import { EN_CT } from './ec8-data.js';
 import { spectrumSvg } from './spectrum-svg.js';
 import { buildReport } from './report.js';
 import { PROJECT_FIELDS, loadProjectInfo, saveProjectInfo } from './project-info.js';
@@ -33,6 +34,7 @@ function readInputs() {
     agR: parse('agr'),
     spectrumType: $('spectrum_type').value,
     groundType: $('ground_type').value,
+    spectrumSource: $('spectrum_source').value,
     S: parse('sp_S'),
     TB: parse('sp_TB'),
     TC: parse('sp_TC'),
@@ -48,6 +50,7 @@ function readInputs() {
       qMax: parse('lim_qMax')
     },
     sdMethod: $('sd_method').value,
+    ctMethod: $('ct_method').value,
     Ct: parse('ct'),
     h: parse('h'),
     T1Modal: parse('t1_modal'),
@@ -244,6 +247,23 @@ function saveInputs() {
   try { localStorage.setItem(INPUTS_KEY, JSON.stringify(out)); } catch { /* lagring blokkert */ }
 }
 
+// Med EN-kilde fylles S, TB, TC, TD fra tabellen og låses; ellers står brukerens verdier.
+function syncSpectrum() {
+  const en = $('spectrum_source').value === 'en';
+  const p = en ? enSpectrum($('spectrum_type').value, $('ground_type').value) : null;
+  for (const k of ['S', 'TB', 'TC', 'TD']) {
+    const el = $(`sp_${k}`);
+    el.disabled = en;
+    if (en) el.value = p[k];
+  }
+}
+
+function syncCt() {
+  const m = $('ct_method').value;
+  $('ct').disabled = m !== 'custom';
+  if (m !== 'custom') $('ct').value = EN_CT[m].Ct;
+}
+
 function toggleSdMethod() {
   const m = $('sd_method').value;
   $('simplified_inputs').hidden = m !== 'simplified';
@@ -255,12 +275,16 @@ function toggleSdMethod() {
 document.addEventListener('DOMContentLoaded', () => {
   populateProjectFields();
   restoreInputs();
+  syncSpectrum();
+  syncCt();
   toggleSdMethod();
 
   for (const el of document.querySelectorAll('[data-persist]')) {
     const ev = el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input';
     el.addEventListener(ev, () => {
       if (el.id === 'sd_method') toggleSdMethod();
+      if (['spectrum_source', 'spectrum_type', 'ground_type'].includes(el.id)) syncSpectrum();
+      if (el.id === 'ct_method') syncCt();
       saveInputs();
       update();
     });
