@@ -122,15 +122,23 @@ console.log('Union av formene minus hull');
   ok('vektfaktor meldes', r4.ok && r4.warnings.some((w) => /faktor/i.test(w)), JSON.stringify(r4.warnings));
 }
 
-console.log('Hull under en fast form i lista');
+console.log('Hullets plass i lista spiller ingen rolle');
 {
-  // Hullene skjærer bare i det som ligger under dem — som «Areal, fysisk» og
-  // 'priority'. Ligger hullet under, går det ikke gjennom, og det sies fra.
-  const r = exportSection([solid('a', R(0, 0, 100, 100)), hole('h', R(10, 10, 20, 20))], { unit: 'mm' });
-  ok('A = 10 000 (hullet går ikke gjennom)', r.ok && Math.abs(sectionProps(r.section).A - 1e4) < 1e-9);
-  ok('advarsel om rekkefølgen', r.warnings.some((w) => /ligger under/.test(w)), JSON.stringify(r.warnings));
-  const top = exportSection([hole('h', R(10, 10, 20, 20)), solid('a', R(0, 0, 100, 100))], { unit: 'mm' });
-  ok('hull øverst: A = 9 600, ingen advarsel', top.ok && Math.abs(sectionProps(top.section).A - 9600) < 1e-9 && top.warnings.length === 0);
+  // Et hull skjærer alt fast areal det overlapper (#86), øverst eller nederst.
+  for (const [ord, list] of [
+    ['hull nederst', [solid('a', R(0, 0, 100, 100)), hole('h', R(10, 10, 20, 20))]],
+    ['hull øverst', [hole('h', R(10, 10, 20, 20)), solid('a', R(0, 0, 100, 100))]],
+  ]) {
+    const r = exportSection(list, { unit: 'mm' });
+    ok(`${ord}: A = 9 600, ingen advarsel`, r.ok && Math.abs(sectionProps(r.section).A - 9600) < 1e-9 && r.warnings.length === 0, JSON.stringify(r.warnings));
+  }
+  // Testene over med hullene flyttet nederst gir samme tall
+  const r = exportSection([solid('a', R(0, 0, 100, 100)), solid('b', R(50, 0, 100, 100)), hole('h', R(10, 10, 20, 20))], { unit: 'mm' });
+  ok('union minus hull, hull nederst: 14 600', Math.abs(sectionProps(r.section).A - 14600) < 1e-6);
+  const r3 = exportSection([solid('a', R(0, 0, 100, 100)), hole('n', R(-10, 40, 30, 20))], { unit: 'mm' });
+  ok('hakk i kanten, hull nederst: 9 600, ingen hull', r3.ok && r3.section.holes.length === 0 && Math.abs(sectionProps(r3.section).A - 9600) < 1e-6);
+  const r5 = exportSection([solid('a', R(0, 0, 10, 10)), hole('h', R(-5, -5, 30, 30))], { unit: 'mm' });
+  ok('hullet spiser alt, hull nederst', r5.ok === false && /ingen/i.test(r5.error), r5.error);
 }
 
 console.log('Ingenting å eksportere');

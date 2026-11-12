@@ -120,11 +120,16 @@ Hull er **egne former med `role:'void'`**, ikke innerringer. Riktig kilde til
 konturer er derfor `analyze().parts[i].multi` og `netMulti`, ikke
 `shape.points`.
 
-`netMulti` («Areal, fysisk», rapportfiguren, tverrsnittseksporten) males
-nedenfra i lista (`paintNet`): **et hull skjærer bare i det som ligger under
-det**, som i 'priority'. Ellers forsvinner en øy i et hull fra det fysiske
-arealet mens 'sum' teller den med (#86). DXF-importen legger derfor dypere
-regioner og hull øverst.
+**Et hull skjærer alt fast areal det overlapper**, uansett plass i formlista
+og uansett modus (#86). `analyze()` trekker unionen av alle hull fra hver fast
+form før den summerer ('sum') eller prioriterer ('priority'), og `netMulti`
+(«Areal, fysisk», rapportfiguren, tverrsnittseksporten) er unionen av de faste
+formene minus unionen av hullene. Dermed er 'sum', 'priority', panelet og
+eksporten enige. **Øy i hull støttes ikke**: et tverrsnitt må henge sammen
+fysisk, så en fast form helt inne i et hull blir skåret bort, og
+`analyze().swallowed`, DXF-meldingen og eksporten sier fra. Unntak: skjøtenes
+halvplan-`ES*` (`joints.js`) trekker fortsatt fra hullets eget areal, som
+bare er det samme når hullet ligger helt inne i materialet.
 
 ## 9. Avgrensning
 

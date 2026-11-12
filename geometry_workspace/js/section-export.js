@@ -15,7 +15,8 @@
  *  - Akser: workspacet har x mot høyre og y OPP. Formatet har y vannrett og
  *    z opp. Altså y = x og z = y — nye navn, ingen speiling.
  *
- * Geometrien er rent geometrisk: union av de faste formene minus hullene.
+ * Geometrien er rent geometrisk: union av de faste formene minus ALLE hull,
+ * uansett rekkefølge i formlista — samme regel som analyze().
  * Vektfaktorer og dobbelttelling av overlapp ('sum'-modus) finnes ikke i
  * formatet; når de ville gitt et annet areal enn det eksporterte, sies det.
  *
@@ -25,7 +26,6 @@
 import {
   pointsToMulti,
   unionMulti,
-  paintNet,
   differenceMulti,
   multiProps,
   polygonProps,
@@ -96,23 +96,25 @@ export function exportSection(shapes, { unit = 'mm', selection = [] } = {}) {
     warnings.push('Vektfaktorer ≠ 1 finnes ikke i formatet og er ikke tatt med.');
   }
 
-  // Samme regel som «Areal, fysisk»: et hull skjærer bare i det som ligger
-  // under det i lista, så en øy i et hull blir stående — og blir da en egen
-  // del, som formatet ikke kan bære (#86, B2).
-  const net = paintNet(list);
+  // Samme regel som «Areal, fysisk»: hvert hull skjærer alt fast areal det
+  // overlapper, uansett rekkefølge i lista (#86).
+  const voids = list.filter((s) => s.role === 'void');
+  const voidMulti = unionMulti(voids.map((s) => pointsToMulti(s.points)));
+  const net = voidMulti.length ? differenceMulti(solidMulti, voidMulti) : solidMulti;
   const pieces = net.filter((poly) => Math.abs(polygonProps(poly).A) > EPS);
 
-  // Ligger et hull UNDER en fast form det overlapper, skjærer det ikke i den.
-  // Sammenlikn med «alle hull fra alle former» og si fra når de er ulike.
-  const voids = list.filter((s) => s.role === 'void');
-  if (voids.length) {
-    const allCut = differenceMulti(solidMulti, unionMulti(voids.map((s) => pointsToMulti(s.points))));
-    const a1 = Math.abs(multiProps(net).A);
-    const a2 = Math.abs(multiProps(allCut).A);
-    if (Math.abs(a1 - a2) > Math.max(a1, a2, 1e-30) * 1e-9) {
+  // Øy i hull støttes ikke: en fast form helt inne i et hull blir borte. Det
+  // skal sies, ikke skje stille.
+  if (voidMulti.length) {
+    const lost = solids.filter((s) => {
+      const own = pointsToMulti(s.points);
+      const left = Math.abs(multiProps(differenceMulti(own, voidMulti)).A);
+      return left <= Math.abs(multiProps(own).A) * 1e-9;
+    });
+    if (lost.length) {
       warnings.push(
-        'Et hull ligger under en fast form i geometrilista og skjærer ikke i den (samme regel som «Areal, fysisk»). ' +
-          'Flytt hullet øverst hvis det skal gå gjennom.'
+        `${lost.length} ${lost.length === 1 ? 'fast form ligger' : 'faste former ligger'} helt inne i et hull og er ` +
+          'skåret bort (øy i hull støttes ikke — koble den til resten av tverrsnittet).'
       );
     }
   }

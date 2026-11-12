@@ -4,7 +4,8 @@
  *   node geometry_workspace/tests/area-consistency.test.mjs
  *
  * Et tverrsnitt med hull skal gi samme A i 'sum', i 'priority', i det
- * panelet viser («Areal, skallmodell» / «Areal, fysisk») og i eksporten.
+ * panelet viser («Areal, skallmodell» / «Areal, fysisk») og i eksporten —
+ * med hullet hvor som helst i formlista (hull skjærer alt fast areal).
  * Pluss: eksporten skriver aldri koordinater langt fra origo, og aldri
  * ringer som berører seg selv.
  *
@@ -42,29 +43,61 @@ const LWPOLY = (v) => `0\nLWPOLYLINE\n8\n0\n90\n${v.length}\n70\n1\n` + v.map(([
 const CIRCLE = (x, y, r) => `0\nCIRCLE\n8\n0\n10\n${x}\n20\n${y}\n40\n${r}`;
 const sq = (x0, s) => LWPOLY(R(x0, x0, s, s));
 
-/* ---------------- B2: øy i hull ---------------- */
+/* ---------------- Hullregelen: hull skjærer alt, i alle modi ---------------- */
 
-console.log('B2 Øy i hull: kvadrat 100, hull 80, øy 20 → A = 4 000');
-{
-  // FØR: sum 4 000, priority 3 600, netArea 3 600, eksport 3 600 uten advarsel
-  const sh = shapesOf(importDxf(wrap([sq(0, 100), sq(10, 80), sq(40, 20)].join('\n'))));
-  const s = analyze(sh, 'sum');
-  const p = analyze(sh, 'priority');
-  ok(`sum = ${s.result.A}`, Math.abs(s.result.A - 4000) < 1e-9);
-  ok(`priority = ${p.result.A}`, Math.abs(p.result.A - 4000) < 1e-9);
-  ok(`Areal, fysisk (netArea) = ${s.netArea}`, Math.abs(s.netArea - 4000) < 1e-9);
-  const e = exportSection(sh, { unit: 'mm' });
-  ok('eksporten nekter: to usammenhengende deler', !e.ok && /2 usammenhengende/.test(e.error), e.error || 'ok');
+// Brukerens avgjørelse (#86): et hull skjærer ALT fast areal det overlapper,
+// uansett plass i formlista og modus. Øy i hull støttes ikke — øya skjæres bort,
+// og det meldes. Hvert tilfelle kjøres med hullet både øverst og nederst.
+const orders = (list) => [
+  ['hull øverst', [...list.filter((x) => x.role === 'void'), ...list.filter((x) => x.role !== 'void')]],
+  ['hull nederst', [...list.filter((x) => x.role !== 'void'), ...list.filter((x) => x.role === 'void')]],
+];
+function allAgree(name, list, expectA) {
+  for (const [ord, sh] of orders(list)) {
+    const s = analyze(sh, 'sum');
+    const p = analyze(sh, 'priority');
+    const rows = areaRows(s);
+    const e = exportSection(sh, { unit: 'mm' });
+    const eA = e.ok ? sectionProps(e.section).A : NaN;
+    ok(
+      `${name}, ${ord}: sum ${s.result.A.toFixed(1)}, priority ${p.result.A.toFixed(1)}, fysisk ${s.netArea.toFixed(1)}, skallmodell ${row(rows, 'Areal, skallmodell').toFixed(1)}, eksport ${eA.toFixed(1)} = ${expectA}`,
+      [s.result.A, p.result.A, s.netArea, p.netArea, row(rows, 'Areal, skallmodell'), eA].every((v) => Math.abs(v - expectA) < 1e-6 * Math.max(1, expectA)),
+      e.error
+    );
+  }
 }
 
-console.log('B2 Fire nivåer: 100 / 80 / 40 / 20 → A = 4 800');
+console.log('Hull nederst i lista skjærer like mye som øverst');
+allAgree('hull 20×20 i 100×100', [S('a', R(0, 0, 100, 100)), V('h', R(10, 10, 20, 20))], 9600);
+allAgree('hull som stikker ut', [S('a', R(0, 0, 100, 100)), V('h', R(-10, 40, 30, 20))], 9600);
+allAgree('to hull som overlapper hverandre', [S('a', R(0, 0, 100, 100)), V('h1', R(10, 10, 20, 20)), V('h2', R(20, 10, 20, 20))], 10000 - 600);
+
+console.log('Hull over et dobbelttalt overlapp skjærer begge formene i sum');
 {
-  // FØR: sum 4 800, priority 3 600
-  const sh = shapesOf(importDxf(wrap([sq(0, 100), sq(10, 80), sq(30, 40), sq(40, 20)].join('\n'))));
-  for (const m of ['sum', 'priority']) {
-    const a = analyze(sh, m);
-    ok(`${m}: A = ${a.result.A}, netArea = ${a.netArea}`, Math.abs(a.result.A - 4800) < 1e-9 && Math.abs(a.netArea - 4800) < 1e-9);
+  // a og b overlapper i x 50..100; hullet 60..80 × 10..30 ligger i overlappet.
+  // sum: 10 000 + 10 000 − 2·400 = 19 200. Fysisk: 15 000 − 400 = 14 600.
+  for (const [ord, sh] of orders([S('a', R(0, 0, 100, 100)), S('b', R(50, 0, 100, 100)), V('h', R(60, 10, 20, 20))])) {
+    const s = analyze(sh, 'sum');
+    const p = analyze(sh, 'priority');
+    ok(`${ord}: sum = 19 200, priority = fysisk = 14 600`, Math.abs(s.result.A - 19200) < 1e-6 && Math.abs(p.result.A - 14600) < 1e-6 && Math.abs(s.netArea - 14600) < 1e-6, `${s.result.A} ${p.result.A} ${s.netArea}`);
+    const rows = areaRows(s);
+    ok(`${ord}: overlapp-rad = 5 000 − 400`, Math.abs(row(rows, 'Herav overlapp') - 4600) < 1e-6, JSON.stringify(rows));
   }
+}
+
+console.log('Øy i hull: skåret bort, og det meldes');
+{
+  // Kvadrat 100, hull 80, øy 20: øya ligger helt i hullet → A = 10 000 − 6 400.
+  // FØR (forrige runde): 4 000 med øya; nå støttes ikke øy i hull.
+  const res = importDxf(wrap([sq(0, 100), sq(10, 80), sq(40, 20)].join('\n')));
+  const sh = shapesOf(res);
+  allAgree('øy i hull', sh, 3600);
+  const s = analyze(sh, 'sum');
+  ok('analyze.swallowed peker på øya', s.swallowed.length === 1 && sh.find((x) => x.id === s.swallowed[0]).name === 'DXF 2', JSON.stringify(s.swallowed));
+  const e = exportSection(sh, { unit: 'mm' });
+  ok('eksporten melder øya', e.ok && e.warnings.some((w) => /helt inne i et hull/.test(w)), JSON.stringify(e.warnings));
+  const four = shapesOf(importDxf(wrap([sq(0, 100), sq(10, 80), sq(30, 40), sq(40, 20)].join('\n'))));
+  allAgree('fire nivåer 100/80/40/20', four, 3600);
 }
 
 /* ---------------- B6: panelets arealtall ---------------- */

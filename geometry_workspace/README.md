@@ -73,9 +73,10 @@ hvilken som ble brukt. Velg mm/cm/m for å overstyre.
   sammen (1e-4), gir advarsel, og den minste utelates — ellers ble den et
   hårtynt hull.
 - En kontur inni en annen blir et **hull** — en egen form med `role:'void'`,
-  slik som et tegnet hull. En kontur inni et hull blir en ny, selvstendig form,
-  lagt **foran** hullet i lista, så 'sum', 'priority' og «Areal, fysisk» gir
-  samme areal. En lukket tegningsramme er også en kontur; slett den etterpå.
+  slik som et tegnet hull. En kontur inni et hull («øy i hull») blir en egen
+  form, men hullet skjærer den bort — det støttes ikke, og meldingen sier fra.
+  En lukket tegningsramme er også en kontur; slett den etterpå, eller bruk
+  «Bare linjer» (se under).
 - Ligger tegningen langt fra origo i forhold til sin størrelse (delte
   koordinater, 6,6e9 mm), flyttes den til et lokalt origo før buene
   diskretiseres, og forskyvningen står i meldingen.
@@ -102,11 +103,10 @@ workspacets x og `z` er workspacets y (begge har «opp» opp). Ringene er åpne,
 ytre mot klokka, hull med klokka. Er noen former markert, eksporteres bare de
 (og alle hullene).
 
-Geometrien er den samme som «Areal, fysisk»: formene legges oppå hverandre
-nedenfra i geometrilista, og **et hull skjærer bare i det som ligger under
-det**. Ligger et hull under en fast form det overlapper, sies det fra. Består
-resultatet av flere usammenhengende deler (også en øy i et hull), eksporteres
-ingenting og det sies fra. Overlapp telles én gang og vektfaktorer er ikke med
+Geometrien er den samme som «Areal, fysisk»: de faste formene minus alle hull.
+Består resultatet av flere usammenhengende deler, eksporteres ingenting og det
+sies fra. Ligger en fast form helt inne i et hull, er den skåret bort, og det
+sies også fra. Overlapp telles én gang og vektfaktorer er ikke med
 — begge deler meldes. Ligger tverrsnittet langt fra origo, flyttes det til et
 lokalt origo (formatet har vilkårlig origo). Eksporten nekter heller enn å
 skrive en ring som berører seg selv eller et hull uten areal.
@@ -288,6 +288,12 @@ To modi:
   bare det arealet ingen form over den allerede har krevd (`difference` mot unionen av
   de foregående). Overlapp telles dermed nøyaktig én gang, og tyngdepunktet er
   uavhengig av rekkefølgen så lenge alle formene har samme vektfaktor.
+
+**Hull skjærer alt fast areal de overlapper**, i begge modi og uansett hvor i lista
+de står: hver fast form får unionen av alle hull trukket fra seg. Et hull som stikker
+ut av materialet, trekker bare fra det det dekker; et hull i et dobbelttalt overlapp
+skjærer begge formene. Øy i hull (en fast form helt inne i et hull) støttes ikke —
+den skjæres bort, og eksporten og DXF-importen sier fra.
 
 Vektfaktoren på hver form er ment som E-forhold ved transformert tverrsnitt; med
 faktorer ulik 1 er «tyngdepunktet» nøytralaksen til det transformerte tverrsnittet.

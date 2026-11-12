@@ -699,8 +699,8 @@ const boxInside = (a, b) => a.minX >= b.minX && a.maxX <= b.maxX && a.minY >= b.
 /**
  * Ordner ringene etter hvor dypt de ligger. Dybde 0, 2, 4 … er materiale,
  * 1, 3 … er hull i ringen rett utenfor. Et massivt stykke inni et hull blir
- * en egen region med `depth` 2 — den må ligge FORAN hullet i formlista, ellers
- * spiser hullet den i 'priority'-modus (se `shapeList`).
+ * en egen region med `depth` 2. Siden hull skjærer alt fast areal de overlapper,
+ * blir en slik øy skåret bort i workspacet; `describeImport` melder det.
  *
  * En ring kan bare ligge inni en annen hvis boksen gjør det; den sjekken er
  * billig og gjør at punkt-i-ring bare kjøres for reelle kandidater (#86, B4).
@@ -840,16 +840,15 @@ export function resolveDxfUnit(choice, insunits) {
 }
 
 /**
- * Formene importen skal bli, i den rekkefølgen de skal stå i geometrilista
- * (øverst først): de dypeste regionene først, og i hver region hullene foran
- * ytterkonturen. Da gir 'sum', 'priority' og nettoarealet samme tall også for
- * en øy i et hull (#86, B2).
+ * Formene importen skal bli, øverst først: i hver region hullene foran
+ * ytterkonturen. Rekkefølgen betyr ikke noe for hullene — et hull skjærer alt
+ * fast areal det overlapper (#86). En region inni et hull («øy i hull») blir
+ * derfor skåret bort; `describeImport` sier fra om det.
  *
  * @returns {Array<{points, role: 'solid'|'void', name: string}>}
  */
 export function shapeList(res, { start = 1, base = 'DXF' } = {}) {
   const named = (res.regions || []).map((g, i) => ({ g, name: `${base} ${start + i}` }));
-  named.sort((a, b) => (b.g.depth || 0) - (a.g.depth || 0)); // stabil sortering
   const list = [];
   for (const { g, name } of named) {
     g.holes.forEach((h, j) => list.push({ points: h, role: 'void', name: `${name} hull ${j + 1}` }));
@@ -882,6 +881,13 @@ export function describeImport(res) {
     parts.push(
       `${plural(res.nearDuplicates, 'par nesten sammenfallende konturer', 'par nesten sammenfallende konturer')}: ` +
         'den minste er utelatt — kontroller tegningen.'
+    );
+  }
+  const islands = res.regions.filter((g) => (g.depth || 0) >= 2).length;
+  if (islands) {
+    parts.push(
+      `${plural(islands, 'form ligger', 'former ligger')} inne i et hull og blir skåret bort av det — ` +
+        'øy i hull støttes ikke; koble den til resten av tverrsnittet.'
     );
   }
   if (res.offset) {
