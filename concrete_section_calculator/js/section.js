@@ -26,7 +26,9 @@
  */
 
 import { concreteProps } from './materials.js';
+import { circleInConcrete, chordIntervals, polygonIssues, polygonProps } from './polygon.js';
 import {
+  barPositions,
   effectiveDepth,
   effectiveDepthGeometric,
   layerArea,
@@ -34,6 +36,7 @@ import {
   layerCentroidZ,
   layerDepth,
   layersOnEdge,
+  layerSpan,
   minClearBetween,
   minClearDistance,
   stirrupCoverDia,
@@ -55,6 +58,57 @@ function num(v) {
   if (v === null || v === undefined || v === '') return NaN;
   const n = Number(v);
   return Number.isFinite(n) ? n : NaN;
+}
+
+/**
+ * Er snittet et fritt tverrsnitt (polygon med hull, sak #83)?
+ *
+ * Alle de gamle testene på `sectionType === 'slab'` lar `'custom'` falle i bjelkegrenen,
+ * og det er med vilje: et fritt tverrsnitt har `antall × Ø`-lag, bøyler og sidedekning
+ * som en bjelke. Det som er ANNERLEDES — arealet, `b_t`, `b_w`, `h₀`, tegningen — spør
+ * denne funksjonen eksplisitt.
+ */
+export function isCustomSection(state = {}) {
+  return state.sectionType === 'custom';
+}
+
+/**
+ * Polygonet for et fritt tverrsnitt, i modulens system (omskrevet rektangel sentrert i
+ * origo — `store.js` normaliserer ved hver dør inn), eller `null` for rektangel og plate.
+ *
+ * `geometry.b`/`geometry.h` holdes av `store.js` lik det omskrevne rektangelet, slik at
+ * de 14 rå leserne av `b`/`h` (tegningens ramme, `dc` fra kanten, `d`) ser de riktige
+ * tallene uten å vite at snittet er et polygon. Polygonet er den ENE kilden; `b`/`h` er
+ * avledet av den, aldri omvendt.
+ */
+export function sectionPolygon(state = {}) {
+  if (!isCustomSection(state)) return null;
+  const g = state.geometry || {};
+  if (!Array.isArray(g.outer)) return null;
+  return { outer: g.outer, holes: Array.isArray(g.holes) ? g.holes : [] };
+}
+
+/**
+ * Geometrien `barPositions()` skal ha: `{b, h}`, pluss polygonet for et fritt
+ * tverrsnitt. ÉN funksjon for payloaden og tegningen, slik at de to aldri kan spørre
+ * med ulike argumenter (se `rebar.js` sitt hode).
+ */
+export function barGeometry(state = {}) {
+  const g = { b: sectionWidth(state), h: sectionHeight(state) };
+  const polygon = sectionPolygon(state);
+  if (polygon) g.polygon = polygon;
+  return g;
+}
+
+/**
+ * `b_w` til skjær (EC2 6.2). Rektangel og plate: bredden. Fritt tverrsnitt: det
+ * EKSPLISITTE `geometry.bw`, eller `NaN` når det mangler — stegbredden kan ikke leses av
+ * et vilkårlig polygon, og motoren regner da ikke skjær (svarer «ikke regnet» med grunn).
+ */
+export function shearWidth(state = {}) {
+  if (!isCustomSection(state)) return sectionWidth(state);
+  const bw = num((state.geometry || {}).bw);
+  return bw > 0 ? bw : NaN;
 }
 
 /**
@@ -142,6 +196,8 @@ export function sectionBounds(state = {}) {
 
 /** Brutto betongareal [mm²]. Stålarealet trekkes IKKE fra (plan §3.8). */
 export function grossArea(state = {}) {
+  const polygon = sectionPolygon(state);
+  if (polygon) return polygonProps(polygon).area;
   return sectionWidth(state) * sectionHeight(state);
 }
 
@@ -157,6 +213,8 @@ export function grossArea(state = {}) {
  * gjelder motorens tall.
  */
 export function asMin(state = {}) {
+  // Fritt tverrsnitt: `b_t` er ikke ett tall (se `engine.py`, `as_min`). Ikke tilgjengelig.
+  if (isCustomSection(state)) return NaN;
   const b_t = sectionWidth(state);
   const d = effectiveDepthGeometric(
     state.layers || [],
@@ -198,13 +256,15 @@ export function derived(state = {}) {
   // over alle lag, som er motorens `d_eff_all` og et eksakt geometrisk tall.
   const d = effectiveDepthGeometric(layers, h, theta);
   const asT = tensionArea(layers, h, theta);
+  const custom = isCustomSection(state);
   return {
-    Ag: b * h,
+    Ag: custom ? grossArea(state) : b * h,
     As_total: totalArea(layers),
     As_tension: asT,
-    // EC2 sin ρ_l: teller og nevner fra SAMME utvalg.
-    rho: asT / (b * d),
-    b_t: b,
+    // EC2 sin ρ_l: teller og nevner fra SAMME utvalg. Fritt tverrsnitt: `b_t` finnes
+    // ikke, og da heller ikke ρ_l — samme svar som motoren.
+    rho: custom ? NaN : asT / (b * d),
+    b_t: custom ? NaN : b,
     d_eff: d,
     d_eff_all: effectiveDepth(layers, h, theta),
     As_min: asMin(state),
@@ -251,16 +311,46 @@ export function validate(state = {}) {
   const steel = state.steel || {};
 
   // --- 4. Grunnleggende geometri ---
-  if (!(h > 0)) {
+  // For et fritt tverrsnitt er `b`/`h` avledet av polygonet; et polygon uten høyde er
+  // allerede en polygonfeil (4c), og to meldinger om samme feil hjelper ingen.
+  if (!(h > 0) && !isCustomSection(state)) {
     out.push(issue('invalid_height', 'error', 'Høyden h må være større enn 0.', 'geometry.h'));
   }
-  if (!(b > 0)) {
+  if (!(b > 0) && !isCustomSection(state)) {
     out.push(issue('invalid_width', 'error', 'Bredden b må være større enn 0.', 'geometry.b'));
   }
   if (layers.length === 0) {
     out.push(
       issue('no_reinforcement', 'error', 'Tverrsnittet må ha minst ett armeringslag.', 'layers')
     );
+  }
+
+  // --- 4c. Fritt tverrsnitt (sak #83) ---
+  // Samme kontroller som motoren (`csc_polygon.validated_polygon`), slik at skjemaet sier
+  // fra FØR «Beregn». Motoren kontrollerer uansett selv; dette er ikke sikringen, bare
+  // tilbakemeldingen.
+  const custom = isCustomSection(state);
+  const polygon = sectionPolygon(state);
+  let polygonOk = false;
+  if (custom) {
+    const problems = polygon ? polygonIssues(polygon) : polygonIssues(null);
+    // `detail` bærer den konkrete teksten («Hole 3 …»): `describeWarning` viser
+    // kodetabellens faste tekst for en kjent kode og kaster `message`.
+    for (const p of problems) {
+      out.push({ ...issue(p.code, 'error', p.message, 'geometry.outer'), detail: p.message });
+    }
+    polygonOk = problems.length === 0;
+    if (!(shearWidth(state) > 0)
+      && (state.combos || []).some((c) => Number.isFinite(num(c.V_Ed)) && num(c.V_Ed) !== 0)) {
+      out.push(
+        issue(
+          'bw_missing',
+          'warning',
+          'Skjær regnes ikke: et fritt tverrsnitt trenger stegbredden b_w oppgitt eksplisitt.',
+          'geometry.bw'
+        )
+      );
+    }
   }
 
   // --- 4b. Lastvirkning (runde 6 §2.1) ---
@@ -323,6 +413,42 @@ export function validate(state = {}) {
         )
       );
     }
+    // FRITT TVERRSNITT: bredden laget har å fordele seg over er BETONGEN i lagets høyde
+    // (`layerSpan`, samme funksjon som plasserer jernene), ikke det omskrevne rektangelet.
+    let available = b;
+    if (custom && polygonOk && layer.mode !== 'spacing') {
+      const span = layerSpan(layer, barGeometry(state));
+      if (!span) {
+        const z = layerCentroidZ(layer, h);
+        const parts = Number.isFinite(z) ? chordIntervals(polygon, z).length : 0;
+        out.push(
+          issue(
+            'layer_span_ambiguous',
+            'error',
+            `Lag ${layer.id || i + 1}: laget ligger i en høyde der betongen er delt i ${parts} `
+              + 'partier (gjennom hull eller mellom steg). Flytt laget, eller del det i ett lag '
+              + 'per parti.',
+            `layers.${i}.dc`
+          )
+        );
+        return;
+      }
+      available = span[1] - span[0];
+      const opts = { ...state, stirrup_dia: stirrupCoverDia(state) };
+      const outside = barPositions(layer, barGeometry(state), opts)
+        .some((p) => !circleInConcrete(polygon, p.y, p.z, p.dia / 2));
+      if (outside) {
+        out.push(
+          issue(
+            'bar_outside_concrete',
+            'error',
+            `Lag ${layer.id || i + 1}: minst ett jern ligger utenfor betongen — i et hull `
+              + 'eller utenfor randen.',
+            `layers.${i}.dc`
+          )
+        );
+      }
+    }
     if (state.sectionType !== 'slab' && layer.mode !== 'spacing') {
       const n = layerBarCount(layer);
       // EC2 8.2(2), ikke lenger bare et gulv på 20 mm — k1/k2/d_g er
@@ -330,13 +456,13 @@ export function validate(state = {}) {
       const clear = minClearDistance(dia, state.spacing);
       const needed =
         2 * (num(state.cover_side) + stirrupCoverDia(state)) + n * dia + (n - 1) * clear;
-      if (b < needed) {
+      if (available < needed) {
         out.push(
           issue(
             'layer_too_wide',
             'error',
             `Lag ${layer.id || i + 1}: ${n}Ø${dia} får ikke plass i bredden. ` +
-              `Trenger ${Math.round(needed)} mm, har ${b} mm.`,
+              `Trenger ${Math.round(needed)} mm, har ${custom ? Math.round(available * 10) / 10 : b} mm.`,
             `layers.${i}.count`
           )
         );
@@ -419,7 +545,10 @@ export function validate(state = {}) {
     const d = derived(state).d_eff;
     const slMax = 0.75 * d;
     const stMax = Math.min(0.75 * d, 600);
-    const bw = sectionWidth(state);
+    // `shearWidth` og ikke `sectionWidth`: for et fritt tverrsnitt er `b_w` stegbredden,
+    // oppgitt eksplisitt. Mangler den (`NaN`), faller kontrollene under bort av seg selv
+    // (`NaN < x` er usant) — og `bw_missing` over har allerede sagt hvorfor.
+    const bw = shearWidth(state);
     // `d` er NaN når ingen armering står på strekksiden — f.eks. et
     // støttemoment på en bjelke med bare underkantjern. Da FINNES det ingen
     // s_l,max, og et tall regnet fra trykkarmeringen ville vært oppdiktet.

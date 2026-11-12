@@ -317,6 +317,9 @@ export const ENGINE_CODES = Object.freeze([
   'sls_crack_width_exceeded',
   'crack_state_assumed',
   'sls_stress_limit_exceeded',
+  // Fritt tverrsnitt (sak #83).
+  'invalid_geometry',
+  'sls_not_available_custom_section',
 ]);
 
 /** Kodene `section.js` sin `validate()` kan produsere. Samme tabell, ett oppslag. */
@@ -342,6 +345,15 @@ export const VALIDATION_CODES = Object.freeze([
   'stirrup_alpha_unsupported',
   'stirrup_mixed_fywk',
   'stirrup_multiple_rows_unsupported',
+  // Fritt tverrsnitt (sak #83) — `polygon.js:polygonIssues` og lagkontrollene i `validate`.
+  'polygon_missing',
+  'polygon_outer_invalid',
+  'polygon_hole_invalid',
+  'polygon_hole_outside',
+  'polygon_holes_overlap',
+  'layer_span_ambiguous',
+  'bar_outside_concrete',
+  'bw_missing',
 ]);
 
 /** Kodene som beskriver svikt i worker/runtime eller i et lastet dokument, ikke i tverrsnittet. */
@@ -501,6 +513,41 @@ export const CODE_MESSAGES = Object.freeze({
   sls_stress_limit_exceeded:
     'A stress limit under EC2 7.2 is exceeded for at least one serviceability load ' +
     'combination. The technical detail names which limit.',
+
+  /* --- fritt tverrsnitt (sak #83) --- */
+  invalid_geometry:
+    'The custom cross-section is not a valid polygon, so nothing was calculated. The ' +
+    'technical detail says what is wrong — a boundary that crosses itself, a hole outside ' +
+    'the concrete, or holes that overlap.',
+  sls_not_available_custom_section:
+    'Serviceability checks (stresses and crack width, EC2 7.2/7.3) are not available for ' +
+    'a custom cross-section. They are built on a rectangular section, and using the ' +
+    'bounding box would count holes and voids as concrete. The characteristic and ' +
+    'quasi-permanent combinations have NOT been checked.',
+  polygon_missing:
+    'No custom cross-section is loaded. Load a section file or paste one in section 1.',
+  polygon_outer_invalid:
+    'The outer boundary of the custom cross-section crosses itself or has no area.',
+  polygon_hole_invalid:
+    'A hole in the custom cross-section crosses itself or has no area. The technical ' +
+    'detail says which.',
+  polygon_hole_outside:
+    'A hole is not strictly inside the outer boundary. A hole that touches or crosses the ' +
+    'edge is a recess and belongs in the outer boundary. The technical detail says which.',
+  polygon_holes_overlap:
+    'Two holes overlap or touch. Merge them into one hole or move them apart. The ' +
+    'technical detail says which.',
+  layer_span_ambiguous:
+    'A reinforcement layer lies at a height where the concrete is split into several ' +
+    'parts — through the holes, or across two webs. The bars cannot be spread over one ' +
+    'width. Move the layer, or use one layer per part.',
+  bar_outside_concrete:
+    'At least one bar lies outside the concrete — in a hole or beyond the edge. It would ' +
+    'be integrated with full steel stress and no concrete around it.',
+  bw_missing:
+    'Shear is not calculated: a custom cross-section needs the web width b_w given ' +
+    'explicitly. It cannot be read from the polygon — for a hollow-core element it is ' +
+    'the sum of the webs, for a T-beam the web.',
 
   /* --- validering (`section.js`) --- */
   invalid_height: 'Height h must be greater than 0.',
@@ -773,8 +820,20 @@ export const CHECK_ORDER = Object.freeze([
   'shear_ok',
   'asw_min_ok',
   'stirrup_spacing_ok',
+  // Fritt tverrsnitt med bruksgrenserader (sak #83): motoren svarer `sls_ok: null` —
+  // bruksgrensen er ikke tilgjengelig — og raden SKAL synes, ellers ser «Overall
+  // assessment: –» uforklart ut. Se `OPTIONAL_CHECKS`.
+  'sls_ok',
   'all_ok',
 ]);
+
+/**
+ * Rader som bare vises når motoren faktisk sendte nøkkelen. Alle de andre vises
+ * ALLTID, og en manglende nøkkel er «–» (ubesvart) — det er riktig for dem, men
+ * `sls_ok` finnes bare for et fritt tverrsnitt med bruksgrenserader, og en «–»-rad på
+ * hvert eneste rektangel ville vært en påstand om noe ingen spurte om.
+ */
+export const OPTIONAL_CHECKS = Object.freeze(['sls_ok']);
 
 export const CHECK_LABELS = Object.freeze({
   geometry_ok: 'Geometry and reinforcement placement',
@@ -789,6 +848,7 @@ export const CHECK_LABELS = Object.freeze({
   shear_ok: 'Shear capacity V_Ed ≤ V_Rd, all combinations (EC2 6.2)',
   asw_min_ok: 'Minimum shear reinforcement A_sw/s ≥ A_sw/s,min (EC2 9.2.2(5))',
   stirrup_spacing_ok: 'Stirrup spacing s ≤ s_l,max (EC2 9.2.2(6))',
+  sls_ok: 'Serviceability (EC2 7.2/7.3) — not available for a custom section',
   all_ok: 'Overall assessment',
 });
 
@@ -805,7 +865,8 @@ export function checkText(ok) {
 
 /** Kontrolltabellen, ferdig sortert og oversatt. */
 export function checkRows(checks = {}) {
-  return CHECK_ORDER.map((key) => {
+  const has = (key) => Object.prototype.hasOwnProperty.call(checks || {}, key);
+  return CHECK_ORDER.filter((key) => !OPTIONAL_CHECKS.includes(key) || has(key)).map((key) => {
     const ok = Object.prototype.hasOwnProperty.call(checks || {}, key) ? checks[key] : null;
     return { key, label: CHECK_LABELS[key], ok, text: checkText(ok) };
   });

@@ -1164,7 +1164,11 @@ def run(payload: dict, progress=None) -> dict:
     except PolygonError as exc:
         # Et ugyldig fritt tverrsnitt er et SVAR brukeren skal lese, ikke en krasj: meldingen
         # sier hva som er galt med geometrien, og stacktracen hører ikke hjemme noe sted.
-        return _error('invalid_geometry', exc.message, exc.detail)
+        # Meldingen staar OGSAA foerst i `detail`: `results.js` viser kodetabellens faste
+        # tekst for en kjent kode og kaster `message` -- og «hull 2 og 3 overlapper» er
+        # nettopp det brukeren trenger aa lese.
+        return _error('invalid_geometry', exc.message,
+                      exc.message + (f' ({exc.detail})' if exc.detail else ''))
     except Exception as exc:  # noqa: BLE001 — en motor som kaster låser UI-et
         return _error(
             type(exc).__name__,
