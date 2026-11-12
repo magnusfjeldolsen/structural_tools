@@ -69,6 +69,7 @@ settled on a shorter form for itself:
 |---|---|---|
 | `concrete_section_calculator` | `csc` | the module already calls itself this — `csc_sls.py`, `csc_common.py`, `/csc`, `CSC_PORT` |
 | `2dfea` | `2dfea` | |
+| `cad2d` | `cad2d` | the shared 2D CAD engine (#93); imported by `geometry_workspace` and `concrete_section_calculator` |
 | anything else | folder name | |
 
 Cross-cutting work that belongs to no single module (CI, docs, the registry)

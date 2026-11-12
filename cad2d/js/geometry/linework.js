@@ -11,7 +11,7 @@
  * Ren geometri, ingen DOM, ingen store.
  */
 
-import { stitchPaths } from './dxf.js';
+import { stitchPaths } from './stitch.js';
 
 /** Segmentene i en linje, som [a, b]-par. */
 export function segmentsOf(line) {

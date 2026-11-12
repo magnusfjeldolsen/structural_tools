@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-BFVZQQ2LYN"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-BFVZQQ2LYN');
+</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2D CAD Editor — shapes, holes, DXF and cross-sections</title>
+  <meta name="description" content="Draw 2D cross-sections with holes, import DXF (shapes and holes, or lines only) and export the section as structural-tools-section JSON. The shared CAD editor used inside Geometry Workspace and the Concrete Section Calculator.">
+  <meta name="keywords" content="CAD, 2D drawing, DXF import, cross-section, polygon with holes, hollow-core, geometry editor, section export, tverrsnitt, hull">
+  <meta name="category" content="other">
+  <!-- Boolske polygonoperasjoner (vendored, virker uten nett) -->
+  <script src="vendor/polygon-clipping.umd.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0f172a; color: #e2e8f0; font-family: ui-sans-serif, system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-bottom: 1px solid #1e293b; font-size: 13px; }
+    header a { color: #38bdf8; text-decoration: none; }
+    header .muted { color: #64748b; }
+    header button { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px; padding: 3px 8px; cursor: pointer; font: inherit; }
+    #editor { flex: 1 1 auto; min-height: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="../">← structural_tools</a>
+    <strong>cad2d</strong>
+    <span class="muted">Felles 2D CAD-motor · samme taster som Geometry Workspace · ? i GW for hjelp</span>
+    <span style="flex:1"></span>
+    <button type="button" id="save">Lagre dokument</button>
+    <label><button type="button" id="open">Åpne dokument…</button><input id="open-file" type="file" accept=".json,application/json" hidden></label>
+    <button type="button" id="section">Kopier tverrsnitt</button>
+  </header>
+  <div id="editor"></div>
+  <script type="module">
+    import { mountCadEditor } from './js/editor/editor.js';
+    import { CadDocument } from './js/core/document.js';
+    import { sectionToJSON } from './js/io/section-export.js';
+
+    // Fullvindu: dokumentet huskes i nettleseren mellom besøk.
+    const doc = new CadDocument({ storageKey: 'cad2d_document_v1' });
+    doc.load();
+    const ed = mountCadEditor(document.getElementById('editor'), { document: doc, keyboard: 'page' });
+    ed.focus();
+
+    document.getElementById('save').onclick = () => {
+      const blob = new Blob([doc.toJSON()], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'cad2d-dokument.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+    const file = document.getElementById('open-file');
+    document.getElementById('open').onclick = () => file.click();
+    file.onchange = async () => {
+      const f = file.files && file.files[0];
+      file.value = '';
+      if (!f) return;
+      try {
+        ed.setDocument(await f.text());
+        ed.setStatus(`Åpnet ${f.name}.`);
+      } catch (err) {
+        ed.setStatus(`Kunne ikke åpne fila: ${err.message}`);
+      }
+    };
+    document.getElementById('section').onclick = async () => {
+      const r = ed.getSection();
+      if (!r.ok) return ed.setStatus(r.error);
+      try {
+        await navigator.clipboard.writeText(sectionToJSON(r.section));
+        ed.setStatus(`Tverrsnittet er kopiert: A = ${Math.round(r.props.A).toLocaleString('nb-NO')} mm², ${r.section.holes.length} hull.`);
+      } catch {
+        ed.setStatus('Kunne ikke kopiere til utklippstavla.');
+      }
+    };
+    window.__cad2d = ed;
+  </script>
+</body>
+</html>

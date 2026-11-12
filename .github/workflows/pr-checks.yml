@@ -103,7 +103,7 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           if git diff --name-only "$base" "$head" \
-               | grep -qE '^(concrete_section_calculator/|package\.json|\.github/workflows/pr-checks\.yml)'; then
+               | grep -qE '^(concrete_section_calculator/|cad2d/|package\.json|\.github/workflows/pr-checks\.yml)'; then
             echo "csc=true" >> "$GITHUB_OUTPUT"
           else
             echo "csc=false" >> "$GITHUB_OUTPUT"
@@ -165,6 +165,52 @@ jobs:
       - name: Pyodide verification
         if: steps.changes.outputs.csc == 'true'
         run: npm run test:concrete-section:wasm
+
+  # ------------------------------------------------------------------ #
+  # cad2d (felles 2D CAD-motor, #93) og geometry_workspace, som bygger paa den.
+  #
+  # Ingen avhengigheter og intet byggesteg: testene er rene Node-skript som
+  # avslutter med kode 1 ved feil. Kjoeres naar motoren eller GW endres;
+  # concrete_section_calculator sine tester kjoeres av jobben over (som ogsaa
+  # ser paa cad2d/, siden csc importerer motoren).
+  # ------------------------------------------------------------------ #
+  check-cad2d:
+    name: cad2d + geometry_workspace — node tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect cad2d / geometry_workspace changes
+        id: changes
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          if git diff --name-only "$base" "$head" | grep -qE '^(cad2d/|geometry_workspace/|\.github/workflows/pr-checks\.yml)'; then
+            echo "cad2d=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cad2d=false" >> "$GITHUB_OUTPUT"
+            echo "Ingen endringer i cad2d eller geometry_workspace; hopper over."
+          fi
+
+      - name: Setup Node.js
+        if: steps.changes.outputs.cad2d == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: cad2d and geometry_workspace suites
+        if: steps.changes.outputs.cad2d == 'true'
+        run: |
+          fail=0
+          for f in cad2d/tests/*.test.mjs geometry_workspace/tests/*.test.mjs; do
+            echo "::group::$f"
+            node "$f" || fail=1
+            echo "::endgroup::"
+          done
+          exit $fail
 
   check-thermo2d:
     name: thermo2d type-check + test + build

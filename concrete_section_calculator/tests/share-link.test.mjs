@@ -280,3 +280,47 @@ test('komprimeringen tjener til livets opphold: lenka er under to tredeler av r�
   const link = await toLink(s);
   assert.ok(link.length < raw.length * (2 / 3), `${link.length} mot ${raw.length} rå`);
 });
+
+/* ================================================================== *
+ * TEGNINGEN FRA GEOMETRIEDITOREN (#93, review av #94 punkt 5)
+ *
+ * Fila bærer både polygonet og tegningen (`geometry.cad`). Lenka bærer bare
+ * polygonet: tegningen er ikke en kilde til tall, og den doblet lenka for et
+ * hulldekke (6 370 tegn, hvorav tegningen ~3 000). Mottakeren får et
+ * redigerbart dokument rekonstruert fra polygonet når editoren åpnes.
+ * ================================================================== */
+
+async function hollowCoreWithDrawing() {
+  globalThis.window = globalThis;
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath, pathToFileURL } = await import('node:url');
+  const vendor = readFileSync(fileURLToPath(new URL('../../cad2d/vendor/polygon-clipping.umd.js', import.meta.url)), 'utf8');
+  await import('data:text/javascript;charset=utf-8;base64,' + Buffer.from(vendor, 'utf8').toString('base64'));
+  const cad2d = (rel) => import(pathToFileURL(fileURLToPath(new URL(`../../cad2d/js/${rel}`, import.meta.url))).href);
+  const { CadDocument } = await cad2d('core/document.js');
+  const { importDxfText, sectionOf } = await cad2d('io/project.js');
+  const { createStore } = await import('../js/store.js');
+  const doc = new CadDocument();
+  importDxfText(doc, readFileSync(fileURLToPath(new URL('../../geometry_workspace/tests/fixtures/hulldekke.dxf', import.meta.url)), 'utf8'));
+  const store = createStore();
+  store.setSectionType('custom');
+  store.setCustomPolygon(sectionOf(doc).section, { cad: doc.toObject() });
+  return store.getState();
+}
+
+test('TEGNINGEN: lenka bærer polygonet, ikke CAD-dokumentet; fila bærer begge', async () => {
+  const state = await hollowCoreWithDrawing();
+  assert.ok(state.geometry.cad, 'forutsetning: tilstanden har en tegning');
+  assert.ok(toDocument(state).state.geometry.cad, 'fila skal bære tegningen');
+  const link = await toLink(state);
+  const { state: back } = await fromLink(link);
+  assert.ok(!('cad' in back.geometry), 'lenka skal ikke bære tegningen');
+  assert.deepEqual(back.geometry.outer, state.geometry.outer);
+  assert.deepEqual(back.geometry.holes, state.geometry.holes);
+  assert.ok(state.geometry.cad, 'toLink skal ikke endre tilstanden den får');
+});
+
+test('STØRRELSESBUDSJETT: hulldekke tegnet i editoren er under 4 000 tegn (uten tegningen)', async () => {
+  const link = await toLink(await hollowCoreWithDrawing());
+  assert.ok(link.length < 4000, `hulldekket ble ${link.length} tegn`);
+});

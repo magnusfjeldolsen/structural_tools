@@ -97,7 +97,7 @@ function fromBase64Url(text) {
 export async function toLink(state) {
   if (typeof CompressionStream === 'undefined') return null;
   try {
-    const json = JSON.stringify(toDocument(state));
+    const json = JSON.stringify(toDocument(withoutDrawings(state)));
     const packed = await pipe(new TextEncoder().encode(json), new CompressionStream('deflate-raw'));
     return LINK_PREFIX + toBase64Url(packed);
   } catch {
@@ -133,6 +133,26 @@ export async function fromLink(fragment) {
     // opplysningen — denne lenka kan ikke leses her.
     return unsupported();
   }
+}
+
+/**
+ * Tilstanden uten tegningene fra geometrieditoren (`geometry.cad`, også i et
+ * parkert snitt). Lenka bærer polygonet — den ene kilden til tallene — og
+ * mottakeren får et redigerbart dokument bygd av polygonet når editoren åpnes
+ * (`documentFromSection`). Tegningen ville omtrent doblet lenka for et
+ * hulldekke (#94, review punkt 5). Fila (`toDocument`) bærer begge.
+ */
+function withoutDrawings(state) {
+  const strip = (g) => {
+    if (!g || typeof g !== 'object' || !('cad' in g)) return g;
+    const { cad: _drawing, ...rest } = g;
+    return rest;
+  };
+  const out = { ...state, geometry: strip(state.geometry) };
+  if (state.stash && typeof state.stash === 'object') {
+    out.stash = Object.fromEntries(Object.entries(state.stash).map(([k, s]) => [k, s && s.geometry ? { ...s, geometry: strip(s.geometry) } : s]));
+  }
+  return out;
 }
 
 function unsupported() {

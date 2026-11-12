@@ -25,6 +25,7 @@ on:
       - 'piling/**'
       - 'rockbolts/**'
       - 'geometry_workspace/**'
+      - 'cad2d/**'
       - 'ec5-knutepunkt/**'
       - 'thermo2d/**'
       - 'index.html'
@@ -144,6 +145,7 @@ jobs:
                      cable_designer \
                      piling \
                      rockbolts \
+                     cad2d \
                      geometry_workspace \
                      ec5-knutepunkt; do
             if [ -d "$dir" ]; then

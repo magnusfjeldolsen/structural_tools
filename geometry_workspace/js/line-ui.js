@@ -10,7 +10,7 @@
 
 import { parseLoadTable, twoLayer, lambda2, analyseLine, suggestZones } from './line-analysis.js';
 import { slipModulus } from './connection-stiffness.js';
-import { lengthLabel } from './units.js';
+import { lengthLabel } from '../../cad2d/js/core/units.js';
 import { n } from './derivation.js';
 
 function escapeHtml(s) {

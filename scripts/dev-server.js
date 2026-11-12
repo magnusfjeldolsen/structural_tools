@@ -22,6 +22,8 @@ const BASE_PATH = '/structural_tools';
 const MIME_TYPES = {
   '.html': 'text/html',
   '.js': 'application/javascript',
+  // csc sin solver-worker er .mjs; som octet-stream nekter nettleseren å kjøre den
+  '.mjs': 'application/javascript',
   '.css': 'text/css',
   '.json': 'application/json',
   '.png': 'image/png',

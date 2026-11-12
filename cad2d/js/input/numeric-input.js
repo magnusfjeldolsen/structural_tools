@@ -11,6 +11,8 @@
  * Ingen kunnskap om store eller viewport — bare DOM og tolkning av tekst.
  */
 
+import { text } from '../core/text.js';
+
 /** Tastene som starter en inntasting. `d`/`D` og `@` er relativ-prefiksene. */
 const START_KEY = /^[0-9.,\-dD@]$/;
 
@@ -71,6 +73,9 @@ export class NumericInput {
     this.getAnchor = opts.getAnchor || (() => null);
     this.onSnapShortcut = opts.onSnapShortcut || (() => false);
     this.onStatus = opts.onStatus || (() => {});
+    /** Valgfri element-id. Ingen som standard, så to editorer ikke kolliderer. */
+    this.id = opts.id || null;
+    this.T = text(opts.lang);
 
     this.active = false;
     /** Hva inntastingen skal tolkes som når den bekreftes. */
@@ -81,7 +86,9 @@ export class NumericInput {
 
   _build() {
     const box = document.createElement('div');
-    box.id = 'numeric-input';
+    // Ingen fast id som standard: to editorer på én side skal ikke kollidere.
+    if (this.id) box.id = this.id;
+    box.classList.add('cad2d-numeric');
     box.className =
       'hidden absolute z-40 flex items-center gap-1.5 px-2 py-1.5 rounded-md border border-sky-500 ' +
       'bg-slate-900/95 backdrop-blur shadow-lg shadow-black/50';
@@ -201,17 +208,17 @@ export class NumericInput {
   _syncLabels() {
     const unit = this.getUnit ? this.getUnit() : '';
     if (this.expected === 'angle') {
-      this.label.textContent = 'vinkel';
+      this.label.textContent = this.T.numAngle;
       this.input.placeholder = '45';
-      this.hint.textContent = 'grader · Enter';
+      this.hint.textContent = this.T.numDegrees;
     } else if (this.expected === 'length') {
-      this.label.textContent = 'lengde';
+      this.label.textContent = this.T.numLength;
       this.input.placeholder = '200';
       this.hint.textContent = `${unit} · Enter`;
     } else {
       this.label.textContent = 'x  y';
       this.input.placeholder = '300 200  ·  D 300 200';
-      this.hint.textContent = `${unit} · D = relativt · Enter`;
+      this.hint.textContent = this.T.numRelative(unit);
     }
   }
 
@@ -256,7 +263,7 @@ export class NumericInput {
   _commit() {
     const parsed = parseNumericEntry(this.input.value);
     if (!parsed) {
-      this.onStatus('Klarte ikke å lese tallet. Skriv «300 200», «D 300 200» eller «10,5 0».');
+      this.onStatus(this.T.numUnreadable);
       return;
     }
 
@@ -272,7 +279,7 @@ export class NumericInput {
     } else if (this.expected === 'length') {
       value = { kind: 'length', value: nums[0] };
     } else {
-      this.onStatus('Skriv x og y, skilt med mellomrom eller tab. Komma er desimaltegn.');
+      this.onStatus(this.T.numNeedXY);
       return;
     }
 

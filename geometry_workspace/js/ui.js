@@ -19,7 +19,7 @@ import {
   centroidOfPoints,
   centroidOfShapes,
   neighborTolerance,
-} from './geometry.js';
+} from '../../cad2d/js/geometry/polygon.js';
 import {
   describeShape,
   rectPointsFromParams,
@@ -27,9 +27,9 @@ import {
   circlePointsFromParams,
   RECT_ANCHORS,
   isRectAnchor,
-} from './shapes.js';
-import { SNAP_TYPES, SNAP_ALL, ORTHO } from './snapping.js';
-import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel, conversionFactor } from './units.js';
+} from '../../cad2d/js/geometry/params.js';
+import { SNAP_TYPES, SNAP_ALL, ORTHO } from '../../cad2d/js/input/snapping.js';
+import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel, conversionFactor } from '../../cad2d/js/core/units.js';
 import { MATERIALS, materialByName, materialE, materialRho } from './materials.js';
 import { JOINT_COLOR } from './store.js';
 import { shapeFill, materialFamily } from './shape-style.js';
@@ -37,8 +37,8 @@ import { sidesOfJoint, buildGraph, jointGroup, overConstrained } from './joints.
 import { ReinforcementPanel, axisConventionHtml } from './reinforcement-ui.js';
 import { SYSTEM_FACTORS } from './reinforcement.js';
 import { EC5_FASTENERS, EC5_CONTACTS, STATES, ec5Fastener } from './connection-stiffness.js';
-import { importDxf, describeImport, INSUNITS_TO_UNIT, resolveDxfUnit, shapeList, importDxfLines, describeLineImport } from './dxf.js';
-import { exportSection, sectionProps, sectionToJSON } from './section-export.js';
+import { importDxfText } from '../../cad2d/js/io/project.js';
+import { exportSection, sectionProps, sectionToJSON } from '../../cad2d/js/io/section-export.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -150,6 +150,8 @@ export class UI {
     this.viewport = viewport;
     this.tools = tools;
     this.underlayManager = opts.underlayManager || null;
+    /** Skjøteutvidelsen til cad2d-editoren (joint-extension.js): treff og hover-haker. */
+    this.joints = opts.joints || {};
     this.analysis = null;
     /**
      * Hovedfanen: 'geometry' (tegn og les tverrsnittet) eller 'reinforcement'
@@ -162,7 +164,7 @@ export class UI {
       onCopy: () => this._copyResult(),
       // Musa over en rad i krafttabellen lyser opp skjøten i lerretet.
       onHoverJoint: (id) => {
-        this.viewport.setHoverJoint(id);
+        this.viewport.setHoverOf('joint', id);
         this.reinforcement.highlightJoint(id);
       },
       // «Skrue: … · endre» under Skruesoner åpner skjøten i skjøtelista.
@@ -209,9 +211,9 @@ export class UI {
     };
 
     // Hover i lerretet over en skjøt skal fremheve raden i skjøtelista, og
-    // omvendt (§6.2). `tools.js` sender treff hit via denne haken; den andre
+    // omvendt (§6.2). Skjøteutvidelsen sender treff hit via denne haken; den andre
     // veien (klikk i lista → fremhevet i lerretet) skjer i `_bindJointEditors`.
-    this.tools.onJointHover = (id) => {
+    this.joints.onHover = (id) => {
       if (this._canvasHoverJoint === id) return;
       this._canvasHoverJoint = id;
       this.reinforcement.highlightJoint(id);
@@ -220,7 +222,7 @@ export class UI {
 
     // Klikk på en skjøtelinje i lerretet åpner raden i skjøtelista, slik at et
     // klikk på en form åpner formens egenskaper (§1: den andre veien av over).
-    this.tools.onJointPicked = (id) => {
+    this.joints.onPicked = (id) => {
       this._activeJointId = id;
       this.jointExpanded = new Set([id]);
       this._scrollTo = id;
@@ -978,51 +980,14 @@ export class UI {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    const choice = $('dxf-unit').value; // 'auto' = fila sin $INSUNITS, ellers mm
+    const unitChoice = $('dxf-unit').value; // 'auto' = fila sin $INSUNITS, ellers mm
     const mode = $('dxf-mode').value; // 'auto' = former og hull, 'lines' = linjearbeid
     const reader = new FileReader();
     reader.onload = () => {
-      let res;
-      let used;
-      const scale = (insunits) => {
-        used = resolveDxfUnit(choice, insunits);
-        return conversionFactor(used.unit, this.store.state.unit);
-      };
-      if (mode === 'lines') {
-        try {
-          res = importDxfLines(String(reader.result), { scale });
-        } catch (err) {
-          return this.toast(`DXF-import feilet: ${err.message}`, 6000);
-        }
-        if (!res.paths.length) return this.toast(`${describeLineImport(res)} Ingen linjer å importere.`, 8000);
-        this.store.addLines(res.paths, { reason: 'import' });
-        if (!this.store.state.linesVisible) this.store.setLinesVisible(true);
-        this.viewport.zoomToFit(this.store.bounds());
-        return this.toast(`${describeLineImport(res)} Enhet ${used.unit}${used.fromFile ? ' fra fila' : ''}.`, 9000);
-      }
-      try {
-        res = importDxf(String(reader.result), {
-          scale: (insunits) => {
-            used = resolveDxfUnit(choice, insunits);
-            return conversionFactor(used.unit, this.store.state.unit);
-          },
-        });
-      } catch (err) {
-        return this.toast(`DXF-import feilet: ${err.message}`, 6000);
-      }
-      const n0 = this.store.state.shapes.filter((s) => /^DXF \d+$/.test(s.name)).length;
-      // Dypeste regioner og hull øverst, så 'sum', 'priority' og nettoarealet
-      // er enige også for en øy i et hull.
-      const list = shapeList(res, { start: n0 + 1 });
-      let msg = describeImport(res);
-      const fileUnit = INSUNITS_TO_UNIT[res.insunits];
-      if (used.fromFile) msg += ` Enhet ${used.unit} fra fila.`;
-      else if (choice === 'auto') msg += ' Fila oppgir ikke enhet; antatt mm.';
-      else if (fileUnit && fileUnit !== used.unit) msg += ` Fila sier ${fileUnit}, men ${used.unit} er valgt og brukt.`;
-      if (!list.length) return this.toast(`${msg} Ingen lukkede konturer å importere.`, 8000);
-      this.store.addShapes(list, { reason: 'import' });
-      this.viewport.zoomToFit(this.store.bounds());
-      this.toast(msg, 8000);
+      // Selve importen er cad2d sin (io/project.js), felles med csc (#93).
+      const r = importDxfText(this.store, String(reader.result), { mode, unitChoice });
+      if (r.added) this.viewport.zoomToFit(this.store.bounds());
+      this.toast(r.msg, r.ms);
     };
     reader.onerror = () => this.toast('Klarte ikke å lese fila.');
     reader.readAsText(file);

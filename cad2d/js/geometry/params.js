@@ -16,7 +16,7 @@
  * Ren geometri: ingen DOM, ingen store.
  */
 
-import { openRing, circlePoints, EPS } from './geometry.js';
+import { openRing, circlePoints, EPS } from './polygon.js';
 
 /** Relativ toleranse for «rett vinkel» og «like lange sider». */
 const REL_TOL = 1e-6;
