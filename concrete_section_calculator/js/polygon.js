@@ -31,6 +31,29 @@ export const SECTION_FORMAT_VERSION = 1;
 /** Øvre grense på antall hjørner, så en feilaktig fil ikke fryser siden. */
 export const MAX_VERTICES = 20000;
 
+/*
+ * Samme tre tall som `csc_polygon.py` (DUP_TOL, MIN_DIM, MAX_COORD). Se der for hvorfor.
+ * `polygon-validity-cases.json` kjøres gjennom begge sidene og holder dem enige.
+ */
+export const DUP_TOL = 1e-6;
+export const MIN_DIM = 1.0;
+export const MAX_COORD = 1e6;
+
+/**
+ * Fjerner PÅFØLGENDE duplikater (innen `DUP_TOL`) og et avsluttende punkt lik det
+ * første. Muterer og returnerer ringen. Vanlig i DXF; motoren gjør det samme.
+ */
+function dedupeRing(ring) {
+  for (let i = ring.length - 1; i > 0; i--) {
+    if (Math.hypot(ring[i][0] - ring[i - 1][0], ring[i][1] - ring[i - 1][1]) <= DUP_TOL) ring.splice(i, 1);
+  }
+  if (ring.length > 1) {
+    const a = ring[0]; const b = ring[ring.length - 1];
+    if (Math.hypot(a[0] - b[0], a[1] - b[1]) <= DUP_TOL) ring.pop();
+  }
+  return ring;
+}
+
 function isFiniteNumber(v) {
   return typeof v === 'number' && Number.isFinite(v);
 }
@@ -53,12 +76,12 @@ function readRing(raw, label) {
     if (!isFiniteNumber(y) || !isFiniteNumber(z)) {
       return { error: `Point ${i + 1} of the ${label} is not a finite number pair.` };
     }
+    if (Math.abs(y) > MAX_COORD || Math.abs(z) > MAX_COORD) {
+      return { error: `Point ${i + 1} of the ${label} lies more than ${MAX_COORD} mm from the origin — check the units (millimetres).` };
+    }
     ring.push([y, z]);
   }
-  if (ring.length > 1) {
-    const [a, b] = [ring[0], ring[ring.length - 1]];
-    if (a[0] === b[0] && a[1] === b[1]) ring.pop();
-  }
+  dedupeRing(ring);
   const distinct = new Set(ring.map((p) => `${p[0]},${p[1]}`)).size;
   if (distinct < 3) {
     return { error: `The ${label} needs at least three distinct points; it has ${distinct}.` };
@@ -296,13 +319,60 @@ export function pointInRing(ring, y, z) {
  * @returns {Array<{code: string, message: string}>}
  */
 export function polygonIssues(polygon) {
-  const out = [];
   if (!polygon || !Array.isArray(polygon.outer) || polygon.outer.length < 3) {
     return [{ code: 'polygon_missing', message: 'No cross-section polygon is loaded.' }];
   }
-  const outer = polygon.outer;
-  const holes = polygon.holes || [];
-  if (ringSelfIntersects(outer) || ringProps(outer).a <= 0) {
+  // CACHE PÅ RINGENES IDENTITET (review av #83): kontrollen er O(n²), og `validate()`
+  // kjøres ved hver opptegning — 20 000 hjørner kostet 0,9 s per tastetrykk. Tilstanden
+  // erstatter ringene i stedet for å mutere dem (`store.js`), så samme array-objekt
+  // betyr samme polygon.
+  const holesKey = polygon.holes || EMPTY;
+  const hit = ISSUE_CACHE.get(polygon.outer);
+  if (hit && hit.holes === holesKey) return hit.issues.map((x) => ({ ...x }));
+  const issues = computePolygonIssues(polygon);
+  ISSUE_CACHE.set(polygon.outer, { holes: holesKey, issues });
+  return issues.map((x) => ({ ...x }));
+}
+
+const EMPTY = [];
+const ISSUE_CACHE = new WeakMap();
+
+/** Minste avstand mellom to ringer (kant til kant), O(n·m). */
+function ringDistance(r1, r2) {
+  let best = Infinity;
+  for (const [a, b] of [[r1, r2], [r2, r1]]) {
+    for (const p of a) {
+      for (let j = 0; j < b.length; j++) {
+        const d = distToSegment(p[0], p[1], b[j], b[(j + 1) % b.length]);
+        if (d < best) best = d;
+      }
+    }
+  }
+  return best;
+}
+
+function computePolygonIssues(polygon) {
+  const out = [];
+  // Påfølgende duplikater fjernes på KOPIER, som i motoren — en tilstand lagret før
+  // dette kom inn skal ikke gi «ugyldig» her og et tall der.
+  const copy = (ring) => dedupeRing(ring.map((p) => [Number(p[0]), Number(p[1])]));
+  const outer = copy(polygon.outer);
+  const holes = (polygon.holes || []).map(copy);
+  const all = [outer, ...holes].flat();
+  if (all.some(([y, z]) => !Number.isFinite(y) || !Number.isFinite(z)
+    || Math.abs(y) > MAX_COORD || Math.abs(z) > MAX_COORD)) {
+    return [{
+      code: 'polygon_too_large',
+      message: `A point lies more than ${MAX_COORD} mm from the origin, or is not a number — check the units.`,
+    }];
+  }
+  // Størrelsen FØR selvkryssingen: et 1e-6 mm flatt polygon gir kanter så nær
+  // kollineære at kryssingstesten blir flyttallsstøy, og «for lite» er det sanne svaret.
+  const ob = polygonBounds({ outer });
+  if (outer.length >= 3 && (ob.b < MIN_DIM || ob.h < MIN_DIM)) {
+    return [{ code: 'polygon_too_small', message: `The cross-section is less than ${MIN_DIM} mm wide or high.` }];
+  }
+  if (outer.length < 3 || ringSelfIntersects(outer) || ringProps(outer).a <= 0) {
     out.push({
       code: 'polygon_outer_invalid',
       message: 'The outer boundary crosses itself or has no area.',
@@ -310,7 +380,7 @@ export function polygonIssues(polygon) {
     return out;
   }
   holes.forEach((hole, i) => {
-    if (ringSelfIntersects(hole) || ringProps(hole).a <= 0) {
+    if (hole.length < 3 || ringSelfIntersects(hole) || ringProps(hole).a <= 0) {
       out.push({ code: 'polygon_hole_invalid', message: `Hole ${i + 1} crosses itself or has no area.` });
       return;
     }
@@ -319,6 +389,19 @@ export function polygonIssues(polygon) {
       out.push({
         code: 'polygon_hole_outside',
         message: `Hole ${i + 1} is not strictly inside the outer boundary.`,
+      });
+      return;
+    }
+    const hb = polygonBounds({ outer: hole });
+    if (hb.b < MIN_DIM || hb.h < MIN_DIM) {
+      out.push({ code: 'polygon_too_small', message: `Hole ${i + 1} is less than ${MIN_DIM} mm wide or high.` });
+      return;
+    }
+    const wall = ringDistance(hole, outer);
+    if (wall < MIN_DIM) {
+      out.push({
+        code: 'polygon_wall_too_thin',
+        message: `The wall between hole ${i + 1} and the outer edge is ${wall.toPrecision(3)} mm — thinner than ${MIN_DIM} mm.`,
       });
     }
   });
@@ -332,6 +415,14 @@ export function polygonIssues(polygon) {
         out.push({
           code: 'polygon_holes_overlap',
           message: `Holes ${i + 1} and ${j + 1} overlap or touch.`,
+        });
+        continue;
+      }
+      const wall = ringDistance(holes[i], holes[j]);
+      if (wall < MIN_DIM) {
+        out.push({
+          code: 'polygon_wall_too_thin',
+          message: `The wall between holes ${i + 1} and ${j + 1} is ${wall.toPrecision(3)} mm — thinner than ${MIN_DIM} mm.`,
         });
       }
     }

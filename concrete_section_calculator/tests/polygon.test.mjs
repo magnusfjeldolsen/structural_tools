@@ -184,3 +184,47 @@ test('circleInConcrete: jern i hull, jern ved randen, jern i betong', () => {
   assert.equal(circleInConcrete(p, 0, -132.5 + 5, 6), false, 'stikker ut under');
   assert.equal(circleInConcrete(p, 0, -70 - 5, 6), false, 'stikker inn i hullet');
 });
+
+/* ---------------- review av #83: samme svar som motoren ---------------- */
+
+const readFixture = (name) => JSON.parse(readFileSync(
+  fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
+
+test('polygon-validity-cases.json: samme gyldig/ugyldig-svar som csc_polygon.py', () => {
+  // `test_polygon_review.py::test_shared_validity_cases` kjører SAMME fil i Python.
+  for (const c of readFixture('polygon-validity-cases.json').cases) {
+    const issues = polygonIssues({ outer: c.outer, holes: c.holes });
+    if (c.valid) {
+      assert.deepEqual(issues, [], `${c.name}: ${JSON.stringify(issues)}`);
+    } else {
+      assert.ok(issues.some((i) => i.code === c.code), `${c.name}: ventet ${c.code}, fikk ${JSON.stringify(issues)}`);
+    }
+  }
+});
+
+test('gjentatt hjørne i fila fjernes ved lesing (DXF)', () => {
+  const r = parseSectionDocument({ format: SECTION_FORMAT, version: 1, units: 'mm',
+    outer: [[-150, -300], [150, -300], [150, -300], [150, 300], [-150, 300]] });
+  assert.equal(r.ok, true);
+  assert.equal(r.polygon.outer.length, 4);
+});
+
+test('polygonProps mot csc_polygon.py til 1e-9: T, L og forskjøvet hull', () => {
+  for (const c of readFixture('polygon-props-crosscheck.json').cases) {
+    const p = polygonProps({ outer: c.outer, holes: c.holes });
+    for (const key of ['area', 'y_c', 'z_c', 'I_y']) {
+      const e = c.expected[key];
+      assert.ok(Math.abs(p[key] - e) <= 1e-9 * Math.max(1, Math.abs(e)), `${c.name} ${key}: ${p[key]} mot ${e}`);
+    }
+  }
+});
+
+test('polygonIssues cacher på ringens identitet: 20 000 hjørner koster ikke ved hver render', () => {
+  const n = 20000;
+  const outer = Array.from({ length: n }, (_, i) => [500 * Math.cos(2 * Math.PI * i / n), 500 * Math.sin(2 * Math.PI * i / n)]);
+  const poly = { outer, holes: [] };
+  polygonIssues(poly);
+  const t0 = performance.now();
+  for (let i = 0; i < 10; i++) polygonIssues({ outer, holes: poly.holes });
+  assert.ok(performance.now() - t0 < 20, 'gjentatte kall skal treffe cachen');
+});

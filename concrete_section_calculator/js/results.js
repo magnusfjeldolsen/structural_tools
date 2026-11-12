@@ -320,6 +320,8 @@ export const ENGINE_CODES = Object.freeze([
   // Fritt tverrsnitt (sak #83).
   'invalid_geometry',
   'sls_not_available_custom_section',
+  'invalid_bw',
+  'lateral_restraint_assumed',
 ]);
 
 /** Kodene `section.js` sin `validate()` kan produsere. Samme tabell, ett oppslag. */
@@ -354,6 +356,12 @@ export const VALIDATION_CODES = Object.freeze([
   'layer_span_ambiguous',
   'bar_outside_concrete',
   'bw_missing',
+  // Review av #83.
+  'bw_exceeds_section',
+  'bw_exceeds_web',
+  'polygon_too_small',
+  'polygon_wall_too_thin',
+  'polygon_too_large',
 ]);
 
 /** Kodene som beskriver svikt i worker/runtime eller i et lastet dokument, ikke i tverrsnittet. */
@@ -548,6 +556,33 @@ export const CODE_MESSAGES = Object.freeze({
     'Shear is not calculated: a custom cross-section needs the web width b_w given ' +
     'explicitly. It cannot be read from the polygon — for a hollow-core element it is ' +
     'the sum of the webs, for a T-beam the web.',
+
+  invalid_bw:
+    'The web width b_w cannot be used: it is not a positive number, or it is wider than ' +
+    'the cross-section itself. b_w is the web — for a hollow-core element the sum of the ' +
+    'webs, for a T-beam the web — never the overall width. Nothing was calculated.',
+  bw_exceeds_section:
+    'The web width b_w is wider than the cross-section. It is the web — the sum of the ' +
+    'webs in a hollow-core element — never the overall width. The engine rejects it.',
+  bw_exceeds_web:
+    'The web width b_w is larger than the narrowest concrete width where the shear acts ' +
+    '(between the tension reinforcement and the compression zone). A shear capacity ' +
+    'computed with it is on the unsafe side unless you have a reason. The technical ' +
+    'detail gives the narrowest width.',
+  lateral_restraint_assumed:
+    'M_Rd assumes the member is restrained against sideways bending. The section is not ' +
+    'symmetric about the vertical axis, and keeping the neutral axis horizontal needs a ' +
+    'moment M_z about the vertical axis at the same time. Without lateral restraint the ' +
+    'resistance in free bending is lower. Biaxial bending is not computed.',
+  polygon_too_small:
+    'The cross-section or one of its holes is less than 1 mm wide or high — drawing ' +
+    'noise, not concrete or a void. The technical detail says which.',
+  polygon_wall_too_thin:
+    'A wall between a hole and the outer edge, or between two holes, is thinner than ' +
+    '1 mm. The technical detail says where.',
+  polygon_too_large:
+    'A point of the cross-section lies more than 1 km from the origin, or is not a ' +
+    'number. Check the units — the format is in millimetres.',
 
   /* --- validering (`section.js`) --- */
   invalid_height: 'Height h must be greater than 0.',
@@ -851,6 +886,15 @@ export const CHECK_LABELS = Object.freeze({
   sls_ok: 'Serviceability (EC2 7.2/7.3) — not available for a custom section',
   all_ok: 'Overall assessment',
 });
+
+/**
+ * HVOR `eps_a` GJELDER. Motoren rapporterer tøyningen i payloadens origo, som er
+ * MIDTHØYDEN av (det omskrevne rektangelet til) snittet. For rektangel og plate er det
+ * også tyngdepunktet; for et fritt tverrsnitt er det ikke — rapporten sa «at the
+ * centroid» og trykket 3,870 ‰ for en T der tyngdepunktet har 2,244 ‰ (review av #83).
+ * Siden sa «at the origin». ÉN tekst, brukt begge steder, og en test holder dem i takt.
+ */
+export const EPS_A_LABEL = 'ε_a at mid-height h/2';
 
 export const CHECK_PASS_TEXT = 'OK';
 export const CHECK_FAIL_TEXT = 'Not OK';

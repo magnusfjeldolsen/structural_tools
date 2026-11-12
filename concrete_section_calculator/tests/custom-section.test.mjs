@@ -17,7 +17,9 @@ import { buildPayload } from '../js/payload.js';
 import { createStore } from '../js/store.js';
 import { parseSectionDocument, polygonProps } from '../js/polygon.js';
 import { barPositions, stirrupCoverDia } from '../js/rebar.js';
-import { barGeometry, derived, grossArea, sectionHeight, sectionWidth, validate } from '../js/section.js';
+import { barGeometry, derived, grossArea, minShearChord, sectionHeight, sectionWidth, validate } from '../js/section.js';
+import { EPS_A_LABEL } from '../js/results.js';
+import { buildReportHtml } from '../js/report.js';
 import { CUSTOM_HOLE_PERIMETER_WEIGHT, notionalSize } from '../js/materials.js';
 import { fromDocument, toDocument } from '../js/serialize.js';
 import { drawSection } from '../js/section-draw.js';
@@ -220,4 +222,62 @@ test('payload-custom-hd265.json er buildPayload av referansetilstanden', () => {
   const expected = JSON.parse(readFileSync(fixture('payload-custom-hd265.json'), 'utf8'));
   const actual = JSON.parse(JSON.stringify(buildPayload(hd265Store().getState())));
   assert.deepEqual(actual, expected);
+});
+
+/* ---------------- review av #83 ---------------- */
+
+test('b_w bredere enn snittet er en FEIL (før: 1200 ga V_Rd,c 147,7 kN, shear_ok true)', () => {
+  for (const bw of [1200.5, 5000]) {
+    const store = hd265Store();
+    store.patch('geometry', { bw });
+    const m = validate(store.getState()).find((x) => x.code === 'bw_exceeds_section');
+    assert.ok(m, `b_w = ${bw}: mangler bw_exceeds_section`);
+    assert.equal(m.severity, 'error');
+  }
+  const ok = hd265Store();
+  ok.patch('geometry', { bw: 1200 });
+  assert.ok(!validate(ok.getState()).some((x) => x.code === 'bw_exceeds_section'));
+});
+
+test('minste kordsum mellom strekkarmering og trykksone: 220 mm for hulldekket', () => {
+  const s = hd265Store().getState();
+  // Gjennom hullsentrene: 1200 − 7·140 (32-kanten har hjørner i sentrumshøyden).
+  assert.ok(Math.abs(minShearChord(s) - 220) < 1e-6, String(minShearChord(s)));
+});
+
+test('b_w over minste kordsum: advarsel med tallet, og verdien fylles IKKE inn stille', () => {
+  const store = hd265Store();
+  store.patch('geometry', { bw: 1000 });
+  const m = validate(store.getState()).find((x) => x.code === 'bw_exceeds_web');
+  assert.ok(m && m.severity === 'warning');
+  assert.match(m.detail, /220/);
+  assert.equal(store.getState().geometry.bw, 1000);
+  // b_w = 220 er innenfor: ingen advarsel.
+  const ok = hd265Store();
+  assert.ok(!validate(ok.getState()).some((x) => x.code === 'bw_exceeds_web'));
+});
+
+test('rapporten: b_w fra RESULTATET, og M_z-forutsetningen står på papiret', () => {
+  const store = hd265Store();
+  store.patch('geometry', { bw: 999 });   // skjemaet er endret ETTER kjøringen
+  const result = JSON.parse(readFileSync(fixture('result-bending-beam-300x600.json'), 'utf8'));
+  Object.assign(result.section_props, {
+    shape: 'polygon', I_y: 1.73e9, z_c: 0, bw: 220, mz_ratio: 0.287, mz_ratio_limit: 0.05,
+  });
+  const html = buildReportHtml(store.getState(), result);
+  assert.match(html, /Web width for shear b_w[^<]*<\/t[hd]>\s*<td[^>]*>220</);
+  assert.doesNotMatch(html, />999</);
+  assert.match(html, /ASSUMES LATERAL RESTRAINT/);
+  assert.match(html, new RegExp(EPS_A_LABEL));
+});
+
+test('ε_a-teksten er ÉN konstant, brukt av både siden og rapporten', () => {
+  const ui = readFileSync(fileURLToPath(new URL('../js/ui.js', import.meta.url)), 'utf8');
+  const report = readFileSync(fileURLToPath(new URL('../js/report.js', import.meta.url)), 'utf8');
+  assert.match(ui, /EPS_A_LABEL/);
+  assert.match(report, /EPS_A_LABEL/);
+  for (const src of [ui, report]) {
+    assert.doesNotMatch(src, /ε_a at the centroid|ε<sub>a<\/sub> \(at the origin\)/);
+  }
+  assert.match(EPS_A_LABEL, /mid-height/);
 });
