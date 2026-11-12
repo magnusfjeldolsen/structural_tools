@@ -17,7 +17,7 @@ section('CRUD');
   const b = doc.add('shape', { points: R(200, 0, 10, 10), role: 'void' });
   const l = doc.add('line', { points: [[0, 0], [10, 0], [10, 10]] });
   ok('id-er med prefiks og løpenummer', a.id === 's1' && b.id === 's2' && l.id === 'l1', [a.id, b.id, l.id].join());
-  ok('get slår opp alle typer', doc.get('s1') === doc.state.shapes[1] && doc.get('l1').points.length === 3);
+  ok('get slår opp alle typer (som kopi)', JSON.stringify(doc.get('s1')) === JSON.stringify(doc.state.shapes[1]) && doc.get('s1') !== doc.state.shapes[1] && doc.get('l1').points.length === 3);
   ok('nyeste form øverst', doc.state.shapes[0].id === 's2');
   ok('rolle hull', doc.get('s2').role === 'void' && doc.get('s1').role === 'solid');
   ok('list(kind)', doc.list('shape').length === 2 && doc.list('line').length === 1);

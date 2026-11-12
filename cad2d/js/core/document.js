@@ -85,7 +85,9 @@ export function migrateLines(list) {
  * egne felt tar underklassen seg av (`_migrate`).
  */
 export function migrateCore(data) {
-  const out = { ...data };
+  // Dypkopi: det som sendes inn eies av kalleren, og setSnaps/setGrid o.l.
+  // muterer under-objektene (review av #94, punkt 1).
+  const out = structuredClone(data || {});
   if (out.grid && out.grid.snap !== undefined) {
     const on = !!out.grid.snap;
     out.snaps = {
@@ -154,6 +156,12 @@ function kindDef(name, def) {
   };
 }
 
+/** Finnes id-en i en av de registrerte samlingene (ikke avledede entiteter)? */
+function hasEntity(doc, id) {
+  for (const k of doc.kinds.values()) if ((doc.state[k.collection] || []).some((o) => o.id === id)) return true;
+  return false;
+}
+
 export class CadDocument {
   /**
    * @param {object} [opts]
@@ -162,7 +170,7 @@ export class CadDocument {
    */
   constructor(opts = {}) {
     this.storageKey = opts.storageKey || null;
-    this.state = { ...this._defaultState(), ...(opts.state || {}) };
+    this.state = { ...this._defaultState(), ...structuredClone(opts.state || {}) };
     this.undoStack = [];
     this.redoStack = [];
     this.listeners = new Set();
@@ -193,6 +201,11 @@ export class CadDocument {
    */
   registerKind(name, def) {
     if (!def || !def.collection || !def.prefix) throw new Error(`registerKind(${name}): collection og prefix må oppgis`);
+    for (const k of this.kinds.values()) {
+      if (k.name === name) continue; // samme type på nytt: erstatt
+      if (k.prefix === def.prefix) throw new Error(`registerKind(${name}): prefikset «${def.prefix}» brukes alt av «${k.name}»`);
+      if (k.collection === def.collection) throw new Error(`registerKind(${name}): samlingen «${def.collection}» brukes alt av «${k.name}»`);
+    }
     this.kinds.set(name, kindDef(name, def));
     if (!Array.isArray(this.state[def.collection])) this.state[def.collection] = [];
     if (!this._uid[def.prefix]) this._uid[def.prefix] = 1;
@@ -405,11 +418,17 @@ export class CadDocument {
    */
   add(kind, data = {}, { select = true, reason = 'add' } = {}) {
     if (kind === 'shape') {
-      const s = this.addShape(data.points || [], data);
-      if (!select) this.select([]);
-      return s;
+      const shape = this._newShape(data.points || [], data, this.state.shapes.length);
+      this.mutate((st) => {
+        st.shapes.unshift(shape);
+        if (select) st.selection = [shape.id];
+      }, { reason });
+      return structuredClone(shape);
     }
-    if (kind === 'line') return this.addLines([data], { select, reason })[0] || null;
+    if (kind === 'line') {
+      const added = this.addLines([data], { select, reason });
+      return added[0] ? structuredClone(added[0]) : null;
+    }
     const k = this.kinds.get(kind);
     if (!k) throw new Error(`Ukjent entitetstype: ${kind}`);
     const obj = { ...structuredClone(data), id: this.nextId(k.prefix) };
@@ -418,29 +437,34 @@ export class CadDocument {
       else st[k.collection].push(obj);
       if (select) st.selection = [obj.id];
     }, { reason });
-    return obj;
+    return structuredClone(obj);
   }
 
-  /** Entiteten med `id`, uansett type, eller `null`. */
+  /**
+   * Entiteten med `id`, uansett type, eller `null` — som KOPI. Endringer går
+   * gjennom `update()`, så de havner i angrehistorikken og gir hendelser.
+   * (Lavnivå-API-et og `state` er levende og raskt; det er for verktøyene.)
+   */
   get(id) {
     const e = this.entityById(id);
-    return e ? e.obj : null;
+    return e ? structuredClone(e.obj) : null;
   }
 
   /** Alle entiteter av `kind`, eller alle typer som `{kind, obj}`. */
   list(kind) {
     if (kind) {
       const k = this.kinds.get(kind);
-      return k ? (this.state[k.collection] || []).slice() : [];
+      return k ? structuredClone(this.state[k.collection] || []) : [];
     }
     const out = [];
-    for (const k of this._kindList()) for (const obj of this.state[k.collection] || []) out.push({ kind: k.name, obj });
+    for (const k of this._kindList()) for (const obj of this.state[k.collection] || []) out.push({ kind: k.name, obj: structuredClone(obj) });
     return out;
   }
 
   /** Fletter `patch` inn i entiteten. Id-en kan ikke endres. */
   update(id, patch, opts = {}) {
     const { id: _ignored, ...rest } = patch || {};
+    if (!hasEntity(this, id)) return; // ukjent id: intet tomt angresteg
     this.mutate((st) => {
       for (const k of this.kinds.values()) {
         const o = (st[k.collection] || []).find((x) => x.id === id);
@@ -454,7 +478,8 @@ export class CadDocument {
 
   /** Sletter én id eller en liste. */
   remove(idOrIds) {
-    this.removeEntities(Array.isArray(idOrIds) ? idOrIds : [idOrIds]);
+    const ids = (Array.isArray(idOrIds) ? idOrIds : [idOrIds]).filter((id) => hasEntity(this, id));
+    if (ids.length) this.removeEntities(ids);
   }
 
   /* ---------------- former ---------------- */
@@ -936,7 +961,8 @@ export class CadDocument {
    * ignoreres av kjernen).
    */
   fromJSON(textOrObject) {
-    const data = typeof textOrObject === 'string' ? JSON.parse(textOrObject) : textOrObject;
+    // Tekst parses til et nytt objekt; et objekt dypkopieres — kallerens kopi er urørt.
+    const data = typeof textOrObject === 'string' ? JSON.parse(textOrObject) : structuredClone(textOrObject);
     if (!data || !Array.isArray(data.shapes)) throw new Error('Ugyldig fil: mangler "shapes"');
     if (data.format === DOCUMENT_FORMAT && Number(data.version) > DOCUMENT_VERSION) {
       console.warn(`[cad2d] dokumentet har versjon ${data.version}, nyere enn ${DOCUMENT_VERSION}; leser det som kan leses.`);

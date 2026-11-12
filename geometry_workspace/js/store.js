@@ -683,7 +683,7 @@ export class Store extends CadDocument {
   }
 
   fromJSON(text) {
-    const data = typeof text === 'string' ? JSON.parse(text) : text;
+    const data = typeof text === 'string' ? JSON.parse(text) : structuredClone(text);
     if (!data || !Array.isArray(data.shapes)) throw new Error('Ugyldig fil: mangler "shapes"');
     this.mutate((st) => {
       st.shapes = data.shapes.map((s, i) =>
