@@ -94,6 +94,11 @@ const CSS = `
 .cad2d-statusbar .cad2d-status{flex:1 1 auto;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cad2d-statusbar .cad2d-num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .cad2d-hidden{display:none!important}
+.cad2d-editor .cad2d-numeric{position:absolute;z-index:40;display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid #0ea5e9;
+  border-radius:6px;background:rgba(15,23,42,.95);color:#e2e8f0}
+.cad2d-editor .cad2d-numeric.hidden{display:none}
+.cad2d-editor .cad2d-numeric input{background:#020617;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:2px 5px;font:12px ui-monospace,monospace}
+.cad2d-editor .cad2d-numeric span{font-size:10px;color:#94a3b8;white-space:nowrap}
 `;
 
 function ensureCss(doc) {
