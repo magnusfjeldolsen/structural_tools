@@ -419,6 +419,69 @@ def _cracking_moment(b, h, fctm, n_ed):
     return (b * h * h / 6.0) * (fctm - n_ed / (b * h))
 
 
+# Over denne graensen for |M_z|/|M_y| ved brudd sies det fra om at M_Rd forutsetter
+# fastholding mot sideveis boeyning. VALGET: momentvektoren dreies da arctan(0,05) ≈ 2,9°
+# fra y-aksen, og kapasiteten i fri (toakset) boeyning faller med omtrent kvadratet av
+# forholdet -- under 0,3 % ved 0,05, altsaa godt under det andre usikkerheter i snittet
+# gir. Reviewerens L-snitt (forhold 0,29) taper 6,8 %. Symmetriske snitt gir ~1e-9.
+LATERAL_MZ_RATIO = 0.05
+
+
+def _lateral_restraint_warning(combo_results):
+    """Advarsel naar et fritt tverrsnitt trenger et betydelig M_z for aa holde
+    noeytralaksen vannrett. Toakset boeyning bygges IKKE her; dette sier fra om antakelsen.
+    """
+    worst = None
+    for c in combo_results:
+        mz, my = c.get('M_z'), c.get('M_Rd')
+        if mz is None or not my:
+            continue
+        ratio = abs(mz) / abs(my)
+        if worst is None or ratio > worst[0]:
+            worst = (ratio, c)
+    if worst is None:
+        return None, None
+    if worst[0] <= LATERAL_MZ_RATIO:
+        return None, worst[0]
+    ratio, c = worst
+    w = _warning(
+        'lateral_restraint_assumed',
+        f'M_Rd = {c["M_Rd"] / 1e6:.1f} kNm assumes the member is restrained against '
+        f'sideways bending: the section is not symmetric about the vertical axis, and '
+        f'holding the neutral axis horizontal needs M_z = {c["M_z"] / 1e6:.1f} kNm at the '
+        f'same time ({ratio:.0%} of M_Rd). Without that restraint the resistance in free '
+        'bending is lower. Biaxial bending is not computed by this module.',
+        # Tallene ogsaa i `detail`: `results.js` viser kodetabellens faste tekst og kaster
+        # `message` for en kjent kode.
+        f'M_Rd = {c["M_Rd"] / 1e6:.1f} kNm requires M_z = {c["M_z"] / 1e6:.1f} kNm at the '
+        f'same time; M_z/M_Rd = {ratio:.3f} > {LATERAL_MZ_RATIO} (combination {c["id"]})',
+        severity='warning',
+    )
+    w['combo'] = c['id']
+    w['combo_name'] = c['name']
+    return w, ratio
+
+
+def _bw_problem(raw, b_bbox):
+    """Meldingen naar `section.bw` for et fritt tverrsnitt ikke kan brukes, ellers `None`.
+
+    `None`-verdien (ikke oppgitt) haandteres av kalleren: da regnes ikke skjaer. Her
+    gjelder det en OPPGITT verdi som er tull -- ikke et tall, ikke positiv, eller bredere
+    enn det omskrevne rektangelet.
+    """
+    try:
+        bw = float(raw)
+    except (TypeError, ValueError):
+        return f'The web width b_w = {str(raw)[:40]!r} is not a number.'
+    if not math.isfinite(bw) or bw <= 0:
+        return f'The web width b_w = {bw} must be a positive number.'
+    if bw > b_bbox * (1 + 1e-9):
+        return (f'The web width b_w = {bw:g} mm is wider than the cross-section itself '
+                f'({b_bbox:g} mm bounding box). b_w is the web — for a hollow-core element '
+                'the sum of the webs, for a T-beam the web — never the overall width.')
+    return None
+
+
 def _cracking_moment_polygon(geom, fctm, n_ed, theta):
     """`M_cr` for et fritt tverrsnitt: `W = I_y / e`, der `e` er avstanden fra
     tyngdepunktet til STREKKANTEN -- underkanten ved feltmoment, overkanten ved
@@ -1120,6 +1183,12 @@ def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
         'within_limits': True,
         'flexure_solved': True,
     }
+    if geom is not None:
+        # Fritt tverrsnitt: tøyningsplanet holdes VANNRETT (θ = 0/π), og for et snitt
+        # som ikke er symmetrisk om z-aksen krever det et moment om z-aksen samtidig.
+        # Det kastet motoren stille (review av #83). Bare for polygonet, så rektangelets
+        # svar er tegn for tegn uendret. Se `LATERAL_MZ_RATIO`.
+        public['M_z'] = _num(float(bend.m_z))
     extra = {
         'd_eff': d_eff, 'as_tension': as_tension, 'd_eff_all': d_eff_all, 'z_na': z_na,
         'm_cr': m_cr, 'has_tension': bool(tension),
@@ -1326,6 +1395,14 @@ def _run_inner(payload, progress, t0):
     # rektangelet. Rektangeluttrykkene staar URØRT -- `0.04 * b * h` og `0.04 * (b * h)` er
     # ikke samme flyttall, og fixturene skal vaere tegn for tegn de samme.
     geom = bundle.get('geom')
+    if geom is not None and payload['section'].get('bw') is not None:
+        # `b_w` UTEN OEVRE GRENSE ga skjaerkapasitet paa usikker side uten et ord (review
+        # av #83): hulldekket med b_w = 1200 (det omskrevne rektangelet, den mest
+        # sannsynlige feilinntastingen) fikk V_Rd,c 147,7 kN der stegene gir 45,9 kN.
+        # En b_w bredere enn snittet finnes ikke -- det er en FEIL, ikke en advarsel.
+        bw_problem = _bw_problem(payload['section']['bw'], b)
+        if bw_problem:
+            return _error('invalid_bw', bw_problem, bw_problem)
     as_max = 0.04 * b * h if geom is None else 0.04 * geom['area']
 
     warnings_out = list(_geometry_warnings(payload, bundle))
@@ -1466,6 +1543,12 @@ def _run_inner(payload, progress, t0):
         combo_extras.append(extra)
     if emit_solve_progress:
         progress('solve', n_combos, n_combos)
+
+    lateral_ratio = None
+    if geom is not None:
+        lateral, lateral_ratio = _lateral_restraint_warning(combo_results)
+        if lateral is not None:
+            warnings_out.append(lateral)
 
     if is_mc:
         # KURVEN regnes for DEN AKTIVE kombinasjonen alene (§4.3): `chi_plan` er bare
@@ -2084,6 +2167,14 @@ def _run_inner(payload, progress, t0):
             'z_c': _num(geom['z_c']),
             'b_bbox': _num(b),
             'h_bbox': _num(h),
+            # b_w SOM BLE REGNET MED (None = ikke oppgitt, skjaer ikke regnet). Rapporten
+            # leser den herfra, ikke fra tilstanden: tallet paa papiret skal vaere det
+            # motoren brukte.
+            'bw': _num(shear_ctx['bw']) if shear_ctx else None,
+            # Stoerste |M_z|/|M_Rd| ved brudd over de loeste radene. Over
+            # `LATERAL_MZ_RATIO` forutsetter M_Rd fastholding mot sideveis boeyning.
+            'mz_ratio': _num(lateral_ratio),
+            'mz_ratio_limit': LATERAL_MZ_RATIO,
         })
     if sls_result is not None:
         common['sls'] = sls_result

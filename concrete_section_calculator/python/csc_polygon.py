@@ -33,6 +33,15 @@ from shapely.geometry.polygon import orient
 from shapely.validation import explain_validity
 
 
+# Samme tre tall i `js/polygon.js`. Avstand under `DUP_TOL` mellom to paafoelgende punkter
+# er samme punkt (eksporten fra geometry_workspace runder til 1e-6 mm). `MIN_DIM` er minste
+# bredde/hoeyde for snitt og hull og minste godstykkelse mellom hull og rand: under 1 mm er
+# det ikke betong, det er tegnestoey -- og marin integrerer stoeyen like villig som betong.
+DUP_TOL = 1e-6
+MIN_DIM = 1.0
+MAX_COORD = 1e6
+
+
 class PolygonError(ValueError):
     """Ugyldig fritt tverrsnitt. `message` er brukervendt (engelsk, som resten av motoren)."""
 
@@ -63,9 +72,19 @@ def _ring(raw, label):
                 f'Point {i + 1} of the {label} is not a number pair.', repr(p)[:200]) from None
         if not (math.isfinite(y) and math.isfinite(z)):
             raise PolygonError(f'Point {i + 1} of the {label} is not finite.', repr(p)[:200])
+        if abs(y) > MAX_COORD or abs(z) > MAX_COORD:
+            # 1e300 gir overflow i arealet (inf) og en stacktrace lenger ned.
+            raise PolygonError(
+                f'Point {i + 1} of the {label} lies more than {MAX_COORD:.0f} mm from the '
+                'origin. Check the units — the format is in millimetres.', repr(p)[:200])
+        # PAAFOELGENDE DUPLIKATER fjernes (vanlig i DXF: et hjoerne skrevet to ganger).
+        # `js/polygon.js` gjoer det samme med samme toleranse, slik at de to sidene gir
+        # samme svar -- foer sa JS «ugyldig» mens motoren regnet.
+        if pts and math.hypot(y - pts[-1][0], z - pts[-1][1]) <= DUP_TOL:
+            continue
         pts.append((y, z))
     # Formatet sier aapne ringer, men en lukket ring er ufarlig og vanlig -- godta den.
-    if len(pts) > 1 and pts[0] == pts[-1]:
+    if len(pts) > 1 and math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1]) <= DUP_TOL:
         pts = pts[:-1]
     if len(set(pts)) < 3:
         raise PolygonError(
@@ -149,6 +168,10 @@ def validated_polygon(section):
         raise PolygonError(
             'The outer boundary crosses itself or has no area. Draw it as one closed line '
             'that does not intersect itself.', explain_validity(shell))
+    sx0, sz0, sx1, sz1 = shell.bounds
+    if sx1 - sx0 < MIN_DIM or sz1 - sz0 < MIN_DIM:
+        raise PolygonError(
+            f'The cross-section is less than {MIN_DIM:g} mm wide or high.', f'bounds {shell.bounds}')
 
     hole_polys = []
     for i, h in enumerate(holes):
@@ -164,6 +187,16 @@ def validated_polygon(section):
                 f'Hole {i + 1} is not strictly inside the outer boundary. A hole that '
                 'touches or crosses the outer edge must be drawn as part of the outer '
                 'boundary instead.', f'hole {i + 1} bounds {hp.bounds}, outer {shell.bounds}')
+        hx0, hz0, hx1, hz1 = hp.bounds
+        if hx1 - hx0 < MIN_DIM or hz1 - hz0 < MIN_DIM:
+            raise PolygonError(
+                f'Hole {i + 1} is less than {MIN_DIM:g} mm wide or high — drawing noise, not '
+                'a void. Remove it.', f'bounds {hp.bounds}')
+        wall = hp.exterior.distance(shell.exterior)
+        if wall < MIN_DIM:
+            raise PolygonError(
+                f'The wall between hole {i + 1} and the outer edge is {wall:.3g} mm — '
+                f'thinner than {MIN_DIM:g} mm.', f'distance {wall}')
         hole_polys.append(hp)
 
     for i in range(len(hole_polys)):
@@ -173,6 +206,11 @@ def validated_polygon(section):
                     f'Holes {i + 1} and {j + 1} overlap or touch. Merge them into one hole '
                     'or move them apart.',
                     f'intersection area {hole_polys[i].intersection(hole_polys[j]).area}')
+            wall = hole_polys[i].distance(hole_polys[j])
+            if wall < MIN_DIM:
+                raise PolygonError(
+                    f'The wall between holes {i + 1} and {j + 1} is {wall:.3g} mm — thinner '
+                    f'than {MIN_DIM:g} mm.', f'distance {wall}')
 
     poly = Polygon(outer, holes)
     if not poly.is_valid:

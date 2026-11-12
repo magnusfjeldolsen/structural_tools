@@ -112,6 +112,56 @@ export function shearWidth(state = {}) {
 }
 
 /**
+ * HJELPETALL for `b_w` i et fritt tverrsnitt: den MINSTE summen av betongkorder over
+ * høyden skjæret virker over — fra tyngdepunktet av den (geometriske) strekkarmeringen
+ * og en indre momentarm `z = z_factor·d` mot trykkanten. For hulldekket er det
+ * 1200 − 7·140 = 220 mm (gjennom hullsentrene), for en T steget.
+ *
+ * Det er et HJELPETALL ved feltet og grunnlaget for en advarsel — det fylles ALDRI inn
+ * stille som standard: EC2 sin b_w er et ingeniørvalg (minste bredde i strekksonen,
+ * hensyn til kabelrør osv.), og et tall brukeren ikke har sett er en gjetning.
+ *
+ * `NaN` når det ikke finnes noen strekkarmering å måle fra, eller snittet ikke er et
+ * fritt tverrsnitt.
+ */
+export function minShearChord(state = {}) {
+  const polygon = sectionPolygon(state);
+  if (!polygon) return NaN;
+  const h = sectionHeight(state);
+  const theta = activeComboTheta(state);
+  const d = effectiveDepthGeometric(state.layers || [], h, theta);
+  if (!(d > 0)) return NaN;
+  const sagging = Math.cos(theta) >= 0;
+  const zs = sagging ? h / 2 - d : -h / 2 + d;
+  const zf = num((state.shear || {}).z_factor);
+  const lever = (zf > 0 ? zf : 0.9) * d;
+  const z1 = sagging ? zs + lever : zs - lever;
+  const N = 400;
+  let best = Infinity;
+  for (let i = 0; i <= N; i++) {
+    // Litt innenfor endepunktene: nøyaktig på et hjørne er korden udefinert.
+    const t = (i + 0.5) / (N + 1);
+    const z = zs + (z1 - zs) * t;
+    const sum = chordIntervals(polygon, z).reduce((s, [a, b]) => s + (b - a), 0);
+    if (sum < best) best = sum;
+  }
+  // Rett gjennom hullsentrene ligger mellom to prøvepunkter; ta også med hullenes
+  // og hjørnenes egne høyder innenfor området, der korden typisk er minst.
+  const lo = Math.min(zs, z1); const hi = Math.max(zs, z1);
+  for (const ring of [polygon.outer, ...polygon.holes]) {
+    let zmin = Infinity; let zmax = -Infinity;
+    for (const [, z] of ring) { zmin = Math.min(zmin, z); zmax = Math.max(zmax, z); }
+    const mid = (zmin + zmax) / 2;
+    for (const z of [mid, ...ring.map((p) => p[1])]) {
+      if (z <= lo || z >= hi) continue;
+      const sum = chordIntervals(polygon, z).reduce((s, [a, b]) => s + (b - a), 0);
+      if (sum > 0 && sum < best) best = sum;
+    }
+  }
+  return Number.isFinite(best) ? best : NaN;
+}
+
+/**
  * Tverrsnittsbredden. Plata overstyrer `geometry.b` — brukeren skal ikke kunne
  * skrive noe annet enn 1000 og få et resultat som later som det er per meter.
  */
@@ -340,6 +390,32 @@ export function validate(state = {}) {
       out.push({ ...issue(p.code, 'error', p.message, 'geometry.outer'), detail: p.message });
     }
     polygonOk = problems.length === 0;
+    // b_w MOT SNITTET (review av #83). Bredere enn det omskrevne rektangelet finnes ikke
+    // — FEIL, og motoren avviser det likt (`invalid_bw`). Bredere enn den minste
+    // kordsummen der skjæret virker er nesten alltid en feilinntasting (hele bredden i
+    // stedet for stegene) — ADVARSEL med tallet, men ingen stille utfylling.
+    const bwGiven = num((state.geometry || {}).bw);
+    if (polygonOk && bwGiven > 0) {
+      if (bwGiven > b * (1 + 1e-9)) {
+        out.push({
+          ...issue('bw_exceeds_section', 'error',
+            `b_w = ${bwGiven} mm er bredere enn snittet (${b} mm).`, 'geometry.bw'),
+          detail: `b_w = ${bwGiven} mm > bounding-box width ${b} mm`,
+        });
+      } else {
+        const web = minShearChord(state);
+        if (Number.isFinite(web) && bwGiven > web * (1 + 1e-6)) {
+          const webTxt = Math.round(web * 10) / 10;
+          out.push({
+            ...issue('bw_exceeds_web', 'warning',
+              `b_w = ${bwGiven} mm er større enn minste betongbredde ${webTxt} mm der skjæret virker.`,
+              'geometry.bw'),
+            detail: `b_w = ${bwGiven} mm; smallest sum of concrete chords between the tension `
+              + `reinforcement and z = z_factor·d above it: ${webTxt} mm`,
+          });
+        }
+      }
+    }
     if (!(shearWidth(state) > 0)
       && (state.combos || []).some((c) => Number.isFinite(num(c.V_Ed)) && num(c.V_Ed) !== 0)) {
       out.push(

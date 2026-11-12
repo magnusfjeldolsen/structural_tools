@@ -71,7 +71,7 @@ import { prestressMoments } from './payload.js';
 import { bindNumericInput, evaluate } from './numeric-input.js';
 import { aswPerSpacing, hasSlsCombo, layerArea, layerBarCount, layerDepth, recomputeAutoDc,
   stackedDc, suggestedDc, totalArea, totalAswPerSpacing } from './rebar.js';
-import { activeComboTheta, allowedAnalyses, axialForcesPresent, derived, sectionHeight, sectionPolygon, sectionWidth,
+import { activeComboTheta, allowedAnalyses, axialForcesPresent, derived, minShearChord, sectionHeight, sectionPolygon, sectionWidth,
   thetaFor, validate } from './section.js';
 import { parseSectionDocument, polygonProps, toSectionDocument } from './polygon.js';
 import { drawSection } from './section-draw.js';
@@ -83,7 +83,7 @@ import { RUN_ALL, defaultState } from './store.js';
 import { fromDocument, toDocument } from './serialize.js';
 import { toLink } from './share-link.js';
 import {
-  DASH, analysisBlock, analysisLabel, checkRows, checkText, comboLabel, compressionEdgeLabel, describeWarnings, fmtInput, limitStateRows,
+  DASH, EPS_A_LABEL, analysisBlock, analysisLabel, checkRows, checkText, comboLabel, compressionEdgeLabel, describeWarnings, fmtInput, limitStateRows,
   designMoment, directionFromTheta, directionLabel, failureModeLabel, failureModeNote, failureState,
   fmtArea,
   fmtCurvature, fmtForceKN, fmtLength, fmtMomentKNm, fmtNumber, fmtPercent, fmtRatio,
@@ -1629,14 +1629,21 @@ export function createUI(deps) {
     if (bw) {
       bw.addEventListener('input', () => {
         const raw = bw.value.trim();
-        if (raw === '') {
-          store.patch('geometry', { bw: null });
-        } else {
-          const v = evaluate(raw);
-          if (v === null || !(v > 0)) return;
-          store.patch('geometry', { bw: v });
-        }
+        // ALDRI ET FELT SOM VISER NOE ANNET ENN DET SOM REGNES (review av #83): «0» og
+        // negative tall ble ignorert, og forrige b_w (220) ble stående i tilstanden mens
+        // feltet viste 0. Nå TØMMES b_w (→ `bw_missing`, skjær regnes ikke) og feltet
+        // merkes ugyldig; når fokus forlater feltet, skrives det tomme svaret tilbake.
+        const v = raw === '' ? null : evaluate(raw);
+        const invalid = raw !== '' && (v === null || !(v > 0));
+        bw.setAttribute('aria-invalid', String(invalid));
+        bw.classList.toggle('border-rose-500', invalid);
+        store.patch('geometry', { bw: invalid ? null : v });
         invalidate();
+        render();
+      });
+      bw.addEventListener('blur', () => {
+        bw.setAttribute('aria-invalid', 'false');
+        bw.classList.remove('border-rose-500');
         render();
       });
     }
@@ -1658,6 +1665,14 @@ export function createUI(deps) {
       ? `<div class="${customMessage.kind === 'error' ? 'text-rose-300' : 'text-slate-300'}">${esc(customMessage.text)}</div>`
       : '';
     el.innerHTML = msg + `<div>${facts}</div>`;
+    // HJELPETALL ved b_w-feltet, aldri fylt inn stille (review av #83).
+    const hint = $('#bw-hint');
+    if (hint) {
+      const web = minShearChord(s);
+      hint.textContent = Number.isFinite(web)
+        ? `Narrowest concrete width where the shear acts: ${fmtNumber(web, 0)} mm (bounding box ${fmtNumber(sectionWidth(s), 0)} mm).`
+        : 'Give the reinforcement first — the narrowest web width is measured from it.';
+    }
   }
 
   function setupFields() {
@@ -3451,7 +3466,7 @@ export function createUI(deps) {
             ['x / d', fmtRatio(bending.x_over_d), ''],
             ['ε<sub>c</sub> at compression face', fmtStrainPermille(bending.eps_c_top), '‰'],
             ['ε<sub>s,max</sub>', fmtStrainPermille(bending.eps_s_max), '‰'],
-            ['ε<sub>a</sub> (at the origin)', fmtStrainPermille(bending.eps_a, 3), '‰'],
+            [esc(EPS_A_LABEL), fmtStrainPermille(bending.eps_a, 3), '‰'],
             ['χ<sub>y</sub>', fmtCurvature(bending.chi_y), '10⁻⁶/mm'],
           ])}
           ${panel('Section (from the engine)', [

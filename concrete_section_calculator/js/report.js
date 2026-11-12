@@ -59,6 +59,7 @@ import { drawSection, layerLabel } from './section-draw.js';
 import { momentCurvatureSvg, nmDomainSvg, radialUtilisation } from './charts.js';
 import {
   DASH,
+  EPS_A_LABEL,
   toNum,
   fmtNumber,
   fmtLength,
@@ -336,7 +337,9 @@ function geometryTable(state, props, theta) {
     // `I_y` og `z_c` kommer fra motoren (`section_props`), og polygonet selv står i
     // figuren; b_w står fordi den er den ene geometriverdien brukeren skrev inn.
     const polygon = sectionPolygon(state || {});
-    const bw = toNum(state?.geometry?.bw);
+    // FRA RESULTATET (review av #83): tallet motoren regnet med, ikke det som står i
+    // skjemaet nå. Uten resultat finnes ikke rapporten uansett.
+    const bw = toNum(props.bw);
     return kvTable([
       ['Section type', esc(sectionTypeLabel(type))],
       ['Polygon', polygon
@@ -347,6 +350,12 @@ function geometryTable(state, props, theta) {
       ['I_y about the centroid [mm⁴]', props.I_y != null ? fmtNumber(props.I_y, 0) : DASH],
       ['Centroid above mid-height z_c [mm]', props.z_c != null ? fmtLength(props.z_c, 1) : DASH],
       ['Web width for shear b_w [mm]', bw && bw > 0 ? fmtLength(bw, 0) : 'not given — shear not computed'],
+      // FORUTSETNINGEN SKAL STÅ PÅ PAPIRET (review av #83): et snitt som ikke er
+      // symmetrisk om z-aksen trenger M_z for å holde nøytralaksen vannrett.
+      ['Bending about y only — |M_z|/|M_Rd| at failure', props.mz_ratio == null ? DASH
+        : props.mz_ratio > (props.mz_ratio_limit ?? 0.05)
+          ? `${fmtNumber(props.mz_ratio, 3)} — M_Rd ASSUMES LATERAL RESTRAINT against sideways bending`
+          : `${fmtNumber(props.mz_ratio, 3)} — negligible`],
       ['Moment direction', esc(directionLabel(directionFromTheta(theta)))],
     ]);
   }
@@ -864,7 +873,7 @@ function resultChapter(state, result) {
       ['x/d [–]', fmtRatio(fs.x_over_d, 3)],
       [`ε_c at ${compressionEdgeLabel(theta)} [‰]`, fmtStrainPermille(fs.eps_c_top)],
       ['ε_s,max [‰]', fmtStrainPermille(fs.eps_s_max)],
-      ['ε_a at the centroid [‰]', fmtStrainPermille(fs.eps_a)],
+      [`${EPS_A_LABEL} [‰]`, fmtStrainPermille(fs.eps_a)],
       ['κ_y [10⁻⁶/mm]', fmtCurvature(fs.chi_y)],
       ['Failure mode', esc(failureModeLabel(fs.failure_mode))]
     );
