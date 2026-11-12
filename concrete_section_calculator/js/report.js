@@ -101,6 +101,8 @@ import {
   shearHeadlineUtilisation,
   SHEAR_UTILISATION_LABEL,
   shearGoverningModeLabel,
+  prestressStageRows,
+  prestressLossRows,
 } from './results.js';
 
 /**
@@ -486,7 +488,14 @@ function rebarChapter(state, result, props) {
     // der A_s,min består vakuøst. Per meter for plate, fordi W = b·h²/6 med
     // b = 1000 mm; notatet under om «reinforcement quantities» dekker ikke et
     // moment, så merkingen må stå i etiketten.
-    [`M_cr = W·(f_ctm − N_Ed/A_c) [kNm]${perMeter}`, fmtMomentKNm(props.M_cr)],
+    // Forspent snitt (review B1): tallet er rissmomentet MED forspenning etter tap (t∞),
+    // i governing-radens retning og ved dens N_Ed — samme som `brittle_ok` leser — og
+    // merkelappen må si det, ellers står det ved siden av stegtabellens M_cr som et
+    // annet tall for samme snitt.
+    props.M_cr_basis === 'prestressed_long_term'
+      ? [`M_cr with prestress after losses (t∞, governing direction and N_Ed) [kNm]${perMeter}`,
+        fmtMomentKNm(props.M_cr)]
+      : [`M_cr = W·(f_ctm − N_Ed/A_c) [kNm]${perMeter}`, fmtMomentKNm(props.M_cr)],
     [`A_s,max [mm²]${perMeter}`, fmtArea(props.As_max)],
   ]);
 
@@ -695,17 +704,25 @@ function loadsChapter(state, result, props) {
 function strainTable(fs, atNEd) {
   const layers = Array.isArray(fs?.layers) ? fs.layers : [];
   if (!layers.length) return '';
+  // SPENNLAG (review F7): tøyningen som står er tauets TOTALE (ε + ε₀), tilstanden leses
+  // av SPENNINGEN (et tau med +624 MPa sto som «Compression» fordi tverrsnittstøyningen
+  // var negativ), og utnyttelsen er σ_p/f_pd — `utilisation` er allerede regnet mot
+  // lagets egen f_pd i motoren, overskriften sier nå hva den er.
+  const anyTendon = layers.some((l) => l.prestressed);
   const rows = layers.map((l) => [
-    esc(l.id || DASH),
+    esc(l.id || DASH) + (l.prestressed ? ' (tendon)' : ''),
     fmtLength(l.z, 1),
-    fmtStrainPermille(l.eps),
+    fmtStrainPermille(l.prestressed ? l.eps_total : l.eps),
     fmtStress(l.sigma, 1),
-    esc(l.compression ? 'Compression' : 'Tension'),
+    esc(l.prestressed
+      ? (toNum(l.sigma) !== null && l.sigma < 0 ? 'Compression' : 'Tension')
+      : (l.compression ? 'Compression' : 'Tension')),
     l.utilisation === undefined || l.utilisation === null ? DASH : fmtRatio(l.utilisation, 3),
   ]);
   return (
     `<h4>Strains and stresses per reinforcement layer${atNEd ? ' at N_Ed' : ''}</h4>` +
-    table(['Layer', 'z [mm]', 'ε [‰]', 'σ [MPa]', 'State', 'σ/f_yd'], rows, {
+    table(['Layer', 'z [mm]', anyTendon ? 'ε (tendon: ε+ε₀) [‰]' : 'ε [‰]', 'σ [MPa]', 'State',
+      anyTendon ? 'σ/f_yd (tendon: σ_p/f_pd)' : 'σ/f_yd'], rows, {
       num: [1, 2, 3, 5],
     })
   );
@@ -998,7 +1015,59 @@ function resultChapter(state, result) {
  * den bak en ULS-feilboks ville vært akkurat den tause skjulingen §6.2
  * advarer mot.
  */
+/**
+ * Forspenning (sak #84): stegtabellen og tapene, fra de SAMME radene resultatkortet
+ * viser (`prestressStageRows`/`prestressLossRows`). Står i kapittel 6 fordi
+ * bruksgrensen ikke er regnet for et forspent snitt — og da er stegspenningene det
+ * kapittelet har å si.
+ */
+function prestressChapter(state, result) {
+  const ps = result.prestress;
+  const tendons = Array.isArray(ps.tendons) ? ps.tendons : [];
+  const mat = ps.materials || {};
+  const inputs = kvTable([
+    ...tendons.map((t) => [`Tendons ${t.id}`,
+      `A<sub>p</sub> = ${fmtArea(t.area)} mm² · σ<sub>p0</sub> = ${fmtStress(t.sigma_p0, 0)} MPa · `
+      + `f<sub>p0,1k</sub>/f<sub>pk</sub> = ${fmtStress(t.fp01k, 0)}/${fmtStress(t.fpk, 0)} MPa · `
+      + `E<sub>p</sub> = ${fmtStress(t.Ep, 0)} MPa`]),
+    mat.fck_t0 !== undefined ? ['Concrete at transfer',
+      `f<sub>ck</sub>(t₀) = ${fmtStress(mat.fck_t0, 1)} · E<sub>cm</sub>(t₀) = ${fmtStress(mat.Ecm_t0, 0)} · `
+      + `f<sub>ctm</sub>(t₀) = ${fmtStress(mat.fctm_t0, 2)} MPa (EC2 3.4, 3.5)`] : null,
+    ['Moments', `transfer ${fmtMomentKNm(ps.M_transfer)} kNm · permanent ${fmtMomentKNm(ps.M_permanent)} kNm`],
+    ['ULS prestrain', ps.uls_prestrain === 'long_term'
+      ? 'ε<sub>p</sub>* after losses (P<sub>m,∞</sub>, γ<sub>P</sub> = 1)'
+      : 'σ<sub>p0</sub>/E<sub>p</sub> — no stage data, no losses'],
+  ]);
+  const rowsArr = prestressStageRows(result);
+  const stageTable = rowsArr.length
+    ? table(['Stage', 'M [kNm]', 'σc,top', 'σc,bot', 'σp', 'χ [10⁻⁶/mm]', 'State', 'M_dec', 'M_cr'],
+      rowsArr.map((r) => [esc(r.label) + (r.available === false ? ` — ${esc(r.reason)}` : ''),
+        r.M, r.top, r.bottom, r.sigma_p, r.chi, r.state, r.M_dec, r.M_cr]),
+      { num: [1, 2, 3, 4, 5, 7, 8] })
+    : '<p class="muted">No stage data was given.</p>';
+  const losses = prestressLossRows(result).map((l) => `
+    <p><b>Losses, ${esc(l.id)}:</b> σ<sub>p0</sub> ${l.sigma_p0} → σ<sub>p,∞</sub> ${l.sigma_p_inf} MPa, total ${l.total} MPa.</p>
+    ${l.rows.length ? kvTable(l.rows.map(([k, v]) => [k, `${v} MPa`])) : ''}
+    <p class="muted">${esc(l.note)}</p>`).join('');
+  return chapter(
+    6,
+    'Prestress stages',
+    `${inputs}${stageTable}
+    <p class="muted">Stresses in MPa, tension positive; moments sagging negative. Linear-elastic
+    section over the actual polygon: transformed and uncracked, or without concrete in tension
+    where the stress exceeds f<sub>ct</sub> of that age. Long term: tendon force after losses known,
+    curvature with E<sub>c,eff</sub> = E<sub>cm</sub>/(1+φ), shrinkage curvature not included. M<sub>dec</sub>/M<sub>cr</sub>:
+    moment giving zero / f<sub>ct</sub> at the fibre the moment puts in tension (bottom for sagging,
+    top for hogging). The EC2 7.2/7.3 serviceability checks are not carried out for a
+    prestressed section. Shear: σ<sub>cp</sub> from the prestress is not included in V<sub>Rd,c</sub>
+    (safe side), and the shear-tension check of EC2 6.2.2(2) / EN 1168 is not carried out.
+    Stages marked "not available" were not computed; the reason is given in the table.</p>${losses}`,
+    'atomic'
+  );
+}
+
 function slsChapter(state, result) {
+  if (result?.prestress) return prestressChapter(state, result);
   const sls = result?.sls;
   if (!sls) {
     return chapter(

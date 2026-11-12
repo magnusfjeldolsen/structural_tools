@@ -107,6 +107,44 @@ log(`M-N: ${m.length} punkter, m fra ${(Math.min(...m) / 1e6).toFixed(1)} til ${
 const neg = m.filter((v) => v < 0).length;
 log(`negative m-verdier: ${neg} (fortegnsregelen holder om > 0)`);
 
-const ok = rel < 1e-9 && neg > 0;
+// FORSPENT HULLDEKKE (sak #84): stegene og M_Rd med initialtoeyning, under WebAssembly.
+// Fasiten er CPython-kjoeringen av den samme fila (2026-11-12), som igjen treffer
+// haandregningen `docs/prestress-hand-calc.py` til avrunding (`test_prestress.py`).
+// Sjekker baade det lineaere snittet, det rissede (polygonklipping i shapely under
+// Pyodide) og at pakka integrerer initialtoeyningen likt.
+const psPayload = await (await fetch(`${BASE}/tests/fixtures/payload-custom-hd265-prestressed.json`)).json();
+const ps = JSON.parse(runJson(JSON.stringify(psPayload), null));
+const PS_CPYTHON = {
+  M_Rd: -279721953.3032998,
+  transfer: [-3.105560635025654, 1065.8435619020174],
+  long_term: [-3.466376648853844, 867.7230364329582],
+  loaded_150: [-9.864063466113663, 889.5697077677253],
+  loaded_200_cracked: [-22.184776622666057, 1106.0471273246303],
+};
+let psOk = !!ps.ok && !!ps.prestress;
+if (!psOk) {
+  log(`FORSPENT: FEIL ${ps.error?.code} ${ps.error?.message}`);
+} else {
+  const st = ps.prestress.stages;
+  const pairs = [
+    ['M_Rd', ps.bending.M_Rd, PS_CPYTHON.M_Rd],
+    ['t0 σ_c,o.k.', st[0].sigma_c_top, PS_CPYTHON.transfer[0]],
+    ['t0 σ_p', st[0].tendons[0].sigma_p, PS_CPYTHON.transfer[1]],
+    ['t∞ σ_c,o.k.', st[1].sigma_c_top, PS_CPYTHON.long_term[0]],
+    ['t∞ σ_p', st[1].tendons[0].sigma_p, PS_CPYTHON.long_term[1]],
+    ['−150 σ_c,o.k.', st[2].sigma_c_top, PS_CPYTHON.loaded_150[0]],
+    ['−150 σ_p', st[2].tendons[0].sigma_p, PS_CPYTHON.loaded_150[1]],
+    ['−200 risset σ_c,o.k.', st[3].sigma_c_top, PS_CPYTHON.loaded_200_cracked[0]],
+    ['−200 risset σ_p', st[3].tendons[0].sigma_p, PS_CPYTHON.loaded_200_cracked[1]],
+  ];
+  for (const [name, got2, want2] of pairs) {
+    const r = Math.abs(got2 - want2) / Math.abs(want2);
+    log(`FORSPENT ${name}: ${got2}  (CPython ${want2}, avvik ${r.toExponential(3)})`);
+    if (!(r < 1e-9)) psOk = false;
+  }
+  if (st[3].uncracked !== false) psOk = false;
+}
+
+const ok = rel < 1e-9 && neg > 0 && psOk;
 log(ok ? 'VERIFISERT' : 'AVVIK');
 process.exit(ok ? 0 : 1);

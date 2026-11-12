@@ -97,6 +97,59 @@ gods mellom hull og rand eller mellom hull minst 1 mm; koordinater innenfor ±1 
 **`h₀ = 2A_c/u` med `u = ytre omkrets + ½ · hullenes omkrets`** — et dokumentert *valg*
 (lukkede hulrom tørker, men langsommere), ikke en EC2-verdi. Kan overstyres.
 
+### 1.2 Forspent armering og beregningssteg (sak #84)
+
+Et `bars`-lag blir et **spennlag** med «Prestressed tendons» i radeditoren: areal per tau
+`A_p` (et 12,5 mm tau er 93 mm², ikke π·12,5²/4 = 122,7), `σ_p0` rett før overføring
+(strekk positiv — et negativt tall avvises med `invalid_prestress`), `f_p0,1k`, `f_pk`,
+`E_p`, `ε_uk`. Føroppspent med heft. Motoren: `python/csc_prestress.py`.
+
+**Stegene** (bare når et lag er forspent, i `result.prestress.stages`):
+
+| steg | modell |
+|---|---|
+| `transfer` (t₀) | lineær-elastisk snitt over polygonet, `E_cm(t₀)` fra `f_ck(t₀)` (EC2 3.5), tauet med `ε_p0` |
+| `long_term` (t∞) | tauspenningen etter tap er kjent; resten av snittet bærer `N − P_∞`, `M − P_∞·e`. χ med `E_c,eff = E_cm/(1+φ)`, svinnkrumning ikke med |
+| `loaded` | per karakteristisk/tilnærmet permanent kombinasjon: korttid (`E_cm`) på t∞-tilstanden, tauet med `ε_p* = σ_p,∞/E_p − ε_c(z_p)`. `M_Ed` er TOTALT, `dM` er tillegget |
+
+Strekk over `f_ct` (av riktig alder) ⇒ risset snitt, null strekk i betong. `M_dec`/`M_cr`
+er momentene som gir 0 / `f_ct` i fiberen momentet strekker (underkant ved sagging,
+overkant ved hogging). Trykk over `f_ck` gir en advarsel: steget er da utenfor den
+lineære modellen. Tap etter EC2 5.10.6 (5.46) ledd for ledd (svinn fra
+`structuralcodes.codes.ec2_2004`, relaksasjon 3.3.2 klasse 1–3 med anbefalte `ρ_1000`),
+eller `σ_p,∞` gitt direkte. ULS: tauet har `ε_p*` som initialtøyning i `structuralcodes`
+(P_m,∞).
+
+**Påkrevd inndata:** `f_ck(t₀)` og **alder ved overføring t₀** (døgn). Kryptallet for
+tapene er φ(t∞, t₀) regnet av den alderen med tillegg B (RH, sementklasse, levetid og h₀
+fra krypboksen) — SLS-boksens `φ_ef`-overstyring og belastningsalder påvirker IKKE tapene.
+φ for tapene kan overstyres i steg-panelet.
+
+**Sprøbrudd:** for et forspent snitt bruker `brittle_ok` og `section_props.M_cr` rissmomentet
+MED forspenning etter tap (t∞), i governing-radens retning og ved dens N_Ed
+(`M_cr_basis: 'prestressed_long_term'`). Duktilitet og bruddform ser tauets totale
+tøyning (ε+ε₀) mot f_pd/E_p.
+
+**«Ikke tilgjengelig»** (`available: false` med grunn, `brittle_ok: null`):
+- `long_term` og `loaded` når snittet har **slakkarmering sammen med spennlag** — slakken tar
+  opp kryp og svinn over tid, og uten en aldersjustert modell ville langtidsspenningene og
+  M_dec/M_cr vært 13–19 % på usikker side. t₀ og ULS står.
+- `long_term` og `loaded` når snittet **risser ved overføring**; tapene bruker da det rissede
+  t₀-planet (én kilde til σ_pi).
+- Et risset steg som bare kan balanseres med tau over f_p0,1k (f.eks. tau bare i overkant
+  og egenvekt) gir `invalid_prestress` med forklaring, ikke et tall.
+
+**Skjær:** σ_cp fra forspenningen er IKKE med i V_Rd,c (sikker side), og skjærstrekk etter
+EC2 6.2.2(2) / EN 1168 for hulldekker er ikke regnet (`prestress_shear_not_included`).
+
+**Ikke med:** overføringslengde `l_pt`, påstøp/samvirke, etteroppspenning uten heft,
+rissvidde og EC2 7.2-spenningsgrenser for forspent snitt (`sls_ok` er ubesvart med grunn),
+r_inf/r_sup etter EC2 5.10.9, aldersjustert langtidsmodell med slakkarmering, samvirke
+mellom tapene i flere spennlag.
+
+**Fasit:** `docs/prestress-hand-calc.py`, skrevet før motoren. Motoren treffer den til
+avrunding på 32-kanten og innen 0,51 % på ekte sirkler (σ), se `tests/python/test_prestress.py`.
+
 ---
 
 ## 2. Kjøre lokalt

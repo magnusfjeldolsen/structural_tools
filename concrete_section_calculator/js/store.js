@@ -33,7 +33,9 @@ import {
 } from './rebar.js';
 import { allowedAnalyses, SLAB_WIDTH } from './section.js';
 import { normalizePolygon, polygonBounds, rectanglePolygon } from './polygon.js';
-import { CEMENT_CLASSES, CREEP_DEFAULTS, EXPOSURE_CLASSES, SLS_DEFAULTS } from './materials.js';
+import {
+  CEMENT_CLASSES, CREEP_DEFAULTS, EXPOSURE_CLASSES, PRESTRESS_STAGE_DEFAULTS, SLS_DEFAULTS,
+} from './materials.js';
 
 /**
  * «Kjør alle» (endringsrunde 5 §D). Er ALLTID lovlig: den kjører nettopp de
@@ -197,6 +199,9 @@ export function defaultState() {
       sigma_s_char_factor: SLS_DEFAULTS.sigma_s_char_factor,
     },
     doc: { project: '', title: '', author: '', date: '', note: '' },
+    // FORSPENNING (sak #84): stegdataene. Brukes BARE når et lag har `prestress`;
+    // uten spennlag når ingenting herfra payloaden, og svaret er det samme som før.
+    prestress: { ...PRESTRESS_STAGE_DEFAULTS },
     /*
      * BJELKEN OG PLATA ER TO UAVHENGIGE SNITT (runde 8 §1).
      *
@@ -393,7 +398,9 @@ function cloneState(s) {
     shear: { ...s.shear, stirrups: (s.shear?.stirrups || []).map((st) => ({ ...st })) },
     options: { ...s.options },
     doc: { ...s.doc },
-    layers: (s.layers || []).map((l) => ({ ...l })),
+    prestress: { ...s.prestress },
+    // `prestress` i et lag er et objekt, og klones av samme grunn som lagene selv.
+    layers: (s.layers || []).map((l) => (l.prestress ? { ...l, prestress: { ...l.prestress } } : { ...l })),
     combos: (s.combos || []).map((c) => ({ ...c })),
     // Det parkerte snittet klones av samme grunn som `layers` over: uten dette
     // ville `{ ...s }` delt lag-arrayen med stashet, og `applyAutoDc` på det
