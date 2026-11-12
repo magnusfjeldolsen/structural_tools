@@ -3906,7 +3906,12 @@ export function createUI(deps) {
       // svaret fra `derived()`, men `NaN < NaN` er `false`, så hintet forsvant
       // STILLE og så ut som en bestått kontroll. Samme feilform som resten av
       // runden: et manglende svar som leses som et godkjent.
-      armWarn.innerHTML = !Number.isFinite(est.As_min)
+      // Fritt tverrsnitt: A_s,min er NaN av en ANNEN grunn (b_t finnes ikke), og
+      // den grunnen skal stå — ikke «ingen strekkarmering», som ville vært usant.
+      armWarn.innerHTML = s.sectionType === 'custom'
+        ? '<span class="text-amber-200/80">A<sub>s,min</sub> not available for a custom section — '
+          + 'the tension-zone width b_t is not defined for an arbitrary polygon</span>'
+        : !Number.isFinite(est.As_min)
         ? '<span class="text-amber-200/80">A<sub>s,min</sub> can\'t be checked — '
           + 'no layer is on the tension side for this moment direction</span>'
         : est.As_total < est.As_min

@@ -27,6 +27,8 @@ Tre analyser, begge momentretninger, to tverrsnittstyper:
   `M_Ed > 0`) — `M_Ed` er SIGNERT etter `structuralcodes` sin egen konvensjon: sagging er
   NEGATIV, IKKE norsk praksis. Retningen er derfor ikke et eget felt lenger, bare fortegnet.
 - Skjær, vertikalt (α = 90°), etter `structuralcodes` sine `VRdc`/`VRds`/`VRdmax`.
+- **Fritt tverrsnitt** («Custom», sak #83): ett ytre polygon med hull — hulldekke, kasse,
+  T, importert DXF. Se §1.1.
 - Flere armeringslag, hvert med egen kant og egen `d_c`.
 - Utskriftsklar A4-rapport med tverrsnittsfigur, plott, kontrolltabell og forutsetningskapittel.
 
@@ -37,6 +39,43 @@ biaksiell bøying/skjær, forspenning, brann, eksponeringsklasser. Skjær er INN
 `VRdc_prin_stress`, skjær i steg/flens). Se `global-devspecs/concrete_section_calculator-plan.md`
 §1.1 og §1.2 — §1.2 forklarer også hva som er **kuttet med begrunnelse** (`fiber`-integratoren,
 `law: 'sargin'`, `smear_mode: 'bars'`) og som ikke skal legges inn igjen.
+
+### 1.1 Fritt tverrsnitt (polygon med hull)
+
+**Utvekslingsformatet** — delt med `geometry_workspace` (sak #85), og kontrakten mellom dem:
+
+```json
+{ "format": "structural-tools-section", "version": 1, "units": "mm",
+  "outer": [[y, z], ...], "holes": [[[y, z], ...], ...] }
+```
+
+y vannrett, z opp, åpne ringer (en lukket ring godtas), vilkårlig origo. Lastes inn som
+fil eller limes inn i geometriseksjonen; «Export section» skriver samme format.
+`tests/fixtures/section-hd265-7holes.json` er referansesnittet.
+
+**Hvordan det regnes.** `js/polygon.js` normaliserer polygonet til *omskrevet rektangel
+sentrert i origo*, og `geometry.b`/`h` er det omskrevne rektangelet — avledet, aldri
+redigerbart. Payloaden sender `section.shape = 'polygon'` med `outer`/`holes` og
+**ikke** `b`/`h`. `python/csc_polygon.py` validerer geometrien før marin kalles
+(overlappende hull gir ellers `GEOSException` dypt i pakka) og svarer
+`{ok: false, error: {code: 'invalid_geometry'}}` med meldingen i klartekst. `structuralcodes`
+får geometrien flyttet slik at **betongens tyngdepunkt ligger i origo**: momentene regnes
+om tyngdepunktet, der aksialkraften virker. `M_cr = I_y/e · (f_ctm − N/A)` med `e` til
+strekkanten. Armeringslag fordeles over betongen i lagets høyde (`layerSpan`), så et
+underkantlag i en T havner i steget.
+
+**Det som svarer «ikke tilgjengelig» for et fritt tverrsnitt — med grunn, aldri stille:**
+
+| hva | svar | hvorfor |
+|---|---|---|
+| Skjær uten `b_w` | `shear.evaluated: false`, `reason: 'bw_missing'`, `shear_ok: null` | Stegbredden kan ikke leses av polygonet. Gi `b_w` eksplisitt (summen av stegene i et hulldekke). `A_c` er polygonets areal. |
+| `A_s,min`, `b_t`, `ρ_l` | `null` / `as_min_ok: null` | `b_t` er ikke ett tall for et vilkårlig polygon. |
+| Minimum skjærarmering uten bøyler | `asw_min_ok: null` | Bjelke (9.2.2(5)) eller plate (6.2.1(4)) kan ikke leses av polygonet. |
+| SLS (spenninger, rissvidde) | `checks.sls_ok: null` + `sls_not_available_custom_section` | `csc_sls` er lukket-form-rektangel; omskrevet rektangel ville regnet hullene som betong. |
+| Bøylen i figuren | tegnes ikke | Den ville gått gjennom luft og hull. Bøyleraden regnes fortsatt. |
+
+**`h₀ = 2A_c/u` med `u = ytre omkrets + ½ · hullenes omkrets`** — et dokumentert *valg*
+(lukkede hulrom tørker, men langsommere), ikke en EC2-verdi. Kan overstyres.
 
 ---
 
@@ -73,6 +112,7 @@ concrete_section_calculator/
     section.js                geometrimodell, avledede størrelser, validering
     rebar.js                  armeringslag, barPositions, utsmurt stripe
     payload.js                tilstand -> motor-payload
+    polygon.js                fritt tverrsnitt: format, normalisering, kord, gyldighet
     numeric-input.js          uttrykksfelt («35+8», «20*5^2/8»)
     section-draw.js           tverrsnitts-SVG (skjerm og papir)
     charts.js                 M–κ- og M–N-SVG, lastpunkt, radiell λ
@@ -83,6 +123,7 @@ concrete_section_calculator/
     main.js                   oppstart og orkestrering
   workers/solver-worker.mjs   Pyodide-vert + meldingsprotokoll
   python/engine.py            run(payload, progress=None) — eneste structuralcodes-kode
+  python/csc_polygon.py       fritt tverrsnitt: validering og A/I_y/tyngdepunkt
   python/wasm_stubs.py        install_stubs() — triangle + scipy
   vendor/*.whl                structuralcodes, vendored
   docs/                       forskningsgrunnlag. LES, ikke rediger
