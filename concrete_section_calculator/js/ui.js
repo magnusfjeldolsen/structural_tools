@@ -66,7 +66,8 @@
 
 import { BAR_DIAMETERS, CEMENT_CLASSES, CONCRETE_GRADES, CONCRETE_LAWS, EXPOSURE_CLASSES,
   STEEL_GRADES, STEEL_LAWS, derivedMaterials, matchConcreteGrade, matchSteelGrade,
-  notionalSize, resolveCreep, slsLimits } from './materials.js';
+  notionalSize, resolveCreep, slsLimits, PRESTRESS_STEEL_DEFAULTS, isPrestressedLayer } from './materials.js';
+import { prestressMoments } from './payload.js';
 import { bindNumericInput, evaluate } from './numeric-input.js';
 import { aswPerSpacing, hasSlsCombo, layerArea, layerBarCount, layerDepth, recomputeAutoDc,
   stackedDc, suggestedDc, totalArea, totalAswPerSpacing } from './rebar.js';
@@ -94,6 +95,7 @@ import {
   allCombinations,
   withResultView,
   RESULT_VIEW_ENVELOPE,
+  prestressStageRows, prestressLossRows,
 } from './results.js';
 
 /* ================================================================== *
@@ -798,6 +800,46 @@ export function slsSection(result) {
       <summary class="px-2 py-1.5 text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer">Derivation ▸</summary>
       <div class="px-2 pb-2">${rowsArr.map(slsRowDerivation).join('')}</div>
     </details>
+  </div>`;
+}
+
+/**
+ * Forspenning (sak #84): stegtabellen og tapene. `''` uten `result.prestress`, slik at
+ * kalleren kan sette den rett inn i malen, som `slsSection`. Tallene er fakta om
+ * snittet i hvert steg — ingen av dem er en kontroll mot en grense, og kortet sier det.
+ */
+export function prestressSection(result) {
+  if (!result?.prestress) return '';
+  const rowsArr = prestressStageRows(result);
+  if (!rowsArr.length) {
+    return `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3" id="prestress-stages-result">
+      <div class="text-xs text-slate-400 mb-1.5">Prestress stages</div>
+      <p class="text-[12px] text-slate-400">No stage data — the bending resistance uses σ<sub>p0</sub> without losses.</p></div>`;
+  }
+  const cell = 'px-2 py-1 text-right num';
+  const head = ['Stage', 'M [kNm]', 'σ<sub>c,top</sub>', 'σ<sub>c,bot</sub>', 'σ<sub>p</sub>',
+    'χ [10⁻⁶/mm]', 'State', 'M<sub>dec</sub>', 'M<sub>cr</sub>'];
+  const body = rowsArr.map((r) => `<tr class="border-t border-slate-700/60">
+      <td class="px-2 py-1">${esc(r.label)}</td>
+      <td class="${cell}">${r.M}</td><td class="${cell}">${r.top}</td><td class="${cell}">${r.bottom}</td>
+      <td class="${cell}">${r.sigma_p}</td><td class="${cell}">${r.chi}</td>
+      <td class="px-2 py-1 ${r.uncracked ? 'text-emerald-300' : 'text-amber-300'}"
+          title="f_ct = ${esc(r.f_ct)} MPa">${r.state}</td>
+      <td class="${cell}">${r.M_dec}</td><td class="${cell}">${r.M_cr}</td></tr>`).join('');
+  const losses = prestressLossRows(result).map((l) => `
+      <div class="mt-2 text-[12px]">
+        <div class="text-slate-300">Losses, layer ${esc(l.id)}: σ<sub>p0</sub> ${l.sigma_p0} → σ<sub>p,∞</sub> ${l.sigma_p_inf} MPa (total ${l.total} MPa)</div>
+        ${l.rows.length ? `<div class="grid grid-cols-[auto_auto] gap-x-4 max-w-md text-slate-400">${l.rows.map(([k, v]) =>
+          `<span>${esc(k)}</span><span class="num text-right">${v} MPa</span>`).join('')}</div>` : ''}
+        <div class="text-[11px] text-slate-500">${esc(l.note)}</div>
+      </div>`).join('');
+  return `<div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3" id="prestress-stages-result">
+    <div class="text-xs text-slate-400 mb-1.5">Prestress stages — stresses in MPa, tension positive, sagging negative</div>
+    <div class="overflow-x-auto"><table class="text-[12px] w-full">
+      <thead><tr class="text-slate-400">${head.map((h, i) => `<th class="px-2 py-1 ${i ? 'text-right' : 'text-left'} font-normal">${h}</th>`).join('')}</tr></thead>
+      <tbody>${body}</tbody></table></div>
+    <p class="text-[11px] text-slate-500 mt-1">Linear-elastic section over the actual polygon (transformed, uncracked; no tension in concrete when the tensile stress exceeds f<sub>ct</sub> of that age). M<sub>dec</sub>/M<sub>cr</sub>: moment giving zero / f<sub>ct</sub> stress at the bottom fibre. These are not checks against the EC2 7.2 limits.</p>
+    ${losses}
   </div>`;
 }
 
@@ -2126,7 +2168,10 @@ export function createUI(deps) {
       const n = layerBarCount(layer);
       const label = layer.mode === 'spacing'
         ? `<b class="text-amber-300">Ø${fmtNumber(layer.dia, 1)}</b> c/c <b class="text-amber-300">${fmtNumber(layer.spacing, 0)}</b>`
-        : `<b class="text-amber-300">${fmtNumber(layer.count, 0)}</b> × <b class="text-amber-300">Ø${fmtNumber(layer.dia, 1)}</b>`;
+        : `<b class="text-amber-300">${fmtNumber(layer.count, 0)}</b> × <b class="text-amber-300">Ø${fmtNumber(layer.dia, 1)}</b>`
+          + (isPrestressedLayer(layer)
+            ? ` <span class="text-sky-300" title="Prestressed tendons">tendon σ<sub>p0</sub> ${fmtNumber(layer.prestress.sigma_p0, 0)}</span>`
+            : '');
       const open = editing === layer.id;
       // Selve radformen ligger i `layerRowHtml` på modulnivå. Her bygges bare
       // tallene, og de bygges ÉN gang hver: `area`, `d` og `n` over er de
@@ -2141,7 +2186,7 @@ export function createUI(deps) {
         open,
         editor: open ? rowEditor(layer, s) : '',
       });
-    }).join('');
+    }).join('') + (s.layers.some(isPrestressedLayer) ? prestressStagePanel(s) : '');
 
     bindLayerRows(host);
   }
@@ -2194,6 +2239,7 @@ export function createUI(deps) {
               : `Entered manually. The derived value would be ${fmtNumber(auto, 2)} mm.`}
           </p>
         </div>
+        ${isSpacing ? '' : tendonEditor(layer)}
       </div>
       <div class="text-[11px] text-slate-500 num md:text-right md:w-44 space-y-1">
         <div>Shorthand: <span class="font-mono text-slate-400">${esc(shorthandOf(layer))}</span></div>
@@ -2201,6 +2247,58 @@ export function createUI(deps) {
         <div>${layerBarCount(layer)} bars drawn</div>
         <button type="button" class="chip mt-1" data-close="1">Close</button>
       </div>
+    </div>`;
+  }
+
+  /**
+   * Spennlaget (sak #84) i radeditoren: en bryter, og når den er på, materialet og
+   * forspenningen. Diameteren over brukes da bare til tegningen — arealet er
+   * antall × A_p, og det står med egen merkelapp så ingen tror Ø12,5 betyr 122,7 mm².
+   */
+  function tendonEditor(layer) {
+    const on = isPrestressedLayer(layer);
+    const id = esc(layer.id);
+    const ps = layer.prestress || {};
+    const field = (f, label, dec) => `<label><span class="field-label">${label}</span>
+      <input type="text" inputmode="text" data-pf="${f}" data-l="${id}" value="${fmtInput(ps[f], dec)}"></label>`;
+    return `<div class="max-w-md">
+      <button type="button" class="chip" data-ps-toggle="${id}" data-on="${String(on)}"
+              title="Treat this layer as bonded prestressing tendons (pre-tensioned)">${on ? '✓ Prestressed tendons' : 'Prestressed tendons'}</button>
+      ${on ? `<div class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
+        ${field('area_per_tendon', 'A<sub>p</sub> per tendon [mm²]', 1)}
+        ${field('sigma_p0', 'σ<sub>p0</sub> before transfer [MPa]', 1)}
+        ${field('fp01k', 'f<sub>p0,1k</sub> [MPa]', 0)}
+        ${field('fpk', 'f<sub>pk</sub> [MPa]', 0)}
+        ${field('Ep', 'E<sub>p</sub> [MPa]', 0)}
+        ${field('epsuk', 'ε<sub>uk</sub> [–]', 4)}
+      </div>
+      <p class="text-[11px] text-slate-500 mt-1">Tension positive. Ø is used for the drawing only; the steel area is ${fmtNumber(layer.count, 0)} × A<sub>p</sub> = ${fmtArea(layerArea(layer))} mm². Stage data (f<sub>ck</sub>(t₀), moments, losses) below the layer list.</p>` : ''}
+    </div>`;
+  }
+
+  /**
+   * Stegdataene, under lagslista — BARE når et lag er forspent. Tomt felt = utled
+   * (egenvekt fra spenn og densitet, permanent = overføring, tapene etter EC2 5.46).
+   * Tallet som vises ved siden av er det payloaden sender (`prestressMoments`).
+   */
+  function prestressStagePanel(s) {
+    const ps = s.prestress || {};
+    const m = prestressMoments(s);
+    const fld = (f, label, dec, hint) => `<label><span class="field-label">${label}</span>
+      <input type="text" inputmode="text" data-psg="${f}" value="${fmtInput(ps[f], dec)}" placeholder="${esc(hint)}"></label>`;
+    const src = { manual: 'entered', self_weight: 'self-weight', zero: 'no span given → 0', transfer: '= transfer' };
+    return `<div class="px-3 py-3 bg-slate-900/40" id="prestress-stage-inputs">
+      <div class="text-xs text-slate-400 mb-2">Prestress stages — transfer t₀, long term t∞, loaded (per characteristic / quasi-permanent combination)</div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+        ${fld('fck_t0', 'f<sub>ck</sub>(t₀) at transfer [MPa]', 1, `= f_ck ${fmtNumber(s.concrete?.fck, 0)}`)}
+        ${fld('span', 'Span L [m] (self-weight helper)', 2, 'none')}
+        ${fld('density', 'Density [kN/m³]', 1, '25')}
+        ${fld('relaxation_class', 'Relaxation class (EC2 3.3.2)', 0, '2')}
+        ${fld('M_transfer', 'M at transfer [kNm]', 1, `${fmtNumber(m.M_transfer, 1)} (${src[m.transfer_source]})`)}
+        ${fld('M_permanent', 'M permanent t∞ [kNm]', 1, `${fmtNumber(m.M_permanent, 1)} (${src[m.permanent_source]})`)}
+        ${fld('sigma_p_inf', 'σ<sub>p,∞</sub> override [MPa]', 1, 'compute losses')}
+      </div>
+      <p class="text-[11px] text-slate-500 mt-1">Self-weight M<sub>g</sub> = −ρ·A·L²/8 = ${m.M_g === null ? '–' : fmtNumber(m.M_g, 1)} kNm. Creep φ, RH, cement class and t₀ (age at transfer) come from the creep box in section 1. Empty field = derived.</p>
     </div>`;
   }
 
@@ -2292,6 +2390,38 @@ export function createUI(deps) {
         if (value === null) { render(); return; }
         setLayerValue(el.dataset.l, el.dataset.f, value);
       }, el.dataset.f === 'count' ? { min: 1, integer: true } : { min: 0.01 });
+    });
+    // SPENNLAG (sak #84).
+    host.querySelectorAll('[data-ps-toggle]').forEach((el) => {
+      el.onclick = () => {
+        const layer = store.getState().layers.find((l) => l.id === el.dataset.psToggle);
+        if (!layer) return;
+        store.updateLayer(layer.id, {
+          prestress: isPrestressedLayer(layer) ? null : { ...PRESTRESS_STEEL_DEFAULTS },
+          ...(isPrestressedLayer(layer) ? {} : { dia: 12.5 }),
+        });
+        invalidate(); render();
+      };
+    });
+    host.querySelectorAll('input[data-pf]').forEach((el) => {
+      // σ_p0 har INGEN nedre grense her, med vilje: et negativt tall skal nå motoren og
+      // avvises der med en melding (feil fortegn), ikke stille klemmes til et minimum.
+      const rules = el.dataset.pf === 'sigma_p0' ? {} : { min: 1e-9 };
+      bindNumericInput(el, (value) => {
+        if (value === null) { render(); return; }
+        const layer = store.getState().layers.find((l) => l.id === el.dataset.l);
+        if (!layer) return;
+        store.updateLayer(layer.id, { prestress: { ...layer.prestress, [el.dataset.pf]: value } });
+        invalidate(); render();
+      }, rules);
+    });
+    host.querySelectorAll('input[data-psg]').forEach((el) => {
+      bindNumericInput(el, (value) => {
+        // Tomt felt = UTLED (null), ikke «ugyldig». Søppel tegnes bare på nytt.
+        if (value === null && String(el.value).trim() !== '') { render(); return; }
+        store.patch('prestress', { [el.dataset.psg]: value });
+        invalidate(); render();
+      });
     });
   }
 
@@ -3217,7 +3347,7 @@ export function createUI(deps) {
         ${result.error?.detail ? `<details><summary class="text-[11px] text-slate-400">Technical detail</summary>
            <pre class="text-[10px] text-slate-500 whitespace-pre-wrap mt-1">${esc(result.error.detail)}</pre></details>` : ''}
         <p class="text-[12px] text-slate-400">This is the engine's answer to the input, not a bug in the program.</p>
-      </div>${slsSection(result)}`;
+      </div>${slsSection(result)}${prestressSection(result)}`;
       wireSlsDerivation();
       return;
     }
@@ -3302,6 +3432,8 @@ export function createUI(deps) {
           </div>
 
           ${slsSection(result)}
+
+          ${prestressSection(result)}
 
           ${warnings.length ? `<div class="space-y-2">${warnings.map((w) => `
             <div class="rounded-lg border px-3 py-2 text-[12px] ${w.severity === 'error'

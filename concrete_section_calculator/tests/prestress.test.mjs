@@ -23,6 +23,9 @@ import {
   isPrestressedLayer, notionalSize, PRESTRESS_STEEL_DEFAULTS, resolveCreep, selfWeightMoment,
 } from '../js/materials.js';
 import { fromDocument, toDocument } from '../js/serialize.js';
+import { prestressLossRows, prestressStageRows } from '../js/results.js';
+import { prestressSection } from '../js/ui.js';
+import { buildReportHtml } from '../js/report.js';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 const HD265 = parseSectionDocument(readFileSync(fixture('section-hd265-7holes.json'), 'utf8')).polygon;
@@ -137,6 +140,77 @@ test('negativt σ_p0 sendes RÅTT, slik at motoren kan avvise det høylytt', () 
   const id = store.getState().layers[0].id;
   store.updateLayer(id, { prestress: { ...PRESTRESS_STEEL_DEFAULTS, sigma_p0: -1100 } });
   assert.equal(buildPayload(store.getState()).section.rebar[0].prestress.sigma_p0, -1100);
+});
+
+/* ---------------- resultatkort og rapport ---------------- */
+
+// Et utsnitt av motorens svar for referansetilstanden (CPython 2026-11-12), nok til å
+// tegne tabellen. Tallene er motorens; formateringen er det som prøves her.
+const RESULT = {
+  ok: true,
+  prestress: {
+    uls_prestrain: 'long_term',
+    M_transfer: -65917009.77, M_permanent: -65917009.77,
+    materials: { fck_t0: 30, Ecm_t0: 32836.6, fctm_t0: 2.721 },
+    tendons: [{ id: 'L1', area: 930, sigma_p0: 1100, fp01k: 1640, fpk: 1860, Ep: 195000 }],
+    losses: [{
+      id: 'L1', source: 'ec2_5_46', sigma_p0: 1100, sigma_p_inf: 867.723, d_sigma_total: 232.277,
+      d_sigma_el: 34.156, term_shrinkage: 108.442, term_creep: 73.145, term_relaxation: 16.534,
+      phi: 2.7096, eps_cs: 0.0006368, d_sigma_pr: 23.666, relaxation_class: 2, rho_1000: 2.5,
+      mu: 0.573, sigma_c_qp: 5.7517, denominator: 1.1451,
+    }],
+    stages: [
+      { stage: 'transfer', M: -65917009.77, sigma_c_top: -3.10556, sigma_c_bottom: -6.29295,
+        tendons: [{ id: 'L1', sigma_p: 1065.844 }], chi: 3.66295e-7, uncracked: true,
+        f_ct: 2.721, M_dec: -151511468, M_cr: -188525141 },
+      { stage: 'long_term', M: -65917009.77, sigma_c_top: -3.46638, sigma_c_bottom: -4.18512,
+        tendons: [{ id: 'L1', sigma_p: 867.723 }], chi: 2.773e-7, uncracked: true,
+        f_ct: 3.795, M_dec: -122628558, M_cr: -174059698 },
+      { stage: 'loaded', combo: 'C3', combo_name: 'Characteristic 3', M: -200e6, dM: -134.083e6,
+        sigma_c_top: -22.18478, sigma_c_bottom: 0, tendons: [{ id: 'L1', sigma_p: 1106.047 }],
+        chi: -7.623e-6, uncracked: false, f_ct: 3.795 },
+    ],
+  },
+};
+
+test('stegradene: merkelapp, formatering og risset/urisset', () => {
+  const rows = prestressStageRows(RESULT);
+  assert.deepEqual(rows.map((r) => r.stage), ['transfer', 'long_term', 'loaded']);
+  assert.equal(rows[0].top, '-3.11');
+  assert.equal(rows[0].sigma_p, '1065.8');
+  assert.equal(rows[0].M_cr, '-188.5');
+  assert.equal(rows[2].label, 'Loaded t∞ · Characteristic 3');
+  assert.equal(rows[2].state, 'cracked');
+  assert.equal(rows[2].M_dec, '–');
+  assert.deepEqual(prestressStageRows({ ok: true }), []);
+});
+
+test('tapene: hvert ledd for seg, og summen av leddene er totalen', () => {
+  const [l] = prestressLossRows(RESULT);
+  assert.deepEqual(l.rows.map(([k]) => k), [
+    'Elastic shortening at transfer', 'Shrinkage ε_cs·E_p / D', 'Creep α·φ·σ_c,QP / D',
+    'Relaxation 0.8·Δσ_pr / D']);
+  const sum = l.rows.reduce((a, [, v]) => a + Number(v), 0);
+  assert.ok(Math.abs(sum - Number(l.total)) < 0.15);
+});
+
+test('resultatkortet finnes bare med result.prestress', () => {
+  assert.equal(prestressSection({ ok: true }), '');
+  const html = prestressSection(RESULT);
+  assert.match(html, /Prestress stages/);
+  assert.equal((html.match(/<tr class="border-t/g) || []).length, 3);
+  assert.match(html, /not checks against the EC2 7.2 limits/);
+});
+
+test('rapporten: kapittel 6 er stegtabellen for et forspent snitt, ellers uendret', () => {
+  const s = prestressedStore().getState();
+  const html = buildReportHtml(s, RESULT);
+  const ch6 = html.slice(html.indexOf('data-sec="6"'), html.indexOf('data-sec="7"'));
+  assert.match(ch6, /Prestress stages/);
+  assert.match(ch6, /Loaded t∞ · Characteristic 3/);
+  assert.match(ch6, /after losses/);
+  const plain = buildReportHtml(createStore().getState(), null);
+  assert.doesNotMatch(plain, /Prestress stages/);
 });
 
 test('payload-custom-hd265-prestressed.json er buildPayload av referansetilstanden', () => {

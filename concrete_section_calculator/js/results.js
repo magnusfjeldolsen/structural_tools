@@ -1666,3 +1666,91 @@ export function slsHeadlineCrack(result) {
   }
   return worst;
 }
+
+/* ================================================================== *
+ * Forspenning: stegtabellen (sak #84)
+ * ================================================================== */
+
+/** Stegnavnene slik de står i tabellen og rapporten. */
+export const PRESTRESS_STAGE_LABELS = Object.freeze({
+  transfer: 'Transfer t₀',
+  long_term: 'Long term t∞',
+  loaded: 'Loaded t∞',
+});
+
+/** Tapsleddene i EC2 5.10.6 lign. (5.46), i rekkefølgen tabellen viser dem. */
+export const PRESTRESS_LOSS_TERMS = Object.freeze([
+  ['d_sigma_el', 'Elastic shortening at transfer'],
+  ['term_shrinkage', 'Shrinkage ε_cs·E_p / D'],
+  ['term_creep', 'Creep α·φ·σ_c,QP / D'],
+  ['term_relaxation', 'Relaxation 0.8·Δσ_pr / D'],
+]);
+
+/**
+ * Stegtabellen som RENE DATA, ferdig formatert. ÉN kilde for både resultatkortet
+ * (`ui.js:prestressSection`) og rapporten (`report.js`): tallene skal ikke kunne bli
+ * avrundet forskjellig de to stedene.
+ *
+ * `[]` uten `result.prestress.stages` — kalleren viser da ingenting.
+ * σ_p er per spennlag; med flere lag står de etter hverandre.
+ *
+ * @param {object|null} result
+ * @returns {Array<{stage:string, label:string, M:string, dM:string, top:string,
+ *   bottom:string, sigma_p:string, chi:string, state:string, uncracked:boolean,
+ *   M_dec:string, M_cr:string, f_ct:string}>}
+ */
+export function prestressStageRows(result) {
+  const stages = result?.prestress?.stages;
+  if (!Array.isArray(stages)) return [];
+  return stages.map((st) => {
+    const base = PRESTRESS_STAGE_LABELS[st.stage] || st.stage;
+    const label = st.stage === 'loaded'
+      ? `${base} · ${st.combo_name || st.combo || ''}`.trim()
+      : base;
+    return {
+      stage: st.stage,
+      label,
+      M: fmtMomentKNm(st.M),
+      dM: st.stage === 'loaded' ? fmtMomentKNm(st.dM) : DASH,
+      top: fmtStress(st.sigma_c_top, 2),
+      bottom: fmtStress(st.sigma_c_bottom, 2),
+      sigma_p: (st.tendons || []).map((t) => fmtStress(t.sigma_p, 1)).join(' / ') || DASH,
+      chi: fmtCurvature(st.chi, 3),
+      uncracked: st.uncracked === true,
+      state: st.uncracked === true ? 'uncracked' : 'cracked',
+      f_ct: fmtStress(st.f_ct, 2),
+      M_dec: fmtMomentKNm(st.M_dec),
+      M_cr: fmtMomentKNm(st.M_cr),
+    };
+  });
+}
+
+/**
+ * Tapene per spennlag som rene data. `source: 'override'` gir bare totalen.
+ * @returns {Array<{id:string, source:string, rows:Array<[string,string]>,
+ *   total:string, sigma_p0:string, sigma_p_inf:string, note:string}>}
+ */
+export function prestressLossRows(result) {
+  const losses = result?.prestress?.losses;
+  if (!Array.isArray(losses)) return [];
+  return losses.map((l) => {
+    if (l.source === 'override') {
+      return {
+        id: l.id, source: l.source, rows: [],
+        total: fmtStress(l.d_sigma_total, 1),
+        sigma_p0: fmtStress(l.sigma_p0, 1), sigma_p_inf: fmtStress(l.sigma_p_inf, 1),
+        note: 'σ_p after losses given directly (override); no loss terms computed.',
+      };
+    }
+    return {
+      id: l.id, source: l.source,
+      rows: PRESTRESS_LOSS_TERMS.map(([k, name]) => [name, fmtStress(l[k], 1)]),
+      total: fmtStress(l.d_sigma_total, 1),
+      sigma_p0: fmtStress(l.sigma_p0, 1), sigma_p_inf: fmtStress(l.sigma_p_inf, 1),
+      note: `EC2 5.10.6 (5.46): φ = ${fmtNumber(l.phi, 3)}, ε_cs = ${fmtStrainPermille(l.eps_cs, 3)} ‰, `
+        + `Δσ_pr = ${fmtStress(l.d_sigma_pr, 1)} MPa (class ${l.relaxation_class}, ρ₁₀₀₀ = `
+        + `${fmtNumber(l.rho_1000, 1)} %, μ = ${fmtNumber(l.mu, 3)}), σ_c,QP = `
+        + `${fmtStress(l.sigma_c_qp, 2)} MPa, D = ${fmtNumber(l.denominator, 4)}.`,
+    };
+  });
+}
