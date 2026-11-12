@@ -15,6 +15,15 @@ står for valgene; koden står for detaljene.
   `importmap` for `three` (samme versjon som GW: 0.160.0). Bare `view` og
   `editor` importerer three; `core`, `geometry`, `io` og det meste av `input`
   kan kjøres i Node.
+- **three.js vendoreres ikke** (vurdert etter review av #94). `three.module.js`
+  0.160.0 er 1 272 972 byte (målt fra jsDelivr); i repoet ville den vært den klart største
+  fila i begge modulene, og hver oppgradering et megabyte-diff. Versjonen er
+  låst i importmap, jsDelivr er samme kilde geometry_workspace har brukt hele
+  tiden, og en CDN-svikt er nå håndtert: i csc lastes editoren først ved
+  åpning, `open()` fanger feilen og viser en melding ved figuren, og
+  beregningen virker som før (test: `cad-editor.test.mjs`). `polygon-clipping`
+  (92 kB) er vendoret fordi tallene avhenger av den; three tegner bare.
+  Vurder på nytt hvis verktøyene skal virke offline.
 - Kryssmappe-import (`../cad2d/js/...`) virker på GitHub Pages fordi `cad2d/`
   ligger i kopilista og `paths:` i `deploy-all-modules.yml`.
 

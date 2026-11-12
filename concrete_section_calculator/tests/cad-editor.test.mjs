@@ -90,3 +90,23 @@ test('bjelke og plate er urørt: setCustomPolygon gjør ingenting utenfor Custom
   assert.equal(store.setCustomPolygon(section, { cad }), null);
   assert.equal(JSON.stringify(store.getState()), before);
 });
+
+test('editoren lar seg ikke laste (CDN nede): open() kaster ikke, verten får en melding', async () => {
+  const { createCadOverlay } = await import('../js/cad-overlay.js');
+  const messages = [];
+  const overlay = createCadOverlay({
+    onApply: () => assert.fail('onApply skal ikke kalles'),
+    onError: (m) => messages.push(m),
+    loader: () => Promise.reject(new TypeError('Failed to fetch dynamically imported module: three')),
+  });
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    assert.equal(await overlay.open({ polygon: HD265 }), false);
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(messages.length, 1);
+  assert.match(messages[0], /could not be loaded/);
+  assert.equal(overlay.isOpen(), false);
+});

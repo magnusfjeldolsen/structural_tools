@@ -188,12 +188,17 @@ export function mountCadEditor(container, options = {}) {
     // Størrelsestrinn: full (≥ COMPACT), kompakt (én rullbar verktøyrad, kort
     // statuslinje) og bare lerret (< TINY). Lerretet beholder alltid plass, og
     // editoren flyter aldri ut av containeren (review av #94, punkt 6).
-    const sizeObserver = new ResizeObserver(() => {
-      const r = root.getBoundingClientRect();
+    // Måles på CONTAINEREN (roten fyller den), og med en gang ved montering —
+    // ikke bare når ResizeObserver rekker å melde fra.
+    const applySize = () => {
+      const r = container.getBoundingClientRect();
+      if (!r.width && !r.height) return; // skjult (modal som ikke er vist ennå)
       root.classList.toggle('cad2d-compact', r.width < COMPACT.w || r.height < COMPACT.h);
       root.classList.toggle('cad2d-tiny', r.width < TINY.w || r.height < TINY.h);
-    });
-    sizeObserver.observe(root);
+    };
+    const sizeObserver = new ResizeObserver(applySize);
+    sizeObserver.observe(container);
+    applySize();
     cleanups.push(() => sizeObserver.disconnect());
   } else {
     root = container;
@@ -436,8 +441,9 @@ export function mountCadEditor(container, options = {}) {
   } else {
     const onKey = (e) => {
       keyHandler(e);
-      // Vertens snarveier skal ikke utløses inne i editoren
-      e.stopPropagation();
+      // Vertens snarveier skal ikke utløses inne i editoren. Tab slipper
+      // gjennom, så en modal vert kan holde fokus innenfor seg (fokusfelle).
+      if (e.key !== 'Tab') e.stopPropagation();
     };
     root.addEventListener('keydown', onKey);
     cleanups.push(() => root.removeEventListener('keydown', onKey));
