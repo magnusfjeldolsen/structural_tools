@@ -1067,7 +1067,7 @@ def _unsolved_combo(combo, n_ed, m_ed, theta_c, v_ed, shear, within_limits):
 
 def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
                   n_min, n_max, shear_ctx, warnings_out, solve_flexure=True, geom=None,
-                  materials=None):
+                  materials=None, prestress=None):
     """Løser bruddtilstanden for ÉN lastkombinasjon.
 
     Returnerer `(public, extra)`. `public` er NØYAKTIG formen `combinations[i]` skal ha i
@@ -1100,6 +1100,13 @@ def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
     # regnes her oppe én gang i stedet for to ganger lenger nede.
     m_cr = (_cracking_moment(b, h, fctm, n_ed) if geom is None
             else _cracking_moment_polygon(geom, fctm, n_ed, theta_c))
+    if materials:
+        # FORSPENT SNITT (review B1): rissmomentet UTEN forspenning er feil tall. Maalt: et
+        # hulldekke med 2 tau ga M_cr = 49,6 og `brittle_ok: True` mens M_cr med forspenning
+        # ved t_inf er 82,0 -- snittet ryker idet det risser. Tallet er stegtabellens
+        # (`Stages.cracking_moment`), for retningen kombinasjonen boeyer, ved dens N_Ed.
+        # Uten en langtidstilstand finnes det ikke, og da er det `None` -- ikke det gamle.
+        m_cr = _prestressed_cracking_moment(prestress, theta_c, n_ed)
     # `has_tension: None` betyr «ikke regnet», ikke «ingen strekk» — de to gir ULIKE
     # kontrollsvar lenger nede, og må derfor være skillbare her.
     no_extra = {'d_eff': None, 'as_tension': None, 'd_eff_all': None, 'z_na': None,
@@ -1154,8 +1161,24 @@ def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
     # (Dette er IKKE skjærets `A_sl`/`d` — se `_shear_geometry` for hvorfor de to skal
     # være ulike funksjoner.)
     tension = _tension_layers(rebar, layers)
+    # FLYTING FOR SPENNLAG (review F1). `_classify` og duktiliteten spoer «flyter
+    # strekkarmeringen» med SLAKKarmeringens eps_yd paa TVERRSNITTStoeyningen. For et tau er
+    # det feil spoersmaal: det flyter naar den TOTALE toeyningen (eps + eps_0) naar
+    # f_pd/E_p. Maalt: N = -1650 kN ga `ductility_ok: True` med sigma_p = 1370 < f_pd = 1426.
+    # `eps_yield` er derfor den toeyningen som, sammenliknet med eps_yd, gir samme dom som
+    # lagets egen flytekriterium -- for slakke lag er den bare `eps`.
+    eps_yield = eps_s_max
+    if materials and tension:
+        ratios = []
+        for st in [l for l in layers if l['eps'] is not None and l['eps'] > 0]:
+            mat = materials.get(st['id'])
+            if mat is None:
+                ratios.append(st['eps'] / eps_yd)
+            else:
+                ratios.append(st['eps_total'] / float(mat.epsyd))
+        eps_yield = max(ratios) * eps_yd if ratios else eps_s_max
     failure_mode = _classify(
-        tension, eps_s_max, eps_edge, eps_yd, eps_ud, eps_cu, m_rd_signed, m_cr,
+        tension, eps_yield, eps_edge, eps_yd, eps_ud, eps_cu, m_rd_signed, m_cr,
     )
     # SPENNTAU SOM RYKER (sak #84). `_classify` ser tverrsnittstoeyningen mot SLAKK-
     # armeringens eps_ud. Et tau ryker paa sin EGEN totale toeyning (eps + eps_0) mot sin
@@ -1191,7 +1214,7 @@ def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
         public['M_z'] = _num(float(bend.m_z))
     extra = {
         'd_eff': d_eff, 'as_tension': as_tension, 'd_eff_all': d_eff_all, 'z_na': z_na,
-        'm_cr': m_cr, 'has_tension': bool(tension),
+        'm_cr': m_cr, 'has_tension': bool(tension), 'eps_yield': eps_yield,
     }
     return public, extra
 
@@ -1537,7 +1560,7 @@ def _run_inner(payload, progress, t0):
             combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu, n_min, n_max,
             shear_ctx, warnings_out,
             solve_flexure=(not is_mc or i == active_index), geom=geom,
-            materials=layer_materials,
+            materials=layer_materials, prestress=ps_stages,
         )
         combo_results.append(public)
         combo_extras.append(extra)
@@ -1655,7 +1678,10 @@ def _run_inner(payload, progress, t0):
             'strain to compare with ε_yd'
         )
     else:
-        ductility_ok = bool(eps_s_max >= eps_yd)
+        # `eps_yield` finnes bare naar et lag er forspent (review F1, se `_solve_combo`):
+        # tau maales med total toeyning mot sin egen f_pd/E_p. Ellers er den `eps_s_max`.
+        eps_y = ref_extra.get('eps_yield')
+        ductility_ok = bool((eps_s_max if eps_y is None else eps_y) >= eps_yd)
 
     # A_s,min sammenliknes mot `As_tension`, ikke mot `As_total`: kravet gjelder armeringen
     # på strekksiden, og `rho` rett nedenfor har brukt samme teller i flere runder allerede
@@ -1780,6 +1806,17 @@ def _run_inner(payload, progress, t0):
         brittle_ok = None
         null_reasons['brittle_ok'] = (
             'no bending resistance was computed for the governing load combination'
+        )
+    elif m_cr is None and layer_materials:
+        # FORSPENT SNITT UTEN LANGTIDSTILSTAND (review B1): rissmomentet MED forspenning
+        # finnes ikke, og det uten forspenning er feil tall. Ubesvart, ikke bestaatt.
+        brittle_ok = None
+        null_reasons['brittle_ok'] = (
+            'the cracking moment of a prestressed section depends on the prestress after '
+            'losses, and the long-term state is not available for this section ('
+            + (ps_stages.unavailable[0] if ps_stages is not None and ps_stages.unavailable
+               else 'no prestress stage data')
+            + '), so M_Rd cannot be compared with M_cr'
         )
     else:
         # MATERIALNIVAAET MAA VAERE DET SAMME PAA BEGGE SIDER.
@@ -2202,6 +2239,10 @@ def _run_inner(payload, progress, t0):
 
     if layer_materials:
         common['prestress'] = _prestress_result(payload, ps_stages, combos, warnings_out)
+        # Review B1: ETT rissmoment, og det skal staa hva det er. For et forspent snitt er
+        # `M_cr` over det MED forspenning etter tap (t_inf), i governing-radens retning og
+        # ved dens N_Ed -- samme tall som `brittle_ok` leser.
+        common['section_props']['M_cr_basis'] = 'prestressed_long_term'
 
     if not has_candidate:
         # Full konvolutt, ikke bare `{ok, schema, error}` (§4.4): figurer, tabeller og
@@ -2358,20 +2399,48 @@ def _prestress_result(payload, stages, combos, warnings_out):
             'payload.prestress is missing',
         ))
         return {'uls_prestrain': 'sigma_p0', 'stages': None, 'losses': None}
-    for code, message, detail in stages.warnings:
-        warnings_out.append(_warning(code, message, detail))
     out = stages.result(combos)
     out['uls_prestrain'] = 'long_term'
-    if not any(s['uncracked'] for s in out['stages'][:1]):
+    for code, message, detail in stages.warnings + stages.run_warnings:
+        warnings_out.append(_warning(code, message, detail))
+    if stages.transfer_cracked:
         warnings_out.append(_warning(
             'prestress_cracked_at_transfer',
             'The section cracks at transfer: the tensile stress exceeds f_ctm(t0). The '
-            'transfer stage is computed as cracked (no concrete in tension).',
+            'transfer stage is computed as cracked (no concrete in tension), and the losses '
+            'use that cracked state. The long-term and loaded stages, and the brittle-failure '
+            'check that needs the long-term cracking moment, are NOT given — the long-term '
+            'model starts from an uncracked section.',
             f'sigma_top={out["stages"][0]["sigma_c_top"]}, '
             f'sigma_bottom={out["stages"][0]["sigma_c_bottom"]}, '
             f'f_ctm(t0)={out["stages"][0]["f_ct"]}',
         ))
+    elif stages.unavailable is not None:
+        warnings_out.append(_warning(
+            'prestress_long_term_not_available', stages.unavailable[1],
+            f'reason={stages.unavailable[0]}'))
+    # Review F8: skjaeret faar ingen hjelp av forspenningen -- si det.
+    if payload['section'].get('shear') and any(
+            (c.get('V_Ed') or 0) > 0 for c in combos if c.get('type', 'uls') == 'uls'):
+        warnings_out.append(_warning(
+            'prestress_shear_not_included',
+            'The shear resistance V_Rd,c does not include the compressive stress σ_cp from the '
+            'prestress (on the safe side), and the shear-tension check of EC2 6.2.2(2) / '
+            'EN 1168 for hollow-core elements is not carried out.',
+            'shear computed with N_Ed only', severity='info'))
     return out
+
+
+def _prestressed_cracking_moment(stages, theta, n_ed):
+    """M_cr (STOERRELSE, samme konvensjon som `_cracking_moment`) for et forspent snitt i
+    retningen `theta` boeyer, ved `n_ed`. `None` uten langtidstilstand (review B1)."""
+    if stages is None:
+        return None
+    direction = 'hogging' if _is_hogging(theta) else 'sagging'
+    m = stages.cracking_moment(direction, n_ed)
+    if m is None:
+        return None
+    return -m if direction == 'sagging' else m
 
 
 def _runtime_name():

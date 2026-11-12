@@ -389,7 +389,19 @@ def _steel_items(rebar, steel_es, prestrain=None, include_tendons=True):
 
 
 class Stages:
-    """Regner overfoering og langtid ved bygging, og belastet per kombinasjon etterpaa."""
+    """Regner overfoering og langtid ved bygging, og belastet per kombinasjon etterpaa.
+
+    TILGJENGELIGHET (review av PR #89). `long_term` og `loaded` er IKKE tilgjengelige -- de
+    svarer `available: False` med grunnen i klartekst -- naar:
+      - snittet har SLAKKARMERING sammen med spennlagene. Modellen lar betong + slakk baere
+        N - P_inf med korttids E_cm og ser bort fra at slakkarmeringen tar opp kryp og svinn
+        over tid. Maalt mot en aldersjustert modell (AEMM): sigma_c,u.k. -4,04 mot -2,74 og
+        M_dec 13-19 % paa usikker side. AEMM er oppfoelging, ikke denne saken.
+      - snittet RISSER VED OVERFOERING. Langtidstilstanden over bygger paa et urisset snitt
+        med t0-planet som utgangspunkt; et risset snitt ved t0 har en annen historie.
+    Tapene (5.46) og t0 regnes uansett, og bruddgrensen faar eps_p* fra den interne
+    langtidsloesningen (initialtoeyningen paavirker M_Rd lite, se README).
+    """
 
     def __init__(self, poly, z_ref, rebar, steel_es, fck, cfg):
         self.poly = poly
@@ -400,7 +412,12 @@ class Stages:
         cfg = cfg or {}
         self.cfg = cfg
         self.layers = []
+        # `warnings`: fra byggingen (t0, langtid) -- objektet caches i motoren, saa
+        # advarsler fra `loaded()` (per kjoering) gaar i `run_warnings` i stedet, ellers
+        # ville de hopet seg opp for hver kjoering.
         self.warnings = []
+        self.run_warnings = []
+        self._sink = self.warnings
         for layer in rebar:
             if is_prestressed(layer):
                 mat = prestress_material(layer)
@@ -410,10 +427,16 @@ class Stages:
                     self.warnings.append(('prestress_above_limit',) + lim)
             self.layers.append(layer)
         self.tendons = [l for l in self.layers if is_prestressed(l)]
+        self.has_passive = any(not is_prestressed(l) for l in self.layers)
 
-        fck_t0 = _cfg_float(cfg, 'fck_t0', fck, positive=True)
+        # f_ck(t0) er PAAKREVD (review F6): et tomt felt ble stille f_ck, og f_ctm(t0)
+        # dermed 3,80 i stedet for 2,72 -- et urisset svar for et snitt som risser.
+        fck_t0 = _cfg_float(cfg, 'fck_t0', None, positive=True)
+        if fck_t0 is None:
+            raise PrestressError('The concrete strength at transfer f_ck(t₀) is required for a '
+                                 'prestressed section.', 'prestress.fck_t0 missing')
         if fck_t0 > fck:
-            raise PrestressError('f_ck(t0) at transfer cannot exceed f_ck.',
+            raise PrestressError('f_ck(t₀) at transfer cannot exceed f_ck.',
                                  f'fck_t0={fck_t0}, fck={fck}')
         self.mat = concrete_at_transfer(fck, fck_t0)
         self.m_transfer = _cfg_float(cfg, 'M_transfer', 0.0)
@@ -426,14 +449,49 @@ class Stages:
     def _items(self, prestrain=None, include_tendons=True):
         return _steel_items(self.layers, self.steel_es, prestrain, include_tendons)
 
-    def _solve(self, ec, items, n, m, fct):
+    def _z(self, layer):
+        return float(layer['bars'][0]['z']) if layer['kind'] == 'bars' else float(layer['strip']['z'])
+
+    def _solve(self, ec, items, n, m, fct, stage):
         """Urisset; er strekket over f_ct, risset (null strekk i betong)."""
         sol = solve_plane(self.poly, ec, items, n, m, self.z_ref)
         top = ec * (sol['eps_a'] + sol['chi'] * self.z_top)
         bot = ec * (sol['eps_a'] + sol['chi'] * self.z_bot)
         uncracked = max(top, bot) <= fct
         if not uncracked:
-            sol = solve_plane(self.poly, ec, items, n, m, self.z_ref, cracked=True)
+            try:
+                sol = solve_plane(self.poly, ec, items, n, m, self.z_ref, cracked=True)
+            except PrestressError as exc:
+                # Review F2: «no stiffness» sa ikke hva som var galt. Det som skjer er at
+                # strekket fra forspenningen og momentet er saa stort at det ikke finnes
+                # noen trykksone i betongen som kan holde likevekt elastisk.
+                raise PrestressError(
+                    f'Stage "{stage}": the section cannot carry this state as a cracked '
+                    'elastic section. With no tension in the concrete there is no '
+                    'compression zone left that balances the tendon force and the moment '
+                    f'(N = {n / 1e3:.1f} kN, M = {m / 1e6:.1f} kNm about the centroid). '
+                    'Typical cause: tendons near one face only, with a moment or prestress '
+                    'that puts the other face in tension. Check the tendon position, the '
+                    'prestress and the stage moment.', exc.detail) from None
+            # Et risset elastisk snitt kan finne likevekt med et tau langt over flytegrensen
+            # -- maalt: 4 tau bare i overkant + egenvekt ga sigma_p = 4344 MPa og
+            # sigma_c = -213 MPa ved overfoering, og deretter «tapene er stoerre enn
+            # forspenningen». Det riktige svaret er at snittet ikke baerer momentet
+            # elastisk med armeringen som er gitt.
+            for st in items:
+                if not st.get('tendon'):
+                    continue
+                mat = next(l['_material'] for l in self.tendons if l['id'] == st['id'])
+                sig_p = st['E'] * (sol['eps_a'] + sol['chi'] * st['z'] + st['eps0'])
+                if sig_p >= mat['fp01k']:
+                    raise PrestressError(
+                        f'Stage "{stage}": once the concrete cracks, the section can only '
+                        f'balance M = {m / 1e6:.1f} kNm with σ_p = {sig_p:.0f} MPa in layer '
+                        f'{st["id"]}, above f_p0,1k = {mat["fp01k"]:.0f} MPa. The section '
+                        'cannot carry this stage elastically with the reinforcement given — '
+                        'typically there is no reinforcement on the face the moment puts in '
+                        'tension. Check the tendon position and the stage moment.',
+                        f'sigma_p={sig_p}, N={n}, M={m}')
         sol['uncracked'] = uncracked
         return sol
 
@@ -443,28 +501,57 @@ class Stages:
             return v if sol['uncracked'] else min(v, 0.0)
         return sig(self.z_top), sig(self.z_bot)
 
-    def _dec_cr(self, ec, sig_bot_unc, m_now, fct):
-        """Momentene (totale, sagging) som gir sigma_c,u.k. = 0 og = f_ct, urisset."""
-        unit = solve_plane(self.poly, ec, self._items(), 0.0, 1.0e6, self.z_ref)
-        d_sig = ec * (unit['eps_a'] + unit['chi'] * self.z_bot) / 1.0e6
-        if not d_sig:
-            return None, None
-        return m_now - sig_bot_unc / d_sig, m_now + (fct - sig_bot_unc) / d_sig
+    def _unit(self, ec, z):
+        """d sigma(z)/dM og d sigma(z)/dN paa det urissede transformerte snittet."""
+        um = solve_plane(self.poly, ec, self._items(), 0.0, 1.0e6, self.z_ref)
+        un = solve_plane(self.poly, ec, self._items(), 1.0e3, 0.0, self.z_ref)
+        return (ec * (um['eps_a'] + um['chi'] * z) / 1.0e6,
+                ec * (un['eps_a'] + un['chi'] * z) / 1.0e3)
+
+    def _dec_cr(self, ec, sol_unc, m_now, fct, direction, n_extra=0.0):
+        """(M_dec, M_cr, fibre) i retningen `direction` ('sagging'/'hogging').
+
+        Fiberen er den momentet STREKKER: underkant ved sagging, overkant ved hogging
+        (review F2 -- et underkant-tall er ikke svar paa et overkant-spoersmaal). Begge
+        momentene er TOTALE og signerte, paa det urissede transformerte snittet regnet fra
+        stegets tilstand, med en eventuell ekstra aksialkraft `n_extra` (strekk positiv).
+        """
+        z = self.z_bot if direction == 'sagging' else self.z_top
+        sig0 = ec * (sol_unc['eps_a'] + sol_unc['chi'] * z)
+        d_m, d_n = self._unit(ec, z)
+        if not d_m:
+            return None, None, z
+        sig = sig0 + d_n * n_extra
+        return m_now - sig / d_m, m_now + (fct - sig) / d_m, z
 
     def _tendon_stresses(self, sol, prestrain):
         out = []
         for l in self.tendons:
-            z = float(l['bars'][0]['z']) if l['kind'] == 'bars' else float(l['strip']['z'])
-            mat = l['_material']
+            z = self._z(l)
             out.append({'id': l['id'], 'z': _num(z),
-                        'sigma_p': _num(mat['Ep'] * (sol['eps_a'] + sol['chi'] * z
-                                                     + prestrain[l['id']]))})
+                        'sigma_p': _num(l['_material']['Ep'] * (sol['eps_a'] + sol['chi'] * z
+                                                                + prestrain[l['id']]))})
         return out
 
-    def _stage(self, name, ec, sol, prestrain, m, n, fct, chi_report=None):
+    def _linear_check(self, name, top, bot, limit, combo=None):
+        """Review F2: et trykk over f_ck er utenfor den lineaere modellen -- si fra."""
+        worst = min(top, bot)
+        if worst < -limit:
+            label = f'Stage "{name}"' + (f' ({combo})' if combo else '')
+            self._sink.append((
+                'prestress_stress_beyond_linear',
+                f'{label}: the concrete stress {worst:.1f} MPa exceeds f_ck = {limit:.0f} MPa in '
+                'compression. The stage is computed with a linear-elastic concrete, which '
+                'is not valid at this stress — the numbers for this stage are outside the '
+                'model.',
+                f'sigma_top={top}, sigma_bottom={bot}, f_ck={limit}'))
+            return False
+        return True
+
+    def _stage(self, name, ec, sol, prestrain, m, n, fct, fck_age, chi_report=None, combo=None):
         top, bot = self._fibres(ec, sol)
-        row = {
-            'stage': name, 'N': _num(n), 'M': _num(m),
+        return {
+            'stage': name, 'available': True, 'N': _num(n), 'M': _num(m),
             'sigma_c_top': _num(top), 'sigma_c_bottom': _num(bot),
             'tendons': self._tendon_stresses(sol, prestrain),
             'chi': _num(sol['chi'] if chi_report is None else chi_report),
@@ -472,8 +559,12 @@ class Stages:
             'uncracked': bool(sol['uncracked']),
             'f_ct': _num(fct),
             'E_c': _num(ec),
+            'within_linear': self._linear_check(name, top, bot, fck_age, combo),
         }
-        return row
+
+    @staticmethod
+    def _direction(m):
+        return 'hogging' if m > 0 else 'sagging'
 
     # -- t0 --------------------------------------------------------------------- #
     def _transfer(self):
@@ -481,13 +572,16 @@ class Stages:
         fct = self.mat['fctm_t0']
         self.eps_p0 = {l['id']: l['_material']['eps_p0'] for l in self.tendons}
         items = self._items(self.eps_p0)
-        sol = self._solve(ec, items, 0.0, self.m_transfer, fct)
-        row = self._stage('transfer', ec, sol, self.eps_p0, self.m_transfer, 0.0, fct)
+        sol = self._solve(ec, items, 0.0, self.m_transfer, fct, 'transfer')
+        self._transfer_sol = sol
+        self.transfer_cracked = not sol['uncracked']
+        row = self._stage('transfer', ec, sol, self.eps_p0, self.m_transfer, 0.0, fct,
+                          self.mat['fck_t0'])
         unc = solve_plane(self.poly, ec, items, 0.0, self.m_transfer, self.z_ref)
-        m_dec, m_cr = self._dec_cr(ec, ec * (unc['eps_a'] + unc['chi'] * self.z_bot),
-                                   self.m_transfer, fct)
-        row['M_dec'] = _num(m_dec)
-        row['M_cr'] = _num(m_cr)
+        direction = self._direction(self.m_transfer)
+        m_dec, m_cr, z = self._dec_cr(ec, unc, self.m_transfer, fct, direction)
+        row.update({'M_dec': _num(m_dec), 'M_cr': _num(m_cr), 'direction': direction,
+                    'fibre': 'top' if direction == 'hogging' else 'bottom'})
         for t in row['tendons']:
             mat = next(l['_material'] for l in self.tendons if l['id'] == t['id'])
             t['sigma_p0'] = _num(mat['sigma_p0'])
@@ -500,7 +594,14 @@ class Stages:
         override = _cfg_float(cfg, 'sigma_p_inf')
         ec0 = self.mat['Ecm_t0']
         # sigma_c,QP og sigma_pi: t0-tilstanden under det PERMANENTE momentet (5.10.6(1)).
-        qp = solve_plane(self.poly, ec0, self._items(self.eps_p0), 0.0, self.m_perm, self.z_ref)
+        # EN kilde til sigma_pi (review F3): er det permanente momentet det samme som ved
+        # overfoering, er det NOEYAKTIG overfoeringsplanet -- risset eller ikke -- og ellers
+        # samme loeser (`_solve`, med riss) under det permanente momentet.
+        if self.m_perm == self.m_transfer:
+            qp = self._transfer_sol
+        else:
+            qp = self._solve(ec0, self._items(self.eps_p0), 0.0, self.m_perm,
+                             self.mat['fctm_t0'], 'transfer (permanent moment)')
         self.losses = []
         self.sigma_p_inf = {}
         if override is not None:
@@ -526,7 +627,12 @@ class Stages:
                                  'after losses directly).', f'phi={phi}')
         rh = _cfg_float(cfg, 'RH', 50.0, positive=True)
         cement = str(cfg.get('cement') or 'N').upper()
-        t0 = _cfg_float(cfg, 't0', 28.0, positive=True)
+        # Alderen ved overfoering er PAAKREVD (review B3): standarden 28 doegn passet ikke
+        # med f_ck(t0) og ga 11 % for lite tap.
+        t0 = _cfg_float(cfg, 't0', None, positive=True)
+        if t0 is None:
+            raise PrestressError('The age of the concrete at transfer t₀ (days) is required '
+                                 'for the losses.', 'prestress.t0 missing')
         t_life = _cfg_float(cfg, 't_life', 50 * 365.0, positive=True)
         h0 = _cfg_float(cfg, 'h0', positive=True)
         if h0 is None:
@@ -542,10 +648,15 @@ class Stages:
         ecm = self.mat['Ecm']
         for l in self.tendons:
             mat = l['_material']
-            z = float(l['bars'][0]['z']) if l['kind'] == 'bars' else float(l['strip']['z'])
+            z = self._z(l)
             eps_z = qp['eps_a'] + qp['chi'] * z
             sigma_pi = mat['Ep'] * (eps_z + self.eps_p0[l['id']])
-            sigma_cqp = -ec0 * eps_z          # trykk positiv, som i (5.46)
+            # I tauhoeyde: trykk positiv, som i (5.46). Et risset plan har null betong i
+            # strekk, men tauet ligger da i trykksonen eller i det rissede -- `min` gir 0.
+            sig_c = ec0 * eps_z
+            if not qp['uncracked']:
+                sig_c = min(sig_c, 0.0)
+            sigma_cqp = -sig_c
             d_pr, mu, rho = relaxation_loss(sigma_pi, mat['fpk'], cls, rho_1000)
             alpha = mat['Ep'] / ecm
             ap = float(l['area'])
@@ -564,7 +675,8 @@ class Stages:
                 'id': l['id'], 'source': 'ec2_5_46',
                 'sigma_p0': _num(mat['sigma_p0']), 'sigma_pi': _num(sigma_pi),
                 'd_sigma_el': _num(mat['sigma_p0'] - sigma_pi),
-                'phi': _num(phi), 'eps_cs': _num(shr['eps_cs']), 'eps_cd': _num(shr['eps_cd']),
+                'phi': _num(phi), 'phi_source': str(cfg.get('phi_source') or 'given'),
+                'eps_cs': _num(shr['eps_cs']), 'eps_cd': _num(shr['eps_cd']),
                 'eps_ca': _num(shr['eps_ca']), 'k_h': _num(shr['k_h']),
                 'relaxation_class': cls, 'rho_1000': _num(rho), 'mu': _num(mu),
                 'd_sigma_pr': _num(d_pr), 'sigma_c_qp': _num(sigma_cqp),
@@ -572,11 +684,30 @@ class Stages:
                 'term_creep': _num(t_c / den), 'denominator': _num(den),
                 'd_sigma_csr': _num(d_csr), 'sigma_p_inf': _num(s_inf),
                 'd_sigma_total': _num(mat['sigma_p0'] - s_inf),
+                'transfer_cracked': bool(not qp['uncracked']),
                 'inputs': {'RH': rh, 'cement': cement, 't0': t0, 't_life': t_life,
                            'h0': h0, 'hours': RELAXATION_HOURS},
             })
 
     # -- t_inf ------------------------------------------------------------------ #
+    def _unavailable_reason(self):
+        if self.has_passive:
+            return ('passive_with_tendons',
+                    'The section has non-prestressed reinforcement together with the tendons. '
+                    'Over time that reinforcement takes up part of the creep and shrinkage '
+                    'shortening, which this model does not include (it would need an '
+                    'age-adjusted analysis). Computed without it, the long-term concrete '
+                    'stresses and the decompression and cracking moments would be on the '
+                    'unsafe side, so they are not given. Transfer and the bending '
+                    'resistance are computed.')
+        if self.transfer_cracked:
+            return ('cracked_at_transfer',
+                    'The section cracks at transfer. The long-term state in this model starts '
+                    'from an uncracked section, so it is not given. The losses are computed '
+                    'from the cracked transfer state; transfer and the bending resistance are '
+                    'computed.')
+        return None
+
     def _long_term(self):
         ecm = self.mat['Ecm']
         fct = self.mat['fctm']
@@ -584,49 +715,82 @@ class Stages:
         n_rest = 0.0
         m_rest = self.m_perm
         for l in self.tendons:
-            z = float(l['bars'][0]['z']) if l['kind'] == 'bars' else float(l['strip']['z'])
+            z = self._z(l)
             p = float(l['area']) * self.sigma_p_inf[l['id']]
             n_rest -= p
             m_rest -= p * (z - self.z_ref)
         items = self._items(include_tendons=False)
-        sol = self._solve(ecm, items, n_rest, m_rest, fct)
+        self._rest = (n_rest, m_rest)
+        sol = self._solve(ecm, items, n_rest, m_rest, fct, 'long_term')
         self.eps_p_star = {}
         for l in self.tendons:
-            z = float(l['bars'][0]['z']) if l['kind'] == 'bars' else float(l['strip']['z'])
+            z = self._z(l)
             self.eps_p_star[l['id']] = (self.sigma_p_inf[l['id']] / l['_material']['Ep']
                                         - (sol['eps_a'] + sol['chi'] * z))
         phi = _cfg_float(self.cfg, 'phi', 0.0) or 0.0
-        e_eff = ecm / (1.0 + phi)
-        row = self._stage('long_term', ecm, sol, self.eps_p_star, self.m_perm, 0.0, fct,
-                          chi_report=sol['chi'] * (1.0 + phi))
-        row['E_c_eff'] = _num(e_eff)
-        # Dekompresjon/riss fra t_inf-tilstanden, paa det transformerte snittet (E_cm).
-        bot_unc = ecm * (sol['eps_a'] + sol['chi'] * self.z_bot)
-        if not sol['uncracked']:
-            unc = solve_plane(self.poly, ecm, items, n_rest, m_rest, self.z_ref)
-            bot_unc = ecm * (unc['eps_a'] + unc['chi'] * self.z_bot)
-        m_dec, m_cr = self._dec_cr(ecm, bot_unc, self.m_perm, fct)
-        row['M_dec'] = _num(m_dec)
-        row['M_cr'] = _num(m_cr)
+        self._phi = phi
         self._chi_long_short = sol['chi']
+        self._long_unc = (sol if sol['uncracked']
+                          else solve_plane(self.poly, ecm, items, n_rest, m_rest, self.z_ref))
+        reason = self._unavailable_reason()
+        self.unavailable = reason
+        if reason is not None:
+            self.long_term = {'stage': 'long_term', 'available': False, 'reason': reason[0],
+                              'reason_text': reason[1], 'M': _num(self.m_perm), 'N': 0.0,
+                              'tendons': [{'id': l['id'],
+                                           'sigma_p': _num(self.sigma_p_inf[l['id']])}
+                                          for l in self.tendons]}
+            return
+        row = self._stage('long_term', ecm, sol, self.eps_p_star, self.m_perm, 0.0, fct,
+                          self.mat['fck'], chi_report=sol['chi'] * (1.0 + phi))
+        row['E_c_eff'] = _num(ecm / (1.0 + phi))
+        direction = self._direction(self.m_perm)
+        m_dec, m_cr, _z = self._dec_cr(ecm, self._long_unc, self.m_perm, fct, direction)
+        row.update({'M_dec': _num(m_dec), 'M_cr': _num(m_cr), 'direction': direction,
+                    'fibre': 'top' if direction == 'hogging' else 'bottom'})
         self.long_term = row
+
+    def cracking_moment(self, direction, n=0.0):
+        """M_cr MED forspenning ved t_inf, signert, i retningen `direction`, med aksialkraft
+        `n` (strekk positiv) i tillegg. `None` naar langtidstilstanden ikke er tilgjengelig.
+        Brukt av sproebruddkontrollen i motoren (review B1) -- samme tall som stegtabellen
+        viser for N = 0."""
+        if self.unavailable is not None:
+            return None
+        _d, m_cr, _z = self._dec_cr(self.mat['Ecm'], self._long_unc, self.m_perm,
+                                    self.mat['fctm'], direction, n)
+        return m_cr
 
     # -- belastet --------------------------------------------------------------- #
     def loaded(self, combo):
-        ecm = self.mat['Ecm']
-        fct = self.mat['fctm']
         n = float(combo.get('N_Ed', 0.0) or 0.0)
         m = float(combo['M_Ed'])
-        sol = self._solve(ecm, self._items(self.eps_p_star), n, m, fct)
+        base = {'stage': 'loaded', 'combo': combo['id'], 'combo_name': combo.get('name', ''),
+                'combo_type': combo.get('type'), 'M': _num(m), 'N': _num(n),
+                'dM': _num(m - self.m_perm)}
+        if self.unavailable is not None:
+            return dict(base, available=False, reason=self.unavailable[0],
+                        reason_text=self.unavailable[1], tendons=[])
+        ecm = self.mat['Ecm']
+        fct = self.mat['fctm']
+        label = combo.get('name') or combo['id']
+        sol = self._solve(ecm, self._items(self.eps_p_star), n, m, fct, f'loaded ({label})')
         chi = self.long_term['chi'] + (sol['chi'] - self._chi_long_short)
-        row = self._stage('loaded', ecm, sol, self.eps_p_star, m, n, fct, chi_report=chi)
-        row.update({'combo': combo['id'], 'combo_name': combo.get('name', ''),
-                    'combo_type': combo.get('type'), 'dM': _num(m - self.m_perm)})
+        row = self._stage('loaded', ecm, sol, self.eps_p_star, m, n, fct, self.mat['fck'],
+                          chi_report=chi, combo=label)
+        direction = self._direction(m)
+        m_dec, m_cr, _z = self._dec_cr(ecm, self._long_unc, self.m_perm, fct, direction, n)
+        row.update(base)
+        row.update({'M_dec': _num(m_dec), 'M_cr': _num(m_cr), 'direction': direction,
+                    'fibre': 'top' if direction == 'hogging' else 'bottom'})
         return row
 
     def result(self, combos):
+        self._sink = []
         loaded = [self.loaded(c) for c in combos
                   if c.get('type') in ('characteristic', 'quasi_permanent')]
+        self.run_warnings = self._sink
+        self._sink = self.warnings
         return {
             'materials': {k: _num(v) for k, v in self.mat.items()},
             'tendons': [{'id': l['id'],
@@ -636,6 +800,9 @@ class Stages:
                          'eps_p_star': _num(self.eps_p_star[l['id']])} for l in self.tendons],
             'M_transfer': _num(self.m_transfer),
             'M_permanent': _num(self.m_perm),
+            'transfer_cracked': bool(self.transfer_cracked),
+            'long_term_available': self.unavailable is None,
+            'long_term_unavailable_reason': None if self.unavailable is None else self.unavailable[0],
             'losses': self.losses,
             'stages': [self.transfer, self.long_term] + loaded,
         }

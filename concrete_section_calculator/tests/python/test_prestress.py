@@ -474,3 +474,188 @@ def test_prestress_on_a_rectangle_makes_sls_unanswered_not_wrong():
     assert any(w['code'] == 'sls_not_available_prestress' for w in res['warnings'])
     assert any(s['stage'] == 'loaded' for s in res['prestress']['stages'])
     assert json.dumps(res, allow_nan=False)
+
+
+# ------------------------------------------------------------------ #
+# 6. Review av PR #89: hvert funn har sin test (tall fra reviewerens
+#    uavhengige haandregning og fra kjoeringer FOER rettingen, 2026-11-12)
+# ------------------------------------------------------------------ #
+
+def tendons_at(lid, n, z, sigma_p0=1100.0, ap=93.0):
+    ys = [-558.75 + i * (1117.5 / (n - 1)) for i in range(n)] if n > 1 else [0.0]
+    layer = tendon_layer(sigma_p0=sigma_p0)
+    layer.update({'id': lid, 'area': n * ap, 'bars': [{'y': y, 'z': z, 'dia': 12.5} for y in ys]})
+    layer['prestress']['area_per_tendon'] = ap
+    return layer
+
+
+def slack_at(lid, n, z, dia):
+    ys = [-500.0 + i * (1000.0 / (n - 1)) for i in range(n)]
+    return {'id': lid, 'kind': 'bars', 'area': n * math.pi * dia ** 2 / 4,
+            'bars': [{'y': y, 'z': z, 'dia': dia} for y in ys]}
+
+
+def row(cid, m, n=0.0, kind='uls'):
+    return {'id': cid, 'name': cid, 'type': kind, 'N_Ed': n, 'M_Ed': m, 'V_Ed': 0,
+            'theta': math.pi if m > 0 else 0.0}
+
+
+def fixture_with(layers, combos):
+    p = load('payload-custom-hd265-prestressed.json')
+    p['section']['rebar'] = layers
+    p['loads']['combinations'] = combos
+    p['loads']['active'] = combos[0]['id']
+    return p
+
+
+def run_engine(p):
+    engine.reset_cache()
+    return engine.run(p)
+
+
+def test_B1_brittle_check_uses_the_prestressed_cracking_moment():
+    """FOER: 2 tau a 93 mm2, sigma_p0 = 1300: M_Rd = -64,7 (tauet ryker), M_cr = 49,6 uten
+    forspenning, `brittle_ok: True`. M_cr MED forspenning ved t_inf er 82,0 (stegtabellen)."""
+    res = run_engine(fixture_with([tendons_at('T', 2, -87.5, 1300.0)],
+                                  [row('U', -60e6), row('C', -70e6, kind='characteristic')]))
+    lt = res['prestress']['stages'][1]
+    assert lt['M_cr'] == pytest.approx(-81.974569e6, rel=1e-6)
+    assert res['section_props']['M_cr'] == pytest.approx(-lt['M_cr'], rel=1e-12)
+    assert res['section_props']['M_cr_basis'] == 'prestressed_long_term'
+    assert res['bending']['M_Rd'] == pytest.approx(-64.672378e6, rel=1e-6)
+    assert res['checks']['brittle_ok'] is False
+    assert any(w['code'] == 'brittle_failure_risk' for w in res['warnings'])
+
+
+def test_B1_cracking_moment_follows_the_axial_force_of_the_governing_row():
+    # N = -500 kN loefter M_cr fra 174,06 til 204,42; samme tall i stegtabellens belastede
+    # rad med samme N og i `section_props`, som brittle_ok leser.
+    res = run_engine(fixture_with([tendon_layer()], [row('U', -100e6, -500e3),
+                                                    row('C', -150e6, -500e3, 'characteristic')]))
+    loaded = res['prestress']['stages'][2]
+    assert loaded['M_cr'] == pytest.approx(-204.42e6, rel=1e-4)
+    assert res['section_props']['M_cr'] == pytest.approx(-loaded['M_cr'], rel=1e-9)
+
+
+def test_B2_passive_with_tendons_makes_long_term_and_loaded_not_available():
+    """FOER: 6 Oe12 paa z = -100 + spennlaget ga sigma_c,u.k. -4,04, M_dec -122,5,
+    M_cr -175,7; en aldersjustert modell gir -2,74 / ca. -103 / ca. -155 (usikker side)."""
+    res = run_engine(fixture_with([tendon_layer(), slack_at('S', 6, -100.0, 12.0)],
+                                  [row('U', -100e6), row('C', -150e6, kind='characteristic')]))
+    st = {s['stage'] + (s.get('combo') or ''): s for s in res['prestress']['stages']}
+    assert st['transfer']['available'] is True
+    for key in ('long_term', 'loadedC'):
+        assert st[key]['available'] is False
+        assert st[key]['reason'] == 'passive_with_tendons'
+        assert 'sigma_c_bottom' not in st[key] and 'M_dec' not in st[key]
+    assert res['prestress']['long_term_available'] is False
+    assert res['bending']['M_Rd'] == pytest.approx(-331.977600e6, rel=1e-6)   # ULS staar
+    assert res['checks']['brittle_ok'] is None
+    assert res['section_props']['M_cr'] is None
+    assert any(w['code'] == 'prestress_long_term_not_available' for w in res['warnings'])
+
+
+def test_B3_F6_age_and_strength_at_transfer_are_required_not_defaulted():
+    for key in ('t0', 'fck_t0'):
+        p = load('payload-custom-hd265-prestressed.json')
+        p['prestress'][key] = None
+        res = run_engine(p)
+        assert res['ok'] is False and res['error']['code'] == 'invalid_prestress', key
+        assert 'required' in res['error']['message']
+
+
+def test_F1_tendon_that_does_not_reach_fpd_is_not_ductile():
+    """FOER: N = -1600 ... -1700 kN, M_Ed = -100 ga `ductility_ok: True` med
+    sigma_p = 1395 ... 1340 < f_pd = 1426 (slakkarmeringens eps_yd paa tverrsnittstoeyningen)."""
+    for n in (-1600e3, -1700e3):
+        res = run_engine(fixture_with([tendon_layer()], [row('U', -100e6, n)]))
+        layer = res['bending']['layers'][0]
+        assert layer['sigma'] < 1640 / 1.15
+        assert res['checks']['ductility_ok'] is False
+        assert res['bending']['failure_mode'] == 'over_reinforced'
+    ok = run_engine(fixture_with([tendon_layer()], [row('U', -100e6)]))
+    assert ok['checks']['ductility_ok'] is True
+
+
+def test_F2_hogging_cracking_moment_is_for_the_top_fibre_and_stress_beyond_fck_is_flagged():
+    res = run_engine(fixture_with([tendon_layer()], [row('U', 60e6),
+                                                    row('C', 40e6, kind='characteristic')]))
+    assert res['bending']['M_Rd'] == pytest.approx(30.949483e6, rel=1e-6)   # review F10
+    loaded = res['prestress']['stages'][2]
+    assert loaded['fibre'] == 'top' and loaded['direction'] == 'hogging'
+    assert loaded['M_cr'] > 0                       # et overkant-tall, ikke underkantens -174
+    assert res['section_props']['M_cr'] == pytest.approx(loaded['M_cr'], rel=1e-9)
+    assert loaded['sigma_c_bottom'] < -45 and loaded['within_linear'] is False
+    assert any(w['code'] == 'prestress_stress_beyond_linear' for w in res['warnings'])
+
+
+def test_F2_tendons_on_the_wrong_face_give_a_message_that_says_why():
+    """FOER: bare overkantstau + egenvekt krasjet med «no stiffness»."""
+    res = run_engine(fixture_with([tendons_at('T', 4, 87.5)], [row('U', 50e6)]))
+    assert res['ok'] is False and res['error']['code'] == 'invalid_prestress'
+    assert 'cannot carry this stage elastically' in res['error']['message']
+    assert 'no stiffness' not in res['error']['message']
+
+
+def test_F3_cracking_at_transfer_one_sigma_pi_and_no_long_term():
+    """FOER: 14 tau, sigma_p0 = 1300, M_t = 0: tapene brukte sigma_pi = 1213,98 (urisset
+    plan), stegtabellen 1212,73 (risset), og t_inf ble regnet som urisset."""
+    p = fixture_with([tendons_at('T', 14, -87.5, 1300.0)],
+                     [row('U', -150e6), row('C', -150e6, kind='characteristic')])
+    p['prestress']['M_transfer'] = 0.0
+    p['prestress']['M_permanent'] = 0.0
+    res = run_engine(p)
+    t0 = res['prestress']['stages'][0]
+    loss = res['prestress']['losses'][0]
+    assert t0['uncracked'] is False
+    assert loss['sigma_pi'] == pytest.approx(t0['tendons'][0]['sigma_p'], rel=1e-12)
+    assert loss['sigma_pi'] == pytest.approx(1212.73, abs=0.01)
+    assert loss['transfer_cracked'] is True
+    assert res['prestress']['stages'][1]['available'] is False
+    assert res['prestress']['stages'][1]['reason'] == 'cracked_at_transfer'
+    assert any(w['code'] == 'prestress_cracked_at_transfer' for w in res['warnings'])
+
+
+def test_F8_shear_note_when_a_prestressed_section_has_a_shear_force():
+    p = load('payload-custom-hd265-prestressed.json')
+    p['loads']['combinations'][0]['V_Ed'] = 100e3
+    res = run_engine(p)
+    assert any(w['code'] == 'prestress_shear_not_included' for w in res['warnings'])
+
+
+@pytest.mark.parametrize('layers,combos,expected', [
+    ([('T', 10, -87.5)], [row('U1', -100e6, -500e3)], -317.506589e6),
+    ([('T', 10, -87.5)], [row('U2', -100e6, 300e3)], -256.017798e6),
+    ([('B', 10, -87.5), ('T', 2, 100.0)], [row('U', -100e6)], -277.180425e6),
+    ([('B', 10, -87.5), ('T', 2, 100.0)], [row('H', 50e6)], 86.780612e6),
+])
+def test_F10_reviewer_bending_resistances(layers, combos, expected):
+    res = run_engine(fixture_with([tendons_at(*l) for l in layers], combos))
+    assert res['bending']['M_Rd'] == pytest.approx(expected, rel=1e-6)
+
+
+def test_F10_reviewer_rectangle_1000x200():
+    """Reviewerens uavhengige haandregning: plate 1000 x 200, C45, A_p = 1000 mm2 paa
+    z = -60, M_g = -20 kNm, h0 = 200, phi(t_inf, 1 d) = 2,43304 (tillegg B, RH 50, R)."""
+    p = load('payload-slab-1000x200-combos.json')
+    pre = load('payload-custom-hd265-prestressed.json')
+    p['section']['concrete']['fck'] = 45
+    ps = dict(pre['section']['rebar'][0]['prestress'], area_per_tendon=100.0)
+    p['section']['rebar'] = [{'id': 'T', 'kind': 'bars', 'area': 1000.0, 'prestress': ps,
+                              'bars': [{'y': -450 + i * 100, 'z': -60.0, 'dia': 12.5}
+                                       for i in range(10)]}]
+    p['loads'] = {'combinations': [row('U', -150e6), row('C', -60e6, kind='characteristic')],
+                  'active': 'U'}
+    p['sls'] = pre['sls']
+    p['prestress'] = dict(pre['prestress'], M_transfer=-20e6, M_permanent=-20e6, h0=200.0,
+                          phi=2.433040638339857)
+    p['analysis'] = 'bending'
+    res = run_engine(p)
+    t0, lt = res['prestress']['stages'][0], res['prestress']['stages'][1]
+    assert t0['sigma_c_top'] == pytest.approx(1.1843, abs=5e-5)
+    assert t0['sigma_c_bottom'] == pytest.approx(-11.6452, abs=5e-5)
+    assert t0['tendons'][0]['sigma_p'] == pytest.approx(1046.08, abs=5e-3)
+    assert res['prestress']['losses'][0]['d_sigma_csr'] == pytest.approx(209.24, abs=5e-3)
+    assert lt['M_dec'] == pytest.approx(-80.70e6, abs=5e3)
+    assert lt['M_cr'] == pytest.approx(-107.13e6, abs=5e3)
+    assert res['bending']['M_Rd'] == pytest.approx(-196.01e6, abs=5e3)
