@@ -25,6 +25,8 @@
  * DOM-fri og ren (plan §2.3 punkt 2).
  */
 
+import { chordIntervals } from './polygon.js';
+
 // Ligger her, ikke i `section.js`: `minClearDistance` under er selve
 // forbrukeren, og `section.js` importerer FRA denne fila — å legge
 // konstanten der ville laget en sirkel som i dag bare virker fordi den leses
@@ -174,12 +176,48 @@ export function barPositions(layer = {}, geometry = {}, opts = {}) {
 
   const coverSide = num(opts.cover_side) || 0;
   const stirrup = num(opts.stirrup_dia) || 0;
+
+  // FRITT TVERRSNITT (sak #83): jernene fordeles over BETONGEN i lagets høyde, ikke over
+  // det omskrevne rektangelet. Et underkantlag i en T havner da i steget, og et lag i
+  // underflensen på et hulldekke over hele bredden. Krysser lagets høyde flere
+  // betongpartier (to steg, eller gjennom hullene), finnes det ikke ett svar — da
+  // fordeles det over det omskrevne rektangelet som før, og `validate()` sier fra med
+  // `layer_span_ambiguous` i stedet for å velge et av partiene i det stille.
+  const span = layerSpan(layer, geometry);
+  if (span) {
+    const yc = (span[0] + span[1]) / 2;
+    const half = (span[1] - span[0]) / 2 - coverSide - stirrup - dia / 2;
+    if (n === 1) return [{ y: yc, z, dia }];
+    const stepP = (2 * half) / (n - 1);
+    const outP = [];
+    for (let i = 0; i < n; i++) outP.push({ y: yc - half + i * stepP, z, dia });
+    return outP;
+  }
+
   const yMax = b / 2 - coverSide - stirrup - dia / 2;
   if (n === 1) return [{ y: 0, z, dia }];
   const step = (2 * yMax) / (n - 1);
   const out = [];
   for (let i = 0; i < n; i++) out.push({ y: -yMax + i * step, z, dia });
   return out;
+}
+
+/**
+ * Betongintervallet `[y0, y1]` et `bars`-lag fordeles over i et fritt tverrsnitt, eller
+ * `null` — både for rektangelet (ingen `geometry.polygon`) og når lagets høyde krysser
+ * mer enn ett betongparti. `validate()` leser den samme funksjonen, slik at tegningen,
+ * payloaden og meldingen aldri kan være uenige om hvor laget ligger.
+ *
+ * @param {object} layer
+ * @param {{h:number, polygon?: {outer:number[][], holes:number[][][]}}} geometry
+ * @returns {[number, number]|null}
+ */
+export function layerSpan(layer = {}, geometry = {}) {
+  if (!geometry.polygon || layer.mode === 'spacing') return null;
+  const z = layerCentroidZ(layer, num(geometry.h));
+  if (!Number.isFinite(z)) return null;
+  const spans = chordIntervals(geometry.polygon, z);
+  return spans.length === 1 ? spans[0] : null;
 }
 
 /**

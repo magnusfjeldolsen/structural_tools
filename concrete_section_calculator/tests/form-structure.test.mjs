@@ -66,8 +66,10 @@ test('hvert inndatafelt i skjemaet er bundet til tilstanden', () => {
   // avledede verdien». `bindField` legger tilbake den gjeldende verdien når
   // uttrykket ikke lar seg lese, og ville dermed gjort dem umulige å tømme.
   // De deler én liten binder (`optional` i `setupFields`), ikke tre lyttere.
+  // `#i-bw` (fritt tverrsnitt, sak #83) av samme grunn: tomt = «b_w ikke oppgitt,
+  // skjær regnes ikke», et ekte valg og ikke en uleselig verdi.
   const BOUND_BY_HAND = ['i-law-c', 'i-law-s', 'i-fck', 'i-steel-grade', 'i-exposure',
-    'i-cement', 'i-wmax', 'i-phi-ef', 'i-h0'];
+    'i-cement', 'i-wmax', 'i-phi-ef', 'i-h0', 'i-bw'];
   const fields = Array.from(HTML.matchAll(/<input id="(i-[\w-]+)"/g), (m) => m[1]);
   assert.ok(fields.length >= 15, `fant bare ${fields.length} i-felt — regexen har råtnet`);
   for (const id of fields) {

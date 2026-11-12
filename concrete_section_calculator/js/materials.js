@@ -23,6 +23,8 @@
  * DOM-fri og ren (plan §2.3 punkt 2).
  */
 
+import { polygonProps } from './polygon.js';
+
 /** Standard EC2-fasthetsklasser. `fck` er et TALL — aldri strengen 'C30/37'. */
 export const CONCRETE_GRADES = [
   { label: 'C12/15', fck: 12 },
@@ -218,6 +220,12 @@ export const CEMENT_CLASSES = Object.freeze([
 ]);
 
 /**
+ * Vekten hullenes omkrets får i `u` for et fritt tverrsnitt. Se `notionalSize`: et
+ * dokumentert valg, ikke en verdi fra standarden.
+ */
+export const CUSTOM_HOLE_PERIMETER_WEIGHT = 0.5;
+
+/**
  * Den effektive tykkelsen h₀ = 2·A_c/u [mm] (EC2 3.1.4(5)).
  *
  * `u` er omkretsen som TØRKER, ikke hele omkretsen — og det er en
@@ -233,6 +241,23 @@ export const CEMENT_CLASSES = Object.freeze([
  */
 export function notionalSize(state = {}) {
   const geometry = state.geometry || {};
+  if (state.sectionType === 'custom') {
+    // FRITT TVERRSNITT (sak #83): h₀ = 2·A_c/u med
+    //
+    //   u = ytre omkrets + ½ · omkretsen av hullene.
+    //
+    // EC2 tillegg B.1 sier bare at u er «the perimeter of the member in contact with the
+    // atmosphere». Lukkede hulrom tørker ut, men langsommere enn en fri flate: lufta
+    // inne blir stående fuktig. Halv vekt er det VALGET vi gjør — et vanlig
+    // ingeniørskjønn for hulldekker, ikke et tall standarden gir — og det står i
+    // rapporten. Er hulrommene åpne mot lufta i begge ender over korte lengder, kan full
+    // vekt være riktigere; er de forseglet, null. Derfor kan h₀ overstyres i skjemaet.
+    if (!Array.isArray(geometry.outer)) return NaN;
+    const p = polygonProps({ outer: geometry.outer, holes: geometry.holes || [] });
+    const u = p.perimeter_outer + CUSTOM_HOLE_PERIMETER_WEIGHT * p.perimeter_holes;
+    if (!(p.area > 0) || !(u > 0)) return NaN;
+    return (2 * p.area) / u;
+  }
   const h = num(geometry.h);
   if (!Number.isFinite(h) || h <= 0) return NaN;
   if (state.sectionType === 'slab') return h;

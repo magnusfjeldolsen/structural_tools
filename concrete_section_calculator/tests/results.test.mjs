@@ -58,6 +58,7 @@ import {
   withResultView,
   CHECK_ORDER,
   CHECK_LABELS,
+  OPTIONAL_CHECKS,
   checkRows,
   checkText,
   CHECK_PASS_TEXT,
@@ -533,7 +534,8 @@ test('fixturens bruddform er oversatt', () => {
  */
 test('kontrolltabellen har fast rekkefølge og engelske navn', () => {
   const rows = checkRows(BENDING.checks);
-  assert.deepEqual(rows.map((r) => r.key), [...CHECK_ORDER]);
+  // `OPTIONAL_CHECKS` (fritt tverrsnitt, sak #83) vises bare når motoren sendte dem.
+  assert.deepEqual(rows.map((r) => r.key), CHECK_ORDER.filter((k) => !OPTIONAL_CHECKS.includes(k)));
   for (const r of rows) {
     assert.equal(typeof r.label, 'string', `«${r.key}» mangler etikett helt`);
     assert.ok(r.label.trim().length > 0, `«${r.key}» har tom etikett`);
@@ -546,6 +548,15 @@ test('kontrolltabellen har fast rekkefølge og engelske navn', () => {
     }
   }
   assert.equal(rows[rows.length - 1].key, 'all_ok', 'den samlede vurderingen står sist');
+});
+
+test('sls_ok (fritt tverrsnitt) vises når motoren sendte den, som ubesvart, rett før all_ok', () => {
+  const rows = checkRows({ ...BENDING.checks, sls_ok: null, all_ok: null });
+  const keys = rows.map((r) => r.key);
+  assert.equal(keys[keys.length - 2], 'sls_ok');
+  const row = rows.find((r) => r.key === 'sls_ok');
+  assert.equal(row.text, '–');
+  assert.match(row.label, /not available for a custom section/);
 });
 
 /**

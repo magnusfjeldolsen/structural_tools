@@ -255,13 +255,13 @@ test('fil med analysis:"moment_curvature" og N_Ed ≠ 0: IKKE normalisert — re
 
 /* ---------------- runde 8 §1 — det parkerte snittet i `stash` ---------------- */
 
-test('gammel fil uten stash: standarden {beam:null, slab:null} og ett document_field_defaulted', () => {
+test('gammel fil uten stash: standarden {beam:null, slab:null, custom:null} og ett document_field_defaulted', () => {
   // Riktig oppførsel, ikke en mangel: den AKTIVE geometrien er den som betyr
   // noe, og en fil lagret før runde 8 har bare den ene.
   const doc = toDocument(defaultState());
   delete doc.state.stash;
   const { state, notes } = fromDocument(doc);
-  assert.deepEqual(state.stash, { beam: null, slab: null });
+  assert.deepEqual(state.stash, { beam: null, slab: null, custom: null });
   const defaulted = notes.filter((n) => n.code === 'document_field_defaulted' && n.field === 'stash');
   assert.equal(defaulted.length, 1);
 });

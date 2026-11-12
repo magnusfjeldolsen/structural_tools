@@ -36,7 +36,9 @@
 
 import { SCHEMA_VERSION } from './meta.js';
 import { ftkOf, resolveCreep, slsLimits } from './materials.js';
-import { activeComboTheta, sectionHeight, sectionWidth, thetaFor } from './section.js';
+import {
+  activeComboTheta, barGeometry, sectionHeight, sectionPolygon, sectionWidth, shearWidth, thetaFor,
+} from './section.js';
 import { barPositions, equivalentStrip, layerArea, stirrupCoverDia } from './rebar.js';
 
 /** kN → N. */
@@ -75,7 +77,9 @@ function requirePositive(value, label) {
  * standardmodellen — `smear_mode: 'bars'` er kuttet i plan §1.2.
  */
 function rebarEntry(layer, state) {
-  const geometry = { b: sectionWidth(state), h: sectionHeight(state) };
+  // `barGeometry` og ikke `{b, h}` skrevet ut her: for et fritt tverrsnitt bærer den
+  // polygonet, og tegningen kaller den samme funksjonen (invariant 1).
+  const geometry = barGeometry(state);
   const area = layerArea(layer);
   if (layer.mode === 'spacing') {
     const strip = equivalentStrip(layer, geometry.h);
@@ -154,13 +158,28 @@ export function buildPayload(state = {}, overrides = {}) {
   const b = sectionWidth(state);
   const h = sectionHeight(state);
 
+  // FRITT TVERRSNITT (sak #83): polygonet i stedet for `b`/`h` — IKKE begge. Motoren
+  // avleder det omskrevne rektangelet av polygonet selv; to kilder til høyden i samme
+  // payload ville vært nettopp feilformen veikartet advarer mot. Polygonet er allerede
+  // normalisert (omskrevet rektangel sentrert i origo) av `store.js`, som er kontrakten
+  // `engine.py` krever. `bw` sendes bare når den er oppgitt: mangler den, regner motoren
+  // ikke skjær, og et `null`-felt ville bare vært en andre måte å si det samme på.
+  const polygon = sectionPolygon(state);
+  const shape = polygon
+    ? {
+      type: 'custom',
+      shape: 'polygon',
+      outer: polygon.outer.map((p) => [p[0], p[1]]),
+      holes: polygon.holes.map((ring) => ring.map((p) => [p[0], p[1]])),
+      ...(shearWidth(state) > 0 ? { bw: shearWidth(state) } : {}),
+    }
+    : { type: state.sectionType === 'slab' ? 'slab' : 'beam', b, h };
+
   return {
     schema: SCHEMA_VERSION,
     analysis: overrides.analysis || state.analysis || 'bending',
     section: {
-      type: state.sectionType === 'slab' ? 'slab' : 'beam',
-      b,
-      h,
+      ...shape,
       concrete: {
         // `fck` er et TALL, aldri strengen 'C30/37' (plan §3.6).
         fck: num(concrete.fck),

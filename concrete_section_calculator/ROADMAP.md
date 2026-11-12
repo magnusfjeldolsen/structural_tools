@@ -316,6 +316,14 @@ seksjonen, ikke som en løsrevet CSS-lapp.
 
 ## 7. Flere tverrsnittsformer
 
+**DELVIS FERDIG — fritt tverrsnitt (sak #83).** Ett ytre polygon med hull, lastet fra
+fil/innliming i formatet `structural-tools-section` v1. Se README §1.1 for hva som er
+regnet og hva som svarer «ikke tilgjengelig» (`b_t`/`A_s,min`, SLS, skjær uten eksplisitt
+`b_w`). Målt: referansesnittet 1200×265 med 7 hull Ø140 (32-kant) gir A +0,33 % og
+I_y +0,10 % mot sirkelhull; rektangel som polygon gir M_Rd bit-identisk med `b × h`.
+Det som står igjen her er den PARAMETRISKE T-en (kotering i figuren), SLS for vilkårlig
+polygon (krever et elastisk snitt integrert over polygonet, ikke `b·x`), og `b_t`.
+
 **Hva.** Parametrisk T-tverrsnitt og opp-ned T, i tillegg til rektangel og plate.
 
 **Gjørbart nå.** Motoren tar et vilkårlig shapely-polygon; `payload.js` bygger det allerede.
