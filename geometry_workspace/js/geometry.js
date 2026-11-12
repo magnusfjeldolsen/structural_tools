@@ -231,6 +231,35 @@ export function intersectionMulti(a, b) {
  * ------------------------------------------------------------------ */
 
 /**
+ * Den fysiske geometrien som en maler ville tegnet den: nederste form først,
+ * hver form oppå det som ligger under — en fast form legger til, et hull
+ * skjærer bort. Et hull skjærer altså bare i det som ligger UNDER det i lista.
+ * Det er samme regel som 'priority'-modus, og den gjør at en øy i et hull
+ * (en fast form foran hullet) blir stående (#86, B2). Før ble alle hull
+ * trukket fra unionen av alle faste former, og øya forsvant fra
+ * «Areal, fysisk» og eksporten mens 'sum' talte den med.
+ *
+ * Former med samme rolle som ligger etter hverandre, slås sammen først, slik
+ * at et dekke med 2000 hull blir én union og én differanse, ikke 2000.
+ */
+export function paintNet(shapes) {
+  const list = (shapes || []).filter((s) => s.include !== false && s.points && s.points.length >= 3);
+  let acc = [];
+  let i = list.length - 1;
+  while (i >= 0) {
+    const isVoid = list[i].role === 'void';
+    const run = [];
+    while (i >= 0 && (list[i].role === 'void') === isVoid) {
+      run.push(pointsToMulti(list[i].points));
+      i--;
+    }
+    const m = unionMulti(run);
+    acc = isVoid ? differenceMulti(acc, m) : acc.length ? unionMulti([acc, m]) : m;
+  }
+  return acc;
+}
+
+/**
  * Regner ut effektiv geometri for en liste med former.
  *
  * shapes: [{ id, points, role: 'solid'|'void', factor, include }]
@@ -297,11 +326,8 @@ export function analyze(shapes, mode = 'sum') {
   }
 
   const total = sumProps(parts.map((p) => p.props));
-  const solidMulti = unionMulti(
-    parts.filter((p) => !p.isVoid).map((p) => p.multi)
-  );
   const voidMulti = unionMulti(parts.filter((p) => p.isVoid).map((p) => p.multi));
-  const netMulti = voidMulti.length ? differenceMulti(solidMulti, voidMulti) : solidMulti;
+  const netMulti = paintNet(active);
 
   const weighted = parts.some((p) => Math.abs(Math.abs(p.weight) - 1) > EPS && p.weight !== 0);
 
@@ -314,9 +340,12 @@ export function analyze(shapes, mode = 'sum') {
     netMulti,
     // Selve overlappsonen, til opptegning
     overlapMulti: overlapNet,
-    // Summen av formenes egne arealer, altså skallmodellens areal der
-    // overlappet er med to ganger.
-    grossArea: parts.filter((p) => !p.isVoid).reduce((a, p) => a + p.ownArea, 0),
+    // Skallmodellens areal: de faste formenes egne arealer, med overlappet to
+    // ganger, MINUS hullene. Uten hullene ble «Areal, skallmodell» 318 000 for
+    // et hulldekke på 210 243, og differansen ble vist som overlapp (#86, B6).
+    grossArea:
+      parts.filter((p) => !p.isVoid).reduce((a, p) => a + p.ownArea, 0) -
+      parts.filter((p) => p.isVoid).reduce((a, p) => a + p.ownArea, 0),
     // Rent geometrisk nettoareal (uten vektfaktorer), altså arealet av netMulti.
     netArea: Math.abs(multiProps(netMulti).A),
     // Arealet av selve overlappsonen. Merk at dette er mindre enn

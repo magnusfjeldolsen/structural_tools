@@ -107,7 +107,7 @@ console.log('Usammenhengende ytre konturer gir melding, ikke stille union');
 console.log('Union av formene minus hull');
 {
   // To rektangler som deler en kant blir ett; overlapp telles én gang og meldes
-  const r = exportSection([solid('a', R(0, 0, 100, 100)), solid('b', R(50, 0, 100, 100)), hole('h', R(10, 10, 20, 20))], { unit: 'mm' });
+  const r = exportSection([hole('h', R(10, 10, 20, 20)), solid('a', R(0, 0, 100, 100)), solid('b', R(50, 0, 100, 100))], { unit: 'mm' });
   ok('ok', r.ok, r.error);
   ok('A = 150·100 − 20·20 = 14 600', Math.abs(sectionProps(r.section).A - 14600) < 1e-6);
   ok('overlappet meldes', r.warnings.some((w) => /overlapp/i.test(w)), JSON.stringify(r.warnings));
@@ -115,18 +115,29 @@ console.log('Union av formene minus hull');
   const r2 = exportSection([solid('a', R(0, 0, 100, 100)), solid('x', R(500, 0, 10, 10), { include: false })], { unit: 'mm' });
   ok('form med include:false er ikke med', r2.ok && Math.abs(sectionProps(r2.section).A - 1e4) < 1e-9);
   // Hull som skjærer kanten blir en del av ytterkonturen, ikke et hull
-  const r3 = exportSection([solid('a', R(0, 0, 100, 100)), hole('n', R(-10, 40, 30, 20))], { unit: 'mm' });
+  const r3 = exportSection([hole('n', R(-10, 40, 30, 20)), solid('a', R(0, 0, 100, 100))], { unit: 'mm' });
   ok('hakk i kanten: ingen hull, A = 10 000 − 400', r3.ok && r3.section.holes.length === 0 && Math.abs(sectionProps(r3.section).A - 9600) < 1e-6);
   // Vektfaktor ≠ 1 kan ikke uttrykkes i formatet
   const r4 = exportSection([solid('a', R(0, 0, 100, 100), { factor: 0.5 })], { unit: 'mm' });
   ok('vektfaktor meldes', r4.ok && r4.warnings.some((w) => /faktor/i.test(w)), JSON.stringify(r4.warnings));
 }
 
+console.log('Hull under en fast form i lista');
+{
+  // Hullene skjærer bare i det som ligger under dem — som «Areal, fysisk» og
+  // 'priority'. Ligger hullet under, går det ikke gjennom, og det sies fra.
+  const r = exportSection([solid('a', R(0, 0, 100, 100)), hole('h', R(10, 10, 20, 20))], { unit: 'mm' });
+  ok('A = 10 000 (hullet går ikke gjennom)', r.ok && Math.abs(sectionProps(r.section).A - 1e4) < 1e-9);
+  ok('advarsel om rekkefølgen', r.warnings.some((w) => /ligger under/.test(w)), JSON.stringify(r.warnings));
+  const top = exportSection([hole('h', R(10, 10, 20, 20)), solid('a', R(0, 0, 100, 100))], { unit: 'mm' });
+  ok('hull øverst: A = 9 600, ingen advarsel', top.ok && Math.abs(sectionProps(top.section).A - 9600) < 1e-9 && top.warnings.length === 0);
+}
+
 console.log('Ingenting å eksportere');
 {
   ok('tom modell', exportSection([], { unit: 'mm' }).ok === false);
   ok('bare hull', exportSection([hole('h', R(0, 0, 10, 10))], { unit: 'mm' }).ok === false);
-  const r = exportSection([solid('a', R(0, 0, 10, 10)), hole('h', R(-5, -5, 30, 30))], { unit: 'mm' });
+  const r = exportSection([hole('h', R(-5, -5, 30, 30)), solid('a', R(0, 0, 10, 10))], { unit: 'mm' });
   ok('hullet spiser alt', r.ok === false && /ingen/i.test(r.error), r.error);
 }
 

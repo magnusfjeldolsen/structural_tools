@@ -25,6 +25,7 @@
 import {
   pointsToMulti,
   unionMulti,
+  paintNet,
   differenceMulti,
   multiProps,
   polygonProps,
@@ -61,14 +62,30 @@ function orient(ring, wantPositive) {
 export function exportSection(shapes, { unit = 'mm', selection = [] } = {}) {
   const usable = (shapes || []).filter((s) => s && s.include !== false && s.points && s.points.length >= 3);
   const allSolids = usable.filter((s) => s.role !== 'void');
-  const voids = usable.filter((s) => s.role === 'void');
   const sel = new Set(selection || []);
   const picked = allSolids.filter((s) => sel.has(s.id));
-  const solids = picked.length ? picked : allSolids;
+  const solidSet = new Set(picked.length ? picked : allSolids);
 
-  if (!solids.length) return { ok: false, error: 'Ingen faste former å eksportere.' };
+  if (!solidSet.size) return { ok: false, error: 'Ingen faste former å eksportere.' };
 
   const warnings = [];
+  const k = unitInfo(unit).toMillimetres;
+
+  // Langt fra origo kansellerer arealintegralene (Revit: 6,6e9 mm). Da flyttes
+  // alt til et lokalt origo FØR klippingen, og mottakeren får lokale tall —
+  // formatet har vilkårlig origo (#86, B5).
+  const chosen = usable.filter((s) => s.role === 'void' || solidSet.has(s));
+  const offset = localOffset(chosen.filter((s) => s.role !== 'void').flatMap((s) => s.points));
+  const shift = offset ? (pts) => pts.map(([x, y]) => [x - offset[0], y - offset[1]]) : (pts) => pts;
+  const list = chosen.map((s) => ({ ...s, points: shift(s.points) }));
+  if (offset) {
+    warnings.push(
+      `Flyttet tverrsnittet med (${fmt(-offset[0] * k)}; ${fmt(-offset[1] * k)}) mm til lokalt origo — ` +
+        'det lå så langt fra (0, 0) at arealmomentene ellers blir unøyaktige.'
+    );
+  }
+
+  const solids = list.filter((s) => s.role !== 'void');
   const solidMulti = unionMulti(solids.map((s) => pointsToMulti(s.points)));
   const ownSum = solids.reduce((a, s) => a + Math.abs(signedArea(s.points)), 0);
   const unionArea = Math.abs(multiProps(solidMulti).A);
@@ -79,9 +96,26 @@ export function exportSection(shapes, { unit = 'mm', selection = [] } = {}) {
     warnings.push('Vektfaktorer ≠ 1 finnes ikke i formatet og er ikke tatt med.');
   }
 
-  const voidMulti = unionMulti(voids.map((s) => pointsToMulti(s.points)));
-  const net = voidMulti.length ? differenceMulti(solidMulti, voidMulti) : solidMulti;
+  // Samme regel som «Areal, fysisk»: et hull skjærer bare i det som ligger
+  // under det i lista, så en øy i et hull blir stående — og blir da en egen
+  // del, som formatet ikke kan bære (#86, B2).
+  const net = paintNet(list);
   const pieces = net.filter((poly) => Math.abs(polygonProps(poly).A) > EPS);
+
+  // Ligger et hull UNDER en fast form det overlapper, skjærer det ikke i den.
+  // Sammenlikn med «alle hull fra alle former» og si fra når de er ulike.
+  const voids = list.filter((s) => s.role === 'void');
+  if (voids.length) {
+    const allCut = differenceMulti(solidMulti, unionMulti(voids.map((s) => pointsToMulti(s.points))));
+    const a1 = Math.abs(multiProps(net).A);
+    const a2 = Math.abs(multiProps(allCut).A);
+    if (Math.abs(a1 - a2) > Math.max(a1, a2, 1e-30) * 1e-9) {
+      warnings.push(
+        'Et hull ligger under en fast form i geometrilista og skjærer ikke i den (samme regel som «Areal, fysisk»). ' +
+          'Flytt hullet øverst hvis det skal gå gjennom.'
+      );
+    }
+  }
 
   if (!pieces.length) return { ok: false, error: 'Ingen geometri igjen når hullene er trukket fra.' };
   if (pieces.length > 1) {
@@ -93,17 +127,74 @@ export function exportSection(shapes, { unit = 'mm', selection = [] } = {}) {
     };
   }
 
-  const k = unitInfo(unit).toMillimetres;
   const toYZ = (ring) => ring.map(([x, y]) => [round(x * k), round(y * k)]);
   const [outer, ...holes] = pieces[0];
   const section = {
     format: SECTION_FORMAT,
     version: SECTION_VERSION,
     units: 'mm',
-    outer: toYZ(orient(outer, true)),
-    holes: holes.map((h) => toYZ(orient(h, false))),
+    outer: dedupeConsecutive(toYZ(orient(outer, true))),
+    holes: holes.map((h) => dedupeConsecutive(toYZ(orient(h, false)))),
   };
+  const invalid = validateSection(section);
+  if (invalid) return { ok: false, error: invalid };
   return { ok: true, section, warnings };
+}
+
+const fmt = (v) => String(Math.round(v * 1e6) / 1e6);
+
+/** Forskyvningen til lokalt origo, eller null når geometrien ligger nær nok. */
+function localOffset(points) {
+  if (!points.length) return null;
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const size = Math.max(Math.hypot(maxX - minX, maxY - minY), 1e-12);
+  const far = Math.max(Math.abs(minX), Math.abs(maxX), Math.abs(minY), Math.abs(maxY));
+  if (far <= 1e3 * size) return null;
+  const step = 10 ** Math.ceil(Math.log10(size));
+  return [Math.floor(minX / step) * step, Math.floor(minY / step) * step];
+}
+
+function dedupeConsecutive(ring) {
+  const out = [];
+  for (const p of ring) {
+    const q = out[out.length - 1];
+    if (!q || q[0] !== p[0] || q[1] !== p[1]) out.push(p);
+  }
+  while (out.length > 1 && out[0][0] === out[out.length - 1][0] && out[0][1] === out[out.length - 1][1]) out.pop();
+  return out;
+}
+
+/**
+ * Det mottakeren får skal være et gyldig polygon (#86, F1): minst tre punkt per
+ * ring, ingen ring som berører seg selv (samme punkt to ganger), og ingen hull
+ * uten areal. Klipping av nesten-sammenfallende kanter kan gi begge deler.
+ * Returnerer en melding, eller null når alt er i orden.
+ */
+export function validateSection(section) {
+  const Aout = Math.abs(signedArea(section.outer));
+  const rings = [['ytterkonturen', section.outer], ...section.holes.map((h, i) => [`hull ${i + 1}`, h])];
+  for (const [name, ring] of rings) {
+    if (ring.length < 3) return `Eksporten ga en ugyldig kontur (${name} har under tre punkt).`;
+    const seen = new Set();
+    for (const p of ring) {
+      const key = `${p[0]},${p[1]}`;
+      if (seen.has(key)) {
+        return (
+          `Eksporten ga en kontur som berører seg selv (${name}, i ${p[0]}; ${p[1]} mm). Det skyldes som regel ` +
+          'kanter som nesten, men ikke helt, faller sammen — juster formene så de møtes nøyaktig.'
+        );
+      }
+      seen.add(key);
+    }
+  }
+  for (const [name, ring] of rings.slice(1)) {
+    if (Math.abs(signedArea(ring)) <= Aout * 1e-9) {
+      return `Eksporten ga et hull uten areal (${name}). Juster formene så kantene møtes nøyaktig.`;
+    }
+  }
+  return null;
 }
 
 /**
