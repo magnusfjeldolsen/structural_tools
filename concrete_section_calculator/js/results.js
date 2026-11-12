@@ -322,6 +322,16 @@ export const ENGINE_CODES = Object.freeze([
   'sls_not_available_custom_section',
   'invalid_bw',
   'lateral_restraint_assumed',
+  // Forspenning (sak #84).
+  'invalid_prestress',
+  'sls_not_available_prestress',
+  'prestress_stages_missing',
+  'prestress_above_limit',
+  'prestress_cracked_at_transfer',
+  // Review av #89.
+  'prestress_long_term_not_available',
+  'prestress_stress_beyond_linear',
+  'prestress_shear_not_included',
 ]);
 
 /** Kodene `section.js` sin `validate()` kan produsere. Samme tabell, ett oppslag. */
@@ -362,6 +372,9 @@ export const VALIDATION_CODES = Object.freeze([
   'polygon_too_small',
   'polygon_wall_too_thin',
   'polygon_too_large',
+  // Forspenning (sak #84, review B3/F6).
+  'prestress_fck_t0_missing',
+  'prestress_t0_missing',
 ]);
 
 /** Kodene som beskriver svikt i worker/runtime eller i et lastet dokument, ikke i tverrsnittet. */
@@ -532,6 +545,46 @@ export const CODE_MESSAGES = Object.freeze({
     'a custom cross-section. They are built on a rectangular section, and using the ' +
     'bounding box would count holes and voids as concrete. The characteristic and ' +
     'quasi-permanent combinations have NOT been checked.',
+  /* --- forspenning (sak #84) --- */
+  invalid_prestress:
+    'A prestressed layer is not valid, so nothing was calculated. The technical detail ' +
+    'says what is wrong — for example a prestress with the wrong sign (it must be a ' +
+    'tensile stress, positive), a missing tendon area, or σ_p0 above f_p0,1k.',
+  sls_not_available_prestress:
+    'The serviceability checks (stress limits and crack width, EC2 7.2/7.3) are not ' +
+    'available for a prestressed section. The concrete and tendon stresses for each ' +
+    'characteristic and quasi-permanent combination are listed in the prestress stage ' +
+    'table instead — as facts, not checked against a limit.',
+  prestress_stages_missing:
+    'No prestress stage data was given, so no losses were computed. The bending resistance ' +
+    'uses the prestress before transfer, σ_p0, which overstates the long-term prestrain.',
+  prestress_above_limit:
+    'The prestress before transfer exceeds the recommended limit min(0.75·f_pk, ' +
+    '0.85·f_p0,1k) of EC2 5.10.3(2). The calculation continues; check the value.',
+  prestress_cracked_at_transfer:
+    'The section cracks at transfer: the tensile stress exceeds f_ctm(t₀). The transfer ' +
+    'stage is computed as cracked, with no concrete in tension, and the losses use that ' +
+    'state. The long-term and loaded stages and the brittle-failure check are NOT given — ' +
+    'the long-term model starts from an uncracked section.',
+  prestress_long_term_not_available:
+    'The long-term and loaded prestress stages are not available for this section: it has ' +
+    'non-prestressed reinforcement together with the tendons, which over time takes up part ' +
+    'of the creep and shrinkage. Without an age-adjusted analysis the long-term stresses ' +
+    'and the decompression/cracking moments would be on the unsafe side, so they are not ' +
+    'given. Transfer and the bending resistance are computed.',
+  prestress_stress_beyond_linear:
+    'In a prestress stage the concrete compression exceeds f_ck. The stage is computed with ' +
+    'linear-elastic concrete, which is not valid at that stress — the numbers for the stage ' +
+    'named in the detail are outside the model.',
+  prestress_shear_not_included:
+    'The shear resistance V_Rd,c does not include the compressive stress σ_cp from the ' +
+    'prestress (on the safe side), and the shear-tension check of EC2 6.2.2(2) / EN 1168 ' +
+    'for hollow-core elements is not carried out.',
+  prestress_fck_t0_missing:
+    'The concrete strength at transfer f_ck(t₀) must be given for a prestressed section.',
+  prestress_t0_missing:
+    'The age of the concrete at transfer t₀ (days) must be given for a prestressed section. ' +
+    'It sets the creep coefficient and the shrinkage used for the losses.',
   polygon_missing:
     'No custom cross-section is loaded. Load a section file or paste one in section 1.',
   polygon_outer_invalid:
@@ -1684,4 +1737,106 @@ export function slsHeadlineCrack(result) {
     }
   }
   return worst;
+}
+
+/* ================================================================== *
+ * Forspenning: stegtabellen (sak #84)
+ * ================================================================== */
+
+/** Stegnavnene slik de står i tabellen og rapporten. */
+export const PRESTRESS_STAGE_LABELS = Object.freeze({
+  transfer: 'Transfer t₀',
+  long_term: 'Long term t∞',
+  loaded: 'Loaded t∞',
+});
+
+/** Tapsleddene i EC2 5.10.6 lign. (5.46), i rekkefølgen tabellen viser dem. */
+export const PRESTRESS_LOSS_TERMS = Object.freeze([
+  ['d_sigma_el', 'Elastic shortening at transfer'],
+  ['term_shrinkage', 'Shrinkage ε_cs·E_p / D'],
+  ['term_creep', 'Creep α·φ·σ_c,QP / D'],
+  ['term_relaxation', 'Relaxation 0.8·Δσ_pr / D'],
+]);
+
+/**
+ * Stegtabellen som RENE DATA, ferdig formatert. ÉN kilde for både resultatkortet
+ * (`ui.js:prestressSection`) og rapporten (`report.js`): tallene skal ikke kunne bli
+ * avrundet forskjellig de to stedene.
+ *
+ * `[]` uten `result.prestress.stages` — kalleren viser da ingenting.
+ * σ_p er per spennlag; med flere lag står de etter hverandre.
+ *
+ * @param {object|null} result
+ * @returns {Array<{stage:string, label:string, M:string, dM:string, top:string,
+ *   bottom:string, sigma_p:string, chi:string, state:string, uncracked:boolean,
+ *   M_dec:string, M_cr:string, f_ct:string}>}
+ */
+export function prestressStageRows(result) {
+  const stages = result?.prestress?.stages;
+  if (!Array.isArray(stages)) return [];
+  return stages.map((st) => {
+    const base = PRESTRESS_STAGE_LABELS[st.stage] || st.stage;
+    const label = st.stage === 'loaded'
+      ? `${base} · ${st.combo_name || st.combo || ''}`.trim()
+      : base;
+    if (st.available === false) {
+      // Review B2/F3: steget er IKKE regnet. Ingen tall — bare grunnen.
+      return {
+        stage: st.stage, label, available: false,
+        M: fmtMomentKNm(st.M), dM: DASH, top: DASH, bottom: DASH, sigma_p: DASH, chi: DASH,
+        uncracked: false, state: 'not available', f_ct: DASH, M_dec: DASH, M_cr: DASH,
+        fibre: '', reason: st.reason_text || st.reason || '',
+      };
+    }
+    return {
+      available: true,
+      reason: '',
+      fibre: st.fibre || '',
+      stage: st.stage,
+      label,
+      M: fmtMomentKNm(st.M),
+      dM: st.stage === 'loaded' ? fmtMomentKNm(st.dM) : DASH,
+      top: fmtStress(st.sigma_c_top, 2),
+      bottom: fmtStress(st.sigma_c_bottom, 2),
+      sigma_p: (st.tendons || []).map((t) => fmtStress(t.sigma_p, 1)).join(' / ') || DASH,
+      chi: fmtCurvature(st.chi, 3),
+      uncracked: st.uncracked === true,
+      state: st.uncracked === true ? 'uncracked' : 'cracked',
+      f_ct: fmtStress(st.f_ct, 2),
+      M_dec: fmtMomentKNm(st.M_dec),
+      M_cr: fmtMomentKNm(st.M_cr),
+    };
+  });
+}
+
+/**
+ * Tapene per spennlag som rene data. `source: 'override'` gir bare totalen.
+ * @returns {Array<{id:string, source:string, rows:Array<[string,string]>,
+ *   total:string, sigma_p0:string, sigma_p_inf:string, note:string}>}
+ */
+export function prestressLossRows(result) {
+  const losses = result?.prestress?.losses;
+  if (!Array.isArray(losses)) return [];
+  return losses.map((l) => {
+    if (l.source === 'override') {
+      return {
+        id: l.id, source: l.source, rows: [],
+        total: fmtStress(l.d_sigma_total, 1),
+        sigma_p0: fmtStress(l.sigma_p0, 1), sigma_p_inf: fmtStress(l.sigma_p_inf, 1),
+        note: 'σ_p after losses given directly (override); no loss terms computed.',
+      };
+    }
+    return {
+      id: l.id, source: l.source,
+      rows: PRESTRESS_LOSS_TERMS.map(([k, name]) => [name, fmtStress(l[k], 1)]),
+      total: fmtStress(l.d_sigma_total, 1),
+      sigma_p0: fmtStress(l.sigma_p0, 1), sigma_p_inf: fmtStress(l.sigma_p_inf, 1),
+      phi: fmtNumber(l.phi, 3),
+      note: `EC2 5.10.6 (5.46): φ(t∞, t₀) = ${fmtNumber(l.phi, 3)} `
+        + `(${l.phi_source === 'manual' ? 'entered' : 'derived'}, t₀ = ${fmtNumber(l.inputs?.t0, 1)} d), ε_cs = ${fmtStrainPermille(l.eps_cs, 3)} ‰, `
+        + `Δσ_pr = ${fmtStress(l.d_sigma_pr, 1)} MPa (class ${l.relaxation_class}, ρ₁₀₀₀ = `
+        + `${fmtNumber(l.rho_1000, 1)} %, μ = ${fmtNumber(l.mu, 3)}), σ_c,QP = `
+        + `${fmtStress(l.sigma_c_qp, 2)} MPa, D = ${fmtNumber(l.denominator, 4)}.`,
+    };
+  });
 }

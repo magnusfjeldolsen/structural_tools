@@ -34,6 +34,8 @@ export const PYTHON_MODULES = Object.freeze([
   'csc_sls.py',
   // Fritt tverrsnitt (sak #83). Importerer bare shapely, men `engine` importerer den.
   'csc_polygon.py',
+  // Forspenning og steg (sak #84). Importerer `csc_polygon`, og `engine` importerer den.
+  'csc_prestress.py',
   'engine.py',
 ]);
 

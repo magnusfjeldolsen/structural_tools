@@ -339,6 +339,12 @@ polygon (krever et elastisk snitt integrert over polygonet, ikke `b·x`), og `b_
 
 ## 8. Lasthistorie og støpeetapper
 
+**DELVIS FERDIG — forspenning (sak #84).** Første reelle laststeg: t₀ / t∞ / belastet for
+et føroppspent snitt med heft, eget materiale per spennlag (minste del av post 1), og et
+lineær-elastisk polygonsnitt med initialtøyning (`csc_prestress.py`, urisset og risset).
+Se README §1.2. Det som står igjen her: påstøp/samvirke (ny betong uten tøyning),
+overføringslengde, etteroppspenning, og SLS-grensene for forspent snitt.
+
 **Hva.** Flere laststeg der tverrsnittet vokser: forskalingselementet bærer seg selv, ny
 betong støpes tilnærmet monolittisk mot den, og videre. Typisk kaikonstruksjoner.
 

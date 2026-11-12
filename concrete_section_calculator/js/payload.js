@@ -35,10 +35,13 @@
  */
 
 import { SCHEMA_VERSION } from './meta.js';
-import { ftkOf, resolveCreep, slsLimits } from './materials.js';
+import {
+  ftkOf, isPrestressedLayer, notionalSize, prestressCreep, resolveCreep, selfWeightMoment, slsLimits,
+} from './materials.js';
 import {
   activeComboTheta, barGeometry, sectionHeight, sectionPolygon, sectionWidth, shearWidth, thetaFor,
 } from './section.js';
+import { polygonProps } from './polygon.js';
 import { barPositions, equivalentStrip, layerArea, stirrupCoverDia } from './rebar.js';
 
 /** kN → N. */
@@ -94,6 +97,11 @@ function rebarEntry(layer, state) {
     id: layer.id,
     kind: 'bars',
     area,
+    // SPENNLAG (sak #84). Feltet finnes BARE for et spennlag, slik at et slakt lag gir
+    // nøyaktig samme payload som før. Tallene sendes rått — fortegnet kontrolleres i
+    // motoren (`csc_prestress.prestress_material`), som feiler høylytt på et negativt
+    // σ_p0 i stedet for å ta absoluttverdien.
+    ...(isPrestressedLayer(layer) ? { prestress: prestressEntry(layer.prestress) } : {}),
     // IKKE regn koordinatene her. Se invariant 1.
     //
     // `stirrup_dia` MAA overstyres. `barPositions` leser `opts.stirrup_dia` for
@@ -105,6 +113,104 @@ function rebarEntry(layer, state) {
     // Ingenting krasjer, og `M_Rd` endrer seg knapt for enakset boeyning fordi
     // `z` er riktig — det er nettopp derfor den er farlig.
     bars: barPositions(layer, geometry, { ...state, stirrup_dia: stirrupCoverDia(state) }),
+  };
+}
+
+function prestressEntry(ps = {}) {
+  return {
+    area_per_tendon: num(ps.area_per_tendon),
+    sigma_p0: num(ps.sigma_p0),
+    Ep: num(ps.Ep),
+    fp01k: num(ps.fp01k),
+    fpk: num(ps.fpk),
+    epsuk: num(ps.epsuk),
+    gamma_s: num(ps.gamma_s),
+    gamma_eps: 0.9,
+    law: 'elasticplastic',
+  };
+}
+
+/** Betongarealet [mm²]: polygonet med hull, eller b·h. Til egenvektsmomentet. */
+export function concreteArea(state = {}) {
+  const polygon = sectionPolygon(state);
+  if (polygon) return polygonProps(polygon).area;
+  return sectionWidth(state) * sectionHeight(state);
+}
+
+/**
+ * Stegmomentene i kNm, med `null`-feltene utledet (se `PRESTRESS_STAGE_DEFAULTS`).
+ * Én funksjon, brukt av både payloaden og skjemaet, slik at feltet som viser
+ * «= egenvekt −65,9» og tallet motoren regner med er det samme tallet.
+ *
+ * @returns {{M_g:number|null, M_transfer:number, M_permanent:number,
+ *            transfer_source:string, permanent_source:string}}
+ */
+export function prestressMoments(state = {}) {
+  const ps = state.prestress || {};
+  const mg = selfWeightMoment(concreteArea(state), ps.density, ps.span);
+  const given = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+  let M_transfer;
+  let transfer_source;
+  if (given(ps.M_transfer)) {
+    M_transfer = Number(ps.M_transfer);
+    transfer_source = 'manual';
+  } else if (mg !== null) {
+    M_transfer = mg;
+    transfer_source = 'self_weight';
+  } else {
+    M_transfer = 0;
+    transfer_source = 'zero';
+  }
+  const permanentGiven = given(ps.M_permanent);
+  return {
+    M_g: mg,
+    M_transfer,
+    M_permanent: permanentGiven ? Number(ps.M_permanent) : M_transfer,
+    transfer_source,
+    permanent_source: permanentGiven ? 'manual' : 'transfer',
+  };
+}
+
+/**
+ * `payload.prestress` (sak #84): stegdataene, med kryptallet og h₀ fra den SAMME
+ * funksjonen skjemaet viser (`resolveCreep`), og svinnets inndata fra krypboksen
+ * (RH, sementklasse, t₀ = alder ved overføring, levetid). Momentene i Nmm.
+ */
+function prestressPayload(state) {
+  const ps = state.prestress || {};
+  const sls = state.sls || {};
+  const fckT0 = num(ps.fck_t0);
+  const t0 = num(ps.t0_transfer);
+  // PÅKREVD (review B3/F6). Et tomt felt ble før stille f_ck og 28 døgn — et svar
+  // regnet med tall ingen valgte, på usikker side. `validate()` sier det i skjemaet;
+  // dette er sikringen for den som bygger payloaden utenom skjemaet.
+  if (!(fckT0 > 0)) {
+    throw new Error('f_ck(t₀) at transfer must be given for a prestressed section.');
+  }
+  if (!(t0 > 0)) {
+    throw new Error('The age of the concrete at transfer t₀ (days) must be given for a '
+      + 'prestressed section.');
+  }
+  const m = prestressMoments(state);
+  // φ(t∞, t₀,overføring), IKKE SLS-boksens φ_ef (review B3) — se `prestressCreep`.
+  const creep = prestressCreep(state);
+  const h0Over = num(sls.h0_override);
+  const h0 = h0Over > 0 ? h0Over : notionalSize(state);
+  const sigmaInf = num(ps.sigma_p_inf);
+  return {
+    fck_t0: fckT0,
+    M_transfer: m.M_transfer * KNM_TO_NMM,
+    M_permanent: m.M_permanent * KNM_TO_NMM,
+    sigma_p_inf: Number.isFinite(sigmaInf) ? sigmaInf : null,
+    phi: creep.phi,
+    phi_source: creep.source,
+    RH: num(sls.RH),
+    cement: sls.cement || 'N',
+    t0,
+    t_life: num(sls.t_life),
+    h0: Number.isFinite(h0) ? h0 : null,
+    relaxation_class: num(ps.relaxation_class) || 2,
+    rho_1000: null,
   };
 }
 
@@ -283,5 +389,9 @@ export function buildPayload(state = {}, overrides = {}) {
         sigma_c_char_required: limits.sigma_c_char_required,
       };
     })(),
+    // FORSPENNING (sak #84): BARE når et lag er et spennlag. En tilstand uten spennlag —
+    // og dermed enhver fil lagret før denne saken — gir nøyaktig samme payload som før,
+    // og fixturene står urørt.
+    ...((state.layers || []).some(isPrestressedLayer) ? { prestress: prestressPayload(state) } : {}),
   };
 }

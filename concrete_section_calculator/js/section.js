@@ -751,6 +751,23 @@ export function validate(state = {}) {
     }
   }
 
+  // --- 4e. Forspenning (sak #84, review B3/F6) ---
+  // f_ck(t₀) og alderen ved overføring er PÅKREVD når et lag er forspent. Et tomt felt
+  // ble før stille f_ck (f_ctm(t₀) 3,80 i stedet for 2,72) og 28 døgn fra krypboksen
+  // (11 % for lite tap). Tomt er nå en feil, ikke en standard.
+  if (layers.some((l) => l && l.prestress && typeof l.prestress === 'object')) {
+    const ps = state.prestress || {};
+    if (!(num(ps.fck_t0) > 0)) {
+      out.push(issue('prestress_fck_t0_missing', 'error',
+        'f_ck(t₀) ved overføring må oppgis for et forspent snitt.', 'prestress.fck_t0'));
+    }
+    if (!(num(ps.t0_transfer) > 0)) {
+      out.push(issue('prestress_t0_missing', 'error',
+        'Betongens alder ved overføring t₀ (døgn) må oppgis for et forspent snitt.',
+        'prestress.t0_transfer'));
+    }
+  }
+
   return out;
 }
 

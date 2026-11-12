@@ -85,6 +85,11 @@ export function barArea(dia) {
  * @returns {number}
  */
 export function layerArea(layer = {}) {
+  // SPENNLAG (sak #84): arealet er antall × AREALET PER TAU, ikke π·Ø²/4. Et 12,5 mm
+  // tau er 93 mm²; som massiv sirkel ville det blitt 122,7 — 32 % for mye stål.
+  if (layer.prestress && typeof layer.prestress === 'object' && layer.mode !== 'spacing') {
+    return num(layer.count) * num(layer.prestress.area_per_tendon);
+  }
   const a = barArea(layer.dia);
   if (layer.mode === 'spacing') return (1000 / num(layer.spacing)) * a;
   return num(layer.count) * a;
