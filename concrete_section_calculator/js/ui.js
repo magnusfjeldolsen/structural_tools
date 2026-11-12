@@ -70,8 +70,9 @@ import { BAR_DIAMETERS, CEMENT_CLASSES, CONCRETE_GRADES, CONCRETE_LAWS, EXPOSURE
 import { bindNumericInput, evaluate } from './numeric-input.js';
 import { aswPerSpacing, hasSlsCombo, layerArea, layerBarCount, layerDepth, recomputeAutoDc,
   stackedDc, suggestedDc, totalArea, totalAswPerSpacing } from './rebar.js';
-import { activeComboTheta, allowedAnalyses, axialForcesPresent, derived, sectionHeight, sectionWidth, thetaFor, validate }
-  from './section.js';
+import { activeComboTheta, allowedAnalyses, axialForcesPresent, derived, sectionHeight, sectionPolygon, sectionWidth,
+  thetaFor, validate } from './section.js';
+import { parseSectionDocument, polygonProps, toSectionDocument } from './polygon.js';
 import { drawSection } from './section-draw.js';
 import { momentCurvatureSvg, nmDomainSvg, radialUtilisation } from './charts.js';
 import { attachChartTips } from './chart-tips.js';
@@ -1201,7 +1202,7 @@ export const SHORTCUTS = [
     action: 'toggleType',
     combos: ['T'],
     mark: '#type-seg',
-    help: 'Step to the next cross-section type — beam ⇄ slab',
+    help: 'Step to the next cross-section type — beam → slab → custom',
   },
   {
     action: 'toggleAdvanced',
@@ -1517,11 +1518,115 @@ export function createUI(deps) {
     if (store.getState().result) store.setResult(null);
   }
 
+  /**
+   * FRITT TVERRSNITT (sak #83): fil, innliming, eksport og b_w.
+   *
+   * Alt går gjennom `parseSectionDocument` (som aldri kaster) og
+   * `store.setCustomPolygon` (som normaliserer). En fil som ikke lar seg lese, gir en
+   * melding i `#custom-status` og rører IKKE tilstanden — det forrige snittet står.
+   */
+  let customMessage = null;   // {kind: 'error'|'ok', text}
+  function applySectionText(text, source) {
+    const parsed = parseSectionDocument(text);
+    if (!parsed.ok) {
+      customMessage = { kind: 'error', text: `${source}: ${parsed.error}` };
+      render();
+      return false;
+    }
+    store.setCustomPolygon(parsed.polygon);
+    customMessage = { kind: 'ok', text: `${source}${parsed.name ? ` — ${parsed.name}` : ''}` };
+    invalidate();
+    editing = null;
+    render();
+    return true;
+  }
+
+  function setupCustomSection() {
+    const file = $('#custom-file');
+    if (file) {
+      file.addEventListener('change', async () => {
+        const f = file.files && file.files[0];
+        if (!f) return;
+        applySectionText(await f.text(), `Loaded ${f.name}`);
+        file.value = '';   // samme fil på nytt skal også utløse `change`
+      });
+    }
+    const toggle = $('#custom-paste-toggle');
+    const box = $('#custom-paste-box');
+    if (toggle && box) {
+      toggle.addEventListener('click', () => {
+        box.hidden = !box.hidden;
+        toggle.setAttribute('aria-expanded', String(!box.hidden));
+        if (!box.hidden) $('#custom-paste')?.focus();
+      });
+    }
+    $('#custom-apply')?.addEventListener('click', () => {
+      const ta = $('#custom-paste');
+      if (ta && applySectionText(ta.value, 'Pasted section') && box) {
+        box.hidden = true;
+        toggle?.setAttribute('aria-expanded', 'false');
+      }
+    });
+    $('#custom-export')?.addEventListener('click', () => {
+      const polygon = sectionPolygon(store.getState());
+      if (!polygon) return;
+      const doc = toSectionDocument(polygon, (store.getState().doc || {}).title || undefined);
+      const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = docFileName(store.getState()).replace(/\.csc\.json$/, '.section.json');
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+    // `b_w`: TOMT felt er et gyldig svar («ikke oppgitt» — skjær regnes ikke), derfor
+    // egen lytter og ikke `bindField`, som legger tilbake forrige verdi ved tomt felt.
+    const bw = $('#i-bw');
+    if (bw) {
+      bw.addEventListener('input', () => {
+        const raw = bw.value.trim();
+        if (raw === '') {
+          store.patch('geometry', { bw: null });
+        } else {
+          const v = evaluate(raw);
+          if (v === null || !(v > 0)) return;
+          store.patch('geometry', { bw: v });
+        }
+        invalidate();
+        render();
+      });
+    }
+  }
+
+  /** Statuslinja under knappene: hva som er lastet, eller hvorfor det ikke ble det. */
+  function renderCustomStatus(s) {
+    const el = $('#custom-status');
+    if (!el) return;
+    const polygon = sectionPolygon(s);
+    if (!polygon) {
+      el.textContent = customMessage ? customMessage.text : 'No section loaded.';
+      return;
+    }
+    const p = polygonProps(polygon);
+    const facts = `A<sub>c</sub> ${fmtNumber(p.area, 0)} mm² · I<sub>y</sub> ${fmtNumber(p.I_y / 1e6, 1)}·10⁶ mm⁴ · `
+      + `${polygon.outer.length} corners · ${polygon.holes.length} hole${polygon.holes.length === 1 ? '' : 's'}`;
+    const msg = customMessage
+      ? `<div class="${customMessage.kind === 'error' ? 'text-rose-300' : 'text-slate-300'}">${esc(customMessage.text)}</div>`
+      : '';
+    el.innerHTML = msg + `<div>${facts}</div>`;
+  }
+
   function setupFields() {
     bindField('#i-b', (s) => s.geometry.b, (v) => {
-      if (store.getState().sectionType !== 'slab') store.patch('geometry', { b: v });
+      const t = store.getState().sectionType;
+      if (t !== 'slab' && t !== 'custom') store.patch('geometry', { b: v });
     }, { min: 1 });
-    bindField('#i-h', (s) => s.geometry.h, (v) => store.patch('geometry', { h: v }), { min: 1 });
+    bindField('#i-h', (s) => s.geometry.h, (v) => {
+      if (store.getState().sectionType !== 'custom') store.patch('geometry', { h: v });
+    }, { min: 1 });
+    setupCustomSection();
     // `store.setState` regner selv `dc_auto`-lagene på nytt når `cover`
     // endres (endringsrunde 2 §3.4). Bøylediameteren står ikke her lenger —
     // den bor i bøyleraden, og `updateStirrup` regner om.
@@ -1725,7 +1830,16 @@ export function createUI(deps) {
       el.value = fmtInput(value, decimals);
     };
     put('#i-b', sectionWidth(s), 1);
-    put('#i-h', s.geometry.h, 1);
+    put('#i-h', sectionHeight(s), 1);
+    {
+      // `b_w` kan være TOM (null = ikke oppgitt); `fmtInput(null)` ville skrevet en
+      // strek eller 0 i et felt der tomt er et gyldig svar.
+      const bwEl = $('#i-bw');
+      if (bwEl && bwEl !== document.activeElement) {
+        const bw = Number(s.geometry?.bw);
+        bwEl.value = s.geometry?.bw != null && bw > 0 ? fmtInput(bw, 1) : '';
+      }
+    }
     put('#i-cover', s.cover, 1);
     put('#i-cover-side', s.cover_side, 1);
     // Dokumentfeltene er tekst, ikke tall, og går derfor utenom `fmtInput`.
@@ -1778,13 +1892,24 @@ export function createUI(deps) {
     }
 
     const isSlab = s.sectionType === 'slab';
+    const isCustom = s.sectionType === 'custom';
     const b = $('#i-b');
     if (b) {
       // Plata er ALLTID 1000 mm: alt regnes per meter (plan §1). Feltet vises,
       // men er låst — et redigerbart felt som ikke virker er verre enn et låst.
-      b.disabled = isSlab;
-      b.classList.toggle('opacity-60', isSlab);
+      // Fritt tverrsnitt: b og h er det OMSKREVNE rektangelet, avledet av
+      // polygonet. Låst av samme grunn.
+      b.disabled = isSlab || isCustom;
+      b.classList.toggle('opacity-60', isSlab || isCustom);
+      b.title = isCustom ? 'Bounding-box width, derived from the polygon.' : b.title;
     }
+    const hEl = $('#i-h');
+    if (hEl) {
+      hEl.disabled = isCustom;
+      hEl.classList.toggle('opacity-60', isCustom);
+    }
+    const customPanel = $('#custom-panel');
+    if (customPanel) customPanel.hidden = !isCustom;
     const side = $('#w-cover-side');
     if (side) side.style.display = isSlab ? 'none' : '';
 
@@ -1853,7 +1978,9 @@ export function createUI(deps) {
     // verdien hører sammen, og da skal de stå sammen.
     text('#sls-h0', Number.isFinite(h0) ? `h₀ = ${fmtNumber(h0, 0)} mm` : DASH);
     text('#sls-h0-src', s.sls.h0_override ? 'manual override'
-      : s.sectionType === 'slab' ? 'drying top and bottom' : 'all four faces');
+      : s.sectionType === 'slab' ? 'drying top and bottom'
+        : s.sectionType === 'custom' ? 'outer perimeter + ½ × hole perimeters (a choice, not an EC2 value)'
+          : 'all four faces');
     text('#sls-phi', creep.phi === null ? DASH : `φ = ${fmtNumber(creep.phi, 2)}`);
     text('#sls-phi-src', creep.source === 'manual' ? 'manual override'
       : creep.source === 'derived' ? 'EC2 Annex B'
@@ -3694,7 +3821,14 @@ export function createUI(deps) {
     }
 
     const geoSum = $('#geo-summary');
-    if (geoSum) geoSum.innerHTML = `${fmtNumber(sectionWidth(s), 0)} × ${fmtNumber(s.geometry.h, 0)} mm`;
+    if (geoSum) {
+      const holes = (sectionPolygon(s) || { holes: [] }).holes.length;
+      geoSum.innerHTML = s.sectionType === 'custom'
+        ? `Custom · ${fmtNumber(sectionWidth(s), 0)} × ${fmtNumber(sectionHeight(s), 0)} mm bounding box`
+          + (holes ? ` · ${holes} hole${holes === 1 ? '' : 's'}` : '')
+        : `${fmtNumber(sectionWidth(s), 0)} × ${fmtNumber(s.geometry.h, 0)} mm`;
+    }
+    renderCustomStatus(s);
 
     // Tegningen er REN JS og skal stå ferdig lenge før motoren finnes (§3.9).
     // Den kalles derfor her, i den vanlige opptegningen, uten noen som helst

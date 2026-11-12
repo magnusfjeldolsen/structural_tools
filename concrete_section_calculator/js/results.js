@@ -930,6 +930,7 @@ export function analysisLabel(analysis) {
 export const SECTION_TYPE_LABELS = Object.freeze({
   beam: 'Beam',
   slab: 'Slab (per metre width)',
+  custom: 'Custom section (polygon with holes)',
 });
 
 export function sectionTypeLabel(type) {
