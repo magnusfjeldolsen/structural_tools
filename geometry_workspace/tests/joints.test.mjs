@@ -44,11 +44,11 @@ async function loadModule(relPath, rewrites = []) {
 }
 
 globalThis.window = globalThis;
-await loadModule('../vendor/polygon-clipping.umd.js');
+await loadModule('../../cad2d/vendor/polygon-clipping.umd.js');
 
-const geom = await loadModule('../js/geometry.js');
+const geom = await loadModule('../../cad2d/js/geometry/polygon.js');
 const rf = await loadModule('../js/reinforcement.js');
-const jt = await loadModule('../js/joints.js', [['./geometry.js', '../js/geometry.js']]);
+const jt = await loadModule('../js/joints.js', [['../../cad2d/js/geometry/polygon.js', '../../cad2d/js/geometry/polygon.js']]);
 
 const { rectPoints } = geom;
 const { sectionEA, shearFlow, axialTransfer, anchorFlow, kNtoN } = rf;

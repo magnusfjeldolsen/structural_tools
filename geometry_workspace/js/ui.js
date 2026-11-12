@@ -19,7 +19,7 @@ import {
   centroidOfPoints,
   centroidOfShapes,
   neighborTolerance,
-} from './geometry.js';
+} from '../../cad2d/js/geometry/polygon.js';
 import {
   describeShape,
   rectPointsFromParams,
@@ -27,9 +27,9 @@ import {
   circlePointsFromParams,
   RECT_ANCHORS,
   isRectAnchor,
-} from './shapes.js';
-import { SNAP_TYPES, SNAP_ALL, ORTHO } from './snapping.js';
-import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel, conversionFactor } from './units.js';
+} from '../../cad2d/js/geometry/params.js';
+import { SNAP_TYPES, SNAP_ALL, ORTHO } from '../../cad2d/js/input/snapping.js';
+import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel, conversionFactor } from '../../cad2d/js/core/units.js';
 import { MATERIALS, materialByName, materialE, materialRho } from './materials.js';
 import { JOINT_COLOR } from './store.js';
 import { shapeFill, materialFamily } from './shape-style.js';
@@ -37,8 +37,8 @@ import { sidesOfJoint, buildGraph, jointGroup, overConstrained } from './joints.
 import { ReinforcementPanel, axisConventionHtml } from './reinforcement-ui.js';
 import { SYSTEM_FACTORS } from './reinforcement.js';
 import { EC5_FASTENERS, EC5_CONTACTS, STATES, ec5Fastener } from './connection-stiffness.js';
-import { importDxf, describeImport, INSUNITS_TO_UNIT, resolveDxfUnit, shapeList, importDxfLines, describeLineImport } from './dxf.js';
-import { exportSection, sectionProps, sectionToJSON } from './section-export.js';
+import { importDxf, describeImport, INSUNITS_TO_UNIT, resolveDxfUnit, shapeList, importDxfLines, describeLineImport } from '../../cad2d/js/io/dxf.js';
+import { exportSection, sectionProps, sectionToJSON } from '../../cad2d/js/io/section-export.js';
 
 const $ = (id) => document.getElementById(id);
 

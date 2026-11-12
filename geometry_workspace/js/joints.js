@@ -53,7 +53,7 @@ import {
   scaleProps,
   openRing,
   pointInMulti,
-} from './geometry.js';
+} from '../../cad2d/js/geometry/polygon.js';
 
 export const EPS = GEOM_EPS;
 

@@ -42,8 +42,8 @@
  * absolutte mm/kN/N-mm² (se `store.js`) og skal IKKE skaleres.
  */
 
-import { unitInfo, lengthLabel } from './units.js';
-import { neighborTolerance } from './geometry.js';
+import { unitInfo, lengthLabel } from '../../cad2d/js/core/units.js';
+import { neighborTolerance } from '../../cad2d/js/geometry/polygon.js';
 import {
   sectionEA,
   compareStates,

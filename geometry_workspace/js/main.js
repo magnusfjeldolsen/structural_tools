@@ -2,16 +2,16 @@
  * main.js — kobler sammen store, viewport, verktøy og UI.
  */
 
-import { analyze, hasClipper } from './geometry.js';
-import * as shapes from './shapes.js';
+import { analyze, hasClipper } from '../../cad2d/js/geometry/polygon.js';
+import * as shapes from '../../cad2d/js/geometry/params.js';
 import { store } from './store.js';
 import { Viewport } from './viewport.js';
 import { ToolController } from './tools.js';
 import { UI, fmtLen } from './ui.js';
 import { UnderlayManager, defaultPlacement } from './underlay.js';
-import { NumericInput } from './numeric-input.js';
-import { snapLabel } from './snapping.js';
-import { lengthLabel } from './units.js';
+import { NumericInput } from '../../cad2d/js/input/numeric-input.js';
+import { snapLabel } from '../../cad2d/js/input/snapping.js';
+import { lengthLabel } from '../../cad2d/js/core/units.js';
 import { buildFigureSvg } from './report-figure.js';
 import { buildReportHtml, stageReportForPrint, clearPrintStage, audit } from './report.js';
 

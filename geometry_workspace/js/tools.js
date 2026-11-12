@@ -14,10 +14,10 @@ import {
   translatePoints,
   rotatePoints,
   mirrorPointsAboutLine,
-} from './geometry.js';
-import { applyOrtho, snapColor as engineSnapColor } from './snapping.js';
+} from '../../cad2d/js/geometry/polygon.js';
+import { applyOrtho, snapColor as engineSnapColor } from '../../cad2d/js/input/snapping.js';
 import { JOINT_COLOR } from './store.js';
-import { pickLine, lineInBox, boxFromDrag } from './linework.js';
+import { pickLine, lineInBox, boxFromDrag } from '../../cad2d/js/geometry/linework.js';
 
 /** Fargen former tegnes med i forhåndsvisningen når hull-modus er på. */
 export const VOID_PREVIEW_COLOR = '#fb7185';

@@ -33,8 +33,8 @@ import {
   signedArea,
   derive,
   EPS,
-} from './geometry.js';
-import { unitInfo } from './units.js';
+} from '../geometry/polygon.js';
+import { unitInfo } from '../core/units.js';
 
 export const SECTION_FORMAT = 'structural-tools-section';
 export const SECTION_VERSION = 1;

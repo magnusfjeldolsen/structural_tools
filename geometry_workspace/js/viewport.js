@@ -10,8 +10,8 @@
  */
 
 import * as THREE from 'three';
-import { openRing, centroidOfPoints } from './geometry.js';
-import { findSnap } from './snapping.js';
+import { openRing, centroidOfPoints } from '../../cad2d/js/geometry/polygon.js';
+import { findSnap } from '../../cad2d/js/input/snapping.js';
 import { buildGraph, jointGroup } from './joints.js';
 import { JOINT_COLOR } from './store.js';
 import { shapeFill, contourStyle } from './shape-style.js';

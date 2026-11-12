@@ -5,12 +5,12 @@
  * Ingen DOM-avhengigheter utover localStorage.
  */
 
-import { boundsOfShapes, translatePoints, multiProps, pointsToMulti, splitPointsByLine, openRing, neighborTolerance, EPS as GEOM_EPS } from './geometry.js';
-import { conversionFactor, unitInfo } from './units.js';
-import { SNAP_KEYS } from './snapping.js';
+import { boundsOfShapes, translatePoints, multiProps, pointsToMulti, splitPointsByLine, openRing, neighborTolerance, EPS as GEOM_EPS } from '../../cad2d/js/geometry/polygon.js';
+import { conversionFactor, unitInfo } from '../../cad2d/js/core/units.js';
+import { SNAP_KEYS } from '../../cad2d/js/input/snapping.js';
 import { sidesOfJoint, autoJoints } from './joints.js';
 import { materialByName } from './materials.js';
-import { contoursFromLines } from './linework.js';
+import { contoursFromLines } from '../../cad2d/js/geometry/linework.js';
 
 const STORAGE_KEY = 'geometry_workspace_v1';
 const MAX_HISTORY = 60;
