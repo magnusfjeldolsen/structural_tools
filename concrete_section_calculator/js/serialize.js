@@ -51,7 +51,8 @@ export const DOCUMENT_SCHEMA = 1;
 // `sls`-objekt (t.d. bare `exposure_class`) falt tilbake til `undefined`-felt
 // for `phi_ef`/faktorene i stedet for standardverdiene — nøyaktig grunnen
 // `shear` allerede står her.
-const NESTED_GROUPS = ['geometry', 'concrete', 'steel', 'spacing', 'shear', 'sls', 'doc'];
+// 'prestress' (sak #84): stegdataene fylles felt for felt, samme grunn som 'sls'.
+const NESTED_GROUPS = ['geometry', 'concrete', 'steel', 'spacing', 'shear', 'sls', 'doc', 'prestress'];
 
 /**
  * Tilstanden → en fil. `result` er ALDRI med: det er motorens svar på tall

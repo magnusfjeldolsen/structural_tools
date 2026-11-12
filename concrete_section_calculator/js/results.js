@@ -320,6 +320,12 @@ export const ENGINE_CODES = Object.freeze([
   // Fritt tverrsnitt (sak #83).
   'invalid_geometry',
   'sls_not_available_custom_section',
+  // Forspenning (sak #84).
+  'invalid_prestress',
+  'sls_not_available_prestress',
+  'prestress_stages_missing',
+  'prestress_above_limit',
+  'prestress_cracked_at_transfer',
 ]);
 
 /** Kodene `section.js` sin `validate()` kan produsere. Samme tabell, ett oppslag. */
@@ -524,6 +530,25 @@ export const CODE_MESSAGES = Object.freeze({
     'a custom cross-section. They are built on a rectangular section, and using the ' +
     'bounding box would count holes and voids as concrete. The characteristic and ' +
     'quasi-permanent combinations have NOT been checked.',
+  /* --- forspenning (sak #84) --- */
+  invalid_prestress:
+    'A prestressed layer is not valid, so nothing was calculated. The technical detail ' +
+    'says what is wrong — for example a prestress with the wrong sign (it must be a ' +
+    'tensile stress, positive), a missing tendon area, or σ_p0 above f_p0,1k.',
+  sls_not_available_prestress:
+    'The serviceability checks (stress limits and crack width, EC2 7.2/7.3) are not ' +
+    'available for a prestressed section. The concrete and tendon stresses for each ' +
+    'characteristic and quasi-permanent combination are listed in the prestress stage ' +
+    'table instead — as facts, not checked against a limit.',
+  prestress_stages_missing:
+    'No prestress stage data was given, so no losses were computed. The bending resistance ' +
+    'uses the prestress before transfer, σ_p0, which overstates the long-term prestrain.',
+  prestress_above_limit:
+    'The prestress before transfer exceeds the recommended limit min(0.75·f_pk, ' +
+    '0.85·f_p0,1k) of EC2 5.10.3(2). The calculation continues; check the value.',
+  prestress_cracked_at_transfer:
+    'The section cracks at transfer: the tensile stress exceeds f_ctm(t₀). The transfer ' +
+    'stage is computed as cracked, with no concrete in tension.',
   polygon_missing:
     'No custom cross-section is loaded. Load a section file or paste one in section 1.',
   polygon_outer_invalid:

@@ -423,6 +423,31 @@ def test_without_stage_data_the_uls_uses_sigma_p0_and_says_so():
 
 
 # ------------------------------------------------------------------ #
+# 4b. Payloaden `payload.js` faktisk bygger (JS -> Python, samme fil)
+# ------------------------------------------------------------------ #
+
+def test_the_payload_js_builds_for_the_prestressed_hollow_core_hits_the_hand_calculation():
+    """`prestress.test.mjs` paastaar at `buildPayload` av referansetilstanden gir NOEYAKTIG
+    denne fila. Her kjoeres den gjennom motoren og sammenliknes med haandregningen: hele
+    kjeden skjema -> payload -> motor treffer tallene som ble skrevet foer motorkoden."""
+    p = load('payload-custom-hd265-prestressed.json')
+    res = run_ok(p)
+    assert res['ok'], res.get('error')
+    stages = res['prestress']['stages']
+    assert [s['stage'] for s in stages] == ['transfer', 'long_term', 'loaded', 'loaded']
+    for st, ref in ((stages[0], 't0'), (stages[1], 'tinf')):
+        for key, ek in KEYS.items():
+            assert rel(st[ek], HAND_GON[ref][key]) < 1e-6, (ref, key)
+        assert rel(st['tendons'][0]['sigma_p'], HAND_GON[ref]['sigma_p']) < 1e-6
+    k150, k200 = stages[2], stages[3]
+    assert k150['uncracked'] is True and k200['uncracked'] is False
+    assert rel(k150['sigma_c_bottom'], HAND_GON['loaded_150']['sig_bot']) < 1e-6
+    assert rel(k200['tendons'][0]['sigma_p'], HAND_GON['cracked_200']['sigma_p']) < 1e-5
+    assert res['checks']['sls_ok'] is None
+    assert any(w['code'] == 'sls_not_available_prestress' for w in res['warnings'])
+
+
+# ------------------------------------------------------------------ #
 # 5. Bakoverkompatibelt og ingen stille SLS for forspent rektangel
 # ------------------------------------------------------------------ #
 

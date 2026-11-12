@@ -338,6 +338,69 @@ export function creepCoefficient(o = {}) {
 /** Standarddiameter for armering [mm]. */
 export const BAR_DIAMETERS = [6, 8, 10, 12, 16, 20, 25, 32];
 
+/* ================================================================== *
+ * FORSPENNING (sak #84)
+ * ================================================================== */
+
+/**
+ * Standardene for et nytt spennlag: Y1860S7, 12,5 mm tau. Typiske produktverdier og
+ * anbefalte EN-verdier (gamma_s 1,15, EC2 2.4.2.4), alle redigerbare i raden. Ingen
+ * tall fra et nasjonalt tillegg.
+ *
+ * `area_per_tendon` er AREALET AV ETT TAU, ikke π·Ø²/4: et 12,5 mm tau er 93 mm², en
+ * massiv 12,5 mm stang er 122,7. Diameteren i laget brukes bare til tegningen.
+ * `sigma_p0` er spenningen rett FØR overføring, strekk positiv.
+ */
+export const PRESTRESS_STEEL_DEFAULTS = Object.freeze({
+  area_per_tendon: 93,
+  sigma_p0: 1100,
+  Ep: 195000,
+  fp01k: 1640,
+  fpk: 1860,
+  epsuk: 0.035,
+  gamma_s: 1.15,
+});
+
+/**
+ * Stegdataene. `null` betyr «utled»:
+ *   fck_t0       null → f_ck (ingen fasthetsreduksjon ved overføring — sjelden riktig)
+ *   M_transfer   null → egenvektsmomentet fra `span`/`density`, ellers 0
+ *   M_permanent  null → M_transfer
+ *   sigma_p_inf  null → regn tapene etter EC2 5.10.6 (5.46); et tall overstyrer
+ * Relaksasjonsklasse 2 (lav) er det vanlige for tau, EC2 3.3.2(4).
+ */
+export const PRESTRESS_STAGE_DEFAULTS = Object.freeze({
+  fck_t0: null,
+  M_transfer: null,
+  M_permanent: null,
+  sigma_p_inf: null,
+  relaxation_class: 2,
+  density: 25,
+  span: null,
+});
+
+/** Er laget et spennlag? Ett sted, så payload, tegning og areal er enige. */
+export function isPrestressedLayer(layer = {}) {
+  return !!(layer && layer.prestress && typeof layer.prestress === 'object');
+}
+
+/**
+ * Egenvektsmomentet for et fritt opplagt spenn, M_g = −ρ·A·L²/8 [kNm] (sagging negativ).
+ * Et HJELPEFELT: snittberegningen tar momentet per steg som inndata, og dette er bare
+ * den vanlige verdien for et element som ligger på to opplegg. `null` uten spenn.
+ *
+ * @param {number} areaMm2 betongarealet [mm²] (polygonet med hull, eller b·h)
+ * @param {number} density [kN/m³]
+ * @param {number} span [m]
+ */
+export function selfWeightMoment(areaMm2, density, span) {
+  const a = num(areaMm2);
+  const rho = num(density);
+  const L = num(span);
+  if (!(a > 0) || !(rho > 0) || !(L > 0)) return null;
+  return (-rho * (a / 1e6) * L * L) / 8;
+}
+
 /** Sikker tallkonvertering: tomt felt og søppel blir `NaN`, ikke 0. */
 function num(v) {
   if (v === null || v === undefined || v === '') return NaN;
