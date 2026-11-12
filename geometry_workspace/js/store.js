@@ -633,6 +633,39 @@ export class Store {
     return shape;
   }
 
+  /**
+   * Legger inn flere former som ETT angresteg (DXF-import, #85). Lista
+   * gis i den rekkefølgen formene skal stå i geometrilista, øverst først —
+   * hull må ligge foran formen de skjærer i, ellers virker de ikke i
+   * 'priority'-modus. De nye formene blir markert.
+   *
+   * @param {Array<{points, name?, role?, meta?, stage?, material?, color?}>} list
+   * @returns {Array} de nye formene
+   */
+  addShapes(list, opts = {}) {
+    const base = this.state.shapes.length;
+    const added = (list || [])
+      .filter((o) => o && o.points && o.points.length >= 3)
+      .map((o, i) => ({
+        id: nextId(),
+        name: o.name || 'Form',
+        points: o.points.map((p) => [p[0], p[1]]),
+        role: o.role === 'void' ? 'void' : 'solid',
+        factor: 1,
+        include: true,
+        color: o.color || PALETTE[(base + i) % PALETTE.length],
+        meta: o.meta || null,
+        stage: o.stage === 'new' ? 'new' : 'existing',
+        material: o.material ? normalizeMaterial(o.material) : { ...DEFAULT_MATERIAL },
+      }));
+    if (!added.length) return [];
+    this.mutate((st) => {
+      st.shapes.unshift(...added);
+      st.selection = added.map((s) => s.id);
+    }, { reason: opts.reason || 'add' });
+    return added;
+  }
+
   getShape(id) {
     return this.state.shapes.find((s) => s.id === id) || null;
   }

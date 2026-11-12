@@ -29,7 +29,7 @@ import {
   isRectAnchor,
 } from './shapes.js';
 import { SNAP_TYPES, SNAP_ALL, ORTHO } from './snapping.js';
-import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel } from './units.js';
+import { UNIT_KEYS, lengthLabel, areaLabel, inertiaLabel, conversionFactor } from './units.js';
 import { MATERIALS, materialByName, materialE, materialRho } from './materials.js';
 import { JOINT_COLOR } from './store.js';
 import { shapeFill, materialFamily } from './shape-style.js';
@@ -37,6 +37,8 @@ import { sidesOfJoint, buildGraph, jointGroup, overConstrained } from './joints.
 import { ReinforcementPanel, axisConventionHtml } from './reinforcement-ui.js';
 import { SYSTEM_FACTORS } from './reinforcement.js';
 import { EC5_FASTENERS, EC5_CONTACTS, STATES, ec5Fastener } from './connection-stiffness.js';
+import { importDxf, describeImport, INSUNITS_TO_UNIT } from './dxf.js';
+import { exportSection, sectionProps, sectionToJSON } from './section-export.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -407,6 +409,7 @@ export class UI {
       if (!btn) return;
       $('import-menu').classList.add('hidden');
       if (btn.dataset.imp === 'model') $('file-input').click();
+      else if (btn.dataset.imp === 'dxf') $('dxf-input').click();
       else if (btn.dataset.imp === 'image') $('image-input').click();
       else if (btn.dataset.imp === 'clear') {
         if (!st.state.shapes.length && !st.state.joints.length) return this.toast('Det er ingen geometri å tømme.');
@@ -418,6 +421,9 @@ export class UI {
       }
     });
     $('file-input').addEventListener('change', (e) => this._import(e));
+    $('dxf-input').addEventListener('change', (e) => this._importDxf(e));
+    $('btn-section-file').addEventListener('click', () => this._exportSection('file'));
+    $('btn-section-copy').addEventListener('click', () => this._exportSection('clipboard'));
     $('btn-example').addEventListener('click', () => this.loadExample());
 
     $('btn-help').addEventListener('click', () => $('help-overlay').classList.remove('hidden'));
@@ -909,6 +915,76 @@ export class UI {
     a.download = `${name}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  /**
+   * DXF → former (#85). Hver lukket kontur blir en fast form, og hver kontur
+   * inni den en form med `role:'void'` — samme modell som et tegnet hull.
+   * Hullene legges foran formen sin i lista, så de virker i begge modi.
+   * Alt legges inn som ett angresteg. Ingenting fra fila havner i DOM som
+   * HTML: meldingen går via textContent, og formene får egne navn.
+   */
+  _importDxf(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const dxfUnit = $('dxf-unit').value;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let res;
+      try {
+        res = importDxf(String(reader.result), { scale: conversionFactor(dxfUnit, this.store.state.unit) });
+      } catch (err) {
+        return this.toast(`DXF-import feilet: ${err.message}`, 6000);
+      }
+      const n0 = this.store.state.shapes.filter((s) => /^DXF \d+$/.test(s.name)).length;
+      const list = [];
+      res.regions.forEach((g, i) => {
+        const name = `DXF ${n0 + i + 1}`;
+        g.holes.forEach((h, j) => list.push({ points: h, role: 'void', name: `${name} hull ${j + 1}` }));
+        list.push({ points: g.outer, role: 'solid', name });
+      });
+      let msg = describeImport(res);
+      const fileUnit = INSUNITS_TO_UNIT[res.insunits];
+      if (fileUnit && fileUnit !== dxfUnit) msg += ` Fila sier ${fileUnit}, men ${dxfUnit} er valgt og brukt.`;
+      if (!list.length) return this.toast(`${msg} Ingen lukkede konturer å importere.`, 8000);
+      this.store.addShapes(list, { reason: 'import' });
+      this.viewport.zoomToFit(this.store.bounds());
+      this.toast(msg, 8000);
+    };
+    reader.onerror = () => this.toast('Klarte ikke å lese fila.');
+    reader.readAsText(file);
+  }
+
+  /**
+   * «Tverrsnitt til fil» / «Kopier tverrsnitt» (#85): ett ytre polygon med
+   * hull, til concrete_section_calculator. Er noen former markert, er det de.
+   */
+  _exportSection(target) {
+    const st = this.store.state;
+    const r = exportSection(st.shapes, { unit: st.unit, selection: st.selection });
+    if (!r.ok) return this.toast(r.error, 7000);
+    const text = sectionToJSON(r.section);
+    const p = sectionProps(r.section);
+    const holes = r.section.holes.length;
+    const summary =
+      `Tverrsnitt: A = ${nf(0)(p.A)} mm², I_y = ${sci(p.Iy)} mm⁴` +
+      `${holes ? `, ${holes} hull` : ''}.` +
+      (r.warnings.length ? ` ${r.warnings.join(' ')}` : '');
+    if (target === 'clipboard') {
+      return navigator.clipboard
+        .writeText(text)
+        .then(() => this.toast(`${summary} Kopiert til utklippstavla.`, 6000))
+        .catch(() => this.toast('Kunne ikke kopiere.'));
+    }
+    const blob = new Blob([text], { type: 'application/json' });
+    const a = document.createElement('a');
+    const name = (st.title || 'tverrsnitt').replace(/[^\w\-æøåÆØÅ ]+/g, '').trim() || 'tverrsnitt';
+    a.href = URL.createObjectURL(blob);
+    a.download = `${name}.section.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    this.toast(`${summary} Lagret som ${a.download}.`, 6000);
   }
 
   _import(e) {
