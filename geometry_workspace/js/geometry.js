@@ -241,71 +241,85 @@ export function intersectionMulti(a, b) {
  *                overlapper. Dette er standard, fordi det er slik en
  *                skallmodell faktisk er: både vegg- og plateelementet
  *                finnes i overlappsonen, og materialet der teller to
- *                ganger i modellens tverrsnitt. Hull trekkes fra.
+ *                ganger i modellens tverrsnitt.
  *   'priority' — hver form får kun det arealet ingen form foran den
  *                allerede har krevd. Overlapp telles altså nøyaktig én
  *                gang, slik den støpte betongen fysisk er.
+ *
+ * HULL skjærer alt fast areal de overlapper, uansett plass i lista og
+ * uansett modus (#86): hver fast forms effektive geometri er formen minus
+ * unionen av alle hull. Et hull som stikker ut av materialet, trekker derfor
+ * bare fra det det faktisk dekker, og et hull over et dobbelttalt overlapp
+ * skjærer begge formene. En fast form som ligger HELT inne i et hull («øy i
+ * hull»), blir skåret bort — det støttes ikke, og id-en står i `swallowed` så
+ * grensesnittet kan si fra. Hullene selv bidrar med 0.
+ *
+ * Uten polygon-clipping (Node-tester uten vendor) faller 'sum' tilbake til å
+ * trekke fra hullets eget areal, som før.
  *
  * Returnerer per form den effektive MultiPolygon-en, samt totalene.
  */
 export function analyze(shapes, mode = 'sum') {
   const active = (shapes || []).filter((s) => s.include !== false && s.points && s.points.length >= 3);
+  const voidMulti = unionMulti(active.filter((s) => s.role === 'void').map((s) => pointsToMulti(s.points)));
+  const cut = hasClipper() && voidMulti.length > 0;
   const parts = [];
+  const swallowed = [];
   let claimed = [];
   // Området som dekkes av to eller flere faste former — det er dette som
   // teller dobbelt i 'sum'-modus, og som flytter tyngdepunktet.
   let solidSeen = [];
   let overlapMulti = [];
+  let grossArea = 0;
 
   for (const s of active) {
     const own = pointsToMulti(s.points);
-    let eff = own;
-    if (mode === 'priority' && claimed.length) {
-      eff = differenceMulti(own, claimed);
-    }
-    if (mode === 'priority') {
-      claimed = claimed.length ? unionMulti([claimed, own]) : own;
-    }
-
-    if (s.role !== 'void') {
-      if (solidSeen.length) {
-        const inter = intersectionMulti(own, solidSeen);
-        if (inter.length) overlapMulti = overlapMulti.length ? unionMulti([overlapMulti, inter]) : inter;
-      }
-      solidSeen = solidSeen.length ? unionMulti([solidSeen, own]) : own;
-    }
-
-    const isVoid = s.role === 'void';
-    const raw = multiProps(eff);
     const ownArea = Math.abs(multiProps(own).A);
     const factor = Number.isFinite(s.factor) ? s.factor : 1;
-    // I 'sum'-modus bidrar hull negativt. I 'priority'-modus har hullet
-    // allerede spist opp arealet sitt via prioriteten, så det bidrar med 0.
-    let weight = factor;
-    if (isVoid) weight = mode === 'sum' ? -factor : 0;
+    const isVoid = s.role === 'void';
 
-    parts.push({
-      id: s.id,
-      shape: s,
-      multi: eff,
-      area: raw.A,
-      ownArea,
-      props: scaleProps(raw, weight),
-      weight,
-      isVoid,
-    });
+    if (isVoid) {
+      // Med klipping er hullet allerede trukket fra hver fast form. Uten
+      // klipping må 'sum' trekke fra hullets eget areal.
+      const weight = !cut && mode === 'sum' ? -factor : 0;
+      const raw = multiProps(own);
+      parts.push({ id: s.id, shape: s, multi: own, area: raw.A, ownArea, props: scaleProps(raw, weight), weight, isVoid });
+      if (!cut) grossArea -= ownArea;
+      continue;
+    }
+
+    let eff = own;
+    if (mode === 'priority' && claimed.length) eff = differenceMulti(own, claimed);
+    if (mode === 'priority') claimed = claimed.length ? unionMulti([claimed, own]) : own;
+
+    if (solidSeen.length) {
+      const inter = intersectionMulti(own, solidSeen);
+      if (inter.length) overlapMulti = overlapMulti.length ? unionMulti([overlapMulti, inter]) : inter;
+    }
+    solidSeen = solidSeen.length ? unionMulti([solidSeen, own]) : own;
+
+    if (cut) {
+      const before = Math.abs(multiProps(eff).A);
+      eff = differenceMulti(eff, voidMulti);
+      const ownCut = mode === 'sum' ? eff : differenceMulti(own, voidMulti);
+      const ownCutArea = Math.abs(multiProps(ownCut).A);
+      grossArea += ownCutArea;
+      if (ownArea > EPS && ownCutArea <= ownArea * 1e-9 && before > EPS) swallowed.push(s.id);
+    } else {
+      grossArea += ownArea;
+    }
+
+    const raw = multiProps(eff);
+    parts.push({ id: s.id, shape: s, multi: eff, area: raw.A, ownArea, props: scaleProps(raw, factor), weight: factor, isVoid });
   }
 
   const total = sumProps(parts.map((p) => p.props));
-  const solidMulti = unionMulti(
-    parts.filter((p) => !p.isVoid).map((p) => p.multi)
-  );
-  const voidMulti = unionMulti(parts.filter((p) => p.isVoid).map((p) => p.multi));
+  const solidMulti = unionMulti(parts.filter((p) => !p.isVoid).map((p) => pointsToMulti(p.shape.points)));
   const netMulti = voidMulti.length ? differenceMulti(solidMulti, voidMulti) : solidMulti;
 
   const weighted = parts.some((p) => Math.abs(Math.abs(p.weight) - 1) > EPS && p.weight !== 0);
 
-  // Området som dekkes av flere former, uten hullene trukket fra ennå
+  // Området som dekkes av flere former, uten hullene
   const overlapNet = voidMulti.length ? differenceMulti(overlapMulti, voidMulti) : overlapMulti;
 
   return {
@@ -314,14 +328,16 @@ export function analyze(shapes, mode = 'sum') {
     netMulti,
     // Selve overlappsonen, til opptegning
     overlapMulti: overlapNet,
-    // Summen av formenes egne arealer, altså skallmodellens areal der
-    // overlappet er med to ganger.
-    grossArea: parts.filter((p) => !p.isVoid).reduce((a, p) => a + p.ownArea, 0),
+    // Skallmodellens areal: de faste formenes arealer minus hullene, med
+    // overlappet to ganger. Differansen mot netArea er dermed bare overlappet.
+    grossArea,
     // Rent geometrisk nettoareal (uten vektfaktorer), altså arealet av netMulti.
     netArea: Math.abs(multiProps(netMulti).A),
     // Arealet av selve overlappsonen. Merk at dette er mindre enn
     // grossArea − netArea dersom tre eller flere former dekker samme punkt.
     overlapArea: Math.abs(multiProps(overlapNet).A),
+    // Faste former som ligger helt inne i et hull og er skåret bort
+    swallowed,
     weighted,
     total,
     result: derive(total),

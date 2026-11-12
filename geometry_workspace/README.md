@@ -46,9 +46,108 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `tests/routing.test.mjs` | ΔN-rutingen gjennom hele broen (`computeReinforcement`): kjede eksisterende–eksisterende–ny er bestemt, og i en ekte sløyfe fordeles ΔN etter skjøtestivhet bare på skjøtene som berører den nye delen. `node geometry_workspace/tests/routing.test.mjs` |
 | `tests/auto-joints.test.mjs` | Automatiske skjøter: felles kant, ikke mellom to eksisterende, overlapp gir varsel, glippe er ikke kontakt, rotert, kjede, tegnet skjøt vinner, og innstillingene følger delparet når delene flyttes. `node geometry_workspace/tests/auto-joints.test.mjs` |
 | `tests/composite.test.mjs` | Fasit for festemiddelstivhet (EC5/ETA), γ-metoden, biaksiell skjærstrøm/hovedakser og forankringskontroll. `node geometry_workspace/tests/composite.test.mjs` |
+| `js/dxf.js` | DXF-import (#85): ASCII-parser (LINE, LWPOLYLINE/POLYLINE med bulge, CIRCLE, ARC), areallik diskretisering av buer, sammensying av løse linjer og hull etter innbyrdes plassering. Alt annet telles og meldes. Ingen DOM, ingen importer. |
+| `js/section-export.js` | «Tverrsnitt til fil / Kopier tverrsnitt» (#85): faste former minus hull som ett polygon med hull på `structural-tools-section` v1, til concrete_section_calculator. Ingen DOM. |
+| `tests/dxf.test.mjs` | Fasit for DXF-importen: hulldekke 1200×265 med 7 × Ø140, sirkelsegment, bulge, løse linjer, ustøttede entiteter. Eksempelfil i `tests/fixtures/hulldekke.dxf`. `node geometry_workspace/tests/dxf.test.mjs` |
+| `tests/section-export.test.mjs` | Fasit for tverrsnittseksporten: formatet, aksene (y = x, z = y), mm, samme A og I som workspacet, og melding ved usammenhengende deler. `node geometry_workspace/tests/section-export.test.mjs` |
+| `tests/dxf-robust.test.mjs` | DXF fra virkeligheten: fjerne entiteter og ramme (lokal toleranse), doble linjer og konturer, 2000 hull på under 2 s, delte koordinater (6,6e9), `1,5`, tomme linjer etter EOF, `$INSUNITS`. `node geometry_workspace/tests/dxf-robust.test.mjs` |
+| `tests/area-consistency.test.mjs` | Samme areal i 'sum', 'priority', panelet og eksporten — også for øy i hull — eksport langt fra origo, og at eksporten aldri skriver ugyldige ringer. `node geometry_workspace/tests/area-consistency.test.mjs` |
+| `js/linework.js` | Linjearbeid (#86): treff, vindu/crossing, og lukkede konturer av markerte linjer (`contoursFromLines`, uten nøsting). Ingen DOM. |
+| `tests/linework.test.mjs` | Hull-modus i tegneverktøyene, linjeverktøyet, utvalg (pick/shift/vindu/crossing/Ctrl-dra), «Bare linjer», lagring, angre, og hele hulldekke-arbeidsflyten mot automatisk import. `node geometry_workspace/tests/linework.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
 three.js hentes fra CDN via `importmap`.
+
+## DXF inn, tverrsnitt ut (#85)
+
+**Importer → Importer DXF** leser en ASCII-DXF. Enheten står som «fra fila»
+og bruker `$INSUNITS` når den er mm, cm eller m, ellers mm; meldingen sier
+hvilken som ble brukt. Velg mm/cm/m for å overstyre.
+
+- `LINE`, `LWPOLYLINE`/`POLYLINE` (med bulge), `CIRCLE` og `ARC` blir lukkede
+  konturer. Løse linjer og buer sys sammen ende mot ende. Toleransen er
+  **lokal**: 1e-4 av den korteste av de to stiene som skal møtes, så en
+  tegningsramme eller nordpil langt unna ikke gjør den grov. Kjeder som ikke
+  lukker seg, importeres ikke, men telles.
+- Linjer og buer som er tegnet **to ganger** (samme eller motsatt retning), og
+  konturer som er tegnet to ganger (også samme sirkel som `CIRCLE` og som
+  bulge-polylinje), slås sammen og telles. To konturer som **nesten** faller
+  sammen (1e-4), gir advarsel, og den minste utelates — ellers ble den et
+  hårtynt hull.
+- En kontur inni en annen blir et **hull** — en egen form med `role:'void'`,
+  slik som et tegnet hull. En kontur inni et hull («øy i hull») blir en egen
+  form, men hullet skjærer den bort — det støttes ikke, og meldingen sier fra.
+  En lukket tegningsramme er også en kontur; slett den etterpå, eller bruk
+  «Bare linjer» (se under).
+- Ligger tegningen langt fra origo i forhold til sin størrelse (delte
+  koordinater, 6,6e9 mm), flyttes den til et lokalt origo før buene
+  diskretiseres, og forskyvningen står i meldingen.
+- Sirkler og buer diskretiseres **areallikt**: hjørnene ligger på en radius
+  justert slik at mangekantens areal er lik sirkelens. Bueendepunktene ligger
+  på den virkelige radien. Tegnede sirkler (`circlePoints`) er uendret og
+  fortsatt innskrevne.
+- Alt annet (`SPLINE`, `ELLIPSE`, `INSERT`/blokker, tekst, mål, skravur, 3D,
+  papirrom) hoppes over **og telles i meldingen**, det samme gjør konturer uten
+  areal. Et tall som `1,5` avvises med linjenummer. Ingen tekst fra fila havner
+  i siden som HTML.
+- Importen er ett angresteg.
+- **Som «Bare linjer»** (valget under «Importer DXF») blir ingenting gjort om
+  til former: hver linje, polylinje, bue og sirkel blir **linjearbeid**, etter
+  samme duplikatfjerning og flytting til lokalt origo. Se «Linjearbeid» under.
+
+## Hull og linjearbeid (#86)
+
+**Hull-knappen** (rektangel med stiplet sirkel, `H`) er en bryter, ikke et eget
+verktøy: når den er på, blir det du tegner med rektangel, skall, sirkel og
+polygon — også fra tallmenyene — en form med `role:'void'`. Knappen er rød og
+lerretet viser «HULL-MODUS» så lenge den er på. Ett angresteg per hull.
+
+**Linjearbeid** er løse linjer som ikke teller i noe areal: fra DXF som «Bare
+linjer», eller tegnet med **linjeverktøyet** (`L`: klikk punkter, Enter eller
+dobbeltklikk avslutter, klikk på startpunktet lukker). Linjene snappes mot som
+annen geometri.
+
+- **Velg:** klikk en linje, shift-klikk for å legge til eller fjerne. Dra en
+  ramme **venstre→høyre** (blå, vindu) for det som ligger helt inne,
+  **høyre→venstre** (grønn, crossing) for alt rammen berører. Rammen starter i
+  tomt område; **Ctrl-dra** tegner rammen også fra inni en form — slik velger
+  man kanalene i et hulldekke uten å ta tak i dekket. Former og skjøter følger
+  vindusregelen i begge retninger. «Velg alle linjer» ligger i
+  «Linjearbeid»-boksen til venstre.
+- **Lag geometri / Lag hull:** hver lukket kontur som kan sys av de markerte
+  linjene, blir én fast form eller ett hull — **uten nøsting**, også om den
+  ligger inni en annen. Linjer som ikke danner en lukket kontur, blir stående
+  markert, og meldingen teller dem. Linjene beholdes; hver kommando er ett
+  angresteg.
+- **Arbeidsflyt for et hulldekke:** importer som «Bare linjer» → «Velg alle
+  linjer» → «Lag geometri» (plata og sju sirkelformer, altså dobbelt i
+  kanalene) → klikk sirklene, shift-klikk resten, `Del` → Ctrl-dra (eller dra
+  fra utsiden) over kanalene → «Lag hull». Resultatet er det samme som
+  automatisk import (`tests/linework.test.mjs`).
+- «vis» skjuler linjearbeidet (skjulte linjer kan ikke velges), «Slett alle
+  linjer» fjerner det. Linjearbeidet lagres i prosjektfila (`lines`), følger
+  angre/gjør om, enhetsbytte, flytt/kopi/roter/speil og «Tøm all geometri».
+
+**Tverrsnitt til fil / Kopier tverrsnitt** (under tyngdepunktet) gir ett ytre
+polygon med hull, alltid i mm:
+
+```json
+{ "format": "structural-tools-section", "version": 1, "units": "mm",
+  "outer": [[y, z], ...], "holes": [[[y, z], ...], ...] }
+```
+
+Formatet er kontrakten med concrete_section_calculator (#83). `y` er
+workspacets x og `z` er workspacets y (begge har «opp» opp). Ringene er åpne,
+ytre mot klokka, hull med klokka. Er noen former markert, eksporteres bare de
+(og alle hullene).
+
+Geometrien er den samme som «Areal, fysisk»: de faste formene minus alle hull.
+Består resultatet av flere usammenhengende deler, eksporteres ingenting og det
+sies fra. Ligger en fast form helt inne i et hull, er den skåret bort, og det
+sies også fra. Overlapp telles én gang og vektfaktorer er ikke med
+— begge deler meldes. Ligger tverrsnittet langt fra origo, flyttes det til et
+lokalt origo (formatet har vilkårlig origo). Eksporten nekter heller enn å
+skrive en ring som berører seg selv eller et hull uten areal.
 
 ## Plassere geometri
 
@@ -148,6 +247,8 @@ Første `Esc` lukker feltet uten å avbryte kommandoen; neste avbryter kommandoe
 | `N` | Nullpunkt |
 | `G` | Skjøt |
 | `X` | Del med linje |
+| `L` | Linje / polylinje (linjearbeid) |
+| `H` | Hull-modus av/på |
 | `F` | Zoom alt |
 | `F8` / `Alt+0` | Orto |
 | `Alt+1…6`, `Alt+9` | Snap |
@@ -227,6 +328,12 @@ To modi:
   bare det arealet ingen form over den allerede har krevd (`difference` mot unionen av
   de foregående). Overlapp telles dermed nøyaktig én gang, og tyngdepunktet er
   uavhengig av rekkefølgen så lenge alle formene har samme vektfaktor.
+
+**Hull skjærer alt fast areal de overlapper**, i begge modi og uansett hvor i lista
+de står: hver fast form får unionen av alle hull trukket fra seg. Et hull som stikker
+ut av materialet, trekker bare fra det det dekker; et hull i et dobbelttalt overlapp
+skjærer begge formene. Øy i hull (en fast form helt inne i et hull) støttes ikke —
+den skjæres bort, og eksporten og DXF-importen sier fra.
 
 Vektfaktoren på hver form er ment som E-forhold ved transformert tverrsnitt; med
 faktorer ulik 1 er «tyngdepunktet» nøytralaksen til det transformerte tverrsnittet.
