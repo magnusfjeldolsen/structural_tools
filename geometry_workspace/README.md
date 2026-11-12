@@ -46,9 +46,48 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `tests/routing.test.mjs` | ΔN-rutingen gjennom hele broen (`computeReinforcement`): kjede eksisterende–eksisterende–ny er bestemt, og i en ekte sløyfe fordeles ΔN etter skjøtestivhet bare på skjøtene som berører den nye delen. `node geometry_workspace/tests/routing.test.mjs` |
 | `tests/auto-joints.test.mjs` | Automatiske skjøter: felles kant, ikke mellom to eksisterende, overlapp gir varsel, glippe er ikke kontakt, rotert, kjede, tegnet skjøt vinner, og innstillingene følger delparet når delene flyttes. `node geometry_workspace/tests/auto-joints.test.mjs` |
 | `tests/composite.test.mjs` | Fasit for festemiddelstivhet (EC5/ETA), γ-metoden, biaksiell skjærstrøm/hovedakser og forankringskontroll. `node geometry_workspace/tests/composite.test.mjs` |
+| `js/dxf.js` | DXF-import (#85): ASCII-parser (LINE, LWPOLYLINE/POLYLINE med bulge, CIRCLE, ARC), areallik diskretisering av buer, sammensying av løse linjer og hull etter innbyrdes plassering. Alt annet telles og meldes. Ingen DOM, ingen importer. |
+| `js/section-export.js` | «Tverrsnitt til fil / Kopier tverrsnitt» (#85): faste former minus hull som ett polygon med hull på `structural-tools-section` v1, til concrete_section_calculator. Ingen DOM. |
+| `tests/dxf.test.mjs` | Fasit for DXF-importen: hulldekke 1200×265 med 7 × Ø140, sirkelsegment, bulge, løse linjer, ustøttede entiteter. Eksempelfil i `tests/fixtures/hulldekke.dxf`. `node geometry_workspace/tests/dxf.test.mjs` |
+| `tests/section-export.test.mjs` | Fasit for tverrsnittseksporten: formatet, aksene (y = x, z = y), mm, samme A og I som workspacet, og melding ved usammenhengende deler. `node geometry_workspace/tests/section-export.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
 three.js hentes fra CDN via `importmap`.
+
+## DXF inn, tverrsnitt ut (#85)
+
+**Importer → Importer DXF** leser en ASCII-DXF. Enheten tegningen er laget i
+velges i menyen (mm/cm/m) og regnes om til arbeidsenheten; sier fila noe annet
+i `$INSUNITS`, står det i meldingen, men valget gjelder.
+
+- `LINE`, `LWPOLYLINE`/`POLYLINE` (med bulge), `CIRCLE` og `ARC` blir lukkede
+  konturer. Løse linjer og buer sys sammen ende mot ende (toleranse 1e-5 av
+  tegningens diagonal). Kjeder som ikke lukker seg, importeres ikke, men telles.
+- En kontur inni en annen blir et **hull** — en egen form med `role:'void'`,
+  slik som et tegnet hull. En kontur inni et hull blir en ny, selvstendig form.
+- Sirkler og buer diskretiseres **areallikt**: hjørnene ligger på en radius
+  justert slik at mangekantens areal er lik sirkelens. Bueendepunktene ligger
+  på den virkelige radien. Tegnede sirkler (`circlePoints`) er uendret og
+  fortsatt innskrevne.
+- Alt annet (`SPLINE`, `ELLIPSE`, `INSERT`/blokker, tekst, mål, skravur, 3D,
+  papirrom) hoppes over **og telles i meldingen**. Ingen tekst fra fila
+  havner i siden som HTML.
+- Importen er ett angresteg.
+
+**Tverrsnitt til fil / Kopier tverrsnitt** (under tyngdepunktet) gir ett ytre
+polygon med hull, alltid i mm:
+
+```json
+{ "format": "structural-tools-section", "version": 1, "units": "mm",
+  "outer": [[y, z], ...], "holes": [[[y, z], ...], ...] }
+```
+
+Formatet er kontrakten med concrete_section_calculator (#83). `y` er
+workspacets x og `z` er workspacets y (begge har «opp» opp). Ringene er åpne,
+ytre mot klokka, hull med klokka. Geometrien er union av de faste formene minus
+hullene; er noen former markert, eksporteres bare de. Består resultatet av
+flere usammenhengende deler, eksporteres ingenting og det sies fra. Overlapp
+telles én gang og vektfaktorer er ikke med — begge deler meldes.
 
 ## Plassere geometri
 
