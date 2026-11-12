@@ -106,7 +106,8 @@
           <div class="flex items-center gap-1">
             <button data-imp="dxf" class="flex-1 text-left px-2 py-1.5 text-xs rounded hover:bg-slate-700">Importer DXF</button>
             <label for="dxf-unit" class="text-[10px] text-slate-500">enhet</label>
-            <select id="dxf-unit" title="Enheten tegningen er laget i" class="text-xs w-14">
+            <select id="dxf-unit" title="Enheten tegningen er laget i. «Fra fila» bruker $INSUNITS, og mm når fila ikke sier noe." class="text-xs w-20">
+              <option value="auto" selected>fra fila</option>
               <option value="mm">mm</option>
               <option value="cm">cm</option>
               <option value="m">m</option>

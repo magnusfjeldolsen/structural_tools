@@ -37,7 +37,7 @@ import { sidesOfJoint, buildGraph, jointGroup, overConstrained } from './joints.
 import { ReinforcementPanel, axisConventionHtml } from './reinforcement-ui.js';
 import { SYSTEM_FACTORS } from './reinforcement.js';
 import { EC5_FASTENERS, EC5_CONTACTS, STATES, ec5Fastener } from './connection-stiffness.js';
-import { importDxf, describeImport, INSUNITS_TO_UNIT } from './dxf.js';
+import { importDxf, describeImport, INSUNITS_TO_UNIT, resolveDxfUnit, shapeList } from './dxf.js';
 import { exportSection, sectionProps, sectionToJSON } from './section-export.js';
 
 const $ = (id) => document.getElementById(id);
@@ -928,25 +928,30 @@ export class UI {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    const dxfUnit = $('dxf-unit').value;
+    const choice = $('dxf-unit').value; // 'auto' = fila sin $INSUNITS, ellers mm
     const reader = new FileReader();
     reader.onload = () => {
       let res;
+      let used;
       try {
-        res = importDxf(String(reader.result), { scale: conversionFactor(dxfUnit, this.store.state.unit) });
+        res = importDxf(String(reader.result), {
+          scale: (insunits) => {
+            used = resolveDxfUnit(choice, insunits);
+            return conversionFactor(used.unit, this.store.state.unit);
+          },
+        });
       } catch (err) {
         return this.toast(`DXF-import feilet: ${err.message}`, 6000);
       }
       const n0 = this.store.state.shapes.filter((s) => /^DXF \d+$/.test(s.name)).length;
-      const list = [];
-      res.regions.forEach((g, i) => {
-        const name = `DXF ${n0 + i + 1}`;
-        g.holes.forEach((h, j) => list.push({ points: h, role: 'void', name: `${name} hull ${j + 1}` }));
-        list.push({ points: g.outer, role: 'solid', name });
-      });
+      // Dypeste regioner og hull øverst, så 'sum', 'priority' og nettoarealet
+      // er enige også for en øy i et hull.
+      const list = shapeList(res, { start: n0 + 1 });
       let msg = describeImport(res);
       const fileUnit = INSUNITS_TO_UNIT[res.insunits];
-      if (fileUnit && fileUnit !== dxfUnit) msg += ` Fila sier ${fileUnit}, men ${dxfUnit} er valgt og brukt.`;
+      if (used.fromFile) msg += ` Enhet ${used.unit} fra fila.`;
+      else if (choice === 'auto') msg += ' Fila oppgir ikke enhet; antatt mm.';
+      else if (fileUnit && fileUnit !== used.unit) msg += ` Fila sier ${fileUnit}, men ${used.unit} er valgt og brukt.`;
       if (!list.length) return this.toast(`${msg} Ingen lukkede konturer å importere.`, 8000);
       this.store.addShapes(list, { reason: 'import' });
       this.viewport.zoomToFit(this.store.bounds());
@@ -2265,7 +2270,6 @@ export class UI {
     const r = analysis.result;
     const dx = r.cx - ref[0];
     const dy = r.cy - ref[1];
-    const overlap = analysis.grossArea - analysis.netArea;
     const unit = this.store.state.unit;
     const uL = lengthLabel(unit);
     const uA = areaLabel(unit);
@@ -2283,23 +2287,9 @@ export class UI {
         </div>
       </div>
       <div class="pt-2 border-t border-slate-700 space-y-1 text-xs num">
-        ${
-          analysis.mode === 'sum'
-            ? row(`Areal, skallmodell [${uA}]`, fmtArea(analysis.grossArea)) +
-              row(`Areal, fysisk [${uA}]`, fmtArea(analysis.netArea), 'text-slate-400')
-            : row(`Areal, fysisk [${uA}]`, fmtArea(analysis.netArea)) +
-              row(`Areal, skallmodell [${uA}]`, fmtArea(analysis.grossArea), 'text-slate-400')
-        }
-        ${
-          Math.abs(overlap) > 1e-6
-            ? row(
-                analysis.mode === 'sum' ? 'Herav overlapp, telt to ganger' : 'Overlapp trukket fra',
-                fmtArea(overlap),
-                analysis.mode === 'sum' ? 'text-amber-300' : 'text-cyan-300'
-              )
-            : ''
-        }
-        ${analysis.weighted ? row('Vektet areal ΣnᵢAᵢ', fmtArea(r.A), 'text-amber-300') : ''}
+        ${areaRows(analysis)
+          .map((x) => row(x.area ? `${x.label} [${uA}]` : x.label, fmtArea(x.value), x.cls))
+          .join('')}
       </div>`;
 
     const deg = (r.theta * 180) / Math.PI;
@@ -2347,6 +2337,35 @@ function bigValue(label, value, cls = 'text-white') {
     <div class="text-[11px] text-slate-400">${label}</div>
     <div class="text-lg font-semibold num ${cls}">${value}</div>
   </div>`;
+}
+
+/**
+ * Arealradene i «Tyngdepunkt»-boksen, som rene tall (testes i
+ * tests/area-consistency.test.mjs). Skallmodellens areal har hullene trukket
+ * fra, så forskjellen mot det fysiske arealet er bare overlappet — ikke
+ * hullene (#86, B6).
+ *
+ * @returns {Array<{label: string, value: number, cls: string, area: boolean}>}
+ */
+export function areaRows(analysis) {
+  const sum = analysis.mode === 'sum';
+  const shell = { label: 'Areal, skallmodell', value: analysis.grossArea, area: true };
+  const phys = { label: 'Areal, fysisk', value: analysis.netArea, area: true };
+  const rows = sum
+    ? [{ ...shell, cls: 'text-slate-200' }, { ...phys, cls: 'text-slate-400' }]
+    : [{ ...phys, cls: 'text-slate-200' }, { ...shell, cls: 'text-slate-400' }];
+  const overlap = analysis.grossArea - analysis.netArea;
+  const scale = Math.max(Math.abs(analysis.grossArea), Math.abs(analysis.netArea));
+  if (Math.abs(overlap) > scale * 1e-9) {
+    rows.push({
+      label: sum ? 'Herav overlapp, telt to ganger' : 'Overlapp trukket fra',
+      value: overlap,
+      cls: sum ? 'text-amber-300' : 'text-cyan-300',
+      area: false,
+    });
+  }
+  if (analysis.weighted) rows.push({ label: 'Vektet areal ΣnᵢAᵢ', value: analysis.result.A, cls: 'text-amber-300', area: false });
+  return rows;
 }
 
 function row(label, value, cls = 'text-slate-200') {
