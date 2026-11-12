@@ -31,6 +31,16 @@ Rene ES-moduler, ingen byggesteg, ingen avhengigheter utover det som er vendoret
 | `importDxf(text, {mode})` | `'auto'` (former og hull) eller `'lines'` |
 | `destroy()` | fjerner lyttere, lerret og DOM |
 
+| `handleKey(e)` | gir et tastetrykk til editoren (for verter der fokus kan stå utenfor roten, f.eks. knappene i et overlegg) |
+| `isDirty()` / `markClean()` | endret siden montering? (til «Discard changes?») |
+
+`get()`/`list()` på dokumentet gir **kopier**; endre med `update()`, så endringen
+havner i angrehistorikken og gir hendelser. `fromJSON(obj)` dypkopierer — kallerens
+objekt blir aldri endret. Meldingene står i `js/core/text.js` (`lang: 'no' | 'en'`).
+
+**Størrelse:** editoren flyter aldri ut av containeren. Under 720×360 px blir
+verktøylinja én rullbar rad; under 260×180 px vises bare lerretet (tastene virker).
+
 Viktige valg: `chrome` (verktøylinje/statuslinje, standard på), `toolbar`
 (knappene), `keyboard: 'focus' | 'page'`, `lang: 'no' | 'en'`, `style`,
 `extensions`, `keyHooks`. Se kommentaren øverst i `js/editor/editor.js`.
