@@ -72,13 +72,23 @@ const LABELS = {
   },
 };
 
+/** Under denne størrelsen (px) blir verktøylinja én rullbar rad. */
+export const COMPACT = Object.freeze({ w: 720, h: 360 });
+/** Under denne vises bare lerretet (tastene virker fortsatt). Minstestørrelse for bruk med mus. */
+export const TINY = Object.freeze({ w: 260, h: 180 });
+
 const TOOL_NAMES = new Set(['select', 'line', 'rect', 'circle', 'polygon', 'shell', 'move', 'copy', 'rotate', 'mirror', 'splitline', 'reference']);
 
 const CSS = `
-.cad2d-editor{display:flex;flex-direction:column;width:100%;height:100%;min-height:0;background:#0f172a;color:#e2e8f0;
+.cad2d-editor{display:flex;flex-direction:column;width:100%;height:100%;min-width:0;min-height:0;max-width:100%;max-height:100%;
+  overflow:hidden;box-sizing:border-box;background:#0f172a;color:#e2e8f0;
   font:12px/1.3 ui-sans-serif,system-ui,sans-serif;outline:none;position:relative}
 .cad2d-editor:focus-visible{box-shadow:inset 0 0 0 2px #0ea5e9}
-.cad2d-toolbar{display:flex;flex-wrap:wrap;gap:3px;padding:5px;border-bottom:1px solid #1e293b;background:#111827;align-items:center}
+.cad2d-toolbar{display:flex;flex-wrap:wrap;gap:3px;padding:5px;border-bottom:1px solid #1e293b;background:#111827;align-items:center;
+  flex:0 0 auto;max-height:40%;overflow:auto}
+.cad2d-compact .cad2d-toolbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-height:none;scrollbar-width:thin}
+.cad2d-compact .cad2d-toolbar kbd{display:none}
+.cad2d-tiny .cad2d-toolbar,.cad2d-tiny .cad2d-statusbar{display:none}
 .cad2d-toolbar button,.cad2d-toolbar select{width:auto;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:4px;
   padding:3px 7px;font:inherit;cursor:pointer;white-space:nowrap}
 .cad2d-toolbar button:hover{background:#334155}
@@ -86,10 +96,12 @@ const CSS = `
 .cad2d-toolbar button[data-cmd="void"][aria-pressed="true"]{background:#9f1239;border-color:#fb7185}
 .cad2d-toolbar .cad2d-sep{width:1px;align-self:stretch;background:#334155;margin:0 3px}
 .cad2d-toolbar kbd{font:10px ui-monospace,monospace;color:#94a3b8;margin-left:4px}
-.cad2d-canvas{position:relative;flex:1 1 auto;min-height:0;overflow:hidden}
+.cad2d-canvas{position:relative;flex:1 1 auto;min-height:40px;min-width:0;overflow:hidden}
 .cad2d-badge{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:#9f1239;color:#fff;padding:2px 8px;
   border-radius:4px;font-weight:600;letter-spacing:.05em;pointer-events:none}
-.cad2d-statusbar{display:flex;gap:12px;padding:4px 8px;border-top:1px solid #1e293b;background:#111827;color:#94a3b8;min-height:22px}
+.cad2d-statusbar{display:flex;gap:12px;padding:4px 8px;border-top:1px solid #1e293b;background:#111827;color:#94a3b8;min-height:22px;
+  flex:0 0 auto;overflow:hidden;white-space:nowrap}
+.cad2d-compact .cad2d-statusbar .cad2d-readout{display:none}
 .cad2d-statusbar .cad2d-status{flex:1 1 auto;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cad2d-statusbar .cad2d-num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .cad2d-hidden{display:none!important}
@@ -173,6 +185,16 @@ export function mountCadEditor(container, options = {}) {
     areaEl = root.querySelector('.cad2d-area');
     badgeEl = root.querySelector('.cad2d-badge');
     badgeEl.textContent = L.voidBadge;
+    // Størrelsestrinn: full (≥ COMPACT), kompakt (én rullbar verktøyrad, kort
+    // statuslinje) og bare lerret (< TINY). Lerretet beholder alltid plass, og
+    // editoren flyter aldri ut av containeren (review av #94, punkt 6).
+    const sizeObserver = new ResizeObserver(() => {
+      const r = root.getBoundingClientRect();
+      root.classList.toggle('cad2d-compact', r.width < COMPACT.w || r.height < COMPACT.h);
+      root.classList.toggle('cad2d-tiny', r.width < TINY.w || r.height < TINY.h);
+    });
+    sizeObserver.observe(root);
+    cleanups.push(() => sizeObserver.disconnect());
   } else {
     root = container;
     canvasHost = container;
@@ -424,6 +446,7 @@ export function mountCadEditor(container, options = {}) {
   /* ---------------- håndtaket ---------------- */
 
   let destroyed = false;
+  let cleanSnapshot = doc.snapshot();
 
   const editor = {
     document: doc,
@@ -453,7 +476,11 @@ export function mountCadEditor(container, options = {}) {
         listeners[event].add(fn);
         return () => listeners[event].delete(fn);
       }
-      return doc.on(event, fn);
+      // Dokumentet kan leve videre etter editoren (sendt inn utenfra), så
+      // lytteren fjernes av destroy() (review av #94, punkt 10).
+      const off = doc.on(event, fn);
+      cleanups.push(off);
+      return off;
     },
     /**
      * Tverrsnittet på `structural-tools-section` v1 (mm), som `{ok, section,
@@ -466,6 +493,17 @@ export function mountCadEditor(container, options = {}) {
       return r;
     },
     analysis: () => lastAnalysis,
+    /**
+     * Gir en tastetrykk-hendelse til editorens tastaturkart, for verter der fokus
+     * kan stå utenfor editorens rot men tastene likevel hører til editoren (csc:
+     * knappene i overlegget). Returnerer true hvis tasten ble brukt.
+     */
+    handleKey: (e) => keyHandler(e),
+    /** Er dokumentet endret siden `markClean()` (eller siden monteringen)? */
+    isDirty: () => doc.snapshot() !== cleanSnapshot,
+    markClean: () => {
+      cleanSnapshot = doc.snapshot();
+    },
     importDxf,
     setStatus,
     zoomToFit: () => viewport.zoomToFit(doc.bounds()),
@@ -491,6 +529,7 @@ export function mountCadEditor(container, options = {}) {
   tools.setTool('select');
   render();
   viewport.zoomToFit(doc.bounds());
+  cleanSnapshot = doc.snapshot();
   if (!hasClipper()) setStatus(T.noClipper);
   return editor;
 }

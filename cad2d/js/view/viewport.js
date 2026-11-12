@@ -275,7 +275,12 @@ export class Viewport {
     cancelAnimationFrame(this._raf);
     Object.values(this.groups).forEach(disposeGroup);
     this._clearLabelCache();
+    if (this.underlayTexture) this.underlayTexture.dispose();
     this.renderer.dispose();
+    // Frigi WebGL-konteksten NÅ. Nettleseren tillater bare ~16 samtidig, og
+    // uten dette tar en side som monterer og ødelegger editorer de levende
+    // lerretene med seg når grensen nås («Context Lost», review av #94, B1).
+    this.renderer.forceContextLoss();
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
     }
@@ -424,9 +429,15 @@ export class Viewport {
       { passive: false }
     );
 
-    // Mellomrom + dra panorerer. Lytteren fjernes i `dispose()`.
+    // Mellomrom + dra panorerer — men bare i DENNE visningen: pekeren er over
+    // lerretet, eller fokus står i containeren. Ellers ville Space i én editor
+    // satt panorering i alle på siden. Lytteren fjernes i `dispose()`.
+    el.addEventListener('pointerenter', () => { this._pointerInside = true; });
+    el.addEventListener('pointerleave', () => { this._pointerInside = false; });
     this._onKeyDown = (e) => {
-      if (e.code === 'Space') this._spaceDown = true;
+      if (e.code !== 'Space') return;
+      const focused = typeof document !== 'undefined' && this.container.contains(document.activeElement);
+      if (this._pointerInside || focused) this._spaceDown = true;
     };
     this._onKeyUp = (e) => {
       if (e.code === 'Space') this._spaceDown = false;
