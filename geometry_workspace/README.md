@@ -52,6 +52,8 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `tests/section-export.test.mjs` | Fasit for tverrsnittseksporten: formatet, aksene (y = x, z = y), mm, samme A og I som workspacet, og melding ved usammenhengende deler. `node geometry_workspace/tests/section-export.test.mjs` |
 | `tests/dxf-robust.test.mjs` | DXF fra virkeligheten: fjerne entiteter og ramme (lokal toleranse), doble linjer og konturer, 2000 hull på under 2 s, delte koordinater (6,6e9), `1,5`, tomme linjer etter EOF, `$INSUNITS`. `node geometry_workspace/tests/dxf-robust.test.mjs` |
 | `tests/area-consistency.test.mjs` | Samme areal i 'sum', 'priority', panelet og eksporten — også for øy i hull — eksport langt fra origo, og at eksporten aldri skriver ugyldige ringer. `node geometry_workspace/tests/area-consistency.test.mjs` |
+| `js/linework.js` | Linjearbeid (#86): treff, vindu/crossing, og lukkede konturer av markerte linjer (`contoursFromLines`, uten nøsting). Ingen DOM. |
+| `tests/linework.test.mjs` | Hull-modus i tegneverktøyene, linjeverktøyet, utvalg (pick/shift/vindu/crossing/Ctrl-dra), «Bare linjer», lagring, angre, og hele hulldekke-arbeidsflyten mot automatisk import. `node geometry_workspace/tests/linework.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
 three.js hentes fra CDN via `importmap`.
@@ -89,6 +91,42 @@ hvilken som ble brukt. Velg mm/cm/m for å overstyre.
   areal. Et tall som `1,5` avvises med linjenummer. Ingen tekst fra fila havner
   i siden som HTML.
 - Importen er ett angresteg.
+- **Som «Bare linjer»** (valget under «Importer DXF») blir ingenting gjort om
+  til former: hver linje, polylinje, bue og sirkel blir **linjearbeid**, etter
+  samme duplikatfjerning og flytting til lokalt origo. Se «Linjearbeid» under.
+
+## Hull og linjearbeid (#86)
+
+**Hull-knappen** (rektangel med stiplet sirkel, `H`) er en bryter, ikke et eget
+verktøy: når den er på, blir det du tegner med rektangel, skall, sirkel og
+polygon — også fra tallmenyene — en form med `role:'void'`. Knappen er rød og
+lerretet viser «HULL-MODUS» så lenge den er på. Ett angresteg per hull.
+
+**Linjearbeid** er løse linjer som ikke teller i noe areal: fra DXF som «Bare
+linjer», eller tegnet med **linjeverktøyet** (`L`: klikk punkter, Enter eller
+dobbeltklikk avslutter, klikk på startpunktet lukker). Linjene snappes mot som
+annen geometri.
+
+- **Velg:** klikk en linje, shift-klikk for å legge til eller fjerne. Dra en
+  ramme **venstre→høyre** (blå, vindu) for det som ligger helt inne,
+  **høyre→venstre** (grønn, crossing) for alt rammen berører. Rammen starter i
+  tomt område; **Ctrl-dra** tegner rammen også fra inni en form — slik velger
+  man kanalene i et hulldekke uten å ta tak i dekket. Former og skjøter følger
+  vindusregelen i begge retninger. «Velg alle linjer» ligger i
+  «Linjearbeid»-boksen til venstre.
+- **Lag geometri / Lag hull:** hver lukket kontur som kan sys av de markerte
+  linjene, blir én fast form eller ett hull — **uten nøsting**, også om den
+  ligger inni en annen. Linjer som ikke danner en lukket kontur, blir stående
+  markert, og meldingen teller dem. Linjene beholdes; hver kommando er ett
+  angresteg.
+- **Arbeidsflyt for et hulldekke:** importer som «Bare linjer» → «Velg alle
+  linjer» → «Lag geometri» (plata og sju sirkelformer, altså dobbelt i
+  kanalene) → klikk sirklene, shift-klikk resten, `Del` → Ctrl-dra (eller dra
+  fra utsiden) over kanalene → «Lag hull». Resultatet er det samme som
+  automatisk import (`tests/linework.test.mjs`).
+- «vis» skjuler linjearbeidet (skjulte linjer kan ikke velges), «Slett alle
+  linjer» fjerner det. Linjearbeidet lagres i prosjektfila (`lines`), følger
+  angre/gjør om, enhetsbytte, flytt/kopi/roter/speil og «Tøm all geometri».
 
 **Tverrsnitt til fil / Kopier tverrsnitt** (under tyngdepunktet) gir ett ytre
 polygon med hull, alltid i mm:
@@ -209,6 +247,8 @@ Første `Esc` lukker feltet uten å avbryte kommandoen; neste avbryter kommandoe
 | `N` | Nullpunkt |
 | `G` | Skjøt |
 | `X` | Del med linje |
+| `L` | Linje / polylinje (linjearbeid) |
+| `H` | Hull-modus av/på |
 | `F` | Zoom alt |
 | `F8` / `Alt+0` | Orto |
 | `Alt+1…6`, `Alt+9` | Snap |
