@@ -120,6 +120,12 @@ Hull er **egne former med `role:'void'`**, ikke innerringer. Riktig kilde til
 konturer er derfor `analyze().parts[i].multi` og `netMulti`, ikke
 `shape.points`.
 
+`netMulti` («Areal, fysisk», rapportfiguren, tverrsnittseksporten) males
+nedenfra i lista (`paintNet`): **et hull skjærer bare i det som ligger under
+det**, som i 'priority'. Ellers forsvinner en øy i et hull fra det fysiske
+arealet mens 'sum' teller den med (#86). DXF-importen legger derfor dypere
+regioner og hull øverst.
+
 ## 9. Avgrensning
 
 Verktøyet sier **hvor sterk** forbindelsen må være. Det sier ikke **hvordan**

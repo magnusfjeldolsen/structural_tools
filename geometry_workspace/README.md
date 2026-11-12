@@ -50,28 +50,43 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/section-export.js` | «Tverrsnitt til fil / Kopier tverrsnitt» (#85): faste former minus hull som ett polygon med hull på `structural-tools-section` v1, til concrete_section_calculator. Ingen DOM. |
 | `tests/dxf.test.mjs` | Fasit for DXF-importen: hulldekke 1200×265 med 7 × Ø140, sirkelsegment, bulge, løse linjer, ustøttede entiteter. Eksempelfil i `tests/fixtures/hulldekke.dxf`. `node geometry_workspace/tests/dxf.test.mjs` |
 | `tests/section-export.test.mjs` | Fasit for tverrsnittseksporten: formatet, aksene (y = x, z = y), mm, samme A og I som workspacet, og melding ved usammenhengende deler. `node geometry_workspace/tests/section-export.test.mjs` |
+| `tests/dxf-robust.test.mjs` | DXF fra virkeligheten: fjerne entiteter og ramme (lokal toleranse), doble linjer og konturer, 2000 hull på under 2 s, delte koordinater (6,6e9), `1,5`, tomme linjer etter EOF, `$INSUNITS`. `node geometry_workspace/tests/dxf-robust.test.mjs` |
+| `tests/area-consistency.test.mjs` | Samme areal i 'sum', 'priority', panelet og eksporten — også for øy i hull — eksport langt fra origo, og at eksporten aldri skriver ugyldige ringer. `node geometry_workspace/tests/area-consistency.test.mjs` |
 | `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
 
 three.js hentes fra CDN via `importmap`.
 
 ## DXF inn, tverrsnitt ut (#85)
 
-**Importer → Importer DXF** leser en ASCII-DXF. Enheten tegningen er laget i
-velges i menyen (mm/cm/m) og regnes om til arbeidsenheten; sier fila noe annet
-i `$INSUNITS`, står det i meldingen, men valget gjelder.
+**Importer → Importer DXF** leser en ASCII-DXF. Enheten står som «fra fila»
+og bruker `$INSUNITS` når den er mm, cm eller m, ellers mm; meldingen sier
+hvilken som ble brukt. Velg mm/cm/m for å overstyre.
 
 - `LINE`, `LWPOLYLINE`/`POLYLINE` (med bulge), `CIRCLE` og `ARC` blir lukkede
-  konturer. Løse linjer og buer sys sammen ende mot ende (toleranse 1e-5 av
-  tegningens diagonal). Kjeder som ikke lukker seg, importeres ikke, men telles.
+  konturer. Løse linjer og buer sys sammen ende mot ende. Toleransen er
+  **lokal**: 1e-4 av den korteste av de to stiene som skal møtes, så en
+  tegningsramme eller nordpil langt unna ikke gjør den grov. Kjeder som ikke
+  lukker seg, importeres ikke, men telles.
+- Linjer og buer som er tegnet **to ganger** (samme eller motsatt retning), og
+  konturer som er tegnet to ganger (også samme sirkel som `CIRCLE` og som
+  bulge-polylinje), slås sammen og telles. To konturer som **nesten** faller
+  sammen (1e-4), gir advarsel, og den minste utelates — ellers ble den et
+  hårtynt hull.
 - En kontur inni en annen blir et **hull** — en egen form med `role:'void'`,
-  slik som et tegnet hull. En kontur inni et hull blir en ny, selvstendig form.
+  slik som et tegnet hull. En kontur inni et hull blir en ny, selvstendig form,
+  lagt **foran** hullet i lista, så 'sum', 'priority' og «Areal, fysisk» gir
+  samme areal. En lukket tegningsramme er også en kontur; slett den etterpå.
+- Ligger tegningen langt fra origo i forhold til sin størrelse (delte
+  koordinater, 6,6e9 mm), flyttes den til et lokalt origo før buene
+  diskretiseres, og forskyvningen står i meldingen.
 - Sirkler og buer diskretiseres **areallikt**: hjørnene ligger på en radius
   justert slik at mangekantens areal er lik sirkelens. Bueendepunktene ligger
   på den virkelige radien. Tegnede sirkler (`circlePoints`) er uendret og
   fortsatt innskrevne.
 - Alt annet (`SPLINE`, `ELLIPSE`, `INSERT`/blokker, tekst, mål, skravur, 3D,
-  papirrom) hoppes over **og telles i meldingen**. Ingen tekst fra fila
-  havner i siden som HTML.
+  papirrom) hoppes over **og telles i meldingen**, det samme gjør konturer uten
+  areal. Et tall som `1,5` avvises med linjenummer. Ingen tekst fra fila havner
+  i siden som HTML.
 - Importen er ett angresteg.
 
 **Tverrsnitt til fil / Kopier tverrsnitt** (under tyngdepunktet) gir ett ytre
@@ -84,10 +99,17 @@ polygon med hull, alltid i mm:
 
 Formatet er kontrakten med concrete_section_calculator (#83). `y` er
 workspacets x og `z` er workspacets y (begge har «opp» opp). Ringene er åpne,
-ytre mot klokka, hull med klokka. Geometrien er union av de faste formene minus
-hullene; er noen former markert, eksporteres bare de. Består resultatet av
-flere usammenhengende deler, eksporteres ingenting og det sies fra. Overlapp
-telles én gang og vektfaktorer er ikke med — begge deler meldes.
+ytre mot klokka, hull med klokka. Er noen former markert, eksporteres bare de
+(og alle hullene).
+
+Geometrien er den samme som «Areal, fysisk»: formene legges oppå hverandre
+nedenfra i geometrilista, og **et hull skjærer bare i det som ligger under
+det**. Ligger et hull under en fast form det overlapper, sies det fra. Består
+resultatet av flere usammenhengende deler (også en øy i et hull), eksporteres
+ingenting og det sies fra. Overlapp telles én gang og vektfaktorer er ikke med
+— begge deler meldes. Ligger tverrsnittet langt fra origo, flyttes det til et
+lokalt origo (formatet har vilkårlig origo). Eksporten nekter heller enn å
+skrive en ring som berører seg selv eller et hull uten areal.
 
 ## Plassere geometri
 
