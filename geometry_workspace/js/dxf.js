@@ -504,7 +504,10 @@ function samePath(a, b, t) {
  * kopien en løs ende som hindrer ringen i å lukke seg (#86, B3).
  *
  * @param {number} [tol] absolutt toleranse; uten den er den lokal (STITCH_REL)
- * @returns {{rings, open, branched, duplicates, dropped, zeroLength}}
+ * @returns {{rings, open, branched, duplicates, dropped, zeroLength, unused: number[]}}
+ *   `unused` er indeksene (i `paths`) til stiene som IKKE havnet i en lukket
+ *   ring — åpne kjeder, ringer uten areal og linjer uten lengde. «Lag
+ *   geometri» lar dem stå markert.
  */
 export function stitchPaths(paths, tol) {
   const fixed = Number.isFinite(tol) && tol > 0 ? tol : null;
@@ -514,25 +517,30 @@ export function stitchPaths(paths, tol) {
   let duplicates = 0;
   let dropped = 0;
   let zeroLength = 0;
+  const unused = [];
 
-  const pushRing = (pts) => {
+  const pushRing = (pts, srcs) => {
     const r = cleanRing(pts);
     if (r) rings.push(r);
-    else dropped++;
+    else {
+      dropped++;
+      unused.push(...srcs);
+    }
   };
 
   const loose = [];
-  for (const path of paths || []) {
+  (paths || []).forEach((path, src) => {
     const pts = path.points.map((p) => [p[0], p[1]]);
     const len = pathLength(pts);
     if (!(len > 0)) {
       zeroLength++;
-      continue;
+      unused.push(src);
+      return;
     }
     const t = fixed ?? STITCH_REL * len;
-    if (path.closed || (pts.length > 2 && dist(pts[0], pts[pts.length - 1]) <= t)) pushRing(pts);
-    else loose.push({ pts, len });
-  }
+    if (path.closed || (pts.length > 2 && dist(pts[0], pts[pts.length - 1]) <= t)) pushRing(pts, [src]);
+    else loose.push({ pts, len, src });
+  });
   const tolOf = (a, b) => fixed ?? STITCH_REL * Math.min(loose[a].len, loose[b].len);
   const cell = fixed ?? STITCH_REL * loose.reduce((m, l) => Math.max(m, l.len), 0);
 
@@ -564,6 +572,7 @@ export function stitchPaths(paths, tol) {
     const first = s;
     let last = s;
     let chain = loose[s].pts.slice();
+    const members = [loose[s].src];
     const isClosed = () => chain.length > 2 && dist(chain[0], chain[chain.length - 1]) <= tolOf(first, last);
     let closed = isClosed();
     for (let pass = 0; pass < 2 && !closed; pass++) {
@@ -586,6 +595,7 @@ export function stitchPaths(paths, tol) {
         if (hits.length) {
           const [k, rev] = hits[0];
           used.add(k);
+          members.push(loose[k].src);
           const seg = rev ? loose[k].pts.slice().reverse() : loose[k].pts;
           chain = chain.concat(seg.slice(1));
           last = k;
@@ -595,10 +605,13 @@ export function stitchPaths(paths, tol) {
       }
       if (!closed) chain.reverse();
     }
-    if (closed) pushRing(chain);
-    else open.push(chain);
+    if (closed) pushRing(chain, members);
+    else {
+      open.push(chain);
+      unused.push(...members);
+    }
   }
-  return { rings, open, branched, duplicates, dropped, zeroLength };
+  return { rings, open, branched, duplicates, dropped, zeroLength, unused: unused.sort((a, b) => a - b) };
 }
 
 /* ------------------------------------------------------------------ *
@@ -644,7 +657,7 @@ function ringStats(r) {
  *
  * @returns {{rings, same: number, near: number}}
  */
-export function dedupeRings(rings) {
+export function dedupeRings(rings, { near: allowNear = true } = {}) {
   const items = (rings || []).map((ring) => ({ ring, ...ringStats(ring), gone: false }));
   const order = items.map((_, i) => i).sort((a, b) => items[a].cx - items[b].cx);
   let same = 0;
@@ -662,7 +675,7 @@ export function dedupeRings(rings) {
       if (close(a.A, b.A, 1e-6) && dc <= 1e-6 * a.diag && inertia) {
         b.gone = true;
         same++;
-      } else if (close(a.A, b.A, 1e-4) && dc <= 1e-4 * a.diag && inertia) {
+      } else if (allowNear && close(a.A, b.A, 1e-4) && dc <= 1e-4 * a.diag && inertia) {
         (a.A >= b.A ? b : a).gone = true;
         near++;
         if (a.gone) break;
@@ -830,6 +843,87 @@ export function importDxf(text, { scale = 1, segments = DEFAULT_SEGMENTS, tol } 
     entityCount: parsed.entities.length,
     warnings: parsed.warnings,
   };
+}
+
+/**
+ * «Bare linjer» (#86): DXF-en som rå linjearbeid i stedet for ferdige former.
+ * Hver LINE, polylinje, bue og sirkel blir én sti (buer og sirkler areallikt
+ * diskretisert, som ellers), etter samme flytting til lokalt origo og samme
+ * fjerning av doble stier og doble lukkede konturer som i `importDxf`. Ingen
+ * søm og ingen nøsting — det gjør brukeren med «Lag geometri» / «Lag hull».
+ *
+ * @returns {{paths: Array<{points, closed}>, skipped, duplicates: {segments, rings},
+ *   zeroLength, offset, insunits, entityCount, warnings}}
+ */
+export function importDxfLines(text, { scale = 1, segments = DEFAULT_SEGMENTS } = {}) {
+  const parsed = parseDxf(text);
+  const offset = localOrigin(parsed.entities);
+  const ents = offset ? parsed.entities.map((e) => shiftEntity(e, offset)) : parsed.entities;
+  const all = entitiesToPaths(ents, { segments });
+  const k = typeof scale === 'function' ? scale(parsed.insunits) : scale;
+
+  let zeroLength = 0;
+  const open = [];
+  const closed = [];
+  for (const p of all) {
+    if (!(pathLength(p.points) > 0)) {
+      zeroLength++;
+      continue;
+    }
+    (p.closed ? closed : open).push(p);
+  }
+  // Doble åpne stier: samme punkt, samme eller motsatt retning
+  const maxLen = open.reduce((m, p) => Math.max(m, pathLength(p.points)), 0);
+  const grid = new PointGrid(STITCH_REL * maxLen);
+  const keptOpen = [];
+  let dupSegments = 0;
+  for (const p of open) {
+    const a = p.points;
+    const t = STITCH_REL * pathLength(a);
+    const cands = [...grid.near(a[0]), ...grid.near(a[a.length - 1])];
+    if (cands.some((q) => samePath(a, q.points, Math.min(t, STITCH_REL * pathLength(q.points))))) {
+      dupSegments++;
+      continue;
+    }
+    keptOpen.push(p);
+    grid.add(a[0], p);
+  }
+  // Doble lukkede konturer (bare de som er LIKE; nesten like får stå)
+  const ringIdx = new Map(closed.map((p, i) => [p.points, i]));
+  const dd = dedupeRings(closed.map((p) => p.points), { near: false });
+  const keptClosed = dd.rings.map((r) => closed[ringIdx.get(r)]);
+
+  const sc = (pts) => pts.map(([x, y]) => [x * k, y * k]);
+  return {
+    paths: [...keptOpen, ...keptClosed].map((p) => ({ points: sc(p.points), closed: !!p.closed })),
+    skipped: parsed.skipped,
+    duplicates: { segments: dupSegments, rings: dd.same },
+    zeroLength,
+    offset,
+    insunits: parsed.insunits,
+    entityCount: parsed.entities.length,
+    warnings: parsed.warnings,
+  };
+}
+
+/** Meldingen etter «Bare linjer». */
+export function describeLineImport(res) {
+  const parts = [`DXF: ${plural(res.paths.length, 'linje', 'linjer')} som linjearbeid.`];
+  const skipped = Object.entries(res.skipped || {});
+  if (skipped.length) {
+    const total = skipped.reduce((a, [, n]) => a + n, 0);
+    parts.push(`Hoppet over ${total} ikke støttede: ${skipped.map(([t, n]) => `${n} ${t}`).join(', ')}.`);
+  }
+  if (res.zeroLength) parts.push(`${plural(res.zeroLength, 'linje uten lengde', 'linjer uten lengde')} er ignorert.`);
+  const dup = res.duplicates || {};
+  if (dup.segments) parts.push(`${plural(dup.segments, 'dobbel linje eller bue', 'doble linjer eller buer')} slått sammen.`);
+  if (dup.rings) parts.push(`${plural(dup.rings, 'kontur tegnet to ganger', 'konturer tegnet to ganger')} slått sammen.`);
+  if (res.offset) {
+    parts.push(`Flyttet tegningen med (${fmtNum(-res.offset[0])}; ${fmtNum(-res.offset[1])}) i fila sine enheter til lokalt origo.`);
+  }
+  for (const w of res.warnings || []) parts.push(w);
+  parts.push('Marker linjene og velg «Lag geometri» eller «Lag hull».');
+  return parts.join(' ');
 }
 
 /** $INSUNITS-forvalg: 'auto' bruker fila sin enhet når den er mm/cm/m. */

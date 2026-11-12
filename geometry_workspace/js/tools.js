@@ -17,12 +17,17 @@ import {
 } from './geometry.js';
 import { applyOrtho, snapColor as engineSnapColor } from './snapping.js';
 import { JOINT_COLOR } from './store.js';
+import { pickLine, lineInBox, boxFromDrag } from './linework.js';
+
+/** Fargen former tegnes med i forhåndsvisningen når hull-modus er på. */
+export const VOID_PREVIEW_COLOR = '#fb7185';
 
 const TOOL_HINTS = {
   select: 'Velg: klikk for å markere, dra for å flytte. Dra et hjørnepunkt for å redigere. Alt+klikk på punkt sletter det, dobbeltklikk på en kant setter inn nytt.',
   rect: 'Rektangel: klikk første hjørne, deretter motstående hjørne. Esc avbryter.',
   shell: 'Skallelement: klikk start og slutt på senterlinja. Tykkelsen tas fra menyen.',
   polygon: 'Polygon: klikk hjørner. Enter eller dobbeltklikk avslutter, Esc avbryter.',
+  line: 'Linje: klikk punkter. Enter eller dobbeltklikk avslutter, klikk på startpunktet lukker, Esc avbryter. Linjene er linjearbeid — de teller ikke i arealet før du lager geometri av dem.',
   circle: 'Sirkel: klikk sentrum, deretter et punkt på omkretsen.',
   reference: 'Referansepunkt: klikk der nullpunktet skal ligge.',
   calibrate: 'Kalibrer: klikk to punkt i bildet du vet avstanden mellom, og skriv inn den virkelige lengden.',
@@ -60,6 +65,34 @@ export class ToolController {
      * kjører den fra menyen i stedet for å klikke senteret.
      */
     this.options = { copies: 1, keepOriginal: true, rotateCenter: 'pick' };
+    /**
+     * Hull-modus (#86): når den er på, lager rektangel, skall, sirkel og
+     * polygon former med `role:'void'`. En bryter verktøyene leser, ikke egne
+     * hullverktøy — den overlever verktøybytte og slås av med samme knapp.
+     */
+    this.voidMode = false;
+    this.onVoidMode = opts.onVoidMode || (() => {});
+  }
+
+  setVoidMode(on) {
+    this.voidMode = !!on;
+    this.onVoidMode(this.voidMode);
+    this.onStatus(
+      this.voidMode
+        ? 'Hull-modus PÅ: rektangel, skall, sirkel og polygon tegnes som hull (H slår av).'
+        : 'Hull-modus av: formene tegnes som fast areal.'
+    );
+  }
+
+  /** Navn og rolle for en ny form, etter hull-modus. */
+  _shapeOpts(name, extra = {}) {
+    return this.voidMode
+      ? { ...extra, name: `Hull (${name.toLowerCase()})`, role: 'void' }
+      : { ...extra, name, role: 'solid' };
+  }
+
+  get _previewColor() {
+    return this.voidMode ? VOID_PREVIEW_COLOR : undefined;
   }
 
   setTool(name) {
@@ -200,6 +233,13 @@ export class ToolController {
       }
     }
     return best;
+  }
+
+  /** Nærmeste synlige linje i linjearbeidet innenfor pikseltoleranse (#86). */
+  hitLine(world, tolPx = 8) {
+    const st = this.store.state;
+    if (st.linesVisible === false) return null;
+    return pickLine(world, st.lines || [], tolPx * this.viewport.unitsPerPixel);
   }
 
   /** Nærmeste kant i markerte former (for innsetting av punkt). */
@@ -409,6 +449,21 @@ export class ToolController {
         }
         return;
 
+      case 'line':
+        if (!this.draft) {
+          this.draft = { points: [p] };
+        } else {
+          const first = this.draft.points[0];
+          const closeTol = 10 * this.viewport.unitsPerPixel;
+          if (this.draft.points.length >= 3 && Math.hypot(p[0] - first[0], p[1] - first[1]) < closeTol) {
+            this._finishLine(true);
+          } else {
+            this.draft.points.push(p);
+          }
+        }
+        if (this.draft) this.onStatus(`Linje: ${this.draft.points.length} punkt. Enter eller dobbeltklikk avslutter.`);
+        return;
+
       case 'polygon':
         if (!this.draft) {
           this.draft = { points: [p] };
@@ -470,6 +525,30 @@ export class ToolController {
       };
       this.onJointPicked?.(jointHit.id);
       this.onStatus(`${jointHit.name}: dra for å flytte, dra et endepunkt for å endre linja, Del for å slette.`);
+      return;
+    }
+
+    // Ctrl-dra tegner alltid en ramme, også fra inni en form (#86): det er slik
+    // man crossing-velger kanalene i et hulldekke uten å ta tak i dekket.
+    if (e.ctrl) {
+      if (!e.shift) this.store.select([]);
+      this.drag = { kind: 'marquee', start: e.world, current: e.world };
+      return;
+    }
+
+    // Linjearbeid (#86) ligger også oppå formene og er tynt — det vinner over
+    // formen under, som skjøtene.
+    const lineHit = this.hitLine(e.world);
+    if (lineHit) {
+      if (e.shift) this.store.toggleSelect(lineHit.id);
+      else if (!this.store.state.selection.includes(lineHit.id)) this.store.select([lineHit.id]);
+      this.drag = {
+        kind: 'move',
+        start: snapped.point,
+        raw: e.world,
+        origin: this._selectionGeometry() || [],
+      };
+      this.onStatus('Linje: dra for å flytte, shift-klikk for å legge til eller fjerne, Del for å slette.');
       return;
     }
 
@@ -556,23 +635,30 @@ export class ToolController {
       } else if (this.drag.kind === 'marquee') {
         this.drag.current = e.world;
         const [a, b] = [this.drag.start, this.drag.current];
-        this.viewport.setPreview({ points: rectFromCorners(a, b), closed: true, color: '#94a3b8' });
+        // Høyre→venstre er crossing (grønn): alt som berøres. Venstre→høyre er
+        // vindu (blå): bare det som ligger helt inne.
+        const crossing = b[0] < a[0];
+        this.viewport.setPreview({ points: rectFromCorners(a, b), closed: true, color: crossing ? '#4ade80' : '#60a5fa' });
+        this.onStatus(crossing ? 'Crossing: velger alt rammen berører.' : 'Vindu: velger det som ligger helt inne i rammen.');
       }
       return;
     }
 
     // Forhåndsvisning under tegning
     if (this.draft) {
+      const color = this._previewColor;
       if (this.tool === 'rect') {
-        this.viewport.setPreview({ points: rectFromCorners(this.draft.start, p), closed: true, cursor: p });
+        this.viewport.setPreview({ points: rectFromCorners(this.draft.start, p), closed: true, cursor: p, color });
       } else if (this.tool === 'shell') {
         const pts = shellPoints(this.draft.start, p, Math.abs(this.getThickness()) || 1);
-        this.viewport.setPreview(pts ? { points: pts, closed: true, cursor: p } : { points: [this.draft.start, p], cursor: p });
+        this.viewport.setPreview(pts ? { points: pts, closed: true, cursor: p, color } : { points: [this.draft.start, p], cursor: p, color });
       } else if (this.tool === 'circle') {
         const r = Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]);
-        this.viewport.setPreview({ points: circlePoints(this.draft.start[0], this.draft.start[1], r), closed: true, cursor: p });
+        this.viewport.setPreview({ points: circlePoints(this.draft.start[0], this.draft.start[1], r), closed: true, cursor: p, color });
       } else if (this.tool === 'polygon') {
-        this.viewport.setPreview({ points: [...this.draft.points, p], closed: this.draft.points.length >= 2, cursor: p });
+        this.viewport.setPreview({ points: [...this.draft.points, p], closed: this.draft.points.length >= 2, cursor: p, color });
+      } else if (this.tool === 'line') {
+        this.viewport.setPreview({ points: [...this.draft.points, p], closed: false, cursor: p, color: '#e2e8f0' });
       } else if (this.tool === 'calibrate') {
         this.viewport.setPreview({ points: [this.draft.start, p], color: '#f59e0b', cursor: p });
         this.onStatus(`Kalibrer: målt lengde ${fmt(Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]))}`);
@@ -907,13 +993,20 @@ export class ToolController {
       const maxY = Math.max(a[1], b[1]);
       const within = ([x, y]) => x >= minX && x <= maxX && y >= minY && y <= maxY;
       const inside = this.store.state.shapes.filter((s) => s.points.every(within)).map((s) => s.id);
+      // Linjearbeid (#86): vindu (venstre→høyre) tar det som ligger helt inne,
+      // crossing (høyre→venstre) alt rammen berører. Formene og skjøtene
+      // følger vindusregelen i begge retninger.
+      const box = boxFromDrag(a, b);
+      const insideLines = this.store.state.linesVisible === false
+        ? []
+        : (this.store.state.lines || []).filter((l) => lineInBox(l, box, box.crossing)).map((l) => l.id);
       // Skjøter tas med når BEGGE endepunkt ligger inne i vinduet (§1) —
       // samme regel som for en form, der alle hjørnene må være innenfor.
       const insideJoints = this.store.state.joints
         .filter((j) => j.a && j.b && within(j.a) && within(j.b))
         .map((j) => j.id);
       if (Math.abs(maxX - minX) > 1e-9 || Math.abs(maxY - minY) > 1e-9) {
-        this.store.select([...inside, ...insideJoints], e.shift);
+        this.store.select([...inside, ...insideJoints, ...insideLines], e.shift);
       }
       this.viewport.setPreview(null);
     } else {
@@ -926,6 +1019,10 @@ export class ToolController {
   dblclick(e) {
     if (this.tool === 'polygon' && this.draft) {
       this._finishPolygon();
+      return;
+    }
+    if (this.tool === 'line' && this.draft) {
+      this._finishLine(false);
       return;
     }
     if (this.tool === 'select') {
@@ -947,6 +1044,10 @@ export class ToolController {
       this._finishPolygon();
       return true;
     }
+    if (e.key === 'Enter' && this.tool === 'line' && this.draft) {
+      this._finishLine(false);
+      return true;
+    }
     return false;
   }
 
@@ -958,7 +1059,7 @@ export class ToolController {
         this.onStatus('Rektangelet har null utstrekning — avbrutt.');
         return;
       }
-      this.store.addShape(rectFromCorners(a, b), { name: 'Rektangel' });
+      this.store.addShape(rectFromCorners(a, b), this._shapeOpts('Rektangel'));
     } else if (this.tool === 'shell') {
       const t = Math.abs(this.getThickness());
       const pts = shellPoints(a, b, t);
@@ -966,14 +1067,11 @@ export class ToolController {
         this.onStatus('Senterlinja har null lengde — avbrutt.');
         return;
       }
-      this.store.addShape(pts, {
-        name: 'Skall',
-        meta: { kind: 'shell', p1: a, p2: b, t },
-      });
+      this.store.addShape(pts, this._shapeOpts('Skall', { meta: { kind: 'shell', p1: a, p2: b, t } }));
     } else if (this.tool === 'circle') {
       const r = Math.hypot(b[0] - a[0], b[1] - a[1]);
       if (r < 1e-9) return;
-      this.store.addShape(circlePoints(a[0], a[1], r), { name: 'Sirkel', meta: { kind: 'circle', c: a, r } });
+      this.store.addShape(circlePoints(a[0], a[1], r), this._shapeOpts('Sirkel', { meta: { kind: 'circle', c: a, r } }));
     }
     this.onStatus(TOOL_HINTS[this.tool]);
   }
@@ -1023,7 +1121,22 @@ export class ToolController {
       this.onStatus('Polygonet trenger minst tre punkt — avbrutt.');
       return;
     }
-    this.store.addShape(pts, { name: 'Polygon' });
+    this.store.addShape(pts, this._shapeOpts('Polygon'));
+    this.onStatus(TOOL_HINTS[this.tool]);
+  }
+
+  /** Fullfører en linje fra linjeverktøyet: én polylinje i linjearbeidet. */
+  _finishLine(closed) {
+    const raw = this.draft ? this.draft.points : [];
+    this.draft = null;
+    this.viewport.setPreview(null);
+    // Dobbeltklikk gir to like punkt til slutt
+    const pts = raw.filter((q, i) => i === 0 || Math.hypot(q[0] - raw[i - 1][0], q[1] - raw[i - 1][1]) > 1e-12);
+    if (pts.length < 2) {
+      this.onStatus('Linja trenger minst to punkt — avbrutt.');
+      return;
+    }
+    this.store.addLines([{ points: pts, closed: closed && pts.length >= 3 }], { reason: 'draw-line', select: false });
     this.onStatus(TOOL_HINTS[this.tool]);
   }
 }
