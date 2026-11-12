@@ -1,8 +1,14 @@
 /**
- * tools.js — interaksjonsverktøy for lerretet.
+ * tools.js — interaksjonsverktøy for lerretet (cad2d, input-laget).
  *
  * Kontrolleren tar imot pekerhendelser fra Viewport i verdenskoordinater,
- * og gjør CRUD mot Store. Den eier ingen DOM.
+ * og gjør CRUD mot dokumentet (`CadDocument`). Den eier ingen DOM.
+ *
+ * Flyttet fra geometry_workspace (#93). Utvidelsespunkt:
+ *  - `registerTool(name, def)`: et eget verktøy (GW: «Skjøt»). `twoPointTool`
+ *    lager det vanlige «klikk to punkt»-verktøyet.
+ *  - `registerPicker(def)`: tynne entiteter som skal vinne over formene ved
+ *    klikk og hover (GW: skjøtelinjene), med egen statustekst.
  */
 
 import {
@@ -14,10 +20,9 @@ import {
   translatePoints,
   rotatePoints,
   mirrorPointsAboutLine,
-} from '../../cad2d/js/geometry/polygon.js';
-import { applyOrtho, snapColor as engineSnapColor } from '../../cad2d/js/input/snapping.js';
-import { JOINT_COLOR } from './store.js';
-import { pickLine, lineInBox, boxFromDrag } from '../../cad2d/js/geometry/linework.js';
+} from '../geometry/polygon.js';
+import { applyOrtho, findSnap, snapColor as engineSnapColor } from './snapping.js';
+import { pickLine, lineInBox, boxFromDrag } from '../geometry/linework.js';
 
 /** Fargen former tegnes med i forhåndsvisningen når hull-modus er på. */
 export const VOID_PREVIEW_COLOR = '#fb7185';
@@ -35,7 +40,6 @@ const TOOL_HINTS = {
   copy: 'Kopi: klikk basispunkt, deretter der kopien skal ligge. Verktøyet blir stående, så du kan sette flere. Esc avslutter.',
   rotate: 'Roter: klikk rotasjonssenter, så et referansepunkt, og til slutt der det skal ende. Shift låser til 15°. Esc avbryter.',
   mirror: 'Speil: klikk to punkt som definerer speilaksen. Esc avbryter.',
-  joint: 'Skjøt: klikk to punkt langs skjøtelinja. Navnes automatisk etter delene den skiller. Esc avbryter.',
   splitline: 'Del med linje: klikk to punkt for snittlinja. Hver MARKERTE form linja krysser deles i to (eller flere) langs den — former linja ikke krysser står urørt. Rent redigeringsverktøy, ikke en forutsetning for beregningen. Esc avbryter.',
 };
 
@@ -47,6 +51,38 @@ const TRANSFORM_VERB = { move: 'flytte', copy: 'kopiere', rotate: 'rotere', mirr
 
 /** Trinnet Shift låser rotasjonsvinkelen til. */
 const ANGLE_STEP_DEG = 15;
+
+/** De innebygde verktøyene (navn → hjelpetekst). */
+export const BUILTIN_TOOLS = Object.freeze(Object.keys(TOOL_HINTS));
+
+/**
+ * Et verktøy som tar to klikk (som «Skjøt»): forhåndsvisning som en strek fra
+ * første punkt til markøren, og `finish(a, b, ctl)` på andre klikk.
+ *
+ * @param {{hint: string, second?: string, color?: string, status?: (len: number) => string,
+ *          finish: (a, b, ctl) => void}} def
+ */
+export function twoPointTool(def) {
+  return {
+    hint: def.hint,
+    point(ctl, p) {
+      if (!ctl.draft) {
+        ctl.draft = { start: p };
+        if (def.second) ctl.onStatus(def.second);
+        return;
+      }
+      const a = ctl.draft.start;
+      ctl.draft = null;
+      ctl.viewport.setPreview(null);
+      def.finish(a, p, ctl);
+    },
+    preview(ctl, p) {
+      if (!ctl.draft) return;
+      ctl.viewport.setPreview({ points: [ctl.draft.start, p], color: def.color || '#f8fafc', cursor: p });
+      if (def.status) ctl.onStatus(def.status(Math.hypot(p[0] - ctl.draft.start[0], p[1] - ctl.draft.start[1])));
+    },
+  };
+}
 
 export class ToolController {
   constructor(store, viewport, opts = {}) {
@@ -72,6 +108,36 @@ export class ToolController {
      */
     this.voidMode = false;
     this.onVoidMode = opts.onVoidMode || (() => {});
+    /** Registrerte verktøy (navn → def), se `registerTool`. */
+    this._tools = new Map();
+    /** Registrerte treff som vinner over formene, se `registerPicker`. */
+    this._pickers = [];
+  }
+
+  /**
+   * Legger til et verktøy. `def.point(ctl, p, e)` får hvert (snappede) punkt,
+   * `def.preview(ctl, p, e)` markørposisjonen mellom klikkene.
+   */
+  registerTool(name, def) {
+    this._tools.set(name, def);
+    return this;
+  }
+
+  /** Er `name` et verktøy (innebygd eller registrert)? */
+  hasTool(name) {
+    return !!TOOL_HINTS[name] || this._tools.has(name);
+  }
+
+  /**
+   * Legger til et treff for tynne entiteter som skal vinne over formene
+   * (skjøtene i GW). Prøves i rekkefølgen de er registrert, før linjearbeidet.
+   *
+   * @param {{kind: string, hit: (world, tolPx) => object|null, status?: (obj) => string,
+   *          onPick?: (id) => void, onHover?: (id|null) => void}} def
+   */
+  registerPicker(def) {
+    this._pickers.push(def);
+    return this;
   }
 
   setVoidMode(on) {
@@ -96,15 +162,15 @@ export class ToolController {
   }
 
   setTool(name) {
-    if (!TOOL_HINTS[name]) return;
+    if (!this.hasTool(name)) return;
     this.cancel();
     this.tool = name;
     this.onToolChange(name);
-    this.onStatus(TOOL_HINTS[name]);
+    this.onStatus(this.hint());
   }
 
   hint() {
-    return TOOL_HINTS[this.tool];
+    return TOOL_HINTS[this.tool] || (this._tools.get(this.tool) || {}).hint || '';
   }
 
   cancel() {
@@ -114,7 +180,7 @@ export class ToolController {
     this.draft = null;
     this.drag = null;
     this.viewport.setPreview(null);
-    this.onStatus(TOOL_HINTS[this.tool]);
+    this.onStatus(this.hint());
   }
 
   /* ---------------- hjelpere ---------------- */
@@ -129,9 +195,15 @@ export class ToolController {
     let target = world;
     if (ortho && from) target = applyOrtho(world, from);
 
-    const hit = this.viewport.snap(target, {
-      snaps: st.snaps,
+    // En visning kan levere sin egen snapping (testriggene gjør det); ellers
+    // snappes det her mot det visningen sier kan snappes mot.
+    const hit = typeof this.viewport.snap === 'function'
+      ? this.viewport.snap(target, { snaps: st.snaps, gridStep: st.grid.step, exclude })
+      : findSnap(target, {
+      shapes: this.viewport.snapTargets(),
+      snaps: st.snaps || {},
       gridStep: st.grid.step,
+      tol: 12 * this.viewport.unitsPerPixel,
       exclude,
     });
 
@@ -178,18 +250,18 @@ export class ToolController {
   }
 
   /**
-   * Nærmeste håndtak i det markerte utvalget innenfor pikseltoleranse — både
-   * formenes hjørnepunkt og skjøtenes to endepunkt (§1: «endepunktene til en
-   * markert skjøt skal kunne dras, som formenes hjørnepunkt»).
+   * Nærmeste håndtak i det markerte utvalget innenfor pikseltoleranse —
+   * formenes hjørnepunkt, og punktene til andre entitetstyper (GW: skjøtenes
+   * to endepunkt).
    *
-   * @returns {{id: string, kind: 'shape'|'joint', points: Array, index: number}|null}
+   * @returns {{id: string, kind: string, points: Array, index: number}|null}
    */
   hitVertex(world, tolPx = 10) {
     const tol = tolPx * this.viewport.unitsPerPixel;
     let best = null;
     let bestD = tol;
     for (const { kind, obj } of this.store.selectedEntities()) {
-      const pts = kind === 'joint' ? [obj.a, obj.b] : openRing(obj.points);
+      const pts = this._entityPointsOf(kind, obj, true);
       for (let i = 0; i < pts.length; i++) {
         const d = Math.hypot(pts[i][0] - world[0], pts[i][1] - world[1]);
         if (d < bestD) {
@@ -201,38 +273,20 @@ export class ToolController {
     return best;
   }
 
-  /**
-   * Nærmeste skjøt innenfor pikseltoleranse — brukes til hover i «select»
-   * (§6.2: hover i lerretet skal kunne fremheve raden i skjøtelista, og
-   * omvendt; se `viewport.setHoverJoint` for den andre veien).
-   */
-  hitJoint(world, tolPx = 8, includeAuto = false) {
-    const tol = tolPx * this.viewport.unitsPerPixel;
-    let best = null;
-    let bestD = tol;
-    // Automatiske skjøter (#61) følger geometrien og kan ikke dras; de tas
-    // bare med der et klikk bare VELGER (Forsterkning-fanen, låst lerret).
-    for (const j of includeAuto ? this.store.allJoints() : this.store.state.joints) {
-      if (!j.a || !j.b) continue;
-      const [x1, y1] = j.a;
-      const [x2, y2] = j.b;
-      const vx = x2 - x1;
-      const vy = y2 - y1;
-      const len2 = vx * vx + vy * vy;
-      let d;
-      if (len2 < 1e-12) {
-        d = Math.hypot(world[0] - x1, world[1] - y1);
-      } else {
-        let t = ((world[0] - x1) * vx + (world[1] - y1) * vy) / len2;
-        t = Math.max(0, Math.min(1, t));
-        d = Math.hypot(world[0] - (x1 + vx * t), world[1] - (y1 + vy * t));
-      }
-      if (d < bestD) {
-        bestD = d;
-        best = j;
-      }
+  /** Punktene til en entitet; `open` gir former og linjer uten lukkepunkt. */
+  _entityPointsOf(kind, obj, open = false) {
+    if (kind === 'shape' || kind === 'line') return open ? openRing(obj.points) : obj.points;
+    const def = this.store.kindDef ? this.store.kindDef(kind) : null;
+    return def ? def.toPoints(obj) : obj.points || [];
+  }
+
+  /** Første registrerte treff under punktet: `{picker, obj}` eller null. */
+  hitPicker(world) {
+    for (const picker of this._pickers) {
+      const obj = picker.hit(world, 8);
+      if (obj) return { picker, obj };
     }
-    return best;
+    return null;
   }
 
   /** Nærmeste synlige linje i linjearbeidet innenfor pikseltoleranse (#86). */
@@ -345,7 +399,7 @@ export class ToolController {
       }
       if (this.tool === 'move') return this.moveSelection(v.x, v.y);
       if (this.tool === 'copy') {
-        const ids = this.store.withFollowingJoints(this.store.state.selection);
+        const ids = this.store.withFollowing(this.store.state.selection);
         if (!ids.length) return { ok: false, msg: 'Ingenting er markert.' };
         if (!v.x && !v.y) return { ok: false, msg: 'Δx og Δy er begge null — kopien ville havnet oppå originalen.' };
         const n = Math.max(1, Math.round(this.options.copies || 1));
@@ -388,6 +442,11 @@ export class ToolController {
       return;
     }
 
+    if (this._tools.has(this.tool)) {
+      this._tools.get(this.tool).point(this, p, e);
+      return;
+    }
+
     switch (this.tool) {
       case 'reference':
         this.store.setReference(p);
@@ -418,19 +477,6 @@ export class ToolController {
           this.draft = { start: p };
         } else {
           this._finishTwoPoint(this.draft.start, p);
-          this.draft = null;
-          this.viewport.setPreview(null);
-        }
-        return;
-
-      case 'joint':
-        // To klikk, som rektangelet — men resultatet er en linje i lista over
-        // skjøter, ikke en form i geometrien.
-        if (!this.draft) {
-          this.draft = { start: p };
-          this.onStatus('Skjøt: klikk det andre punktet. Snapping og orto virker som ellers.');
-        } else {
-          this._finishJoint(this.draft.start, p);
           this.draft = null;
           this.viewport.setPreview(null);
         }
@@ -488,8 +534,9 @@ export class ToolController {
     const vertex = this.hitVertex(e.world);
     if (vertex) {
       if (e.alt) {
-        if (vertex.kind === 'joint') {
-          this.onStatus('En skjøt har bare to endepunkt — de kan ikke fjernes. Slett hele skjøten med Del.');
+        if (vertex.kind !== 'shape') {
+          const picker = this._pickers.find((k) => k.kind === vertex.kind);
+          this.onStatus((picker && picker.vertexDeleteMessage) || 'Bare hjørnene i en form kan slettes med Alt+klikk.');
           return;
         }
         const ring = openRing(this.store.getShape(vertex.id).points);
@@ -511,20 +558,21 @@ export class ToolController {
       return;
     }
 
-    // Skjøter prioriteres FORAN former ved treff (§1): linja er tynn, og
-    // ville ellers alltid tapt mot formen den ligger oppå.
-    const jointHit = this.hitJoint(e.world);
-    if (jointHit) {
-      if (e.shift) this.store.toggleSelect(jointHit.id);
-      else if (!this.store.state.selection.includes(jointHit.id)) this.store.select([jointHit.id]);
+    // Registrerte treff (GW: skjøter) prioriteres FORAN former: linja er
+    // tynn, og ville ellers alltid tapt mot formen den ligger oppå.
+    const picked = this.hitPicker(e.world);
+    if (picked) {
+      const { picker, obj } = picked;
+      if (e.shift) this.store.toggleSelect(obj.id);
+      else if (!this.store.state.selection.includes(obj.id)) this.store.select([obj.id]);
       this.drag = {
         kind: 'move',
         start: snapped.point,
         raw: e.world,
         origin: this._selectionGeometry() || [],
       };
-      this.onJointPicked?.(jointHit.id);
-      this.onStatus(`${jointHit.name}: dra for å flytte, dra et endepunkt for å endre linja, Del for å slette.`);
+      picker.onPick?.(obj.id);
+      if (picker.status) this.onStatus(picker.status(obj));
       return;
     }
 
@@ -627,11 +675,8 @@ export class ToolController {
         const pts = this.drag.origin.map((q) => [q[0], q[1]]);
         pts[this.drag.index] = p;
         this.store.setManyEntityPoints([{ id: this.drag.entityId, points: pts }], { transient: true, reason: 'drag' });
-        this.onStatus(
-          this.drag.entityKind === 'joint'
-            ? `Skjøteende: x = ${fmt(p[0])}, y = ${fmt(p[1])}`
-            : `Hjørne: x = ${fmt(p[0])}, y = ${fmt(p[1])}`
-        );
+        const vtx = (this._pickers.find((k) => k.kind === this.drag.entityKind) || {}).vertexLabel || 'Hjørne';
+        this.onStatus(`${vtx}: x = ${fmt(p[0])}, y = ${fmt(p[1])}`);
       } else if (this.drag.kind === 'marquee') {
         this.drag.current = e.world;
         const [a, b] = [this.drag.start, this.drag.current];
@@ -662,10 +707,8 @@ export class ToolController {
       } else if (this.tool === 'calibrate') {
         this.viewport.setPreview({ points: [this.draft.start, p], color: '#f59e0b', cursor: p });
         this.onStatus(`Kalibrer: målt lengde ${fmt(Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]))}`);
-      } else if (this.tool === 'joint') {
-        this.viewport.setPreview({ points: [this.draft.start, p], color: JOINT_COLOR, cursor: p });
-        const d = Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]);
-        this.onStatus(`Skjøt: heftbredde ${fmt(d)} (linjas lengde, med mindre en annen er satt). Klikk for å fullføre.`);
+      } else if (this._tools.has(this.tool)) {
+        this._tools.get(this.tool).preview?.(this, p, e);
       } else if (this.tool === 'splitline') {
         this.viewport.setPreview({ points: [this.draft.start, p], color: '#f8fafc', cursor: p });
         const d = Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]);
@@ -676,14 +719,15 @@ export class ToolController {
       if (this.tool === 'select') {
         const hit = this.hitShape(e.world);
         this.viewport.setHover(hit ? hit.id : null);
-        // Skjøtene ligger typisk OPPÅ formene, så vi sjekker dem uansett —
-        // en linje er en smalere målskive enn en form og skal ikke tape mot
-        // den (§6.2: hover i lerretet skal kunne fremheve skjøtelista).
-        const jointHit = this.hitJoint(e.world);
-        const jointId = jointHit ? jointHit.id : null;
-        if (this.viewport.hoverJoint !== jointId) {
-          this.viewport.setHoverJoint(jointId);
-          this.onJointHover?.(jointId);
+        // Registrerte treff (GW: skjøtene) ligger typisk OPPÅ formene, så vi
+        // sjekker dem uansett — en linje er en smalere målskive enn en form.
+        for (const picker of this._pickers) {
+          const obj = picker.hit(e.world, 8);
+          const id = obj ? obj.id : null;
+          if (this.viewport.hoverOf(picker.kind) !== id) {
+            this.viewport.setHoverOf(picker.kind, id);
+            picker.onHover?.(id);
+          }
         }
       }
     }
@@ -705,16 +749,14 @@ export class ToolController {
     // Skjøter som ligger helt inne i det som flyttes tas med selv om de ikke
     // er markert — regelen og begrunnelsen står i `Store.jointsFollowing`.
     const list = this.store
-      .withFollowingJoints(sel)
+      .withFollowing(sel)
       .map((id) => this.store.entityById(id))
       // Automatiske skjøter (#61) følger geometrien — de flyttes aldri selv.
       .filter((e) => e && !e.auto)
       .map(({ kind, obj }) => ({
         id: obj.id,
         kind,
-        points: kind === 'joint'
-          ? [[obj.a[0], obj.a[1]], [obj.b[0], obj.b[1]]]
-          : obj.points.map((q) => [q[0], q[1]]),
+        points: this._entityPointsOf(kind, obj).map((q) => [q[0], q[1]]),
       }));
     return list.length ? list : null;
   }
@@ -726,9 +768,9 @@ export class ToolController {
   _followNote(origin) {
     if (!origin) return '';
     const sel = new Set(this.store.state.selection);
-    const n = origin.filter((o) => o.kind === 'joint' && !sel.has(o.id)).length;
+    const n = origin.filter((o) => !sel.has(o.id)).length;
     if (!n) return '';
-    return ` (${n} skjøt${n === 1 ? '' : 'er'} følger med)`;
+    return ` (${n} ${this.store.followedNoun(n)} følger med)`;
   }
 
   /** Ider til entitetene kommandoen virker på. */
@@ -933,13 +975,13 @@ export class ToolController {
     // Samme regel som når man drar med musa: skjøtene som ligger inne i det
     // som flyttes blir med, ellers ville tallinntastingen vært en bakvei rundt
     // §1 og geometrien og skjøtene ville glidd fra hverandre.
-    const ids = this.store.withFollowingJoints(sel);
+    const ids = this.store.withFollowing(sel);
     this.store.moveEntities(ids, dx, dy, { reason: 'move' });
     const extra = ids.length - sel.length;
     return {
       ok: true,
       msg: `Flyttet ${sel.length} objekt(er): Δx = ${fmt(dx)}, Δy = ${fmt(dy)}.${
-        extra ? ` ${extra} skjøt${extra === 1 ? '' : 'er'} fulgte med.` : ''
+        extra ? ` ${extra} ${this.store.followedNoun(extra)} fulgte med.` : ''
       }`,
     };
   }
@@ -1000,20 +1042,25 @@ export class ToolController {
       const insideLines = this.store.state.linesVisible === false
         ? []
         : (this.store.state.lines || []).filter((l) => lineInBox(l, box, box.crossing)).map((l) => l.id);
-      // Skjøter tas med når BEGGE endepunkt ligger inne i vinduet (§1) —
-      // samme regel som for en form, der alle hjørnene må være innenfor.
-      const insideJoints = this.store.state.joints
-        .filter((j) => j.a && j.b && within(j.a) && within(j.b))
-        .map((j) => j.id);
+      // Andre entitetstyper (GW: skjøter) tas med når ALLE punktene ligger
+      // inne i vinduet — samme regel som for en form.
+      const insideOther = [];
+      for (const k of this.store.kinds ? this.store._kindList() : []) {
+        if (k.name === 'shape' || k.name === 'line') continue;
+        for (const o of this.store.state[k.collection] || []) {
+          const pts = k.toPoints(o);
+          if (pts.length && pts.every((q) => q && within(q))) insideOther.push(o.id);
+        }
+      }
       if (Math.abs(maxX - minX) > 1e-9 || Math.abs(maxY - minY) > 1e-9) {
-        this.store.select([...inside, ...insideJoints, ...insideLines], e.shift);
+        this.store.select([...inside, ...insideOther, ...insideLines], e.shift);
       }
       this.viewport.setPreview(null);
     } else {
       this.store.commit(this.drag.kind === 'underlay' ? 'underlay' : 'drag');
     }
     this.drag = null;
-    this.onStatus(TOOL_HINTS[this.tool]);
+    this.onStatus(this.hint());
   }
 
   dblclick(e) {
@@ -1074,21 +1121,6 @@ export class ToolController {
       this.store.addShape(circlePoints(a[0], a[1], r), this._shapeOpts('Sirkel', { meta: { kind: 'circle', c: a, r } }));
     }
     this.onStatus(TOOL_HINTS[this.tool]);
-  }
-
-  /**
-   * Fullfører skjøten. Ingen side å gjette lenger (§8.1 i planen — gruppa
-   * utledes av halvplanet/grafen, ikke lagret som et brukervalg): navnet
-   * autogenereres av `store.addJoint` fra delene linja skiller
-   * (`sidesOfJoint`), og status bare bekrefter hva den ble kalt.
-   */
-  _finishJoint(a, b) {
-    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-9) {
-      this.onStatus('Skjøtelinja har null lengde — avbrutt.');
-      return;
-    }
-    const j = this.store.addJoint(a, b);
-    this.onStatus(`${j.name} lagt inn.`);
   }
 
   /**

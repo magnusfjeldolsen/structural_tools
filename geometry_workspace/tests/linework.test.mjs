@@ -25,7 +25,7 @@ const { exportSection, sectionProps } = await import(url('../../cad2d/js/io/sect
 const { importDxf, importDxfLines, shapeList, describeLineImport } = await import(url('../../cad2d/js/io/dxf.js'));
 const { lineInBox, boxFromDrag, pickLine, contoursFromLines } = await import(url('../../cad2d/js/geometry/linework.js'));
 const { Store } = await import(url('../js/store.js'));
-const { ToolController } = await import(url('../js/tools.js'));
+const { ToolController } = await import(url('../../cad2d/js/input/tools.js'));
 
 let failed = 0;
 let passed = 0;
@@ -161,7 +161,7 @@ console.log('Enhetsbytte og flytting tar med linjene');
 /* ---------------- verktøy: hull-modus og linjeverktøy ---------------- */
 
 function fakeViewport() {
-  return { unitsPerPixel: 1, setPreview() {}, setHover() {}, setHoverJoint() {}, snap: (p) => ({ point: p, type: 'free' }) };
+  return { unitsPerPixel: 1, setPreview() {}, setHover() {}, setHoverOf() {}, hoverOf: () => null, snap: (p) => ({ point: p, type: 'free' }) };
 }
 
 console.log('Hull-modus i tegneverktøyene');

@@ -1,17 +1,23 @@
 /**
- * main.js — kobler sammen store, viewport, verktøy og UI.
+ * main.js — monterer cad2d-editoren og legger geometry_workspace sitt domene
+ * oppå: skjøtene (joint-extension.js), panelene (ui.js), bildeunderlaget og
+ * rapporten.
+ *
+ * Lerretet, verktøyene, tallinntastingen og tastaturkartet er cad2d sine
+ * (#93). `keyboard: 'page'`: GW er én editor i hele vinduet, og hurtigtastene
+ * skal virke uansett hvor fokus står — som før.
  */
 
 import { analyze, hasClipper } from '../../cad2d/js/geometry/polygon.js';
 import * as shapes from '../../cad2d/js/geometry/params.js';
-import { store } from './store.js';
-import { Viewport } from './viewport.js';
-import { ToolController } from './tools.js';
-import { UI, fmtLen } from './ui.js';
-import { UnderlayManager, defaultPlacement } from './underlay.js';
-import { NumericInput } from '../../cad2d/js/input/numeric-input.js';
 import { snapLabel } from '../../cad2d/js/input/snapping.js';
 import { lengthLabel } from '../../cad2d/js/core/units.js';
+import { mountCadEditor } from '../../cad2d/js/editor/editor.js';
+import { store } from './store.js';
+import { installJoints } from './joint-extension.js';
+import { shapeFill, contourStyle } from './shape-style.js';
+import { UI, fmtLen } from './ui.js';
+import { UnderlayManager, defaultPlacement } from './underlay.js';
 import { buildFigureSvg } from './report-figure.js';
 import { buildReportHtml, stageReportForPrint, clearPrintStage, audit } from './report.js';
 
@@ -20,44 +26,98 @@ const host = document.getElementById('canvas-host');
 /**
  * I «Forsterkning» er lerretet låst: et klikk velger en skjøt (eller tømmer
  * utvalget), og ingenting kan dras, tegnes eller redigeres. Panorering og
- * zoom ligger i viewport.js og virker som før.
+ * zoom ligger i viewport-en og virker som før.
  */
 const locked = () => ui && ui.mode === 'reinforcement';
 
 function pickJoint(e) {
-  const hit = tools.hitJoint(e.world, 8, true);
+  const hit = joints.hit(e.world, 8, true);
   if (!hit) {
     store.select([]);
     return;
   }
   if (e.shift) store.toggleSelect(hit.id);
   else store.select([hit.id]);
-  tools.onJointPicked?.(hit.id);
+  joints.onPicked?.(hit.id);
 }
 
 function hoverJoint(e) {
-  const hit = tools.hitJoint(e.world, 8, true);
+  const hit = joints.hit(e.world, 8, true);
   const id = hit ? hit.id : null;
-  viewport.setHoverJoint(id);
-  tools.onJointHover?.(id);
+  viewport.setHoverOf('joint', id);
+  joints.onHover?.(id);
 }
 
-const viewport = new Viewport(host, {
-  pointerdown: (e) => (locked() ? pickJoint(e) : tools.pointerdown(e)),
-  pointermove: (e) => (locked() ? hoverJoint(e) : tools.pointermove(e)),
-  pointerup: (e) => (locked() ? null : tools.pointerup(e)),
-  dblclick: (e) => (locked() ? null : tools.dblclick(e)),
+let ui = null;
+let joints = null;
+
+const editor = mountCadEditor(host, {
+  document: store,
+  chrome: false,
+  keyboard: 'page',
+  numericHost: host.parentElement || host,
+  // Fyll etter tilstand (ny/eksisterende), kontur etter materialfamilie
+  style: {
+    fill: (s, byStage) => shapeFill(s, byStage),
+    contour: (s) => contourStyle(s),
+    // Oransje med lav dekkevne blir brunt mot den mørke bakgrunnen; den nye
+    // delen får derfor litt mer, så den faktisk leses som oransje.
+    fillBoost: (s, byStage) => (byStage && s.stage === 'new' ? 0.14 : 0),
+  },
+  extensions: [
+    (ed) => {
+      joints = installJoints(ed);
+    },
+  ],
+  interceptPointer: (type, e) => {
+    if (!locked()) return false;
+    if (type === 'pointerdown') pickJoint(e);
+    else if (type === 'pointermove') hoverJoint(e);
+    return true;
+  },
+  extraData: () => ({ joints: store.allJoints() }),
+  onRender: (analysis) => {
+    if (ui) ui.render(analysis);
+  },
+  onAnalysisError: () => ui && ui.toast('Beregningen feilet på denne geometrien — sjekk at polygonene ikke er selvskjærende.'),
+  getThickness: () => (ui ? ui.getThickness() : 200),
+  onStatus: (msg) => ui && ui.status(msg),
+  onToolChange: (tool) => ui && ui.onToolChanged(tool),
+  onVoidMode: (on) => ui && ui.onVoidMode(on),
+  onCursor: (p, type) => {
+    const u = lengthLabel(store.state.unit);
+    document.getElementById('cursor-readout').textContent = `x ${fmtLen(p[0])}   y ${fmtLen(p[1])}   ${u}`;
+    const label = type === 'ortho' ? 'orto' : snapLabel(type);
+    document.getElementById('snap-badge').textContent = label ? `snap: ${label.toLowerCase()}` : '';
+  },
+  keyHooks: {
+    // Snap-knappene i panelet skal følge med, så GW sitt panel eier dem
+    snapShortcut: (e) => ui.handleSnapShortcut(e),
+    toggleOrtho: () => ui.toggleOrtho(),
+    deleteSelected: () => ui.deleteSelected(),
+    duplicateSelected: () => ui.duplicateSelected(),
+    status: (msg) => ui.status(msg),
+    locked,
+    onEscape: (e, typing) => {
+      // Rapportoverlegget dekker hele skjermen. Er det åpent, er det ÅPENBART
+      // det brukeren vil ut av — og da skal Esc ikke også tømme utvalget bak
+      // det, som brukeren ikke kan se.
+      const overlay = document.getElementById('report-overlay');
+      if (overlay && !overlay.hidden) {
+        closeReport();
+        return true;
+      }
+      document.getElementById('help-overlay').classList.add('hidden');
+      document.getElementById('import-menu').classList.add('hidden');
+      document.getElementById('canvas-settings').classList.add('hidden');
+      ui.closePopover();
+      ui.reinforcement.closeFigure();
+      return false;
+    },
+  },
 });
 
-const tools = new ToolController(store, viewport, {
-  getThickness: () => ui.getThickness(),
-  onStatus: (msg) => ui.status(msg),
-  onToolChange: (tool) => {
-    ui.onToolChanged(tool);
-    scheduleRender();
-  },
-  onVoidMode: (on) => ui.onVoidMode(on),
-});
+const { viewport, tools, numeric } = editor;
 
 /* ------------------------------------------------------------------ *
  * Bildeunderlag
@@ -68,7 +128,7 @@ const underlay = new UnderlayManager(
     viewport.setUnderlayImage(image);
     if (restored) {
       // Plasseringen ligger allerede i modellen; bare bildet manglet
-      scheduleRender();
+      editor.scheduleRender();
       return;
     }
     store.setUnderlay({ ...defaultPlacement(image, viewport), name });
@@ -77,236 +137,10 @@ const underlay = new UnderlayManager(
   (msg) => ui.toast(msg, 3500)
 );
 
-const ui = new UI(store, viewport, tools, { underlayManager: underlay });
+ui = new UI(store, viewport, tools, { underlayManager: underlay, joints });
 
 underlay.bind(host);
 tools.onCalibrated = (payload) => ui.onCalibrationPicked(payload);
-
-/* ------------------------------------------------------------------ *
- * Avlesning av markørposisjon
- * ------------------------------------------------------------------ */
-
-/** Siste markørposisjon i lerretspiksler — tallfeltet dukker opp her. */
-let lastCursorPx = null;
-
-tools.onCursor = (p, type) => {
-  const u = lengthLabel(store.state.unit);
-  document.getElementById('cursor-readout').textContent = `x ${fmtLen(p[0])}   y ${fmtLen(p[1])}   ${u}`;
-  const label = type === 'ortho' ? 'orto' : snapLabel(type);
-  document.getElementById('snap-badge').textContent = label ? `snap: ${label.toLowerCase()}` : '';
-  lastCursorPx = viewport.worldToScreen(p[0], p[1]);
-};
-
-/* ------------------------------------------------------------------ *
- * Tallinntasting (§2)
- * ------------------------------------------------------------------ */
-
-/**
- * Feltet lever i lerretets overlegg, ikke i panelet. `main.js` sender
- * tastetrykk hit FØR hurtigtastene, slik at «bare begynn å skrive» virker
- * uten at noe verktøy vet om det.
- */
-const numeric = new NumericInput({
-  host: host.parentElement || host,
-  getUnit: () => lengthLabel(store.state.unit),
-  getExpect: () => tools.expectedInput(),
-  getAnchor: () => lastCursorPx,
-  // Alt+siffer (snap/orto) har forrang, også midt i en inntasting
-  onSnapShortcut: (e) => ui.handleSnapShortcut(e),
-  onStatus: (msg) => ui.status(msg),
-  onCommit: (v) => {
-    const res = tools.applyNumeric(v);
-    if (res && res.msg) ui.status(res.msg);
-    scheduleRender();
-    return res;
-  },
-  onCancel: () => ui.status(tools.hint()),
-});
-
-/* ------------------------------------------------------------------ *
- * Beregning og oppdatering
- * ------------------------------------------------------------------ */
-
-let pending = false;
-
-function scheduleRender() {
-  if (pending) return;
-  pending = true;
-  requestAnimationFrame(() => {
-    pending = false;
-    update();
-  });
-}
-
-function update() {
-  const st = store.state;
-  let analysis = null;
-  try {
-    analysis = analyze(st.shapes, st.mode);
-  } catch (err) {
-    console.error('[main] analyse feilet:', err);
-    ui.toast('Beregningen feilet på denne geometrien — sjekk at polygonene ikke er selvskjærende.');
-  }
-  viewport.setData({
-    shapes: st.shapes,
-    selection: st.selection,
-    analysis,
-    reference: st.reference,
-    grid: st.grid,
-    underlay: st.underlay,
-    joints: store.allJoints(),
-    lines: st.lines,
-    linesVisible: st.linesVisible,
-  });
-  try {
-    ui.render(analysis);
-  } catch (err) {
-    // En feil i panelrenderingen skal ikke ta ned lerretet
-    console.error('[main] rendering av panelene feilet:', err);
-  }
-}
-
-store.subscribe(() => scheduleRender());
-
-/* ------------------------------------------------------------------ *
- * Hurtigtaster
- * ------------------------------------------------------------------ */
-
-/**
- * Hurtigtaster for verktøy (§3). `M`, `C` og `R` er reservert til flytt, kopi
- * og rotasjon — de tre kommandoene man bruker oftest — og tegneverktøyene har
- * flyttet seg etter det: `B` boks (rektangel), `O` er rund (sirkel), `N`
- * nullpunkt. Speiling har bevisst INGEN tast, bare verktøyknappen.
- */
-const TOOL_KEYS = {
-  v: 'select',
-  m: 'move',
-  c: 'copy',
-  r: 'rotate',
-  b: 'rect',
-  s: 'shell',
-  p: 'polygon',
-  o: 'circle',
-  n: 'reference',
-  g: 'joint',
-  x: 'splitline',
-  l: 'line',
-};
-
-window.addEventListener('keydown', (e) => {
-  const tag = (e.target.tagName || '').toLowerCase();
-  const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
-
-  // Alt+siffer styrer snap. Dette skal virke også midt i et tallfelt, siden
-  // man ofte vil endre snap uten å måtte klikke seg ut av det man skriver.
-  // Alt uten Ctrl, så AltGr (= Ctrl+Alt) på norsk tastatur ikke fanges opp.
-  if (ui.handleSnapShortcut(e)) {
-    e.preventDefault();
-    return;
-  }
-
-  // Escape er en KASKADE, og ett trykk skal alltid gi et rent utgangspunkt.
-  // Rekkefølgen er: forlat feltet man skriver i, avbryt en kommando som er i
-  // gang, og ellers tøm utvalget. Steg 1 og 2 skjer i samme trykk — står man i
-  // et tallfelt mens en rotasjon pågår, skal ikke Esc måtte trykkes to ganger.
-  if (e.key === 'Escape') {
-    // Rapportoverlegget dekker hele skjermen. Er det åpent, er det ÅPENBART
-    // det brukeren vil ut av — og da skal Esc ikke også tømme utvalget bak
-    // det, som brukeren ikke kan se. Derfor `return` her, ikke gjennomfall.
-    const overlay = document.getElementById('report-overlay');
-    if (overlay && !overlay.hidden) {
-      closeReport();
-      return;
-    }
-    document.getElementById('help-overlay').classList.add('hidden');
-    document.getElementById('import-menu').classList.add('hidden');
-    document.getElementById('canvas-settings').classList.add('hidden');
-    ui.closePopover();
-    ui.reinforcement.closeFigure();
-    if (typing) e.target.blur();
-    // Hva som var i gang må avgjøres FØR tools.keydown rydder det bort
-    const busy = !!(tools.draft || tools.drag);
-    tools.keydown(e);
-    if (!busy && store.state.selection.length) {
-      store.select([]);
-      ui.status('Utvalget er tømt.');
-    }
-    return;
-  }
-  if (typing) return;
-
-  // Låst lerret: bare zoom og angre/gjør om virker. Ingen verktøy, ingen
-  // sletting, ingen tallinntasting — geometrien endres i «Geometri».
-  if (locked()) {
-    const k = e.key.toLowerCase();
-    if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'y')) {
-      e.preventDefault();
-      if (k === 'y' || e.shiftKey) store.redo();
-      else store.undo();
-    } else if (!e.ctrlKey && !e.metaKey && k === 'f') {
-      viewport.zoomToFit(store.bounds());
-    }
-    return;
-  }
-
-  if (e.ctrlKey || e.metaKey) {
-    const k = e.key.toLowerCase();
-    if (k === 'z') {
-      e.preventDefault();
-      if (e.shiftKey) store.redo();
-      else store.undo();
-      return;
-    }
-    if (k === 'y') {
-      e.preventDefault();
-      store.redo();
-      return;
-    }
-    if (k === 'd') {
-      e.preventDefault();
-      ui.duplicateSelected();
-      return;
-    }
-    if (k === 'a') {
-      e.preventDefault();
-      store.select(store.state.shapes.map((s) => s.id));
-      return;
-    }
-    return;
-  }
-
-  // Tallinntastingen får tasten FØR hurtigtastene (§2.4). Det er dette som
-  // gjør at sifrene, `-`, `.`, `,` og `d` ikke lenger kan utløse verktøybytte
-  // mens et verktøy venter på et punkt — feltet tar dem.
-  if (numeric.beginIfTypingKey(e)) {
-    e.preventDefault();
-    return;
-  }
-
-  if (tools.keydown(e)) return;
-
-  if (e.key === 'F8') {
-    e.preventDefault();
-    ui.toggleOrtho();
-    return;
-  }
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    e.preventDefault();
-    ui.deleteSelected();
-    return;
-  }
-  if (e.key.toLowerCase() === 'f') {
-    viewport.zoomToFit(store.bounds());
-    return;
-  }
-  // H slår hull-modus av og på (#86) — en bryter, ikke et verktøy
-  if (e.key.toLowerCase() === 'h' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    tools.setVoidMode(!tools.voidMode);
-    return;
-  }
-  const tool = TOOL_KEYS[e.key.toLowerCase()];
-  if (tool) tools.setTool(tool);
-});
 
 /* ------------------------------------------------------------------ *
  * Oppstart
@@ -318,7 +152,7 @@ if (!hasClipper()) {
 
 const restored = store.load();
 tools.setTool('select');
-update();
+editor.render();
 viewport.zoomToFit(store.bounds());
 
 // Hent fram bildeunderlaget fra forrige økt, hvis modellen viser til ett
@@ -416,10 +250,12 @@ window.addEventListener('afterprint', () => {
 
 window.__gw = {
   store,
+  editor,
   viewport,
   tools,
   ui,
   numeric,
+  joints,
   analyze,
   shapes,
   emit(type, world, opts = {}) {

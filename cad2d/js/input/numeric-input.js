@@ -71,6 +71,8 @@ export class NumericInput {
     this.getAnchor = opts.getAnchor || (() => null);
     this.onSnapShortcut = opts.onSnapShortcut || (() => false);
     this.onStatus = opts.onStatus || (() => {});
+    /** Valgfri element-id. Ingen som standard, så to editorer ikke kolliderer. */
+    this.id = opts.id || null;
 
     this.active = false;
     /** Hva inntastingen skal tolkes som når den bekreftes. */
@@ -81,7 +83,9 @@ export class NumericInput {
 
   _build() {
     const box = document.createElement('div');
-    box.id = 'numeric-input';
+    // Ingen fast id som standard: to editorer på én side skal ikke kollidere.
+    if (this.id) box.id = this.id;
+    box.classList.add('cad2d-numeric');
     box.className =
       'hidden absolute z-40 flex items-center gap-1.5 px-2 py-1.5 rounded-md border border-sky-500 ' +
       'bg-slate-900/95 backdrop-blur shadow-lg shadow-black/50';

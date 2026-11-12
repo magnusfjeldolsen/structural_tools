@@ -1,5 +1,15 @@
 /**
- * viewport.js — three.js-basert 2D-visning i XY-planet.
+ * viewport.js — three.js-basert 2D-visning i XY-planet (cad2d, view-laget).
+ *
+ * Flyttet fra geometry_workspace (#93). Det domenespesifikke er tatt ut og
+ * kommer inn gjennom to utvidelsespunkt:
+ *  - `style`: fyllfarge og konturstil per form (GW: etter tilstand og
+ *    materiale, se geometry_workspace/js/shape-style.js).
+ *  - `addLayer({key, draw})`: egne tegnelag mellom nettet og markørene
+ *    (GW: skjøtene). Tegnehjelperne under eksporteres, så et lag tegner likt.
+ *
+ * Lerretet følger containerens størrelse (ResizeObserver), også når den
+ * starter skjult og vises senere (en modal).
  *
  * Kameraet er ortografisk og ser rett ned på XY-planet (z mot betrakteren),
  * så all interaksjonsmatematikk kan gjøres direkte i verdenskoordinater —
@@ -10,13 +20,11 @@
  */
 
 import * as THREE from 'three';
-import { openRing, centroidOfPoints } from '../../cad2d/js/geometry/polygon.js';
-import { findSnap } from '../../cad2d/js/input/snapping.js';
-import { buildGraph, jointGroup } from './joints.js';
-import { JOINT_COLOR } from './store.js';
-import { shapeFill, contourStyle } from './shape-style.js';
+import { openRing } from '../geometry/polygon.js';
 
-const Z = {
+export { THREE };
+
+export const Z = {
   underlay: -0.5,
   grid: 0,
   axis: 0.05,
@@ -35,7 +43,7 @@ const Z = {
  * ------------------------------------------------------------------ */
 
 /** Bygger triangler for en polylinje med halvbredde `hw` i verdensenheter. */
-function thickPolylinePositions(points, closed, hw, z) {
+export function thickPolylinePositions(points, closed, hw, z) {
   const pos = [];
   const pts = points;
   const n = pts.length;
@@ -69,7 +77,7 @@ function thickPolylinePositions(points, closed, hw, z) {
   return pos;
 }
 
-function buildLineMesh(positions, color, opacity = 1) {
+export function buildLineMesh(positions, color, opacity = 1) {
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   const mat = new THREE.MeshBasicMaterial({
@@ -82,7 +90,7 @@ function buildLineMesh(positions, color, opacity = 1) {
   return new THREE.Mesh(geom, mat);
 }
 
-function buildFillMesh(points, color, opacity, z) {
+export function buildFillMesh(points, color, opacity, z) {
   const shape = new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, y)));
   const geom = new THREE.ShapeGeometry(shape);
   const mat = new THREE.MeshBasicMaterial({
@@ -103,7 +111,7 @@ function buildFillMesh(points, color, opacity, z) {
  * Dashen måles i verdensenheter, og kallende kode ganger med `unitsPerPixel`,
  * så mønsteret holder seg like tett uansett zoom.
  */
-function dashedPolylinePositions(points, closed, hw, z, dashLen, gapLen) {
+export function dashedPolylinePositions(points, closed, hw, z, dashLen, gapLen) {
   const pos = [];
   const n = points.length;
   if (n < 2 || dashLen <= 0) return pos;
@@ -160,7 +168,7 @@ function makeLabelTexture(text, color) {
 }
 
 /** Enhetsnormalen som peker mot venstre side av linja a→b. Null lengde ⟹ [0, 0]. Lokal kopi — samme lille utledning som i joints.js/store.js, for tegning her. */
-function leftNormal(a, b) {
+export function leftNormal(a, b) {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
   const len = Math.hypot(dx, dy);
@@ -168,7 +176,7 @@ function leftNormal(a, b) {
   return [-dy / len, dx / len];
 }
 
-function disposeGroup(group) {
+export function disposeGroup(group) {
   for (let i = group.children.length - 1; i >= 0; i--) {
     const child = group.children[i];
     if (child.geometry) child.geometry.dispose();
@@ -184,9 +192,26 @@ function disposeGroup(group) {
  * ------------------------------------------------------------------ */
 
 export class Viewport {
-  constructor(container, handlers = {}) {
+  /**
+   * @param {HTMLElement} container lerretet fyller denne
+   * @param {object} handlers pointerdown/pointermove/pointerup/dblclick
+   * @param {{style?: {fill?: Function, contour?: Function, fillBoost?: Function},
+   *          background?: string}} [opts]
+   */
+  constructor(container, handlers = {}, opts = {}) {
     this.container = container;
     this.handlers = handlers;
+    /** Utseendet til en form. Standard: formens egen farge, heltrukken kontur. */
+    this.style = {
+      fill: (s) => s.color || (s.role === 'void' ? '#fb7185' : '#38bdf8'),
+      contour: () => ({ weight: 1, dash: 0, gap: 0 }),
+      fillBoost: () => 0,
+      ...(opts.style || {}),
+    };
+    /** Utvidelseslag, i rekkefølgen de ble lagt til. */
+    this.layers = [];
+    /** Fremhevet entitet per type, f.eks. `{joint: 'j2'}` (se `setHoverOf`). */
+    this.hoverBy = {};
 
     this.center = new THREE.Vector2(0, 0);
     this.viewHeight = 4000; // verdensenheter synlig vertikalt
@@ -200,7 +225,6 @@ export class Viewport {
       reference: [0, 0],
       grid: null,
       underlay: null,
-      joints: [],
       // Linjearbeid (#86): løse linjer, tegnes tynt og snappes mot
       lines: [],
       linesVisible: true,
@@ -210,8 +234,6 @@ export class Viewport {
     this._labelCache = new Map();
     this.preview = null;
     this.hover = null;
-    /** Skjøten som er fremhevet (hover), fra lerretet ELLER fra skjøtelista i panelet (§6.2 — se `setHoverJoint`). */
-    this.hoverJoint = null;
     this.showNet = true;
     this.showPrincipal = true;
     this.showOverlap = true;
@@ -219,7 +241,7 @@ export class Viewport {
     this.colorByStage = true;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#0f172a');
+    this.scene.background = new THREE.Color(opts.background || '#0f172a');
 
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
     this.camera.position.set(0, 0, 100);
@@ -232,7 +254,7 @@ export class Viewport {
     this.renderer.domElement.style.cursor = 'crosshair';
 
     this.groups = {};
-    for (const key of ['underlay', 'grid', 'fill', 'outline', 'lines', 'net', 'joint', 'marker', 'preview', 'handle']) {
+    for (const key of ['underlay', 'grid', 'fill', 'outline', 'lines', 'net', 'ext', 'marker', 'preview', 'handle']) {
       const g = new THREE.Group();
       this.scene.add(g);
       this.groups[key] = g;
@@ -246,7 +268,10 @@ export class Viewport {
   }
 
   dispose() {
+    this._disposed = true;
     this._resizeObserver.disconnect();
+    window.removeEventListener('keydown', this._onKeyDown);
+    window.removeEventListener('keyup', this._onKeyUp);
     cancelAnimationFrame(this._raf);
     Object.values(this.groups).forEach(disposeGroup);
     this._clearLabelCache();
@@ -399,12 +424,15 @@ export class Viewport {
       { passive: false }
     );
 
-    window.addEventListener('keydown', (e) => {
+    // Mellomrom + dra panorerer. Lytteren fjernes i `dispose()`.
+    this._onKeyDown = (e) => {
       if (e.code === 'Space') this._spaceDown = true;
-    });
-    window.addEventListener('keyup', (e) => {
+    };
+    this._onKeyUp = (e) => {
       if (e.code === 'Space') this._spaceDown = false;
-    });
+    };
+    window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keyup', this._onKeyUp);
   }
 
   _emit(type, event, px) {
@@ -425,17 +453,11 @@ export class Viewport {
   /* ---------------- snapping ---------------- */
 
   /**
-   * Snapper et verdenspunkt. Selve logikken ligger i snapping.js; her legges
-   * bare pikseltoleransen om til verdensenheter.
+   * Det som kan snappes mot: formene og linjearbeidet (hvert segment som en
+   * tokantet «form»). Selve snappingen er input-lagets (`findSnap`).
    */
-  snap(world, { snaps = null, gridStep = 0, exclude = null, tolPx = 12 } = {}) {
-    return findSnap(world, {
-      shapes: [...(this.data.shapes || []), ...this._lineSnapShapes()],
-      snaps: snaps || {},
-      gridStep,
-      tol: tolPx * this.unitsPerPixel,
-      exclude,
-    });
+  snapTargets() {
+    return [...(this.data.shapes || []), ...this._lineSnapShapes()];
   }
 
   /**
@@ -489,14 +511,44 @@ export class Viewport {
   }
 
   /**
-   * Fremhever én skjøt i lerretet — kalt fra tools.js når musa er over en
-   * skjøtelinje, og ment å kunne kalles fra panelet (agent 2B) når musa er
-   * over raden i skjøtelista, slik at fremhevingen virker begge veier (§6.2).
+   * Fremhever én entitet av en utvidelsestype (GW: en skjøt, fra lerretet
+   * eller fra skjøtelista i panelet). Tegnelaget leser `hoverOf(kind)`.
    */
-  setHoverJoint(id) {
-    if (this.hoverJoint === id) return;
-    this.hoverJoint = id;
+  setHoverOf(kind, id) {
+    if ((this.hoverBy[kind] ?? null) === (id ?? null)) return;
+    this.hoverBy[kind] = id ?? null;
     this.refresh();
+  }
+
+  hoverOf(kind) {
+    return this.hoverBy[kind] ?? null;
+  }
+
+  /**
+   * Legger til et tegnelag. `draw(group, upp, viewport)` kalles ved hver
+   * opptegning med en tom `THREE.Group`; `viewport.data` har det verten sendte
+   * med `setData` (også egne nøkler).
+   *
+   * @returns {() => void} fjerner laget
+   */
+  addLayer({ key, draw }) {
+    const group = new THREE.Group();
+    group.name = key || 'layer';
+    this.groups.ext.add(group);
+    const layer = { key, draw, group };
+    this.layers.push(layer);
+    this.refresh();
+    return () => {
+      disposeGroup(group);
+      this.groups.ext.remove(group);
+      this.layers = this.layers.filter((l) => l !== layer);
+      this.refresh();
+    };
+  }
+
+  /** Henter (eller lager) en tekstetikett som sprite — for tegnelagene. */
+  label(text, color) {
+    return this._label(text, color);
   }
 
   setOverlays({ showNet, showPrincipal, showOverlap, colorByStage }) {
@@ -514,6 +566,7 @@ export class Viewport {
   /* ---------------- tegning ---------------- */
 
   _loop = () => {
+    if (this._disposed) return;
     this._raf = requestAnimationFrame(this._loop);
     if (this._dirty) {
       this._dirty = false;
@@ -529,7 +582,7 @@ export class Viewport {
     this._drawShapes(upp);
     this._drawLines(upp);
     this._drawNet(upp);
-    this._drawJoints(upp);
+    this._drawLayers(upp);
     this._drawMarkers(upp);
     this._drawPreview(upp);
   }
@@ -617,16 +670,16 @@ export class Viewport {
       const isVoid = s.role === 'void';
       const off = s.include === false;
 
-      const color = off ? '#64748b' : shapeFill(s, this.colorByStage);
+      const color = off ? '#64748b' : this.style.fill(s, this.colorByStage);
       // Oransje med lav dekkevne blir brunt mot den mørke bakgrunnen; den nye
       // delen får derfor litt mer, så den faktisk leses som oransje.
-      const boost = this.colorByStage && s.stage === 'new' ? 0.14 : 0;
+      const boost = this.style.fillBoost(s, this.colorByStage) || 0;
       const fillOpacity = off ? 0.05 : isVoid ? 0.1 : (isSel ? 0.32 : 0.2) + boost;
       fills.add(buildFillMesh(openRing(s.points), color, fillOpacity, Z.fill + i * 1e-4));
 
       // Konturen sier materialfamilien (heltrukken stål, tykk betong, stiplet
       // tre, prikket annet); fyllingen over sier tilstanden.
-      const style = contourStyle(s);
+      const style = this.style.contour(s);
       const widthPx = (isSel ? 2.6 : isHover ? 2.0 : 1.4) * style.weight;
       const ring = openRing(s.points);
       const z = Z.outline + i * 1e-4;
@@ -722,142 +775,16 @@ export class Viewport {
     this._labelCache.clear();
   }
 
-  /**
-   * Skjøtene (§6.1 i joints-planen): en tydelig linje med endemarkører, i
-   * `JOINT_COLOR` — en farge som ikke finnes i `PALETTE`, så en skjøt aldri
-   * kan forveksles med en formfarge. INGEN piler, og INGEN sidevalg: hvilken
-   * komponent grafen regner som «gruppa» (`jointGroup` fra joints.js — §8.3,
-   * kun ΔN-ruting/advarsler, IKKE ES*) vises bare som en dempet, liten prikk —
-   * ren informasjon, ikke noe å klikke på eller snu.
-   */
-  _drawJoints(upp) {
-    const g = this.groups.joint;
-    disposeGroup(g);
-    const list = this.data.joints || [];
-    if (!list.length) return;
-    const shapes = this.data.shapes || [];
-
-    // Grafen bygges ÉN gang for alle skjøtene, ikke per skjøt — buildGraph er
-    // O(n²) i antall former (implisitte kanter), og det er ingen grunn til å
-    // gjenta det arbeidet for hver linje som skal tegnes.
-    const tol = (() => {
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const s of shapes) for (const [x, y] of s.points || []) {
-        if (x < minX) minX = x; if (y < minY) minY = y;
-        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
-      }
-      if (!Number.isFinite(minX)) return 1e-3;
-      return Math.max(Math.hypot(maxX - minX, maxY - minY), 1) / 2000;
-    })();
-    const graph = buildGraph(shapes, list, tol);
-    // Skjøter kan nå være med i utvalget (§1), på lik linje med formene.
-    const selection = new Set(this.data.selection || []);
-
-    list.forEach((f) => {
-      const a = f && f.a;
-      const b = f && f.b;
-      if (!a || !b) return;
-      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      if (len < 1e-12) return;
-
-      const isSel = selection.has(f.id);
-      const isHover = this.hoverJoint === f.id;
-      const color = isSel || isHover ? '#ffffff' : JOINT_COLOR;
-      const widthPx = isSel ? 5.0 : isHover ? 4.4 : 3.2;
-
-      // Automatiske skjøter (#61) stiplet: de er utledet, ikke tegnet.
-      g.add(
-        buildLineMesh(
-          f.auto
-            ? dashedPolylinePositions([a, b], false, (widthPx * upp) / 2, Z.joint, 9 * upp, 5 * upp)
-            : thickPolylinePositions([a, b], false, (widthPx * upp) / 2, Z.joint),
-          color,
-          0.95
-        )
-      );
-
-      const nrm = leftNormal(a, b);
-
-      // Endestreker på tvers, så det er tydelig hvor skjøten slutter
-      const tick = 6 * upp;
-      const ends = [];
-      for (const p of [a, b]) {
-        ends.push(
-          ...thickPolylinePositions(
-            [[p[0] - nrm[0] * tick, p[1] - nrm[1] * tick], [p[0] + nrm[0] * tick, p[1] + nrm[1] * tick]],
-            false,
-            upp * 0.9,
-            Z.joint
-          )
-        );
-      }
-      g.add(buildLineMesh(ends, color, 0.9));
-
-      // Er skjøten markert, får endepunktene håndtak — samme firkanter som
-      // formenes hjørnepunkt, og de kan dras på samme måte (§1).
-      if (isSel) {
-        const hw = 4 * upp;
-        const hpos = [];
-        for (const [x, y] of [a, b]) {
-          hpos.push(
-            x - hw, y - hw, Z.handle, x + hw, y - hw, Z.handle, x + hw, y + hw, Z.handle,
-            x - hw, y - hw, Z.handle, x + hw, y + hw, Z.handle, x - hw, y + hw, Z.handle
-          );
-        }
-        g.add(buildLineMesh(hpos, '#ffffff', 0.95));
-      }
-
-      // Dempet gruppemarkering — INFORMASJON, ikke et valg (§6.1): en liten
-      // prikk midt på linja, forskjøvet et lite stykke mot komponenten
-      // `jointGroup` regner som gruppa.
+  /** Utvidelseslagene, hvert i sin egen gruppe. En feil i ett lag tar ikke ned resten. */
+  _drawLayers(upp) {
+    for (const layer of this.layers) {
+      disposeGroup(layer.group);
       try {
-        const { groupIds } = jointGroup(f, graph);
-        if (groupIds && groupIds.length) {
-          const centroids = groupIds
-            .map((id) => {
-              const s = shapes.find((x) => x.id === id);
-              return s && s.points && s.points.length >= 3 ? centroidOfPoints(s.points) : null;
-            })
-            .filter(Boolean);
-          if (centroids.length) {
-            const gx = centroids.reduce((sum, c) => sum + c[0], 0) / centroids.length;
-            const gy = centroids.reduce((sum, c) => sum + c[1], 0) / centroids.length;
-            const mx = (a[0] + b[0]) / 2;
-            const my = (a[1] + b[1]) / 2;
-            const dx = gx - mx;
-            const dy = gy - my;
-            const dlen = Math.hypot(dx, dy) || 1;
-            const nudge = 10 * upp;
-            const dot = { x: mx + (dx / dlen) * nudge, y: my + (dy / dlen) * nudge };
-            const r = 2.4 * upp;
-            const disc = [];
-            for (let i = 0; i < 16; i++) {
-              const a1 = (i / 16) * Math.PI * 2;
-              const a2 = ((i + 1) / 16) * Math.PI * 2;
-              disc.push(
-                dot.x, dot.y, Z.joint + 0.01,
-                dot.x + r * Math.cos(a1), dot.y + r * Math.sin(a1), Z.joint + 0.01,
-                dot.x + r * Math.cos(a2), dot.y + r * Math.sin(a2), Z.joint + 0.01
-              );
-            }
-            g.add(buildLineMesh(disc, color, 0.5));
-          }
-        }
+        layer.draw(layer.group, upp, this);
       } catch (err) {
-        // Gruppemarkeringen er ren pynt — en feil her skal aldri ta ned
-        // resten av lerretstegningen.
-        console.warn('[viewport] gruppemarkering feilet for skjøt', f.id, err);
+        console.error(`[cad2d] tegnelaget «${layer.key}» feilet:`, err);
       }
-
-      const sprite = this._label(f.name || '', color);
-      sprite.position.set(
-        (a[0] + b[0]) / 2 + nrm[0] * 34 * upp,
-        (a[1] + b[1]) / 2 + nrm[1] * 34 * upp,
-        Z.joint + 0.02
-      );
-      sprite.scale.set(sprite.userData.w * upp * 0.5, sprite.userData.h * upp * 0.5, 1);
-      g.add(sprite);
-    });
+    }
   }
 
   _drawMarkers(upp) {
