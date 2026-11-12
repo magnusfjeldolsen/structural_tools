@@ -80,7 +80,7 @@ const CSS = `
   font:12px/1.3 ui-sans-serif,system-ui,sans-serif;outline:none;position:relative}
 .cad2d-editor:focus-visible{box-shadow:inset 0 0 0 2px #0ea5e9}
 .cad2d-toolbar{display:flex;flex-wrap:wrap;gap:3px;padding:5px;border-bottom:1px solid #1e293b;background:#111827;align-items:center}
-.cad2d-toolbar button,.cad2d-toolbar select{background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:4px;
+.cad2d-toolbar button,.cad2d-toolbar select{width:auto;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:4px;
   padding:3px 7px;font:inherit;cursor:pointer;white-space:nowrap}
 .cad2d-toolbar button:hover{background:#334155}
 .cad2d-toolbar button[aria-pressed="true"]{background:#0369a1;border-color:#0ea5e9}
