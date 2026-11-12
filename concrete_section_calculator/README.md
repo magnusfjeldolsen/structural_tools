@@ -470,3 +470,21 @@ Plate 1000×200, Ø12 c/c 113 (A_s = 1000 mm²/m), overdekning 25: `M_Rd = −69
 
 **Merk α_cc = 1,0**: UI-standarden er 0,85 (norsk NA), så fixturene bærer 1,0 mens skjemaet starter
 på 0,85. Det er to ulike inndatasett, ikke en uoverensstemmelse.
+
+## Tegne tverrsnittet (cad2d, #93)
+
+For **Custom** åpner et klikk på tverrsnittsfiguren (eller «Edit geometry…» i
+Custom-panelet) den felles 2D-editoren (`cad2d/`) i et overlegg: tegn former og
+hull, importer DXF (automatisk eller «Lines only» → «Make shapes» / «Make
+holes»), samme taster som Geometry Workspace. **OK** sender polygonet med hull
+gjennom samme vei som «Load section file» (`setCustomPolygon`), og tilbake i
+klassisk visning er A, I og figuren oppdatert. **Cancel** endrer ingenting.
+
+Tegningen lagres i `geometry.cad` (dokumentformat `cad2d.document`), så formene
+kan redigeres igjen og følger med i lagret fil og delt lenke. Den er aldri en
+kilde til tall — polygonet er det, og et polygon fra fil eller innliming
+fjerner en gammel tegning. Bjelke og plate er urørt. Mens overlegget er åpent,
+gjelder editorens taster; csc sine snarveier (Ctrl+Space, Ctrl+Enter, Alt-merker)
+virker utenfor. Statusmeldingene inne i editoren er foreløpig på norsk.
+
+`tests/cad-editor.test.mjs` låser dette.

@@ -49,6 +49,13 @@ The project uses a **hybrid deployment model** that combines:
 - `weld_capacity/`
 - `2dframeanalysis/`
 
+### Shared library: `cad2d/` (no build)
+`cad2d/` is the shared 2D CAD engine (#93): plain ES modules that other modules import **across folders** (`../../cad2d/js/...` from `geometry_workspace/js/` and `concrete_section_calculator/js/`). It also has its own full-window page, `cad2d/index.html`, so it shows up in the module registry.
+
+- `cad2d` **must** stay in the copy loop and the `paths:` trigger of `deploy-all-modules.yml`. If it is missing, every module that imports it breaks on GitHub Pages (404 on the import), even though each module's own folder deploys fine.
+- A host page that mounts the editor needs `<script src="../cad2d/vendor/polygon-clipping.umd.js">` and an `importmap` for `three` (see `cad2d/README.md`).
+- A change to `cad2d/` redeploys every module (one workflow), and is tested by the PR job `cad2d + geometry_workspace — node tests`; the csc job also runs when `cad2d/` changes.
+
 ## Deployment Workflow
 
 ### Quick Start: Local Development
@@ -217,6 +224,8 @@ Pull requests into `master` must pass one **required status check** — `2dfea t
 - The merge button (and `gh pr merge`) stays **blocked until the check is green**, and it is **not bypassable with `--admin`** (rulesets are stricter than classic branch protection).
 - The check **always runs** on every PR so it always reports, but a `git diff` step **skips the heavy 2dfea build/type-check/test when no 2dfea-relevant files changed** — HTML-only PRs pass in seconds. It runs the full 2dfea build when a PR touches `2dfea/**`, `pr-checks.yml`, or `deploy-all-modules.yml`.
   - ⚠️ Do **not** re-add a top-level `paths:` filter to `pr-checks.yml`. A path-filtered required check never reports on PRs outside those paths, which leaves every non-2dfea PR **permanently un-mergeable**.
+
+Other PR jobs report but are not required: `concrete_section_calculator — js + python + wasm` (runs on `concrete_section_calculator/`, `cad2d/` or `package.json` changes), `cad2d + geometry_workspace — node tests` (on `cad2d/` or `geometry_workspace/` changes) and `thermo2d type-check + test + build`.
 
 ### Serving & merge mechanics
 

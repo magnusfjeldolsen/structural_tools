@@ -17,14 +17,16 @@ aksialkrefter, er det med overlappet talt to ganger.
 
 ## Filstruktur
 
+Den generelle CAD-delen (lerret, verktøy, taster, dokumentmodell, geometri, DXF og tverrsnittseksport) ligger i den felles motoren `cad2d/` (#93, `global-devspecs/cad2d-design.md`). Det som står igjen her, er domenet oppå den.
+
 | Fil | Ansvar |
 | --- | --- |
 | `index.html` | UI-skall, paneler og hjelpetekst |
-| `js/geometry.js` | Ren polygonmatematikk — areal, 1./2. arealmoment, hovedakser, transformasjoner, boolske operasjoner. Ingen DOM. |
-| `js/shapes.js` | Kjenner igjen parametriske former (rektangel, sirkel, skall) i en punktliste, og bygger punktene tilbake fra parameterne. Ingen DOM. |
-| `js/store.js` | Tilstand, CRUD, undo/redo, localStorage, JSON-import/eksport |
-| `js/viewport.js` | three.js-rendering i XY-planet (ortografisk kamera), rutenett, snapping, pan/zoom |
-| `js/tools.js` | Tegne- og redigeringsverktøy; oversetter pekerhendelser til CRUD |
+| `../cad2d/js/geometry/polygon.js` | (flyttet til cad2d, #93) Ren polygonmatematikk — areal, 1./2. arealmoment, hovedakser, transformasjoner, boolske operasjoner, `analyze` med hullregelen. Ingen DOM. |
+| `../cad2d/js/geometry/params.js` | (flyttet til cad2d) Kjenner igjen parametriske former (rektangel, sirkel, skall) i en punktliste, og bygger punktene tilbake. Ingen DOM. |
+| `js/store.js` | `Store extends CadDocument` (cad2d/js/core/document.js): historikk, CRUD, utvalg og localStorage kommer fra motoren; her ligger skjøtene (egen entitetstype), lastene, linjeberegningen, materialene og prosjektformatet v4. |
+| `../cad2d/js/view/viewport.js` | (flyttet til cad2d) three.js-rendering i XY-planet, rutenett, pan/zoom. Fargene etter tilstand/materiale sendes inn som `style`, skjøtene tegnes av et tegnelag. |
+| `../cad2d/js/input/tools.js` | (flyttet til cad2d) Tegne- og redigeringsverktøy; oversetter pekerhendelser til CRUD. Skjøteverktøyet er registrert av `joint-extension.js`. |
 | `js/ui.js` | Panelrendering: geometriliste, formredigering, plassering, resultater |
 | `js/materials.js` | Materialpresets med E [N/mm²]. Ingen DOM. |
 | `js/shape-style.js` | Hvordan en form ser ut: fylling etter tilstand (eksisterende/ny) og kontur etter materialfamilie. Delt av lerretet, geometrilista og rapportfiguren. Ingen DOM. |
@@ -35,8 +37,9 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `js/joint-force-figure.js` | Forklaringsfiguren bak (?) ved «Krefter i skjøtene»: bjelken fra siden i tre situasjoner (snitt i felt, forsterkningsende der M ≠ 0, forsterkningsende i momentnullpunkt), med brukerens tall i etikettene. Ren funksjon → SVG. Ingen DOM. |
 | `js/line-analysis.js` | Linjeberegningen (#63): to lag med felles krumning (Volkersen/Newmark), `N₂″ = λ²(N₂ − N₂∞)`, lastetabell, `twoLayer`/`lambda2`/`nInfinity`, og en tridiagonal løser på et gradert nett. Ren matematikk, N og mm. Ingen DOM. |
 | `js/line-ui.js` | Broen modell → linjeberegning (valg av skjøt, speilet par, kontroll av input, K_ser og K_u) og visningen: input til venstre, tabell og plott til høyre, detaljer, og tabell/plott til rapporten. |
-| `js/numeric-input.js` | CAD-aktig tallinntasting i lerretet: tilstandsmaskin + tolkning av `300 200` / `D 300 200` / `10,5 0`. Uavhengig av verktøyene. |
-| `js/main.js` | Bootstrap, hurtigtaster og ruting av tastetrykk til tallinntastingen |
+| `../cad2d/js/input/numeric-input.js` | (flyttet til cad2d) CAD-aktig tallinntasting i lerretet: `300 200` / `D 300 200` / `10,5 0`. |
+| `js/main.js` | Monterer cad2d-editoren (`mountCadEditor`, `chrome:false`, `keyboard:'page'`) og legger domenet oppå. Tastaturkartet er `../cad2d/js/input/keymap.js`. |
+| `js/joint-extension.js` | Skjøten som utvidelse av editoren: verktøyet «Skjøt» (G), treffet som lar skjøtelinja vinne over formen under, og tegnelaget. |
 | `tests/reinforcement.test.mjs` | Fasit for grunnmekanikken. `node geometry_workspace/tests/reinforcement.test.mjs` |
 | `tests/joints.test.mjs` | Fasit for naboskap, grafen og halvplan-ES*. `node geometry_workspace/tests/joints.test.mjs` |
 | `tests/shape-style.test.mjs` | Fasit for fylling etter tilstand og kontur etter materialfamilie. `node geometry_workspace/tests/shape-style.test.mjs` |
@@ -46,15 +49,15 @@ aksialkrefter, er det med overlappet talt to ganger.
 | `tests/routing.test.mjs` | ΔN-rutingen gjennom hele broen (`computeReinforcement`): kjede eksisterende–eksisterende–ny er bestemt, og i en ekte sløyfe fordeles ΔN etter skjøtestivhet bare på skjøtene som berører den nye delen. `node geometry_workspace/tests/routing.test.mjs` |
 | `tests/auto-joints.test.mjs` | Automatiske skjøter: felles kant, ikke mellom to eksisterende, overlapp gir varsel, glippe er ikke kontakt, rotert, kjede, tegnet skjøt vinner, og innstillingene følger delparet når delene flyttes. `node geometry_workspace/tests/auto-joints.test.mjs` |
 | `tests/composite.test.mjs` | Fasit for festemiddelstivhet (EC5/ETA), γ-metoden, biaksiell skjærstrøm/hovedakser og forankringskontroll. `node geometry_workspace/tests/composite.test.mjs` |
-| `js/dxf.js` | DXF-import (#85): ASCII-parser (LINE, LWPOLYLINE/POLYLINE med bulge, CIRCLE, ARC), areallik diskretisering av buer, sammensying av løse linjer og hull etter innbyrdes plassering. Alt annet telles og meldes. Ingen DOM, ingen importer. |
-| `js/section-export.js` | «Tverrsnitt til fil / Kopier tverrsnitt» (#85): faste former minus hull som ett polygon med hull på `structural-tools-section` v1, til concrete_section_calculator. Ingen DOM. |
+| `../cad2d/js/io/dxf.js` | (flyttet til cad2d) DXF-import (#85): ASCII-parser og alt det under. Buer i `geometry/curves.js`, søm og nøsting i `geometry/stitch.js`; importen inn i dokumentet er `io/project.js` (`importDxfText`), felles med csc. |
+| `../cad2d/js/io/section-export.js` | (flyttet til cad2d) «Tverrsnitt til fil / Kopier tverrsnitt» (#85) på `structural-tools-section` v1. |
 | `tests/dxf.test.mjs` | Fasit for DXF-importen: hulldekke 1200×265 med 7 × Ø140, sirkelsegment, bulge, løse linjer, ustøttede entiteter. Eksempelfil i `tests/fixtures/hulldekke.dxf`. `node geometry_workspace/tests/dxf.test.mjs` |
 | `tests/section-export.test.mjs` | Fasit for tverrsnittseksporten: formatet, aksene (y = x, z = y), mm, samme A og I som workspacet, og melding ved usammenhengende deler. `node geometry_workspace/tests/section-export.test.mjs` |
 | `tests/dxf-robust.test.mjs` | DXF fra virkeligheten: fjerne entiteter og ramme (lokal toleranse), doble linjer og konturer, 2000 hull på under 2 s, delte koordinater (6,6e9), `1,5`, tomme linjer etter EOF, `$INSUNITS`. `node geometry_workspace/tests/dxf-robust.test.mjs` |
 | `tests/area-consistency.test.mjs` | Samme areal i 'sum', 'priority', panelet og eksporten — også for øy i hull — eksport langt fra origo, og at eksporten aldri skriver ugyldige ringer. `node geometry_workspace/tests/area-consistency.test.mjs` |
-| `js/linework.js` | Linjearbeid (#86): treff, vindu/crossing, og lukkede konturer av markerte linjer (`contoursFromLines`, uten nøsting). Ingen DOM. |
+| `../cad2d/js/geometry/linework.js` | (flyttet til cad2d) Linjearbeid: treff, vindu/crossing, lukkede konturer av markerte linjer. |
 | `tests/linework.test.mjs` | Hull-modus i tegneverktøyene, linjeverktøyet, utvalg (pick/shift/vindu/crossing/Ctrl-dra), «Bare linjer», lagring, angre, og hele hulldekke-arbeidsflyten mot automatisk import. `node geometry_workspace/tests/linework.test.mjs` |
-| `vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner (union/differanse). Vendored, så verktøyet virker uten nett. |
+| `../cad2d/vendor/polygon-clipping.umd.js` | Boolske polygonoperasjoner. Vendored (én kopi, i cad2d). |
 
 three.js hentes fra CDN via `importmap`.
 

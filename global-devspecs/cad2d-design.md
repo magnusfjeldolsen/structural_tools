@@ -168,9 +168,11 @@ editoren har fokus»: nødvendig for at GW skal oppføre seg som før.
 
 ## 7. csc
 
-- Klikk på figuren (`#draw-geo`) eller knappen «Edit geometry» åpner editoren
-  i et overlegg (bare for `Custom`; fra Beam/Slab bytter knappen først til
-  Custom med det rektangelet som utgangspunkt — se README).
+- Klikk på figuren (`#draw-geo`) eller knappen «Edit geometry…» åpner
+  editoren i et overlegg — bare for `Custom`. For Beam/Slab gjør klikket
+  ingenting (rektangelveien er urørt); man velger «Custom» først, og editoren
+  starter da med standardsnittet som former. Figuren får ikke `tabindex`
+  (csc-regel, `form-structure.test.mjs`); tastaturveien er knappen.
 - OK → `ed.getSection()` → samme `setCustomPolygon` som fil/innliming (#83),
   pluss `geometry.cad` = dokumentets JSON. Avbryt → ingenting endres.
 - `geometry.cad` er tegningen, ikke tallene. Polygonet (`outer`/`holes`) er
