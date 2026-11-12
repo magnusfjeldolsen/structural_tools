@@ -10,6 +10,7 @@ import { conversionFactor, unitInfo } from './units.js';
 import { SNAP_KEYS } from './snapping.js';
 import { sidesOfJoint, autoJoints } from './joints.js';
 import { materialByName } from './materials.js';
+import { contoursFromLines } from './linework.js';
 
 const STORAGE_KEY = 'geometry_workspace_v1';
 const MAX_HISTORY = 60;
@@ -33,6 +34,23 @@ function nextId() {
 let jointUid = 1;
 function nextJointId() {
   return `j${jointUid++}`;
+}
+
+let lineUid = 1;
+function nextLineId() {
+  return `l${lineUid++}`;
+}
+
+/** Linjearbeid fra fil: bare gyldige punkt, og `closed` som boolsk. */
+function migrateLines(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((l) => l && Array.isArray(l.points) && l.points.length >= 2)
+    .map((l, i) => ({
+      id: l.id || `l${i + 1}`,
+      points: l.points.map((p) => [Number(p[0]), Number(p[1])]),
+      closed: !!l.closed,
+    }));
 }
 
 /**
@@ -440,6 +458,9 @@ function migrate(data) {
   out.line = migrateLine(out.line);
   out.autoJointData = migrateAutoJointData(out.autoJointData);
   out.analysis = out.analysis === 'line' ? 'line' : 'section';
+  // Linjearbeid (#86) er valgfritt i fila; eldre filer har det ikke.
+  out.lines = migrateLines(out.lines);
+  out.linesVisible = out.linesVisible !== false;
   out.version = 4;
   return out;
 }
@@ -465,6 +486,9 @@ function defaultState() {
     line: defaultLine(),
     // Det brukeren har lagt inn på automatiske skjøter, under skjøtens id (#61).
     autoJointData: {},
+    // Linjearbeid (#86): løse linjer å lage geometri av. Teller ikke i areal.
+    lines: [],
+    linesVisible: true,
   };
 }
 
@@ -506,6 +530,8 @@ export class Store {
       analysis: this.state.analysis,
       line: this.state.line,
       autoJointData: this.state.autoJointData,
+      lines: this.state.lines,
+      linesVisible: this.state.linesVisible,
     });
   }
 
@@ -567,8 +593,9 @@ export class Store {
     // filtreringen må se etter id-en i begge listene — ellers ville en angring
     // stille tømt utvalget hver gang en skjøt var markert.
     const jointIds = new Set(this.allJoints().map((j) => j.id));
+    const lineIds = new Set((this.state.lines || []).map((l) => l.id));
     this.state.selection = this.state.selection.filter(
-      (id) => this.state.shapes.some((s) => s.id === id) || jointIds.has(id)
+      (id) => this.state.shapes.some((s) => s.id === id) || jointIds.has(id) || lineIds.has(id)
     );
     this.syncUid();
   }
@@ -607,6 +634,12 @@ export class Store {
       if (Number.isFinite(n) && n > jmax) jmax = n;
     }
     jointUid = jmax + 1;
+    let lmax = 0;
+    for (const l of this.state.lines || []) {
+      const n = parseInt(String(l.id).replace(/\D/g, ''), 10);
+      if (Number.isFinite(n) && n > lmax) lmax = n;
+    }
+    lineUid = lmax + 1;
   }
 
   /* ---------------- CRUD ---------------- */
@@ -631,6 +664,39 @@ export class Store {
       st.selection = [shape.id];
     }, { reason: 'add' });
     return shape;
+  }
+
+  /**
+   * Legger inn flere former som ETT angresteg (DXF-import, #85). Lista
+   * gis i den rekkefølgen formene skal stå i geometrilista, øverst først —
+   * hull må ligge foran formen de skjærer i, ellers virker de ikke i
+   * 'priority'-modus. De nye formene blir markert.
+   *
+   * @param {Array<{points, name?, role?, meta?, stage?, material?, color?}>} list
+   * @returns {Array} de nye formene
+   */
+  addShapes(list, opts = {}) {
+    const base = this.state.shapes.length;
+    const added = (list || [])
+      .filter((o) => o && o.points && o.points.length >= 3)
+      .map((o, i) => ({
+        id: nextId(),
+        name: o.name || 'Form',
+        points: o.points.map((p) => [p[0], p[1]]),
+        role: o.role === 'void' ? 'void' : 'solid',
+        factor: 1,
+        include: true,
+        color: o.color || PALETTE[(base + i) % PALETTE.length],
+        meta: o.meta || null,
+        stage: o.stage === 'new' ? 'new' : 'existing',
+        material: o.material ? normalizeMaterial(o.material) : { ...DEFAULT_MATERIAL },
+      }));
+    if (!added.length) return [];
+    this.mutate((st) => {
+      st.shapes.unshift(...added);
+      st.selection = Array.isArray(opts.selectIds) ? opts.selectIds.slice() : added.map((s) => s.id);
+    }, { reason: opts.reason || 'add' });
+    return added;
   }
 
   getShape(id) {
@@ -662,6 +728,8 @@ export class Store {
     if (s) return { kind: 'shape', obj: s };
     const j = this.state.joints.find((x) => x.id === id);
     if (j) return { kind: 'joint', obj: j };
+    const l = (this.state.lines || []).find((x) => x.id === id);
+    if (l) return { kind: 'line', obj: l };
     // En automatisk skjøt kan velges og redigeres, men ikke flyttes eller
     // slettes — den følger geometrien. `auto: true` sier fra til kommandoene.
     const a = this.allJoints().find((x) => x.id === id && x.auto);
@@ -752,7 +820,7 @@ export class Store {
   setManyEntityPoints(entries, opts = {}) {
     this.mutate((st) => {
       for (const { id, points } of entries) {
-        const s = st.shapes.find((x) => x.id === id);
+        const s = st.shapes.find((x) => x.id === id) || st.lines.find((x) => x.id === id);
         if (s) {
           s.points = points.map((p) => [p[0], p[1]]);
           continue;
@@ -781,6 +849,9 @@ export class Store {
       for (const s of st.shapes) {
         if (set.has(s.id)) s.points = translatePoints(s.points, dx, dy);
       }
+      for (const l of st.lines) {
+        if (set.has(l.id)) l.points = translatePoints(l.points, dx, dy);
+      }
       for (const j of st.joints) {
         if (!set.has(j.id)) continue;
         j.a = [j.a[0] + dx, j.a[1] + dy];
@@ -801,6 +872,7 @@ export class Store {
     this.mutate((st) => {
       const srcShapes = st.shapes.filter((s) => set.has(s.id));
       const srcJoints = st.joints.filter((j) => set.has(j.id));
+      const srcLines = st.lines.filter((l) => set.has(l.id));
       for (const v of variants) {
         const apply = typeof v === 'function' ? v : (pts) => translatePoints(pts, v[0], v[1]);
         for (const s of srcShapes) {
@@ -829,6 +901,11 @@ export class Store {
           copies.push(copy);
           st.joints.push(copy);
         }
+        for (const l of srcLines) {
+          const copy = { ...l, id: nextLineId(), points: apply(l.points, l).map((p) => [p[0], p[1]]) };
+          copies.push(copy);
+          st.lines.push(copy);
+        }
       }
       if (select && copies.length) st.selection = copies.map((c) => c.id);
     }, { reason });
@@ -841,8 +918,65 @@ export class Store {
     this.mutate((st) => {
       st.shapes = st.shapes.filter((s) => !set.has(s.id));
       st.joints = st.joints.filter((j) => !set.has(j.id));
+      st.lines = st.lines.filter((l) => !set.has(l.id));
       st.selection = st.selection.filter((id) => !set.has(id));
     }, { reason: 'remove' });
+  }
+
+  /* ---------------- linjearbeid (#86) ---------------- */
+
+  /**
+   * Legger inn linjer (fra DXF «Bare linjer» eller linjeverktøyet) som ETT
+   * angresteg. Linjene blir markert.
+   *
+   * @param {Array<{points, closed?}>} list
+   */
+  addLines(list, { reason = 'add-lines', select = true } = {}) {
+    const added = (list || [])
+      .filter((l) => l && l.points && l.points.length >= 2)
+      .map((l) => ({ id: nextLineId(), points: l.points.map((p) => [p[0], p[1]]), closed: !!l.closed }));
+    if (!added.length) return [];
+    this.mutate((st) => {
+      st.lines.push(...added);
+      if (select) st.selection = added.map((l) => l.id);
+    }, { reason });
+    return added;
+  }
+
+  /**
+   * «Lag geometri» / «Lag hull»: hver lukkede kontur som kan sys av linjene i
+   * `ids` blir én form med `role` — uten nøsting, også om den ligger inni en
+   * annen. Linjene beholdes. De som ikke inngikk i en lukket kontur, blir
+   * stående markert. Ett angresteg; ingen kontur gir ingen endring.
+   *
+   * @returns {{made: number, unusedIds: string[], shapeIds: string[]}}
+   */
+  makeShapesFromLines(ids, role = 'solid') {
+    const set = new Set(ids);
+    const lines = this.state.lines.filter((l) => set.has(l.id));
+    const { rings, unusedIds } = contoursFromLines(lines);
+    if (!rings.length) return { made: 0, unusedIds, shapeIds: [] };
+    const isVoid = role === 'void';
+    const base = isVoid ? 'Hull fra linjer' : 'Fra linjer';
+    const n0 = this.state.shapes.filter((x) => x.name.startsWith(`${base} `) && /\d+$/.test(x.name)).length;
+    const shapes = rings.map((ring, i) => ({
+      points: ring,
+      role: isVoid ? 'void' : 'solid',
+      name: `${base} ${n0 + i + 1}`,
+    }));
+    const added = this.addShapes(shapes, { reason: isVoid ? 'make-holes' : 'make-shapes', selectIds: unusedIds });
+    return { made: added.length, unusedIds, shapeIds: added.map((x) => x.id) };
+  }
+
+  setLinesVisible(on) {
+    this.mutate((st) => {
+      st.linesVisible = !!on;
+      if (!on) {
+        const lineIds = new Set(st.lines.map((l) => l.id));
+        st.selection = st.selection.filter((id) => !lineIds.has(id));
+      }
+    }, { reason: 'lines-visible', transient: true });
+    this.commit('lines-visible');
   }
 
   /** Ctrl+D: dupliserer utvalget (former og skjøter) forskjøvet. */
@@ -1044,6 +1178,7 @@ export class Store {
       st.unit = unit;
       if (k !== 1) {
         st.shapes = st.shapes.map((s) => ({ ...s, points: s.points.map(([x, y]) => [x * k, y * k]) }));
+        st.lines = st.lines.map((l) => ({ ...l, points: l.points.map(([x, y]) => [x * k, y * k]) }));
         st.reference = [st.reference[0] * k, st.reference[1] * k];
         st.grid.step = st.grid.step * k;
         // Skjøtelinjene er geometri, og L er en lengde i arbeidsenheten.
@@ -1123,11 +1258,13 @@ export class Store {
       st.shapes = [];
       st.selection = [];
       st.joints = [];
+      st.lines = [];
     }, { reason: 'clear' });
   }
 
   bounds() {
-    return boundsOfShapes(this.state.shapes);
+    // Linjearbeidet er med, så «zoom alt» etter en ren linjeimport ikke er tom
+    return boundsOfShapes([...this.state.shapes, ...(this.state.linesVisible === false ? [] : this.state.lines || [])]);
   }
 
   /* ---------------- persistens ---------------- */
@@ -1172,6 +1309,8 @@ export class Store {
         analysis: this.state.analysis,
         line: this.state.line,
         autoJointData: this.state.autoJointData,
+        lines: this.state.lines,
+        linesVisible: this.state.linesVisible,
       },
       null,
       2
@@ -1212,6 +1351,8 @@ export class Store {
       st.analysis = m.analysis;
       st.line = m.line;
       st.autoJointData = m.autoJointData;
+      st.lines = m.lines;
+      st.linesVisible = m.linesVisible;
     }, { reason: 'import' });
     this.syncUid();
   }
