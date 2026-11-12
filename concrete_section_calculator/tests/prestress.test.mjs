@@ -20,8 +20,10 @@ import { createStore } from '../js/store.js';
 import { parseSectionDocument, polygonProps } from '../js/polygon.js';
 import { barArea, layerArea } from '../js/rebar.js';
 import {
-  isPrestressedLayer, notionalSize, PRESTRESS_STEEL_DEFAULTS, resolveCreep, selfWeightMoment,
+  isPrestressedLayer, notionalSize, PRESTRESS_STEEL_DEFAULTS, prestressCreep, resolveCreep,
+  selfWeightMoment,
 } from '../js/materials.js';
+import { validate } from '../js/section.js';
 import { fromDocument, toDocument } from '../js/serialize.js';
 import { prestressLossRows, prestressStageRows } from '../js/results.js';
 import { prestressSection } from '../js/ui.js';
@@ -45,8 +47,10 @@ export function prestressedStore() {
   const id = store.getState().layers[0].id;
   store.updateLayer(id, { dia: 12.5, count: 10, dc: 45, prestress: { ...PRESTRESS_STEEL_DEFAULTS } });
   store.patch('concrete', { fck: 45, alpha_cc: 1.0 });
-  store.patch('sls', { RH: 50, cement: 'R', t0: 1, t_life: 50 * 365 });
-  store.patch('prestress', { fck_t0: 30, span: 10, density: 25 });
+  // SLS-boksens belastningsalder står BEVISST på standarden 28 døgn: alderen ved
+  // overføring er forspenningens egen inndata (review B3), og tapene skal ikke se 28.
+  store.patch('sls', { RH: 50, cement: 'R', t_life: 50 * 365 });
+  store.patch('prestress', { fck_t0: 30, t0_transfer: 1, span: 10, density: 25 });
   const c1 = store.getState().combos[0].id;
   store.updateCombo(c1, { M_Ed: -100 });
   store.addCombo({ type: 'characteristic', M_Ed: -150 });
@@ -120,7 +124,8 @@ test('payloaden bærer spennlagets materiale og stegdataene, med kryptallet fra 
   assert.equal(layer.prestress.fpk, 1860);
   assert.ok(layer.bars.every((b) => Math.abs(b.z - (-265 / 2 + 45)) < 1e-9));
   assert.equal(p.prestress.fck_t0, 30);
-  assert.equal(p.prestress.phi, resolveCreep(s).phi);
+  assert.equal(p.prestress.phi, prestressCreep(s).phi);
+  assert.equal(p.prestress.phi_source, 'derived');
   assert.equal(p.prestress.h0, notionalSize(s));
   assert.equal(p.prestress.M_transfer, prestressMoments(s).M_transfer * 1e6);
   assert.equal(p.prestress.sigma_p_inf, null);
@@ -131,7 +136,7 @@ test('payloaden bærer spennlagets materiale og stegdataene, med kryptallet fra 
 test('kryptallet i referansen er håndregningens (32-kanten, h₀ med halve hullomkretsen)', () => {
   const s = prestressedStore().getState();
   // docs/prestress-hand-calc.py, 32-gon: phi = 2.70959049, h0 = 94.443134
-  assert.ok(Math.abs(resolveCreep(s).phi - 2.70959049) < 1e-7);
+  assert.ok(Math.abs(prestressCreep(s).phi - 2.70959049) < 1e-7);
   assert.ok(Math.abs(notionalSize(s) - 94.443134) < 1e-5);
 });
 
@@ -211,6 +216,67 @@ test('rapporten: kapittel 6 er stegtabellen for et forspent snitt, ellers uendre
   assert.match(ch6, /after losses/);
   const plain = buildReportHtml(createStore().getState(), null);
   assert.doesNotMatch(plain, /Prestress stages/);
+});
+
+/* ---------------- review av PR #89 ---------------- */
+
+test('B3: tapenes φ regnes av alderen ved overføring, ikke av SLS-boksens t₀ eller φ_ef', () => {
+  const store = prestressedStore();
+  const before = prestressCreep(store.getState()).phi;
+  // FØR: payloaden sendte resolveCreep(state).phi — med SLS-boksens 28 døgn ga det
+  // φ = 1,83 i stedet for 2,71, og en φ_ef-overstyring for rissvidden gikk rett i tapet.
+  assert.ok(Math.abs(resolveCreep(store.getState()).phi - 1.83) < 0.01);
+  store.patch('sls', { phi_ef: 0.5 });
+  assert.equal(buildPayload(store.getState()).prestress.phi, before);
+  assert.ok(Math.abs(before - 2.70959049) < 1e-7);
+  store.patch('prestress', { t0_transfer: 28 });
+  assert.ok(Math.abs(buildPayload(store.getState()).prestress.phi - 1.83) < 0.01);
+  store.patch('prestress', { phi_override: 2.2 });
+  const p = buildPayload(store.getState()).prestress;
+  assert.equal(p.phi, 2.2);
+  assert.equal(p.phi_source, 'manual');
+});
+
+test('B3/F6: f_ck(t₀) og alder ved overføring er påkrevd — validering og payload, ingen standard', () => {
+  for (const field of ['fck_t0', 't0_transfer']) {
+    const store = prestressedStore();
+    store.patch('prestress', { [field]: null });
+    const codes = validate(store.getState()).filter((m) => m.severity === 'error').map((m) => m.code);
+    assert.ok(codes.includes(field === 'fck_t0' ? 'prestress_fck_t0_missing' : 'prestress_t0_missing'), field);
+    assert.throws(() => buildPayload(store.getState()), /must be given/);
+  }
+  // Uten spennlag: ingen av feilene.
+  assert.ok(!validate(createStore().getState()).some((m) => m.code.startsWith('prestress_')));
+});
+
+test('B2/F3: et steg som ikke er tilgjengelig vises med grunnen, uten tall', () => {
+  const res = JSON.parse(JSON.stringify(RESULT));
+  res.prestress.stages[1] = { stage: 'long_term', available: false, reason: 'passive_with_tendons',
+    reason_text: 'The section has non-prestressed reinforcement together with the tendons.', M: -65.9e6 };
+  const rows = prestressStageRows(res);
+  assert.equal(rows[1].available, false);
+  assert.equal(rows[1].top, '–');
+  assert.equal(rows[1].M_cr, '–');
+  const html = prestressSection(res);
+  assert.match(html, /Not available — The section has non-prestressed reinforcement/);
+  const rep = buildReportHtml(prestressedStore().getState(), res);
+  assert.match(rep, /not available/);
+});
+
+test('F7: lagtabellen i rapporten viser tauets totale tøyning, σ_p/f_pd og riktig tilstand', () => {
+  const res = JSON.parse(JSON.stringify(RESULT));
+  res.analysis = 'bending';
+  res.section_props = { M_cr: 81974569.6, M_cr_basis: 'prestressed_long_term' };
+  res.bending = { M_Rd: -64.67e6, failure_mode: 'unreinforced_tension_zone', combinations: [],
+    layers: [{ id: 'L1', z: -87.5, eps: -0.0012, eps_0: 0.0044, eps_total: 0.0032, sigma: 624.0,
+      utilisation: 0.4376, compression: true, prestressed: true }] };
+  const html = buildReportHtml(prestressedStore().getState(), res);
+  const tbl = html.slice(html.indexOf('Strains and stresses per reinforcement layer'));
+  assert.match(tbl, /L1 \(tendon\)/);
+  assert.match(tbl, /σ_p\/f_pd/);
+  assert.match(tbl, /<td class="num">3\.20<\/td>/);        // ε+ε₀ = 3,20 ‰, ikke −1,20
+  assert.doesNotMatch(tbl.slice(0, tbl.indexOf('</table>')), /Compression/);
+  assert.match(html, /M_cr with prestress after losses/);
 });
 
 test('payload-custom-hd265-prestressed.json er buildPayload av referansetilstanden', () => {

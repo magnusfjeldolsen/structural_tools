@@ -113,14 +113,39 @@ Et `bars`-lag blir et **spennlag** med «Prestressed tendons» i radeditoren: ar
 | `loaded` | per karakteristisk/tilnærmet permanent kombinasjon: korttid (`E_cm`) på t∞-tilstanden, tauet med `ε_p* = σ_p,∞/E_p − ε_c(z_p)`. `M_Ed` er TOTALT, `dM` er tillegget |
 
 Strekk over `f_ct` (av riktig alder) ⇒ risset snitt, null strekk i betong. `M_dec`/`M_cr`
-er momentene som gir 0 / `f_ct` i underkant. Tap etter EC2 5.10.6 (5.46) ledd for ledd
-(svinn fra `structuralcodes.codes.ec2_2004`, relaksasjon 3.3.2 klasse 1–3 med anbefalte
-`ρ_1000`, modulens kryptall), eller `σ_p,∞` gitt direkte. ULS: tauet har `ε_p*` som
-initialtøyning i `structuralcodes` (P_m,∞).
+er momentene som gir 0 / `f_ct` i fiberen momentet strekker (underkant ved sagging,
+overkant ved hogging). Trykk over `f_ck` gir en advarsel: steget er da utenfor den
+lineære modellen. Tap etter EC2 5.10.6 (5.46) ledd for ledd (svinn fra
+`structuralcodes.codes.ec2_2004`, relaksasjon 3.3.2 klasse 1–3 med anbefalte `ρ_1000`),
+eller `σ_p,∞` gitt direkte. ULS: tauet har `ε_p*` som initialtøyning i `structuralcodes`
+(P_m,∞).
 
-**Ikke med:** overføringslengde `l_pt`, påstøp/samvirke, skjærstrekk etter EN 1168,
-etteroppspenning uten heft, rissvidde og EC2 7.2-spenningsgrenser for forspent snitt
-(`sls_ok` er ubesvart med grunn), `M_cr` i `brittle_ok` uten forspenningen.
+**Påkrevd inndata:** `f_ck(t₀)` og **alder ved overføring t₀** (døgn). Kryptallet for
+tapene er φ(t∞, t₀) regnet av den alderen med tillegg B (RH, sementklasse, levetid og h₀
+fra krypboksen) — SLS-boksens `φ_ef`-overstyring og belastningsalder påvirker IKKE tapene.
+φ for tapene kan overstyres i steg-panelet.
+
+**Sprøbrudd:** for et forspent snitt bruker `brittle_ok` og `section_props.M_cr` rissmomentet
+MED forspenning etter tap (t∞), i governing-radens retning og ved dens N_Ed
+(`M_cr_basis: 'prestressed_long_term'`). Duktilitet og bruddform ser tauets totale
+tøyning (ε+ε₀) mot f_pd/E_p.
+
+**«Ikke tilgjengelig»** (`available: false` med grunn, `brittle_ok: null`):
+- `long_term` og `loaded` når snittet har **slakkarmering sammen med spennlag** — slakken tar
+  opp kryp og svinn over tid, og uten en aldersjustert modell ville langtidsspenningene og
+  M_dec/M_cr vært 13–19 % på usikker side. t₀ og ULS står.
+- `long_term` og `loaded` når snittet **risser ved overføring**; tapene bruker da det rissede
+  t₀-planet (én kilde til σ_pi).
+- Et risset steg som bare kan balanseres med tau over f_p0,1k (f.eks. tau bare i overkant
+  og egenvekt) gir `invalid_prestress` med forklaring, ikke et tall.
+
+**Skjær:** σ_cp fra forspenningen er IKKE med i V_Rd,c (sikker side), og skjærstrekk etter
+EC2 6.2.2(2) / EN 1168 for hulldekker er ikke regnet (`prestress_shear_not_included`).
+
+**Ikke med:** overføringslengde `l_pt`, påstøp/samvirke, etteroppspenning uten heft,
+rissvidde og EC2 7.2-spenningsgrenser for forspent snitt (`sls_ok` er ubesvart med grunn),
+r_inf/r_sup etter EC2 5.10.9, aldersjustert langtidsmodell med slakkarmering, samvirke
+mellom tapene i flere spennlag.
 
 **Fasit:** `docs/prestress-hand-calc.py`, skrevet før motoren. Motoren treffer den til
 avrunding på 32-kanten og innen 0,51 % på ekte sirkler (σ), se `tests/python/test_prestress.py`.

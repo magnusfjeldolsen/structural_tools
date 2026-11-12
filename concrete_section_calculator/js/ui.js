@@ -66,7 +66,8 @@
 
 import { BAR_DIAMETERS, CEMENT_CLASSES, CONCRETE_GRADES, CONCRETE_LAWS, EXPOSURE_CLASSES,
   STEEL_GRADES, STEEL_LAWS, derivedMaterials, matchConcreteGrade, matchSteelGrade,
-  notionalSize, resolveCreep, slsLimits, PRESTRESS_STEEL_DEFAULTS, isPrestressedLayer } from './materials.js';
+  notionalSize, resolveCreep, slsLimits, PRESTRESS_STEEL_DEFAULTS, isPrestressedLayer,
+  prestressCreep } from './materials.js';
 import { prestressMoments } from './payload.js';
 import { bindNumericInput, evaluate } from './numeric-input.js';
 import { aswPerSpacing, hasSlsCombo, layerArea, layerBarCount, layerDepth, recomputeAutoDc,
@@ -819,16 +820,18 @@ export function prestressSection(result) {
   const cell = 'px-2 py-1 text-right num';
   const head = ['Stage', 'M [kNm]', 'σ<sub>c,top</sub>', 'σ<sub>c,bot</sub>', 'σ<sub>p</sub>',
     'χ [10⁻⁶/mm]', 'State', 'M<sub>dec</sub>', 'M<sub>cr</sub>'];
-  const body = rowsArr.map((r) => `<tr class="border-t border-slate-700/60">
+  const body = rowsArr.map((r) => (r.available === false ? `<tr class="border-t border-slate-700/60">
+      <td class="px-2 py-1">${esc(r.label)}</td><td class="${cell}">${r.M}</td>
+      <td colspan="7" class="px-2 py-1 text-amber-300 text-[11px]">Not available — ${esc(r.reason)}</td></tr>` : `<tr class="border-t border-slate-700/60">
       <td class="px-2 py-1">${esc(r.label)}</td>
       <td class="${cell}">${r.M}</td><td class="${cell}">${r.top}</td><td class="${cell}">${r.bottom}</td>
       <td class="${cell}">${r.sigma_p}</td><td class="${cell}">${r.chi}</td>
       <td class="px-2 py-1 ${r.uncracked ? 'text-emerald-300' : 'text-amber-300'}"
           title="f_ct = ${esc(r.f_ct)} MPa">${r.state}</td>
-      <td class="${cell}">${r.M_dec}</td><td class="${cell}">${r.M_cr}</td></tr>`).join('');
+      <td class="${cell}">${r.M_dec}</td><td class="${cell}">${r.M_cr}</td></tr>`)).join('');
   const losses = prestressLossRows(result).map((l) => `
       <div class="mt-2 text-[12px]">
-        <div class="text-slate-300">Losses, layer ${esc(l.id)}: σ<sub>p0</sub> ${l.sigma_p0} → σ<sub>p,∞</sub> ${l.sigma_p_inf} MPa (total ${l.total} MPa)</div>
+        <div class="text-slate-300">Losses, layer ${esc(l.id)}: σ<sub>p0</sub> ${l.sigma_p0} → σ<sub>p,∞</sub> ${l.sigma_p_inf} MPa (total ${l.total} MPa)${l.phi ? ` · φ(t∞, t₀) = <b>${l.phi}</b>` : ''}</div>
         ${l.rows.length ? `<div class="grid grid-cols-[auto_auto] gap-x-4 max-w-md text-slate-400">${l.rows.map(([k, v]) =>
           `<span>${esc(k)}</span><span class="num text-right">${v} MPa</span>`).join('')}</div>` : ''}
         <div class="text-[11px] text-slate-500">${esc(l.note)}</div>
@@ -838,7 +841,7 @@ export function prestressSection(result) {
     <div class="overflow-x-auto"><table class="text-[12px] w-full">
       <thead><tr class="text-slate-400">${head.map((h, i) => `<th class="px-2 py-1 ${i ? 'text-right' : 'text-left'} font-normal">${h}</th>`).join('')}</tr></thead>
       <tbody>${body}</tbody></table></div>
-    <p class="text-[11px] text-slate-500 mt-1">Linear-elastic section over the actual polygon (transformed, uncracked; no tension in concrete when the tensile stress exceeds f<sub>ct</sub> of that age). M<sub>dec</sub>/M<sub>cr</sub>: moment giving zero / f<sub>ct</sub> stress at the bottom fibre. These are not checks against the EC2 7.2 limits.</p>
+    <p class="text-[11px] text-slate-500 mt-1">Linear-elastic section over the actual polygon (transformed, uncracked; no tension in concrete when the tensile stress exceeds f<sub>ct</sub> of that age). M<sub>dec</sub>/M<sub>cr</sub>: moment giving zero / f<sub>ct</sub> stress at the fibre the moment puts in tension (bottom for sagging, top for hogging). These are not checks against the EC2 7.2 limits. Shear: σ<sub>cp</sub> from the prestress is not included in V<sub>Rd,c</sub> (safe side); EC2 6.2.2(2) / EN 1168 shear-tension is not checked.</p>
     ${losses}
   </div>`;
 }
@@ -2299,13 +2302,16 @@ export function createUI(deps) {
   function prestressStagePanel(s) {
     const ps = s.prestress || {};
     const m = prestressMoments(s);
+    const creep = prestressCreep(s);
     const fld = (f, label, dec, hint) => `<label><span class="field-label">${label}</span>
       <input type="text" inputmode="text" data-psg="${f}" value="${fmtInput(ps[f], dec)}" placeholder="${esc(hint)}"></label>`;
     const src = { manual: 'entered', self_weight: 'self-weight', zero: 'no span given → 0', transfer: '= transfer' };
     return `<div class="px-3 py-3 bg-slate-900/40" id="prestress-stage-inputs">
       <div class="text-xs text-slate-400 mb-2">Prestress stages — transfer t₀, long term t∞, loaded (per characteristic / quasi-permanent combination)</div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-        ${fld('fck_t0', 'f<sub>ck</sub>(t₀) at transfer [MPa]', 1, `= f_ck ${fmtNumber(s.concrete?.fck, 0)}`)}
+        ${fld('fck_t0', 'f<sub>ck</sub>(t₀) at transfer [MPa] *', 1, 'required')}
+        ${fld('t0_transfer', 'Age at transfer t₀ [days] *', 1, 'required')}
+        ${fld('phi_override', 'φ(t∞, t₀) override [–]', 3, creep.phi === null ? 'derived' : `${fmtNumber(creep.phi, 3)} (derived)`)}
         ${fld('span', 'Span L [m] (self-weight helper)', 2, 'none')}
         ${fld('density', 'Density [kN/m³]', 1, '25')}
         ${fld('relaxation_class', 'Relaxation class (EC2 3.3.2)', 0, '2')}
@@ -2313,7 +2319,7 @@ export function createUI(deps) {
         ${fld('M_permanent', 'M permanent t∞ [kNm]', 1, `${fmtNumber(m.M_permanent, 1)} (${src[m.permanent_source]})`)}
         ${fld('sigma_p_inf', 'σ<sub>p,∞</sub> override [MPa]', 1, 'compute losses')}
       </div>
-      <p class="text-[11px] text-slate-500 mt-1">Self-weight M<sub>g</sub> = −ρ·A·L²/8 = ${m.M_g === null ? '–' : fmtNumber(m.M_g, 1)} kNm. Creep φ, RH, cement class and t₀ (age at transfer) come from the creep box in section 1. Empty field = derived.</p>
+      <p class="text-[11px] text-slate-500 mt-1">Self-weight M<sub>g</sub> = −ρ·A·L²/8 = ${m.M_g === null ? '–' : fmtNumber(m.M_g, 1)} kNm. Losses use φ(t∞, t₀) = <b>${creep.phi === null ? '–' : fmtNumber(creep.phi, 3)}</b> (${creep.source === 'manual' ? 'entered here' : `EC2 annex B from the age at transfer; RH, cement class, service life and h₀ from the creep box`}) — the SLS φ<sub>ef</sub> override does not apply to the losses. * required. Empty optional field = derived.</p>
     </div>`;
   }
 
@@ -3565,14 +3571,17 @@ export function createUI(deps) {
         <th class="font-medium">State</th></tr></thead>
       <tbody>${layers.map((l) => {
         const sigma = toNum(l.sigma);
-        const ratio = sigma !== null && fyd ? sigma / fyd : null;
+        // Spenntau (review F7): total tøyning ε+ε₀, σ_p/f_pd (motorens `utilisation`,
+        // mot lagets egen f_pd) og tilstanden av spenningen, ikke tverrsnittstøyningen.
+        const ratio = l.prestressed ? toNum(l.utilisation) : (sigma !== null && fyd ? sigma / fyd : null);
+        const comp = l.prestressed ? (sigma !== null && sigma < 0) : l.compression;
         return `<tr class="border-b border-slate-800">
-          <td class="py-1 text-amber-300">${esc(l.id)}</td>
+          <td class="py-1 text-amber-300">${esc(l.id)}${l.prestressed ? ' <span class="text-sky-300">tendon</span>' : ''}</td>
           <td>${fmtLength(l.z, 0)} mm</td>
-          <td>${fmtStrainPermille(l.eps)} ‰</td>
+          <td>${fmtStrainPermille(l.prestressed ? l.eps_total : l.eps)} ‰${l.prestressed ? ' (ε+ε₀)' : ''}</td>
           <td>${fmtStress(l.sigma)} MPa</td>
-          <td>${fmtRatio(ratio)}</td>
-          <td class="${l.compression ? 'text-sky-300' : 'text-amber-200'}">${l.compression ? 'compression' : 'tension'}</td></tr>`;
+          <td>${fmtRatio(ratio)}${l.prestressed ? ' (σ<sub>p</sub>/f<sub>pd</sub>)' : ''}</td>
+          <td class="${comp ? 'text-sky-300' : 'text-amber-200'}">${comp ? 'compression' : 'tension'}</td></tr>`;
       }).join('')}</tbody></table>`;
   }
 

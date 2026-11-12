@@ -1069,7 +1069,7 @@
     "mc_chi": null
   },
   "sls": {
-    "phi_ef": 2.709590486586191,
+    "phi_ef": 1.8265942101778914,
     "exposure_class": null,
     "w_max": null,
     "w_max_source": null,
@@ -1086,6 +1086,7 @@
     "M_permanent": -65917009.774300754,
     "sigma_p_inf": null,
     "phi": 2.709590486586191,
+    "phi_source": "derived",
     "RH": 50,
     "cement": "R",
     "t0": 1,

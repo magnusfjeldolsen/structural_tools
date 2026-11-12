@@ -328,6 +328,10 @@ export const ENGINE_CODES = Object.freeze([
   'prestress_stages_missing',
   'prestress_above_limit',
   'prestress_cracked_at_transfer',
+  // Review av #89.
+  'prestress_long_term_not_available',
+  'prestress_stress_beyond_linear',
+  'prestress_shear_not_included',
 ]);
 
 /** Kodene `section.js` sin `validate()` kan produsere. Samme tabell, ett oppslag. */
@@ -368,6 +372,9 @@ export const VALIDATION_CODES = Object.freeze([
   'polygon_too_small',
   'polygon_wall_too_thin',
   'polygon_too_large',
+  // Forspenning (sak #84, review B3/F6).
+  'prestress_fck_t0_missing',
+  'prestress_t0_missing',
 ]);
 
 /** Kodene som beskriver svikt i worker/runtime eller i et lastet dokument, ikke i tverrsnittet. */
@@ -556,7 +563,28 @@ export const CODE_MESSAGES = Object.freeze({
     '0.85·f_p0,1k) of EC2 5.10.3(2). The calculation continues; check the value.',
   prestress_cracked_at_transfer:
     'The section cracks at transfer: the tensile stress exceeds f_ctm(t₀). The transfer ' +
-    'stage is computed as cracked, with no concrete in tension.',
+    'stage is computed as cracked, with no concrete in tension, and the losses use that ' +
+    'state. The long-term and loaded stages and the brittle-failure check are NOT given — ' +
+    'the long-term model starts from an uncracked section.',
+  prestress_long_term_not_available:
+    'The long-term and loaded prestress stages are not available for this section: it has ' +
+    'non-prestressed reinforcement together with the tendons, which over time takes up part ' +
+    'of the creep and shrinkage. Without an age-adjusted analysis the long-term stresses ' +
+    'and the decompression/cracking moments would be on the unsafe side, so they are not ' +
+    'given. Transfer and the bending resistance are computed.',
+  prestress_stress_beyond_linear:
+    'In a prestress stage the concrete compression exceeds f_ck. The stage is computed with ' +
+    'linear-elastic concrete, which is not valid at that stress — the numbers for the stage ' +
+    'named in the detail are outside the model.',
+  prestress_shear_not_included:
+    'The shear resistance V_Rd,c does not include the compressive stress σ_cp from the ' +
+    'prestress (on the safe side), and the shear-tension check of EC2 6.2.2(2) / EN 1168 ' +
+    'for hollow-core elements is not carried out.',
+  prestress_fck_t0_missing:
+    'The concrete strength at transfer f_ck(t₀) must be given for a prestressed section.',
+  prestress_t0_missing:
+    'The age of the concrete at transfer t₀ (days) must be given for a prestressed section. ' +
+    'It sets the creep coefficient and the shrinkage used for the losses.',
   polygon_missing:
     'No custom cross-section is loaded. Load a section file or paste one in section 1.',
   polygon_outer_invalid:
@@ -1751,7 +1779,19 @@ export function prestressStageRows(result) {
     const label = st.stage === 'loaded'
       ? `${base} · ${st.combo_name || st.combo || ''}`.trim()
       : base;
+    if (st.available === false) {
+      // Review B2/F3: steget er IKKE regnet. Ingen tall — bare grunnen.
+      return {
+        stage: st.stage, label, available: false,
+        M: fmtMomentKNm(st.M), dM: DASH, top: DASH, bottom: DASH, sigma_p: DASH, chi: DASH,
+        uncracked: false, state: 'not available', f_ct: DASH, M_dec: DASH, M_cr: DASH,
+        fibre: '', reason: st.reason_text || st.reason || '',
+      };
+    }
     return {
+      available: true,
+      reason: '',
+      fibre: st.fibre || '',
       stage: st.stage,
       label,
       M: fmtMomentKNm(st.M),
@@ -1791,7 +1831,9 @@ export function prestressLossRows(result) {
       rows: PRESTRESS_LOSS_TERMS.map(([k, name]) => [name, fmtStress(l[k], 1)]),
       total: fmtStress(l.d_sigma_total, 1),
       sigma_p0: fmtStress(l.sigma_p0, 1), sigma_p_inf: fmtStress(l.sigma_p_inf, 1),
-      note: `EC2 5.10.6 (5.46): φ = ${fmtNumber(l.phi, 3)}, ε_cs = ${fmtStrainPermille(l.eps_cs, 3)} ‰, `
+      phi: fmtNumber(l.phi, 3),
+      note: `EC2 5.10.6 (5.46): φ(t∞, t₀) = ${fmtNumber(l.phi, 3)} `
+        + `(${l.phi_source === 'manual' ? 'entered' : 'derived'}, t₀ = ${fmtNumber(l.inputs?.t0, 1)} d), ε_cs = ${fmtStrainPermille(l.eps_cs, 3)} ‰, `
         + `Δσ_pr = ${fmtStress(l.d_sigma_pr, 1)} MPa (class ${l.relaxation_class}, ρ₁₀₀₀ = `
         + `${fmtNumber(l.rho_1000, 1)} %, μ = ${fmtNumber(l.mu, 3)}), σ_c,QP = `
         + `${fmtStress(l.sigma_c_qp, 2)} MPa, D = ${fmtNumber(l.denominator, 4)}.`,

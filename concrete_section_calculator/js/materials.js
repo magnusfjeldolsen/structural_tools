@@ -370,7 +370,12 @@ export const PRESTRESS_STEEL_DEFAULTS = Object.freeze({
  * Relaksasjonsklasse 2 (lav) er det vanlige for tau, EC2 3.3.2(4).
  */
 export const PRESTRESS_STAGE_DEFAULTS = Object.freeze({
+  // PÅKREVD, ingen standard (review B3/F6): f_ck(t₀) og alderen ved overføring hører
+  // sammen, og en standard for den ene uten den andre ga feil tap på usikker side.
   fck_t0: null,
+  t0_transfer: null,
+  // Egen overstyring av φ for tapene. SLS-boksens «φ_ef override» påvirker IKKE tapene.
+  phi_override: null,
   M_transfer: null,
   M_permanent: null,
   sigma_p_inf: null,
@@ -378,6 +383,34 @@ export const PRESTRESS_STAGE_DEFAULTS = Object.freeze({
   density: 25,
   span: null,
 });
+
+/**
+ * Kryptallet for TAPENE: φ(t∞, t₀,overføring) etter EC2 tillegg B, med modulens egne
+ * formler (`creepCoefficient`) og ALDEREN VED OVERFØRING fra stegdataene.
+ *
+ * HVORFOR IKKE `resolveCreep` (review B3): den bruker SLS-boksens belastningsalder
+ * (standard 28 døgn) og dens «φ_ef override». Målt: t₀ = 28 ga φ = 1,83 i stedet for
+ * 2,71, tapet 11 % for lite og M_dec 3 % på usikker side — og en redusert φ_ef for
+ * rissvidden gikk rett inn i tapet. RH, sementklasse, levetid og h₀ er derimot de
+ * samme for snittet uansett hva som spørres om, og hentes derfra.
+ *
+ * @returns {{phi:number|null, source:'manual'|'derived'|null, reason:string|null, t0:number}}
+ */
+export function prestressCreep(state = {}) {
+  const ps = state.prestress || {};
+  const sls = state.sls || {};
+  const t0 = num(ps.t0_transfer);
+  const over = num(ps.phi_override);
+  if (Number.isFinite(over) && over >= 0) return { phi: over, source: 'manual', reason: null, t0 };
+  const h0 = Number.isFinite(num(sls.h0_override)) && num(sls.h0_override) > 0
+    ? num(sls.h0_override)
+    : notionalSize(state);
+  const chain = creepCoefficient({
+    fck: num(state.concrete?.fck), h0, RH: num(sls.RH), t0, t: num(sls.t_life),
+    cement: sls.cement,
+  });
+  return { phi: chain.phi, source: chain.phi === null ? null : 'derived', reason: chain.reason, t0 };
+}
 
 /** Er laget et spennlag? Ett sted, så payload, tegning og areal er enige. */
 export function isPrestressedLayer(layer = {}) {

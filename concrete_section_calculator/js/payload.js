@@ -36,7 +36,7 @@
 
 import { SCHEMA_VERSION } from './meta.js';
 import {
-  ftkOf, isPrestressedLayer, notionalSize, resolveCreep, selfWeightMoment, slsLimits,
+  ftkOf, isPrestressedLayer, notionalSize, prestressCreep, resolveCreep, selfWeightMoment, slsLimits,
 } from './materials.js';
 import {
   activeComboTheta, barGeometry, sectionHeight, sectionPolygon, sectionWidth, shearWidth, thetaFor,
@@ -179,22 +179,34 @@ export function prestressMoments(state = {}) {
 function prestressPayload(state) {
   const ps = state.prestress || {};
   const sls = state.sls || {};
-  const fck = num(state.concrete?.fck);
   const fckT0 = num(ps.fck_t0);
+  const t0 = num(ps.t0_transfer);
+  // PÅKREVD (review B3/F6). Et tomt felt ble før stille f_ck og 28 døgn — et svar
+  // regnet med tall ingen valgte, på usikker side. `validate()` sier det i skjemaet;
+  // dette er sikringen for den som bygger payloaden utenom skjemaet.
+  if (!(fckT0 > 0)) {
+    throw new Error('f_ck(t₀) at transfer must be given for a prestressed section.');
+  }
+  if (!(t0 > 0)) {
+    throw new Error('The age of the concrete at transfer t₀ (days) must be given for a '
+      + 'prestressed section.');
+  }
   const m = prestressMoments(state);
-  const creep = resolveCreep(state);
+  // φ(t∞, t₀,overføring), IKKE SLS-boksens φ_ef (review B3) — se `prestressCreep`.
+  const creep = prestressCreep(state);
   const h0Over = num(sls.h0_override);
   const h0 = h0Over > 0 ? h0Over : notionalSize(state);
   const sigmaInf = num(ps.sigma_p_inf);
   return {
-    fck_t0: Number.isFinite(fckT0) && fckT0 > 0 ? fckT0 : fck,
+    fck_t0: fckT0,
     M_transfer: m.M_transfer * KNM_TO_NMM,
     M_permanent: m.M_permanent * KNM_TO_NMM,
     sigma_p_inf: Number.isFinite(sigmaInf) ? sigmaInf : null,
     phi: creep.phi,
+    phi_source: creep.source,
     RH: num(sls.RH),
     cement: sls.cement || 'N',
-    t0: num(sls.t0),
+    t0,
     t_life: num(sls.t_life),
     h0: Number.isFinite(h0) ? h0 : null,
     relaxation_class: num(ps.relaxation_class) || 2,

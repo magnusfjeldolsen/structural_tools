@@ -488,7 +488,14 @@ function rebarChapter(state, result, props) {
     // der A_s,min består vakuøst. Per meter for plate, fordi W = b·h²/6 med
     // b = 1000 mm; notatet under om «reinforcement quantities» dekker ikke et
     // moment, så merkingen må stå i etiketten.
-    [`M_cr = W·(f_ctm − N_Ed/A_c) [kNm]${perMeter}`, fmtMomentKNm(props.M_cr)],
+    // Forspent snitt (review B1): tallet er rissmomentet MED forspenning etter tap (t∞),
+    // i governing-radens retning og ved dens N_Ed — samme som `brittle_ok` leser — og
+    // merkelappen må si det, ellers står det ved siden av stegtabellens M_cr som et
+    // annet tall for samme snitt.
+    props.M_cr_basis === 'prestressed_long_term'
+      ? [`M_cr with prestress after losses (t∞, governing direction and N_Ed) [kNm]${perMeter}`,
+        fmtMomentKNm(props.M_cr)]
+      : [`M_cr = W·(f_ctm − N_Ed/A_c) [kNm]${perMeter}`, fmtMomentKNm(props.M_cr)],
     [`A_s,max [mm²]${perMeter}`, fmtArea(props.As_max)],
   ]);
 
@@ -697,17 +704,25 @@ function loadsChapter(state, result, props) {
 function strainTable(fs, atNEd) {
   const layers = Array.isArray(fs?.layers) ? fs.layers : [];
   if (!layers.length) return '';
+  // SPENNLAG (review F7): tøyningen som står er tauets TOTALE (ε + ε₀), tilstanden leses
+  // av SPENNINGEN (et tau med +624 MPa sto som «Compression» fordi tverrsnittstøyningen
+  // var negativ), og utnyttelsen er σ_p/f_pd — `utilisation` er allerede regnet mot
+  // lagets egen f_pd i motoren, overskriften sier nå hva den er.
+  const anyTendon = layers.some((l) => l.prestressed);
   const rows = layers.map((l) => [
-    esc(l.id || DASH),
+    esc(l.id || DASH) + (l.prestressed ? ' (tendon)' : ''),
     fmtLength(l.z, 1),
-    fmtStrainPermille(l.eps),
+    fmtStrainPermille(l.prestressed ? l.eps_total : l.eps),
     fmtStress(l.sigma, 1),
-    esc(l.compression ? 'Compression' : 'Tension'),
+    esc(l.prestressed
+      ? (toNum(l.sigma) !== null && l.sigma < 0 ? 'Compression' : 'Tension')
+      : (l.compression ? 'Compression' : 'Tension')),
     l.utilisation === undefined || l.utilisation === null ? DASH : fmtRatio(l.utilisation, 3),
   ]);
   return (
     `<h4>Strains and stresses per reinforcement layer${atNEd ? ' at N_Ed' : ''}</h4>` +
-    table(['Layer', 'z [mm]', 'ε [‰]', 'σ [MPa]', 'State', 'σ/f_yd'], rows, {
+    table(['Layer', 'z [mm]', anyTendon ? 'ε (tendon: ε+ε₀) [‰]' : 'ε [‰]', 'σ [MPa]', 'State',
+      anyTendon ? 'σ/f_yd (tendon: σ_p/f_pd)' : 'σ/f_yd'], rows, {
       num: [1, 2, 3, 5],
     })
   );
