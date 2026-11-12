@@ -22,6 +22,7 @@ const Z = {
   axis: 0.05,
   fill: 0.1,
   outline: 0.2,
+  lines: 0.25,
   net: 0.3,
   joint: 0.35,
   preview: 0.4,
@@ -200,6 +201,9 @@ export class Viewport {
       grid: null,
       underlay: null,
       joints: [],
+      // Linjearbeid (#86): løse linjer, tegnes tynt og snappes mot
+      lines: [],
+      linesVisible: true,
     };
     this.underlayTexture = null;
     /** Buffer for tekstetiketter, nøkkel `farge|tekst`. */
@@ -228,7 +232,7 @@ export class Viewport {
     this.renderer.domElement.style.cursor = 'crosshair';
 
     this.groups = {};
-    for (const key of ['underlay', 'grid', 'fill', 'outline', 'net', 'joint', 'marker', 'preview', 'handle']) {
+    for (const key of ['underlay', 'grid', 'fill', 'outline', 'lines', 'net', 'joint', 'marker', 'preview', 'handle']) {
       const g = new THREE.Group();
       this.scene.add(g);
       this.groups[key] = g;
@@ -426,12 +430,28 @@ export class Viewport {
    */
   snap(world, { snaps = null, gridStep = 0, exclude = null, tolPx = 12 } = {}) {
     return findSnap(world, {
-      shapes: this.data.shapes || [],
+      shapes: [...(this.data.shapes || []), ...this._lineSnapShapes()],
       snaps: snaps || {},
       gridStep,
       tol: tolPx * this.unitsPerPixel,
       exclude,
     });
+  }
+
+  /**
+   * Linjearbeidet som snapmål: hvert segment som en tokantet «form», så
+   * endepunkt, midtpunkt, kant og skjæring virker uten egen kode i snapping.js.
+   * Id-en er linjas, så en linje som flyttes ikke snapper mot seg selv.
+   */
+  _lineSnapShapes() {
+    if (this.data.linesVisible === false) return [];
+    const out = [];
+    for (const l of this.data.lines || []) {
+      const pts = l.points || [];
+      for (let i = 0; i + 1 < pts.length; i++) out.push({ id: l.id, points: [pts[i], pts[i + 1]] });
+      if (l.closed && pts.length > 2) out.push({ id: l.id, points: [pts[pts.length - 1], pts[0]] });
+    }
+    return out;
   }
 
   /* ---------------- data inn ---------------- */
@@ -507,6 +527,7 @@ export class Viewport {
     this._drawUnderlay();
     this._drawGrid(upp);
     this._drawShapes(upp);
+    this._drawLines(upp);
     this._drawNet(upp);
     this._drawJoints(upp);
     this._drawMarkers(upp);
@@ -627,6 +648,24 @@ export class Viewport {
         handles.add(buildLineMesh(hpos, '#ffffff', 0.95));
       }
     }
+  }
+
+  /** Linjearbeidet: tynne lyse linjer, markerte gule og tykkere (#86). */
+  _drawLines(upp) {
+    const g = this.groups.lines;
+    disposeGroup(g);
+    if (this.data.linesVisible === false) return;
+    const selection = new Set(this.data.selection || []);
+    const plain = [];
+    const picked = [];
+    for (const l of this.data.lines || []) {
+      if (!l.points || l.points.length < 2) continue;
+      const sel = selection.has(l.id);
+      const pos = thickPolylinePositions(l.points, !!l.closed, ((sel ? 2.4 : 1.1) * upp) / 2, Z.lines + (sel ? 1e-3 : 0));
+      (sel ? picked : plain).push(...pos);
+    }
+    if (plain.length) g.add(buildLineMesh(plain, '#cbd5e1', 0.9));
+    if (picked.length) g.add(buildLineMesh(picked, '#fbbf24', 1));
   }
 
   _drawNet(upp) {
