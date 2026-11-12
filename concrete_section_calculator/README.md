@@ -77,6 +77,34 @@ underkantlag i en T havner i steget.
 **`h₀ = 2A_c/u` med `u = ytre omkrets + ½ · hullenes omkrets`** — et dokumentert *valg*
 (lukkede hulrom tørker, men langsommere), ikke en EC2-verdi. Kan overstyres.
 
+### 1.2 Forspent armering og beregningssteg (sak #84)
+
+Et `bars`-lag blir et **spennlag** med «Prestressed tendons» i radeditoren: areal per tau
+`A_p` (et 12,5 mm tau er 93 mm², ikke π·12,5²/4 = 122,7), `σ_p0` rett før overføring
+(strekk positiv — et negativt tall avvises med `invalid_prestress`), `f_p0,1k`, `f_pk`,
+`E_p`, `ε_uk`. Føroppspent med heft. Motoren: `python/csc_prestress.py`.
+
+**Stegene** (bare når et lag er forspent, i `result.prestress.stages`):
+
+| steg | modell |
+|---|---|
+| `transfer` (t₀) | lineær-elastisk snitt over polygonet, `E_cm(t₀)` fra `f_ck(t₀)` (EC2 3.5), tauet med `ε_p0` |
+| `long_term` (t∞) | tauspenningen etter tap er kjent; resten av snittet bærer `N − P_∞`, `M − P_∞·e`. χ med `E_c,eff = E_cm/(1+φ)`, svinnkrumning ikke med |
+| `loaded` | per karakteristisk/tilnærmet permanent kombinasjon: korttid (`E_cm`) på t∞-tilstanden, tauet med `ε_p* = σ_p,∞/E_p − ε_c(z_p)`. `M_Ed` er TOTALT, `dM` er tillegget |
+
+Strekk over `f_ct` (av riktig alder) ⇒ risset snitt, null strekk i betong. `M_dec`/`M_cr`
+er momentene som gir 0 / `f_ct` i underkant. Tap etter EC2 5.10.6 (5.46) ledd for ledd
+(svinn fra `structuralcodes.codes.ec2_2004`, relaksasjon 3.3.2 klasse 1–3 med anbefalte
+`ρ_1000`, modulens kryptall), eller `σ_p,∞` gitt direkte. ULS: tauet har `ε_p*` som
+initialtøyning i `structuralcodes` (P_m,∞).
+
+**Ikke med:** overføringslengde `l_pt`, påstøp/samvirke, skjærstrekk etter EN 1168,
+etteroppspenning uten heft, rissvidde og EC2 7.2-spenningsgrenser for forspent snitt
+(`sls_ok` er ubesvart med grunn), `M_cr` i `brittle_ok` uten forspenningen.
+
+**Fasit:** `docs/prestress-hand-calc.py`, skrevet før motoren. Motoren treffer den til
+avrunding på 32-kanten og innen 0,51 % på ekte sirkler (σ), se `tests/python/test_prestress.py`.
+
 ---
 
 ## 2. Kjøre lokalt
