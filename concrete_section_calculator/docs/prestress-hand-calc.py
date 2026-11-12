@@ -42,6 +42,10 @@ A8  t_inf: tauspenningen etter tap sigma_p,inf = sigma_p(t0) - Delta sigma_p,c+s
     M_c / (E_c,eff I_c), E_c,eff = E_cm / (1 + phi) (EC2 7.20); svinnkrumning er IKKE med.
 A9  Belastet (t_inf + tilleggsmoment): korttids, transformert snitt med E_cm (28 d).
     Momentet M er TOTALT (inkl. egenvekt); tillegget er M - M_g.
+A11 Risset (strekk over f_ctm i et belastet steg): betongen tar ikke strekk, tauet har
+    eps_p* = sigma_p,inf/E_p - eps_c(z_p, t_inf) som initialtoeyning. Loest ved
+    stripeintegrasjon (4000 striper over hoeyden, bredden = 1200 minus hullkordene),
+    UAVHENGIG av motorens polygonklipping. Kontrollerer den rissede kjernen.
 A10 Dekompresjon/riss: momentet (sagging) som gir sigma_c = 0 / sigma_c = f_ctm(t) i
     UNDERKANT, regnet paa det urissede transformerte snittet fra stegets tilstand.
 
@@ -175,6 +179,72 @@ def relaxation_class2(sigma_pi):
     return ratio * sigma_pi, mu
 
 
+def width(kind, z):
+    """Betongbredden i hoeyde z (z = 0 midt i snittet): 1200 minus korden i hvert hull."""
+    r = D_HOLE / 2.0
+    if abs(z) >= r:
+        return B
+    if kind == 'circle':
+        chord = 2 * math.sqrt(r * r - z * z)
+    else:
+        # Innskrevet regulaer 32-kant med hjoerne i (r, 0): korden er bredden av mangekanten.
+        n = N_GON
+        best = 0.0
+        for k in range(n):
+            a0 = 2 * math.pi * k / n
+            a1 = 2 * math.pi * (k + 1) / n
+            y0, z0 = r * math.cos(a0), r * math.sin(a0)
+            y1, z1 = r * math.cos(a1), r * math.sin(a1)
+            if (z0 - z) * (z1 - z) <= 0 and z0 != z1:
+                y = y0 + (y1 - y0) * (z - z0) / (z1 - z0)
+                best = max(best, abs(y))
+        chord = 2 * best
+    return B - N_HOLES * chord
+
+
+def cracked_strips(kind, ec, ap, zp, eps_p, m_ext, n_strips=4000):
+    """A11: risset snitt, betong sigma = E_c min(eps, 0), tau E_p (eps + eps_p).
+
+    Uavhengig av motorens polygonklipping: snittet deles i `n_strips` vannrette striper
+    (midtpunktsregel), og likevekten N = 0, M = m_ext loeses med Newton med numerisk
+    Jacobi-matrise. Konvergert naar residualen er < 1e-6 N / 1e-3 Nmm.
+    """
+    dz = H / n_strips
+    zs = [-H / 2 + (k + 0.5) * dz for k in range(n_strips)]
+    ws = [width(kind, z) * dz for z in zs]
+
+    def resid(ea, chi):
+        n = m = 0.0
+        for z, w in zip(zs, ws):
+            e = ea + chi * z
+            if e < 0:
+                s = ec * e * w
+                n += s
+                m += s * z
+        sp = E_P * (ea + chi * zp + eps_p) * ap
+        return n + sp, m + sp * zp - m_ext
+
+    ea, chi = -1e-4, -1e-6
+    for _ in range(100):
+        r1, r2 = resid(ea, chi)
+        if abs(r1) < 1e-6 and abs(r2) < 1e-3:
+            break
+        h1, h2 = 1e-9, 1e-12
+        a1, a2 = resid(ea + h1, chi)
+        b1, b2 = resid(ea, chi + h2)
+        j11, j21 = (a1 - r1) / h1, (a2 - r2) / h1
+        j12, j22 = (b1 - r1) / h2, (b2 - r2) / h2
+        det = j11 * j22 - j12 * j21
+        ea -= (r1 * j22 - r2 * j12) / det
+        chi -= (j11 * r2 - j21 * r1) / det
+    else:
+        raise RuntimeError('cracked_strips did not converge')
+    return {'sig_top': min(ec * (ea + chi * H / 2), 0.0),
+            'sig_bot': min(ec * (ea - chi * H / 2), 0.0),
+            'sigma_p': E_P * (ea + chi * zp + eps_p), 'chi_short': chi, 'eps_a': ea,
+            'z_na': -ea / chi}
+
+
 def run(kind, verbose=True):
     sec = section(kind)
     mat = materials()
@@ -244,6 +314,17 @@ def run(kind, verbose=True):
                               'sigma_p': sp, 'chi': chi,
                               'uncracked': max(top, bot) <= mat['fctm']})
 
+    # ---- belastet, RISSET: null strekk i betong, ved stripeintegrasjon (A11) ---------- #
+    eps_star = out['tinf']['eps_p_star']
+    out['loaded_cracked'] = []
+    for m in M_LOADED:
+        if max(r['sig_bot'] for r in out['loaded'] if r['M'] == m) <= mat['fctm']:
+            continue
+        cr = cracked_strips(kind, mat['Ecm'], ap, zp, eps_star, m)
+        # Krumningen rapporteres som t_inf-krumningen pluss korttidstillegget fra M_g til M.
+        cr['chi'] = chi_inf + cr['chi_short'] - m_c / (mat['Ecm'] * sec['I'])
+        out['loaded_cracked'].append(dict(cr, M=m))
+
     # ---- ULS, rektangulaer trykksone (EC2 3.1.7(3)), kontroll av stoerrelsesorden -- #
     fcd = 1.0 * FCK / 1.5
     fpd = FP01K / 1.15
@@ -297,6 +378,9 @@ def _print(kind, o, mat):
         print(f'  M = {f(row["M"] / 1e6, 1)} (tillegg {f(row["dM"] / 1e6)}): o.k. {f(row["sig_top"], 4)}  '
               f'u.k. {f(row["sig_bot"], 4)}  sigma_p {f(row["sigma_p"])}  chi {row["chi"]:.6e}  '
               f'urisset: {row["uncracked"]}')
+    for row in o['loaded_cracked']:
+        print(f'  RISSET M = {f(row["M"] / 1e6, 1)}: o.k. {f(row["sig_top"], 4)}  u.k. {f(row["sig_bot"], 4)}  '
+              f'sigma_p {f(row["sigma_p"])}  chi {row["chi"]:.6e}  z_na {f(row["z_na"], 2)} mm')
     u = o['uls']
     print('--- ULS, rektangulaer trykksone (stoerrelsesorden, ikke akseptkriterium) ---')
     print(f'  x = {f(u["x"], 2)} mm (topflens {f(u["flange_top"], 1)})  '
