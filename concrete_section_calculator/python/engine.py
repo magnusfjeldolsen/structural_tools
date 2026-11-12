@@ -70,6 +70,8 @@ import warnings
 # for maalingen som viste at det var den rette soemmen.
 from csc_sls import _compute_sls  # noqa: E402
 
+from csc_polygon import PolygonError, is_polygon, validated_polygon  # noqa: E402
+
 from csc_common import (  # noqa: E402  -- maa komme etter sys.path i worker-en
     _depth,
     _is_hogging,
@@ -191,11 +193,28 @@ def _build(payload):
         constitutive_law=s['law'],
     )
 
-    b = float(sec['b'])
-    h = float(sec['h'])
-    conc_poly = Polygon([
-        (-b / 2, -h / 2), (b / 2, -h / 2), (b / 2, h / 2), (-b / 2, h / 2),
-    ])
+    # FRITT TVERRSNITT (sak #83). `geom` er `None` for rektangelet, og hele rektangelveien
+    # under er da tegn for tegn den samme som foer -- fixturene er beviset.
+    #
+    # For polygonet er `b`/`h` det OMSKREVNE rektangelet, avledet av polygonet selv og ALDRI
+    # lest fra `sec['b']`/`sec['h']`: to kilder til hoeyden er nettopp feilformen veikartet
+    # advarer mot. Motoren regner i payloadens system (omskrevet rektangel sentrert i
+    # origo, se `csc_polygon`), men `structuralcodes` faar geometrien FLYTTET slik at
+    # betongens tyngdepunkt ligger i origo -- pakka regner momentene om origo, og
+    # aksialkraften skal virke i tyngdepunktet, slik den gjoer i rammeanalysen `M_Ed` kom
+    # fra. For rektangelet er de to punktene det samme, og ingenting flyttes.
+    geom = None
+    if is_polygon(sec):
+        conc_poly, props = validated_polygon(sec)
+        b = props['b']
+        h = props['h']
+        geom = props
+    else:
+        b = float(sec['b'])
+        h = float(sec['h'])
+        conc_poly = Polygon([
+            (-b / 2, -h / 2), (b / 2, -h / 2), (b / 2, h / 2), (-b / 2, h / 2),
+        ])
 
     subtract = bool(opts.get('subtract_bar_area', False))
     if subtract:
@@ -237,8 +256,11 @@ def _build(payload):
             'because the fiber integrator requires the triangle package.'
         )
 
-    section = BeamSection(CompoundGeometry(parts), integrator='marin')
-    return {'section': section, 'conc': conc, 'steel': steel, 'b': b, 'h': h}
+    compound = CompoundGeometry(parts)
+    if geom is not None:
+        compound = compound.translate(dx=-geom['y_c'], dy=-geom['z_c'])
+    section = BeamSection(compound, integrator='marin')
+    return {'section': section, 'conc': conc, 'steel': steel, 'b': b, 'h': h, 'geom': geom}
 
 
 def _prepare(payload, progress=None):
@@ -339,6 +361,84 @@ def _cracking_moment(b, h, fctm, n_ed):
     return (b * h * h / 6.0) * (fctm - n_ed / (b * h))
 
 
+# Over denne graensen for |M_z|/|M_y| ved brudd sies det fra om at M_Rd forutsetter
+# fastholding mot sideveis boeyning. VALGET: momentvektoren dreies da arctan(0,05) ≈ 2,9°
+# fra y-aksen, og kapasiteten i fri (toakset) boeyning faller med omtrent kvadratet av
+# forholdet -- under 0,3 % ved 0,05, altsaa godt under det andre usikkerheter i snittet
+# gir. Reviewerens L-snitt (forhold 0,29) taper 6,8 %. Symmetriske snitt gir ~1e-9.
+LATERAL_MZ_RATIO = 0.05
+
+
+def _lateral_restraint_warning(combo_results):
+    """Advarsel naar et fritt tverrsnitt trenger et betydelig M_z for aa holde
+    noeytralaksen vannrett. Toakset boeyning bygges IKKE her; dette sier fra om antakelsen.
+    """
+    worst = None
+    for c in combo_results:
+        mz, my = c.get('M_z'), c.get('M_Rd')
+        if mz is None or not my:
+            continue
+        ratio = abs(mz) / abs(my)
+        if worst is None or ratio > worst[0]:
+            worst = (ratio, c)
+    if worst is None:
+        return None, None
+    if worst[0] <= LATERAL_MZ_RATIO:
+        return None, worst[0]
+    ratio, c = worst
+    w = _warning(
+        'lateral_restraint_assumed',
+        f'M_Rd = {c["M_Rd"] / 1e6:.1f} kNm assumes the member is restrained against '
+        f'sideways bending: the section is not symmetric about the vertical axis, and '
+        f'holding the neutral axis horizontal needs M_z = {c["M_z"] / 1e6:.1f} kNm at the '
+        f'same time ({ratio:.0%} of M_Rd). Without that restraint the resistance in free '
+        'bending is lower. Biaxial bending is not computed by this module.',
+        # Tallene ogsaa i `detail`: `results.js` viser kodetabellens faste tekst og kaster
+        # `message` for en kjent kode.
+        f'M_Rd = {c["M_Rd"] / 1e6:.1f} kNm requires M_z = {c["M_z"] / 1e6:.1f} kNm at the '
+        f'same time; M_z/M_Rd = {ratio:.3f} > {LATERAL_MZ_RATIO} (combination {c["id"]})',
+        severity='warning',
+    )
+    w['combo'] = c['id']
+    w['combo_name'] = c['name']
+    return w, ratio
+
+
+def _bw_problem(raw, b_bbox):
+    """Meldingen naar `section.bw` for et fritt tverrsnitt ikke kan brukes, ellers `None`.
+
+    `None`-verdien (ikke oppgitt) haandteres av kalleren: da regnes ikke skjaer. Her
+    gjelder det en OPPGITT verdi som er tull -- ikke et tall, ikke positiv, eller bredere
+    enn det omskrevne rektangelet.
+    """
+    try:
+        bw = float(raw)
+    except (TypeError, ValueError):
+        return f'The web width b_w = {str(raw)[:40]!r} is not a number.'
+    if not math.isfinite(bw) or bw <= 0:
+        return f'The web width b_w = {bw} must be a positive number.'
+    if bw > b_bbox * (1 + 1e-9):
+        return (f'The web width b_w = {bw:g} mm is wider than the cross-section itself '
+                f'({b_bbox:g} mm bounding box). b_w is the web — for a hollow-core element '
+                'the sum of the webs, for a T-beam the web — never the overall width.')
+    return None
+
+
+def _cracking_moment_polygon(geom, fctm, n_ed, theta):
+    """`M_cr` for et fritt tverrsnitt: `W = I_y / e`, der `e` er avstanden fra
+    tyngdepunktet til STREKKANTEN -- underkanten ved feltmoment, overkanten ved
+    stoettemoment. Rektangelets `b·h²/6` er det samme tallet naar snittet er symmetrisk;
+    for en T eller et hulldekke med ulik flens er de to `W` forskjellige, og den som
+    gjelder er den paa strekksiden. Samme `f_ctm`-valg og samme fortegn paa `N_Ed` som
+    `_cracking_moment` -- se der.
+    """
+    if _is_hogging(theta):
+        e = geom['z_max'] - geom['z_c']
+    else:
+        e = geom['z_c'] - geom['z_min']
+    return (geom['I_y'] / e) * (fctm - n_ed / geom['area'])
+
+
 # Hvor langt utenfor tverrsnittet en nøytralakse fortsatt er et tall verdt å vise.
 # EC2-felt 1 (rent trykk) har legitimt nøytralakse utenfor snittet, så grensa kan ikke
 # være h/2 — men den må finnes, se `_neutral_axis`.
@@ -421,6 +521,10 @@ def _compression_zone_warning(payload, bundle, eps_a, chi_y, z_na):
     """
     conc = bundle['conc']
     subtract = bool(payload.get('options', {}).get('subtract_bar_area', False))
+    # Momentarmen maales fra punktet momentene regnes om: tyngdepunktet for et fritt
+    # tverrsnitt (se `_build`), origo -- som ER tyngdepunktet -- for rektangelet.
+    geom = bundle.get('geom')
+    z_ref = geom['z_c'] if geom is not None else None
     force = 0.0
     moment = 0.0
     hits = []
@@ -432,7 +536,7 @@ def _compression_zone_warning(payload, bundle, eps_a, chi_y, z_na):
         area = float(layer['area'])
         sigma_c = float(conc.constitutive_law.get_stress(np.array([eps]))[0])
         force += area * sigma_c
-        moment += area * sigma_c * z
+        moment += area * sigma_c * (z if z_ref is None else z - z_ref)
         hits.append(layer['id'])
     if not hits:
         return None
@@ -462,10 +566,52 @@ def _compression_zone_warning(payload, bundle, eps_a, chi_y, z_na):
     )
 
 
-def _geometry_warnings(payload):
+def _geometry_warnings_polygon(sec, poly):
+    """Samme kontroll som rektangelet, mot det FAKTISKE polygonet med hull.
+
+    Et jern i et hull eller i luften ved siden av steget integreres med full stålspenning
+    og uten betong rundt -- motoren feiler ikke, den gir bare et tall. Kontrollen er at
+    hele jernsirkelen (og hele stripa) ligger i betongen.
+    """
+    out = []
+    # Et ørlite slingringsmonn for jern som ligger nøyaktig an mot en rand (avrundet
+    # tegning, flyttallsstøy fra normaliseringen i `payload.js`).
+    concrete = poly.buffer(1e-6)
+    for layer in sec['rebar']:
+        if layer['kind'] == 'bars':
+            for bar in layer['bars']:
+                r = float(bar['dia']) / 2.0
+                circle = Point(float(bar['y']), float(bar['z'])).buffer(r, quad_segs=16)
+                if not concrete.contains(circle):
+                    out.append(_warning(
+                        'bar_outside_section',
+                        f'A bar in layer {layer["id"]} lies outside the concrete — outside '
+                        'the outer boundary or in a hole. The calculated resistance is then '
+                        'not physical.',
+                        f'bar y={bar["y"]}, z={bar["z"]}, dia={bar["dia"]} not inside the '
+                        'concrete polygon',
+                        severity='error',
+                    ))
+                    break
+        else:
+            if not concrete.contains(_strip_polygon(layer['strip'])):
+                out.append(_warning(
+                    'bar_outside_section',
+                    f'The smeared reinforcement strip in layer {layer["id"]} lies partly '
+                    'outside the concrete. The calculated resistance is then not physical.',
+                    f'strip {layer["strip"]} not inside the concrete polygon',
+                    severity='error',
+                ))
+    return out
+
+
+def _geometry_warnings(payload, bundle=None):
     """Jern utenfor tverrsnittet integreres glad og gir tøvete kapasitet uten noen feil."""
     out = []
     sec = payload['section']
+    if bundle is not None and bundle.get('geom') is not None:
+        poly, _props = validated_polygon(sec)
+        return _geometry_warnings_polygon(sec, poly)
     b = float(sec['b'])
     h = float(sec['h'])
     for layer in sec['rebar']:
@@ -581,6 +727,17 @@ def _shear_result(combo, rebar, h, shear_ctx, warnings_out):
     v_ed = abs(float(combo.get('V_Ed', 0.0) or 0.0))
 
     a_sl, d = _shear_asl_d(rebar, h, m_ed, theta_c, warnings_out, combo['id'], combo['name'])
+    if shear_ctx['bw'] is None:
+        # Fritt tverrsnitt uten oppgitt `b_w` (se `shear_ctx` i `_run_inner`). `reason`
+        # finnes BARE her, slik at rektangelets svar er uendret tegn for tegn.
+        return {
+            'evaluated': False, 'reason': 'bw_missing', 'V_Ed': _num(v_ed),
+            'V_Rd': None, 'V_Rd_c': None, 'V_Rd_s': None, 'V_Rd_max': None,
+            'governing_mode': None, 'utilisation': None,
+            'Asl': _num(a_sl), 'd': _num(d), 'bw': None, 'z': None,
+            'asw_s': None, 'asw_s_min': None, 'asw_s_required': None,
+            'sl_max': None, 'st_max': None,
+        }
     bw = float(shear_ctx['bw'])
 
     if d is None or d <= 0 or bw <= 0:
@@ -827,7 +984,7 @@ def _unsolved_combo(combo, n_ed, m_ed, theta_c, v_ed, shear, within_limits):
 
 
 def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
-                  n_min, n_max, shear_ctx, warnings_out, solve_flexure=True):
+                  n_min, n_max, shear_ctx, warnings_out, solve_flexure=True, geom=None):
     """Løser bruddtilstanden for ÉN lastkombinasjon.
 
     Returnerer `(public, extra)`. `public` er NØYAKTIG formen `combinations[i]` skal ha i
@@ -858,7 +1015,8 @@ def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
     # `M_cr` avhenger BARE av geometrien, `f_ctm` og `N_Ed` — aldri av bruddtilstanden.
     # Derfor har den et svar også for radene under, som ikke løser bøyningen, og skal
     # regnes her oppe én gang i stedet for to ganger lenger nede.
-    m_cr = _cracking_moment(b, h, fctm, n_ed)
+    m_cr = (_cracking_moment(b, h, fctm, n_ed) if geom is None
+            else _cracking_moment_polygon(geom, fctm, n_ed, theta_c))
     # `has_tension: None` betyr «ikke regnet», ikke «ingen strekk» — de to gir ULIKE
     # kontrollsvar lenger nede, og må derfor være skillbare her.
     no_extra = {'d_eff': None, 'as_tension': None, 'd_eff_all': None, 'z_na': None,
@@ -896,6 +1054,11 @@ def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
     m_rd_signed = float(bend.m_y)
     eps_a = float(bend.eps_a)
     chi_y = float(bend.chi_y)
+    if geom is not None:
+        # Pakka regnet i et system der betongens tyngdepunkt ligger i origo (se `_build`);
+        # alt herfra -- lagtøyninger, nøytralakse, `eps_a` i svaret -- er i payloadens
+        # system, der lagenes `z` står. ε(z) = eps_a' + χ·(z − z_c) = (eps_a' − χ·z_c) + χ·z.
+        eps_a = eps_a - chi_y * geom['z_c']
     z_na, x = _neutral_axis(eps_a, chi_y, h, theta_c)
     layers = _layer_state(rebar, eps_a, chi_y, steel)
     eps_s_max = max((l['eps'] for l in layers if l['eps'] is not None), default=None)
@@ -930,6 +1093,12 @@ def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
         'within_limits': True,
         'flexure_solved': True,
     }
+    if geom is not None:
+        # Fritt tverrsnitt: tøyningsplanet holdes VANNRETT (θ = 0/π), og for et snitt
+        # som ikke er symmetrisk om z-aksen krever det et moment om z-aksen samtidig.
+        # Det kastet motoren stille (review av #83). Bare for polygonet, så rektangelets
+        # svar er tegn for tegn uendret. Se `LATERAL_MZ_RATIO`.
+        public['M_z'] = _num(float(bend.m_z))
     extra = {
         'd_eff': d_eff, 'as_tension': as_tension, 'd_eff_all': d_eff_all, 'z_na': z_na,
         'm_cr': m_cr, 'has_tension': bool(tension),
@@ -1061,6 +1230,14 @@ def run(payload: dict, progress=None) -> dict:
     t0 = time.perf_counter()
     try:
         result = _run_inner(payload, progress, t0)
+    except PolygonError as exc:
+        # Et ugyldig fritt tverrsnitt er et SVAR brukeren skal lese, ikke en krasj: meldingen
+        # sier hva som er galt med geometrien, og stacktracen hører ikke hjemme noe sted.
+        # Meldingen staar OGSAA foerst i `detail`: `results.js` viser kodetabellens faste
+        # tekst for en kjent kode og kaster `message` -- og «hull 2 og 3 overlapper» er
+        # nettopp det brukeren trenger aa lese.
+        return _error('invalid_geometry', exc.message,
+                      exc.message + (f' ({exc.detail})' if exc.detail else ''))
     except Exception as exc:  # noqa: BLE001 — en motor som kaster låser UI-et
         return _error(
             type(exc).__name__,
@@ -1119,9 +1296,21 @@ def _run_inner(payload, progress, t0):
     as_total = sum(float(l['area']) for l in rebar)
     fctm = float(conc.fctm)
     fyk = float(payload['section']['steel']['fyk'])
-    as_max = 0.04 * b * h
+    # FRITT TVERRSNITT: `geom` er polygonets egne stoerrelser (`csc_polygon`), `None` for
+    # rektangelet. Rektangeluttrykkene staar URØRT -- `0.04 * b * h` og `0.04 * (b * h)` er
+    # ikke samme flyttall, og fixturene skal vaere tegn for tegn de samme.
+    geom = bundle.get('geom')
+    if geom is not None and payload['section'].get('bw') is not None:
+        # `b_w` UTEN OEVRE GRENSE ga skjaerkapasitet paa usikker side uten et ord (review
+        # av #83): hulldekket med b_w = 1200 (det omskrevne rektangelet, den mest
+        # sannsynlige feilinntastingen) fikk V_Rd,c 147,7 kN der stegene gir 45,9 kN.
+        # En b_w bredere enn snittet finnes ikke -- det er en FEIL, ikke en advarsel.
+        bw_problem = _bw_problem(payload['section']['bw'], b)
+        if bw_problem:
+            return _error('invalid_bw', bw_problem, bw_problem)
+    as_max = 0.04 * b * h if geom is None else 0.04 * geom['area']
 
-    warnings_out = list(_geometry_warnings(payload))
+    warnings_out = list(_geometry_warnings(payload, bundle))
     geometry_ok = not any(w['code'] == 'bar_outside_section' for w in warnings_out)
 
     # SLS (spec §4): `result.sls` finnes BARE naar payloaden har et `sls`-objekt OG minst
@@ -1130,10 +1319,29 @@ def _run_inner(payload, progress, t0):
     # betinget noekkel paa `common` (under), ikke `common['sls'] = None` alltid.
     sls_cfg = payload.get('sls')
     sls_result = None
+    # BRUKSGRENSEN ER IKKE TILGJENGELIG FOR ET FRITT TVERRSNITT. `csc_sls` er bygget paa
+    # et rektangel fra bunnen av: det lineaer-elastiske snittet integrerer `b·x` i lukket
+    # form, og `h_c,eff`/`A_c,eff` i lign. 7.10 forutsetter en strekksone med bredde `b`.
+    # Aa mate den med det omskrevne rektangelet ville regnet et hulldekke som massivt --
+    # en rissvidde for et snitt som ikke finnes, uten feilmelding. Kontrollen blir derfor
+    # UBESVART med grunnen i klartekst (`sls_ok: None` under), ikke stille utelatt.
+    sls_unavailable = False
     if sls_cfg is not None and any(
         c['type'] in ('characteristic', 'quasi_permanent') for c in combos
     ):
-        sls_result = _compute_sls(payload, sls_cfg, combos, bundle, warnings_out)
+        if geom is None:
+            sls_result = _compute_sls(payload, sls_cfg, combos, bundle, warnings_out)
+        else:
+            sls_unavailable = True
+            warnings_out.append(_warning(
+                'sls_not_available_custom_section',
+                'Serviceability checks (stresses and crack width) are not available for a '
+                'custom cross-section. They assume a rectangular section, and computing them '
+                'with the bounding box would treat holes and voids as solid concrete. The '
+                'characteristic and quasi-permanent combinations have NOT been checked.',
+                'section.shape=polygon; csc_sls integrates b*x in closed form',
+                severity='warning',
+            ))
 
     # Aksialsjekken skjer PER KOMBINASJON inne i `_solve_combo` (§4.4), ikke lenger som ett
     # globalt forhåndssjekk som velter hele kjøringen. `check_axial_load` ville ellers
@@ -1146,9 +1354,20 @@ def _run_inner(payload, progress, t0):
     shear_cfg = payload['section'].get('shear')
     shear_ctx = None
     if shear_cfg:
+        if geom is None:
+            bw_shear = b
+            ac_shear = b * h
+        else:
+            # `b_w` er STEGBREDDEN (EC2 6.2.2/6.2.3), og den kan ikke leses av et vilkaarlig
+            # polygon -- for et hulldekke er den summen av stegene i det smaleste snittet,
+            # for en T stegets bredde. Den maa derfor gis eksplisitt. Mangler den, svarer
+            # skjaer «ikke regnet» med grunn, og regner ALDRI med det omskrevne rektangelet.
+            raw_bw = payload['section'].get('bw')
+            bw_shear = float(raw_bw) if raw_bw is not None and float(raw_bw) > 0 else None
+            ac_shear = geom['area']
         shear_ctx = {
-            'bw': b, 'fck': float(conc.fck), 'fcd': float(conc.fcd()),
-            'ac': b * h, 'gamma_s': float(steel.gamma_s), 'cfg': shear_cfg,
+            'bw': bw_shear, 'fck': float(conc.fck), 'fcd': float(conc.fcd()),
+            'ac': ac_shear, 'gamma_s': float(steel.gamma_s), 'cfg': shear_cfg,
         }
 
     law_c = payload['section']['concrete']['law']
@@ -1202,12 +1421,18 @@ def _run_inner(payload, progress, t0):
         public, extra = _solve_combo(
             combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu, n_min, n_max,
             shear_ctx, warnings_out,
-            solve_flexure=(not is_mc or i == active_index),
+            solve_flexure=(not is_mc or i == active_index), geom=geom,
         )
         combo_results.append(public)
         combo_extras.append(extra)
     if emit_solve_progress:
         progress('solve', n_combos, n_combos)
+
+    lateral_ratio = None
+    if geom is not None:
+        lateral, lateral_ratio = _lateral_restraint_warning(combo_results)
+        if lateral is not None:
+            warnings_out.append(lateral)
 
     if is_mc:
         # KURVEN regnes for DEN AKTIVE kombinasjonen alene (§4.3): `chi_plan` er bare
@@ -1263,7 +1488,13 @@ def _run_inner(payload, progress, t0):
     # 7.3.2, et helt annet krav. Bøyeminimumet finnes ikke i pakka. Den bruker GOVERNING
     # sin `d_eff` (§4.3) — de andre kombinasjonenes tøyningsplan er ikke det UI og rapport
     # viser fram.
-    as_min = max(0.26 * fctm / fyk * b * d_eff, 0.0013 * b * d_eff) if d_eff else None
+    # FRITT TVERRSNITT: `b_t` er strekksonens middelbredde, og den er ikke ett tall for et
+    # polygon -- den avhenger av hvor nøytralaksen ligger, og for en opp-ned T er den
+    # flensen, ikke steget. Vi gjetter ikke: A_s,min blir UBESVART med grunn.
+    if geom is None:
+        as_min = max(0.26 * fctm / fyk * b * d_eff, 0.0013 * b * d_eff) if d_eff else None
+    else:
+        as_min = None
 
     if ref['within_limits']:
         cz = _compression_zone_warning(
@@ -1315,7 +1546,14 @@ def _run_inner(payload, progress, t0):
     # med den samme begrunnelsen — teller og nevner må gjelde den samme armeringen.
     # `as_min` er `None` nøyaktig når `d_eff` er det, altså når strekksettet er tomt eller
     # bruddtilstanden aldri ble regnet. Da er surrogatet A_s,min ∝ d ikke definert.
-    if as_min is None:
+    if as_min is None and geom is not None:
+        as_min_ok = None
+        null_reasons['as_min_ok'] = (
+            'A_s,min is not available for a custom cross-section: the mean width of the '
+            'tension zone b_t in A_s,min = 0.26·f_ctm/f_yk·b_t·d is not a single number for '
+            'an arbitrary polygon, and the bounding-box width would overstate it'
+        )
+    elif as_min is None:
         as_min_ok = None
         null_reasons['as_min_ok'] = (
             'the effective depth d is undefined — no reinforcement is in tension at '
@@ -1581,11 +1819,18 @@ def _run_inner(payload, progress, t0):
 
     if shear_ok is None:
         ids = ', '.join(c['id'] for c in unevaluated_with_load)
-        null_reasons['shear_ok'] = (
-            f'the shear resistance could not be evaluated for load combination(s) {ids}: '
-            'there is no reinforcement on the tension side to measure the effective '
-            'depth d from'
-        )
+        if any(c['shear'].get('reason') == 'bw_missing' for c in unevaluated_with_load):
+            null_reasons['shear_ok'] = (
+                f'the shear resistance could not be evaluated for load combination(s) '
+                f'{ids}: a custom cross-section needs the web width b_w to be given '
+                'explicitly — it cannot be read from the polygon'
+            )
+        else:
+            null_reasons['shear_ok'] = (
+                f'the shear resistance could not be evaluated for load combination(s) '
+                f'{ids}: there is no reinforcement on the tension side to measure the '
+                'effective depth d from'
+            )
 
     if stirrups_cfg and evaluated_shear:
         asw_s_min_ref = evaluated_shear[0]['asw_s_min']
@@ -1596,6 +1841,20 @@ def _run_inner(payload, progress, t0):
         stirrup_spacing_ok = bool(
             min_sl_max is None
             or all(float(st['spacing']) <= min_sl_max for st in stirrups_cfg)
+        )
+    elif not stirrups_cfg and geom is not None and any(
+            (c['shear'].get('V_Ed') or 0.0) > 0.0
+            for c in combo_results if c['checked'] and c.get('shear')):
+        # FRITT TVERRSNITT UTEN BOEYLER, MED SKJAERKRAFT. Om minimumsskjaerarmering kreves,
+        # avhenger av om delen er en BJELKE (9.2.2(5): ja) eller en plate/et hulldekke
+        # (6.2.1(4): unntatt). Det kan ikke leses av polygonet, og begge gjetningene er
+        # gale for den andre halvdelen av brukerne -- svaret er derfor ubesvart, med grunn.
+        asw_min_ok = None
+        stirrup_spacing_ok = True
+        null_reasons['asw_min_ok'] = (
+            'a custom cross-section without shear reinforcement: whether EC2 9.2.2(5) '
+            'requires minimum stirrups (beam) or 6.2.1(4) exempts it (slab, hollow-core '
+            'element) cannot be told from the polygon — judge it yourself'
         )
     elif not stirrups_cfg and section_type == 'beam' and any(
             (c['shear'].get('V_Ed') or 0.0) > 0.0
@@ -1658,6 +1917,15 @@ def _run_inner(payload, progress, t0):
         'asw_min_ok': asw_min_ok,
         'stirrup_spacing_ok': stirrup_spacing_ok,
     }
+    if sls_unavailable:
+        # Se `sls_unavailable` over. Bare naar det FINNES bruksgrenserader: uten dem er det
+        # ingenting aa svare paa, og en ubesvart kontroll ville vaert stoey.
+        checks['sls_ok'] = None
+        null_reasons['sls_ok'] = (
+            'serviceability checks are not available for a custom cross-section — they '
+            'assume a rectangle, and the characteristic/quasi-permanent combinations were '
+            'not checked'
+        )
     # ALLE kontrollene, ikke bare de fire bøyningen alltid hadde. En «Overall assessment:
     # OK» som overser en aksialkraft utenfor [n_min, n_max] eller en strøket skjærkontroll
     # er aktivt misvisende i et verktøy som dimensjonerer betong — rapporten viser nettopp
@@ -1730,7 +1998,7 @@ def _run_inner(payload, progress, t0):
             'eps_ud': _num(eps_ud),
         },
         'section_props': {
-            'Ag': _num(b * h),
+            'Ag': _num(b * h) if geom is None else _num(geom['area']),
             'As_total': _num(as_total),
             # ρ er EC2 sin ρ_l: STREKKARMERINGEN over `b_t·d`, med samme `d` som under.
             # Teller og nevner må gjelde den samme armeringen. `As_total/(b·d_eff)` ville
@@ -1738,8 +2006,10 @@ def _run_inner(payload, progress, t0):
             # betyr noe for et dobbeltarmert snitt, men som en leser tar for ρ_l.
             # `d_eff_all` og `As_tension` ligger ved siden av slik at rapporten kan vise
             # hva som er med i hvilket tall — valget skal være synlig, ikke gjemt bort.
-            'rho': _num(as_tension / (b * d_eff)) if d_eff else None,
-            'b_t': _num(b),
+            # Fritt tverrsnitt: `b_t` er ikke definert (se `as_min` over), og da er heller
+            # ikke ρ_l = A_s/(b_t·d) det.
+            'rho': _num(as_tension / (b * d_eff)) if (d_eff and geom is None) else None,
+            'b_t': _num(b) if geom is None else None,
             'd_eff': _num(d_eff),
             'd_eff_all': _num(d_eff_all),
             'As_tension': _num(as_tension),
@@ -1762,6 +2032,27 @@ def _run_inner(payload, progress, t0):
         'checks': checks,
         'warnings': warnings_out,
     }
+    if geom is not None:
+        # Bare for det frie tverrsnittet: rektangelets svar skal vaere tegn for tegn det
+        # samme som foer. `z_c` er i payloadens system (omskrevet rektangel sentrert i
+        # origo) -- punktet momentene og aksialkraften regnes om. `I_y` er betongens
+        # brutto treghetsmoment om den vannrette tyngdepunktsaksen.
+        common['section_props'].update({
+            'shape': 'polygon',
+            'I_y': _num(geom['I_y']),
+            'y_c': _num(geom['y_c']),
+            'z_c': _num(geom['z_c']),
+            'b_bbox': _num(b),
+            'h_bbox': _num(h),
+            # b_w SOM BLE REGNET MED (None = ikke oppgitt, skjaer ikke regnet). Rapporten
+            # leser den herfra, ikke fra tilstanden: tallet paa papiret skal vaere det
+            # motoren brukte.
+            'bw': _num(shear_ctx['bw']) if shear_ctx else None,
+            # Stoerste |M_z|/|M_Rd| ved brudd over de loeste radene. Over
+            # `LATERAL_MZ_RATIO` forutsetter M_Rd fastholding mot sideveis boeyning.
+            'mz_ratio': _num(lateral_ratio),
+            'mz_ratio_limit': LATERAL_MZ_RATIO,
+        })
     if sls_result is not None:
         common['sls'] = sls_result
         # «OVERALL ASSESSMENT» SKAL SE BRUKSGRENSEN OGSAA.

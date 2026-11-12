@@ -32,6 +32,7 @@ import {
   isAutoComboName,
 } from './rebar.js';
 import { allowedAnalyses, SLAB_WIDTH } from './section.js';
+import { normalizePolygon, polygonBounds, rectanglePolygon } from './polygon.js';
 import { CEMENT_CLASSES, CREEP_DEFAULTS, EXPOSURE_CLASSES, SLS_DEFAULTS } from './materials.js';
 
 /**
@@ -219,9 +220,38 @@ export function defaultState() {
      *
      * Stashet når ALDRI motoren: `payload.js` bygger fra det aktive snittet.
      */
-    stash: { beam: null, slab: null },
+    stash: { beam: null, slab: null, custom: null },
     result: null,
   };
+}
+
+/**
+ * Den TYPEN tilstanden er, klemt til de tre lovlige. Alt annet enn `'slab'` og
+ * `'custom'` er en bjelke — samme regel som før det frie tverrsnittet kom til.
+ */
+function sectionKind(type) {
+  return type === 'slab' || type === 'custom' ? type : 'beam';
+}
+
+/** Dyp kopi av geometrien: polygonets ringer er arrays, og skal ikke deles mellom tilstander. */
+function cloneGeometry(g) {
+  if (!g || typeof g !== 'object') return g;
+  const out = { ...g };
+  if (Array.isArray(g.outer)) out.outer = g.outer.map((p) => [p[0], p[1]]);
+  if (Array.isArray(g.holes)) out.holes = g.holes.map((ring) => ring.map((p) => [p[0], p[1]]));
+  return out;
+}
+
+/**
+ * Standardsnittet for et FERSKT fritt tverrsnitt: bjelkens 300 × 600 som polygon. Ikke
+ * tomt, fordi en tom figur og en feilmelding er et dårlig førsteinntrykk av en funksjon
+ * — og fordi rektangelet gir NØYAKTIG bjelkens M_Rd (akseptkriteriet), så brukeren ser
+ * at de to veiene er enige før hen laster sitt eget snitt. `bw = 300` er rektangelets
+ * EGEN stegbredde; den nullstilles når et nytt polygon lastes inn (`setCustomPolygon`).
+ */
+function defaultCustomGeometry() {
+  const d = defaultState().geometry;
+  return { ...rectanglePolygon(d.b, d.h), b: d.b, h: d.h, bw: d.b };
 }
 
 /**
@@ -255,7 +285,7 @@ export function defaultState() {
 function captureSection(s) {
   if (!s || typeof s !== 'object') return null;
   const out = {};
-  if (s.geometry) out.geometry = { ...s.geometry };
+  if (s.geometry) out.geometry = cloneGeometry(s.geometry);
   if (Array.isArray(s.layers)) out.layers = s.layers.map((l) => ({ ...l }));
   if (s.shear) out.shear = { ...s.shear, stirrups: (s.shear.stirrups || []).map((st) => ({ ...st })) };
   for (const key of ['cover', 'cover_side']) {
@@ -267,7 +297,11 @@ function captureSection(s) {
 /** `stash` med begge halvdelene kopiert — se `captureSection`. */
 function cloneStash(stash) {
   const src = stash || {};
-  return { beam: captureSection(src.beam), slab: captureSection(src.slab) };
+  return {
+    beam: captureSection(src.beam),
+    slab: captureSection(src.slab),
+    custom: captureSection(src.custom),
+  };
 }
 
 /**
@@ -291,7 +325,8 @@ function freshSection(type, spacing, layerId) {
   // de leser `sectionType`, `cover` og `shear.stirrups`.
   const shell = {
     sectionType: type,
-    geometry: type === 'slab' ? { b: SLAB_WIDTH, h: DEFAULT_SLAB_HEIGHT } : { ...d.geometry },
+    geometry: type === 'slab' ? { b: SLAB_WIDTH, h: DEFAULT_SLAB_HEIGHT }
+      : type === 'custom' ? defaultCustomGeometry() : { ...d.geometry },
     // Bjelken har bøyler, plata ikke. Se `defaultState`.
     shear: { ...d.shear, stirrups: type === 'slab' ? [] : [defaultStirrup()] },
     cover: d.cover,
@@ -326,14 +361,15 @@ function maxSeq(list = [], prefix) {
 /** Alle lag i økten: det aktive snittet og begge de parkerte. */
 function allLayers(s = {}) {
   const stash = s.stash || {};
-  return [...(s.layers || []), ...((stash.beam || {}).layers || []), ...((stash.slab || {}).layers || [])];
+  return [...(s.layers || []), ...((stash.beam || {}).layers || []), ...((stash.slab || {}).layers || []),
+    ...((stash.custom || {}).layers || [])];
 }
 
 /** Alle bøylerader i økten — samme begrunnelse som `allLayers`. */
 function allStirrups(s = {}) {
   const stash = s.stash || {};
   const rows = (sec) => ((sec || {}).shear || {}).stirrups || [];
-  return [...rows(s), ...rows(stash.beam), ...rows(stash.slab)];
+  return [...rows(s), ...rows(stash.beam), ...rows(stash.slab), ...rows(stash.custom)];
 }
 
 /**
@@ -346,7 +382,7 @@ function allStirrups(s = {}) {
 function cloneState(s) {
   return {
     ...s,
-    geometry: { ...s.geometry },
+    geometry: cloneGeometry(s.geometry) || {},
     concrete: { ...s.concrete },
     steel: { ...s.steel },
     spacing: { ...s.spacing },
@@ -403,6 +439,38 @@ function enforceSlabWidth(s) {
   if (s.sectionType !== 'slab') return s;
   if (Number(s.geometry?.b) === SLAB_WIDTH) return s;
   return { ...s, geometry: { ...s.geometry, b: SLAB_WIDTH } };
+}
+
+/**
+ * FRITT TVERRSNITT (sak #83): polygonet er den ENE kilden, `geometry.b`/`geometry.h` er
+ * AVLEDET — det omskrevne rektangelet — og polygonet ligger med det omskrevne
+ * rektangelet sentrert i origo, som er kontrakten med motoren.
+ *
+ * Her og ikke bare ved innlasting, av samme grunn som `enforceSlabWidth`: en fil, en
+ * delt lenke og `setInputs()` er egne dører, og et `patch('geometry', {h: 400})` på et
+ * polygon skal ikke kunne gi en tilstand der figuren sier 265 og `d` regnes med 400.
+ *
+ * Énveis og idempotent: et polygon som allerede er sentrert (innenfor flyttallsstøy)
+ * flyttes IKKE på nytt — ellers ville hver normalisering forskjøvet det med 1e-14 og en
+ * lagret fil aldri rundet tilbake til nøyaktig samme tilstand.
+ */
+function enforceCustomGeometry(s) {
+  if (s.sectionType !== 'custom') return s;
+  const g = s.geometry || {};
+  if (!Array.isArray(g.outer) || g.outer.length < 3) return s;
+  const holes = Array.isArray(g.holes) ? g.holes : [];
+  let bounds = polygonBounds({ outer: g.outer });
+  const tol = 1e-9 * Math.max(bounds.b, bounds.h, 1);
+  let outer = g.outer;
+  let movedHoles = holes;
+  if (Math.abs(bounds.yMin + bounds.yMax) > tol || Math.abs(bounds.zMin + bounds.zMax) > tol) {
+    const n = normalizePolygon({ outer: g.outer, holes });
+    outer = n.outer;
+    movedHoles = n.holes;
+    bounds = polygonBounds({ outer });
+  }
+  if (outer === g.outer && movedHoles === g.holes && g.b === bounds.b && g.h === bounds.h) return s;
+  return { ...s, geometry: { ...g, outer, holes: movedHoles, b: bounds.b, h: bounds.h } };
 }
 
 /**
@@ -624,7 +692,7 @@ function enforceActiveCombo(s) {
  */
 function normalise(s) {
   return enforceResultView(enforceSlsParams(enforceActiveCombo(enforceComboNames(
-    enforceComboTypes(enforceSlabStirrups(enforceSlabWidth(enforceAnalysis(s))))
+    enforceComboTypes(enforceSlabStirrups(enforceCustomGeometry(enforceSlabWidth(enforceAnalysis(s)))))
   ))));
 }
 
@@ -801,8 +869,11 @@ export function createStore(initial) {
      * på, får du et FERSKT snitt (`freshSection`), ikke en oversettelse.
      */
     setSectionType(type) {
-      const to = type === 'slab' ? 'slab' : 'beam';
-      const from = state.sectionType === 'slab' ? 'slab' : 'beam';
+      // TRE typer siden sak #83. Det frie tverrsnittet parkeres og hentes som de to
+      // andre: et polygon brukeren har lastet inn skal ikke forsvinne fordi hen tittet
+      // innom bjelken.
+      const to = sectionKind(type);
+      const from = sectionKind(state.sectionType);
       // Samme type som nå: ingenting å parkere og ingenting å hente. Den
       // gamle koden kjørte `applyAutoDc` + `notify` også her, men det var en
       // bivirkning av at den alltid konverterte lagene — ikke noe noen kaller
@@ -885,6 +956,31 @@ export function createStore(initial) {
       applyAutoDc();
       layerSeq = Math.max(layerSeq, maxSeq(allLayers(state), 'L'));
       stirrupSeq = Math.max(stirrupSeq, maxSeq(allStirrups(state), 'S'));
+      notify();
+      return state;
+    },
+
+    /**
+     * Laster et nytt polygon inn i det frie tverrsnittet (fil eller innliming).
+     *
+     * Bare når typen ER `'custom'` — ellers `null`, og ingenting endres: et polygon som
+     * havnet i en bjelkes `geometry` ville ligget der usynlig og blitt med i neste fil.
+     *
+     * `bw` NULLSTILLES. Stegbredden hørte til det forrige snittet, og et hulldekke som
+     * arvet rektangelets 300 mm ville fått en skjærkapasitet regnet med en bredde ingen
+     * har skrevet inn for det. Uten `bw` svarer skjær «ikke regnet» med grunn — det er
+     * riktig til brukeren har tatt stilling.
+     *
+     * @param {{outer:number[][], holes?:number[][][]}} polygon allerede lest av
+     *        `parseSectionDocument`; normaliseres her
+     */
+    setCustomPolygon(polygon) {
+      if (state.sectionType !== 'custom' || !polygon || !Array.isArray(polygon.outer)) return null;
+      const n = normalizePolygon({ outer: polygon.outer, holes: polygon.holes || [] });
+      state = normalise(cloneState({
+        ...state,
+        geometry: { ...state.geometry, outer: n.outer, holes: n.holes, bw: null },
+      }));
       notify();
       return state;
     },

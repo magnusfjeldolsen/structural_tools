@@ -317,6 +317,11 @@ export const ENGINE_CODES = Object.freeze([
   'sls_crack_width_exceeded',
   'crack_state_assumed',
   'sls_stress_limit_exceeded',
+  // Fritt tverrsnitt (sak #83).
+  'invalid_geometry',
+  'sls_not_available_custom_section',
+  'invalid_bw',
+  'lateral_restraint_assumed',
 ]);
 
 /** Kodene `section.js` sin `validate()` kan produsere. Samme tabell, ett oppslag. */
@@ -342,6 +347,21 @@ export const VALIDATION_CODES = Object.freeze([
   'stirrup_alpha_unsupported',
   'stirrup_mixed_fywk',
   'stirrup_multiple_rows_unsupported',
+  // Fritt tverrsnitt (sak #83) — `polygon.js:polygonIssues` og lagkontrollene i `validate`.
+  'polygon_missing',
+  'polygon_outer_invalid',
+  'polygon_hole_invalid',
+  'polygon_hole_outside',
+  'polygon_holes_overlap',
+  'layer_span_ambiguous',
+  'bar_outside_concrete',
+  'bw_missing',
+  // Review av #83.
+  'bw_exceeds_section',
+  'bw_exceeds_web',
+  'polygon_too_small',
+  'polygon_wall_too_thin',
+  'polygon_too_large',
 ]);
 
 /** Kodene som beskriver svikt i worker/runtime eller i et lastet dokument, ikke i tverrsnittet. */
@@ -501,6 +521,68 @@ export const CODE_MESSAGES = Object.freeze({
   sls_stress_limit_exceeded:
     'A stress limit under EC2 7.2 is exceeded for at least one serviceability load ' +
     'combination. The technical detail names which limit.',
+
+  /* --- fritt tverrsnitt (sak #83) --- */
+  invalid_geometry:
+    'The custom cross-section is not a valid polygon, so nothing was calculated. The ' +
+    'technical detail says what is wrong — a boundary that crosses itself, a hole outside ' +
+    'the concrete, or holes that overlap.',
+  sls_not_available_custom_section:
+    'Serviceability checks (stresses and crack width, EC2 7.2/7.3) are not available for ' +
+    'a custom cross-section. They are built on a rectangular section, and using the ' +
+    'bounding box would count holes and voids as concrete. The characteristic and ' +
+    'quasi-permanent combinations have NOT been checked.',
+  polygon_missing:
+    'No custom cross-section is loaded. Load a section file or paste one in section 1.',
+  polygon_outer_invalid:
+    'The outer boundary of the custom cross-section crosses itself or has no area.',
+  polygon_hole_invalid:
+    'A hole in the custom cross-section crosses itself or has no area. The technical ' +
+    'detail says which.',
+  polygon_hole_outside:
+    'A hole is not strictly inside the outer boundary. A hole that touches or crosses the ' +
+    'edge is a recess and belongs in the outer boundary. The technical detail says which.',
+  polygon_holes_overlap:
+    'Two holes overlap or touch. Merge them into one hole or move them apart. The ' +
+    'technical detail says which.',
+  layer_span_ambiguous:
+    'A reinforcement layer lies at a height where the concrete is split into several ' +
+    'parts — through the holes, or across two webs. The bars cannot be spread over one ' +
+    'width. Move the layer, or use one layer per part.',
+  bar_outside_concrete:
+    'At least one bar lies outside the concrete — in a hole or beyond the edge. It would ' +
+    'be integrated with full steel stress and no concrete around it.',
+  bw_missing:
+    'Shear is not calculated: a custom cross-section needs the web width b_w given ' +
+    'explicitly. It cannot be read from the polygon — for a hollow-core element it is ' +
+    'the sum of the webs, for a T-beam the web.',
+
+  invalid_bw:
+    'The web width b_w cannot be used: it is not a positive number, or it is wider than ' +
+    'the cross-section itself. b_w is the web — for a hollow-core element the sum of the ' +
+    'webs, for a T-beam the web — never the overall width. Nothing was calculated.',
+  bw_exceeds_section:
+    'The web width b_w is wider than the cross-section. It is the web — the sum of the ' +
+    'webs in a hollow-core element — never the overall width. The engine rejects it.',
+  bw_exceeds_web:
+    'The web width b_w is larger than the narrowest concrete width where the shear acts ' +
+    '(between the tension reinforcement and the compression zone). A shear capacity ' +
+    'computed with it is on the unsafe side unless you have a reason. The technical ' +
+    'detail gives the narrowest width.',
+  lateral_restraint_assumed:
+    'M_Rd assumes the member is restrained against sideways bending. The section is not ' +
+    'symmetric about the vertical axis, and keeping the neutral axis horizontal needs a ' +
+    'moment M_z about the vertical axis at the same time. Without lateral restraint the ' +
+    'resistance in free bending is lower. Biaxial bending is not computed.',
+  polygon_too_small:
+    'The cross-section or one of its holes is less than 1 mm wide or high — drawing ' +
+    'noise, not concrete or a void. The technical detail says which.',
+  polygon_wall_too_thin:
+    'A wall between a hole and the outer edge, or between two holes, is thinner than ' +
+    '1 mm. The technical detail says where.',
+  polygon_too_large:
+    'A point of the cross-section lies more than 1 km from the origin, or is not a ' +
+    'number. Check the units — the format is in millimetres.',
 
   /* --- validering (`section.js`) --- */
   invalid_height: 'Height h must be greater than 0.',
@@ -773,8 +855,20 @@ export const CHECK_ORDER = Object.freeze([
   'shear_ok',
   'asw_min_ok',
   'stirrup_spacing_ok',
+  // Fritt tverrsnitt med bruksgrenserader (sak #83): motoren svarer `sls_ok: null` —
+  // bruksgrensen er ikke tilgjengelig — og raden SKAL synes, ellers ser «Overall
+  // assessment: –» uforklart ut. Se `OPTIONAL_CHECKS`.
+  'sls_ok',
   'all_ok',
 ]);
+
+/**
+ * Rader som bare vises når motoren faktisk sendte nøkkelen. Alle de andre vises
+ * ALLTID, og en manglende nøkkel er «–» (ubesvart) — det er riktig for dem, men
+ * `sls_ok` finnes bare for et fritt tverrsnitt med bruksgrenserader, og en «–»-rad på
+ * hvert eneste rektangel ville vært en påstand om noe ingen spurte om.
+ */
+export const OPTIONAL_CHECKS = Object.freeze(['sls_ok']);
 
 export const CHECK_LABELS = Object.freeze({
   geometry_ok: 'Geometry and reinforcement placement',
@@ -789,8 +883,18 @@ export const CHECK_LABELS = Object.freeze({
   shear_ok: 'Shear capacity V_Ed ≤ V_Rd, all combinations (EC2 6.2)',
   asw_min_ok: 'Minimum shear reinforcement A_sw/s ≥ A_sw/s,min (EC2 9.2.2(5))',
   stirrup_spacing_ok: 'Stirrup spacing s ≤ s_l,max (EC2 9.2.2(6))',
+  sls_ok: 'Serviceability (EC2 7.2/7.3) — not available for a custom section',
   all_ok: 'Overall assessment',
 });
+
+/**
+ * HVOR `eps_a` GJELDER. Motoren rapporterer tøyningen i payloadens origo, som er
+ * MIDTHØYDEN av (det omskrevne rektangelet til) snittet. For rektangel og plate er det
+ * også tyngdepunktet; for et fritt tverrsnitt er det ikke — rapporten sa «at the
+ * centroid» og trykket 3,870 ‰ for en T der tyngdepunktet har 2,244 ‰ (review av #83).
+ * Siden sa «at the origin». ÉN tekst, brukt begge steder, og en test holder dem i takt.
+ */
+export const EPS_A_LABEL = 'ε_a at mid-height h/2';
 
 export const CHECK_PASS_TEXT = 'OK';
 export const CHECK_FAIL_TEXT = 'Not OK';
@@ -805,7 +909,8 @@ export function checkText(ok) {
 
 /** Kontrolltabellen, ferdig sortert og oversatt. */
 export function checkRows(checks = {}) {
-  return CHECK_ORDER.map((key) => {
+  const has = (key) => Object.prototype.hasOwnProperty.call(checks || {}, key);
+  return CHECK_ORDER.filter((key) => !OPTIONAL_CHECKS.includes(key) || has(key)).map((key) => {
     const ok = Object.prototype.hasOwnProperty.call(checks || {}, key) ? checks[key] : null;
     return { key, label: CHECK_LABELS[key], ok, text: checkText(ok) };
   });
@@ -869,6 +974,7 @@ export function analysisLabel(analysis) {
 export const SECTION_TYPE_LABELS = Object.freeze({
   beam: 'Beam',
   slab: 'Slab (per metre width)',
+  custom: 'Custom section (polygon with holes)',
 });
 
 export function sectionTypeLabel(type) {

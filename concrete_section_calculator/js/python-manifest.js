@@ -32,6 +32,8 @@ export const PYTHON_MODULES = Object.freeze([
   // Pyodide leser dem fra filsystemet i den rekkefølgen de skrives.
   'csc_common.py',
   'csc_sls.py',
+  // Fritt tverrsnitt (sak #83). Importerer bare shapely, men `engine` importerer den.
+  'csc_polygon.py',
   'engine.py',
 ]);
 
