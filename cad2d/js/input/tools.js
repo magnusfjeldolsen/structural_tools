@@ -23,31 +23,18 @@ import {
 } from '../geometry/polygon.js';
 import { applyOrtho, findSnap, snapColor as engineSnapColor } from './snapping.js';
 import { pickLine, lineInBox, boxFromDrag } from '../geometry/linework.js';
+import { text } from '../core/text.js';
 
 /** Fargen former tegnes med i forhåndsvisningen når hull-modus er på. */
 export const VOID_PREVIEW_COLOR = '#fb7185';
 
-const TOOL_HINTS = {
-  select: 'Velg: klikk for å markere, dra for å flytte. Dra et hjørnepunkt for å redigere. Alt+klikk på punkt sletter det, dobbeltklikk på en kant setter inn nytt.',
-  rect: 'Rektangel: klikk første hjørne, deretter motstående hjørne. Esc avbryter.',
-  shell: 'Skallelement: klikk start og slutt på senterlinja. Tykkelsen tas fra menyen.',
-  polygon: 'Polygon: klikk hjørner. Enter eller dobbeltklikk avslutter, Esc avbryter.',
-  line: 'Linje: klikk punkter. Enter eller dobbeltklikk avslutter, klikk på startpunktet lukker, Esc avbryter. Linjene er linjearbeid — de teller ikke i arealet før du lager geometri av dem.',
-  circle: 'Sirkel: klikk sentrum, deretter et punkt på omkretsen.',
-  reference: 'Referansepunkt: klikk der nullpunktet skal ligge.',
-  calibrate: 'Kalibrer: klikk to punkt i bildet du vet avstanden mellom, og skriv inn den virkelige lengden.',
-  move: 'Flytt: klikk basispunkt, deretter sluttpunkt. Virker på utvalget. Esc avbryter.',
-  copy: 'Kopi: klikk basispunkt, deretter der kopien skal ligge. Verktøyet blir stående, så du kan sette flere. Esc avslutter.',
-  rotate: 'Roter: klikk rotasjonssenter, så et referansepunkt, og til slutt der det skal ende. Shift låser til 15°. Esc avbryter.',
-  mirror: 'Speil: klikk to punkt som definerer speilaksen. Esc avbryter.',
-  splitline: 'Del med linje: klikk to punkt for snittlinja. Hver MARKERTE form linja krysser deles i to (eller flere) langs den — former linja ikke krysser står urørt. Rent redigeringsverktøy, ikke en forutsetning for beregningen. Esc avbryter.',
-};
+/** Verktøyene som finnes innebygd (hjelpetekstene står i core/text.js). */
+const TOOL_HINTS = text('no').hints;
 
 /** Verktøyene som transformerer et eksisterende utvalg i stedet for å tegne. */
 const TRANSFORM_TOOLS = new Set(['move', 'copy', 'rotate', 'mirror']);
 
 /** Verbet som brukes når utvalget er tomt. */
-const TRANSFORM_VERB = { move: 'flytte', copy: 'kopiere', rotate: 'rotere', mirror: 'speile' };
 
 /** Trinnet Shift låser rotasjonsvinkelen til. */
 const ANGLE_STEP_DEG = 15;
@@ -101,6 +88,8 @@ export class ToolController {
      * kjører den fra menyen i stedet for å klikke senteret.
      */
     this.options = { copies: 1, keepOriginal: true, rotateCenter: 'pick' };
+    /** Meldingene, på verktøyets språk ('no' | 'en'), se core/text.js. */
+    this.T = text(opts.lang);
     /**
      * Hull-modus (#86): når den er på, lager rektangel, skall, sirkel og
      * polygon former med `role:'void'`. En bryter verktøyene leser, ikke egne
@@ -144,9 +133,7 @@ export class ToolController {
     this.voidMode = !!on;
     this.onVoidMode(this.voidMode);
     this.onStatus(
-      this.voidMode
-        ? 'Hull-modus PÅ: rektangel, skall, sirkel og polygon tegnes som hull (H slår av).'
-        : 'Hull-modus av: formene tegnes som fast areal.'
+      this.voidMode ? this.T.voidOn : this.T.voidOff
     );
   }
 
@@ -170,7 +157,7 @@ export class ToolController {
   }
 
   hint() {
-    return TOOL_HINTS[this.tool] || (this._tools.get(this.tool) || {}).hint || '';
+    return this.T.hints[this.tool] || (this._tools.get(this.tool) || {}).hint || '';
   }
 
   cancel() {
@@ -375,44 +362,44 @@ export class ToolController {
     if (v.kind === 'angle') {
       const d = this.draft;
       if (this.tool !== 'rotate' || !d || d.stage !== 'angle') {
-        return { ok: false, msg: 'Ingen rotasjon venter på en vinkel.' };
+        return { ok: false, msg: this.T.noRotationWaiting };
       }
       const ang = d.startAngle + (v.value * Math.PI) / 180;
       const r = Math.hypot(d.base[0] - d.center[0], d.base[1] - d.center[1]);
       this._handlePoint([d.center[0] + r * Math.cos(ang), d.center[1] + r * Math.sin(ang)], ev);
-      return { ok: true, msg: `Rotert ${fmt(v.value)}°.` };
+      return { ok: true, msg: this.T.rotated(fmt(v.value)) };
     }
 
     if (v.kind === 'length') {
       const d = this.draft;
-      if (this.tool !== 'circle' || !d || !d.start) return { ok: false, msg: 'Ingen lengde venter på et tall.' };
-      if (!(v.value > 0)) return { ok: false, msg: 'Radien må være større enn null.' };
+      if (this.tool !== 'circle' || !d || !d.start) return { ok: false, msg: this.T.noLengthWaiting };
+      if (!(v.value > 0)) return { ok: false, msg: this.T.radiusPositive };
       this._handlePoint([d.start[0] + v.value, d.start[1]], ev);
-      return { ok: true, msg: `Sirkel med radius ${fmt(v.value)}.` };
+      return { ok: true, msg: this.T.circleRadius(fmt(v.value)) };
     }
 
     if (v.kind === 'delta') {
       const base = this.numericBase();
       if (base) {
         this._handlePoint([base[0] + v.x, base[1] + v.y], ev);
-        return { ok: true, msg: `Δx = ${fmt(v.x)}, Δy = ${fmt(v.y)}.` };
+        return { ok: true, msg: this.T.delta(fmt(v.x), fmt(v.y)) };
       }
       if (this.tool === 'move') return this.moveSelection(v.x, v.y);
       if (this.tool === 'copy') {
         const ids = this.store.withFollowing(this.store.state.selection);
-        if (!ids.length) return { ok: false, msg: 'Ingenting er markert.' };
-        if (!v.x && !v.y) return { ok: false, msg: 'Δx og Δy er begge null — kopien ville havnet oppå originalen.' };
+        if (!ids.length) return { ok: false, msg: this.T.nothingSelected };
+        if (!v.x && !v.y) return { ok: false, msg: this.T.copyOnTop };
         const n = Math.max(1, Math.round(this.options.copies || 1));
         const offsets = [];
         for (let i = 1; i <= n; i++) offsets.push([v.x * i, v.y * i]);
         this.store.copyEntities(ids, offsets, { select: false, reason: 'copy' });
-        return { ok: true, msg: `${n === 1 ? 'Kopi satt' : `${n} kopier satt`}: Δx = ${fmt(v.x)}, Δy = ${fmt(v.y)}.` };
+        return { ok: true, msg: this.T.copiesSet(n, fmt(v.x), fmt(v.y)) };
       }
-      return { ok: false, msg: 'Sett et punkt først — Δ måles fra forrige punkt.' };
+      return { ok: false, msg: this.T.pointFirst };
     }
 
     this._handlePoint([v.x, v.y], ev);
-    return { ok: true, msg: `Punkt (${fmt(v.x)}, ${fmt(v.y)}).` };
+    return { ok: true, msg: this.T.point(fmt(v.x), fmt(v.y)) };
   }
 
   /* ---------------- hendelser ---------------- */
@@ -456,14 +443,14 @@ export class ToolController {
       case 'calibrate':
         if (!this.draft) {
           this.draft = { start: p };
-          this.onStatus('Kalibrer: klikk det andre punktet.');
+          this.onStatus(this.T.calibrateSecond);
         } else {
           const a = this.draft.start;
           this.draft = null;
           this.viewport.setPreview(null);
           const measured = Math.hypot(p[0] - a[0], p[1] - a[1]);
           if (measured < 1e-9) {
-            this.onStatus('De to punktene er like — prøv igjen.');
+            this.onStatus(this.T.samePoints);
             return;
           }
           this.onCalibrated?.({ a, b: p, measured });
@@ -487,7 +474,7 @@ export class ToolController {
         // er ferdig, siden den kan krysse flere markerte former på én gang.
         if (!this.draft) {
           this.draft = { start: p };
-          this.onStatus('Del med linje: klikk det andre punktet.');
+          this.onStatus(this.T.splitSecond);
         } else {
           this._finishSplitLine(this.draft.start, p);
           this.draft = null;
@@ -507,7 +494,7 @@ export class ToolController {
             this.draft.points.push(p);
           }
         }
-        if (this.draft) this.onStatus(`Linje: ${this.draft.points.length} punkt. Enter eller dobbeltklikk avslutter.`);
+        if (this.draft) this.onStatus(this.T.linePoints(this.draft.points.length));
         return;
 
       case 'polygon':
@@ -522,7 +509,7 @@ export class ToolController {
             this.draft.points.push(p);
           }
         }
-        this.onStatus(`Polygon: ${this.draft ? this.draft.points.length : 0} punkt. Enter eller dobbeltklikk avslutter.`);
+        this.onStatus(this.T.polygonPoints(this.draft ? this.draft.points.length : 0));
         return;
 
       default:
@@ -536,7 +523,7 @@ export class ToolController {
       if (e.alt) {
         if (vertex.kind !== 'shape') {
           const picker = this._pickers.find((k) => k.kind === vertex.kind);
-          this.onStatus((picker && picker.vertexDeleteMessage) || 'Bare hjørnene i en form kan slettes med Alt+klikk.');
+          this.onStatus((picker && picker.vertexDeleteMessage) || this.T.onlyShapeVertices);
           return;
         }
         const ring = openRing(this.store.getShape(vertex.id).points);
@@ -544,7 +531,7 @@ export class ToolController {
           ring.splice(vertex.index, 1);
           this.store.setPoints(vertex.id, ring, { reason: 'vertex-delete' });
         } else {
-          this.onStatus('Kan ikke slette punkt: et polygon må ha minst tre hjørner.');
+          this.onStatus(this.T.minThreeCorners);
         }
         return;
       }
@@ -596,7 +583,7 @@ export class ToolController {
         raw: e.world,
         origin: this._selectionGeometry() || [],
       };
-      this.onStatus('Linje: dra for å flytte, shift-klikk for å legge til eller fjerne, Del for å slette.');
+      this.onStatus(this.T.linePicked);
       return;
     }
 
@@ -607,7 +594,7 @@ export class ToolController {
       if (u && u.visible && !u.locked && this._inUnderlay(e.world, u)) {
         this.store.select([]);
         this.drag = { kind: 'underlay', start: e.world, origin: { x: u.x, y: u.y } };
-        this.onStatus('Flytter bildet. Lås det når det ligger riktig.');
+        this.onStatus(this.T.movingImage);
         return;
       }
       if (!e.shift) this.store.select([]);
@@ -662,7 +649,7 @@ export class ToolController {
           },
           { transient: true }
         );
-        this.onStatus(`Bilde: x = ${fmt(u.x)}, y = ${fmt(u.y)}`);
+        this.onStatus(this.T.image(fmt(u.x), fmt(u.y)));
       } else if (this.drag.kind === 'move') {
         const dx = p[0] - this.drag.start[0];
         const dy = p[1] - this.drag.start[1];
@@ -670,13 +657,13 @@ export class ToolController {
           this.drag.origin.map((o) => ({ id: o.id, points: translatePoints(o.points, dx, dy) })),
           { transient: true, reason: 'drag' }
         );
-        this.onStatus(`Flytter: Δx = ${fmt(dx)}, Δy = ${fmt(dy)}${this._followNote(this.drag.origin)}`);
+        this.onStatus(this.T.moving(fmt(dx), fmt(dy), this._followNote(this.drag.origin)));
       } else if (this.drag.kind === 'vertex') {
         const pts = this.drag.origin.map((q) => [q[0], q[1]]);
         pts[this.drag.index] = p;
         this.store.setManyEntityPoints([{ id: this.drag.entityId, points: pts }], { transient: true, reason: 'drag' });
-        const vtx = (this._pickers.find((k) => k.kind === this.drag.entityKind) || {}).vertexLabel || 'Hjørne';
-        this.onStatus(`${vtx}: x = ${fmt(p[0])}, y = ${fmt(p[1])}`);
+        const vtx = (this._pickers.find((k) => k.kind === this.drag.entityKind) || {}).vertexLabel || this.T.vertex;
+        this.onStatus(this.T.vertexAt(vtx, fmt(p[0]), fmt(p[1])));
       } else if (this.drag.kind === 'marquee') {
         this.drag.current = e.world;
         const [a, b] = [this.drag.start, this.drag.current];
@@ -684,7 +671,7 @@ export class ToolController {
         // vindu (blå): bare det som ligger helt inne.
         const crossing = b[0] < a[0];
         this.viewport.setPreview({ points: rectFromCorners(a, b), closed: true, color: crossing ? '#4ade80' : '#60a5fa' });
-        this.onStatus(crossing ? 'Crossing: velger alt rammen berører.' : 'Vindu: velger det som ligger helt inne i rammen.');
+        this.onStatus(crossing ? this.T.crossing : this.T.window);
       }
       return;
     }
@@ -706,13 +693,13 @@ export class ToolController {
         this.viewport.setPreview({ points: [...this.draft.points, p], closed: false, cursor: p, color: '#e2e8f0' });
       } else if (this.tool === 'calibrate') {
         this.viewport.setPreview({ points: [this.draft.start, p], color: '#f59e0b', cursor: p });
-        this.onStatus(`Kalibrer: målt lengde ${fmt(Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]))}`);
+        this.onStatus(this.T.calibrateLength(fmt(Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]))));
       } else if (this._tools.has(this.tool)) {
         this._tools.get(this.tool).preview?.(this, p, e);
       } else if (this.tool === 'splitline') {
         this.viewport.setPreview({ points: [this.draft.start, p], color: '#f8fafc', cursor: p });
         const d = Math.hypot(p[0] - this.draft.start[0], p[1] - this.draft.start[1]);
-        this.onStatus(`Del med linje: lengde ${fmt(d)}. Klikk for å dele de markerte formene linja krysser.`);
+        this.onStatus(this.T.splitLength(fmt(d)));
       }
     } else {
       this.viewport.setPreview({ points: [], cursor: p, cursorColor: snapColor(snapped.type) });
@@ -770,7 +757,13 @@ export class ToolController {
     const sel = new Set(this.store.state.selection);
     const n = origin.filter((o) => !sel.has(o.id)).length;
     if (!n) return '';
-    return ` (${n} ${this.store.followedNoun(n)} følger med)`;
+    return this.T.followNote(n, this._followedNoun(n));
+  }
+
+  /** Ordet for det som følger med: domenets (GW: «skjøt»), ellers språkets. */
+  _followedNoun(n) {
+    const own = this.store.followedNoun ? this.store.followedNoun(n) : null;
+    return own || this.T.followNoun(n);
   }
 
   /** Ider til entitetene kommandoen virker på. */
@@ -790,7 +783,7 @@ export class ToolController {
     if (!this.draft) {
       const origin = this._selectionGeometry();
       if (!origin) {
-        this.onStatus(`Ingenting er markert — marker det du vil ${TRANSFORM_VERB[tool]} først.`);
+        this.onStatus(this.T.selectFirst(this.T.verb[tool]));
         return;
       }
       // Avslutt et hengende transient steg (typisk modellnavnet som skrives),
@@ -799,13 +792,11 @@ export class ToolController {
 
       if (tool === 'rotate') {
         this.draft = { stage: 'reference', origin, center: p };
-        this.onStatus('Roter: klikk et referansepunkt som gir startvinkelen.');
+        this.onStatus(this.T.rotateReference);
       } else {
         this.draft = { stage: 'target', origin, base: p };
         this.onStatus(
-          tool === 'mirror'
-            ? 'Speil: klikk det andre punktet på speilaksen.'
-            : `${tool === 'copy' ? 'Kopi' : 'Flytt'}: klikk sluttpunktet.`
+          tool === 'mirror' ? this.T.mirrorSecond : this.T.targetPoint(tool)
         );
       }
       return;
@@ -814,13 +805,13 @@ export class ToolController {
     if (tool === 'rotate' && this.draft.stage === 'reference') {
       const c = this.draft.center;
       if (Math.hypot(p[0] - c[0], p[1] - c[1]) < 1e-9) {
-        this.onStatus('Referansepunktet kan ikke ligge i senteret — klikk et punkt utenfor.');
+        this.onStatus(this.T.referenceNotCenter);
         return;
       }
       this.draft.stage = 'angle';
       this.draft.base = p;
       this.draft.startAngle = Math.atan2(p[1] - c[1], p[0] - c[0]);
-      this.onStatus('Roter: beveg markøren og klikk der det skal ende. Shift låser til 15°.');
+      this.onStatus(this.T.rotateEnd);
       return;
     }
 
@@ -872,7 +863,7 @@ export class ToolController {
         cross: d.center,
         line: [d.center, p],
       });
-      this.onStatus('Roter: klikk et referansepunkt som gir startvinkelen.');
+      this.onStatus(this.T.rotateReference);
       return;
     }
 
@@ -900,19 +891,16 @@ export class ToolController {
 
     if (tool === 'rotate') {
       const deg = (this._rotationAngle(p, e.shift) * 180) / Math.PI;
-      this.onStatus(`Roterer: ${deg.toFixed(2)}°${e.shift ? ' (låst til 15°)' : ''}`);
+      this.onStatus(this.T.rotating(deg.toFixed(2), e.shift));
     } else if (tool === 'mirror') {
       const ang = (Math.atan2(p[1] - d.base[1], p[0] - d.base[0]) * 180) / Math.PI;
       this.onStatus(
-        `Speilakse: ${ang.toFixed(2)}°${this.options.keepOriginal ? ' — originalen beholdes' : ''}`
+        this.T.mirrorAxis(ang.toFixed(2), this.options.keepOriginal)
       );
     } else {
       const dx = p[0] - d.base[0];
       const dy = p[1] - d.base[1];
-      const label = tool === 'copy' ? 'Kopi' : 'Flytter';
-      this.onStatus(
-        `${label}: Δx = ${fmt(dx)}, Δy = ${fmt(dy)}, lengde ${fmt(Math.hypot(dx, dy))}${this._followNote(d.origin)}`
-      );
+      this.onStatus(this.T.transforming(tool, fmt(dx), fmt(dy), fmt(Math.hypot(dx, dy)), this._followNote(d.origin)));
     }
   }
 
@@ -926,7 +914,7 @@ export class ToolController {
       const dx = p[0] - d.base[0];
       const dy = p[1] - d.base[1];
       if (Math.hypot(dx, dy) < 1e-9) {
-        this.onStatus('Kopien ville havnet oppå originalen — klikk et annet punkt.');
+        this.onStatus(this.T.copyOnOriginal);
         return;
       }
       // Rekke-kopi: n kopier med jevn avstand langs den samme vektoren
@@ -937,7 +925,7 @@ export class ToolController {
       this.store.copyEntities(ids, offsets, { select: false, reason: 'copy' });
       this.viewport.setPreview(null);
       this.onStatus(
-        `${n === 1 ? 'Kopi satt' : `${n} kopier satt`}. Klikk for én til, eller Esc for å avslutte.`
+        this.T.copiesPlaced(n)
       );
       return;
     }
@@ -958,7 +946,7 @@ export class ToolController {
 
     this.draft = null;
     this.viewport.setPreview(null);
-    this.onStatus(TOOL_HINTS[tool]);
+    this.onStatus(this.T.hints[tool]);
   }
 
   /* ---------------- transformasjon fra menyene ---------------- */
@@ -970,8 +958,8 @@ export class ToolController {
    */
   moveSelection(dx, dy) {
     const sel = this.store.state.selection;
-    if (!sel.length) return { ok: false, msg: 'Ingenting er markert.' };
-    if (!dx && !dy) return { ok: false, msg: 'Δx og Δy er begge null.' };
+    if (!sel.length) return { ok: false, msg: this.T.nothingSelected };
+    if (!dx && !dy) return { ok: false, msg: this.T.bothZero };
     // Samme regel som når man drar med musa: skjøtene som ligger inne i det
     // som flyttes blir med, ellers ville tallinntastingen vært en bakvei rundt
     // §1 og geometrien og skjøtene ville glidd fra hverandre.
@@ -980,29 +968,27 @@ export class ToolController {
     const extra = ids.length - sel.length;
     return {
       ok: true,
-      msg: `Flyttet ${sel.length} objekt(er): Δx = ${fmt(dx)}, Δy = ${fmt(dy)}.${
-        extra ? ` ${extra} ${this.store.followedNoun(extra)} fulgte med.` : ''
-      }`,
+      msg: this.T.moved(sel.length, fmt(dx), fmt(dy), extra, this._followedNoun(extra)),
     };
   }
 
   /** Roterer utvalget om et punkt. Vinkelen er i grader. */
   rotateSelection(deg, center) {
     const ids = this.store.state.selection;
-    if (!ids.length) return { ok: false, msg: 'Ingenting er markert.' };
-    if (!deg) return { ok: false, msg: 'Vinkelen er null.' };
+    if (!ids.length) return { ok: false, msg: this.T.nothingSelected };
+    if (!deg) return { ok: false, msg: this.T.angleZero };
     const ang = (deg * Math.PI) / 180;
     const src = this._selectionGeometry() || [];
     const entries = src.map((o) => ({ id: o.id, points: rotatePoints(o.points, ang, center) }));
     this.store.setManyEntityPoints(entries, { transient: true, reason: 'rotate' });
     this.store.commit('rotate');
-    return { ok: true, msg: `Rotert ${ids.length} objekt(er) ${fmt(deg)}° om (${fmt(center[0])}, ${fmt(center[1])}).` };
+    return { ok: true, msg: this.T.rotatedAbout(ids.length, fmt(deg), fmt(center[0]), fmt(center[1])) };
   }
 
   /** Speiler utvalget om linja gjennom a og b. */
   mirrorSelection(a, b, { keepOriginal = false } = {}) {
     const ids = this.store.state.selection;
-    if (!ids.length) return { ok: false, msg: 'Ingenting er markert.' };
+    if (!ids.length) return { ok: false, msg: this.T.nothingSelected };
     const src = this._selectionGeometry() || [];
     const entries = src.map((o) => ({ id: o.id, points: mirrorPointsAboutLine(o.points, a, b) }));
     if (keepOriginal) {
@@ -1011,7 +997,7 @@ export class ToolController {
     } else {
       this.store.setManyEntityPoints(entries, { reason: 'mirror' });
     }
-    return { ok: true, msg: `Speilet ${ids.length} objekt(er).` };
+    return { ok: true, msg: this.T.mirrored(ids.length) };
   }
 
   /** Ligger punktet innenfor bildeunderlaget? */
@@ -1103,7 +1089,7 @@ export class ToolController {
   _finishTwoPoint(a, b) {
     if (this.tool === 'rect') {
       if (Math.abs(a[0] - b[0]) < 1e-9 || Math.abs(a[1] - b[1]) < 1e-9) {
-        this.onStatus('Rektangelet har null utstrekning — avbrutt.');
+        this.onStatus(this.T.rectZero);
         return;
       }
       this.store.addShape(rectFromCorners(a, b), this._shapeOpts('Rektangel'));
@@ -1111,7 +1097,7 @@ export class ToolController {
       const t = Math.abs(this.getThickness());
       const pts = shellPoints(a, b, t);
       if (!pts) {
-        this.onStatus('Senterlinja har null lengde — avbrutt.');
+        this.onStatus(this.T.centerlineZero);
         return;
       }
       this.store.addShape(pts, this._shapeOpts('Skall', { meta: { kind: 'shell', p1: a, p2: b, t } }));
@@ -1120,7 +1106,7 @@ export class ToolController {
       if (r < 1e-9) return;
       this.store.addShape(circlePoints(a[0], a[1], r), this._shapeOpts('Sirkel', { meta: { kind: 'circle', c: a, r } }));
     }
-    this.onStatus(TOOL_HINTS[this.tool]);
+    this.onStatus(this.hint());
   }
 
   /**
@@ -1130,18 +1116,16 @@ export class ToolController {
    */
   _finishSplitLine(a, b) {
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-9) {
-      this.onStatus('Snittlinja har null lengde — avbrutt.');
+      this.onStatus(this.T.splitlineZero);
       return;
     }
     if (!this.store.state.selection.length) {
-      this.onStatus('Marker formene som skal deles først, og prøv igjen.');
+      this.onStatus(this.T.selectToSplit);
       return;
     }
     const { splitCount, newIds } = this.store.splitByLine(a, b);
     this.onStatus(
-      splitCount
-        ? `${splitCount} form(er) delt i ${newIds.length} biter langs linja.`
-        : 'Linja krysset ingen av de markerte formene — ingenting delt.'
+      splitCount ? this.T.split(splitCount, newIds.length) : this.T.splitNone
     );
   }
 
@@ -1150,11 +1134,11 @@ export class ToolController {
     this.draft = null;
     this.viewport.setPreview(null);
     if (pts.length < 3) {
-      this.onStatus('Polygonet trenger minst tre punkt — avbrutt.');
+      this.onStatus(this.T.polygonTooFew);
       return;
     }
     this.store.addShape(pts, this._shapeOpts('Polygon'));
-    this.onStatus(TOOL_HINTS[this.tool]);
+    this.onStatus(this.hint());
   }
 
   /** Fullfører en linje fra linjeverktøyet: én polylinje i linjearbeidet. */
@@ -1165,11 +1149,11 @@ export class ToolController {
     // Dobbeltklikk gir to like punkt til slutt
     const pts = raw.filter((q, i) => i === 0 || Math.hypot(q[0] - raw[i - 1][0], q[1] - raw[i - 1][1]) > 1e-12);
     if (pts.length < 2) {
-      this.onStatus('Linja trenger minst to punkt — avbrutt.');
+      this.onStatus(this.T.lineTooFew);
       return;
     }
     this.store.addLines([{ points: pts, closed: closed && pts.length >= 3 }], { reason: 'draw-line', select: false });
-    this.onStatus(TOOL_HINTS[this.tool]);
+    this.onStatus(this.hint());
   }
 }
 

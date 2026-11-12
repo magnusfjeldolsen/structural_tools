@@ -18,6 +18,7 @@ import {
   INSUNITS_TO_UNIT,
 } from './dxf.js';
 import { exportSection, SECTION_FORMAT } from './section-export.js';
+import { text } from '../core/text.js';
 
 /**
  * Leser DXF-tekst inn i dokumentet som ETT angresteg.
@@ -29,7 +30,9 @@ import { exportSection, SECTION_FORMAT } from './section-export.js';
  * @returns {{ok: boolean, added: number, msg: string, ms: number}}
  *   `ms` er hvor lenge meldingen bør stå (lange meldinger lenger).
  */
-export function importDxfText(doc, text, { mode = 'auto', unitChoice = 'auto' } = {}) {
+export function importDxfText(doc, src, { mode = 'auto', unitChoice = 'auto', lang = 'no' } = {}) {
+  const T = text(lang);
+  const fail = (err) => ({ ok: false, added: 0, msg: T.dxfFailed(err.code ? T.dxfError(err.code, err.args) : err.message), ms: 6000 });
   let used;
   const scale = (insunits) => {
     used = resolveDxfUnit(unitChoice, insunits);
@@ -38,36 +41,36 @@ export function importDxfText(doc, text, { mode = 'auto', unitChoice = 'auto' } 
   if (mode === 'lines') {
     let res;
     try {
-      res = importDxfLines(String(text), { scale });
+      res = importDxfLines(String(src), { scale });
     } catch (err) {
-      return { ok: false, added: 0, msg: `DXF-import feilet: ${err.message}`, ms: 6000 };
+      return fail(err);
     }
-    if (!res.paths.length) return { ok: false, added: 0, msg: `${describeLineImport(res)} Ingen linjer å importere.`, ms: 8000 };
+    if (!res.paths.length) return { ok: false, added: 0, msg: `${describeLineImport(res, lang)} ${T.dxfNoLines}`, ms: 8000 };
     doc.addLines(res.paths, { reason: 'import' });
     if (!doc.state.linesVisible) doc.setLinesVisible(true);
     return {
       ok: true,
       added: res.paths.length,
-      msg: `${describeLineImport(res)} Enhet ${used.unit}${used.fromFile ? ' fra fila' : ''}.`,
+      msg: `${describeLineImport(res, lang)} ${T.dxfUnit(used.unit, used.fromFile)}`,
       ms: 9000,
     };
   }
   let res;
   try {
-    res = importDxf(String(text), { scale });
+    res = importDxf(String(src), { scale });
   } catch (err) {
-    return { ok: false, added: 0, msg: `DXF-import feilet: ${err.message}`, ms: 6000 };
+    return fail(err);
   }
   const n0 = doc.state.shapes.filter((s) => /^DXF \d+$/.test(s.name)).length;
   // Dypeste regioner og hull øverst, så 'sum', 'priority' og nettoarealet er
   // enige også for en øy i et hull.
   const list = shapeList(res, { start: n0 + 1 });
-  let msg = describeImport(res);
+  let msg = describeImport(res, lang);
   const fileUnit = INSUNITS_TO_UNIT[res.insunits];
-  if (used.fromFile) msg += ` Enhet ${used.unit} fra fila.`;
-  else if (unitChoice === 'auto') msg += ' Fila oppgir ikke enhet; antatt mm.';
-  else if (fileUnit && fileUnit !== used.unit) msg += ` Fila sier ${fileUnit}, men ${used.unit} er valgt og brukt.`;
-  if (!list.length) return { ok: false, added: 0, msg: `${msg} Ingen lukkede konturer å importere.`, ms: 8000 };
+  if (used.fromFile) msg += T.dxfUnitFromFile(used.unit);
+  else if (unitChoice === 'auto') msg += T.dxfNoUnit;
+  else if (fileUnit && fileUnit !== used.unit) msg += T.dxfUnitOverride(fileUnit, used.unit);
+  if (!list.length) return { ok: false, added: 0, msg: `${msg} ${T.dxfNoContours}`, ms: 8000 };
   doc.addShapes(list, { reason: 'import' });
   return { ok: true, added: list.length, msg, ms: 8000 };
 }
@@ -78,8 +81,8 @@ export function importDxfText(doc, text, { mode = 'auto', unitChoice = 'auto' } 
  *
  * @returns {{ok: boolean, section?: object, error?: string, warnings: string[]}}
  */
-export function sectionOf(doc, { selection = [] } = {}) {
-  return exportSection(doc.state.shapes, { unit: doc.state.unit, selection });
+export function sectionOf(doc, { selection = [], lang = 'no', selectable = true } = {}) {
+  return exportSection(doc.state.shapes, { unit: doc.state.unit, selection, lang, selectable });
 }
 
 /**

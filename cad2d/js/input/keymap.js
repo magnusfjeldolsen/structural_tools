@@ -22,6 +22,7 @@
  */
 
 import { SNAP_TYPES, SNAP_ALL, ORTHO } from './snapping.js';
+import { text } from '../core/text.js';
 
 /** Bokstav → verktøy. */
 export const TOOL_KEYS = Object.freeze({
@@ -84,13 +85,14 @@ export function handleSnapShortcut(e, { toggleSnap, toggleAllSnaps, toggleOrtho 
 export function createKeyHandler(ctx) {
   const { doc, tools, viewport } = ctx;
   const hooks = ctx.hooks || {};
+  const T = text(ctx.lang);
   const status = hooks.status || (() => {});
   const locked = hooks.locked || (() => false);
 
   const toggleOrtho = hooks.toggleOrtho || (() => {
     const on = !doc.state.ortho;
     doc.setOrtho(on);
-    status(`Orto: ${on ? 'på' : 'av'} (${ORTHO.hint})`);
+    status(T.ortho(on, ORTHO.hint));
   });
   const snapShortcut = hooks.snapShortcut || ((e) => handleSnapShortcut(e, {
     toggleOrtho,
@@ -104,13 +106,13 @@ export function createKeyHandler(ctx) {
   }));
   const deleteSelected = hooks.deleteSelected || (() => {
     const sel = doc.state.selection;
-    if (!sel.length) return status('Ingenting er markert.');
+    if (!sel.length) return status(T.nothingSelected);
     doc.removeEntities(sel);
-    status(`${sel.length} objekt(er) slettet.`);
+    status(T.deleted(sel.length));
   });
   const duplicateSelected = hooks.duplicateSelected || (() => {
     const sel = doc.state.selection;
-    if (!sel.length) return status('Ingenting er markert.');
+    if (!sel.length) return status(T.nothingSelected);
     const step = doc.state.grid.step || 0;
     doc.duplicateEntities(doc.withFollowing(sel), step * 2, 0);
   });
@@ -136,7 +138,7 @@ export function createKeyHandler(ctx) {
       tools.keydown(e);
       if (!busy && doc.state.selection.length) {
         doc.select([]);
-        status('Utvalget er tømt.');
+        status(T.selectionCleared);
       }
       return true;
     }

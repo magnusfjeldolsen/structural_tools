@@ -39,6 +39,7 @@ import { createKeyHandler } from '../input/keymap.js';
 import { snapLabel } from '../input/snapping.js';
 import { importDxfText, sectionOf } from '../io/project.js';
 import { sectionProps } from '../io/section-export.js';
+import { text } from '../core/text.js';
 
 /** Verktøyene i verktøylinja, i rekkefølge. `|` er skillestrek. */
 export const DEFAULT_TOOLBAR = [
@@ -57,7 +58,6 @@ const LABELS = {
     redo: ['Gjør om', 'Ctrl+Y'], fit: ['Zoom alt', 'F'], dxf: ['DXF…', ''],
     'select-lines': ['Velg linjer', ''], 'make-shapes': ['Lag geometri', ''], 'make-holes': ['Lag hull', ''],
     dxfAuto: 'Former og hull', dxfLines: 'Bare linjer', voidBadge: 'HULL-MODUS',
-    noClipper: 'Fant ikke polygon-clipping — overlapp kan ikke fjernes.',
     area: 'A',
   },
   en: {
@@ -68,7 +68,6 @@ const LABELS = {
     redo: ['Redo', 'Ctrl+Y'], fit: ['Zoom all', 'F'], dxf: ['DXF…', ''],
     'select-lines': ['Select lines', ''], 'make-shapes': ['Make shapes', ''], 'make-holes': ['Make holes', ''],
     dxfAuto: 'Shapes and holes', dxfLines: 'Lines only', voidBadge: 'HOLE MODE',
-    noClipper: 'polygon-clipping not found — overlaps cannot be resolved.',
     area: 'A',
   },
 };
@@ -140,6 +139,7 @@ export function mountCadEditor(container, options = {}) {
   if (!container) throw new Error('mountCadEditor: container mangler');
   const opts = { chrome: true, keyboard: 'focus', lang: 'no', ...options };
   const L = LABELS[opts.lang] || LABELS.no;
+  const T = text(opts.lang);
   const ownerDoc = container.ownerDocument || document;
   ensureCss(ownerDoc);
 
@@ -205,6 +205,7 @@ export function mountCadEditor(container, options = {}) {
   );
 
   const tools = new ToolController(doc, viewport, {
+    lang: opts.lang,
     getThickness: opts.getThickness || (() => 200),
     onStatus: setStatus,
     onToolChange: (tool) => {
@@ -231,6 +232,7 @@ export function mountCadEditor(container, options = {}) {
   };
 
   const numeric = new NumericInput({
+    lang: opts.lang,
     host: opts.numericHost || (opts.chrome ? canvasHost : container.parentElement || container),
     getUnit: () => lengthLabel(doc.state.unit),
     getExpect: () => tools.expectedInput(),
@@ -311,19 +313,16 @@ export function mountCadEditor(container, options = {}) {
 
   function makeFromLines(role) {
     const ids = selectedLineIds();
-    if (!ids.length) return setStatus('Marker linjer først — klikk dem, eller dra en ramme rundt dem.');
+    if (!ids.length) return setStatus(T.selectLinesFirst);
     const r = doc.makeShapesFromLines(ids, role);
-    const rest = r.unusedIds.length
-      ? ` ${r.unusedIds.length} ${r.unusedIds.length === 1 ? 'linje danner' : 'linjer danner'} ingen lukket kontur og er fortsatt markert.`
-      : '';
-    if (!r.made) return setStatus(`Ingen lukkede konturer i de markerte linjene.${rest}`);
-    const what = role === 'void' ? 'hull' : r.made === 1 ? 'form' : 'former';
-    return setStatus(`${r.made} ${what} laget av ${ids.length} linjer.${rest}`);
+    const rest = r.unusedIds.length ? T.unusedLines(r.unusedIds.length) : '';
+    if (!r.made) return setStatus(T.noClosedContours(rest));
+    return setStatus(T.madeFromLines(r.made, role, ids.length, rest));
   }
 
   /** Les en DXF-fil (tekst) inn i dokumentet. Brukes av knappen og av verten. */
   function importDxf(text, { mode = dxfMode, unitChoice = 'auto' } = {}) {
-    const r = importDxfText(doc, text, { mode, unitChoice });
+    const r = importDxfText(doc, text, { mode, unitChoice, lang: opts.lang });
     if (r.added) viewport.zoomToFit(doc.bounds());
     setStatus(r.msg);
     return r;
@@ -333,16 +332,16 @@ export function mountCadEditor(container, options = {}) {
     const file = fileInput.files && fileInput.files[0];
     fileInput.value = '';
     if (!file) return;
-    file.text().then((text) => importDxf(text)).catch(() => setStatus('Klarte ikke å lese fila.'));
+    file.text().then((text) => importDxf(text)).catch(() => setStatus(T.fileReadFailed));
   });
 
   const commands = {
     void: () => tools.setVoidMode(!tools.voidMode),
     delete: () => {
       const sel = doc.state.selection;
-      if (!sel.length) return setStatus('Ingenting er markert.');
+      if (!sel.length) return setStatus(T.nothingSelected);
       doc.removeEntities(sel);
-      setStatus(`${sel.length} objekt(er) slettet.`);
+      setStatus(T.deleted(sel.length));
     },
     undo: () => doc.undo(),
     redo: () => doc.redo(),
@@ -351,7 +350,7 @@ export function mountCadEditor(container, options = {}) {
     'select-lines': () => {
       if (doc.state.linesVisible === false) doc.setLinesVisible(true);
       doc.select(doc.state.lines.map((l) => l.id));
-      setStatus(`${doc.state.lines.length} linjer markert.`);
+      setStatus(T.linesSelected(doc.state.lines.length));
     },
     'make-shapes': () => makeFromLines('solid'),
     'make-holes': () => makeFromLines('void'),
@@ -401,7 +400,7 @@ export function mountCadEditor(container, options = {}) {
   /* ---------------- tastatur ---------------- */
 
   const keyHooks = { status: setStatus, ...(opts.keyHooks || {}) };
-  const keyHandler = createKeyHandler({ doc, tools, viewport, numeric, hooks: keyHooks });
+  const keyHandler = createKeyHandler({ doc, tools, viewport, numeric, hooks: keyHooks, lang: opts.lang });
 
   if (opts.keyboard === 'page') {
     const onKey = (e) => {
@@ -461,7 +460,8 @@ export function mountCadEditor(container, options = {}) {
      * error, warnings, props}`. `props` er A, I_y, … av seksjonen.
      */
     getSection(opts2 = {}) {
-      const r = sectionOf(doc, opts2);
+      // Uten utvalg å peke på: meldingen ber om å slette eller koble sammen deler
+      const r = sectionOf(doc, { lang: opts.lang, selectable: false, ...opts2 });
       if (r.ok) r.props = sectionProps(r.section);
       return r;
     },
@@ -491,6 +491,6 @@ export function mountCadEditor(container, options = {}) {
   tools.setTool('select');
   render();
   viewport.zoomToFit(doc.bounds());
-  if (!hasClipper()) setStatus(L.noClipper);
+  if (!hasClipper()) setStatus(T.noClipper);
   return editor;
 }

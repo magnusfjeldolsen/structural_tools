@@ -34,6 +34,18 @@
 
 import { DEFAULT_SEGMENTS, areaEqualRadius, arcPoints, circleRing, bulgePoints } from '../geometry/curves.js';
 import { STITCH_REL, stitchPaths, dedupeRings, nestRings, pathLength, bboxOf, samePath, PointGrid } from '../geometry/stitch.js';
+import { text } from '../core/text.js';
+
+/**
+ * Feil med kode, så meldingen kan gis på brukerens språk (`text(lang).dxfError`).
+ * `message` er den norske teksten, som før.
+ */
+function dxfError(code, args) {
+  const err = new Error(text('no').dxfError(code, args));
+  err.code = code;
+  err.args = args;
+  return err;
+}
 
 // Re-eksport: API-et til dxf.js er det samme som før flyttingen (#93).
 export { DEFAULT_SEGMENTS, areaEqualRadius, arcPoints, circleRing, bulgePoints, STITCH_REL, stitchPaths, dedupeRings, nestRings };
@@ -57,7 +69,7 @@ function pairs(text) {
   for (let i = 0; i + 1 < lines.length; i += 2) {
     const raw = lines[i].trim();
     if (!/^[+-]?\d+$/.test(raw)) {
-      throw new Error(`Ugyldig DXF: forventet en gruppekode på linje ${i + 1}, fant «${raw.slice(0, 20)}».`);
+      throw dxfError('groupCode', { line: i + 1, found: raw.slice(0, 20) });
     }
     const code = parseInt(raw, 10);
     const val = lines[i + 1].trim();
@@ -80,7 +92,7 @@ function pairs(text) {
 export function parseDxf(text) {
   const src = String(text || '');
   if (src.startsWith('AutoCAD Binary DXF')) {
-    throw new Error('Binær DXF støttes ikke — lagre som ASCII-DXF.');
+    throw dxfError('binary', {});
   }
   const p = pairs(src);
   const entities = [];
@@ -118,7 +130,7 @@ export function parseDxf(text) {
     }
     i++;
   }
-  if (!sawEntities) throw new Error('Ugyldig DXF: fant ingen ENTITIES-seksjon.');
+  if (!sawEntities) throw dxfError('noEntities', {});
   return { entities, skipped, insunits: Number.isFinite(insunits) ? insunits : null, warnings };
 }
 
@@ -142,7 +154,7 @@ const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 function num(v, line) {
   const s = String(v).trim();
   if (!NUMBER.test(s)) {
-    throw new Error(`Ugyldig tall «${s.slice(0, 20)}» på linje ${line ?? '?'} i DXF-fila.`);
+    throw dxfError('badNumber', { value: s.slice(0, 20), line: line ?? '?' });
   }
   return parseFloat(s);
 }
@@ -225,7 +237,7 @@ function readEntities(p, i, entities, skip, warnings) {
         vertices: verts.map((x) => ({ p: x.p, bulge: x.bulge })),
       });
     } else if (type === 'SEQEND' || type === 'VERTEX') {
-      warnings.push(`${type} uten POLYLINE foran — ignorert.`);
+      warnings.push(text('no').dxfOrphan(type));
     } else if (type === 'EOF') {
       return i + 1;
     } else {
@@ -470,23 +482,31 @@ export function importDxfLines(text, { scale = 1, segments = DEFAULT_SEGMENTS } 
 }
 
 /** Meldingen etter «Bare linjer». */
-export function describeLineImport(res) {
-  const parts = [`DXF: ${plural(res.paths.length, 'linje', 'linjer')} som linjearbeid.`];
-  const skipped = Object.entries(res.skipped || {});
-  if (skipped.length) {
-    const total = skipped.reduce((a, [, n]) => a + n, 0);
-    parts.push(`Hoppet over ${total} ikke støttede: ${skipped.map(([t, n]) => `${n} ${t}`).join(', ')}.`);
-  }
-  if (res.zeroLength) parts.push(`${plural(res.zeroLength, 'linje uten lengde', 'linjer uten lengde')} er ignorert.`);
+export function describeLineImport(res, lang = 'no') {
+  const T = text(lang);
+  const parts = [T.dxfLinesHeader(res.paths.length)];
+  pushSkipped(parts, res, T);
+  if (res.zeroLength) parts.push(T.dxfZeroLength(res.zeroLength));
   const dup = res.duplicates || {};
-  if (dup.segments) parts.push(`${plural(dup.segments, 'dobbel linje eller bue', 'doble linjer eller buer')} slått sammen.`);
-  if (dup.rings) parts.push(`${plural(dup.rings, 'kontur tegnet to ganger', 'konturer tegnet to ganger')} slått sammen.`);
-  if (res.offset) {
-    parts.push(`Flyttet tegningen med (${fmtNum(-res.offset[0])}; ${fmtNum(-res.offset[1])}) i fila sine enheter til lokalt origo.`);
-  }
-  for (const w of res.warnings || []) parts.push(w);
-  parts.push('Marker linjene og velg «Lag geometri» eller «Lag hull».');
+  if (dup.segments) parts.push(T.dxfDupSegments(dup.segments));
+  if (dup.rings) parts.push(T.dxfDupRings(dup.rings));
+  if (res.offset) parts.push(T.dxfOffsetLines(fmtNum(-res.offset[0]), fmtNum(-res.offset[1])));
+  pushWarnings(parts, res, T, lang);
+  parts.push(T.dxfMakeHint);
   return parts.join(' ');
+}
+
+/** «Hoppet over N ikke støttede: …», med etikettene på språket. */
+function pushSkipped(parts, res, T) {
+  const skipped = Object.entries(res.skipped || {});
+  if (!skipped.length) return;
+  const total = skipped.reduce((a, [, n]) => a + n, 0);
+  parts.push(T.dxfSkipped(total, skipped.map(([t, n]) => `${n} ${T.dxfSkipLabel(t)}`).join(', ')));
+}
+
+/** Advarslene fra parseren er norske strenger; på andre språk oversettes de kjente. */
+function pushWarnings(parts, res, T, lang) {
+  for (const w of res.warnings || []) parts.push(lang === 'no' ? w : T.dxfWarning(w));
 }
 
 /** $INSUNITS-forvalg: 'auto' bruker fila sin enhet når den er mm/cm/m. */
@@ -514,45 +534,26 @@ export function shapeList(res, { start = 1, base = 'DXF' } = {}) {
   return list;
 }
 
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const fmtNum = (v) => String(Math.round(v * 1e6) / 1e6);
 
 /** Én linje til brukeren om hva som ble importert og hva som ikke ble det. */
-export function describeImport(res) {
+export function describeImport(res, lang = 'no') {
+  const T = text(lang);
   const nShapes = res.regions.length;
   const nHoles = res.regions.reduce((a, r) => a + r.holes.length, 0);
-  const parts = [`DXF: ${plural(nShapes, 'form', 'former')}, ${nHoles} hull.`];
-  const skipped = Object.entries(res.skipped || {});
-  if (skipped.length) {
-    const total = skipped.reduce((a, [, n]) => a + n, 0);
-    parts.push(`Hoppet over ${total} ikke støttede: ${skipped.map(([t, n]) => `${n} ${t}`).join(', ')}.`);
-  }
-  if (res.openCount) parts.push(`${plural(res.openCount, 'åpen kontur', 'åpne konturer')} lot seg ikke lukke og er ikke importert.`);
-  if (res.branched) parts.push(`${plural(res.branched, 'forgreining', 'forgreininger')} i linjene — kontroller konturene.`);
-  if (res.dropped) parts.push(`${plural(res.dropped, 'kontur uten areal', 'konturer uten areal')} er utelatt.`);
-  if (res.zeroLength) parts.push(`${plural(res.zeroLength, 'linje uten lengde', 'linjer uten lengde')} er ignorert.`);
+  const parts = [T.dxfShapesHeader(nShapes, nHoles)];
+  pushSkipped(parts, res, T);
+  if (res.openCount) parts.push(T.dxfOpen(res.openCount));
+  if (res.branched) parts.push(T.dxfBranched(res.branched));
+  if (res.dropped) parts.push(T.dxfDropped(res.dropped));
+  if (res.zeroLength) parts.push(T.dxfZeroLength(res.zeroLength));
   const dup = res.duplicates || {};
-  if (dup.segments) parts.push(`${plural(dup.segments, 'dobbel linje eller bue', 'doble linjer eller buer')} slått sammen.`);
-  if (dup.rings) parts.push(`${plural(dup.rings, 'kontur tegnet to ganger', 'konturer tegnet to ganger')} slått sammen.`);
-  if (res.nearDuplicates) {
-    parts.push(
-      `${plural(res.nearDuplicates, 'par nesten sammenfallende konturer', 'par nesten sammenfallende konturer')}: ` +
-        'den minste er utelatt — kontroller tegningen.'
-    );
-  }
+  if (dup.segments) parts.push(T.dxfDupSegments(dup.segments));
+  if (dup.rings) parts.push(T.dxfDupRings(dup.rings));
+  if (res.nearDuplicates) parts.push(T.dxfNear(res.nearDuplicates));
   const islands = res.regions.filter((g) => (g.depth || 0) >= 2).length;
-  if (islands) {
-    parts.push(
-      `${plural(islands, 'form ligger', 'former ligger')} inne i et hull og blir skåret bort av det — ` +
-        'øy i hull støttes ikke; koble den til resten av tverrsnittet.'
-    );
-  }
-  if (res.offset) {
-    parts.push(
-      `Flyttet tegningen med (${fmtNum(-res.offset[0])}; ${fmtNum(-res.offset[1])}) i fila sine enheter til lokalt origo — ` +
-        'den lå så langt fra (0, 0) at arealmomentene ellers blir unøyaktige.'
-    );
-  }
-  for (const w of res.warnings || []) parts.push(w);
+  if (islands) parts.push(T.dxfIslands(islands));
+  if (res.offset) parts.push(T.dxfOffset(fmtNum(-res.offset[0]), fmtNum(-res.offset[1])));
+  pushWarnings(parts, res, T, lang);
   return parts.join(' ');
 }

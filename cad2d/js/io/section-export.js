@@ -35,6 +35,7 @@ import {
   EPS,
 } from '../geometry/polygon.js';
 import { unitInfo } from '../core/units.js';
+import { text } from '../core/text.js';
 
 export const SECTION_FORMAT = 'structural-tools-section';
 export const SECTION_VERSION = 1;
@@ -59,14 +60,15 @@ function orient(ring, wantPositive) {
  *   å markere selve profilen.
  * @returns {{ok: true, section: object, warnings: string[]} | {ok: false, error: string}}
  */
-export function exportSection(shapes, { unit = 'mm', selection = [] } = {}) {
+export function exportSection(shapes, { unit = 'mm', selection = [], lang = 'no', selectable = true } = {}) {
+  const T = text(lang);
   const usable = (shapes || []).filter((s) => s && s.include !== false && s.points && s.points.length >= 3);
   const allSolids = usable.filter((s) => s.role !== 'void');
   const sel = new Set(selection || []);
   const picked = allSolids.filter((s) => sel.has(s.id));
   const solidSet = new Set(picked.length ? picked : allSolids);
 
-  if (!solidSet.size) return { ok: false, error: 'Ingen faste former å eksportere.' };
+  if (!solidSet.size) return { ok: false, error: T.secNoSolids };
 
   const warnings = [];
   const k = unitInfo(unit).toMillimetres;
@@ -80,8 +82,7 @@ export function exportSection(shapes, { unit = 'mm', selection = [] } = {}) {
   const list = chosen.map((s) => ({ ...s, points: shift(s.points) }));
   if (offset) {
     warnings.push(
-      `Flyttet tverrsnittet med (${fmt(-offset[0] * k)}; ${fmt(-offset[1] * k)}) mm til lokalt origo — ` +
-        'det lå så langt fra (0, 0) at arealmomentene ellers blir unøyaktige.'
+      T.secMoved(fmt(-offset[0] * k), fmt(-offset[1] * k))
     );
   }
 
@@ -90,10 +91,10 @@ export function exportSection(shapes, { unit = 'mm', selection = [] } = {}) {
   const ownSum = solids.reduce((a, s) => a + Math.abs(signedArea(s.points)), 0);
   const unionArea = Math.abs(multiProps(solidMulti).A);
   if (ownSum - unionArea > Math.max(unionArea, 1) * 1e-9) {
-    warnings.push('Formene overlapper. I eksporten telles overlappet én gang.');
+    warnings.push(T.secOverlap);
   }
   if (solids.some((s) => Number.isFinite(s.factor) && Math.abs(s.factor - 1) > EPS)) {
-    warnings.push('Vektfaktorer ≠ 1 finnes ikke i formatet og er ikke tatt med.');
+    warnings.push(T.secFactors);
   }
 
   // Samme regel som «Areal, fysisk»: hvert hull skjærer alt fast areal det
@@ -113,19 +114,17 @@ export function exportSection(shapes, { unit = 'mm', selection = [] } = {}) {
     });
     if (lost.length) {
       warnings.push(
-        `${lost.length} ${lost.length === 1 ? 'fast form ligger' : 'faste former ligger'} helt inne i et hull og er ` +
-          'skåret bort (øy i hull støttes ikke — koble den til resten av tverrsnittet).'
+        T.secIslands(lost.length)
       );
     }
   }
 
-  if (!pieces.length) return { ok: false, error: 'Ingen geometri igjen når hullene er trukket fra.' };
+  if (!pieces.length) return { ok: false, error: T.secEmpty };
   if (pieces.length > 1) {
     return {
       ok: false,
       error:
-        `Tverrsnittet består av ${pieces.length} usammenhengende deler. Formatet tar ett sammenhengende ` +
-        'tverrsnitt — marker delene som hører sammen, eller la dem berøre hverandre.',
+        selectable ? T.secPieces(pieces.length) : T.secPiecesNoSelection(pieces.length),
     };
   }
 
@@ -138,7 +137,7 @@ export function exportSection(shapes, { unit = 'mm', selection = [] } = {}) {
     outer: dedupeConsecutive(toYZ(orient(outer, true))),
     holes: holes.map((h) => dedupeConsecutive(toYZ(orient(h, false)))),
   };
-  const invalid = validateSection(section);
+  const invalid = validateSection(section, lang);
   if (invalid) return { ok: false, error: invalid };
   return { ok: true, section, warnings };
 }
@@ -174,26 +173,24 @@ function dedupeConsecutive(ring) {
  * uten areal. Klipping av nesten-sammenfallende kanter kan gi begge deler.
  * Returnerer en melding, eller null når alt er i orden.
  */
-export function validateSection(section) {
+export function validateSection(section, lang = 'no') {
+  const T = text(lang);
   const Aout = Math.abs(signedArea(section.outer));
-  const rings = [['ytterkonturen', section.outer], ...section.holes.map((h, i) => [`hull ${i + 1}`, h])];
+  const rings = [[T.secOuterName, section.outer], ...section.holes.map((h, i) => [T.secHoleName(i + 1), h])];
   for (const [name, ring] of rings) {
-    if (ring.length < 3) return `Eksporten ga en ugyldig kontur (${name} har under tre punkt).`;
+    if (ring.length < 3) return T.secFewPoints(name);
     const seen = new Set();
     for (const p of ring) {
       const key = `${p[0]},${p[1]}`;
       if (seen.has(key)) {
-        return (
-          `Eksporten ga en kontur som berører seg selv (${name}, i ${p[0]}; ${p[1]} mm). Det skyldes som regel ` +
-          'kanter som nesten, men ikke helt, faller sammen — juster formene så de møtes nøyaktig.'
-        );
+        return T.secTouches(name, p[0], p[1]);
       }
       seen.add(key);
     }
   }
   for (const [name, ring] of rings.slice(1)) {
     if (Math.abs(signedArea(ring)) <= Aout * 1e-9) {
-      return `Eksporten ga et hull uten areal (${name}). Juster formene så kantene møtes nøyaktig.`;
+      return T.secZeroHole(name);
     }
   }
   return null;

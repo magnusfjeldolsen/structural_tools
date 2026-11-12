@@ -581,8 +581,8 @@ export class CadDocument {
   }
 
   /** «1 skjøt» o.l. til statuslinja når noe følger med. Overstyres. */
-  followedNoun(n) {
-    return n === 1 ? 'objekt' : 'objekter';
+  followedNoun(/* n */) {
+    return null; // null = språkets eget ord (core/text.js)
   }
 
   /**
