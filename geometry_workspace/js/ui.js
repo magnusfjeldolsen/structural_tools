@@ -37,7 +37,7 @@ import { sidesOfJoint, buildGraph, jointGroup, overConstrained } from './joints.
 import { ReinforcementPanel, axisConventionHtml } from './reinforcement-ui.js';
 import { SYSTEM_FACTORS } from './reinforcement.js';
 import { EC5_FASTENERS, EC5_CONTACTS, STATES, ec5Fastener } from './connection-stiffness.js';
-import { importDxf, describeImport, INSUNITS_TO_UNIT, resolveDxfUnit, shapeList } from './dxf.js';
+import { importDxf, describeImport, INSUNITS_TO_UNIT, resolveDxfUnit, shapeList, importDxfLines, describeLineImport } from './dxf.js';
 import { exportSection, sectionProps, sectionToJSON } from './section-export.js';
 
 const $ = (id) => document.getElementById(id);
@@ -422,6 +422,27 @@ export class UI {
     });
     $('file-input').addEventListener('change', (e) => this._import(e));
     $('dxf-input').addEventListener('change', (e) => this._importDxf(e));
+
+    // Hull-modus (#86): en bryter de vanlige tegneverktøyene leser
+    $('btn-void-mode').addEventListener('click', () => this.tools.setVoidMode(!this.tools.voidMode));
+
+    // Linjearbeid (#86)
+    $('btn-lines-all').addEventListener('click', () => {
+      const ids = st.state.lines.map((l) => l.id);
+      if (!ids.length) return this.toast('Det er ingen linjer.');
+      if (!st.state.linesVisible) st.setLinesVisible(true);
+      st.select(ids);
+      this.status(`${ids.length} linjer markert.`);
+    });
+    $('btn-lines-delete').addEventListener('click', () => {
+      const ids = st.state.lines.map((l) => l.id);
+      if (!ids.length) return;
+      st.removeEntities(ids);
+      this.toast(`${ids.length} linjer slettet. Formene står. Ctrl+Z angrer.`);
+    });
+    $('btn-lines-solid').addEventListener('click', () => this._shapesFromLines('solid'));
+    $('btn-lines-void').addEventListener('click', () => this._shapesFromLines('void'));
+    $('chk-lines-visible').addEventListener('change', (e) => st.setLinesVisible(e.target.checked));
     $('btn-section-file').addEventListener('click', () => this._exportSection('file'));
     $('btn-section-copy').addEventListener('click', () => this._exportSection('clipboard'));
     $('btn-example').addEventListener('click', () => this.loadExample());
@@ -733,7 +754,7 @@ export class UI {
     } else if (anchor === 'bottom-center') {
       x0 = x - b / 2;
     }
-    this.store.addShape(rectPoints(x0, y0, b, h), { name: 'Rektangel' });
+    this.store.addShape(rectPoints(x0, y0, b, h), this.tools._shapeOpts('Rektangel'));
   }
 
   _addShell() {
@@ -742,14 +763,14 @@ export class UI {
     if (thickness < 1e-9) return this.toast('Tykkelsen må være større enn null.');
     const pts = shellPoints([x1, y1], [x2, y2], thickness);
     if (!pts) return this.toast('Senterlinja har null lengde.');
-    this.store.addShape(pts, { name: `Skall t=${thickness}`, meta: { kind: 'shell', p1: [x1, y1], p2: [x2, y2], t: thickness } });
+    this.store.addShape(pts, this.tools._shapeOpts(`Skall t=${thickness}`, { meta: { kind: 'shell', p1: [x1, y1], p2: [x2, y2], t: thickness } }));
   }
 
   _addCircle() {
     const { x, y, r } = this.form.circle;
     const radius = Math.abs(r);
     if (radius < 1e-9) return this.toast('Radien må være større enn null.');
-    this.store.addShape(circlePoints(x, y, radius), { name: 'Sirkel', meta: { kind: 'circle', c: [x, y], r: radius } });
+    this.store.addShape(circlePoints(x, y, radius), this.tools._shapeOpts('Sirkel', { meta: { kind: 'circle', c: [x, y], r: radius } }));
   }
 
   _addPastedPolygon() {
@@ -764,7 +785,7 @@ export class UI {
       pts.push([parts[0], parts[1]]);
     }
     if (pts.length < 3) return this.toast('Et polygon trenger minst tre punkt.');
-    this.store.addShape(pts, { name: 'Polygon' });
+    this.store.addShape(pts, this.tools._shapeOpts('Polygon'));
     this.viewport.zoomToFit(this.store.bounds());
   }
 
@@ -840,14 +861,16 @@ export class UI {
     const sel = this.store.state.selection;
     if (!sel.length) return this.toast('Ingenting er markert.');
     const joints = this.store.selectedJoints().length;
-    const shapes = sel.length - joints;
+    const lineIds = new Set(this.store.state.lines.map((l) => l.id));
+    const lines = sel.filter((id) => lineIds.has(id)).length;
+    const shapes = sel.length - joints - lines;
     for (const id of sel) {
       this.expanded.delete(id);
       this.jointExpanded.delete(id);
     }
     this.store.removeEntities(sel);
     this.toast(
-      [shapes ? `${shapes} form(er)` : null, joints ? `${joints} skjøt(er)` : null].filter(Boolean).join(' og ') +
+      [shapes ? `${shapes} form(er)` : null, joints ? `${joints} skjøt(er)` : null, lines ? `${lines} linje(r)` : null].filter(Boolean).join(' og ') +
         ' slettet.'
     );
   }
@@ -917,6 +940,33 @@ export class UI {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
+  /** Knappen og merket i lerretet følger hull-modus (#86). */
+  onVoidMode(on) {
+    const btn = $('btn-void-mode');
+    btn.dataset.void = String(on);
+    btn.setAttribute('aria-pressed', String(on));
+    $('void-badge').classList.toggle('hidden', !on);
+  }
+
+  /**
+   * «Lag geometri» / «Lag hull» på de markerte linjene (#86). Hver lukket
+   * kontur blir én form, uten nøsting. Linjer som ikke danner en lukket
+   * kontur blir stående markert.
+   */
+  _shapesFromLines(role) {
+    const st = this.store;
+    const lineIds = new Set(st.state.lines.map((l) => l.id));
+    const ids = st.state.selection.filter((id) => lineIds.has(id));
+    if (!ids.length) return this.toast('Marker linjer først — klikk dem, eller dra en ramme rundt dem.');
+    const r = st.makeShapesFromLines(ids, role);
+    const what = role === 'void' ? (r.made === 1 ? 'hull' : 'hull') : r.made === 1 ? 'form' : 'former';
+    const rest = r.unusedIds.length
+      ? ` ${r.unusedIds.length} ${r.unusedIds.length === 1 ? 'linje danner' : 'linjer danner'} ingen lukket kontur og er fortsatt markert.`
+      : '';
+    if (!r.made) return this.toast(`Ingen lukkede konturer i de markerte linjene.${rest}`, 6000);
+    this.toast(`${r.made} ${what} laget av ${ids.length} linjer.${rest}`, 6000);
+  }
+
   /**
    * DXF → former (#85). Hver lukket kontur blir en fast form, og hver kontur
    * inni den en form med `role:'void'` — samme modell som et tegnet hull.
@@ -929,10 +979,27 @@ export class UI {
     e.target.value = '';
     if (!file) return;
     const choice = $('dxf-unit').value; // 'auto' = fila sin $INSUNITS, ellers mm
+    const mode = $('dxf-mode').value; // 'auto' = former og hull, 'lines' = linjearbeid
     const reader = new FileReader();
     reader.onload = () => {
       let res;
       let used;
+      const scale = (insunits) => {
+        used = resolveDxfUnit(choice, insunits);
+        return conversionFactor(used.unit, this.store.state.unit);
+      };
+      if (mode === 'lines') {
+        try {
+          res = importDxfLines(String(reader.result), { scale });
+        } catch (err) {
+          return this.toast(`DXF-import feilet: ${err.message}`, 6000);
+        }
+        if (!res.paths.length) return this.toast(`${describeLineImport(res)} Ingen linjer å importere.`, 8000);
+        this.store.addLines(res.paths, { reason: 'import' });
+        if (!this.store.state.linesVisible) this.store.setLinesVisible(true);
+        this.viewport.zoomToFit(this.store.bounds());
+        return this.toast(`${describeLineImport(res)} Enhet ${used.unit}${used.fromFile ? ' fra fila' : ''}.`, 9000);
+      }
       try {
         res = importDxf(String(reader.result), {
           scale: (insunits) => {
@@ -1083,6 +1150,16 @@ export class UI {
 
     const n = s.shapes.length;
     $('shape-count').textContent = n ? `(${n})` : '';
+
+    // Linjearbeid (#86)
+    const nl = (s.lines || []).length;
+    $('lines-section').classList.toggle('hidden', !nl);
+    if (nl) {
+      const lineIds = new Set(s.lines.map((l) => l.id));
+      const nsel = s.selection.filter((id) => lineIds.has(id)).length;
+      $('lines-count').textContent = nsel ? `(${nsel} av ${nl} markert)` : `(${nl})`;
+      $('chk-lines-visible').checked = s.linesVisible !== false;
+    }
   }
 
   /** Den lille snap-kontrollen nede til høyre i lerretet. */

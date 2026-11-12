@@ -56,6 +56,7 @@ const tools = new ToolController(store, viewport, {
     ui.onToolChanged(tool);
     scheduleRender();
   },
+  onVoidMode: (on) => ui.onVoidMode(on),
 });
 
 /* ------------------------------------------------------------------ *
@@ -154,6 +155,8 @@ function update() {
     grid: st.grid,
     underlay: st.underlay,
     joints: store.allJoints(),
+    lines: st.lines,
+    linesVisible: st.linesVisible,
   });
   try {
     ui.render(analysis);
@@ -187,6 +190,7 @@ const TOOL_KEYS = {
   n: 'reference',
   g: 'joint',
   x: 'splitline',
+  l: 'line',
 };
 
 window.addEventListener('keydown', (e) => {
@@ -293,6 +297,11 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.key.toLowerCase() === 'f') {
     viewport.zoomToFit(store.bounds());
+    return;
+  }
+  // H slår hull-modus av og på (#86) — en bryter, ikke et verktøy
+  if (e.key.toLowerCase() === 'h' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    tools.setVoidMode(!tools.voidMode);
     return;
   }
   const tool = TOOL_KEYS[e.key.toLowerCase()];
