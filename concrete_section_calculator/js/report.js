@@ -1041,7 +1041,8 @@ function prestressChapter(state, result) {
   const rowsArr = prestressStageRows(result);
   const stageTable = rowsArr.length
     ? table(['Stage', 'M [kNm]', 'σc,top', 'σc,bot', 'σp', 'χ [10⁻⁶/mm]', 'State', 'M_dec', 'M_cr'],
-      rowsArr.map((r) => [esc(r.label), r.M, r.top, r.bottom, r.sigma_p, r.chi, r.state, r.M_dec, r.M_cr]),
+      rowsArr.map((r) => [esc(r.label) + (r.available === false ? ` — ${esc(r.reason)}` : ''),
+        r.M, r.top, r.bottom, r.sigma_p, r.chi, r.state, r.M_dec, r.M_cr]),
       { num: [1, 2, 3, 4, 5, 7, 8] })
     : '<p class="muted">No stage data was given.</p>';
   const losses = prestressLossRows(result).map((l) => `
@@ -1056,8 +1057,11 @@ function prestressChapter(state, result) {
     section over the actual polygon: transformed and uncracked, or without concrete in tension
     where the stress exceeds f<sub>ct</sub> of that age. Long term: tendon force after losses known,
     curvature with E<sub>c,eff</sub> = E<sub>cm</sub>/(1+φ), shrinkage curvature not included. M<sub>dec</sub>/M<sub>cr</sub>:
-    moment giving zero / f<sub>ct</sub> at the bottom fibre. The EC2 7.2/7.3 serviceability checks
-    are not carried out for a prestressed section.</p>${losses}`,
+    moment giving zero / f<sub>ct</sub> at the fibre the moment puts in tension (bottom for sagging,
+    top for hogging). The EC2 7.2/7.3 serviceability checks are not carried out for a
+    prestressed section. Shear: σ<sub>cp</sub> from the prestress is not included in V<sub>Rd,c</sub>
+    (safe side), and the shear-tension check of EC2 6.2.2(2) / EN 1168 is not carried out.
+    Stages marked "not available" were not computed; the reason is given in the table.</p>${losses}`,
     'atomic'
   );
 }
