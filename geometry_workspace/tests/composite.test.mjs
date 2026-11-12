@@ -32,7 +32,7 @@ async function loadModule(relPath) {
   return import('data:text/javascript;charset=utf-8;base64,' + Buffer.from(src, 'utf8').toString('base64'));
 }
 
-const geom = await loadModule('../js/geometry.js');
+const geom = await loadModule('../../cad2d/js/geometry/polygon.js');
 const rf = await loadModule('../js/reinforcement.js');
 const cs = await loadModule('../js/connection-stiffness.js');
 

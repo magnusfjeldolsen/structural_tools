@@ -36,6 +36,12 @@
 
   <script>tailwind = window.tailwind || {}; tailwind.config = { darkMode: 'class' };</script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Geometrieditoren (cad2d, #93): boolske polygonoperasjoner og three.js. Editoren
+       lastes først når den åpnes; importmap må likevel stå før alle modulskript. -->
+  <script src="../cad2d/vendor/polygon-clipping.umd.js"></script>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
 
   <!--
     UTEN `media="print"` med vilje: `print.css` eier også SKJERMVISNINGEN av
@@ -491,6 +497,8 @@
               Load section file…
               <input id="custom-file" type="file" accept=".json,application/json" class="sr-only">
             </label>
+            <button type="button" id="custom-draw" title="Open the geometry editor (or click the figure)"
+                    class="px-2.5 py-1.5 rounded bg-sky-700 hover:bg-sky-600 border border-sky-600">Edit geometry…</button>
             <button type="button" id="custom-paste-toggle" aria-expanded="false" aria-controls="custom-paste-box"
                     class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600">Paste JSON…</button>
             <button type="button" id="custom-export"
@@ -594,6 +602,12 @@
       <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3"
            title="Plain JavaScript — it redraws as you type and never waits for the calculation engine.">
         <div id="draw-geo" class="svg-fit"></div>
+        <!-- Geometrieditoren (cad2d, #93): bjelke og fritt tverrsnitt. Skjult for plate. -->
+        <div class="flex items-center gap-2 mt-2">
+          <button type="button" id="geo-edit" title="Draw or edit the cross-section in the geometry editor (or click the figure)"
+                  class="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-xs">Edit geometry…</button>
+          <span id="geo-edit-msg" class="text-[11px] text-slate-400" role="status" aria-live="polite"></span>
+        </div>
       </div>
     </div>
   </section>

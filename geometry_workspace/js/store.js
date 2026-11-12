@@ -1,57 +1,23 @@
 /**
- * store.js — tilstand og CRUD for geometri-workspacet.
+ * store.js — geometry_workspace sin tilstand: cad2d-dokumentet pluss domenet.
  *
- * Enkel observerbar state med undo/redo og lagring i localStorage.
+ * `Store` arver `CadDocument` (cad2d/js/core/document.js, #93), som eier
+ * historikken, CRUD for former og linjearbeid, utvalget og enhetsbyttet. Her
+ * ligger det som bare geometry_workspace har: skjøtene (registrert som egen
+ * entitetstype), lastene, linjeberegningen, automatiske skjøter, materialer
+ * og prosjektformatet `structural_tools.geometry_workspace` v4.
+ *
  * Ingen DOM-avhengigheter utover localStorage.
  */
 
-import { boundsOfShapes, translatePoints, multiProps, pointsToMulti, splitPointsByLine, openRing, neighborTolerance, EPS as GEOM_EPS } from './geometry.js';
-import { conversionFactor, unitInfo } from './units.js';
-import { SNAP_KEYS } from './snapping.js';
+import { neighborTolerance } from '../../cad2d/js/geometry/polygon.js';
+import { CadDocument, migrateCore, PALETTE } from '../../cad2d/js/core/document.js';
 import { sidesOfJoint, autoJoints } from './joints.js';
 import { materialByName } from './materials.js';
-import { contoursFromLines } from './linework.js';
+
+export { PALETTE };
 
 const STORAGE_KEY = 'geometry_workspace_v1';
-const MAX_HISTORY = 60;
-
-export const PALETTE = [
-  '#38bdf8', // sky
-  '#f472b6', // pink
-  '#a3e635', // lime
-  '#fbbf24', // amber
-  '#c084fc', // purple
-  '#34d399', // emerald
-  '#fb7185', // rose
-  '#60a5fa', // blue
-];
-
-let uid = 1;
-function nextId() {
-  return `s${uid++}`;
-}
-
-let jointUid = 1;
-function nextJointId() {
-  return `j${jointUid++}`;
-}
-
-let lineUid = 1;
-function nextLineId() {
-  return `l${lineUid++}`;
-}
-
-/** Linjearbeid fra fil: bare gyldige punkt, og `closed` som boolsk. */
-function migrateLines(list) {
-  if (!Array.isArray(list)) return [];
-  return list
-    .filter((l) => l && Array.isArray(l.points) && l.points.length >= 2)
-    .map((l, i) => ({
-      id: l.id || `l${i + 1}`,
-      points: l.points.map((p) => [Number(p[0]), Number(p[1])]),
-      closed: !!l.closed,
-    }));
-}
 
 /**
  * Fargen skjøtelinjer tegnes i. Bevisst IKKE en `PALETTE`-farge — det gamle
@@ -287,13 +253,13 @@ function migrateLoads(loads) {
  * halvplanet/grafen (§8) i stedet for å ligge lagret på skjøten. `share` er nytt
  * (null = automatisk etter skjøtestivhet k ved et statisk ubestemt oppsett, §2).
  */
-function migrateJoint(f, i) {
+function migrateJoint(f, i, newJointId = (k) => `j${k + 1}`) {
   const a = Array.isArray(f && f.a) ? [num(f.a[0]), num(f.a[1])] : [0, 0];
   const b = Array.isArray(f && f.b) ? [num(f.b[0]), num(f.b[1])] : [0, 0];
   const shareRaw = f && f.share;
   const share = shareRaw === null || shareRaw === undefined ? NaN : Number(shareRaw);
   return {
-    id: (f && f.id) || nextJointId(),
+    id: (f && f.id) || newJointId(i),
     name: (f && f.name) || `Skjøt ${i + 1}`,
     a,
     b,
@@ -415,6 +381,7 @@ function migrateShape(s) {
 /**
  * Oppgraderer lagret tilstand fra eldre versjoner. Håndterer v1, v2 og v3 —
  * alle tre skal lastes uten feil, både fra localStorage og fra importert JSON.
+ * Kjernens del (snap, orto, underlag, linjearbeid) gjør `migrateCore`.
  *
  *  - v1: ingen `snap`-brytere per type (ett flagg på rutenettet), ingen
  *    `stage`/`material` på formene, ingen grensesnitt/skjøter.
@@ -424,314 +391,111 @@ function migrateShape(s) {
  *    `{V,N,M}` per tilstand (§3 i joints-planen).
  *  - v4: lastdata er BIAKSIELL — hver tilstand er `{Vy,Vx,N,Mx,My}` i stedet
  *    for `{V,N,M}` (§1 i samvirkeplanen). Gammel `V` → `Vy`, gammel `M` → `Mx`.
+ *
+ * @param {object} data
+ * @param {() => string} [newJointId] id til en skjøt som mangler id
  */
-function migrate(data) {
-  const out = { ...data };
-  if (out.grid && out.grid.snap !== undefined) {
-    const on = !!out.grid.snap;
-    out.snaps = {
-      endpoint: on,
-      midpoint: on,
-      edge: on,
-      intersection: on,
-      center: false,
-      grid: on,
-      ...(out.snaps || {}),
-    };
-    out.grid = { step: out.grid.step, visible: out.grid.visible };
-  }
-  if (!out.snaps) {
-    out.snaps = { endpoint: true, midpoint: true, edge: true, intersection: true, center: false, grid: true };
-  }
-  // Fyll ut manglende nøkler hvis nye snap-typer er kommet til
-  for (const key of SNAP_KEYS) if (out.snaps[key] === undefined) out.snaps[key] = key !== 'center';
-  if (out.ortho === undefined) out.ortho = false;
-  if (out.underlay === undefined) out.underlay = null;
+function migrate(data, newJointId = (i) => `j${i + 1}`) {
+  const out = migrateCore(data);
   if (Array.isArray(out.shapes)) out.shapes = out.shapes.map(migrateShape);
 
   // `interfaces` (v1/v2) -> `joints` (v3). Er begge fraværende, tomt.
   const jointsSrc = Array.isArray(out.joints) ? out.joints : Array.isArray(out.interfaces) ? out.interfaces : [];
-  out.joints = jointsSrc.map(migrateJoint);
+  out.joints = jointsSrc.map((f, i) => migrateJoint(f, i, newJointId));
   delete out.interfaces;
 
   out.loads = migrateLoads(out.loads);
   out.line = migrateLine(out.line);
   out.autoJointData = migrateAutoJointData(out.autoJointData);
   out.analysis = out.analysis === 'line' ? 'line' : 'section';
-  // Linjearbeid (#86) er valgfritt i fila; eldre filer har det ikke.
-  out.lines = migrateLines(out.lines);
-  out.linesVisible = out.linesVisible !== false;
   out.version = 4;
   return out;
 }
 
-function defaultState() {
-  return {
-    shapes: [],
-    selection: [],
-    reference: [0, 0],
-    // Standard er skallmodellens tverrsnitt, der overlapp telles dobbelt
-    mode: 'sum', // 'sum' | 'priority'
-    unit: 'mm',
-    grid: { step: 50, visible: true },
-    snaps: { endpoint: true, midpoint: true, edge: true, intersection: true, center: false, grid: true },
-    ortho: false,
-    underlay: null,
-    title: '',
-    // Skjøtelinjer mellom deler av tverrsnittet (v3, §4 i joints-planen).
-    joints: [],
-    loads: defaultLoads(),
-    // «Snitt» (ett snitt, full samvirkning) eller «Linje» (langs hele delen, #63)
-    analysis: 'section',
-    line: defaultLine(),
-    // Det brukeren har lagt inn på automatiske skjøter, under skjøtens id (#61).
-    autoJointData: {},
-    // Linjearbeid (#86): løse linjer å lage geometri av. Teller ikke i areal.
-    lines: [],
-    linesVisible: true,
-  };
-}
+/** Feltene i historikken og i localStorage, i rekkefølgen de alltid har hatt. */
+const SNAPSHOT_KEYS = [
+  'shapes', 'reference', 'mode', 'unit', 'grid', 'snaps', 'ortho', 'underlay', 'title',
+  'joints', 'loads', 'analysis', 'line', 'autoJointData', 'lines', 'linesVisible',
+];
 
-export class Store {
-  constructor() {
-    this.state = defaultState();
-    this.undoStack = [];
-    this.redoStack = [];
-    this.listeners = new Set();
-    this._pending = null;
+/** Skjøten som cad2d-entitet: to endepunkt `a` og `b`. */
+const JOINT_KIND = {
+  collection: 'joints',
+  prefix: 'j',
+  order: 10, // mellom former (0) og linjearbeid (20), som før
+  insert: 'back',
+  copyName: true,
+  toPoints: (j) => [[j.a[0], j.a[1]], [j.b[0], j.b[1]]],
+  fromPoints: (j, pts) => {
+    j.a = [pts[0][0], pts[0][1]];
+    j.b = [pts[1][0], pts[1][1]];
+  },
+};
+
+export class Store extends CadDocument {
+  constructor(opts = {}) {
+    super({ storageKey: STORAGE_KEY, ...opts });
+    this.registerKind('joint', JOINT_KIND);
   }
 
-  /* ---------------- abonnement ---------------- */
-
-  subscribe(fn) {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-
-  emit(reason = 'change') {
-    this.listeners.forEach((fn) => fn(this.state, reason));
-  }
-
-  /* ---------------- historikk ---------------- */
-
-  snapshot() {
-    return JSON.stringify({
-      shapes: this.state.shapes,
-      reference: this.state.reference,
-      mode: this.state.mode,
-      unit: this.state.unit,
-      grid: this.state.grid,
-      snaps: this.state.snaps,
-      ortho: this.state.ortho,
-      underlay: this.state.underlay,
-      title: this.state.title,
-      joints: this.state.joints,
-      loads: this.state.loads,
-      analysis: this.state.analysis,
-      line: this.state.line,
-      autoJointData: this.state.autoJointData,
-      lines: this.state.lines,
-      linesVisible: this.state.linesVisible,
-    });
-  }
-
-  /**
-   * Kjører en mutasjon og legger forrige tilstand på undo-stacken.
-   * `transient` brukes under drag: da hopper vi over historikken helt til
-   * dragen committes med commit().
-   */
-  mutate(fn, { transient = false, reason = 'change' } = {}) {
-    if (!transient) {
-      this.undoStack.push(this._pending ?? this.snapshot());
-      if (this.undoStack.length > MAX_HISTORY) this.undoStack.shift();
-      this.redoStack.length = 0;
-      this._pending = null;
-    } else if (this._pending === null) {
-      this._pending = this.snapshot();
-    }
-    fn(this.state);
-    this.persist();
-    this.emit(reason);
-  }
-
-  /** Avslutter en transient sekvens (f.eks. et drag) som ett undo-steg. */
-  commit(reason = 'commit') {
-    if (this._pending === null) return;
-    this.undoStack.push(this._pending);
-    if (this.undoStack.length > MAX_HISTORY) this.undoStack.shift();
-    this.redoStack.length = 0;
-    this._pending = null;
-    this.persist();
-    this.emit(reason);
-  }
-
-  /**
-   * Forkaster en transient sekvens og setter tilstanden tilbake til slik den
-   * var da sekvensen startet. Brukes av Esc i flytte-, kopi- og
-   * roteringsverktøyet, slik at et avbrutt verktøy ikke legger igjen spor —
-   * verken i geometrien eller i historikken.
-   */
-  rollback(reason = 'cancel') {
-    if (this._pending === null) return false;
-    const json = this._pending;
-    this._pending = null;
-    this.restore(json);
-    this.persist();
-    this.emit(reason);
-    return true;
-  }
-
-  /** Er en transient sekvens i gang? */
-  get isTransient() {
-    return this._pending !== null;
-  }
-
-  restore(json) {
-    const data = JSON.parse(json);
-    Object.assign(this.state, migrate(data));
-    // Utvalget kan holde BÅDE former og skjøter (§1 i interaksjonsplanen), så
-    // filtreringen må se etter id-en i begge listene — ellers ville en angring
-    // stille tømt utvalget hver gang en skjøt var markert.
-    const jointIds = new Set(this.allJoints().map((j) => j.id));
-    const lineIds = new Set((this.state.lines || []).map((l) => l.id));
-    this.state.selection = this.state.selection.filter(
-      (id) => this.state.shapes.some((s) => s.id === id) || jointIds.has(id) || lineIds.has(id)
-    );
-    this.syncUid();
-  }
-
-  undo() {
-    if (!this.undoStack.length) return false;
-    this.redoStack.push(this.snapshot());
-    this.restore(this.undoStack.pop());
-    this.persist();
-    this.emit('undo');
-    return true;
-  }
-
-  redo() {
-    if (!this.redoStack.length) return false;
-    this.undoStack.push(this.snapshot());
-    this.restore(this.redoStack.pop());
-    this.persist();
-    this.emit('redo');
-    return true;
-  }
-
-  syncUid() {
-    let max = 0;
-    for (const s of this.state.shapes) {
-      const n = parseInt(String(s.id).replace(/\D/g, ''), 10);
-      if (Number.isFinite(n) && n > max) max = n;
-    }
-    uid = max + 1;
-    // Skjøte-id-ene teller for seg (j1, j2, …). Uten dette ville en importert
-    // eller angret modell kunne gi to skjøter samme id, og utvalget — som nå
-    // holder skjøter side om side med former — ville pekt på begge.
-    let jmax = 0;
-    for (const j of this.state.joints || []) {
-      const n = parseInt(String(j.id).replace(/\D/g, ''), 10);
-      if (Number.isFinite(n) && n > jmax) jmax = n;
-    }
-    jointUid = jmax + 1;
-    let lmax = 0;
-    for (const l of this.state.lines || []) {
-      const n = parseInt(String(l.id).replace(/\D/g, ''), 10);
-      if (Number.isFinite(n) && n > lmax) lmax = n;
-    }
-    lineUid = lmax + 1;
-  }
-
-  /* ---------------- CRUD ---------------- */
-
-  addShape(points, opts = {}) {
-    const shape = {
-      id: nextId(),
-      name: opts.name || 'Form',
-      points: points.map((p) => [p[0], p[1]]),
-      role: opts.role || 'solid',
-      factor: Number.isFinite(opts.factor) ? opts.factor : 1,
-      include: true,
-      color: opts.color || PALETTE[this.state.shapes.length % PALETTE.length],
-      meta: opts.meta || null,
-      // Nytt tegnet materiale hører som standard til det eksisterende
-      // tverrsnittet; brukeren merker selv av hva som er ny del.
-      stage: opts.stage === 'new' ? 'new' : 'existing',
-      material: opts.material ? normalizeMaterial(opts.material) : { ...DEFAULT_MATERIAL },
+  _defaultState() {
+    return {
+      ...super._defaultState(),
+      // Skjøtelinjer mellom deler av tverrsnittet (v3, §4 i joints-planen).
+      joints: [],
+      loads: defaultLoads(),
+      // «Snitt» (ett snitt, full samvirkning) eller «Linje» (langs hele delen, #63)
+      analysis: 'section',
+      line: defaultLine(),
+      // Det brukeren har lagt inn på automatiske skjøter, under skjøtens id (#61).
+      autoJointData: {},
     };
-    this.mutate((st) => {
-      st.shapes.unshift(shape); // nyeste øverst = høyest prioritet
-      st.selection = [shape.id];
-    }, { reason: 'add' });
+  }
+
+  _snapshotKeys() {
+    return SNAPSHOT_KEYS;
+  }
+
+  _migrate(data) {
+    return migrate(data, () => this.nextId('j'));
+  }
+
+  /**
+   * Nytt tegnet materiale hører som standard til det eksisterende
+   * tverrsnittet; brukeren merker selv av hva som er ny del.
+   */
+  _decorateShape(shape, opts = {}) {
+    shape.stage = opts.stage === 'new' ? 'new' : 'existing';
+    shape.material = opts.material ? normalizeMaterial(opts.material) : { ...DEFAULT_MATERIAL };
     return shape;
   }
 
-  /**
-   * Legger inn flere former som ETT angresteg (DXF-import, #85). Lista
-   * gis i den rekkefølgen formene skal stå i geometrilista, øverst først —
-   * hull må ligge foran formen de skjærer i, ellers virker de ikke i
-   * 'priority'-modus. De nye formene blir markert.
-   *
-   * @param {Array<{points, name?, role?, meta?, stage?, material?, color?}>} list
-   * @returns {Array} de nye formene
-   */
-  addShapes(list, opts = {}) {
-    const base = this.state.shapes.length;
-    const added = (list || [])
-      .filter((o) => o && o.points && o.points.length >= 3)
-      .map((o, i) => ({
-        id: nextId(),
-        name: o.name || 'Form',
-        points: o.points.map((p) => [p[0], p[1]]),
-        role: o.role === 'void' ? 'void' : 'solid',
-        factor: 1,
-        include: true,
-        color: o.color || PALETTE[(base + i) % PALETTE.length],
-        meta: o.meta || null,
-        stage: o.stage === 'new' ? 'new' : 'existing',
-        material: o.material ? normalizeMaterial(o.material) : { ...DEFAULT_MATERIAL },
-      }));
-    if (!added.length) return [];
-    this.mutate((st) => {
-      st.shapes.unshift(...added);
-      st.selection = Array.isArray(opts.selectIds) ? opts.selectIds.slice() : added.map((s) => s.id);
-    }, { reason: opts.reason || 'add' });
-    return added;
+  /** Skjøtelinjene er geometri, og L er en lengde i arbeidsenheten. */
+  _scaleExtra(st, k) {
+    // Skjøtedataene (rader, s, K) er absolutte og regnes IKKE om.
+    st.joints = st.joints.map((f) => ({
+      ...f,
+      a: [f.a[0] * k, f.a[1] * k],
+      b: [f.b[0] * k, f.b[1] * k],
+    }));
+    if (Number.isFinite(st.loads.L)) st.loads.L = st.loads.L * k;
   }
 
-  getShape(id) {
-    return this.state.shapes.find((s) => s.id === id) || null;
-  }
-
-  updateShape(id, patch, opts = {}) {
-    this.mutate((st) => {
-      const s = st.shapes.find((x) => x.id === id);
-      if (s) Object.assign(s, patch);
-    }, opts);
-  }
-
-  setPoints(id, points, opts = {}) {
-    this.updateShape(id, { points: points.map((p) => [p[0], p[1]]) }, opts);
+  _clearExtra(st) {
+    st.joints = [];
   }
 
   /* ---------------- entiteter: former OG skjøter (§1) ---------------- */
 
   /**
-   * Slår opp en id i BEGGE listene. Skjøte-id-ene (`j1, j2, …`) og form-id-ene
-   * (`s1, s2, …`) er unike på tvers, så `selection` kan være en flat liste med
-   * begge slag, og hver kommando kan spørre hva den fikk tak i.
+   * Som i kjernen, pluss automatiske skjøter: de kan velges og redigeres, men
+   * ikke flyttes eller slettes — de følger geometrien. `auto: true` sier fra.
    *
-   * @returns {{kind: 'shape'|'joint', obj: object}|null}
+   * @returns {{kind: 'shape'|'joint'|'line', obj: object, auto?: boolean}|null}
    */
   entityById(id) {
-    const s = this.state.shapes.find((x) => x.id === id);
-    if (s) return { kind: 'shape', obj: s };
-    const j = this.state.joints.find((x) => x.id === id);
-    if (j) return { kind: 'joint', obj: j };
-    const l = (this.state.lines || []).find((x) => x.id === id);
-    if (l) return { kind: 'line', obj: l };
-    // En automatisk skjøt kan velges og redigeres, men ikke flyttes eller
-    // slettes — den følger geometrien. `auto: true` sier fra til kommandoene.
+    const e = super.entityById(id);
+    if (e) return e;
     const a = this.allJoints().find((x) => x.id === id && x.auto);
     if (a) return { kind: 'joint', obj: a, auto: true };
     return null;
@@ -740,11 +504,6 @@ export class Store {
   /** Tegnede og automatiske skjøter (#61). */
   allJoints() {
     return effectiveJoints(this.state);
-  }
-
-  /** Hele utvalget, i utvalgsrekkefølge, som `{kind, obj}`. */
-  selectedEntities() {
-    return this.state.selection.map((id) => this.entityById(id)).filter(Boolean);
   }
 
   /** Bare skjøtene i utvalget. Motstykket til `selectedShapes()`. */
@@ -800,200 +559,13 @@ export class Store {
     return [...ids, ...this.jointsFollowing(ids)];
   }
 
-  /**
-   * Punktene en entitet består av: formens ring, eller skjøtens to endepunkt.
-   * Det er dette som lar flytt/kopi/roter/speil behandle en skjøt nøyaktig som
-   * en form — én transformasjon på en punktliste, uten spesialtilfeller.
-   */
-  entityPoints(id) {
-    const e = this.entityById(id);
-    if (!e) return null;
-    if (e.kind === 'joint') return [[e.obj.a[0], e.obj.a[1]], [e.obj.b[0], e.obj.b[1]]];
-    return e.obj.points.map((p) => [p[0], p[1]]);
+  /** cad2d-kroken: det som følger med en flytting er skjøtene. */
+  withFollowing(ids) {
+    return this.withFollowingJoints(ids);
   }
 
-  /**
-   * Motstykket til `entityPoints`: skriver punktene tilbake. For en skjøt er
-   * de to første punktene `a` og `b`. Brukes med `transient: true` under
-   * forhåndsvisning, og avsluttes med `commit()` — ett undo-steg per kommando.
-   */
-  setManyEntityPoints(entries, opts = {}) {
-    this.mutate((st) => {
-      for (const { id, points } of entries) {
-        const s = st.shapes.find((x) => x.id === id) || st.lines.find((x) => x.id === id);
-        if (s) {
-          s.points = points.map((p) => [p[0], p[1]]);
-          continue;
-        }
-        const j = st.joints.find((x) => x.id === id);
-        if (j && points.length >= 2) {
-          j.a = [points[0][0], points[0][1]];
-          j.b = [points[1][0], points[1][1]];
-        }
-      }
-    }, opts);
-  }
-
-  /**
-   * Flytter formene OG skjøtene i `ids`, og eventuelt nullpunktet med samme
-   * vektor. Sentrering bruker `withReference`, slik at referansemålene i
-   * resultatpanelet ikke endrer seg utilsiktet av at geometrien blir flyttet.
-   *
-   * At skjøtene er med her er selve rettelsen av feil 1 i planen: før lå
-   * skjøtelinjene igjen når geometrien ble sentrert, og de to gled fra
-   * hverandre.
-   */
-  moveEntities(ids, dx, dy, { withReference = false, reason = 'move' } = {}) {
-    const set = new Set(ids);
-    this.mutate((st) => {
-      for (const s of st.shapes) {
-        if (set.has(s.id)) s.points = translatePoints(s.points, dx, dy);
-      }
-      for (const l of st.lines) {
-        if (set.has(l.id)) l.points = translatePoints(l.points, dx, dy);
-      }
-      for (const j of st.joints) {
-        if (!set.has(j.id)) continue;
-        j.a = [j.a[0] + dx, j.a[1] + dy];
-        j.b = [j.b[0] + dx, j.b[1] + dy];
-      }
-      if (withReference) st.reference = [st.reference[0] + dx, st.reference[1] + dy];
-    }, { reason });
-  }
-
-  /**
-   * Kopierer både former og skjøter. `variants` er én oppføring per kopi, og kan
-   * være enten en forskyvning `[dx, dy]` eller en funksjon `(points, obj) => points`
-   * for kopier som også speiles eller roteres. Hele rekka blir ett undo-steg.
-   */
-  copyEntities(ids, variants, { select = true, reason = 'copy' } = {}) {
-    const set = new Set(ids);
-    const copies = [];
-    this.mutate((st) => {
-      const srcShapes = st.shapes.filter((s) => set.has(s.id));
-      const srcJoints = st.joints.filter((j) => set.has(j.id));
-      const srcLines = st.lines.filter((l) => set.has(l.id));
-      for (const v of variants) {
-        const apply = typeof v === 'function' ? v : (pts) => translatePoints(pts, v[0], v[1]);
-        for (const s of srcShapes) {
-          const copy = {
-            ...s,
-            id: nextId(),
-            name: `${s.name} (kopi)`,
-            points: apply(s.points, s).map((p) => [p[0], p[1]]),
-            material: { ...s.material },
-          };
-          copies.push(copy);
-          st.shapes.unshift(copy);
-        }
-        for (const j of srcJoints) {
-          const pts = apply([[j.a[0], j.a[1]], [j.b[0], j.b[1]]], j);
-          if (!pts || pts.length < 2) continue;
-          const copy = {
-            ...j,
-            id: nextJointId(),
-            name: `${j.name} (kopi)`,
-            a: [pts[0][0], pts[0][1]],
-            b: [pts[1][0], pts[1][1]],
-            // Egen forbinder, ellers ville kopien dele objektet med originalen
-            connector: { ...j.connector },
-          };
-          copies.push(copy);
-          st.joints.push(copy);
-        }
-        for (const l of srcLines) {
-          const copy = { ...l, id: nextLineId(), points: apply(l.points, l).map((p) => [p[0], p[1]]) };
-          copies.push(copy);
-          st.lines.push(copy);
-        }
-      }
-      if (select && copies.length) st.selection = copies.map((c) => c.id);
-    }, { reason });
-    return copies;
-  }
-
-  /** Sletter både former og skjøter i `ids`. `Del` går hit. */
-  removeEntities(ids) {
-    const set = new Set(ids);
-    this.mutate((st) => {
-      st.shapes = st.shapes.filter((s) => !set.has(s.id));
-      st.joints = st.joints.filter((j) => !set.has(j.id));
-      st.lines = st.lines.filter((l) => !set.has(l.id));
-      st.selection = st.selection.filter((id) => !set.has(id));
-    }, { reason: 'remove' });
-  }
-
-  /* ---------------- linjearbeid (#86) ---------------- */
-
-  /**
-   * Legger inn linjer (fra DXF «Bare linjer» eller linjeverktøyet) som ETT
-   * angresteg. Linjene blir markert.
-   *
-   * @param {Array<{points, closed?}>} list
-   */
-  addLines(list, { reason = 'add-lines', select = true } = {}) {
-    const added = (list || [])
-      .filter((l) => l && l.points && l.points.length >= 2)
-      .map((l) => ({ id: nextLineId(), points: l.points.map((p) => [p[0], p[1]]), closed: !!l.closed }));
-    if (!added.length) return [];
-    this.mutate((st) => {
-      st.lines.push(...added);
-      if (select) st.selection = added.map((l) => l.id);
-    }, { reason });
-    return added;
-  }
-
-  /**
-   * «Lag geometri» / «Lag hull»: hver lukkede kontur som kan sys av linjene i
-   * `ids` blir én form med `role` — uten nøsting, også om den ligger inni en
-   * annen. Linjene beholdes. De som ikke inngikk i en lukket kontur, blir
-   * stående markert. Ett angresteg; ingen kontur gir ingen endring.
-   *
-   * @returns {{made: number, unusedIds: string[], shapeIds: string[]}}
-   */
-  makeShapesFromLines(ids, role = 'solid') {
-    const set = new Set(ids);
-    const lines = this.state.lines.filter((l) => set.has(l.id));
-    const { rings, unusedIds } = contoursFromLines(lines);
-    if (!rings.length) return { made: 0, unusedIds, shapeIds: [] };
-    const isVoid = role === 'void';
-    const base = isVoid ? 'Hull fra linjer' : 'Fra linjer';
-    const n0 = this.state.shapes.filter((x) => x.name.startsWith(`${base} `) && /\d+$/.test(x.name)).length;
-    const shapes = rings.map((ring, i) => ({
-      points: ring,
-      role: isVoid ? 'void' : 'solid',
-      name: `${base} ${n0 + i + 1}`,
-    }));
-    const added = this.addShapes(shapes, { reason: isVoid ? 'make-holes' : 'make-shapes', selectIds: unusedIds });
-    return { made: added.length, unusedIds, shapeIds: added.map((x) => x.id) };
-  }
-
-  setLinesVisible(on) {
-    this.mutate((st) => {
-      st.linesVisible = !!on;
-      if (!on) {
-        const lineIds = new Set(st.lines.map((l) => l.id));
-        st.selection = st.selection.filter((id) => !lineIds.has(id));
-      }
-    }, { reason: 'lines-visible', transient: true });
-    this.commit('lines-visible');
-  }
-
-  /** Ctrl+D: dupliserer utvalget (former og skjøter) forskjøvet. */
-  duplicateEntities(ids, dx = 0, dy = 0) {
-    return this.copyEntities(ids, [[dx, dy]], { select: true, reason: 'duplicate' });
-  }
-
-
-  /** Flytter en form opp (-1) eller ned (+1) i prioritetslista. */
-  reorder(id, delta) {
-    this.mutate((st) => {
-      const i = st.shapes.findIndex((s) => s.id === id);
-      const j = i + delta;
-      if (i < 0 || j < 0 || j >= st.shapes.length) return;
-      const [s] = st.shapes.splice(i, 1);
-      st.shapes.splice(j, 0, s);
-    }, { reason: 'reorder' });
+  followedNoun(n) {
+    return n === 1 ? 'skjøt' : 'skjøter';
   }
 
   /* ---------------- skjøter (§4, §6.2) ---------------- */
@@ -1011,7 +583,7 @@ export class Store {
   addJoint(a, b, opts = {}) {
     const shapes = this.state.shapes;
     const joint = {
-      id: nextJointId(),
+      id: this.nextId('j'),
       name: opts.name || autoJointName(a, b, shapes),
       a: [a[0], a[1]],
       b: [b[0], b[1]],
@@ -1050,186 +622,8 @@ export class Store {
     }, { reason: 'joint' });
   }
 
-  /* ---------------- del med linje (§8.5) ---------------- */
+  /* ---------------- beregningsinnstillinger ---------------- */
 
-  /**
-   * «Del med linje»: deler hver MARKERTE form som linja a→b krysser, i to (eller
-   * flere, for en konkav form) nye former langs den (`splitPointsByLine` i
-   * geometry.js, halvplan-klipping — §8.5). En form som linja ikke krysser (den
-   * ligger helt på én side, eller er ikke markert) står urørt. De nye formene
-   * arver navn (med suffiks), farge, rolle, stadium og materiale fra
-   * originalen. Ett undo-steg, siden hele operasjonen skjer i én `mutate`.
-   *
-   * @param {[number,number]} a
-   * @param {[number,number]} b
-   * @returns {{splitCount: number, newIds: Array<string>}}
-   */
-  splitByLine(a, b) {
-    const ids = new Set(this.state.selection);
-    const newIds = [];
-    let splitCount = 0;
-    this.mutate((st) => {
-      const next = [];
-      for (const s of st.shapes) {
-        if (!ids.has(s.id) || !s.points || s.points.length < 3) {
-          next.push(s);
-          continue;
-        }
-        const ownArea = Math.abs(multiProps(pointsToMulti(s.points)).A);
-        const areaTol = Math.max(ownArea * 1e-9, GEOM_EPS);
-        const { posMulti, negMulti } = splitPointsByLine(s.points, a, b);
-        const posArea = Math.abs(multiProps(posMulti).A);
-        const negArea = Math.abs(multiProps(negMulti).A);
-        if (posArea < areaTol || negArea < areaTol) {
-          // Linja krysser ikke formen (eller bare tangerer) — la den stå urørt.
-          next.push(s);
-          continue;
-        }
-        let n = 1;
-        for (const poly of [...posMulti, ...negMulti]) {
-          const ring = openRing(poly && poly[0] ? poly[0] : []);
-          if (ring.length < 3) continue; // degenerert bit — ignorer
-          const copy = {
-            ...s,
-            id: nextId(),
-            name: `${s.name} (del ${n})`,
-            points: ring.map((p) => [p[0], p[1]]),
-            material: { ...s.material },
-          };
-          next.push(copy);
-          newIds.push(copy.id);
-          n++;
-        }
-        splitCount++;
-      }
-      st.shapes = next;
-      if (newIds.length) st.selection = newIds.slice();
-    }, { reason: 'split' });
-    return { splitCount, newIds };
-  }
-
-  /* ---------------- utvalg ---------------- */
-
-  select(ids, additive = false) {
-    const list = Array.isArray(ids) ? ids : ids == null ? [] : [ids];
-    this.state.selection = additive
-      ? Array.from(new Set([...this.state.selection, ...list]))
-      : list;
-    this.emit('selection');
-  }
-
-  toggleSelect(id) {
-    const sel = new Set(this.state.selection);
-    if (sel.has(id)) sel.delete(id);
-    else sel.add(id);
-    this.state.selection = Array.from(sel);
-    this.emit('selection');
-  }
-
-  selectedShapes() {
-    const set = new Set(this.state.selection);
-    return this.state.shapes.filter((s) => set.has(s.id));
-  }
-
-  /* ---------------- innstillinger ---------------- */
-
-  setReference(pt, opts = {}) {
-    this.mutate((st) => {
-      st.reference = [pt[0], pt[1]];
-    }, { reason: 'reference', ...opts });
-  }
-
-  setMode(mode) {
-    this.mutate((st) => {
-      st.mode = mode;
-    }, { reason: 'mode' });
-  }
-
-  setGrid(patch) {
-    this.mutate((st) => {
-      Object.assign(st.grid, patch);
-    }, { reason: 'grid' });
-  }
-
-  setSnaps(patch) {
-    this.mutate((st) => {
-      Object.assign(st.snaps, patch);
-    }, { reason: 'snaps', transient: true });
-    this.commit('snaps');
-  }
-
-  setOrtho(on) {
-    this.mutate((st) => {
-      st.ortho = !!on;
-    }, { reason: 'ortho', transient: true });
-    this.commit('ortho');
-  }
-
-  /**
-   * Bytter arbeidsenhet. Alle koordinater regnes om slik at geometrien
-   * beholder sin fysiske størrelse — det er tallene som endrer seg, ikke
-   * tegningen.
-   */
-  setUnit(unit, { convert = true } = {}) {
-    const from = this.state.unit;
-    if (unit === from) return;
-    const k = convert ? conversionFactor(from, unit) : 1;
-    this.mutate((st) => {
-      st.unit = unit;
-      if (k !== 1) {
-        st.shapes = st.shapes.map((s) => ({ ...s, points: s.points.map(([x, y]) => [x * k, y * k]) }));
-        st.lines = st.lines.map((l) => ({ ...l, points: l.points.map(([x, y]) => [x * k, y * k]) }));
-        st.reference = [st.reference[0] * k, st.reference[1] * k];
-        st.grid.step = st.grid.step * k;
-        // Skjøtelinjene er geometri, og L er en lengde i arbeidsenheten.
-        // Skjøtedataene (rader, s, K) er absolutte og regnes IKKE om.
-        st.joints = st.joints.map((f) => ({
-          ...f,
-          a: [f.a[0] * k, f.a[1] * k],
-          b: [f.b[0] * k, f.b[1] * k],
-        }));
-        if (Number.isFinite(st.loads.L)) st.loads.L = st.loads.L * k;
-        if (st.underlay) {
-          st.underlay = {
-            ...st.underlay,
-            x: st.underlay.x * k,
-            y: st.underlay.y * k,
-            width: st.underlay.width * k,
-            height: st.underlay.height * k,
-          };
-        }
-      } else {
-        st.grid.step = unitInfo(unit).defaultGrid;
-      }
-    }, { reason: 'unit' });
-  }
-
-  /* ---------------- bildeunderlag ---------------- */
-
-  setUnderlay(patch, opts = {}) {
-    this.mutate((st) => {
-      st.underlay = patch ? { ...(st.underlay || {}), ...patch } : null;
-    }, { reason: 'underlay', ...opts });
-  }
-
-  clearUnderlay() {
-    this.mutate((st) => {
-      st.underlay = null;
-    }, { reason: 'underlay' });
-  }
-
-  setTitle(title) {
-    this.mutate((st) => {
-      st.title = title;
-    }, { reason: 'title', transient: true });
-  }
-
-  /**
-   * Globale lastdata for forsterkningsberegningen (v4, biaksiell — §1 i
-   * samvirkeplanen). `patch.before` og `patch.after` slås sammen felt-for-felt
-   * inn i den eksisterende lasttilstanden `{Vy,Vx,N,Mx,My}`, slik at
-   * `setLoads({ after: { Vy: 100 } })` ikke nullstiller `after.N`/`after.Mx`.
-   */
   /** «Snitt» eller «Linje» i Forsterkning-fanen. */
   setAnalysis(mode) {
     this.mutate((st) => {
@@ -1244,6 +638,12 @@ export class Store {
     }, { reason: 'line' });
   }
 
+  /**
+   * Globale lastdata for forsterkningsberegningen (v4, biaksiell — §1 i
+   * samvirkeplanen). `patch.before` og `patch.after` slås sammen felt-for-felt
+   * inn i den eksisterende lasttilstanden `{Vy,Vx,N,Mx,My}`, slik at
+   * `setLoads({ after: { Vy: 100 } })` ikke nullstiller `after.N`/`after.Mx`.
+   */
   setLoads(patch) {
     this.mutate((st) => {
       if (patch && patch.before) Object.assign(st.loads.before, patch.before);
@@ -1253,42 +653,7 @@ export class Store {
     this.commit('loads');
   }
 
-  clear() {
-    this.mutate((st) => {
-      st.shapes = [];
-      st.selection = [];
-      st.joints = [];
-      st.lines = [];
-    }, { reason: 'clear' });
-  }
-
-  bounds() {
-    // Linjearbeidet er med, så «zoom alt» etter en ren linjeimport ikke er tom
-    return boundsOfShapes([...this.state.shapes, ...(this.state.linesVisible === false ? [] : this.state.lines || [])]);
-  }
-
-  /* ---------------- persistens ---------------- */
-
-  persist() {
-    try {
-      localStorage.setItem(STORAGE_KEY, this.snapshot());
-    } catch (err) {
-      /* privat modus / full kvote — ikke kritisk */
-    }
-  }
-
-  load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return false;
-      this.restore(raw);
-      this.emit('load');
-      return true;
-    } catch (err) {
-      console.warn('[store] kunne ikke laste lagret modell:', err);
-      return false;
-    }
-  }
+  /* ---------------- prosjektfila ---------------- */
 
   toJSON() {
     return JSON.stringify(
@@ -1318,7 +683,7 @@ export class Store {
   }
 
   fromJSON(text) {
-    const data = JSON.parse(text);
+    const data = typeof text === 'string' ? JSON.parse(text) : structuredClone(text);
     if (!data || !Array.isArray(data.shapes)) throw new Error('Ugyldig fil: mangler "shapes"');
     this.mutate((st) => {
       st.shapes = data.shapes.map((s, i) =>
@@ -1341,7 +706,7 @@ export class Store {
       st.mode = data.mode === 'priority' ? 'priority' : 'sum';
       st.unit = data.unit || 'mm';
       st.title = data.title || '';
-      const m = migrate(data);
+      const m = this._migrate(data);
       if (m.grid) Object.assign(st.grid, m.grid);
       if (m.snaps) Object.assign(st.snaps, m.snaps);
       st.ortho = !!m.ortho;

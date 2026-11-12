@@ -981,12 +981,18 @@ export function createStore(initial) {
      * @param {{outer:number[][], holes?:number[][][]}} polygon allerede lest av
      *        `parseSectionDocument`; normaliseres her
      */
-    setCustomPolygon(polygon) {
+    setCustomPolygon(polygon, { cad = null } = {}) {
       if (state.sectionType !== 'custom' || !polygon || !Array.isArray(polygon.outer)) return null;
       const n = normalizePolygon({ outer: polygon.outer, holes: polygon.holes || [] });
+      // `cad` er TEGNINGEN polygonet ble laget av i cad2d-editoren (#93), lagret så
+      // formene kan redigeres igjen. Den er aldri en kilde til tall: polygonet er.
+      // Kommer polygonet fra fil eller innliming, finnes ingen tegning, og en
+      // gammel tegning må bort — ellers ville editoren vist former som ikke er
+      // det snittet som regnes.
+      const { cad: _old, ...geometry } = state.geometry || {};
       state = normalise(cloneState({
         ...state,
-        geometry: { ...state.geometry, outer: n.outer, holes: n.holes, bw: null },
+        geometry: { ...geometry, outer: n.outer, holes: n.holes, bw: null, ...(cad ? { cad: structuredClone(cad) } : {}) },
       }));
       notify();
       return state;

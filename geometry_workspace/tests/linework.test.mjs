@@ -17,15 +17,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 globalThis.window = globalThis;
 globalThis.localStorage = { getItem: () => null, setItem: () => {} };
-const vendor = await readFile(fileURLToPath(new URL('../vendor/polygon-clipping.umd.js', import.meta.url)), 'utf8');
+const vendor = await readFile(fileURLToPath(new URL('../../cad2d/vendor/polygon-clipping.umd.js', import.meta.url)), 'utf8');
 await import('data:text/javascript;charset=utf-8;base64,' + Buffer.from(vendor, 'utf8').toString('base64'));
 const url = (p) => pathToFileURL(fileURLToPath(new URL(p, import.meta.url))).href;
-const { analyze } = await import(url('../js/geometry.js'));
-const { exportSection, sectionProps } = await import(url('../js/section-export.js'));
-const { importDxf, importDxfLines, shapeList, describeLineImport } = await import(url('../js/dxf.js'));
-const { lineInBox, boxFromDrag, pickLine, contoursFromLines } = await import(url('../js/linework.js'));
+const { analyze } = await import(url('../../cad2d/js/geometry/polygon.js'));
+const { exportSection, sectionProps } = await import(url('../../cad2d/js/io/section-export.js'));
+const { importDxf, importDxfLines, shapeList, describeLineImport } = await import(url('../../cad2d/js/io/dxf.js'));
+const { lineInBox, boxFromDrag, pickLine, contoursFromLines } = await import(url('../../cad2d/js/geometry/linework.js'));
 const { Store } = await import(url('../js/store.js'));
-const { ToolController } = await import(url('../js/tools.js'));
+const { ToolController } = await import(url('../../cad2d/js/input/tools.js'));
 
 let failed = 0;
 let passed = 0;
@@ -161,7 +161,7 @@ console.log('Enhetsbytte og flytting tar med linjene');
 /* ---------------- verktøy: hull-modus og linjeverktøy ---------------- */
 
 function fakeViewport() {
-  return { unitsPerPixel: 1, setPreview() {}, setHover() {}, setHoverJoint() {}, snap: (p) => ({ point: p, type: 'free' }) };
+  return { unitsPerPixel: 1, setPreview() {}, setHover() {}, setHoverOf() {}, hoverOf: () => null, snap: (p) => ({ point: p, type: 'free' }) };
 }
 
 console.log('Hull-modus i tegneverktøyene');

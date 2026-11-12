@@ -16,7 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // polygon-clipping er en UMD-fil; som data-URL kjører den med `window` satt,
 // slik nettleseren gjør, og geometry.js finner den når broen lastes etterpå.
 globalThis.window = globalThis;
-const vendor = await readFile(fileURLToPath(new URL('../vendor/polygon-clipping.umd.js', import.meta.url)), 'utf8');
+const vendor = await readFile(fileURLToPath(new URL('../../cad2d/vendor/polygon-clipping.umd.js', import.meta.url)), 'utf8');
 await import('data:text/javascript;charset=utf-8;base64,' + Buffer.from(vendor, 'utf8').toString('base64'));
 const { computeReinforcement } = await import(pathToFileURL(fileURLToPath(new URL('../js/reinforcement-ui.js', import.meta.url))).href);
 

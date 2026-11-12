@@ -9,7 +9,7 @@
  * toleransen, vinner endepunktet — slik man er vant til fra CAD.
  */
 
-import { openRing, signedArea } from './geometry.js';
+import { openRing, signedArea } from '../geometry/polygon.js';
 
 /**
  * Snap-typene, i den rekkefølgen de prøves.

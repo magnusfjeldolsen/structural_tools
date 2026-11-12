@@ -74,8 +74,9 @@ import { aswPerSpacing, hasSlsCombo, layerArea, layerBarCount, layerDepth, recom
   stackedDc, suggestedDc, totalArea, totalAswPerSpacing } from './rebar.js';
 import { activeComboTheta, allowedAnalyses, axialForcesPresent, derived, minShearChord, sectionHeight, sectionPolygon, sectionWidth,
   thetaFor, validate } from './section.js';
-import { parseSectionDocument, polygonProps, toSectionDocument } from './polygon.js';
+import { parseSectionDocument, polygonProps, rectanglePolygon, toSectionDocument } from './polygon.js';
 import { drawSection } from './section-draw.js';
+import { createCadOverlay } from './cad-overlay.js';
 import { momentCurvatureSvg, nmDomainSvg, radialUtilisation } from './charts.js';
 import { attachChartTips } from './chart-tips.js';
 import { attachHints } from './hints.js';
@@ -1586,7 +1587,59 @@ export function createUI(deps) {
     return true;
   }
 
+  /**
+   * cad2d-editoren i overlegg (#93). OK går gjennom `setCustomPolygon`, samme
+   * dør som en lastet fil, og tegningen lagres i `geometry.cad` så den kan
+   * redigeres igjen.
+   *
+   * BJELKE: editoren åpner med dagens rektangel. OK med ENDRET geometri bytter
+   * til «Custom» med det tegnede snittet (bjelken parkeres i stash, så «Beam»
+   * tar deg tilbake som før). OK uten endring, eller Avbryt, lar alt stå — og
+   * da er bjelkens payload og fixturer urørt. PLATE åpner ikke editoren.
+   */
+  let geoEditMessage = '';
+  const cadOverlay = createCadOverlay({
+    onApply: (section, cad, { dirty }) => {
+      const from = store.getState().sectionType;
+      if (from === 'beam') {
+        if (!dirty) return;
+        store.setSectionType('custom');
+        geoEditMessage = 'The section is now custom (drawn from the beam). Click "Beam" to go back to the rectangle.';
+      } else {
+        geoEditMessage = '';
+      }
+      store.setCustomPolygon(section, { cad });
+      customMessage = { kind: 'ok', text: from === 'beam' ? 'Drawn in the geometry editor from the beam' : 'Drawn in the geometry editor' };
+      invalidate();
+      editing = null;
+      render();
+    },
+    onError: (msg) => {
+      geoEditMessage = msg;
+      render();
+    },
+  });
+
+  /** Editoren kan åpnes for bjelke og fritt tverrsnitt, ikke for plate. */
+  const canEditGeometry = (s) => s.sectionType === 'custom' || s.sectionType === 'beam';
+
+  function openCadEditor(returnFocus) {
+    const s = store.getState();
+    if (!canEditGeometry(s)) return;
+    const polygon = s.sectionType === 'beam' ? rectanglePolygon(Number(s.geometry.b), Number(s.geometry.h)) : sectionPolygon(s);
+    const cad = s.sectionType === 'custom' ? (s.geometry || {}).cad || null : null;
+    cadOverlay.open({ cad, polygon, returnFocus: returnFocus || $('#geo-edit') });
+  }
+
   function setupCustomSection() {
+    $('#custom-draw')?.addEventListener('click', () => openCadEditor($('#custom-draw')));
+    $('#geo-edit')?.addEventListener('click', () => openCadEditor($('#geo-edit')));
+    const fig = $('#draw-geo');
+    if (fig) {
+      // Fokus tilbake til «Edit geometry…» under figuren når editoren lukkes
+      fig.addEventListener('click', () => openCadEditor($('#geo-edit')));
+      // Fra tastaturet: «Edit geometry…»-knappen (figuren får ikke tabindex, §2.6).
+    }
     const file = $('#custom-file');
     if (file) {
       file.addEventListener('change', async () => {
@@ -3991,6 +4044,17 @@ export function createUI(deps) {
     // sjekk mot motorstatus.
     const drawGeo = $('#draw-geo');
     if (drawGeo) {
+      // Bjelke og fritt tverrsnitt: figuren er inngangen til editoren
+      const editable = canEditGeometry(s);
+      const geoEdit = $('#geo-edit');
+      if (geoEdit) geoEdit.hidden = !editable;
+      const geoMsg = $('#geo-edit-msg');
+      if (geoMsg) {
+        if (s.sectionType !== 'custom' && geoEditMessage.startsWith('The section is now custom')) geoEditMessage = '';
+        geoMsg.textContent = editable ? geoEditMessage : '';
+      }
+      drawGeo.classList.toggle('cursor-pointer', editable);
+      drawGeo.title = editable ? 'Click to edit the geometry' : '';
       drawGeo.innerHTML = drawSection(s, {
         width: GEO_DRAW_WIDTH, height: GEO_DRAW_HEIGHT,
         unit: 'px', theme: 'dark', showDims: true, showLabels: true,
@@ -4403,6 +4467,8 @@ export function createUI(deps) {
     renderShortcutHints();
 
     document.addEventListener('keydown', (e) => {
+      // Geometrieditoren (#93) eier tastaturet mens den er åpen.
+      if (cadOverlay.isOpen()) return;
       // `Alt` alene: hold den, og merkene kommer. `e.repeat` filtrerer bort
       // autogjentakelsen — uten den ville timeren blitt satt på nytt for hvert
       // gjentatte keydown og merkene aldri kommet.

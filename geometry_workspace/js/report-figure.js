@@ -37,7 +37,7 @@
  * ser ulik ut avhengig av hvor brukeren sist zoomet, er ikke en rapport.
  */
 
-import { unitInfo } from './units.js';
+import { unitInfo } from '../../cad2d/js/core/units.js';
 import { shapeFill, contourStyle } from './shape-style.js';
 
 /* ================================================================== *

@@ -1,0 +1,6 @@
+{
+  "name": "cad2d",
+  "private": true,
+  "type": "module",
+  "description": "Felles 2D CAD-motor for structural_tools (ES-moduler, ingen byggesteg). Testene: node cad2d/tests/<fil>.test.mjs"
+}

@@ -51,7 +51,12 @@ function parseKeywords(keywordsString) {
 /**
  * Determine category from folder name or keywords
  */
-function determineCategory(folderId, keywords) {
+const CATEGORIES = ['concrete', 'steel', 'timber', 'geotechnical', 'structural-analysis', 'other'];
+
+function determineCategory(folderId, keywords, explicit) {
+  // En side kan si selv hva den er: <meta name="category" content="...">. Brukes
+  // når navnet villeder gjettingen under (cad2d: «2d» er ikke 2D-analyse).
+  if (explicit && CATEGORIES.includes(explicit.trim().toLowerCase())) return explicit.trim().toLowerCase();
   const lowerFolderId = folderId.toLowerCase();
 
   if (lowerFolderId.includes('concrete')) return 'concrete';
@@ -91,7 +96,7 @@ function scanModule(folderName) {
     const keywords = parseKeywords(keywordsStr);
 
     // Determine category
-    const category = determineCategory(folderName, keywords);
+    const category = determineCategory(folderName, keywords, extractMetaTag(html, 'category'));
 
     return {
       id: folderName,

@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generated": "2026-11-12T14:01:59.025Z",
-    "total_modules": 31,
+    "generated": "2026-11-12T14:13:01.223Z",
+    "total_modules": 32,
     "version": "1.0.0",
     "duplicates_removed": 0,
     "skipped_count": 4
@@ -25,6 +25,25 @@
       ],
       "url": "./clustering/index.html",
       "category": "structural-analysis"
+    },
+    {
+      "id": "cad2d",
+      "title": "2D CAD Editor — shapes, holes, DXF and cross-sections",
+      "description": "Draw 2D cross-sections with holes, import DXF (shapes and holes, or lines only) and export the section as structural-tools-section JSON. The shared CAD editor used inside Geometry Workspace and the Concrete Section Calculator.",
+      "keywords": [
+        "cad",
+        "2d drawing",
+        "dxf import",
+        "cross-section",
+        "polygon with holes",
+        "hollow-core",
+        "geometry editor",
+        "section export",
+        "tverrsnitt",
+        "hull"
+      ],
+      "url": "./cad2d/index.html",
+      "category": "other"
     },
     {
       "id": "2dfea",
