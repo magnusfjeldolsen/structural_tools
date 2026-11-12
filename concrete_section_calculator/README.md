@@ -74,6 +74,26 @@ underkantlag i en T havner i steget.
 | SLS (spenninger, rissvidde) | `checks.sls_ok: null` + `sls_not_available_custom_section` | `csc_sls` er lukket-form-rektangel; omskrevet rektangel ville regnet hullene som betong. |
 | Bøylen i figuren | tegnes ikke | Den ville gått gjennom luft og hull. Bøyleraden regnes fortsatt. |
 
+**Forutsetning: bøyning om y-aksen alene, med fastholding mot sideveis bøyning.**
+Tøyningsplanet holdes vannrett (θ = 0/π). For et snitt som ikke er symmetrisk om den
+loddrette aksen (L, ensidig flens) krever det samtidig et moment `M_z`. Motoren
+rapporterer `M_z` per kombinasjon og `section_props.mz_ratio`; over
+`|M_z|/|M_Rd| = 0,05` gis advarselen `lateral_restraint_assumed`, og rapporten skriver
+forutsetningen. Terskelen: kapasiteten i fri bøyning faller omtrent med kvadratet av
+forholdet, under 0,3 % ved 0,05. Målt på et L-snitt 600×600 (forhold 0,29): M_Rd −343,4
+kNm med fastholding mot −321,6 kNm fritt, altså +6,8 % på usikker side uten den.
+Toakset bøyning er ikke bygget.
+
+**`b_w`** avvises (`invalid_bw`) hvis den er bredere enn det omskrevne rektangelet, og
+skjemaet advarer (`bw_exceeds_web`) når den er bredere enn den minste summen av
+betongkorder mellom strekkarmeringen og `z = z_factor·d` over den. Det tallet vises ved
+feltet, men fylles aldri inn.
+
+**Geometrigrenser** (like i `polygon.js` og `csc_polygon.py`): påfølgende punkter
+nærmere enn 1e-6 mm slås sammen; snitt og hull må være minst 1 mm brede og høye, og
+gods mellom hull og rand eller mellom hull minst 1 mm; koordinater innenfor ±1 km.
+`tests/fixtures/polygon-validity-cases.json` kjøres gjennom begge.
+
 **`h₀ = 2A_c/u` med `u = ytre omkrets + ½ · hullenes omkrets`** — et dokumentert *valg*
 (lukkede hulrom tørker, men langsommere), ikke en EC2-verdi. Kan overstyres.
 
