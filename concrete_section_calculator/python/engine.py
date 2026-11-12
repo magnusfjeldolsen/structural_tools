@@ -72,6 +72,17 @@ from csc_sls import _compute_sls  # noqa: E402
 
 from csc_polygon import PolygonError, is_polygon, validated_polygon  # noqa: E402
 
+# FORSPENNING (sak #84). Spennlagets materiale, det lineaer-elastiske polygonsnittet og
+# stegene t0 / t_inf / belastet. Alt her er ADDITIVT: uten et lag med `prestress` blir
+# ingenting fra modulen kalt, og svaret er tegn for tegn det samme som foer.
+from csc_prestress import (  # noqa: E402
+    PrestressError,
+    Stages,
+    equivalent_diameter,
+    is_prestressed,
+    prestress_material,
+)
+
 from csc_common import (  # noqa: E402  -- maa komme etter sys.path i worker-en
     _depth,
     _is_hogging,
@@ -231,14 +242,22 @@ def _build(payload):
             else:
                 conc_poly = conc_poly.difference(_strip_polygon(layer['strip']))
 
+    # FORSPENNING (sak #84): stegene regnes FOER seksjonen bygges, fordi tauets
+    # initialtoeyning i bruddgrensen er eps_p* etter tap -- et svar fra stegene.
+    stages, layer_materials = _prestress_bundle(payload, sec, conc_poly, geom)
+
     parts = [SurfaceGeometry(conc_poly, conc)]
     for layer in sec['rebar']:
         if layer['kind'] == 'bars':
+            mat = layer_materials.get(layer['id'], steel)
             for bar in layer['bars']:
                 parts.append(PointGeometry(
                     (float(bar['y']), float(bar['z'])),
-                    float(bar['dia']),
-                    steel,
+                    # Spenntau: AREALLIK diameter (93 mm2 for 12,5 mm tau), se
+                    # `csc_prestress.equivalent_diameter`. Slakkarmering: uendret.
+                    (float(bar['dia']) if mat is steel
+                     else equivalent_diameter(layer_materials['_area'][layer['id']])),
+                    mat,
                     group_label=layer['id'],
                 ))
         else:
@@ -260,20 +279,59 @@ def _build(payload):
     if geom is not None:
         compound = compound.translate(dx=-geom['y_c'], dy=-geom['z_c'])
     section = BeamSection(compound, integrator='marin')
-    return {'section': section, 'conc': conc, 'steel': steel, 'b': b, 'h': h, 'geom': geom}
+    bundle = {'section': section, 'conc': conc, 'steel': steel, 'b': b, 'h': h, 'geom': geom}
+    if layer_materials:
+        bundle['layer_materials'] = {k: v for k, v in layer_materials.items() if k != '_area'}
+        bundle['prestress'] = stages
+    return bundle
+
+
+def _prestress_bundle(payload, sec, conc_poly, geom):
+    """`(stages, layer_materials)` for spennlagene; `(None, {})` uten spennlag.
+
+    `layer_materials[id]` er et eget `ReinforcementEC2_2004` per spennlag med
+    f_p0,1k -> fyk, f_pk -> ftk, E_p, eps_uk og INITIALTOEYNING. Initialtoeyningen er
+    eps_p* etter tap (P_m,inf, gamma_P = 1) naar `payload.prestress` finnes; ellers
+    eps_p0 = sigma_p0/E_p, og `_run_inner` sier fra med en advarsel.
+    """
+    tendons = [layer for layer in sec['rebar'] if is_prestressed(layer)]
+    if not tendons:
+        return None, {}
+    for layer in tendons:
+        if layer['kind'] != 'bars':
+            raise PrestressError(f'Layer {layer["id"]}: a prestressed layer must be given as '
+                                 'individual tendons, not as a smeared strip.')
+    stages = None
+    cfg = payload.get('prestress')
+    if cfg is not None:
+        z_ref = geom['z_c'] if geom is not None else 0.0
+        stages = Stages(conc_poly, z_ref, sec['rebar'], float(sec['steel']['Es']),
+                        float(sec['concrete']['fck']), cfg)
+    out = {'_area': {}}
+    for layer in tendons:
+        m = prestress_material(layer)
+        eps0 = stages.eps_p_star[layer['id']] if stages is not None else m['eps_p0']
+        out[layer['id']] = ReinforcementEC2_2004(
+            fyk=m['fp01k'], Es=m['Ep'], ftk=m['fpk'], epsuk=m['epsuk'],
+            gamma_s=m['gamma_s'], gamma_eps=m['gamma_eps'], constitutive_law=m['law'],
+            initial_strain=eps0,
+        )
+        out['_area'][layer['id']] = m['area_per_tendon']
+    return stages, out
 
 
 def _prepare(payload, progress=None):
     """Henter den forberedte seksjonen fra modulglobalen, eller bygger den på nytt."""
     opts = payload.get('options', {})
-    key = json.dumps(
-        {
-            'section': payload['section'],
-            'subtract_bar_area': bool(opts.get('subtract_bar_area', False)),
-            'integrator': opts.get('integrator', 'marin'),
-        },
-        sort_keys=True,
-    )
+    key_obj = {
+        'section': payload['section'],
+        'subtract_bar_area': bool(opts.get('subtract_bar_area', False)),
+        'integrator': opts.get('integrator', 'marin'),
+    }
+    if payload.get('prestress') is not None:
+        # Stegdataene bestemmer tauets initialtoeyning i seksjonen (eps_p* etter tap).
+        key_obj['prestress'] = payload['prestress']
+    key = json.dumps(key_obj, sort_keys=True)
     if _PREPARED['key'] == key and _PREPARED['bundle'] is not None:
         return _PREPARED['bundle']
 
@@ -400,26 +458,50 @@ def _neutral_axis(eps_a, chi_y, h, theta):
     return z_na, x
 
 
-def _layer_state(rebar, eps_a, chi_y, steel):
+def _layer_state(rebar, eps_a, chi_y, steel, materials=None):
     """Tøyning og spenning per lag, regnet fra tøyningsplanet motoren alt har.
 
     Pakka kan i prinsippet gi det samme via `create_detailed_result()`, men den veien går
     gjennom `triangle` og finnes derfor ikke i nettleseren. Fem linjer her koster ingenting
     og virker begge steder.
+
+    SPENNLAG (sak #84): `materials[id]` er lagets eget materiale. `eps` er fortsatt
+    TVERRSNITTETS toeyning i laget (samme plan som alle andre lag, og det strekksettet
+    leses av); `eps_0` er initialtoeyningen og `eps_total` det tauet faktisk har. `sigma`
+    kommer fra lagets egen lov, som i pakka allerede er pakket inn med initialtoeyningen.
+    Lag uten eget materiale faar noeyaktig de samme noeklene som foer.
     """
     fyd = steel.fyd()
     out = []
     for layer in rebar:
         z = _layer_z(layer)
         eps = eps_a + chi_y * z
-        sigma = float(steel.constitutive_law.get_stress(np.array([eps]))[0])
+        mat = (materials or {}).get(layer['id'])
+        if mat is None:
+            sigma = float(steel.constitutive_law.get_stress(np.array([eps]))[0])
+            out.append({
+                'id': layer['id'],
+                'z': _num(z),
+                'eps': _num(eps),
+                'sigma': _num(sigma),
+                'utilisation': _num(abs(sigma) / fyd) if fyd else None,
+                'compression': bool(eps < 0),
+            })
+            continue
+        sigma = float(mat.constitutive_law.get_stress(np.array([eps]))[0])
+        eps0 = float(mat.initial_strain or 0.0)
+        fpd = mat.fyd()
         out.append({
             'id': layer['id'],
             'z': _num(z),
             'eps': _num(eps),
             'sigma': _num(sigma),
-            'utilisation': _num(abs(sigma) / fyd) if fyd else None,
+            'utilisation': _num(abs(sigma) / fpd) if fpd else None,
             'compression': bool(eps < 0),
+            'prestressed': True,
+            'eps_0': _num(eps0),
+            'eps_total': _num(eps + eps0),
+            'eps_ud': _num(mat.epsud()),
         })
     return out
 
@@ -921,7 +1003,8 @@ def _unsolved_combo(combo, n_ed, m_ed, theta_c, v_ed, shear, within_limits):
 
 
 def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
-                  n_min, n_max, shear_ctx, warnings_out, solve_flexure=True, geom=None):
+                  n_min, n_max, shear_ctx, warnings_out, solve_flexure=True, geom=None,
+                  materials=None):
     """Løser bruddtilstanden for ÉN lastkombinasjon.
 
     Returnerer `(public, extra)`. `public` er NØYAKTIG formen `combinations[i]` skal ha i
@@ -997,7 +1080,7 @@ def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
         # system, der lagenes `z` står. ε(z) = eps_a' + χ·(z − z_c) = (eps_a' − χ·z_c) + χ·z.
         eps_a = eps_a - chi_y * geom['z_c']
     z_na, x = _neutral_axis(eps_a, chi_y, h, theta_c)
-    layers = _layer_state(rebar, eps_a, chi_y, steel)
+    layers = _layer_state(rebar, eps_a, chi_y, steel, materials)
     eps_s_max = max((l['eps'] for l in layers if l['eps'] is not None), default=None)
     eps_edge = eps_a + chi_y * (-h / 2.0 if _is_hogging(theta_c) else h / 2.0)
 
@@ -1011,6 +1094,13 @@ def _solve_combo(combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu,
     failure_mode = _classify(
         tension, eps_s_max, eps_edge, eps_yd, eps_ud, eps_cu, m_rd_signed, m_cr,
     )
+    # SPENNTAU SOM RYKER (sak #84). `_classify` ser tverrsnittstoeyningen mot SLAKK-
+    # armeringens eps_ud. Et tau ryker paa sin EGEN totale toeyning (eps + eps_0) mot sin
+    # egen eps_ud -- ofte lenge foer slakkarmeringen ville gjort det.
+    if failure_mode in ('concrete_crushing', 'over_reinforced') and any(
+            l.get('prestressed') and l['eps_total'] is not None and l['eps_ud']
+            and l['eps_total'] >= l['eps_ud'] * (1 - 1e-3) for l in layers):
+        failure_mode = 'steel_rupture'
     d_eff, as_tension, d_eff_all = _effective_depth(rebar, tension, h, theta_c)
 
     public = {
@@ -1169,6 +1259,11 @@ def run(payload: dict, progress=None) -> dict:
         # nettopp det brukeren trenger aa lese.
         return _error('invalid_geometry', exc.message,
                       exc.message + (f' ({exc.detail})' if exc.detail else ''))
+    except PrestressError as exc:
+        # Samme grep som for geometrien: en feil i spennlaget (feil fortegn, mangler A_p,
+        # sigma_p0 over f_p0,1k) er et svar brukeren skal lese, ikke en krasj.
+        return _error('invalid_prestress', exc.message,
+                      exc.message + (f' ({exc.detail})' if exc.detail else ''))
     except Exception as exc:  # noqa: BLE001 — en motor som kaster låser UI-et
         return _error(
             type(exc).__name__,
@@ -1249,7 +1344,27 @@ def _run_inner(payload, progress, t0):
     # en rissvidde for et snitt som ikke finnes, uten feilmelding. Kontrollen blir derfor
     # UBESVART med grunnen i klartekst (`sls_ok: None` under), ikke stille utelatt.
     sls_unavailable = False
-    if sls_cfg is not None and any(
+    # FORSPENNING (sak #84): `csc_sls` kjenner ikke initialtoeyning -- et spenntau ville
+    # blitt regnet som slakk armering uten forspenning, og rissvidden for et snitt som i
+    # virkeligheten staar i trykk. Bruksgrensen er derfor ubesvart ogsaa for rektangelet
+    # naar det finnes et spennlag; stegspenningene i `result.prestress` er svaret i stedet.
+    layer_materials = bundle.get('layer_materials')
+    ps_stages = bundle.get('prestress')
+    if sls_cfg is not None and layer_materials and any(
+        c['type'] in ('characteristic', 'quasi_permanent') for c in combos
+    ):
+        sls_unavailable = 'prestress'
+        warnings_out.append(_warning(
+            'sls_not_available_prestress',
+            'The serviceability checks (stress limits and crack width) are not available '
+            'for a prestressed section. The concrete and tendon stresses for each '
+            'characteristic and quasi-permanent combination are given in the prestress '
+            'stage table instead (stage "loaded"); they are facts, not checks against a '
+            'limit.',
+            'prestressed layer present; csc_sls has no initial strain',
+            severity='warning',
+        ))
+    elif sls_cfg is not None and any(
         c['type'] in ('characteristic', 'quasi_permanent') for c in combos
     ):
         if geom is None:
@@ -1345,6 +1460,7 @@ def _run_inner(payload, progress, t0):
             combo, sc, rebar, steel, b, h, fctm, eps_yd, eps_ud, eps_cu, n_min, n_max,
             shear_ctx, warnings_out,
             solve_flexure=(not is_mc or i == active_index), geom=geom,
+            materials=layer_materials,
         )
         combo_results.append(public)
         combo_extras.append(extra)
@@ -1834,7 +1950,14 @@ def _run_inner(payload, progress, t0):
         'asw_min_ok': asw_min_ok,
         'stirrup_spacing_ok': stirrup_spacing_ok,
     }
-    if sls_unavailable:
+    if sls_unavailable == 'prestress':
+        checks['sls_ok'] = None
+        null_reasons['sls_ok'] = (
+            'serviceability checks are not available for a prestressed section — the '
+            'stresses per combination are reported in the prestress stage table, but '
+            'not checked against the EC2 7.2/7.3 limits'
+        )
+    elif sls_unavailable:
         # Se `sls_unavailable` over. Bare naar det FINNES bruksgrenserader: uten dem er det
         # ingenting aa svare paa, og en ubesvart kontroll ville vaert stoey.
         checks['sls_ok'] = None
@@ -1986,6 +2109,9 @@ def _run_inner(payload, progress, t0):
             'sls': sls_result['all_ok'],
         })
 
+    if layer_materials:
+        common['prestress'] = _prestress_result(payload, ps_stages, combos, warnings_out)
+
     if not has_candidate:
         # Full konvolutt, ikke bare `{ok, schema, error}` (§4.4): figurer, tabeller og
         # rapport skal fortsatt ha noe å tegne selv når ingen kombinasjon var innenfor.
@@ -2118,6 +2244,43 @@ def _run_inner(payload, progress, t0):
 
     common['meta']['wall_time_ms'] = _num(round((time.perf_counter() - t0) * 1000, 1))
     return common
+
+
+def _prestress_result(payload, stages, combos, warnings_out):
+    """`result.prestress` (sak #84). Finnes BARE naar et lag har `prestress`.
+
+    `uls_prestrain` sier hvilken initialtoeyning tauet hadde i bruddgrensen: `long_term`
+    (eps_p* etter tap, P_m,inf) naar stegene er regnet, ellers `sigma_p0` (foer ethvert
+    tap, paa usikker side for M_Rd i sagging) -- og da med en advarsel.
+    """
+    from csc_prestress import prestress_layers, prestress_limit_warning
+    if stages is None:
+        for layer in prestress_layers(payload['section']['rebar']):
+            lim = prestress_limit_warning(layer['id'], prestress_material(layer))
+            if lim is not None:
+                warnings_out.append(_warning('prestress_above_limit', lim[0], lim[1]))
+        warnings_out.append(_warning(
+            'prestress_stages_missing',
+            'No prestress stage data was given, so no losses were computed. The bending '
+            'resistance uses the prestress before transfer, σ_p0, which overstates the '
+            'prestrain of the tendon in the long term.',
+            'payload.prestress is missing',
+        ))
+        return {'uls_prestrain': 'sigma_p0', 'stages': None, 'losses': None}
+    for code, message, detail in stages.warnings:
+        warnings_out.append(_warning(code, message, detail))
+    out = stages.result(combos)
+    out['uls_prestrain'] = 'long_term'
+    if not any(s['uncracked'] for s in out['stages'][:1]):
+        warnings_out.append(_warning(
+            'prestress_cracked_at_transfer',
+            'The section cracks at transfer: the tensile stress exceeds f_ctm(t0). The '
+            'transfer stage is computed as cracked (no concrete in tension).',
+            f'sigma_top={out["stages"][0]["sigma_c_top"]}, '
+            f'sigma_bottom={out["stages"][0]["sigma_c_bottom"]}, '
+            f'f_ctm(t0)={out["stages"][0]["f_ct"]}',
+        ))
+    return out
 
 
 def _runtime_name():
