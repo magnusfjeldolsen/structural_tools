@@ -31,6 +31,18 @@ def variant(name, engine_text, extra=None):
         print('   ', line[:200])
 
 
+print(subprocess.run('lscpu | grep -E "Model name|Flags" | cut -c1-400', shell=True,
+                     capture_output=True, text=True).stdout)
+subprocess.run([sys.executable, '-c', 'import numpy; numpy.show_runtime()'])
+# F: HELE master-modulen, uendret, i samme jobb.
+subprocess.run('rm -rf /tmp/F_master_pure && mkdir -p /tmp/F_master_pure && '
+               'git archive origin/master concrete_section_calculator | tar -x -C /tmp/F_master_pure',
+               shell=True, check=True)
+r = subprocess.run([sys.executable, '/tmp/F_master_pure/concrete_section_calculator/docs/fixture-generator.py',
+                    '--check'], capture_output=True, text=True)
+print('== F_master_pure: exit', r.returncode)
+print('   ', (r.stdout + r.stderr).strip()[:600])
+
 variant('A_branch', BRANCH_ENGINE)
 variant('C_master_engine', MASTER_ENGINE)
 variant('E_master_engine_plus_import',
