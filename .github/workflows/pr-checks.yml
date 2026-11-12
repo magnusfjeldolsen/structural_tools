@@ -144,9 +144,19 @@ jobs:
         if: steps.changes.outputs.csc == 'true'
         run: npm run test:concrete-section
 
+      # numpy velger SIMD-kodevei etter runnerens CPU. Paa runnere med AVX-512
+      # (EPYC 9V74) flytter det to N-M-tall i 12. siffer, og fixturtesten -- som
+      # sammenligner tegn for tegn -- feiler paa ren master. Paa EPYC 7763 er
+      # den groenn. AVX-512-dispatch slaas derfor av her (#91); fixturene og
+      # testen staar uroert. show_runtime() legger CPU-en i loggen.
       - name: Python suite
         if: steps.changes.outputs.csc == 'true'
-        run: npm run test:concrete-section:py
+        env:
+          NPY_DISABLE_CPU_FEATURES: "X86_V4 AVX512_ICL AVX512_SPR"
+        run: |
+          python -c "import numpy; numpy.show_runtime()"
+          lscpu | grep -E "Model name|avx512f" | cut -c1-120 || true
+          npm run test:concrete-section:py
 
       # Den ENESTE som ser WebAssembly-veien: at det vendored hjulet godtas, at
       # stubbene installeres foer structuralcodes importeres, og at motorens
