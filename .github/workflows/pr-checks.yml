@@ -146,7 +146,11 @@ jobs:
 
       - name: Python suite
         if: steps.changes.outputs.csc == 'true'
-        run: npm run test:concrete-section:py
+        run: |
+          echo "== generator --check alene (ny prosess)"; python concrete_section_calculator/docs/fixture-generator.py --check || true
+          echo "== generator --diff"; python concrete_section_calculator/docs/fixture-generator.py --diff || true
+          echo "== test_fixtures alene"; python -m pytest concrete_section_calculator/tests/python/test_fixtures.py -q || true
+          echo "== hele suiten"; npm run test:concrete-section:py
 
       # Den ENESTE som ser WebAssembly-veien: at det vendored hjulet godtas, at
       # stubbene installeres foer structuralcodes importeres, og at motorens
