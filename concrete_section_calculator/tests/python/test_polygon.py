@@ -416,3 +416,24 @@ def test_hollow_core_bending_resistance_matches_a_hand_calculation():
     assert 0.8 * x < (HD_H - HD_D) / 2  # blokka ligger i overflensen
     m_hand = as_ * fyd * (d - 0.4 * x)
     assert abs(res['bending']['M_Rd']) == pytest.approx(m_hand, rel=0.05)
+
+
+# ------------------------------------------------------------------ #
+# Payloaden `payload.js` faktisk bygger (JS -> Python, samme fil)
+# ------------------------------------------------------------------ #
+
+def test_the_payload_js_builds_for_the_hollow_core_runs_in_the_engine():
+    """`custom-section.test.mjs` paastaar at `buildPayload` gir NOEYAKTIG denne fila.
+    Her kjoeres den samme fila -- koblingen som gjoer «samme tall i JS og Python» til noe
+    som kan etterproeves, ikke bare to sider som hver tror de er enige."""
+    payload = load('payload-custom-hd265.json')
+    assert payload['section']['shape'] == 'polygon'
+    assert 'b' not in payload['section'] and 'h' not in payload['section']
+    res = engine.run(payload)
+    assert res['ok'], res.get('error')
+    assert res['checks']['geometry_ok'] is True
+    assert abs(res['section_props']['Ag'] / A_EXACT - 1.0) < 0.005
+    row = res['bending']['combinations'][0]
+    assert row['shear']['evaluated'] is True
+    assert row['shear']['bw'] == 220.0
+    assert row['M_Rd'] < 0 and row['utilisation'] < 1.0

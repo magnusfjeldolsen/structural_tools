@@ -536,7 +536,7 @@ test('bøylene følger ikke med på plata — platas dc blir ikke 12 mm for stor
 
 test('NØYAKTIG ETT snitt er levende: stashet for den AKTIVE typen er null', () => {
   const store = createStore({ geometry: { b: 300, h: 600 } });
-  assert.deepEqual(store.getState().stash, { beam: null, slab: null });
+  assert.deepEqual(store.getState().stash, { beam: null, slab: null, custom: null });
 
   store.setSectionType('slab');
   let s = store.getState();
@@ -592,7 +592,7 @@ test('setSectionType til samme type er en no-op — snittet stasher ikke seg sel
   const store = createStore();
   const before = store.getState();
   assert.equal(store.setSectionType('beam'), before);
-  assert.deepEqual(store.getState().stash, { beam: null, slab: null });
+  assert.deepEqual(store.getState().stash, { beam: null, slab: null, custom: null });
 });
 
 test('INVARIANTENE kjøres etter gjenoppretting — stashet er tilstand, ikke en omgåelse', () => {

@@ -57,7 +57,7 @@ import { barPositions, stirrupCoverDia } from './rebar.js';
 // en plate lastet inn via `setInputs`/dokumentlasting bli TEGNET 300 mm bred
 // mens motoren regnet 1000 mm — figur og tall ville vist to ulike tverrsnitt
 // uten at noen test feilet. Samme prinsipp som punkt 1 over.
-import { sectionHeight, sectionWidth } from './section.js';
+import { barGeometry, sectionHeight, sectionPolygon, sectionWidth } from './section.js';
 
 /* ------------------------------------------------------------------ *
  * Papir: referansebredden og marginene
@@ -292,7 +292,26 @@ function layerLabelLines(layer) {
  * bred mens jernene ikke ble det.
  */
 function drawGeometry(state) {
-  return { b: sectionWidth(state), h: sectionHeight(state) };
+  // `barGeometry` er SAMME funksjon `payload.js` kaller — med polygonet for et fritt
+  // tverrsnitt (sak #83), slik at jernene tegnes over betongen i lagets høyde akkurat
+  // der motoren får dem.
+  return barGeometry(state || {});
+}
+
+/**
+ * SVG-banen for et fritt tverrsnitt: én underbane per ring, ytre først. Tegnes med
+ * `fill-rule="evenodd"`, så hullene blir hull uansett omløpsretning i fila.
+ */
+function polygonPathD(polygon, px, py) {
+  const ring = (pts) => 'M ' + pts.map(([y, z]) => `${r(px(y))} ${r(py(z))}`).join(' L ') + ' Z';
+  return [polygon.outer, ...(polygon.holes || [])].map(ring).join(' ');
+}
+
+/** Deterministisk id for klippebanen — samme snitt gir samme SVG, hver gang. */
+function clipId(d) {
+  let h = 0;
+  for (let i = 0; i < d.length; i++) h = (h * 31 + d.charCodeAt(i)) >>> 0;
+  return `sd-clip-${h.toString(36)}`;
 }
 
 /**
@@ -700,12 +719,30 @@ export function drawSection(state, opts = {}) {
   parts.push(`<rect x="0" y="0" width="${r(paperW)}" height="${r(paperH)}" fill="${c.bg}"/>`);
 
   /* --- Betongtverrsnittet ------------------------------------------ */
-  parts.push(
-    `<g data-role="concrete">` +
-    `<rect x="${r(px(-b / 2))}" y="${r(py(h / 2))}" width="${r(b * s)}" height="${r(h * s)}" ` +
-    `fill="${c.concreteFill}" stroke="${c.concreteStroke}" stroke-width="${r(swThick)}"/>` +
-    `</g>`
-  );
+  // FRITT TVERRSNITT (sak #83): polygonet med hull, ikke det omskrevne rektangelet —
+  // figuren er den viktigste tilbakemeldingen på siden, og et hulldekke tegnet massivt
+  // ville vært nettopp den feilen. Klippebanen gjør at trykksoneskyggen under bare
+  // dekker betong, ikke hull og luft.
+  const polygon = sectionPolygon(state || {});
+  let clip = null;
+  if (polygon) {
+    const d = polygonPathD(polygon, px, py);
+    clip = clipId(d);
+    parts.push(
+      `<defs><clipPath id="${clip}"><path fill-rule="evenodd" d="${d}"/></clipPath></defs>` +
+      `<g data-role="concrete">` +
+      `<path class="sd-concrete" fill-rule="evenodd" d="${d}" ` +
+      `fill="${c.concreteFill}" stroke="${c.concreteStroke}" stroke-width="${r(swThick)}"/>` +
+      `</g>`
+    );
+  } else {
+    parts.push(
+      `<g data-role="concrete">` +
+      `<rect x="${r(px(-b / 2))}" y="${r(py(h / 2))}" width="${r(b * s)}" height="${r(h * s)}" ` +
+      `fill="${c.concreteFill}" stroke="${c.concreteStroke}" stroke-width="${r(swThick)}"/>` +
+      `</g>`
+    );
+  }
 
   /* --- Trykksone og nøytralakse ------------------------------------ */
   // Ligger FØR armeringen, slik at jernene aldri havner under skyggen.
@@ -720,7 +757,8 @@ export function drawSection(state, opts = {}) {
     let g = `<g data-role="na">`;
     if (zTop > zBot) {
       g += `<rect x="${r(px(-b / 2))}" y="${r(py(zTop))}" width="${r(b * s)}" ` +
-           `height="${r((zTop - zBot) * s)}" fill="${c.compression}" fill-opacity="0.28"/>`;
+           `height="${r((zTop - zBot) * s)}" fill="${c.compression}" fill-opacity="0.28"` +
+           `${clip ? ` clip-path="url(#${clip})"` : ''}/>`;
     }
     g += `<line x1="${r(px(-b / 2) - over)}" y1="${r(py(zNa))}" ` +
          `x2="${r(px(b / 2) + over)}" y2="${r(py(zNa))}" ` +
@@ -737,7 +775,10 @@ export function drawSection(state, opts = {}) {
    * aldri havne under bøyleomrisset. Tegnes bare når lista er ikke-tom
    * (§5.3) — `stirrupGeometry` returnerer `null` ellers.
    */
-  const stirrup = stirrupGeometry(state);
+  // Fritt tverrsnitt: bøylen tegnes IKKE. `stirrupGeometry` legger den langs det
+  // omskrevne rektangelet, og i en T eller et hulldekke ville den gått gjennom luft og
+  // hull. Bøyleraden regnes fortsatt (A_sw/s, V_Rd,s); bare figuren er utelatt.
+  const stirrup = polygon ? null : stirrupGeometry(state);
   if (stirrup && stirrup.y1 > stirrup.y0 && stirrup.z1 > stirrup.z0) {
     // EKTE diameter, akkurat som jernene tegnes (se armeringsløkka under).
     // Før tegnet bøylen seg med en fast brøkdel av tegneenheten, helt frikoblet
