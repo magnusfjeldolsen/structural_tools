@@ -14,7 +14,7 @@ fixturene har stille blitt en andre sannhet.
 Testen her er derfor ikke en test av generatoren. Den er låsen som gjør fixturene
 til ÉN kilde: de er motorens svar, eller så er suiten rød.
 
-Koster ~2 s. Filnavnet med bindestreker kan ikke importeres med `import`, derav
+Koster ~2 s (CI-proeve: master-kode i dagens CI-miljoe). Filnavnet med bindestreker kan ikke importeres med `import`, derav
 `importlib`.
 """
 
